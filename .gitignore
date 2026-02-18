@@ -86,3 +86,14 @@ logs/
 
 .vercel
 .env*.local
+
+# Rust
+target/
+src-tauri/target/
+**/*.rs.bk
+
+# ExRetailOS Specific
+tools/**/.git
+.agent/skills/**/.git
+add_files.ps1
+add_all_files.ps1
