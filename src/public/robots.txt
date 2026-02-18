@@ -1,0 +1,12 @@
+# RetailOS - robots.txt
+User-agent: *
+Allow: /
+
+# Özel dizinler
+Disallow: /api/
+Disallow: /admin/
+Disallow: /backend/
+Disallow: /sql/
+
+# Sitemap
+Sitemap: https://retailos.app/sitemap.xml

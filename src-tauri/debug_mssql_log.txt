@@ -1,0 +1,46 @@
+get_logo_data_preview called
+Entity: ITEMS, Firm: 009, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_009_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: ITEMS, Firm: 006, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_006_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: CLCARD, Firm: 006, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_006_CLCARD WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: INVOICE, Firm: 006, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_006_01_INVOICE WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: ITEMS, Firm: 012, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_012_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: ITEMS, Firm: 009, Period: 01
+Executing Query: SELECT TOP 50 * FROM LG_009_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 50
+get_logo_data_preview called
+Entity: ITEMS, Firm: 006, Period: 01
+Executing Query (TOP 1): SELECT TOP 1 * FROM LG_006_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 1
+Processing Row 0
+Finished processing rows. Returning result.
+get_logo_data_preview called
+Entity: ITEMS, Firm: 012, Period: 01
+Executing Query (TOP 1): SELECT TOP 1 * FROM LG_012_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 1
+Processing Row 0
+Finished processing rows. Returning result.
+get_logo_data_preview called
+Entity: ITEMS, Firm: 009, Period: 01
+Executing Query (TOP 20): SELECT TOP 20 * FROM LG_009_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 20
+Finished processing rows. Returning result.
+get_logo_data_preview called
+Entity: ITEMS, Firm: 006, Period: 01
+Executing Query (TOP 20): SELECT TOP 20 * FROM LG_006_ITEMS WITH(NOLOCK) ORDER BY LOGICALREF DESC
+Rows found: 20
+Finished processing rows. Returning result.

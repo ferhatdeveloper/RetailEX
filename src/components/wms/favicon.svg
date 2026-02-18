@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#grad)"/>
+  
+  <!-- Warehouse icon -->
+  <g fill="white">
+    <!-- Building -->
+    <rect x="25" y="35" width="50" height="45" fill="white" opacity="0.9"/>
+    
+    <!-- Roof -->
+    <path d="M 20 35 L 50 20 L 80 35 Z" fill="white"/>
+    
+    <!-- Door -->
+    <rect x="42" y="60" width="16" height="20" fill="#2563eb"/>
+    
+    <!-- Windows -->
+    <rect x="30" y="45" width="8" height="8" fill="#2563eb"/>
+    <rect x="62" y="45" width="8" height="8" fill="#2563eb"/>
+    
+    <!-- Boxes (WMS symbol) -->
+    <rect x="30" y="58" width="6" height="6" fill="#3b82f6" opacity="0.7"/>
+    <rect x="64" y="58" width="6" height="6" fill="#3b82f6" opacity="0.7"/>
+  </g>
+</svg>

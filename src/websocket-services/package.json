@@ -1,0 +1,58 @@
+{
+  "name": "@retailos/websocket-services",
+  "version": "1.0.0",
+  "description": "RetailOS WebSocket Services - Tüm WebSocket servisleri için ana paket",
+  "private": true,
+  "scripts": {
+    "install-all": "npm run install:scanner && npm run install:realtime && npm run install:scale && npm run install:hardware",
+    "install:scanner": "cd scanner && npm install",
+    "install:realtime": "cd realtime && npm install",
+    "install:scale": "cd scale && npm install",
+    "install:hardware": "cd hardware && npm install",
+    "start": "npm-run-all --parallel start:*",
+    "start:scanner": "cd scanner && npm start",
+    "start:realtime": "cd realtime && npm start",
+    "start:scale": "cd scale && npm start",
+    "start:hardware": "cd hardware && npm start",
+    "dev": "npm-run-all --parallel dev:*",
+    "dev:scanner": "cd scanner && npm run dev",
+    "dev:realtime": "cd realtime && npm run dev",
+    "dev:scale": "cd scale && npm run dev",
+    "dev:hardware": "cd hardware && npm run dev",
+    "install-services": "npm run install-service:scanner && npm run install-service:realtime && npm run install-service:scale && npm run install-service:hardware",
+    "install-service:scanner": "cd scanner && npm run install-service",
+    "install-service:realtime": "cd realtime && npm run install-service",
+    "install-service:scale": "cd scale && npm run install-service",
+    "install-service:hardware": "cd hardware && npm run install-service",
+    "uninstall-services": "npm run uninstall-service:scanner && npm run uninstall-service:realtime && npm run uninstall-service:scale && npm run uninstall-service:hardware",
+    "uninstall-service:scanner": "cd scanner && npm run uninstall-service",
+    "uninstall-service:realtime": "cd realtime && npm run uninstall-service",
+    "uninstall-service:scale": "cd scale && npm run uninstall-service",
+    "uninstall-service:hardware": "cd hardware && npm run uninstall-service",
+    "logs": "tail -f %USERPROFILE%/RetailOS/logs/websocket/*.log",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [
+    "retailos",
+    "websocket",
+    "scanner",
+    "realtime",
+    "scale",
+    "hardware",
+    "pos"
+  ],
+  "author": "RetailOS Team",
+  "license": "PROPRIETARY",
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/retailos/retailos.git"
+  }
+}

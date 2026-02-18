@@ -1,0 +1,85 @@
+﻿cargo :     Checking retailex v0.1.12 (D:\Exretailosv
+1\src-tauri)
+At line:1 char:1
++ cargo check --bin "RetailEX_Service" > build_errors
+.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Che 
+   cking re...osv1\src-tauri):String) [], RemoteExc  
+  eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: unused imports: `SystemTime` and `UNIX_EPOCH
+`
+ --> src\license.rs:2:17
+  |
+2 | use std::time::{SystemTime, UNIX_EPOCH};
+  |                 ^^^^^^^^^^  ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(
+unused)]`) on by default
+
+warning: unused import: `save_app_config`
+ --> src\backup_service.rs:5:48
+  |
+5 | use crate::config::{AppConfig, get_app_config, sa
+ve_app_config};
+  |                                                ^^
+^^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+  --> src\service_main.rs:67:15
+   |
+67 |         name: SERVICE_NAME.to_string(),
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^ expected 
+`OsString`, found `String`
+   |
+help: call `Into::into` on this expression to convert
+ `std::string::String` into `OsString`
+   |
+67 |         name: SERVICE_NAME.to_string().into(),
+   |                                       +++++++
+
+error[E0308]: mismatched types
+  --> src\service_main.rs:68:23
+   |
+68 |         display_name: DISPLAY_NAME.to_string(),
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^ e
+xpected `OsString`, found `String`
+   |
+help: call `Into::into` on this expression to convert
+ `std::string::String` into `OsString`
+   |
+68 |         display_name: DISPLAY_NAME.to_string().i
+nto(),
+   |                                               ++
++++++
+
+error[E0560]: struct `ServiceInfo` has no field named
+ `load_order_group`
+  --> src\service_main.rs:73:9
+   |
+73 |         load_order_group: None,
+   |         ^^^^^^^^^^^^^^^^ `ServiceInfo` does not 
+have this field
+   |
+   = note: available fields are: `launch_arguments`
+
+error[E0560]: struct `ServiceInfo` has no field named
+ `tag_id`
+  --> src\service_main.rs:74:9
+   |
+74 |         tag_id: None,
+   |         ^^^^^^ `ServiceInfo` does not have this 
+field
+   |
+   = note: available fields are: `launch_arguments`
+
+Some errors have detailed explanations: E0308, E0560.
+For more information about an error, try `rustc --exp
+lain E0308`.
+warning: `retailex` (bin "RetailEX_Service") generate
+d 2 warnings
+error: could not compile `retailex` (bin "RetailEX_Se
+rvice") due to 4 previous errors; 2 warnings emitted

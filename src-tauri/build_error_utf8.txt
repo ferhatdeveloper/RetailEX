@@ -1,0 +1,679 @@
+﻿cargo :        Fresh unicode-ident v1.0.23
+At line:1 char:1
++ cargo check -vv > build_error.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (       Fresh 
+    unicode-ident v1.0.23:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+       Fresh cfg-if v1.0.4
+       Fresh proc-macro2 v1.0.106
+       Fresh version_check v0.9.5
+       Fresh quote v1.0.44
+       Fresh syn v2.0.114
+       Fresh syn v1.0.109
+       Fresh serde_derive v1.0.228
+       Fresh synstructure v0.13.2
+       Fresh zerovec-derive v0.11.2
+       Fresh displaydoc v0.2.5
+       Fresh zerofrom-derive v0.1.6
+       Fresh yoke-derive v0.8.1
+       Fresh serde_core v1.0.228
+       Fresh zerocopy-derive v0.8.39
+       Fresh zerocopy v0.8.39
+       Fresh autocfg v1.5.0
+       Fresh getrandom v0.2.17
+       Fresh rand_core v0.6.4
+       Fresh rand_pcg v0.2.1
+       Fresh thiserror-impl v1.0.69
+       Fresh find-msvc-tools v0.1.9
+       Fresh shlex v1.3.0
+       Fresh cc v1.2.55
+       Fresh serde v1.0.228
+       Fresh stable_deref_trait v1.2.1
+       Fresh phf_generator v0.8.0
+       Fresh phf_generator v0.11.3
+       Fresh zerofrom v0.1.6
+       Fresh memchr v2.8.0
+       Fresh bytes v1.11.1
+       Fresh yoke v0.8.1
+       Fresh phf_generator v0.10.0
+       Fresh pin-project-lite v0.2.16
+       Fresh smallvec v1.15.1
+       Fresh proc-macro-hack v0.5.20+deprecated
+       Fresh phf_codegen v0.10.0
+       Fresh string_cache_codegen v0.5.4
+       Fresh windows-link v0.2.1
+       Fresh phf_macros v0.8.0
+       Fresh zerovec v0.11.5
+       Fresh itoa v1.0.17
+       Fresh subtle v2.6.1
+       Fresh phf_codegen v0.8.0
+       Fresh ppv-lite86 v0.2.21
+       Fresh cssparser-macros v0.6.1
+       Fresh ident_case v1.0.1
+       Fresh strsim v0.11.1
+       Fresh crossbeam-utils v0.8.21
+       Fresh darling_core v0.21.3
+       Fresh fnv v1.0.7
+       Fresh futures-core v0.3.31
+       Fresh convert_case v0.4.0
+       Fresh futures-sink v0.3.31
+       Fresh derive_more v0.99.20
+       Fresh darling_macro v0.21.3
+       Fresh tinystr v0.8.2
+       Fresh writeable v0.6.2
+       Fresh litemap v0.8.1
+       Fresh futures-io v0.3.31
+       Fresh windows_x86_64_msvc v0.53.1
+       Fresh darling v0.21.3
+       Fresh icu_locale_core v2.1.1
+       Fresh futures-channel v0.3.31
+       Fresh crossbeam-epoch v0.9.18
+       Fresh potential_utf v0.1.4
+       Fresh zerotrie v0.2.3
+       Fresh futures-macro v0.3.31
+       Fresh slab v0.4.12
+       Fresh byteorder v1.5.0
+       Fresh futures-task v0.3.31
+       Fresh scopeguard v1.2.0
+       Fresh pin-utils v0.1.0
+       Fresh siphasher v0.3.11
+       Fresh siphasher v1.0.2
+       Fresh lock_api v0.4.14
+       Fresh icu_provider v2.1.1
+       Fresh futures-util v0.3.31
+       Fresh icu_collections v2.1.1
+       Fresh crossbeam-deque v0.8.6
+       Fresh windows-targets v0.53.5
+       Fresh serde_with_macros v3.16.1
+       Fresh parking_lot_core v0.9.12
+       Fresh phf_macros v0.11.3
+       Fresh zmij v1.0.20
+       Fresh windows-tokens v0.39.0
+       Fresh serde_json v1.0.149
+       Fresh parking_lot v0.12.5
+       Fresh windows-sys v0.60.2
+       Fresh windows_x86_64_msvc v0.52.6
+       Fresh http v0.2.12
+       Fresh thiserror v1.0.69
+       Fresh icu_properties_data v2.1.2
+       Fresh icu_normalizer_data v2.1.1
+       Fresh log v0.4.29
+       Fresh bitflags v1.3.2
+       Fresh hashbrown v0.16.1
+       Fresh equivalent v1.0.2
+       Fresh indexmap v2.13.0
+       Fresh icu_normalizer v2.1.1
+       Fresh windows-targets v0.52.6
+       Fresh socket2 v0.6.2
+       Fresh rayon-core v1.13.0
+       Fresh icu_properties v2.1.2
+       Fresh num-traits v0.2.19
+       Fresh getrandom v0.3.4
+       Fresh rustc_version v0.4.1
+       Fresh windows-sys v0.61.2
+       Fresh mio v1.1.1
+       Fresh toml_datetime v0.6.11
+       Fresh serde_spanned v0.6.9
+       Fresh tokio-macros v2.6.0
+       Fresh ctor v0.2.9
+       Fresh utf-8 v0.7.6
+       Fresh new_debug_unreachable v1.0.6
+       Fresh tokio v1.49.0
+       Fresh idna_adapter v1.2.1
+       Fresh phf_shared v0.11.3
+       Fresh uuid v1.20.0
+       Fresh utf8_iter v1.0.4
+       Fresh percent-encoding v2.3.2
+       Fresh precomputed-hash v0.1.1
+       Fresh windows-metadata v0.39.0
+       Fresh mac v0.1.1
+       Fresh either v1.15.0
+       Fresh rayon v1.11.0
+       Fresh futf v0.1.5
+       Fresh windows-bindgen v0.39.0
+       Fresh idna v1.1.0
+       Fresh form_urlencoded v1.2.2
+       Fresh regex v1.12.3
+       Fresh windows_x86_64_msvc v0.39.0
+       Fresh windows-implement v0.39.0
+       Fresh phf_shared v0.10.0
+       Fresh phf_shared v0.8.0
+       Fresh windows_x86_64_msvc v0.48.5
+       Fresh fxhash v0.2.1
+       Fresh schannel v0.1.28
+       Fresh typenum v1.19.0
+       Fresh simd-adler32 v0.3.8
+       Fresh weezl v0.1.12
+       Fresh dtoa v1.0.11
+       Fresh phf v0.10.1
+       Fresh dtoa-short v0.3.5
+       Fresh generic-array v0.14.7
+       Fresh native-tls v0.2.14
+       Fresh windows v0.39.0
+       Fresh windows-targets v0.48.5
+       Fresh phf v0.8.0
+       Fresh url v2.5.8
+       Fresh jpeg-decoder v0.3.2
+       Fresh tendril v0.4.3
+       Fresh string_cache v0.8.9
+       Fresh zune-inflate v0.2.54
+       Fresh tracing-core v0.1.36
+       Fresh winapi-util v0.1.11
+       Fresh half v2.7.1
+       Fresh tracing-attributes v0.1.31
+       Fresh zeroize_derive v1.4.3
+       Fresh toml_write v0.1.2
+       Fresh alloc-no-stdlib v2.0.4
+       Fresh heck v0.5.0
+       Fresh bit_field v0.10.3
+       Fresh winnow v0.7.14
+       Fresh nodrop v0.1.14
+       Fresh matches v0.1.10
+       Fresh winnow v0.5.40
+       Fresh adler2 v2.0.1
+       Fresh pkg-config v0.3.32
+       Fresh itoa v0.4.8
+       Fresh lebe v0.5.3
+       Fresh color_quant v1.1.0
+       Fresh bytemuck v1.25.0
+       Fresh toml_edit v0.19.15
+       Fresh exr v1.74.0
+       Fresh qoi v0.4.1
+       Fresh gif v0.13.3
+       Fresh toml_edit v0.22.27
+       Fresh servo_arc v0.1.1
+       Fresh miniz_oxide v0.8.9
+       Fresh cssparser v0.27.2
+       Fresh zeroize v1.8.2
+       Fresh tracing v0.1.44
+       Fresh alloc-stdlib v0.2.2
+       Fresh same-file v1.0.6
+       Fresh vswhom-sys v0.1.3
+       Fresh markup5ever v0.11.0
+       Fresh tiff v0.9.1
+       Fresh rand_chacha v0.3.1
+       Fresh crc32fast v1.5.0
+       Fresh hashbrown v0.12.3
+       Fresh tinyvec_macros v0.1.1
+       Fresh thin-slice v0.1.1
+       Fresh flate2 v1.1.9
+       Fresh rand v0.8.5
+       Fresh winreg v0.52.0
+       Fresh webview2-com-sys v0.19.0
+       Fresh image v0.24.9
+       Fresh tinyvec v1.10.0
+       Fresh indexmap v1.9.3
+       Fresh selectors v0.22.0
+       Fresh vswhom v0.1.0
+       Fresh brotli-decompressor v4.0.3
+       Fresh walkdir v2.5.0
+       Fresh html5ever v0.26.0
+       Fresh httparse v1.10.1
+       Fresh toml v0.8.23
+       Fresh winapi v0.3.9
+       Fresh toml v0.7.8
+       Fresh crypto-common v0.1.7
+       Fresh block-buffer v0.10.4
+       Fresh fdeflate v0.3.7
+       Fresh cfb v0.7.3
+       Fresh tokio-util v0.7.18
+       Fresh jsonptr v0.4.7
+       Fresh libc v0.2.180
+       Fresh rand_core v0.9.5
+       Fresh getrandom v0.1.16
+       Fresh webview2-com-macros v0.6.0
+       Fresh platforms v3.8.0
+       Fresh dunce v1.0.5
+       Fresh raw-window-handle v0.5.2
+       Fresh rand_core v0.5.1
+       Fresh rand_chacha v0.9.0
+    Checking webview2-com v0.19.1
+       Fresh infer v0.13.0
+       Fresh json-patch v2.0.0
+       Fresh png v0.17.16
+       Fresh digest v0.10.7
+       Fresh embed-resource v2.5.2
+       Fresh brotli v7.0.0
+       Fresh kuchikiki v0.8.2
+       Fresh unicode-normalization v0.1.25
+     Running `set CARGO=C:\Users\FERHAT\.rustup\toolchains
+\stable-x86_64-pc-windows-msvc\bin\cargo.exe&& set CARGO_C
+RATE_NAME=webview2_com&& set CARGO_MANIFEST_DIR=C:\Users\F
+ERHAT\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f
+\webview2-com-0.19.1&& set CARGO_MANIFEST_PATH=C:\Users\FE
+RHAT\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\
+webview2-com-0.19.1\Cargo.toml&& set CARGO_PKG_AUTHORS=""&
+& set CARGO_PKG_DESCRIPTION="Rust bindings for the WebView
+2 COM APIs"&& set CARGO_PKG_HOMEPAGE=""&& set CARGO_PKG_LI
+CENSE=MIT&& set CARGO_PKG_LICENSE_FILE=""&& set CARGO_PKG_
+NAME=webview2-com&& set CARGO_PKG_README=README.md&& set C
+ARGO_PKG_REPOSITORY=https://github.com/wravery/webview2-rs
+&& set CARGO_PKG_RUST_VERSION=1.61&& set CARGO_PKG_VERSION
+=0.19.1&& set CARGO_PKG_VERSION_MAJOR=0&& set CARGO_PKG_VE
+RSION_MINOR=19&& set CARGO_PKG_VERSION_PATCH=1&& set CARGO
+_PKG_VERSION_PRE=""&& set PATH="D:\Exretailosv1\src-tauri\
+target\debug\deps;C:\Program Files\Eclipse Adoptium\jdk-17
+.0.9.9-hotspot\bin;C:\Python313\Scripts\;C:\Python313\;c:\
+Users\FERHAT\AppData\Local\Programs\cursor\resources\app\b
+in;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem
+;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\Sy
+stem32\OpenSSH\;C:\Program Files (x86)\Microsoft SQL Serve
+r\160\Tools\Binn\;C:\Program Files\Microsoft SQL Server\16
+0\Tools\Binn\;C:\Program Files\Microsoft SQL Server\Client
+ SDK\ODBC\170\Tools\Binn\;C:\Program Files\Microsoft SQL S
+erver\160\DTS\Binn\;C:\Program Files\Microsoft SQL Server\
+150\Tools\Binn\;C:\Program Files\dotnet\;C:\Users\FERHAT\A
+ppData\Local\Microsoft\WindowsApps;C:\Users\FERHAT\.dotnet
+\tools;c:\Users\FERHAT\AppData\Local\Programs\cursor\resou
+rces\app\bin;C:\Program Files\Git\cmd;C:\Program Files\Mic
+rosoft SQL Server\170\DTS\Binn\;C:\ProgramData\chocolatey\
+bin;C:\Program Files\Go\bin;C:\Users\FERHAT\AppData\Local\
+nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;C:\Program Fi
+les (x86)\cloudflared\;C:\Program Files (x86)\Windows Kits
+\10\Windows Performance Toolkit\;C:\Program Files\WireGuar
+d\;C:\Program Files\Tailscale\;C:\Program Files\PuTTY\;C:\
+Users\FERHAT\.cargo\bin;C:\Program Files\Eclipse Adoptium\
+jdk-17.0.9.9-hotspot\bin;C:\Python313\Scripts\;C:\Python31
+3\;c:\Users\FERHAT\AppData\Local\Programs\cursor\resources
+\app\bin;C:\Windows\system32;C:\Windows;C:\Windows\System3
+2\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Wind
+ows\System32\OpenSSH\;C:\Program Files (x86)\Microsoft SQL
+ Server\160\Tools\Binn\;C:\Program Files\Microsoft SQL Ser
+ver\160\Tools\Binn\;C:\Program Files\Microsoft SQL Server\
+Client SDK\ODBC\170\Tools\Binn\;C:\Program Files\Microsoft
+ SQL Server\160\DTS\Binn\;C:\Program Files\Microsoft SQL S
+erver\150\Tools\Binn\;C:\Program Files\dotnet\;C:\Users\FE
+RHAT\AppData\Local\Microsoft\WindowsApps;C:\Users\FERHAT\.
+dotnet\tools;c:\Users\FERHAT\AppData\Local\Programs\cursor
+\resources\app\bin;C:\Program Files\Git\cmd;C:\Program Fil
+es\Microsoft SQL Server\170\DTS\Binn\;C:\ProgramData\choco
+latey\bin;C:\Program Files\Go\bin;C:\Users\FERHAT\AppData\
+Local\nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;C:\Prog
+ram Files (x86)\cloudflared\;C:\Program Files (x86)\Window
+s Kits\10\Windows Performance Toolkit\;C:\Program Files\Wi
+reGuard\;C:\Program Files\Tailscale\;C:\Program Files\Dock
+er\Docker\resources\bin;C:\Program Files\PuTTY\;C:\Program
+ Files\cursor\resources\app\bin;c:\Users\FERHAT\.antigravi
+ty\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundle
+d\scripts\noConfigScripts;c:\Users\FERHAT\.antigravity\ext
+ensions\vscjava.vscode-java-debug-0.58.5-universal\bundled
+\scripts\noConfigScripts;C:\src\flutter\bin;C:\Users\FERHA
+T\AppData\Local\Programs\Antigravity\bin;C:\Users\FERHAT\A
+ppData\Local\Python\bin;c:\Users\FERHAT\.antigravity\exten
+sions\ms-python.debugpy-2025.18.0-win32-x64\bundled\script
+s\noConfigScripts;c:\Users\FERHAT\.antigravity\extensions\
+vscjava.vscode-java-debug-0.58.5-universal\bundled\scripts
+\noConfigScripts;C:\Users\FERHAT\.rustup\toolchains\stable
+-x86_64-pc-windows-msvc\bin"&& C:\Users\FERHAT\.rustup\too
+lchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe --crat
+e-name webview2_com --edition=2021 C:\Users\FERHAT\.cargo\
+registry\src\index.crates.io-1949cf8c6b5b557f\webview2-com
+-0.19.1\src\lib.rs --error-format=json --json=diagnostic-r
+endered-ansi,artifacts,future-incompat --crate-type lib --
+emit=dep-info,metadata -C embed-bitcode=no -C debuginfo=2 
+--check-cfg cfg(docsrs,test) --check-cfg "cfg(feature, val
+ues())" -C metadata=feeb9ef633c16e07 -C extra-filename=-d7
+3714d2668ddc43 --out-dir D:\Exretailosv1\src-tauri\target\
+debug\deps -L dependency=D:\Exretailosv1\src-tauri\target\
+debug\deps --extern webview2_com_macros=D:\Exretailosv1\sr
+c-tauri\target\debug\deps\webview2_com_macros-a0db5f51b737
+0c9e.dll --extern webview2_com_sys=D:\Exretailosv1\src-tau
+ri\target\debug\deps\libwebview2_com_sys-1c46e1c36040a88b.
+rmeta --extern windows=D:\Exretailosv1\src-tauri\target\de
+bug\deps\libwindows-832893375ec260ed.rmeta --extern window
+s_implement=D:\Exretailosv1\src-tauri\target\debug\deps\wi
+ndows_implement-29e220554354c226.dll --cap-lints warn -L n
+ative=D:\Exretailosv1\src-tauri\target\debug\build\webview
+2-com-sys-f987164ada0fb840\out\x64 -L native=C:\Users\FERH
+AT\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\wi
+ndows_x86_64_msvc-0.39.0\lib`
+       Fresh phf v0.11.3
+       Fresh windows-core v0.52.0
+       Fresh windows-sys v0.52.0
+       Fresh hmac v0.12.1
+       Fresh serde_with v3.16.1
+       Fresh crossbeam-channel v0.5.15
+       Fresh inout v0.1.4
+       Fresh aho-corasick v1.1.4
+       Fresh semver v1.0.27
+       Fresh instant v0.1.13
+       Fresh windows-version v0.1.7
+       Fresh fallible-iterator v0.2.0
+       Fresh cpufeatures v0.2.17
+       Fresh unicode-segmentation v1.12.0
+       Fresh regex-syntax v0.8.9
+       Fresh unicode-bidi v0.3.18
+       Fresh unicode-properties v0.1.4
+       Fresh try-lock v0.2.5
+       Fresh lazy_static v1.5.0
+       Fresh glob v0.3.3
+       Fresh vcpkg v0.2.15
+       Fresh tao v0.16.10
+       Fresh stringprep v0.1.5
+       Fresh want v0.3.1
+       Fresh regex-automata v0.4.14
+       Fresh tauri-utils v1.6.2
+       Fresh windows v0.52.0
+       Fresh cipher v0.4.4
+       Fresh socket2 v0.5.10
+       Fresh tauri-winres v0.1.1
+       Fresh ico v0.4.0
+       Fresh rand v0.9.2
+       Fresh ahash v0.8.12
+       Fresh rand_chacha v0.2.2
+       Fresh h2 v0.3.27
+       Fresh cargo_toml v0.15.3
+       Fresh windows-core v0.51.1
+       Fresh tokio-native-tls v0.3.1
+       Fresh anyhow v1.0.101
+       Fresh chrono v0.4.43
+       Fresh http-body v0.4.6
+       Fresh sha2 v0.10.9
+       Fresh md-5 v0.10.6
+       Fresh universal-hash v0.5.1
+       Fresh bstr v1.12.1
+       Fresh curve25519-dalek-derive v0.1.1
+       Fresh encoding_rs v0.8.35
+       Fresh tower-service v0.3.3
+       Fresh allocator-api2 v0.2.21
+       Fresh powerfmt v0.2.0
+       Fresh httpdate v1.0.3
+       Fresh once_cell v1.21.3
+       Fresh opaque-debug v0.3.1
+       Fresh base64 v0.22.1
+       Fresh http-range v0.1.5
+       Fresh deranged v0.5.5
+       Fresh hyper v0.14.32
+       Fresh postgres-protocol v0.6.10
+       Fresh poly1305 v0.8.0
+       Fresh hashbrown v0.14.5
+       Fresh tauri-codegen v1.4.6
+       Fresh globset v0.4.18
+       Fresh curve25519-dalek v4.0.0-rc.3
+       Fresh tauri-build v1.5.6
+       Fresh windows v0.51.1
+       Fresh rand v0.7.3
+       Fresh chacha20 v0.9.1
+       Fresh dirs-sys-next v0.1.2
+       Fresh windows-sys v0.48.0
+       Fresh sha1 v0.10.6
+       Fresh phf_shared v0.13.1
+       Fresh aead v0.5.2
+       Fresh enumflags2_derive v0.7.12
+       Fresh c2rust-bitfields-derive v0.18.0
+       Fresh serialize-to-javascript-impl v0.1.2
+       Fresh async-trait v0.1.89
+       Fresh windows-result v0.4.1
+       Fresh windows-strings v0.5.1
+       Fresh filetime v0.2.27
+       Fresh spin v0.5.2
+       Fresh ip_network_table-deps-treebitmap v0.5.0
+       Fresh num-conv v0.2.0
+       Fresh data-encoding v2.10.0
+       Fresh ryu v1.0.23
+       Fresh untrusted v0.7.1
+       Fresh md5 v0.6.1
+       Fresh ip_network v0.4.1
+       Fresh fastrand v2.3.0
+       Fresh time-core v0.1.8
+       Fresh widestring v1.2.1
+       Fresh base64 v0.21.7
+       Fresh ip_network_table v0.2.0
+       Fresh serde_urlencoded v0.7.1
+       Fresh winauth v0.0.4
+       Fresh ring v0.16.20
+       Fresh rustls-pemfile v1.0.4
+       Fresh time v0.3.47
+       Fresh display-info v0.4.8
+       Fresh tungstenite v0.20.1
+       Fresh tempfile v3.24.0
+       Fresh serialize-to-javascript v0.1.2
+       Fresh windows-registry v0.6.1
+       Fresh tar v0.4.44
+       Fresh chacha20poly1305 v0.10.1
+       Fresh enumflags2 v0.7.12
+       Fresh c2rust-bitfields v0.18.0
+       Fresh dirs-next v2.0.0
+       Fresh winreg v0.50.0
+       Fresh phf v0.13.1
+       Fresh x25519-dalek v2.0.0-rc.3
+       Fresh libsqlite3-sys v0.26.0
+       Fresh ignore v0.4.25
+       Fresh hashlink v0.8.4
+       Fresh postgres-types v0.2.12
+       Fresh tauri-macros v1.4.7
+       Fresh hyper-tls v0.5.0
+       Fresh async-native-tls v0.4.0
+       Fresh blake2 v0.10.6
+       Fresh futures-executor v0.3.31
+       Fresh asynchronous-codec v0.6.2
+       Fresh serde_repr v0.1.20
+       Fresh libloading v0.8.9
+       Fresh base64 v0.13.1
+       Fresh state v0.5.3
+       Fresh bitflags v2.10.0
+       Fresh connection-string v0.2.0
+       Fresh hex v0.4.3
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh sync_wrapper v0.1.2
+       Fresh pretty-hex v0.3.0
+       Fresh whoami v2.1.0
+       Fresh untrusted v0.9.0
+       Fresh ipnet v2.11.0
+       Fresh mime v0.3.17
+       Fresh reqwest v0.11.27
+       Fresh tokio-postgres v0.7.16
+       Fresh boringtun v0.6.0
+       Fresh rusqlite v0.29.0
+       Fresh tiberius v0.12.3
+       Fresh wintun v0.4.0
+       Fresh futures v0.3.31
+       Fresh enigo v0.1.3
+   Compiling retailex v0.1.12 (D:\Exretailosv1\src-tauri)
+       Fresh machine-uid v0.5.4
+       Fresh screenshots v0.8.10
+       Fresh tokio-tungstenite v0.20.1
+     Running `set CARGO=C:\Users\FERHAT\.rustup\toolchains
+\stable-x86_64-pc-windows-msvc\bin\cargo.exe&& set CARGO_C
+FG_DEBUG_ASSERTIONS=""&& set CARGO_CFG_FEATURE=""&& set CA
+RGO_CFG_PANIC=unwind&& set CARGO_CFG_TARGET_ABI=""&& set C
+ARGO_CFG_TARGET_ARCH=x86_64&& set CARGO_CFG_TARGET_ENDIAN=
+little&& set CARGO_CFG_TARGET_ENV=msvc&& set CARGO_CFG_TAR
+GET_FAMILY=windows&& set CARGO_CFG_TARGET_FEATURE=cmpxchg1
+6b,fxsr,sse,sse2,sse3&& set CARGO_CFG_TARGET_HAS_ATOMIC=12
+8,16,32,64,8,ptr&& set CARGO_CFG_TARGET_OS=windows&& set C
+ARGO_CFG_TARGET_POINTER_WIDTH=64&& set CARGO_CFG_TARGET_VE
+NDOR=pc&& set CARGO_CFG_WINDOWS=""&& set CARGO_ENCODED_RUS
+TFLAGS=""&& set CARGO_MANIFEST_DIR=D:\Exretailosv1\src-tau
+ri&& set CARGO_MANIFEST_PATH=D:\Exretailosv1\src-tauri\Car
+go.toml&& set CARGO_PKG_AUTHORS=you&& set CARGO_PKG_DESCRI
+PTION="A Tauri App"&& set CARGO_PKG_HOMEPAGE=""&& set CARG
+O_PKG_LICENSE=""&& set CARGO_PKG_LICENSE_FILE=""&& set CAR
+GO_PKG_NAME=retailex&& set CARGO_PKG_README=""&& set CARGO
+_PKG_REPOSITORY=""&& set CARGO_PKG_RUST_VERSION=1.60&& set
+ CARGO_PKG_VERSION=0.1.12&& set CARGO_PKG_VERSION_MAJOR=0&
+& set CARGO_PKG_VERSION_MINOR=1&& set CARGO_PKG_VERSION_PA
+TCH=12&& set CARGO_PKG_VERSION_PRE=""&& set DEBUG=true&& s
+et HOST=x86_64-pc-windows-msvc&& set NUM_JOBS=8&& set OPT_
+LEVEL=0&& set OUT_DIR=D:\Exretailosv1\src-tauri\target\deb
+ug\build\retailex-93e4e7afd7497e0a\out&& set PATH="D:\Exre
+tailosv1\src-tauri\target\debug\deps;C:\Users\FERHAT\.rust
+up\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x8
+6_64-pc-windows-msvc\lib;C:\Program Files\Eclipse Adoptium
+\jdk-17.0.9.9-hotspot\bin;C:\Python313\Scripts\;C:\Python3
+13\;c:\Users\FERHAT\AppData\Local\Programs\cursor\resource
+s\app\bin;C:\Windows\system32;C:\Windows;C:\Windows\System
+32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Win
+dows\System32\OpenSSH\;C:\Program Files (x86)\Microsoft SQ
+L Server\160\Tools\Binn\;C:\Program Files\Microsoft SQL Se
+rver\160\Tools\Binn\;C:\Program Files\Microsoft SQL Server
+\Client SDK\ODBC\170\Tools\Binn\;C:\Program Files\Microsof
+t SQL Server\160\DTS\Binn\;C:\Program Files\Microsoft SQL 
+Server\150\Tools\Binn\;C:\Program Files\dotnet\;C:\Users\F
+ERHAT\AppData\Local\Microsoft\WindowsApps;C:\Users\FERHAT\
+.dotnet\tools;c:\Users\FERHAT\AppData\Local\Programs\curso
+r\resources\app\bin;C:\Program Files\Git\cmd;C:\Program Fi
+les\Microsoft SQL Server\170\DTS\Binn\;C:\ProgramData\choc
+olatey\bin;C:\Program Files\Go\bin;C:\Users\FERHAT\AppData
+\Local\nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;C:\Pro
+gram Files (x86)\cloudflared\;C:\Program Files (x86)\Windo
+ws Kits\10\Windows Performance Toolkit\;C:\Program Files\W
+ireGuard\;C:\Program Files\Tailscale\;C:\Program Files\PuT
+TY\;C:\Users\FERHAT\.cargo\bin;C:\Program Files\Eclipse Ad
+optium\jdk-17.0.9.9-hotspot\bin;C:\Python313\Scripts\;C:\P
+ython313\;c:\Users\FERHAT\AppData\Local\Programs\cursor\re
+sources\app\bin;C:\Windows\system32;C:\Windows;C:\Windows\
+System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;
+C:\Windows\System32\OpenSSH\;C:\Program Files (x86)\Micros
+oft SQL Server\160\Tools\Binn\;C:\Program Files\Microsoft 
+SQL Server\160\Tools\Binn\;C:\Program Files\Microsoft SQL 
+Server\Client SDK\ODBC\170\Tools\Binn\;C:\Program Files\Mi
+crosoft SQL Server\160\DTS\Binn\;C:\Program Files\Microsof
+t SQL Server\150\Tools\Binn\;C:\Program Files\dotnet\;C:\U
+sers\FERHAT\AppData\Local\Microsoft\WindowsApps;C:\Users\F
+ERHAT\.dotnet\tools;c:\Users\FERHAT\AppData\Local\Programs
+\cursor\resources\app\bin;C:\Program Files\Git\cmd;C:\Prog
+ram Files\Microsoft SQL Server\170\DTS\Binn\;C:\ProgramDat
+a\chocolatey\bin;C:\Program Files\Go\bin;C:\Users\FERHAT\A
+ppData\Local\nvm;C:\nvm4w\nodejs;C:\Program Files\nodejs\;
+C:\Program Files (x86)\cloudflared\;C:\Program Files (x86)
+\Windows Kits\10\Windows Performance Toolkit\;C:\Program F
+iles\WireGuard\;C:\Program Files\Tailscale\;C:\Program Fil
+es\Docker\Docker\resources\bin;C:\Program Files\PuTTY\;C:\
+Program Files\cursor\resources\app\bin;c:\Users\FERHAT\.an
+tigravity\extensions\ms-python.debugpy-2025.18.0-win32-x64
+\bundled\scripts\noConfigScripts;c:\Users\FERHAT\.antigrav
+ity\extensions\vscjava.vscode-java-debug-0.58.5-universal\
+bundled\scripts\noConfigScripts;C:\src\flutter\bin;C:\User
+s\FERHAT\AppData\Local\Programs\Antigravity\bin;C:\Users\F
+ERHAT\AppData\Local\Python\bin;c:\Users\FERHAT\.antigravit
+y\extensions\ms-python.debugpy-2025.18.0-win32-x64\bundled
+\scripts\noConfigScripts;c:\Users\FERHAT\.antigravity\exte
+nsions\vscjava.vscode-java-debug-0.58.5-universal\bundled\
+scripts\noConfigScripts;C:\Users\FERHAT\.rustup\toolchains
+\stable-x86_64-pc-windows-msvc\bin"&& set PROFILE=debug&& 
+set RUSTC=C:\Users\FERHAT\.rustup\toolchains\stable-x86_64
+-pc-windows-msvc\bin\rustc.exe&& set RUSTDOC=C:\Users\FERH
+AT\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\ru
+stdoc.exe&& set TARGET=x86_64-pc-windows-msvc&& D:\Exretai
+losv1\src-tauri\target\debug\build\retailex-17b62fbd9d42db
+96\build-script-build`
+[retailex 0.1.12] cargo:rerun-if-env-changed=TAURI_CONFIG
+[retailex 0.1.12] cargo:rerun-if-changed=tauri.conf.json
+[retailex 0.1.12] cargo:rustc-check-cfg=cfg(desktop)
+[retailex 0.1.12] cargo:rustc-cfg=desktop
+[retailex 0.1.12] cargo:rustc-check-cfg=cfg(mobile)
+[retailex 0.1.12] cargo:rustc-check-cfg=cfg(dev)
+[retailex 0.1.12] cargo:rustc-cfg=dev
+[retailex 0.1.12] 
+[retailex 0.1.12]       The `tauri` dependency features on the `Cargo.toml` file does not match the allowlist defined under `tauri.conf.json`.
+[retailex 0.1.12]       Please run `tauri dev` or `tauri build` or remove the `system-tray` feature.
+[retailex 0.1.12]     
+error: failed to run custom build command for `retailex v0
+.1.12 (D:\Exretailosv1\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: `set CARGO=C:\Users\FE
+RHAT\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin\
+cargo.exe&& set CARGO_CFG_DEBUG_ASSERTIONS=""&& set CARGO_
+CFG_FEATURE=""&& set CARGO_CFG_PANIC=unwind&& set CARGO_CF
+G_TARGET_ABI=""&& set CARGO_CFG_TARGET_ARCH=x86_64&& set C
+ARGO_CFG_TARGET_ENDIAN=little&& set CARGO_CFG_TARGET_ENV=m
+svc&& set CARGO_CFG_TARGET_FAMILY=windows&& set CARGO_CFG_
+TARGET_FEATURE=cmpxchg16b,fxsr,sse,sse2,sse3&& set CARGO_C
+FG_TARGET_HAS_ATOMIC=128,16,32,64,8,ptr&& set CARGO_CFG_TA
+RGET_OS=windows&& set CARGO_CFG_TARGET_POINTER_WIDTH=64&& 
+set CARGO_CFG_TARGET_VENDOR=pc&& set CARGO_CFG_WINDOWS=""&
+& set CARGO_ENCODED_RUSTFLAGS=""&& set CARGO_MANIFEST_DIR=
+D:\Exretailosv1\src-tauri&& set CARGO_MANIFEST_PATH=D:\Exr
+etailosv1\src-tauri\Cargo.toml&& set CARGO_PKG_AUTHORS=you
+&& set CARGO_PKG_DESCRIPTION="A Tauri App"&& set CARGO_PKG
+_HOMEPAGE=""&& set CARGO_PKG_LICENSE=""&& set CARGO_PKG_LI
+CENSE_FILE=""&& set CARGO_PKG_NAME=retailex&& set CARGO_PK
+G_README=""&& set CARGO_PKG_REPOSITORY=""&& set CARGO_PKG_
+RUST_VERSION=1.60&& set CARGO_PKG_VERSION=0.1.12&& set CAR
+GO_PKG_VERSION_MAJOR=0&& set CARGO_PKG_VERSION_MINOR=1&& s
+et CARGO_PKG_VERSION_PATCH=12&& set CARGO_PKG_VERSION_PRE=
+""&& set DEBUG=true&& set HOST=x86_64-pc-windows-msvc&& se
+t NUM_JOBS=8&& set OPT_LEVEL=0&& set OUT_DIR=D:\Exretailos
+v1\src-tauri\target\debug\build\retailex-93e4e7afd7497e0a\
+out&& set PATH="D:\Exretailosv1\src-tauri\target\debug\dep
+s;C:\Users\FERHAT\.rustup\toolchains\stable-x86_64-pc-wind
+ows-msvc\lib\rustlib\x86_64-pc-windows-msvc\lib;C:\Program
+ Files\Eclipse Adoptium\jdk-17.0.9.9-hotspot\bin;C:\Python
+313\Scripts\;C:\Python313\;c:\Users\FERHAT\AppData\Local\P
+rograms\cursor\resources\app\bin;C:\Windows\system32;C:\Wi
+ndows;C:\Windows\System32\Wbem;C:\Windows\System32\Windows
+PowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program F
+iles (x86)\Microsoft SQL Server\160\Tools\Binn\;C:\Program
+ Files\Microsoft SQL Server\160\Tools\Binn\;C:\Program Fil
+es\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\;C:
+\Program Files\Microsoft SQL Server\160\DTS\Binn\;C:\Progr
+am Files\Microsoft SQL Server\150\Tools\Binn\;C:\Program F
+iles\dotnet\;C:\Users\FERHAT\AppData\Local\Microsoft\Windo
+wsApps;C:\Users\FERHAT\.dotnet\tools;c:\Users\FERHAT\AppDa
+ta\Local\Programs\cursor\resources\app\bin;C:\Program File
+s\Git\cmd;C:\Program Files\Microsoft SQL Server\170\DTS\Bi
+nn\;C:\ProgramData\chocolatey\bin;C:\Program Files\Go\bin;
+C:\Users\FERHAT\AppData\Local\nvm;C:\nvm4w\nodejs;C:\Progr
+am Files\nodejs\;C:\Program Files (x86)\cloudflared\;C:\Pr
+ogram Files (x86)\Windows Kits\10\Windows Performance Tool
+kit\;C:\Program Files\WireGuard\;C:\Program Files\Tailscal
+e\;C:\Program Files\PuTTY\;C:\Users\FERHAT\.cargo\bin;C:\P
+rogram Files\Eclipse Adoptium\jdk-17.0.9.9-hotspot\bin;C:\
+Python313\Scripts\;C:\Python313\;c:\Users\FERHAT\AppData\L
+ocal\Programs\cursor\resources\app\bin;C:\Windows\system32
+;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\W
+indowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Pro
+gram Files (x86)\Microsoft SQL Server\160\Tools\Binn\;C:\P
+rogram Files\Microsoft SQL Server\160\Tools\Binn\;C:\Progr
+am Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Bi
+nn\;C:\Program Files\Microsoft SQL Server\160\DTS\Binn\;C:
+\Program Files\Microsoft SQL Server\150\Tools\Binn\;C:\Pro
+gram Files\dotnet\;C:\Users\FERHAT\AppData\Local\Microsoft
+\WindowsApps;C:\Users\FERHAT\.dotnet\tools;c:\Users\FERHAT
+\AppData\Local\Programs\cursor\resources\app\bin;C:\Progra
+m Files\Git\cmd;C:\Program Files\Microsoft SQL Server\170\
+DTS\Binn\;C:\ProgramData\chocolatey\bin;C:\Program Files\G
+o\bin;C:\Users\FERHAT\AppData\Local\nvm;C:\nvm4w\nodejs;C:
+\Program Files\nodejs\;C:\Program Files (x86)\cloudflared\
+;C:\Program Files (x86)\Windows Kits\10\Windows Performanc
+e Toolkit\;C:\Program Files\WireGuard\;C:\Program Files\Ta
+ilscale\;C:\Program Files\Docker\Docker\resources\bin;C:\P
+rogram Files\PuTTY\;C:\Program Files\cursor\resources\app\
+bin;c:\Users\FERHAT\.antigravity\extensions\ms-python.debu
+gpy-2025.18.0-win32-x64\bundled\scripts\noConfigScripts;c:
+\Users\FERHAT\.antigravity\extensions\vscjava.vscode-java-
+debug-0.58.5-universal\bundled\scripts\noConfigScripts;C:\
+src\flutter\bin;C:\Users\FERHAT\AppData\Local\Programs\Ant
+igravity\bin;C:\Users\FERHAT\AppData\Local\Python\bin;c:\U
+sers\FERHAT\.antigravity\extensions\ms-python.debugpy-2025
+.18.0-win32-x64\bundled\scripts\noConfigScripts;c:\Users\F
+ERHAT\.antigravity\extensions\vscjava.vscode-java-debug-0.
+58.5-universal\bundled\scripts\noConfigScripts;C:\Users\FE
+RHAT\.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin"
+&& set PROFILE=debug&& set RUSTC=C:\Users\FERHAT\.rustup\t
+oolchains\stable-x86_64-pc-windows-msvc\bin\rustc.exe&& se
+t RUSTDOC=C:\Users\FERHAT\.rustup\toolchains\stable-x86_64
+-pc-windows-msvc\bin\rustdoc.exe&& set TARGET=x86_64-pc-wi
+ndows-msvc&& D:\Exretailosv1\src-tauri\target\debug\build\
+retailex-17b62fbd9d42db96\build-script-build` (exit code: 
+1)
+  --- stdout
+  cargo:rerun-if-env-changed=TAURI_CONFIG
+  cargo:rerun-if-changed=tauri.conf.json
+  cargo:rustc-check-cfg=cfg(desktop)
+  cargo:rustc-cfg=desktop
+  cargo:rustc-check-cfg=cfg(mobile)
+  cargo:rustc-check-cfg=cfg(dev)
+  cargo:rustc-cfg=dev
+
+        The `tauri` dependency features on the `Cargo.toml
+` file does not match the allowlist defined under `tauri.c
+onf.json`.
+        Please run `tauri dev` or `tauri build` or remove 
+the `system-tray` feature.
+      
+warning: build failed, waiting for other jobs to finish...
