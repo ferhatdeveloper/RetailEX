@@ -1,0 +1,89 @@
+# Vercel ignore file
+# Bu dosyalar Vercel'e deploy edilmez
+
+node_modules
+.git
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode
+.idea
+build
+dist
+coverage
+.nyc_output
+*.swp
+*.swo
+*~
+
+# Root directories not needed for Vercel
+/android/
+/backend/
+/src-tauri/
+/Postgresql/
+/supabase/
+/migrations/
+/mobile-react-native/
+/scanner-service-app/
+/docs/
+/temp/
+
+# Backend files (Vercel sadece frontend deploy eder)
+src/backend
+src/electron
+src/flutter_lib
+src/sync-service
+src/sync-server
+src/scanner-service
+src/websocket-services
+
+# Test files
+tests
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# Documentation
+*.md
+!README.md
+
+# Archives
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# Executables and Debug symbols
+*.exe
+*.pdb
+*.dll
+*.so
+*.bin
+
+# Python files
+*.py
+__pycache__
+*.pyc
+.python-version
+
+# Rust files
+Cargo.toml
+Cargo.lock
+target/
+
+# Docker files
+Dockerfile*
+docker-compose.yml
+
+# Scripts
+*.sh
+*.bat
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3

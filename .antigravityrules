@@ -1,0 +1,123 @@
+﻿# ExRetailOS: Rules & Best Practices (React & AI-Native)
+
+## 🏗️ Mimari & Standartlar (Architecture & Standards)
+- **Framework**: React (Vite) + TypeScript + Tauri (Rust Bridge).
+- **State Management**: Context API ve Hook-based store yapısı tercih edilmelidir. `src/store` dizinini kontrol edin.
+- **Styling**: Tailwind CSS v4 kullanılmalıdır. Renkler için OKLCH uzayını (`index.css`) kullanın.
+- **Bileşen Yapısı**: Fonksiyonel bileşenler ve Hook kullanımı zorunludur. `PascalCase` bileşen isimleri, `camelCase` fonksiyon/değişken isimleri.
+
+## 📁 Codebase Awareness (Dosya Yapısı Tanıma)
+Tüm ajanlar geliştirmeye başlamadan önce [[codebase_map.md]](file:///d:/Exretailos/.agent/codebase_map.md) dosyasını okumalıdır.
+- **src/components**: Etki alanına (trading, inventory, pos) göre gruplanmış UI bileşenleri.
+- **src/services**: AI (voice/vision) ve API servisleri.
+- **src-tauri/src**: Donanım entegrasyonu ve sistem seviyesi Rust komutları.
+- **supabase**: Veritabanı şeması ve edge functions.
+
+## 🎨 Tasarım & Estetik (Premium UX)
+- **Vizyon**: Linear, Raycast ve Revolut kalitesinde bir deneyim hedeflenir.
+- **Görsel Dil**: Sleek Dark Mode, Glassmorphism (`backdrop-blur`), kesin flat köşeler.
+- **Mikro-animasyonlar**: Her etkileşimde (Hover, Modal, Transition) akıcı animasyonlar bulunmalıdır.
+
+## 🇹🇷 Dokümantasyon Kuralları (Turkish Documentation)
+```json
+turkish_documentation {
+    file_header: {
+        required: true;
+        format: {
+            line1: "// Dosya Adı: {filename}";
+            line2: "// Açıklama: {description}";
+            line3: "// Oluşturulma Tarihi: {date}";
+            line4: "// Geliştirici: FERHAT NAS";
+            line5: "// Son Güncelleme: {last_update}";
+        };
+        example: '''
+        // Dosya Adı: user_repository.ts
+        // Açıklama: Kullanıcı işlemleri için veri katmanı repository sınıfı
+        // Oluşturulma Tarihi: 2024-03-20
+        // Geliştirici: FERHAT NAS
+        // Son Güncelleme: 2024-03-21
+        ''';
+    };
+
+    code_comments: {
+        class_comments: {
+            required: true;
+            format: '''
+            /**
+             * {@template class_name}
+             * Sınıf açıklaması buraya yazılacak
+             * 
+             * Kullanım örneği:
+             * ```typescript
+             * final instance = new ClassName();
+             * ```
+             * {@endtemplate}
+             */
+            ''';
+        };
+
+        method_comments: {
+            required: true;
+            format: '''
+            /**
+             * {@template method_name}
+             * Metodun ne iş yaptığının açıklaması
+             * 
+             * Parametreler:
+             * - [param1]: Parametre açıklaması
+             * 
+             * Dönüş değeri:
+             * - [ReturnType]: Dönüş değeri açıklaması
+             * 
+             * Fırlatılan hatalar:
+             * - [Exception]: Hata durumu açıklaması
+             * {@endtemplate}
+             */
+            ''';
+        };
+
+        variable_comments: {
+            required: true;
+            format: "/** [değişken_adı]: Değişkenin açıklaması */";
+        };
+
+        todo_comments: {
+            format: "// TODO(developer): Yapılacak işin açıklaması";
+            required_fields: ["developer", "description"];
+        };
+    };
+
+    folder_documentation: {
+        required: true;
+        file_name: "README.md";
+        format: '''
+        # Klasör Adı
+        
+        ## Açıklama
+        Bu klasörün ne amaçla kullanıldığı ve içeriği hakkında genel bilgi.
+        
+        ## Dosyalar
+            - `dosya1.ts`: Dosya açıklaması
+                - `dosya2.tsx`: Dosya açıklaması
+        
+        ## Kullanım
+        Bu klasördeki dosyaların nasıl kullanılacağı hakkında bilgi.
+        
+        ## Bağımlılıklar
+        Bu klasördeki kodların bağımlı olduğu diğer modül / paketler.
+        ''';
+    };
+}
+```
+
+## 🔡 Karakter Kodlaması (Character Encoding)
+- **UTF-8 Zorunluluğu**: Tüm kaynak kod dosyaları ve metin dosyaları UTF-8 (BOM'suz) formatında kaydedilmelidir.
+- **Türkçe Karakterler**: `ğ, Ğ, ü, Ü, ş, Ş, ı, İ, ö, Ö, ç, Ç` karakterleri bozulmadan korunmalıdır. "Mojibake" (örn: Ã¼) oluşumuna karşı dikkatli olunmalıdır.
+- **HTML Meta**: HTML dosyalarında `<meta charset="UTF-8" />` etiketi mutlaka bulunmalıdır.
+
+## 🤖 AI Ajan Davranışları
+- **Dil Tercihi**: Kullanıcı ile her zaman **Türkçe** konuşun. Teknik terimler dışında açıklamaları Türkçe yapın.
+- Yeni dosya eklerken mevcut klasör yapısına sadık kalın.
+- Kritik finansal işlemlerde `UniversalInvoiceModule` desenini takip edin.
+- Donanım (Terazi, Yazıcı vb.) işlemlerini Tauri `invoke` ile Rust tarafına aktarın.
+- Her zaman `project_context.md` dosyasındaki vizyonu koruyun.
