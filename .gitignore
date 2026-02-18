@@ -97,3 +97,8 @@ tools/**/.git
 .agent/skills/**/.git
 add_files.ps1
 add_all_files.ps1
+
+# Separate Repositories
+logo-connector/
+tools/*/
+!tools/.gitkeep
