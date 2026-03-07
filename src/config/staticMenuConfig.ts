@@ -84,7 +84,8 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.slipList, screen: 'report-slip-list', icon: FileText },
                     { label: t.menu.minMaxStock, screen: 'report-min-max', icon: BarChart3 }
                 ]
-            }
+            },
+            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
         ]
     },
     {
@@ -293,7 +294,8 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.definitionsParameters, screen: 'Tanımlar', icon: Database },
             { label: t.menu.backupRestore, screen: 'backuprestore', icon: Layers },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock },
-            { label: t.menu.systemHealth, screen: 'systemhealth', icon: AlertCircle }
+            { label: t.menu.systemHealth, screen: 'systemhealth', icon: AlertCircle },
+            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
         ]
     }
 ];

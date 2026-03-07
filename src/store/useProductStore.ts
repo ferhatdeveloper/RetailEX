@@ -1,4 +1,4 @@
-﻿// Product Store with SQL Integration
+// Product Store with SQL Integration
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Product } from '../core/types';
@@ -161,3 +161,4 @@ if (typeof window !== 'undefined') {
     store.loadProducts();
   }
 }
+

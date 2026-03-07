@@ -76,7 +76,7 @@ impl BroadcastEngine {
                     
                     // Update status to 'sent'
                     // Note: Will be marked as 'delivered' when store acknowledges
-                    sqlx::query!(
+                    sqlx::query_unchecked!(
                         "UPDATE sync_queue SET status = 'processing', updated_at = NOW() WHERE id = $1",
                         msg.id
                     )
@@ -121,9 +121,3 @@ impl BroadcastEngine {
     }
 }
 
-// Expose pool for direct queries in broadcast engine
-impl Database {
-    pub fn pool(&self) -> &sqlx::PgPool {
-        &self.pool
-    }
-}

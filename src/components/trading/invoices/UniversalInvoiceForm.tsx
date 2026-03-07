@@ -194,7 +194,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     return '';
   });
   const [customerTitle, setCustomerTitle] = useState(() => editData?.customer_name || '');
-  const [supplierCode, setSupplierCode] = useState(() => editData?.supplier_code || editData?.supplier_id || '');
+  const [supplierCode, setSupplierCode] = useState(() => editData?.supplier_code || '');
+  const [supplierId, setSupplierId] = useState(() => editData?.supplier_id || '');
   const [supplierTitle, setSupplierTitle] = useState(() => editData?.supplier_name || '');
   const [customerBarcode, setCustomerBarcode] = useState(''); // Cari Hesap Barkodu
 
@@ -1519,7 +1520,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
         customer_id: customerId || undefined,
-        supplier_id: supplierCode || undefined,
+        supplier_id: supplierId || undefined,
         supplier_name: supplierTitle || '',
         customer_name: customerTitle || '',
         subtotal: totals.subtotal,
@@ -2417,6 +2418,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                             }
                             else {
                               setSupplierCode(code);
+                              setSupplierId((item as any).id || '');
                               setSupplierTitle(title);
                               setShowSupplierModal(false);
                             }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -149,3 +149,5 @@ export function KeyboardShortcutHint({ onClick }: { onClick: () => void }) {
     </div>
   );
 }
+
+

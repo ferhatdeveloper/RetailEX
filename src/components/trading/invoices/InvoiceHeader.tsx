@@ -64,6 +64,7 @@ interface InvoiceHeaderProps {
     // Styling (computed in parent or we can move logic here)
     cariBorderColor: string;
     cariTextColor: string;
+    selectedCariBalance?: number | null;
 }
 
 export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
@@ -113,7 +114,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     setShowSupplierHistory,
     cariBorderColor,
     cariTextColor,
-    setSupplierCode
+    setSupplierCode,
+    selectedCariBalance
 }) => {
     return (
         <div className="bg-white rounded border border-gray-200 p-3 mb-3">
@@ -460,33 +462,43 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
                     <div className="flex items-center gap-2 flex-1 max-w-md">
                         <span className={`font-semibold shrink-0 ${cariTextColor}`}>{invoiceType.category === 'Alis' ? 'Tedarikçi' : 'Müşteri'}:</span>
-                        <div className="flex-1 flex gap-1">
-                            <input
-                                type="text"
-                                value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
-                                readOnly
-                                placeholder="Cari Seçin..."
-                                className={`flex-1 px-3 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors ${cariBorderColor}`}
-                                onClick={() => {
-                                    if (invoiceType.category === 'Alis') {
-                                        setShowSupplierModal(true);
-                                    } else {
-                                        setShowCustomerModal(true);
-                                    }
-                                }}
-                            />
-                            <button
-                                onClick={() => {
-                                    if (invoiceType.category === 'Alis') {
-                                        setShowSupplierModal(true);
-                                    } else {
-                                        setShowCustomerModal(true);
-                                    }
-                                }}
-                                className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                                <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
+                        <div className="flex-1 flex flex-col gap-1">
+                            <div className="flex gap-1">
+                                <input
+                                    type="text"
+                                    value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
+                                    readOnly
+                                    placeholder="Cari Seçin..."
+                                    className={`flex-1 px-3 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors ${cariBorderColor}`}
+                                    onClick={() => {
+                                        if (invoiceType.category === 'Alis') {
+                                            setShowSupplierModal(true);
+                                        } else {
+                                            setShowCustomerModal(true);
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (invoiceType.category === 'Alis') {
+                                            setShowSupplierModal(true);
+                                        } else {
+                                            setShowCustomerModal(true);
+                                        }
+                                    }}
+                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                >
+                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                </button>
+                            </div>
+                            {selectedCariBalance !== null && (
+                                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Bakiye:</span>
+                                    <span className={`text-xs font-black ${(selectedCariBalance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)} <span className="text-[10px] opacity-70">IQD</span>
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -494,3 +506,5 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         </div>
     );
 };
+
+

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, lazy, Suspense, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, lazy, Suspense, useMemo, useCallback } from 'react';
 import {
   PieChart, Store as StoreIcon, Map as MapIcon, Settings, Zap, FileSpreadsheet,
   FileText, FileCheck, RefreshCw, FileMinus, Send, Truck, Archive,
@@ -14,7 +14,6 @@ const DevExDataGrid = lazy(() => import('../shared/DevExDataGrid').then(m => ({ 
 import { APP_VERSION } from '../../core/version';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
-import { invoke } from '@tauri-apps/api/tauri';
 
 // Direct Imports - Lazy loading removed to fix dynamic import errors
 import { DashboardModule } from './DashboardModule';
@@ -66,7 +65,8 @@ import { CurrencyManagement } from '../accounting/finance/CurrencyManagement';
 import { CommissionModule } from '../modules/CommissionModule';
 import { UserManagementModule } from './UserManagementModule';
 import { WhatsAppIntegrationModule } from '../modules/WhatsAppIntegrationModule';
-import { RestaurantModule } from '../modules/RestaurantModule';
+import RestaurantMain from '../restaurant/index';
+import BeautyMain from '../beauty/index';
 import { AppointmentModule } from '../modules/AppointmentModule';
 import { BIDashboardModule } from '../modules/BIDashboardModule';
 import { EcommerceModule } from '../modules/EcommerceModule';
@@ -97,7 +97,7 @@ import { WarehouseDefinitionsModule } from '../inventory/warehouse/WarehouseDefi
 import { ServiceCardsModule } from '../modules/ServiceCardsModule';
 import { StockMovementsModule } from '../inventory/stock/StockMovementsModule';
 import { WarehouseTransferModule } from '../inventory/warehouse/WarehouseTransferModule';
-import { StockCountModule } from '../inventory/stock/StockCountModule';
+import { StockCountModule as WMSStockCountModule } from '../wms/components/StockCountModule';
 import { MaterialReportsModule } from '../inventory/products/MaterialReportsModule';
 import { VirmanModule } from '../accounting/reports/VirmanModule';
 import { PaymentPlansModule } from '../accounting/finance/PaymentPlansModule';
@@ -140,6 +140,14 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
 
+// Custom z-index constants to ensure consistent layering
+const Z_INDEX = {
+  HEADER: 60,
+  MOBILE_OVERLAY: 70,
+  SIDEBAR: 80,
+  MODAL: 100
+};
+
 interface ManagementModuleProps {
   products: Product[];
   setProducts: (products: Product[]) => void;
@@ -148,6 +156,8 @@ interface ManagementModuleProps {
   sales: Sale[];
   campaigns: Campaign[];
   setCampaigns: (campaigns: Campaign[]) => void;
+  sidebarOpen?: boolean;
+  setSidebarOpen?: (open: boolean) => void;
 }
 
 // Cache key ve TTL (Time To Live) - 5 dakika (daha kısa TTL, menü güncellemelerinin daha hızlı yansıması için)
@@ -179,9 +189,11 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'db-migrations' | 'store-management' | 'security-modules' | 'database-settings' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
+  'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'materials' | 'MYFisleri' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
-  'report-designer' | 'label-designer';
+  'report-designer' | 'label-designer' |
+  'restaurant' | 'beauty';
 
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -192,9 +204,17 @@ export function ManagementModule({
   setCustomers,
   sales,
   campaigns,
-  setCampaigns
+  setCampaigns,
+  sidebarOpen,
+  setSidebarOpen
 }: ManagementModuleProps) {
   const { user } = useAuth();
+  const isTauri = !!(window as any).__TAURI_INTERNALS__;
+
+  // Sidebar state — managed internally; prop overrides are optional
+  const [_sidebarOpen, _setSidebarOpen] = useState(sidebarOpen ?? true);
+  const effectiveSidebarOpen = sidebarOpen !== undefined ? sidebarOpen : _sidebarOpen;
+  const effectiveSetSidebarOpen = setSidebarOpen ?? _setSidebarOpen;
 
   // Rol bazlı varsayılan ekran belirleme
   const getDefaultScreenForRole = (roles: string[] = []): ExtendedScreen => {
@@ -234,7 +254,6 @@ export function ManagementModule({
 
   const [currentScreen, setCurrentScreen] = useState<ExtendedScreen>(getInitialScreen);
   const { isMobile, isTablet } = useResponsive();
-  const [sidebarOpen, setSidebarOpen] = useState(!isMobile); // Mobilde kapalı başla
   const { darkMode } = useTheme();
   const { language: currentLanguage, setLanguage, t } = useLanguage(); // Use global language context
   const [selectedKasaId, setSelectedKasaId] = useState<string | null>(null);
@@ -243,10 +262,18 @@ export function ManagementModule({
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [dynamicMenuSections, setDynamicMenuSections] = useState<any[] | null>(null);
+
+  // Handle Group Screen Redirects via Effect (Avoid Side Effects in Render)
+  useEffect(() => {
+    if (currentScreen === 'analytics-group') setCurrentScreen('profit-dashboard');
+    if (currentScreen === 'sales-stock-group') setCurrentScreen('salesreports');
+    if (currentScreen === 'finance-reps-group') setCurrentScreen('mizan');
+    if (currentScreen === 'advanced-reps-group') setCurrentScreen('advanced-reports');
+  }, [currentScreen]);
   const [rtlMode, setRtlMode] = useState(() => {
     return localStorage.getItem('retailos_rtl_mode') === 'true';
   });
-  const [menuMode, setMenuMode] = useState<number>(1); // Default to simplified
+  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
 
 
   // Generate menu with current language translations and convert to expected format
@@ -310,9 +337,9 @@ export function ManagementModule({
   // Mobilde sidebar'ı otomatik kapat/aç
   useEffect(() => {
     if (isMobile) {
-      setSidebarOpen(false);
+      effectiveSetSidebarOpen(false);
     } else {
-      setSidebarOpen(true);
+      effectiveSetSidebarOpen(true);
     }
   }, [isMobile]);
 
@@ -501,21 +528,23 @@ export function ManagementModule({
   // Load dynamic menu structure from PostgreSQL
   const loadMenuStructure = useCallback(async (forceReload = false) => {
     // TEMPORARILY DISABLED - Using static menu for now
-    console.log('🔵 Dynamic menu loading disabled, using static menu');
+    console.log('?? Dynamic menu loading disabled, using static menu');
     return;
   }, []);
 
-  // Fetch menu_mode from config
+  // Fetch hidden_modules from config
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const config: any = await invoke('get_app_config');
-        if (config && typeof config.menu_mode === 'number') {
-          console.log('📑 Menu Mode:', config.menu_mode === 1 ? 'Simplified' : 'Full');
-          setMenuMode(config.menu_mode);
+        if (isTauri) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const config: any = await invoke('get_app_config');
+          if (config && Array.isArray(config.hidden_modules)) {
+            setHiddenModules(config.hidden_modules);
+          }
         }
       } catch (err) {
-        console.error('Failed to fetch menu_mode:', err);
+        console.error('Failed to fetch hidden_modules:', err);
       }
     };
     fetchConfig();
@@ -524,9 +553,9 @@ export function ManagementModule({
 
   const languages = [
     { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
-    { code: 'en' as const, name: 'English', flag: '🇬🇧' },
-    { code: 'ar' as const, name: 'العربية', flag: '🇸🇦' },
-    { code: 'ku' as const, name: 'کوردی (سۆرانی)', flag: '🏳️‍🌈' }
+    { code: 'en' as const, name: 'English', flag: '????' },
+    { code: 'ar' as const, name: '???????', flag: '????' },
+    { code: 'ku' as const, name: '????? (??????)', flag: '??????', expenseAnalysis: '?????? ??????????', reporting: '??????????' }
   ];
 
   const toggleSection = (title: string) => {
@@ -550,80 +579,22 @@ export function ManagementModule({
     const isDynamic = dynamicMenuSections && dynamicMenuSections.length > 0;
     const baseSections = isDynamic ? dynamicMenuSections! : staticMenuSections;
 
-    if (menuMode === 1) {
-      // Simplified Mode Filtering Logic
-      const filtered = baseSections
-        .filter(section =>
-          section.id !== 'retail' &&
-          section.id !== 'communication-notifications'
-        );
+    const filterHidden = (items: any[]): any[] => {
+      return items
+        .filter(item => !hiddenModules.includes(item.id))
+        .map(item => {
+          if (item.items) {
+            return { ...item, items: filterHidden(item.items) };
+          }
+          if (item.children) {
+            return { ...item, children: filterHidden(item.children) };
+          }
+          return item;
+        });
+    };
 
-      const mapped = filtered.map(section => {
-        const updatedSection = { ...section, items: [...section.items] };
-
-        // Filter Main Menu to show only dashboard (Homepage)
-        if (section.id === 'main-menu') {
-          updatedSection.items = updatedSection.items.filter((item: any) => item.id === 'dashboard');
-        }
-
-        if (section.id === 'material-management') {
-          updatedSection.items = updatedSection.items.map((item: any) => {
-            if (item.id === 'material-definitions') { // Ana Kayıtlar
-              return {
-                ...item,
-                children: item.children?.filter((c: any) => c.id === 'unit-sets' || c.id === 'products')
-              };
-            }
-            if (item.id === 'material-movements') { // Hareketler
-              return {
-                ...item,
-                children: item.children?.filter((c: any) => c.id !== 'stock-dashboard')
-              };
-            }
-            return item;
-          });
-        }
-
-        if (section.id === 'invoices') {
-          updatedSection.items = updatedSection.items
-            .filter((item: any) => item.id !== 'Teklifler' && item.id !== 'waybill')
-            .map((item: any) => {
-              if (item.id === 'salesinvoice') { // Satış Faturaları
-                return {
-                  ...item,
-                  children: item.children?.filter((c: any) =>
-                    c.id !== 'sales-invoice-consignment' &&
-                    c.id !== 'sales-invoice-wholesale'
-                  )
-                };
-              }
-              if (item.id === 'purchaseinvoice') { // Satın Alma
-                return {
-                  ...item,
-                  children: item.children?.filter((c: any) =>
-                    c.id !== 'purchaserequest' &&
-                    c.id !== 'serviceinvoice-received'
-                  )
-                };
-              }
-              return item;
-            });
-        }
-
-        return updatedSection;
-      });
-
-      return mapped;
-    }
-
-    // Full Mode
-    if (isDynamic) {
-      console.log('✅ UI: Dinamik (Postgres) menü aktif edildi');
-    } else {
-      console.log('⚠️ UI: Statik (Full) menü aktif edildi');
-    }
-    return baseSections;
-  }, [dynamicMenuSections, staticMenuSections, menuMode]);
+    return filterHidden(baseSections);
+  }, [dynamicMenuSections, staticMenuSections, hiddenModules]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
@@ -813,26 +784,8 @@ export function ManagementModule({
       ];
     };
 
-    console.log('🎯 Render edilen ekran:', currentScreen);
+    console.log('?? Render edilen ekran:', currentScreen);
     try {
-      // Handle Group Dashboards/Redirects
-      if (currentScreen === 'analytics-group') {
-        setCurrentScreen('profit-dashboard');
-        return null;
-      }
-      if (currentScreen === 'sales-stock-group') {
-        setCurrentScreen('salesreports');
-        return null;
-      }
-      if (currentScreen === 'finance-reps-group') {
-        setCurrentScreen('mizan');
-        return null;
-      }
-      if (currentScreen === 'advanced-reps-group') {
-        setCurrentScreen('advanced-reports');
-        return null;
-      }
-
       switch (currentScreen) {
         case 'dashboard':
           return <DashboardModule
@@ -840,7 +793,7 @@ export function ManagementModule({
             customers={customers}
             sales={sales}
             setCurrentScreen={(s: any) => setCurrentScreen(s)}
-            menuMode={menuMode}
+            menuMode={hiddenModules.length > 5 ? 1 : 2}
           />;
         // Material Management - Products
         case 'products':
@@ -905,7 +858,9 @@ export function ManagementModule({
         case 'stockcount':
         case 'mobile-inventory-count':
         case 'stockcount_store':
-          return <StockCountModule />;
+        case 'stockcounting':
+        case 'stockcounting-mobile':
+          return <WMSStockCountModule darkMode={darkMode} onBack={() => setCurrentScreen('dashboard')} />;
 
         // Material Management - Transfers (Virman)
         case 'warehousetransfer_v':
@@ -970,7 +925,7 @@ export function ManagementModule({
           return <MaterialAdvancedReports viewType='stockreports_bal' />;
 
         case 'customers':
-          return <CustomerManagementModule customers={customers} setCustomers={setCustomers} sales={sales} />;
+          return <CustomerManagementModule sales={sales} />;
         case 'cashbank':
           return <CashRegisterManagement
             initialTab="sessions"
@@ -1139,7 +1094,7 @@ export function ManagementModule({
         case 'emailcamp':
           return <SystemManagementModule />;
         case 'excel':
-          return <ExcelModule products={products} setProducts={setProducts} customers={customers} setCustomers={setCustomers} />;
+          return <ExcelModule />;
         case 'multistore':
           return <MultiStoreManagement />;
         case 'regional':
@@ -1167,7 +1122,9 @@ export function ManagementModule({
         case 'whatsapp':
           return <WhatsAppIntegrationModule />;
         case 'restaurant':
-          return <RestaurantModule />;
+          return <RestaurantMain />;
+        case 'beauty':
+          return <BeautyMain />;
         case 'appointment':
           return <AppointmentModule />;
         case 'bi-dashboard':
@@ -1242,7 +1199,7 @@ export function ManagementModule({
           />;
       }
     } catch (error) {
-      console.error(`❌ Error rendering screen \"${currentScreen}\":`, error);
+      console.error(`? Error rendering screen \"${currentScreen}\":`, error);
       return (
         <div className={`flex items-center justify-center h-full ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
           <div className={`text-center p-8 rounded-xl shadow-lg max-w-md ${darkMode ? 'bg-gray-800 text-white' : 'bg-white'
@@ -1270,30 +1227,28 @@ export function ManagementModule({
   return (
     <div className={`h-full flex relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       {/* Mobile Overlay - Sidebar açıkken arka planı karart */}
-      {isMobile && sidebarOpen && (
+      {isMobile && effectiveSidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 transition-opacity"
-          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-transparent"
+          style={{ zIndex: Z_INDEX.MOBILE_OVERLAY }}
+          onClick={() => effectiveSetSidebarOpen(false)}
         />
       )}
 
-      {/* Left Sidebar */}
-      <div className={`relative transition-all duration-300 ease-in-out ${isMobile
-        ? sidebarOpen
-          ? 'fixed left-0 top-0 h-full w-80 z-50 shadow-2xl'
-          : 'w-0'
-        : sidebarOpen
-          ? 'w-64 md:w-80'
-          : 'w-0'
-        } overflow-hidden flex-shrink-0 ${isMobile ? '' : 'relative'}`}>
-        <div className={`h-full transition-opacity duration-300 ${sidebarOpen ? 'opacity-100' : 'opacity-0'
-          }`}>
+      {/* Sidebar Container */}
+      <div
+        className={isMobile
+          ? `fixed inset-y-0 left-0 w-80 transition-transform duration-300 ease-in-out ${effectiveSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none invisible opacity-0'}`
+          : `transition-all duration-300 ease-in-out ${effectiveSidebarOpen ? 'w-64 md:w-80' : 'w-0 overflow-hidden'} flex-shrink-0 relative`}
+        style={isMobile ? { zIndex: Z_INDEX.SIDEBAR } : {}}
+      >
+        <div className={`h-full transition-opacity duration-300 ${!isMobile && !effectiveSidebarOpen ? 'opacity-0' : 'opacity-100'}`}>
           <ModernSidebar
             menuSections={menuSections}
             currentScreen={currentScreen}
             setCurrentScreen={(screen) => {
               setCurrentScreen(screen);
-              if (isMobile) setSidebarOpen(false); // Mobilde seçim yapınca kapat
+              if (isMobile) effectiveSetSidebarOpen(false);
             }}
             menuSearchQuery={menuSearchQuery}
             setMenuSearchQuery={setMenuSearchQuery}
@@ -1310,22 +1265,9 @@ export function ManagementModule({
             menuSource={dynamicMenuSections ? 'database' : 'static'}
           />
         </div>
-
-        {/* Sidebar Toggle Button Removed request by user */}
       </div>
 
-      {/* Mobile Menu Button - Sadece mobilde görünür */}
-      {isMobile && !sidebarOpen && (
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className={`fixed top-4 left-4 z-40 p-3 rounded-lg shadow-lg min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95 transition-all ${darkMode
-            ? 'bg-gray-800 text-gray-200 hover:bg-gray-700'
-            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
-            }`}
-        >
-          <Menu className="w-6 h-6" />
-        </button>
-      )}
+      {/* Mobile Menu Button - REMOVED: Managed by MainLayout Header */}
 
       {/* Main Content */}
       <div className={`flex-1 overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'w-full' : ''}`}>
@@ -1372,3 +1314,5 @@ function PlaceholderModule({ screenName, onBack }: { screenName: string; onBack:
     </div>
   );
 }
+
+

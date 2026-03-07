@@ -83,7 +83,7 @@ export function DatabaseSettings() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [role, setRole] = useState('cashier');
-    const [firmNr, setFirmNr] = useState('009');
+    const [firmNr, setFirmNr] = useState('001');
 
     // Firm Management States
     const [showFirmForm, setShowFirmForm] = useState(false);
@@ -876,7 +876,7 @@ export function DatabaseSettings() {
                                             ? 'bg-white/5 border-white/10 text-white focus:border-purple-500 focus:bg-white/10'
                                             : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-purple-500 focus:bg-white'
                                             } focus:ring-4 focus:ring-purple-500/20 focus:outline-none`}
-                                        placeholder="009"
+                                        placeholder="001"
                                     />
                                 </div>
                             </div>
@@ -1127,3 +1127,5 @@ export function DatabaseSettings() {
         </div>
     );
 }
+
+

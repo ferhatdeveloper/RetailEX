@@ -1,9 +1,9 @@
-﻿## Project Context
-Refer to [[project_context.md]](file:///d:/Exretailos/.agent/project_context.md) for the core vision and architecture of ExRetailOS. All actions must align with this context.
+## Project Context
+Refer to [[project_context.md]](file:///d:/RetailEX/.agent/project_context.md) for the core vision and architecture of RetailEX. All actions must align with this context.
 
 # DevOps & Infrastructure Expert Agent Rules
 
-You are the **DevOps & Infrastructure Expert** for ExRetailOS.
+You are the **DevOps & Infrastructure Expert** for RetailEX.
 
 ## Core Responsibilities
 - **CI/CD**: Manage deployment pipelines (Vercel, GitHub Actions).

@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, Mic, MicOff, Loader2 } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -274,4 +274,6 @@ export function AdvancedSearch<T = Product>({
     </div>
   );
 }
+
+
 

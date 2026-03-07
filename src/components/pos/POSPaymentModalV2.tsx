@@ -8,7 +8,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { formatNumberInput } from '../../utils/numberFormatter';
 
 interface Payment {
-  method: 'cash' | 'card' | 'gateway';
+  method: 'cash' | 'card' | 'gateway' | 'account';
   amount: number;
   currency: 'IQD' | 'USD' | 'EUR' | 'TRY';
   gatewayProvider?: string; // 'fib' | 'fastpay'
@@ -20,7 +20,8 @@ interface POSPaymentModalV2Props {
   subtotal: number;
   itemDiscount: number;
   campaignDiscount: number;
-  selectedCampaign?: Campaign | null;  // Kampanya bilgisi
+  selectedCampaign?: Campaign | null;
+  selectedCustomer?: any | null;
   onClose: () => void;
   onComplete: (paymentData: any) => void;
 }
@@ -31,11 +32,12 @@ export function POSPaymentModalV2({
   itemDiscount,
   campaignDiscount,
   selectedCampaign,
+  selectedCustomer,
   onClose,
   onComplete
 }: POSPaymentModalV2Props) {
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'gateway'>('cash');
+  const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'gateway' | 'account'>('cash');
   const [currentAmount, setCurrentAmount] = useState('');
   const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR' | 'TRY'>('IQD');
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
@@ -118,6 +120,11 @@ export function POSPaymentModalV2({
     const normalized = currentAmount.replace(/\./g, '').replace(/,/g, '.');
     const amount = parseFloat(normalized) || 0;
     if (!amount || amount <= 0) return;
+
+    if (currentMethod === 'account' && !selectedCustomer) {
+      alert('Cari ödeme için müşteri seçilmelidir!');
+      return;
+    }
 
     const newPayment: Payment = {
       method: currentMethod,
@@ -389,6 +396,8 @@ export function POSPaymentModalV2({
                             <Banknote className="w-4 h-4 text-green-600" />
                           ) : payment.method === 'card' ? (
                             <CreditCard className="w-4 h-4 text-blue-600" />
+                          ) : payment.method === 'account' ? (
+                            <Tag className="w-4 h-4 text-orange-600" />
                           ) : payment.gatewayProvider === 'zaincash' ? (
                             <img src="/payment-logos/zaincash.png" alt="ZainCash" className="w-4 h-4 object-contain" />
                           ) : (
@@ -466,6 +475,34 @@ export function POSPaymentModalV2({
                     </h5>
                   </div>
                   {currentMethod === 'card' && <Check className="w-5 h-5 text-blue-600" />}
+                </button>
+
+                <button
+                  onClick={() => setCurrentMethod('account')}
+                  className={`w-full p-3 border transition-all flex items-center gap-3 ${currentMethod === 'account'
+                    ? darkMode
+                      ? 'border-orange-500 bg-orange-900/30 shadow-md'
+                      : 'border-orange-600 bg-orange-50 shadow-md'
+                    : darkMode
+                      ? 'border-gray-600 bg-gray-800'
+                      : 'border-gray-300 bg-white hover:border-orange-500 hover:bg-orange-50'
+                    }`}
+                >
+                  <div className={`w-10 h-10 flex items-center justify-center ${currentMethod === 'account' ? 'bg-orange-600' : darkMode ? 'bg-gray-700' : 'bg-gray-200'
+                    }`}>
+                    <Tag className={`w-5 h-5 ${currentMethod === 'account' ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <h5 className={`text-sm ${currentMethod === 'account' ? 'text-orange-700' : darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+                      Cariye İşle (Veresiye)
+                    </h5>
+                    {selectedCustomer ? (
+                      <p className="text-[10px] text-orange-600 font-bold uppercase">{selectedCustomer.name}</p>
+                    ) : (
+                      <p className="text-[10px] text-red-500 font-bold uppercase">Müşteri Seçilmedi!</p>
+                    )}
+                  </div>
+                  {currentMethod === 'account' && <Check className="w-5 h-5 text-orange-600" />}
                 </button>
 
                 {activeProviders.length > 0 && (

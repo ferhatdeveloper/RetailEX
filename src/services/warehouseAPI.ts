@@ -1,4 +1,4 @@
-﻿import { postgres, ERP_SETTINGS } from './postgres';
+import { postgres, ERP_SETTINGS } from './postgres';
 import { supabase } from '../utils/supabase/client'; // Keeping for backward compatibility if needed, but methods will use postgres
 
 export interface Warehouse {
@@ -215,4 +215,5 @@ class WarehouseAPI {
 }
 
 export const warehouseAPI = new WarehouseAPI();
+
 

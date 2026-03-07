@@ -1,4 +1,4 @@
-﻿import { Delete, Eraser } from 'lucide-react';
+import { Delete, Eraser } from 'lucide-react';
 
 interface POSNumpadProps {
   value: string;
@@ -207,3 +207,5 @@ export function POSNumpad({
     </div>
   );
 }
+
+

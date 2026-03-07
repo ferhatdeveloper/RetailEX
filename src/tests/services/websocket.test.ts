@@ -1,4 +1,4 @@
-﻿/**
+/**
  * WebSocket Service Tests
  */
 
@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WebSocketService } from '../../services/websocket';
 
 // Mock Tauri invoke
-vi.mock('@tauri-apps/api/tauri', () => ({
+vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -109,4 +109,5 @@ describe('WebSocketService', () => {
         expect((service as any).ws).toBeNull();
     });
 });
+
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Fuzzy Search Utility
  * Provides typo-tolerant search with Levenshtein distance algorithm
  */
@@ -176,4 +176,5 @@ export function highlightMatches(text: string, query: string): string {
   
   return text;
 }
+
 

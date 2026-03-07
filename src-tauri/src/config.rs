@@ -25,6 +25,8 @@ pub struct AppConfig {
     pub pg_remote_user: String,
     pub pg_remote_pass: String,
     pub system_type: String, // retail, market, wms
+    #[serde(default)]
+    pub skip_integration: bool,
     pub selected_firms: Vec<String>,
     #[serde(default)]
     pub central_api_url: String, // For Sync (HTTP)
@@ -59,11 +61,37 @@ pub struct AppConfig {
     pub use_fixed_vpn_ip: bool,
     #[serde(default = "default_update_source")]
     pub update_source: String, // "central" or "github"
+    #[serde(default = "default_hidden_modules")]
+    pub hidden_modules: Vec<String>,
 }
 
 fn default_true() -> bool { true }
 fn default_menu_mode() -> i32 { 1 }
 fn default_update_source() -> String { "central".to_string() }
+fn default_hidden_modules() -> Vec<String> {
+    vec![
+        "retail".to_string(),
+        "communication-notifications".to_string(),
+        "stock-dashboard".to_string(),
+        "Teklifler".to_string(),
+        "waybill".to_string(),
+        "sales-invoice-consignment".to_string(),
+        "sales-invoice-wholesale".to_string(),
+        "purchaserequest".to_string(),
+        "serviceinvoice-received".to_string(),
+        "material-classes".to_string(),
+        "variants".to_string(),
+        "special-codes".to_string(),
+        "brand-definitions".to_string(),
+        "group-codes".to_string(),
+        "product-categories".to_string(),
+        "Dashboard".to_string(),
+        "store-management-group".to_string(),
+        "databroadcast".to_string(),
+        "integrations".to_string(),
+        "excel".to_string(),
+    ]
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct BackupConfig {
@@ -108,6 +136,7 @@ impl Default for AppConfig {
             pg_remote_user: "postgres".to_string(),
             pg_remote_pass: "Yq7xwQpt6c".to_string(),
             system_type: "retail".to_string(),
+            skip_integration: false,
             selected_firms: vec!["001".to_string()],
             central_api_url: "http://localhost:8000/api/v1/sync".to_string(),
             central_ws_url: "ws://localhost:8000/api/v1/ws".to_string(),
@@ -126,6 +155,7 @@ impl Default for AppConfig {
             logo_objects_active: false,
             use_fixed_vpn_ip: true,
             update_source: "central".to_string(),
+            hidden_modules: default_hidden_modules(),
         }
     }
 }
@@ -200,7 +230,8 @@ pub fn get_app_config(_app_handle: AppHandle) -> Result<AppConfig, String> {
 
 pub fn get_app_config_internal() -> Result<AppConfig, String> {
     // Shared version without AppHandle
-     let db_path = get_db_path();
+    let _ = init_config_db(); // Ensure DB and table exist
+    let db_path = get_db_path();
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
     let mut stmt = conn.prepare("SELECT data FROM config WHERE id = 1").map_err(|e| e.to_string())?;

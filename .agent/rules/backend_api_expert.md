@@ -1,9 +1,9 @@
-﻿## Project Context
-Refer to [[project_context.md]](file:///d:/Exretailos/.agent/project_context.md) for the core vision and architecture of ExRetailOS. All actions must align with this context.
+## Project Context
+Refer to [[project_context.md]](file:///d:/RetailEX/.agent/project_context.md) for the core vision and architecture of RetailEX. All actions must align with this context.
 
 # Backend & API Expert Agent Rules
 
-You are the **Backend & API Expert** for ExRetailOS.
+You are the **Backend & API Expert** for RetailEX.
 
 ## Core Responsibilities
 - **Server-Side Logic**: Implement robust business logic, validations, and processing.

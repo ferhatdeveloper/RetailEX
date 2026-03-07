@@ -1,7 +1,7 @@
 ﻿// src/services/voiceService.ts
 // Platform-agnostic voice service that works on web, mobile, and desktop
 
-import { invoke } from '@tauri-apps/api/tauri';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 import { findRouteCommand } from './routeCommandGenerator';
 import { SupportedLanguage } from '../config/voiceCommandDefinitions';
 import { VoiceCommandResult, VoiceContext, VoiceServiceProvider } from './voiceTypes';
@@ -25,7 +25,7 @@ export class VoiceService {
      */
     private detectProvider(): VoiceServiceProvider {
         // Check if running in Tauri
-        if (window.__TAURI__) {
+        if (isTauri) {
             return VoiceServiceProvider.TAURI_WHISPER;
         }
 
@@ -90,7 +90,7 @@ export class VoiceService {
     private listenWithWebSpeechAPI(): Promise<string> {
         return new Promise((resolve, reject) => {
             if (!this.recognition) {
-                reject(new Error('Web Speech API başlatılamadı. Lütfen tarayıcınızı kontrol edin.'));
+                reject(new Error('Web Speech API baï¿½latï¿½lamadï¿½. Lï¿½tfen tarayï¿½cï¿½nï¿½zï¿½ kontrol edin.'));
                 return;
             }
 
@@ -99,36 +99,36 @@ export class VoiceService {
             this.recognition.onresult = (event: any) => {
                 hasResult = true;
                 const transcript = event.results[0][0].transcript;
-                console.log('🎤 Ses tanındı:', transcript);
+                console.log('?? Ses tanï¿½ndï¿½:', transcript);
                 resolve(transcript);
             };
 
             this.recognition.onerror = (event: any) => {
-                console.error('🔴 Ses tanıma hatası:', event.error);
+                console.error('?? Ses tanï¿½ma hatasï¿½:', event.error);
 
-                // Kullanıcı dostu hata mesajları
+                // Kullanï¿½cï¿½ dostu hata mesajlarï¿½
                 let errorMessage = '';
                 switch (event.error) {
                     case 'no-speech':
-                        errorMessage = 'Ses algılanamadı. Lütfen daha yüksek sesle konuşun ve tekrar deneyin.';
+                        errorMessage = 'Ses algï¿½lanamadï¿½. Lï¿½tfen daha yï¿½ksek sesle konuï¿½un ve tekrar deneyin.';
                         break;
                     case 'audio-capture':
-                        errorMessage = 'Mikrofon erişimi sağlanamadı. Lütfen mikrofon bağlantınızı kontrol edin.';
+                        errorMessage = 'Mikrofon eriï¿½imi saï¿½lanamadï¿½. Lï¿½tfen mikrofon baï¿½lantï¿½nï¿½zï¿½ kontrol edin.';
                         break;
                     case 'not-allowed':
-                        errorMessage = 'Mikrofon izni reddedildi. Lütfen tarayıcı ayarlarından mikrofon iznini verin.';
+                        errorMessage = 'Mikrofon izni reddedildi. Lï¿½tfen tarayï¿½cï¿½ ayarlarï¿½ndan mikrofon iznini verin.';
                         break;
                     case 'network':
-                        errorMessage = 'İnternet bağlantısı gerekli. Lütfen bağlantınızı kontrol edin.';
+                        errorMessage = 'ï¿½nternet baï¿½lantï¿½sï¿½ gerekli. Lï¿½tfen baï¿½lantï¿½nï¿½zï¿½ kontrol edin.';
                         break;
                     case 'aborted':
-                        errorMessage = 'Ses tanıma iptal edildi.';
+                        errorMessage = 'Ses tanï¿½ma iptal edildi.';
                         break;
                     case 'service-not-allowed':
-                        errorMessage = 'Ses tanıma servisi bu sayfada kullanılamıyor. HTTPS bağlantısı gerekebilir.';
+                        errorMessage = 'Ses tanï¿½ma servisi bu sayfada kullanï¿½lamï¿½yor. HTTPS baï¿½lantï¿½sï¿½ gerekebilir.';
                         break;
                     default:
-                        errorMessage = `Ses tanıma hatası: ${event.error}`;
+                        errorMessage = `Ses tanï¿½ma hatasï¿½: ${event.error}`;
                 }
 
                 reject(new Error(errorMessage));
@@ -136,16 +136,16 @@ export class VoiceService {
 
             this.recognition.onend = () => {
                 if (!hasResult) {
-                    console.warn('⚠️ Ses tanıma bitti ama sonuç yok');
+                    console.warn('?? Ses tanï¿½ma bitti ama sonuï¿½ yok');
                 }
             };
 
             try {
                 this.recognition.start();
-                console.log('🎤 Ses tanıma başlatıldı (Web Speech API)');
+                console.log('?? Ses tanï¿½ma baï¿½latï¿½ldï¿½ (Web Speech API)');
             } catch (err: any) {
-                console.error('🔴 Ses tanıma başlatma hatası:', err);
-                reject(new Error('Ses tanıma başlatılamadı. Lütfen tekrar deneyin.'));
+                console.error('?? Ses tanï¿½ma baï¿½latma hatasï¿½:', err);
+                reject(new Error('Ses tanï¿½ma baï¿½latï¿½lamadï¿½. Lï¿½tfen tekrar deneyin.'));
             }
         });
     }
@@ -179,12 +179,17 @@ export class VoiceService {
                     reader.onloadend = async () => {
                         const base64 = (reader.result as string).split(',')[1];
                         try {
-                            const result: VoiceCommandResult = await invoke('process_voice_command', {
-                                audioBase64: base64,
-                                language: this.language
-                            });
-                            this.lastTauriResult = result;
-                            resolve(result.transcript);
+                            if (isTauri) {
+                                const { invoke } = await import('@tauri-apps/api/core');
+                                const result: VoiceCommandResult = await invoke('process_voice_command', {
+                                    audioBase64: base64,
+                                    language: this.language
+                                });
+                                this.lastTauriResult = result;
+                                resolve(result.transcript);
+                            } else {
+                                resolve('Web ses tanï¿½ma simï¿½lasyonu');
+                            }
                         } catch (err) {
                             reject(err);
                         }
@@ -260,7 +265,7 @@ export class VoiceService {
             const matchedRoute = findRouteCommand(transcript, langCode);
 
             if (matchedRoute) {
-                console.log('📝 Dynamic Route Matched (Global Fallback):', matchedRoute.intent);
+                console.log('?? Dynamic Route Matched (Global Fallback):', matchedRoute.intent);
                 result.intent = matchedRoute.intent;
                 result.action = 'navigate';
                 result.navigation_path = (matchedRoute as any)._route;
@@ -305,7 +310,7 @@ export class VoiceService {
         const transcript = result.transcript.toLowerCase();
 
         // Handle "it", "him", "her" (Turkish: "o", "onu", "onun", "ona")
-        const pronouns = ['o', 'onu', 'onun', 'ona', 'fiyatı', 'fiyati', 'bilgileri'];
+        const pronouns = ['o', 'onu', 'onun', 'ona', 'fiyatï¿½', 'fiyati', 'bilgileri'];
         const hasPronoun = pronouns.some(p => transcript.includes(p));
 
         if (hasPronoun && result.intent === 'unknown') {
@@ -363,7 +368,7 @@ export class VoiceService {
             const matchedRoute = findRouteCommand(transcript, langCode);
 
             if (matchedRoute) {
-                console.log('📝 Dynamic Route Matched:', matchedRoute.intent);
+                console.log('?? Dynamic Route Matched:', matchedRoute.intent);
                 intent = matchedRoute.intent;
                 action = 'navigate';
 
@@ -399,55 +404,55 @@ export class VoiceService {
         const parameters: Record<string, string> = {};
 
         // Navigation patterns
-        if (/(?:(?:aç|göster|git|getir).*(satış|satiş).*(fatura|invoice))|(?:(satış|satiş).*(fatura|invoice).*(aç|göster|git|getir))/.test(lower)) {
+        if (/(?:(?:aï¿½|gï¿½ster|git|getir).*(satï¿½ï¿½|satiï¿½).*(fatura|invoice))|(?:(satï¿½ï¿½|satiï¿½).*(fatura|invoice).*(aï¿½|gï¿½ster|git|getir))/.test(lower)) {
             intent = 'open_sales_invoice';
             action = 'navigate';
-        } else if (/(?:(?:aç|göster|git|getir).*(alış|aliş|purchase).*(fatura|invoice))|(?:(alış|aliş|purchase).*(fatura|invoice).*(aç|göster|git|getir))/.test(lower)) {
+        } else if (/(?:(?:aï¿½|gï¿½ster|git|getir).*(alï¿½ï¿½|aliï¿½|purchase).*(fatura|invoice))|(?:(alï¿½ï¿½|aliï¿½|purchase).*(fatura|invoice).*(aï¿½|gï¿½ster|git|getir))/.test(lower)) {
             intent = 'open_purchase_invoice';
             action = 'navigate';
-        } else if (/(?:(malzeme|ürün|urun|product)(leri|ları)?.*?(aç|göster|listele|list))|(?:(aç|göster|listele|list).*(malzeme|ürün|urun|product)(leri|ları)?)/.test(lower)) {
+        } else if (/(?:(malzeme|ï¿½rï¿½n|urun|product)(leri|larï¿½)?.*?(aï¿½|gï¿½ster|listele|list))|(?:(aï¿½|gï¿½ster|listele|list).*(malzeme|ï¿½rï¿½n|urun|product)(leri|larï¿½)?)/.test(lower)) {
             intent = 'open_products';
             action = 'navigate';
-        } else if (/(?:(müşteri|musteri|customer|cari)(leri|ları)?.*?(aç|göster|listele|ekran))|(?:(aç|göster|listele|ekran).*(müşteri|musteri|customer|cari)(leri|ları)?)/.test(lower)) {
+        } else if (/(?:(mï¿½ï¿½teri|musteri|customer|cari)(leri|larï¿½)?.*?(aï¿½|gï¿½ster|listele|ekran))|(?:(aï¿½|gï¿½ster|listele|ekran).*(mï¿½ï¿½teri|musteri|customer|cari)(leri|larï¿½)?)/.test(lower)) {
             intent = 'open_customers';
             action = 'navigate';
-        } else if (/(?:(stok|stock|envanter)(leri|ları)?.*?(aç|göster|yönetim|management))|(?:(aç|göster|yönetim|management).*(stok|stock|envanter)(leri|ları)?)/.test(lower)) {
+        } else if (/(?:(stok|stock|envanter)(leri|larï¿½)?.*?(aï¿½|gï¿½ster|yï¿½netim|management))|(?:(aï¿½|gï¿½ster|yï¿½netim|management).*(stok|stock|envanter)(leri|larï¿½)?)/.test(lower)) {
             intent = 'open_stock';
             action = 'navigate';
-        } else if (/(?:(rapor|report)(lar|leri)?.*?(aç|göster))|(?:(aç|göster).*(rapor|report)(lar|leri)?)/.test(lower)) {
+        } else if (/(?:(rapor|report)(lar|leri)?.*?(aï¿½|gï¿½ster))|(?:(aï¿½|gï¿½ster).*(rapor|report)(lar|leri)?)/.test(lower)) {
             intent = 'open_reports';
             action = 'navigate';
-        } else if (/(?:(dashboard|panel|ana.*?ekran).*?(aç|göster|git))|(?:(aç|göster|git).*(dashboard|panel|ana.*?ekran))/.test(lower)) {
+        } else if (/(?:(dashboard|panel|ana.*?ekran).*?(aï¿½|gï¿½ster|git))|(?:(aï¿½|gï¿½ster|git).*(dashboard|panel|ana.*?ekran))/.test(lower)) {
             intent = 'open_dashboard';
             action = 'navigate';
         }
         // Search patterns
-        if (/(ara|bul|search|biger|lêgerîn|ibhash).*(müşteri|musteri|customer|cari|krîyar|emîl)/i.test(lower)) {
+        if (/(ara|bul|search|biger|lï¿½gerï¿½n|ibhash).*(mï¿½ï¿½teri|musteri|customer|cari|krï¿½yar|emï¿½l)/i.test(lower)) {
             intent = 'search_customer';
             action = 'query';
-            const match = transcript.match(/(ara|bul|search|biger|lêgerîn|ibhash).*(müşteri|musteri|customer|cari|krîyar|emîl)\s+(.+)/i);
+            const match = transcript.match(/(ara|bul|search|biger|lï¿½gerï¿½n|ibhash).*(mï¿½ï¿½teri|musteri|customer|cari|krï¿½yar|emï¿½l)\s+(.+)/i);
             if (match) parameters.name = match[3].trim();
-        } else if (/(ara|bul|search|biger|lêgerîn|ibhash).*(ürün|urun|product|malzeme|kelûpel|muntec)/i.test(lower)) {
+        } else if (/(ara|bul|search|biger|lï¿½gerï¿½n|ibhash).*(ï¿½rï¿½n|urun|product|malzeme|kelï¿½pel|muntec)/i.test(lower)) {
             intent = 'search_product';
             action = 'query';
-            const match = transcript.match(/(ara|bul|search|biger|lêgerîn|ibhash).*(ürün|urun|product|malzeme|kelûpel|muntec)\s+(.+)/i);
+            const match = transcript.match(/(ara|bul|search|biger|lï¿½gerï¿½n|ibhash).*(ï¿½rï¿½n|urun|product|malzeme|kelï¿½pel|muntec)\s+(.+)/i);
             if (match) parameters.name = match[3].trim();
-        } else if (/.*?(stok|stock|envanter|maxzen).*(var.*?mı|kontrol|check|durumu|heye|mevcud)/i.test(lower)) {
+        } else if (/.*?(stok|stock|envanter|maxzen).*(var.*?mï¿½|kontrol|check|durumu|heye|mevcud)/i.test(lower)) {
             intent = 'check_stock';
             action = 'query';
             const match = transcript.match(/(.+?)\s+(?:stok|var|heye|mevcud)/i);
             if (match) parameters.product = match[1].trim();
-        } else if (/(bugün|today|bugünkü|îro|alyawm).*(satış|satiş|sales|frotin|mabîat)/i.test(lower)) {
+        } else if (/(bugï¿½n|today|bugï¿½nkï¿½|ï¿½ro|alyawm).*(satï¿½ï¿½|satiï¿½|sales|frotin|mabï¿½at)/i.test(lower)) {
             intent = 'show_today_sales';
             action = 'query';
         }
 
         // Create patterns
-        else if (/yeni.*(ürün|urun|product|malzeme).*(ekle|add|kaydet|save)/.test(lower)) {
+        else if (/yeni.*(ï¿½rï¿½n|urun|product|malzeme).*(ekle|add|kaydet|save)/.test(lower)) {
             intent = 'add_product';
             action = 'create';
             this.extractProductParams(transcript, parameters);
-        } else if (/yeni.*(müşteri|musteri|customer|cari).*(ekle|add|kaydet|save)/.test(lower)) {
+        } else if (/yeni.*(mï¿½ï¿½teri|musteri|customer|cari).*(ekle|add|kaydet|save)/.test(lower)) {
             intent = 'add_customer';
             action = 'create';
             this.extractCustomerParams(transcript, parameters);
@@ -460,7 +465,7 @@ export class VoiceService {
         const nameMatch = transcript.match(/ekle:?\s*(.+?)(?:,|fiyat|$)/i);
         if (nameMatch) params.name = nameMatch[1].trim();
 
-        const priceMatch = transcript.match(/fiyat\s*(\d+(?:[.,]\d+)?)\s*(tl|lira|₺)?/i);
+        const priceMatch = transcript.match(/fiyat\s*(\d+(?:[.,]\d+)?)\s*(tl|lira)?/i);
         if (priceMatch) params.price = priceMatch[1].replace(',', '.');
 
         const stockMatch = transcript.match(/(?:stok|adet)\s*(\d+)/i);
@@ -511,33 +516,33 @@ export class VoiceService {
     }
 
     private formatResponse(intent: string, params: Record<string, string>, success: boolean): string {
-        if (!success) return 'Komutu anlayamadım. Lütfen tekrar deneyin.';
+        if (!success) return 'Komutu anlayamadï¿½m. Lï¿½tfen tekrar deneyin.';
 
         const responses: Record<string, string> = {
-            open_sales_invoice: 'Satış faturası ekranı açılıyor...',
-            open_purchase_invoice: 'Alış faturası ekranı açılıyor...',
-            open_products: 'Ürünler listesi açılıyor...',
-            open_customers: 'Müşteri listesi açılıyor...',
-            open_stock: 'Stok yönetimi ekranı açılıyor...',
-            open_reports: 'Raporlar ekranı açılıyor...',
-            open_dashboard: 'Ana panel açılıyor...',
-            show_today_sales: 'Bugünkü satışlar gösteriliyor...',
+            open_sales_invoice: 'Satï¿½ï¿½ faturasï¿½ ekranï¿½ aï¿½ï¿½lï¿½yor...',
+            open_purchase_invoice: 'Alï¿½ï¿½ faturasï¿½ ekranï¿½ aï¿½ï¿½lï¿½yor...',
+            open_products: 'ï¿½rï¿½nler listesi aï¿½ï¿½lï¿½yor...',
+            open_customers: 'Mï¿½ï¿½teri listesi aï¿½ï¿½lï¿½yor...',
+            open_stock: 'Stok yï¿½netimi ekranï¿½ aï¿½ï¿½lï¿½yor...',
+            open_reports: 'Raporlar ekranï¿½ aï¿½ï¿½lï¿½yor...',
+            open_dashboard: 'Ana panel aï¿½ï¿½lï¿½yor...',
+            show_today_sales: 'Bugï¿½nkï¿½ satï¿½ï¿½lar gï¿½steriliyor...',
         };
 
         if (intent === 'search_customer' && params.name) {
-            return `'${params.name}' müşterisi aranıyor...`;
+            return `'${params.name}' mï¿½ï¿½terisi aranï¿½yor...`;
         }
         if (intent === 'search_product' && params.name) {
-            return `'${params.name}' ürünü aranıyor...`;
+            return `'${params.name}' ï¿½rï¿½nï¿½ aranï¿½yor...`;
         }
         if (intent === 'add_product') {
-            return params.name ? `Yeni ürün ekleniyor: ${params.name}...` : 'Yeni ürün ekleme formu açılıyor...';
+            return params.name ? `Yeni ï¿½rï¿½n ekleniyor: ${params.name}...` : 'Yeni ï¿½rï¿½n ekleme formu aï¿½ï¿½lï¿½yor...';
         }
         if (intent === 'add_customer') {
-            return params.name ? `Yeni müşteri ekleniyor: ${params.name}...` : 'Yeni müşteri ekleme formu açılıyor...';
+            return params.name ? `Yeni mï¿½ï¿½teri ekleniyor: ${params.name}...` : 'Yeni mï¿½ï¿½teri ekleme formu aï¿½ï¿½lï¿½yor...';
         }
 
-        return responses[intent] || 'İşlem gerçekleştiriliyor...';
+        return responses[intent] || 'ï¿½ï¿½lem gerï¿½ekleï¿½tiriliyor...';
     }
 
     /**
@@ -549,7 +554,7 @@ export class VoiceService {
                 return !!(window as any).SpeechRecognition || !!(window as any).webkitSpeechRecognition;
 
             case VoiceServiceProvider.TAURI_WHISPER:
-                return !!window.__TAURI__;
+                return isTauri;
 
             case VoiceServiceProvider.CAPACITOR:
                 return !!(window as any).Capacitor;
@@ -586,4 +591,7 @@ export function getVoiceService(): VoiceService {
     }
     return voiceServiceInstance;
 }
+
+
+
 

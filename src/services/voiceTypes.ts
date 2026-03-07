@@ -26,3 +26,4 @@ export interface VoiceContext {
     lastTarget?: string; // 'customer', 'product', etc.
     timestamp: number;
 }
+

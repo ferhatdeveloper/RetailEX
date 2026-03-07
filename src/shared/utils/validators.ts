@@ -1,4 +1,4 @@
-﻿// Validation Utilities
+// Validation Utilities
 
 /**
  * Validate email format
@@ -76,4 +76,5 @@ export const isRequired = (value: any): boolean => {
   }
   return value !== null && value !== undefined;
 };
+
 

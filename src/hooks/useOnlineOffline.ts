@@ -1,4 +1,4 @@
-﻿// Online/Offline Detection Hook
+// Online/Offline Detection Hook
 
 import { useState, useEffect } from 'react';
 import { storeSyncService, type SyncStatus } from '../services/storeSyncService';
@@ -10,12 +10,12 @@ export function useOnlineOffline() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      console.log('ğŸŸ¢ Connection restored');
+      console.log('🟢 Connection restored');
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      console.log('ğŸ”´ Connection lost');
+      console.log('🔴 Connection lost');
     };
 
     // Subscribe to sync status changes
@@ -39,4 +39,6 @@ export function useOnlineOffline() {
     forceSync: () => storeSyncService.syncNow()
   };
 }
+
+
 

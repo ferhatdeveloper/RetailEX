@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Field Sales Management Service
  * Pattern: Strategy Pattern + Observer Pattern + State Pattern
  * Features: Route planning, GPS tracking, visit management, live location
@@ -133,14 +133,14 @@ class DistanceCalculator {
    */
   static calculate(loc1: GeoLocation, loc2: GeoLocation): number {
     const R = 6371e3; // Earth radius in meters
-    const φ1 = (loc1.latitude * Math.PI) / 180;
-    const φ2 = (loc2.latitude * Math.PI) / 180;
-    const Δφ = ((loc2.latitude - loc1.latitude) * Math.PI) / 180;
-    const Δλ = ((loc2.longitude - loc1.longitude) * Math.PI) / 180;
+    const phi1 = (loc1.latitude * Math.PI) / 180;
+    const phi2 = (loc2.latitude * Math.PI) / 180;
+    const deltaPhi = ((loc2.latitude - loc1.latitude) * Math.PI) / 180;
+    const deltaLambda = ((loc2.longitude - loc1.longitude) * Math.PI) / 180;
 
     const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
@@ -744,3 +744,5 @@ export type {
   GeoLocation, SalesRoute, PlannedVisit, Visit, LocationTrack, 
   Salesperson, VisitOutcome, RouteOptimizationRequest 
 };
+
+

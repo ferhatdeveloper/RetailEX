@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Settings, Tag, Layers, FileText, Component, Hash, Boxes, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { GenericDefinitionModule } from '../../modules/GenericDefinitionModule';
@@ -21,8 +21,14 @@ interface MaterialMasterRecordsProps {
     viewType: MasterRecordType;
 }
 
+import UnitSetsPage from './UnitSetsPage';
+
 export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) {
     const { t, tm } = useLanguage();
+
+    if (viewType === 'unit-sets') {
+        return <UnitSetsPage />;
+    }
 
     const getDefinitionConfig = (type: MasterRecordType) => {
         const commonColumns = [
@@ -49,13 +55,7 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
                     icon: Layers
                 };
             case 'unit-sets':
-                return {
-                    title: tm('unitSets'),
-                    description: tm('unitSetsDesc'),
-                    tableName: 'units',
-                    columns: commonColumns,
-                    icon: Component
-                };
+                return null; // Handled separately above
             case 'product-categories':
                 return {
                     title: tm('productCategories'),
@@ -130,30 +130,32 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
     const Icon = info.icon;
 
     return (
-        <div className="h-full flex flex-col bg-gray-50">
-            <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="h-full flex flex-col bg-background">
+            <div className="bg-[var(--surface-card)] border-b border-[var(--border-subtle)] px-6 py-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                        <Icon className="w-6 h-6 text-orange-600" />
+                    <div className="w-10 h-10 bg-orange-500/10 rounded-lg flex items-center justify-center">
+                        <Icon className="w-6 h-6 text-orange-500" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">{info.title}</h1>
-                        <p className="text-sm text-gray-500">{info.desc}</p>
+                        <h1 className="text-2xl font-bold text-foreground">{info.title}</h1>
+                        <p className="text-sm text-[var(--text-muted)]">{info.desc}</p>
                     </div>
                 </div>
             </div>
             <div className="flex-1 p-6 flex items-center justify-center">
                 <div className="text-center max-w-md">
-                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <Settings className="w-10 h-10 text-gray-400" />
+                    <div className="w-20 h-20 bg-[var(--surface-input)] rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Settings className="w-10 h-10 text-[var(--text-muted)]" />
                     </div>
-                    <h2 className="text-xl font-semibold text-gray-900 mb-2">{tm('developmentInProgress')}</h2>
-                    <p className="text-gray-500">
-                        <strong>{info.title}</strong> {tm('moduleDevDesc')}
+                    <h2 className="text-xl font-semibold text-foreground mb-2">{tm('developmentInProgress')}</h2>
+                    <p className="text-[var(--text-muted)]">
+                        <strong className="text-foreground">{info.title}</strong> {tm('moduleDevDesc')}
                     </p>
                 </div>
             </div>
         </div>
     );
 }
+
+
 

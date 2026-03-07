@@ -4,13 +4,14 @@
   BarChart3, Layers, ArrowRight, TrendingUpDown, Wallet, Settings, X,
   Truck, Receipt, Building, Target, Wrench, Calendar, Globe, RefreshCw,
   CreditCard, Shield, Database, Percent, Award, GitBranch, Calculator,
-  ClipboardList, Send, Mail, Phone, Smartphone, Bell, Download, Tag, UserCog
+  ClipboardList, Send, Mail, Phone, Smartphone, Bell, Download, Tag, UserCog,
+  FileSpreadsheet
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { Product, Customer, Sale } from '../../core/types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface DashboardShortcut {
@@ -86,6 +87,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     // Diğer
     { id: 'settings', icon: Settings, label: t.settings, color: 'from-gray-500 to-gray-600', category: t.systemSettings },
     { id: 'integrations', icon: Zap, label: t.integrations, color: 'from-yellow-500 to-yellow-600', category: t.systemSettings },
+    { id: 'excel', icon: FileSpreadsheet, label: 'Excel İçe/Dışa Aktar', color: 'from-emerald-500 to-emerald-600', category: t.systemSettings },
   ];
 
   // Filter actions based on menuMode

@@ -1,4 +1,4 @@
-﻿// ğŸ”„ Loading Component - Reusable loading states
+// 🔄 Loading Component - Reusable loading states
 
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -114,4 +114,6 @@ export function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: nu
     </div>
   );
 }
+
+
 

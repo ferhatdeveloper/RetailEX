@@ -1,4 +1,4 @@
-﻿import { supabase } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 
 export interface SerialLotNumber {
     id: string;
@@ -62,4 +62,5 @@ class SerialLotAPI {
 }
 
 export const serialLotAPI = new SerialLotAPI();
+
 

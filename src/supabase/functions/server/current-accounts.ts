@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Current Accounts Service (Backend)
  * 
  * CRUD operations for current accounts (Cari Hesaplar)
@@ -286,4 +286,5 @@ app.post("/:id/transactions", async (c) => {
 });
 
 export default app;
+
 

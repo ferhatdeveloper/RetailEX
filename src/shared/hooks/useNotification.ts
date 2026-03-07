@@ -1,4 +1,4 @@
-﻿// Notification Hook using Sonner
+// Notification Hook using Sonner
 import { toast } from 'sonner@2.0.3';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -47,4 +47,5 @@ export const useNotification = () => {
       notify('info', message, options),
   };
 };
+
 

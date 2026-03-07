@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { X, Grid3x3 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -69,4 +69,6 @@ export function POSPageSelectorModal({ currentPage, onSelectPage, onClose }: POS
     </div>
   );
 }
+
+
 

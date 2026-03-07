@@ -1,15 +1,15 @@
-﻿# ExRetailOS: Codebase Map
+# RetailEX: Codebase Map
 
 This document explains the project structure and the purpose of each major directory to ensure all AI agents have full context of where things are and how they interact.
 
-## 📂 Project Root
+## ?? Project Root
 - `.agent/`: Jules configuration, rulesets, and project context.
 - `src/`: Main frontend application (React + TypeScript).
 - `src-tauri/`: Desktop application backend (Rust).
 - `supabase/`: Database schema, migrations, and edge functions.
 - `scanner-service-app/`: (If applicable) Specialized service for barcode/QR scanning.
 
-## 💻 Frontend (src/)
+## ?? Frontend (src/)
 - `components/`: UI components organized by domain.
   - `trading/`: Invoices, quotes, orders.
   - `inventory/`: Product management, stock reports, warehouse management.
@@ -24,7 +24,7 @@ This document explains the project structure and the purpose of each major direc
 - `hooks/`: Reusable React hooks for shared logic.
 - `styles/`: CSS modules and global Tailwind v4 setup (`index.css`).
 
-## 🦀 Desktop Backend (src-tauri/)
+## ?? Desktop Backend (src-tauri/)
 - `src/`: Rust modules.
   - `commands/`: Functions exposed to the frontend via `invoke`.
   - `database/`: Local database or cache management.
@@ -32,11 +32,11 @@ This document explains the project structure and the purpose of each major direc
   - `vnc/`, `vpn/`: Remote management and secure connection modules.
   - `main.rs`: Entry point and Tauri builder configuration.
 
-## 🗄️ Database (supabase/)
+## ??? Database (supabase/)
 - `migrations/`: SQL files for schema updates and initial data seeds.
 - `functions/`: Edge functions for server-side logic (Node.js/Deno).
 
-## 🎯 Global Rules for Agents
+## ?? Global Rules for Agents
 1. **Locate First**: Before creating a new file, check if a similar component or service exists in the corresponding directory.
 2. **Reuse Patterns**: Follow the patterns in `UniversalInvoiceForm.tsx` for complex forms and `voiceService.ts` for AI integrations.
 3. **Cross-Language Awareness**: Remember that UI actions often trigger Rust commands in `src-tauri`.

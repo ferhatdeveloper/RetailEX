@@ -1,10 +1,10 @@
-﻿/**
+/**
  * ExRetailOS WebSocket Service
  * Real-time synchronization for multi-user operations
  * Connects to Tauri-Rust backend (localhost:9999)
  */
 
-import { invoke } from '@tauri-apps/api/tauri';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 import { APP_VERSION } from '../core/version';
 import { logger } from '../utils/logger';
 
@@ -41,7 +41,7 @@ export class WebSocketService {
   private userId: string | null = null;
   private storeId: string | null = null;
 
-  constructor(url: string = 'ws://localhost:9999') {
+  constructor(url: string = 'ws://localhost:8000/api/v1/ws') {
     this.url = url;
   }
 
@@ -65,20 +65,22 @@ export class WebSocketService {
     return new Promise((resolve, reject) => {
       try {
         // Try to start backend server first via Tauri (idempotent)
-        if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-          invoke('start_ws_server', { port: 9999 }).catch(err => {
-            logger.warn('[WS] Backend server start info:', err);
+        if (isTauri) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('start_ws_server', { port: 9999 }).catch(err => {
+              logger.warn('[WS] Backend server start info:', err);
+            });
           });
         }
 
-        logger.info(`🔌 Connecting to real-time server: ${this.url}`);
+        logger.info(`?? Connecting to real-time server: ${this.url}`);
 
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
-          logger.info(`✅ WebSocket connected - ${APP_VERSION.display}`);
+          logger.info(`? WebSocket connected - ${APP_VERSION.display}`);
 
           // Notify listeners
           this.broadcast('USER_CONNECTED', {
@@ -100,7 +102,7 @@ export class WebSocketService {
 
         this.ws.onclose = (event) => {
           this.isConnecting = false;
-          logger.warn(`🔌 WebSocket closed: ${event.code} ${event.reason}`);
+          logger.warn(`?? WebSocket closed: ${event.code} ${event.reason}`);
 
           // Only reconnect if it wasn't a manual logout/disconnect
           if (event.code !== 1000) {
@@ -110,7 +112,10 @@ export class WebSocketService {
 
         this.ws.onerror = (error) => {
           this.isConnecting = false;
-          logger.error('[WS] Connection error:', error);
+          // Only log first error to avoid console spam
+          if (this.reconnectAttempts === 0) {
+            logger.error('[WS] Connection error (Backend might be offline):', error);
+          }
           if (this.ws?.readyState !== WebSocket.OPEN) {
             reject(error);
           }
@@ -132,7 +137,7 @@ export class WebSocketService {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.min(this.reconnectAttempts, 5);
-      logger.info(`🔄 Reconnecting in ${delay / 1000}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      logger.info(`?? Reconnecting in ${delay / 1000}s (Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
       setTimeout(() => {
         if (this.userId && this.storeId) {
@@ -140,7 +145,7 @@ export class WebSocketService {
         }
       }, delay);
     } else {
-      logger.error('❌ Maximum WebSocket reconnection attempts reached');
+      logger.error('? Maximum WebSocket reconnection attempts reached');
     }
   }
 
@@ -151,7 +156,7 @@ export class WebSocketService {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
-      logger.info('🔌 WebSocket manually disconnected');
+      logger.info('?? WebSocket manually disconnected');
     }
   }
 
@@ -204,7 +209,7 @@ export class WebSocketService {
         try {
           callback(data);
         } catch (error) {
-          logger.error(`❌ Error in ${eventType} listener:`, error);
+          logger.error(`? Error in ${eventType} listener:`, error);
         }
       });
     }
@@ -237,3 +242,4 @@ export const useWebSocket = () => {
     getStatus: () => wsService.getStatus()
   };
 };
+

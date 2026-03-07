@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Performance Optimization Utilities
  * Pattern: Memoization + Lazy Loading + Virtual Scrolling
  */
@@ -322,4 +322,5 @@ export const perfMonitor = new PerformanceMonitor();
 
 // React useState import
 import { useState } from 'react';
+
 

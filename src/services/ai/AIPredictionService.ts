@@ -78,3 +78,4 @@ class AIPredictionService {
 }
 
 export const aiPredictionService = new AIPredictionService();
+

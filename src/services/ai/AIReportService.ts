@@ -73,3 +73,4 @@ class AIReportService {
 }
 
 export const aiReportService = new AIReportService();
+

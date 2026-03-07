@@ -238,3 +238,5 @@ export function BankaIslemModal({
         </div>
     );
 }
+
+

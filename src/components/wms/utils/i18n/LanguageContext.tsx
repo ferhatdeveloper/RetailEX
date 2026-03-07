@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Language, translations, Translations } from './translations';
 
 interface LanguageContextType {
@@ -64,3 +64,5 @@ export function useTranslations() {
   const { t } = useLanguage();
   return t;
 }
+
+

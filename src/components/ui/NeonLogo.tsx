@@ -76,3 +76,5 @@ export const NeonLogo: React.FC<NeonLogoProps> = ({ className = '', variant = 'f
         </div>
     );
 };
+
+

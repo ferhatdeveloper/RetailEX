@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Lot/Serial Tracking Service (Backend)
  * 
  * CRUD operations for lot and serial number tracking
@@ -308,4 +308,5 @@ app.get("/:id/movements", async (c) => {
 });
 
 export default app;
+
 

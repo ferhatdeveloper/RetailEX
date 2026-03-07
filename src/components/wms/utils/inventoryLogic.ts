@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Advanced Inventory Logic Utilities
  * FEFO (First Expired First Out) & FIFO (First In First Out)
  */
@@ -96,4 +96,6 @@ export function suggestStockForPicking(
     // If we couldn't fulfill the full quantity, that's handled by the caller checking suggestions sum
     return suggestions;
 }
+
+
 

@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Language, translations, Translations } from '../locales/translations';
 import { moduleTranslations, translate } from '../locales/module-translations';
 
@@ -55,4 +55,6 @@ export function useLanguage() {
   }
   return context;
 }
+
+
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     TrendingDown, Plus, Search, Trash2, X, Edit2, Eye,
     Printer, RefreshCw, Filter, ChevronLeft, ChevronRight,
@@ -468,3 +468,5 @@ export function StockMovementsModule() {
         </div>
     );
 }
+
+

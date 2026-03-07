@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Shield,
     Lock,
@@ -239,7 +239,7 @@ export function SecurityModulesWeb() {
                     </div>
 
                     <div className="mt-auto p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm text-blue-300">
-                        <span className="font-bold block mb-1">ℹ️ ExSecureGate Status</span>
+                        <span className="font-bold block mb-1">?? ExSecureGate Status</span>
                         Your connection is securely encrypted with ChaCha20-Poly1305. All traffic is routed through the central gateway.
                     </div>
                 </div>
@@ -247,4 +247,6 @@ export function SecurityModulesWeb() {
         </div>
     );
 }
+
+
 

@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -23,6 +23,9 @@ import MarketPOS from '../pos/MarketPOS';
 // const MarketPOS = lazy(() => import('../pos/MarketPOS'));
 // Lazy load WMS
 const WarehouseManagement = lazy(() => import('../wms')) as any;
+// Lazy load Restaurant & Beauty
+const RestaurantMain = lazy(() => import('../restaurant/index'));
+const BeautyMain = lazy(() => import('../beauty/index'));
 import { AppFooter } from '../shared/AppFooter';
 import { FirmSelector } from './FirmSelector';
 
@@ -62,7 +65,7 @@ export function MainLayout({
   const getInitialModule = (): Module => {
     // 1. Önce localStorage'da kayıtlı modüle bak (Sayfa yenileme durumu)
     const savedModule = localStorage.getItem('retailex_active_module') as Module;
-    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos'].includes(savedModule)) {
+    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
       return savedModule;
     }
 
@@ -416,6 +419,28 @@ export function MainLayout({
                   <Warehouse className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="font-medium hidden xs:inline">WMS</span>
                 </button>
+
+                <button
+                  onClick={() => setCurrentModule('restaurant')}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'restaurant'
+                    ? 'bg-white text-blue-700 shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                >
+                  <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="font-medium hidden xs:inline">Restoran</span>
+                </button>
+
+                <button
+                  onClick={() => setCurrentModule('beauty')}
+                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'beauty'
+                    ? 'bg-white text-blue-700 shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="font-medium hidden xs:inline">Beauty</span>
+                </button>
               </div>
 
               {/* Firma Selector - Enhanced */}
@@ -602,6 +627,28 @@ export function MainLayout({
             onSaleComplete={onSaleComplete}
             onBack={() => setCurrentModule('wms')}
           />
+        ) : currentModule === 'restaurant' ? (
+          <Suspense fallback={
+            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100">
+              <div className="text-center">
+                <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-orange-600 font-medium">Restoran Modülü Yükleniyor...</p>
+              </div>
+            </div>
+          }>
+            <RestaurantMain />
+          </Suspense>
+        ) : currentModule === 'beauty' ? (
+          <Suspense fallback={
+            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100">
+              <div className="text-center">
+                <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-purple-600 font-medium">Beauty & Klinik Yükleniyor...</p>
+              </div>
+            </div>
+          }>
+            <BeautyMain />
+          </Suspense>
         ) : (
           <ManagementModule
             products={products}

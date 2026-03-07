@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Offline Queue System
  * Handles offline transactions and auto-sync when connection restored
  */
@@ -330,4 +330,5 @@ class OfflineQueue {
 
 // Export singleton instance
 export const offlineQueue = new OfflineQueue();
+
 

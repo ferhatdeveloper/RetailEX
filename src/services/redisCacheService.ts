@@ -1,4 +1,4 @@
-﻿// Redis Cache Service - Multi-Layer Caching Strategy
+// Redis Cache Service - Multi-Layer Caching Strategy
 
 export interface CacheConfig {
   host: string;
@@ -60,7 +60,7 @@ class RedisCacheService {
    */
   private async init() {
     if (this.simulationMode) {
-      console.log('💾 Redis Cache Service (Simulation Mode)');
+      console.log('?? Redis Cache Service (Simulation Mode)');
       this.isConnected = true;
       this.startCleanupInterval();
       return;
@@ -79,9 +79,9 @@ class RedisCacheService {
       // await this.client.connect();
 
       this.isConnected = true;
-      console.log('💾 Redis connected:', this.config.host);
+      console.log('?? Redis connected:', this.config.host);
     } catch (error) {
-      console.error('❌ Redis connection failed:', error);
+      console.error('? Redis connection failed:', error);
       this.isConnected = false;
     }
   }
@@ -118,7 +118,7 @@ class RedisCacheService {
 
     // Real Redis implementation
     // await this.client.setEx(key, cacheTTL, JSON.stringify(value));
-    console.log('💾 Cached:', key, 'TTL:', cacheTTL);
+    console.log('?? Cached:', key, 'TTL:', cacheTTL);
   }
 
   /**
@@ -127,7 +127,7 @@ class RedisCacheService {
   async del(key: string): Promise<void> {
     if (this.simulationMode) {
       this.localCache.delete(key);
-      console.log('🗑️ Deleted from cache:', key);
+      console.log('??? Deleted from cache:', key);
       return;
     }
 
@@ -149,7 +149,7 @@ class RedisCacheService {
         }
       }
 
-      console.log('🗑️ Invalidated', count, 'keys matching:', pattern);
+      console.log('??? Invalidated', count, 'keys matching:', pattern);
       return count;
     }
 
@@ -219,7 +219,7 @@ class RedisCacheService {
       for (const entry of entries) {
         this.setInLocalCache(entry.key, entry.value, entry.ttl || this.config.ttl.default);
       }
-      console.log('💾 Batch cached:', entries.length, 'items');
+      console.log('?? Batch cached:', entries.length, 'items');
       return;
     }
 
@@ -283,7 +283,7 @@ class RedisCacheService {
     await this.del(`store:${storeId}`);
     // Invalidate related caches
     await this.delPattern(`agg:*store:${storeId}*`);
-    console.log('🔄 Invalidated cache for store:', storeId);
+    console.log('?? Invalidated cache for store:', storeId);
   }
 
   /**
@@ -291,7 +291,7 @@ class RedisCacheService {
    */
   async invalidateAllStores(): Promise<void> {
     await this.delPattern('store:*');
-    console.log('🔄 Invalidated all store caches');
+    console.log('?? Invalidated all store caches');
   }
 
   /**
@@ -324,7 +324,7 @@ class RedisCacheService {
       this.localCache.clear();
       this.hitCount = 0;
       this.missCount = 0;
-      console.log('🗑️ Cache cleared');
+      console.log('??? Cache cleared');
       return;
     }
 
@@ -405,7 +405,7 @@ class RedisCacheService {
 
     if (oldestKey) {
       this.localCache.delete(oldestKey);
-      console.log('ğŸ—‘ï¸ Evicted (LRU):', oldestKey);
+      console.log('🗑️ Evicted (LRU):', oldestKey);
     }
   }
 
@@ -422,7 +422,7 @@ class RedisCacheService {
 
     if (leastUsedKey) {
       this.localCache.delete(leastUsedKey);
-      console.log('ğŸ—‘ï¸ Evicted (LFU):', leastUsedKey);
+      console.log('🗑️ Evicted (LFU):', leastUsedKey);
     }
   }
 
@@ -430,7 +430,7 @@ class RedisCacheService {
     const firstKey = this.localCache.keys().next().value;
     if (firstKey) {
       this.localCache.delete(firstKey);
-      console.log('ğŸ—‘ï¸ Evicted (FIFO):', firstKey);
+      console.log('🗑️ Evicted (FIFO):', firstKey);
     }
   }
 
@@ -448,7 +448,7 @@ class RedisCacheService {
 
     if (shortestTTLKey) {
       this.localCache.delete(shortestTTLKey);
-      console.log('ğŸ—‘ï¸ Evicted (TTL):', shortestTTLKey);
+      console.log('🗑️ Evicted (TTL):', shortestTTLKey);
     }
   }
 
@@ -468,7 +468,7 @@ class RedisCacheService {
       }
 
       if (cleaned > 0) {
-        console.log('🧹 Cleaned up', cleaned, 'expired cache entries');
+        console.log('?? Cleaned up', cleaned, 'expired cache entries');
       }
     }, 60000); // Every minute
   }
@@ -494,4 +494,5 @@ class RedisCacheService {
 
 // Singleton instance
 export const redisCacheService = new RedisCacheService();
+
 

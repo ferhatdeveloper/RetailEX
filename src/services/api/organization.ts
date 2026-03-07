@@ -54,7 +54,7 @@ export const organizationAPI = {
             const isUpdate = !!firm.id;
             if (isUpdate) {
                 const { rows } = await postgres.query(
-                    `UPDATE firms SET name = $1, tax_nr = $2, tax_office = $3, city = $4 WHERE id = $5 RETURNING *`,
+                    `UPDATE firms SET name = $1, tax_nr = $2, tax_office = $3, city = $4 WHERE id = $5::text::uuid RETURNING *`,
                     [firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, firm.id]
                 );
                 return rows[0];
@@ -76,7 +76,7 @@ export const organizationAPI = {
      */
     async deleteFirm(id: string): Promise<boolean> {
         try {
-            const { rowCount } = await postgres.query(`DELETE FROM firms WHERE id = $1`, [id]);
+            const { rowCount } = await postgres.query(`DELETE FROM firms WHERE id = $1::text::uuid`, [id]);
             return rowCount > 0;
         } catch (error) {
             console.error('[OrganizationAPI] deleteFirm failed:', error);
@@ -90,13 +90,14 @@ export const organizationAPI = {
     async getPeriods(firmId: string): Promise<Period[]> {
         try {
             const { rows } = await postgres.query(
-                `SELECT * FROM periods WHERE firm_id = $1 ORDER BY nr DESC`,
+                `SELECT * FROM periods WHERE firm_id = $1::text::uuid ORDER BY nr DESC`,
                 [firmId]
             );
             return rows.map(r => ({
                 ...r,
                 id: r.id.toString(),
-                donem_adi: r.nr.toString().padStart(2, '0'),
+                firma_id: r.firm_id ? r.firm_id.toString() : r.firma_id,  // alias for tree filter
+                donem_adi: r.nr ? `${r.nr}. Dönem` : r.donem_adi || 'Dönem',
                 baslangic_tarihi: r.beg_date,
                 bitis_tarihi: r.end_date
             }));
@@ -112,16 +113,19 @@ export const organizationAPI = {
     async savePeriod(period: any): Promise<Period | null> {
         try {
             const isUpdate = !!period.id;
+            const nr = period.nr !== undefined ? period.nr : (parseInt(period.donem_adi) || 1);
+            const isActive = period.durum ? period.durum === 'acik' : (period.is_active !== false);
+
             if (isUpdate) {
                 const { rows } = await postgres.query(
-                    `UPDATE periods SET beg_date = $1, end_date = $2 WHERE id = $3 RETURNING *`,
-                    [period.baslangic_tarihi || period.beg_date, period.bitis_tarihi || period.end_date, period.id]
+                    `UPDATE periods SET nr = $1::text::int4, beg_date = $2::text::date, end_date = $3::text::date, is_active = $4 WHERE id = $5::text::uuid RETURNING *`,
+                    [nr.toString(), period.baslangic_tarihi || period.beg_date, period.bitis_tarihi || period.end_date, isActive, period.id]
                 );
                 return rows[0];
             } else {
                 const { rows } = await postgres.query(
-                    `INSERT INTO periods (firm_id, nr, beg_date, end_date) VALUES ($1, $2, $3, $4) RETURNING *`,
-                    [period.firma_id, period.nr, period.baslangic_tarihi, period.bitis_tarihi]
+                    `INSERT INTO periods (firm_id, nr, beg_date, end_date, is_active) VALUES ($1::text::uuid, $2::text::int4, $3::text::date, $4::text::date, $5) RETURNING *`,
+                    [period.firma_id, nr.toString(), period.baslangic_tarihi, period.bitis_tarihi, isActive]
                 );
                 return rows[0];
             }
@@ -131,3 +135,4 @@ export const organizationAPI = {
         }
     }
 };
+

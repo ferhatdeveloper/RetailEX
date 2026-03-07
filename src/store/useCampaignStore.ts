@@ -1,4 +1,4 @@
-﻿// Campaign Store with SQL Integration
+// Campaign Store with SQL Integration
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Campaign } from '../core/types';
@@ -164,3 +164,4 @@ if (typeof window !== 'undefined') {
     store.loadCampaigns();
   }
 }
+

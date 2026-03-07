@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Business Calculation Utilities Tests
  */
 
@@ -113,4 +113,5 @@ describe('Calculations Utility', () => {
         });
     });
 });
+
 

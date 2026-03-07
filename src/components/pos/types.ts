@@ -1,4 +1,4 @@
-﻿import type { Product, Customer, Campaign, ProductVariant } from '../../App';
+import type { Product, Customer, Campaign, ProductVariant } from '../../App';
 
 export interface CartItem {
   product: Product;
@@ -82,3 +82,5 @@ export type SaleRecord = {
 
 // Payment type for POS
 export type PaymentType = 'cash' | 'card' | 'gateway';
+
+

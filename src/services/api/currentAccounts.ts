@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Current Accounts API Service
  * Unified access to Customers and Suppliers
  */
@@ -231,4 +231,5 @@ export async function fetchAccountStatement(id: string, baslangic?: string, biti
   console.warn('fetchAccountStatement not fully implemented for PostgreSQL yet');
   return [];
 }
+
 

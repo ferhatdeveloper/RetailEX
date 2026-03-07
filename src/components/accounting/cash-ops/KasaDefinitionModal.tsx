@@ -145,3 +145,5 @@ export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinition
         </div>
     );
 }
+
+

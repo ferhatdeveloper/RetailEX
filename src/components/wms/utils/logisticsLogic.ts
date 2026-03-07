@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Logistics & Load Optimization Utilities
  * Handles vehicle load planning and route grouping.
  */
@@ -94,4 +94,6 @@ export function optimizeRouteSequence(items: LoadItem[]): LoadItem[] {
 
     return [...items].sort((a, b) => b.priority - a.priority);
 }
+
+
 

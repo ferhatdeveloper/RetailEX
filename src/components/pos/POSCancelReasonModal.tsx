@@ -1,4 +1,4 @@
-﻿import { X, FileX } from 'lucide-react';
+import { X, FileX } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -129,3 +129,5 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
     </div>
   );
 }
+
+

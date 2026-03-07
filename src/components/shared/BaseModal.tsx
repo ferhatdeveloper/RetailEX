@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
 interface BaseModalProps {
@@ -46,7 +46,7 @@ export function BaseModal({
             ></div>
 
             {/* Modal Container */}
-            <div className={`relative w-full ${maxWidth} bg-white rounded-lg shadow-2xl transform transition-all flex flex-col max-h-[95vh]`}>
+            <div className={`relative w-full ${maxWidth} bg-[var(--surface-modal)] rounded-lg shadow-2xl transform transition-all flex flex-col max-h-[95vh] border border-[var(--border-subtle)]`}>
                 {/* Header - Flat Blue Style */}
                 <div className="flex items-center justify-between px-4 py-3 bg-blue-600 rounded-t-lg">
                     <h3 className="text-base font-semibold text-white flex items-center gap-2">
@@ -61,13 +61,13 @@ export function BaseModal({
                 </div>
 
                 {/* Content */}
-                <div className="p-4 overflow-y-auto">
+                <div className="p-4 overflow-y-auto text-foreground">
                     {children}
                 </div>
 
                 {/* Footer */}
                 {footer && (
-                    <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50 rounded-b-lg">
+                    <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border-subtle)] bg-[var(--surface-input)]/50 rounded-b-lg">
                         {footer}
                     </div>
                 )}
@@ -75,4 +75,6 @@ export function BaseModal({
         </div>
     );
 }
+
+
 

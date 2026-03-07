@@ -101,26 +101,26 @@ export const DemoDataManager: React.FC = () => {
                         ('ELEC', 'Elektronik', true), ('FOOD', 'Gıda', true), ('CLOTH', 'Giyim', true)
                         ON CONFLICT (code) DO NOTHING;
 
-                        INSERT INTO rex${firmSuffix}_products (code, name, category_id, vat_rate, price, stock, is_active) VALUES
-                        ('PHONE-001', 'iPhone 15 Pro', (SELECT id FROM categories WHERE code = 'ELEC' LIMIT 1), 20, 45000.00, 15, true),
-                        ('LAPTOP-001', 'MacBook Pro 16"', (SELECT id FROM categories WHERE code = 'ELEC' LIMIT 1), 20, 95000.00, 8, true),
-                        ('SNACK-001', 'Çikolata Bar', (SELECT id FROM categories WHERE code = 'FOOD' LIMIT 1), 10, 15.00, 500, true)
+                        INSERT INTO rex${firmSuffix}_products (code, name, category_id, vat_rate, price, stock, is_active, unit, unit_set_id) VALUES
+                        ('PHONE-001', 'iPhone 15 Pro', (SELECT id FROM categories WHERE code = 'ELEC' LIMIT 1), 20, 45000.00, 15, true, 'ADET', NULL),
+                        ('LAPTOP-001', 'MacBook Pro 16"', (SELECT id FROM categories WHERE code = 'ELEC' LIMIT 1), 20, 95000.00, 8, true, 'ADET', NULL),
+                        ('SNACK-001', 'Çikolata Bar', (SELECT id FROM categories WHERE code = 'FOOD' LIMIT 1), 10, 15.00, 500, true, 'ADET', NULL)
                         ON CONFLICT (code) DO NOTHING;
                     `);
                 } else if (moduleId === 'customers') {
                     await postgres.query(`
-                        INSERT INTO rex${firmSuffix}_customers (code, name, tax_nr, address, city, is_active) VALUES
-                        ('CUST-001', 'Ahmet Yılmaz', '1234567890', 'Bağdat Cad. No:123', 'İstanbul', true),
-                        ('CORP-001', 'ABC Teknoloji A.Ş.', '9876543210', 'Maslak No:100', 'İstanbul', true)
+                        INSERT INTO rex${firmSuffix}_customers (firm_nr, code, name, tax_nr, address, city, is_active) VALUES
+                        ($1, 'CUST-001', 'Ahmet Yılmaz', '1234567890', 'Bağdat Cad. No:123', 'İstanbul', true),
+                        ($1, 'CORP-001', 'ABC Teknoloji A.Ş.', '9876543210', 'Maslak No:100', 'İstanbul', true)
                         ON CONFLICT (code) DO NOTHING;
-                    `);
+                    `, [selectedFirm]);
                 } else if (moduleId === 'sales') {
                     await postgres.query(`
-                        INSERT INTO rex${periodSuffix}_sales (fiche_no, date, customer_ref, total_net, total_vat, total_gross)
-                        SELECT 'SAT-DEMO-001', NOW(), logicalref, 1000, 200, 1200 
+                        INSERT INTO rex${periodSuffix}_sales (firm_nr, fiche_no, date, customer_ref, total_net, total_vat, total_gross)
+                        SELECT $1, 'SAT-DEMO-001', NOW(), id, 1000, 200, 1200 
                         FROM rex${firmSuffix}_customers LIMIT 1
                         ON CONFLICT (fiche_no) DO NOTHING;
-                    `);
+                    `, [selectedFirm]);
                 }
             }
 
@@ -376,3 +376,5 @@ export const DemoDataManager: React.FC = () => {
         </div>
     );
 }; 
+
+

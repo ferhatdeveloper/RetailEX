@@ -1,4 +1,4 @@
-﻿// Store Selection & Offline Data Synchronization Service
+// Store Selection & Offline Data Synchronization Service
 
 import { storeApiService } from './storeApiService';
 import { logger } from './loggingService';
@@ -82,7 +82,7 @@ class StoreSyncService {
       this.startAutoSync();
     }
 
-    console.log('📡 StoreSyncService initialized', {
+    console.log('?? StoreSyncService initialized', {
       isOnline: this.isOnline,
       selectedStore: this.selectedStore?.name,
       pendingOps: this.syncQueue.length
@@ -116,7 +116,7 @@ class StoreSyncService {
       // Save to localStorage
       localStorage.setItem('selectedStore', JSON.stringify(this.selectedStore));
 
-      console.log('🏪 Store selected:', this.selectedStore.name);
+      console.log('?? Store selected:', this.selectedStore.name);
       this.notifyListeners();
 
       return this.selectedStore;
@@ -140,7 +140,7 @@ class StoreSyncService {
     this.selectedStore = null;
     localStorage.removeItem('selectedStore');
     this.notifyListeners();
-    console.log('🏪 Store selection cleared');
+    console.log('?? Store selection cleared');
   }
 
   /**
@@ -188,7 +188,7 @@ class StoreSyncService {
       }
     }, 30000); // 30 seconds
 
-    console.log('⏰ Auto-sync started');
+    console.log('? Auto-sync started');
   }
 
   /**
@@ -198,7 +198,7 @@ class StoreSyncService {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
-      console.log('⏰ Auto-sync stopped');
+      console.log('? Auto-sync stopped');
     }
   }
 
@@ -207,17 +207,17 @@ class StoreSyncService {
    */
   async syncNow(): Promise<void> {
     if (!this.isOnline) {
-      console.log('⚠️ Cannot sync - offline');
+      console.log('?? Cannot sync - offline');
       return;
     }
 
     if (this.isSyncing) {
-      console.log('⚠️ Sync already in progress');
+      console.log('?? Sync already in progress');
       return;
     }
 
     if (this.syncQueue.length === 0) {
-      console.log('✅ Nothing to sync');
+      console.log('? Nothing to sync');
       return;
     }
 
@@ -265,7 +265,7 @@ class StoreSyncService {
     this.isSyncing = false;
     this.notifyListeners();
 
-    console.log('✅ Sync completed. Remaining:', this.syncQueue.length);
+    console.log('? Sync completed. Remaining:', this.syncQueue.length);
   }
 
   /**
@@ -328,7 +328,7 @@ class StoreSyncService {
     this.syncQueue = [];
     this.persistQueue();
     this.notifyListeners();
-    console.log('🗑️ Sync queue cleared');
+    console.log('??? Sync queue cleared');
   }
 
   /**
@@ -363,7 +363,7 @@ class StoreSyncService {
       throw new Error('Cannot download data while offline');
     }
 
-    console.log('⬇️ Downloading store data...', storeId);
+    console.log('?? Downloading store data...', storeId);
 
     try {
       // In real app, download all necessary data
@@ -384,9 +384,9 @@ class StoreSyncService {
       // Save to IndexedDB or localStorage
       localStorage.setItem(`storeData-${storeId}`, JSON.stringify(storeData));
 
-      console.log('✅ Store data downloaded');
+      console.log('? Store data downloaded');
     } catch (error) {
-      console.error('❌ Failed to download store data:', error);
+      console.error('? Failed to download store data:', error);
       throw error;
     }
   }
@@ -412,4 +412,5 @@ class StoreSyncService {
 
 // Singleton instance
 export const storeSyncService = new StoreSyncService();
+
 

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { productAPI } from '../../../services/api/products';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -90,4 +90,6 @@ export function InventoryReport() {
         </div>
     );
 }
+
+
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Activity, Shield, Cpu, Network, Terminal, RefreshCw, Radio, HardDrive } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
 export function SystemMonitoringModule() {
     const [vpnStatus, setVpnStatus] = useState<any>(null);
@@ -14,12 +14,18 @@ export function SystemMonitoringModule() {
 
     const fetchStatus = async () => {
         try {
-            const status: any = await invoke('get_vpn_status');
-            const id: any = await invoke('get_system_id');
-            setVpnStatus(status);
-            setHwId(id);
-            if (status.is_running) {
-                addLog(`📡 Mesh IP: ${status.virtual_ip} aktif.`);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const status: any = await invoke('get_vpn_status');
+                const id: any = await invoke('get_system_id');
+                setVpnStatus(status);
+                setHwId(id);
+                if (status.is_running) {
+                    addLog(`📡 Mesh IP: ${status.virtual_ip} aktif.`);
+                }
+            } else {
+                setVpnStatus({ is_running: false, virtual_ip: '127.0.0.1 (Web)' });
+                setHwId('WEB-CLIENT-ID-MOCK');
             }
             setLoading(false);
         } catch (e) {
@@ -134,3 +140,5 @@ export function SystemMonitoringModule() {
         </div>
     );
 }
+
+

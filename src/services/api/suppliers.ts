@@ -16,13 +16,58 @@ export const supplierAPI = {
       const custTable = `rex_${ERP_SETTINGS.firmNr}_customers`;
       const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
 
-      const { rows } = await postgres.query(
-        `SELECT id, code, name, phone, email, address, city, balance, is_active, created_at, 'customer' as card_type FROM ${custTable} WHERE firm_nr = $1 AND is_active = true
-         UNION ALL
-         SELECT id, code, name, phone, email, address, city, balance, is_active, created_at, 'supplier' as card_type FROM ${suppTable} WHERE is_active = true
-         ORDER BY name ASC`,
-        [ERP_SETTINGS.firmNr]
-      );
+      const sql = `
+        WITH account_balances AS (
+          -- Customer balances from sales (debit) and cash_lines (credit)
+          SELECT 
+            customer_id as id,
+            SUM(CASE 
+              WHEN fiche_type IN ('CH_TAHSILAT', 'return_invoice') THEN -net_amount 
+              ELSE net_amount 
+            END) as calculated_balance
+          FROM (
+            SELECT customer_id, net_amount, fiche_type FROM sales WHERE fiche_type IN ('sales_invoice', 'return_invoice')
+            UNION ALL
+            SELECT customer_id, amount as net_amount, transaction_type as fiche_type FROM cash_lines WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          ) transactions
+          GROUP BY customer_id
+        )
+        SELECT 
+          c.id, c.code, c.name, c.phone, c.email, c.address, c.city, 
+          COALESCE(b.calculated_balance, 0) as balance, 
+          c.is_active, c.created_at, 'customer' as card_type 
+        FROM ${custTable} c
+        LEFT JOIN account_balances b ON c.id = b.id
+        WHERE c.firm_nr = $1 AND c.is_active = true
+        
+        UNION ALL
+        
+        SELECT 
+          s.id, s.code, s.name, s.phone, s.email, s.address, s.city, 
+          COALESCE(b.calculated_balance, 0) as balance, 
+          s.is_active, s.created_at, 'supplier' as card_type 
+        FROM ${suppTable} s
+        LEFT JOIN (
+          -- Supplier balances: 
+          -- Borç (+): Ödeme (CH_ODEME), Alış İadeleri (return_invoice)
+          -- Alacak (-): Alışlar (purchase_invoice), Tahsilatlar/İadeler (CH_TAHSILAT)
+          SELECT 
+            customer_id as id,
+            SUM(CASE 
+              WHEN transaction_type IN ('CH_ODEME', 'return_invoice') THEN amount 
+              ELSE -amount 
+            END) as calculated_balance
+          FROM (
+            SELECT customer_id, net_amount as amount, fiche_type as transaction_type FROM sales WHERE fiche_type IN ('purchase_invoice', 'return_invoice')
+            UNION ALL
+            SELECT customer_id, amount, transaction_type FROM cash_lines WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          ) supp_trans
+          GROUP BY customer_id
+        ) b ON s.id = b.id
+        WHERE s.is_active = true
+        ORDER BY name ASC`;
+
+      const { rows } = await postgres.query(sql, [ERP_SETTINGS.firmNr]);
       return rows.map(mapDatabaseSupplierToSupplier);
     } catch (error) {
       console.error('[SupplierAPI] getAll failed:', error);
@@ -84,11 +129,9 @@ export const supplierAPI = {
         account.tax_office, true
       ];
 
-      // Customers table has firm_nr column
-      if (!isSupplier) {
-        columns.push('firm_nr');
-        values.push(ERP_SETTINGS.firmNr);
-      }
+      // Her iki tablo da firm_nr NOT NULL gerektirir
+      columns.push('firm_nr');
+      values.push(ERP_SETTINGS.firmNr);
 
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -168,6 +211,39 @@ export const supplierAPI = {
     } catch (error: any) {
       console.error('[SupplierAPI] delete failed:', error);
       throw new Error(error.message || 'Cari hesap silinemedi');
+    }
+  },
+
+  /**
+   * Get account statement (ekstresi) for a customer/supplier
+   */
+  async getAccountStatement(accountId: string, startDate?: string, endDate?: string): Promise<any[]> {
+    try {
+      // Ekstresi = faturalar (sales) + kasa işlemleri (cash_lines)
+      // Both halves of the UNION share the same $1/$2/$3 parameters
+      const values: any[] = [accountId];
+      let dateFilter = '';
+      let i = 2;
+      if (startDate) { dateFilter += ` AND t.date::date >= $${i++}::date`; values.push(startDate); }
+      if (endDate) { dateFilter += ` AND t.date::date <= $${i++}::date`; values.push(endDate); }
+
+      const sql = `
+        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes
+        FROM sales t
+        WHERE t.customer_id = $1::uuid${dateFilter}
+        UNION ALL
+        SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
+               amount AS total_amount, currency_code AS currency, definition AS notes
+        FROM cash_lines t
+        WHERE t.customer_id = $1::uuid${dateFilter}
+          AND t.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+        ORDER BY date ASC`;
+
+      const { rows } = await postgres.query(sql, values);
+      return rows;
+    } catch (error) {
+      console.error('[SupplierAPI] getAccountStatement failed:', error);
+      return [];
     }
   },
 

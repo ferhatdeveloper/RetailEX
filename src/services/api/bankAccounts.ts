@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Bank Accounts API Service
  */
 
@@ -80,4 +80,5 @@ export async function fetchBankStatement(accountId: string, baslangic?: string, 
   if (!response.ok) throw new Error('Failed to fetch statement');
   return await response.json();
 }
+
 

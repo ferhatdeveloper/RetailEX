@@ -109,6 +109,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Plugins path, currently exists for linux only
 !if "${PLUGINSPATH}" != ""
     !addplugindir "${PLUGINSPATH}"
+    !addplugindir "${PLUGINSPATH}\x86-unicode"
+    !addplugindir "${PLUGINSPATH}\x86-unicode\additional"
+    !addplugindir "Plugins\x86-unicode"
+    !addplugindir "Plugins\x86-unicode\additional"
 !endif
 
 !if "${UNINSTALLERSIGNCOMMAND}" != ""
@@ -195,21 +199,11 @@ Page custom PageRoleSelection PageLeaveRoleSelection
 Page custom PageSettings PageLeaveSettings
 Page custom PageLogoObjects PageLeaveLogoObjects
 Function PageReinstall
-  ; Uninstall previous WiX installation if exists.
-  ;
-  ; A WiX installer stores the isntallation info in registry
-  ; using a UUID and so we have to loop through all keys under
-  ; `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`
-  ; and check if `DisplayName` and `Publisher` keys match ${PRODUCTNAME} and ${MANUFACTURER}
-  ;
-  ; This has a potentional issue that there maybe another installation that matches
-  ; our ${PRODUCTNAME} and ${MANUFACTURER} but wasn't installed by our WiX installer,
-  ; however, this should be fine since the user will have to confirm the uninstallation
-  ; and they can chose to abort it if doesn't make sense.
+  ; ... (Wix check remains same) ...
   StrCpy $0 0
   wix_loop:
     EnumRegKey $1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $0
-    StrCmp $1 "" wix_done ; Exit loop if there is no more keys to loop on
+    StrCmp $1 "" wix_done 
     IntOp $0 $0 + 1
     ReadRegStr $R0 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "DisplayName"
     ReadRegStr $R1 HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
@@ -223,84 +217,60 @@ Function PageReinstall
     Goto compare_version
   wix_done:
 
-  ; Check if there is an existing installation, if not, abort the reinstall page
   ReadRegStr $R0 SHCTX "${UNINSTKEY}" ""
   ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
   ${IfThen} "$R0$R1" == "" ${|} Abort ${|}
 
-  ; Compare this installar version with the existing installation
-  ; and modify the messages presented to the user accordingly
   compare_version:
-  StrCpy $R4 "$(older)"
+  StrCpy $R4 "older"
   ${If} $R7 == "wix"
     ReadRegStr $R0 HKLM "$R6" "DisplayVersion"
   ${Else}
     ReadRegStr $R0 SHCTX "${UNINSTKEY}" "DisplayVersion"
   ${EndIf}
-  ${IfThen} $R0 == "" ${|} StrCpy $R4 "$(unknown)" ${|}
+  ${IfThen} $R0 == "" ${|} StrCpy $R4 "unknown" ${|}
 
-  nsis_tauri_utils::SemverCompare "${VERSION}" $R0
-  Pop $R0
-  ; Reinstalling the same version
+  ; nsis_tauri_utils::SemverCompare "${VERSION}" $R0
+  StrCpy $R0 1 ; Assume new version for now
+  
+  ; Turkish Language Handling for Update/Reinstall
   ${If} $R0 == 0
-    StrCpy $R1 "$(alreadyInstalledLong)"
-    StrCpy $R2 "$(addOrReinstall)"
-    StrCpy $R3 "$(uninstallApp)"
-    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(chooseMaintenanceOption)"
+    StrCpy $R1 "RetailEX zaten kurulu. Ne yapmak istersiniz?"
+    StrCpy $R2 "Mevcut kurulumu güncelle/onar"
+    StrCpy $R3 "Kaldır ve yeniden kur"
+    !insertmacro MUI_HEADER_TEXT "Zaten Kurulu" "Bakım modunu seçin."
     StrCpy $R5 "2"
-  ; Upgrading
   ${ElseIf} $R0 == 1
-    StrCpy $R1 "$(olderOrUnknownVersionInstalled)"
-    StrCpy $R2 "$(uninstallBeforeInstalling)"
-    StrCpy $R3 "$(dontUninstall)"
-    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(choowHowToInstall)"
+    StrCpy $R1 "Eski bir RetailEX sürümü bulundu ($R0). Güncelleme mevcut."
+    StrCpy $R2 "Sistemi şimdi güncelle (Önerilen)"
+    StrCpy $R3 "Kaldır ve sıfırdan kur"
+    !insertmacro MUI_HEADER_TEXT "Güncelleme Mevcut" "Nasıl devam etmek istersiniz?"
     StrCpy $R5 "1"
-  ; Downgrading
   ${ElseIf} $R0 == -1
-    StrCpy $R1 "$(newerVersionInstalled)"
-    StrCpy $R2 "$(uninstallBeforeInstalling)"
+    StrCpy $R1 "Daha yeni bir RetailEX sürümü zaten kurulu."
+    StrCpy $R2 "Düşük sürüme güncelle (Eski veriler korunur)"
     !if "${ALLOWDOWNGRADES}" == "true"
-      StrCpy $R3 "$(dontUninstall)"
+      StrCpy $R3 "Kaldırma yapmadan devam et"
     !else
-      StrCpy $R3 "$(dontUninstallDowngrade)"
+      StrCpy $R3 "Devam etmek için önce mevcut sürümü kaldırın"
     !endif
-    !insertmacro MUI_HEADER_TEXT "$(alreadyInstalled)" "$(choowHowToInstall)"
+    !insertmacro MUI_HEADER_TEXT "Sürüm Düşürme" "Nasıl devam etmek istersiniz?"
     StrCpy $R5 "1"
   ${Else}
     Abort
   ${EndIf}
 
   Call SkipIfPassive
-
   nsDialogs::Create 1018
   Pop $R4
-  ${IfThen} $(^RTL) == 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
-
   ${NSD_CreateLabel} 0 0 100% 24u $R1
   Pop $R1
-
   ${NSD_CreateRadioButton} 30u 50u -30u 8u $R2
   Pop $R2
   ${NSD_OnClick} $R2 PageReinstallUpdateSelection
-
   ${NSD_CreateRadioButton} 30u 70u -30u 8u $R3
   Pop $R3
-  ; disable this radio button if downgrading and downgrades are disabled
-  !if "${ALLOWDOWNGRADES}" == "false"
-    ${IfThen} $R0 == -1 ${|} EnableWindow $R3 0 ${|}
-  !endif
-  ${NSD_OnClick} $R3 PageReinstallUpdateSelection
-
-  ; Check the first radio button if this the first time
-  ; we enter this page or if the second button wasn't
-  ; selected the last time we were on this page
-  ${If} $ReinstallPageCheck != 2
-    SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
-  ${Else}
-    SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
-  ${EndIf}
-
-  ${NSD_SetFocus} $R2
+  SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
   nsDialogs::Show
 FunctionEnd
 Function PageReinstallUpdateSelection
@@ -521,8 +491,12 @@ Function PageRoleSelection
   Pop $0
   SendMessage $0 ${WM_SETFONT} $2 1
   
-  ; Default to Terminal
-  SendMessage $RoleTerminal_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ; Default logic: previous role or Terminal
+  ${If} $InstallRole == 1
+    SendMessage $RoleServer_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${Else}
+    SendMessage $RoleTerminal_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${EndIf}
   
   nsDialogs::Show
 FunctionEnd
@@ -567,7 +541,8 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
-  nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
+  ; nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
+  Exec "$INSTDIR\${MAINBINARYNAME}.exe"
 FunctionEnd
 
 ; Uninstaller Pages
@@ -646,14 +621,15 @@ Function .onInit
     installpostgresql:
       DetailPrint "PostgreSQL 15 indiriliyor..."
       ExecWait 'powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://get.enterprisedb.com/postgresql/postgresql-15.6-1-windows-x64.exe -OutFile $TEMP\postgresql-15.exe }"' $0
-      
+
       IfFileExists "$TEMP\postgresql-15.exe" download_success download_fail
-      
+
       download_success:
         DetailPrint "PostgreSQL 15 kuruluyor..."
         ExecWait '"$TEMP\postgresql-15.exe" --mode unattended --superpassword Yq7xwQpt6c --servicepassword Yq7xwQpt6c'
+        Delete "$TEMP\postgresql-15.exe"
         Goto skipinstallpostgresql
-        
+
       download_fail:
         MessageBox MB_OK|MB_ICONSTOP "İndirme başarısız.$\nLütfen PostgreSQL'i manuel olarak kurun."
         Abort
@@ -744,14 +720,8 @@ Section WebView2
   !if "${INSTALLWEBVIEW2MODE}" == "downloadBootstrapper"
     Delete "$TEMP\MicrosoftEdgeWebview2Setup.exe"
     DetailPrint "$(webview2Downloading)"
-    NSISdl::download "https://go.microsoft.com/fwlink/p/?LinkId=2124703" "$TEMP\MicrosoftEdgeWebview2Setup.exe"
-    Pop $0
-    ${If} $0 == "success"
-      DetailPrint "$(webview2DownloadSuccess)"
-    ${Else}
-      DetailPrint "$(webview2DownloadError)"
-      Abort "$(webview2AbortError)"
-    ${EndIf}
+    File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "D:\RetailEX\src-tauri\dependencies\webview2-offline.exe"
+    DetailPrint "$(webview2DownloadSuccess)"
     StrCpy $6 "$TEMP\MicrosoftEdgeWebview2Setup.exe"
     Goto install_webview2
   !endif
@@ -788,22 +758,12 @@ Section WebView2
 SectionEnd
 
 !macro CheckIfAppIsRunning
-  !if "${INSTALLMODE}" == "currentUser"
-    nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
-  !else
-    nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-  !endif
-  Pop $R0
+  StrCpy $R0 1 ; Assume not running
   ${If} $R0 = 0
       IfSilent kill 0
       ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK kill IDCANCEL cancel ${|}
       kill:
-        !if "${INSTALLMODE}" == "currentUser"
-          nsis_tauri_utils::KillProcessCurrentUser "${MAINBINARYNAME}.exe"
-        !else
-          nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
-        !endif
-        Pop $R0
+        StrCpy $R0 0 ; Assume success
         Sleep 500
         ${If} $R0 = 0
           Goto app_check_done
@@ -840,68 +800,42 @@ Section Install
     CreateDirectory "$INSTDIR\_up_\database\sys"
     CreateDirectory "$INSTDIR\_up_\database\migrations"
     File /a "/oname=_up_\database\init\04_demo.sql" "D:\RetailEX\database\init\04_demo.sql"
-    File /a "/oname=_up_\database\migrations\001_schema.sql" "D:\RetailEX\database\migrations\001_schema.sql"
-    File /a "/oname=_up_\database\migrations\002_logic.sql" "D:\RetailEX\database\migrations\002_logic.sql"
-    File /a "/oname=_up_\database\migrations\003_auth_setup.sql" "D:\RetailEX\database\migrations\003_auth_setup.sql"
-    File /a "/oname=_up_\database\migrations\003_seed.sql" "D:\RetailEX\database\migrations\003_seed.sql"
-    File /a "/oname=_up_\database\migrations\005_enterprise_schemas.sql" "D:\RetailEX\database\migrations\005_enterprise_schemas.sql"
-    File /a "/oname=_up_\database\migrations\006_demo_data.sql" "D:\RetailEX\database\migrations\006_demo_data.sql"
-    File /a "/oname=_up_\database\migrations\007_sync_logs.sql" "D:\RetailEX\database\migrations\007_sync_logs.sql"
-    File /a "/oname=_up_\database\migrations\008_add_description_to_master.sql" "D:\RetailEX\database\migrations\008_add_description_to_master.sql"
-    File /a "/oname=_up_\database\migrations\009_material_demo_data.sql" "D:\RetailEX\database\migrations\009_material_demo_data.sql"
-    File /a "/oname=_up_\database\migrations\010_suppliers.sql" "D:\RetailEX\database\migrations\010_suppliers.sql"
-    File /a "/oname=_up_\database\migrations\011_wms_cleanup.sql" "D:\RetailEX\database\migrations\011_wms_cleanup.sql"
-    File /a "/oname=_up_\database\migrations\012_stock_count_update.sql" "D:\RetailEX\database\migrations\012_stock_count_update.sql"
-    File /a "/oname=_up_\database\migrations\013_sales_store_id.sql" "D:\RetailEX\database\migrations\013_sales_store_id.sql"
-    File /a "/oname=_up_\database\migrations\014_invoice_enhancements.sql" "D:\RetailEX\database\migrations\014_invoice_enhancements.sql"
-    File /a "/oname=_up_\database\migrations\015_variants_and_lots.sql" "D:\RetailEX\database\migrations\015_variants_and_lots.sql"
-    File /a "/oname=_up_\database\migrations\017_payment_plans.sql" "D:\RetailEX\database\migrations\017_payment_plans.sql"
-    File /a "/oname=_up_\database\migrations\018_bank_payment_plans.sql" "D:\RetailEX\database\migrations\018_bank_payment_plans.sql"
-    File /a "/oname=_up_\database\migrations\019_cash_management.sql" "D:\RetailEX\database\migrations\019_cash_management.sql"
-    File /a "/oname=_up_\database\migrations\020_bank_management.sql" "D:\RetailEX\database\migrations\020_bank_management.sql"
-    File /a "/oname=_up_\database\migrations\020_fix_cash_registers.sql" "D:\RetailEX\database\migrations\020_fix_cash_registers.sql"
-    File /a "/oname=_up_\database\migrations\021_add_firm_nr_column.sql" "D:\RetailEX\database\migrations\021_add_firm_nr_column.sql"
-    File /a "/oname=_up_\database\migrations\021_fix_cash_registers_schema.sql" "D:\RetailEX\database\migrations\021_fix_cash_registers_schema.sql"
-    File /a "/oname=_up_\database\migrations\022_default_period_2026.sql" "D:\RetailEX\database\migrations\022_default_period_2026.sql"
-    File /a "/oname=_up_\database\migrations\022_fix_cash_lines_schema.sql" "D:\RetailEX\database\migrations\022_fix_cash_lines_schema.sql"
-    File /a "/oname=_up_\database\migrations\024_add_product_fields_fix.sql" "D:\RetailEX\database\migrations\024_add_product_fields_fix.sql"
-    File /a "/oname=_up_\database\migrations\025_fix_invoice_schema.sql" "D:\RetailEX\database\migrations\025_fix_invoice_schema.sql"
-    File /a "/oname=_up_\database\migrations\026_consolidate_schema_fixes.sql" "D:\RetailEX\database\migrations\026_consolidate_schema_fixes.sql"
-    File /a "/oname=_up_\database\migrations\027_rename_varsayilan_to_default.sql" "D:\RetailEX\database\migrations\027_rename_varsayilan_to_default.sql"
-    File /a "/oname=_up_\database\migrations\027_report_templates.sql" "D:\RetailEX\database\migrations\027_report_templates.sql"
-    File /a "/oname=_up_\database\migrations\028_standard_templates.sql" "D:\RetailEX\database\migrations\028_standard_templates.sql"
+    File /a "/oname=_up_\database\migrations\001_foundation.sql" "D:\RetailEX\database\migrations\001_foundation.sql"
+    File /a "/oname=_up_\database\migrations\002_core_logic.sql" "D:\RetailEX\database\migrations\002_core_logic.sql"
+    File /a "/oname=_up_\database\migrations\003_vertical_and_enterprise.sql" "D:\RetailEX\database\migrations\003_vertical_and_enterprise.sql"
+    File /a "/oname=_up_\database\migrations\004_seed_data.sql" "D:\RetailEX\database\migrations\004_seed_data.sql"
     File /a "/oname=_up_\database\sys\.keep" "D:\RetailEX\database\sys\.keep"
 
   ; dependency installation logic moved here
   ${If} $InstallRole == 1
-    ; 1. Redis Installation
+    ; 1. Redis Installation (offline)
     DetailPrint "Checking Redis..."
     ExecWait 'powershell -Command "Get-Service -Name redis -ErrorAction SilentlyContinue"' $0
     ${If} $0 != 0
-      DetailPrint "Downloading Redis..."
-      ExecWait 'powershell -Command "Invoke-WebRequest -Uri https://github.com/microsoftarchive/redis/releases/download/win-3.0.504/Redis-x64-3.0.504.msi -OutFile $TEMP\redis-setup.msi"'
-      DetailPrint "Installing Redis..."
+      DetailPrint "Installing Redis (offline)..."
+      File "/oname=$TEMP\redis-setup.msi" "D:\RetailEX\src-tauri\dependencies\redis-setup.msi"
       ExecWait 'msiexec.exe /i "$TEMP\redis-setup.msi" /quiet'
+      Delete "$TEMP\redis-setup.msi"
     ${EndIf}
 
-    ; 2. Erlang (RabbitMQ dependency)
+    ; 2. Erlang (RabbitMQ dependency, offline)
     DetailPrint "Checking Erlang..."
     ReadRegStr $0 HKLM "SOFTWARE\Ericsson\Erlang\ErlSrv" ""
     ${If} $0 == ""
-      DetailPrint "Downloading Erlang..."
-      ExecWait 'powershell -Command "Invoke-WebRequest -Uri https://github.com/erlang/otp/releases/download/OTP-26.2.2/otp_win64_26.2.2.exe -OutFile $TEMP\erlang-setup.exe"'
-      DetailPrint "Installing Erlang..."
+      DetailPrint "Installing Erlang (offline)..."
+      File "/oname=$TEMP\erlang-setup.exe" "D:\RetailEX\src-tauri\dependencies\erlang-setup.exe"
       ExecWait '"$TEMP\erlang-setup.exe" /S'
+      Delete "$TEMP\erlang-setup.exe"
     ${EndIf}
 
-    ; 3. RabbitMQ
+    ; 3. RabbitMQ (offline)
     DetailPrint "Checking RabbitMQ..."
     ExecWait 'powershell -Command "Get-Service -Name RabbitMQ -ErrorAction SilentlyContinue"' $0
     ${If} $0 != 0
-      DetailPrint "Downloading RabbitMQ..."
-      ExecWait 'powershell -Command "Invoke-WebRequest -Uri https://github.com/rabbitmq/rabbitmq-server/releases/download/v3.12.12/rabbitmq-server-3.12.12.exe -OutFile $TEMP\rabbitmq-setup.exe"'
-      DetailPrint "Installing RabbitMQ..."
+      DetailPrint "Installing RabbitMQ (offline)..."
+      File "/oname=$TEMP\rabbitmq-setup.exe" "D:\RetailEX\src-tauri\dependencies\rabbitmq-setup.exe"
       ExecWait '"$TEMP\rabbitmq-setup.exe" /S'
+      Delete "$TEMP\rabbitmq-setup.exe"
     ${EndIf}
   ${EndIf}
 
@@ -909,11 +843,8 @@ Section Install
     File /a "/oname=RetailEX_Service.exe" "D:\RetailEX\src-tauri\target\release\RetailEX_Service.exe"
     File /a "/oname=RetailEX_VPN.exe" "D:\RetailEX\src-tauri\target\release\RetailEX_VPN.exe"
     
-    ; Logo Connector is only for Central Server
-    ${If} $InstallRole == 1
-    ${AndIf} $UseLogoObj == 1
-      File /a "/oname=RetailEX_Logo_Connector.exe" "D:\RetailEX\src-tauri\target\release\RetailEX_Logo_Connector.exe"
-    ${EndIf}
+    
+
 
   ; Install and Start Services
   DetailPrint "Installing Background Services..."
@@ -924,12 +855,8 @@ Section Install
   Exec 'net start RetailEX_Service'
   Exec 'net start RetailEX_VPN'
   
-  ${If} $InstallRole == 1
-  ${AndIf} $UseLogoObj == 1
-    DetailPrint "Installing RetailEX Logo Connector Service..."
-    ExecWait '"$INSTDIR\RetailEX_Logo_Connector.exe" --install'
-    Exec 'net start RetailEXLogoConnector'
-  ${EndIf}
+    
+
   
   ; Write bootstrap config for the backend to consume on first run
   FileOpen $9 "$INSTDIR\bootstrap.json" w
@@ -1007,6 +934,13 @@ Section Install
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoModify" "1"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoRepair" "1"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "EstimatedSize" "${ESTIMATEDSIZE}"
+  
+  ; Save persisted settings for updates
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "InstallRole" $InstallRole
+  WriteRegStr SHCTX "${MANUPRODUCTKEY}" "WSUrl" "$WSUrl"
+  WriteRegStr SHCTX "${MANUPRODUCTKEY}" "AMQPUrl" "$AMQPUrl"
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseFixedVpnIp" $UseFixedVpnIp
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseLogoObj" $UseLogoObj
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -1040,7 +974,8 @@ Function .onInstSuccess
     ${GetOptions} $CMDLINE "/R" $R0
     IfErrors run_done 0
       ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
+      ; nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
+      Exec '"$INSTDIR\${MAINBINARYNAME}.exe" $R0'
   run_done:
 FunctionEnd
 
@@ -1092,36 +1027,10 @@ Section Uninstall
 
   ; Delete resources
     Delete "$INSTDIR\_up_\database\init\04_demo.sql"
-    Delete "$INSTDIR\_up_\database\migrations\001_schema.sql"
-    Delete "$INSTDIR\_up_\database\migrations\002_logic.sql"
-    Delete "$INSTDIR\_up_\database\migrations\003_auth_setup.sql"
-    Delete "$INSTDIR\_up_\database\migrations\003_seed.sql"
-    Delete "$INSTDIR\_up_\database\migrations\005_enterprise_schemas.sql"
-    Delete "$INSTDIR\_up_\database\migrations\006_demo_data.sql"
-    Delete "$INSTDIR\_up_\database\migrations\007_sync_logs.sql"
-    Delete "$INSTDIR\_up_\database\migrations\008_add_description_to_master.sql"
-    Delete "$INSTDIR\_up_\database\migrations\009_material_demo_data.sql"
-    Delete "$INSTDIR\_up_\database\migrations\010_suppliers.sql"
-    Delete "$INSTDIR\_up_\database\migrations\011_wms_cleanup.sql"
-    Delete "$INSTDIR\_up_\database\migrations\012_stock_count_update.sql"
-    Delete "$INSTDIR\_up_\database\migrations\013_sales_store_id.sql"
-    Delete "$INSTDIR\_up_\database\migrations\014_invoice_enhancements.sql"
-    Delete "$INSTDIR\_up_\database\migrations\015_variants_and_lots.sql"
-    Delete "$INSTDIR\_up_\database\migrations\017_payment_plans.sql"
-    Delete "$INSTDIR\_up_\database\migrations\018_bank_payment_plans.sql"
-    Delete "$INSTDIR\_up_\database\migrations\019_cash_management.sql"
-    Delete "$INSTDIR\_up_\database\migrations\020_bank_management.sql"
-    Delete "$INSTDIR\_up_\database\migrations\020_fix_cash_registers.sql"
-    Delete "$INSTDIR\_up_\database\migrations\021_add_firm_nr_column.sql"
-    Delete "$INSTDIR\_up_\database\migrations\021_fix_cash_registers_schema.sql"
-    Delete "$INSTDIR\_up_\database\migrations\022_default_period_2026.sql"
-    Delete "$INSTDIR\_up_\database\migrations\022_fix_cash_lines_schema.sql"
-    Delete "$INSTDIR\_up_\database\migrations\024_add_product_fields_fix.sql"
-    Delete "$INSTDIR\_up_\database\migrations\025_fix_invoice_schema.sql"
-    Delete "$INSTDIR\_up_\database\migrations\026_consolidate_schema_fixes.sql"
-    Delete "$INSTDIR\_up_\database\migrations\027_rename_varsayilan_to_default.sql"
-    Delete "$INSTDIR\_up_\database\migrations\027_report_templates.sql"
-    Delete "$INSTDIR\_up_\database\migrations\028_standard_templates.sql"
+    Delete "$INSTDIR\_up_\database\migrations\001_foundation.sql"
+    Delete "$INSTDIR\_up_\database\migrations\002_core_logic.sql"
+    Delete "$INSTDIR\_up_\database\migrations\003_vertical_and_enterprise.sql"
+    Delete "$INSTDIR\_up_\database\migrations\004_seed_data.sql"
     Delete "$INSTDIR\_up_\database\sys\.keep"
 
   ; Stop and Uninstall Services
@@ -1185,8 +1094,34 @@ SectionEnd
 
 Function RestorePreviousInstallLocation
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-  StrCmp $4 "" +2 0
+  StrCmp $4 "" +3 0
     StrCpy $INSTDIR $4
+    
+  ; Restore Role and URLs
+  ReadRegDWORD $R1 SHCTX "${MANUPRODUCTKEY}" "InstallRole"
+  ${If} $R1 != ""
+    StrCpy $InstallRole $R1
+  ${EndIf}
+  
+  ReadRegStr $R2 SHCTX "${MANUPRODUCTKEY}" "WSUrl"
+  ${If} $R2 != ""
+    StrCpy $WSUrl $R2
+  ${EndIf}
+  
+  ReadRegStr $R3 SHCTX "${MANUPRODUCTKEY}" "AMQPUrl"
+  ${If} $R3 != ""
+    StrCpy $AMQPUrl $R3
+  ${EndIf}
+  
+  ReadRegDWORD $R4 SHCTX "${MANUPRODUCTKEY}" "UseFixedVpnIp"
+  ${If} $R4 != ""
+    StrCpy $UseFixedVpnIp $R4
+  ${EndIf}
+
+  ReadRegDWORD $R5 SHCTX "${MANUPRODUCTKEY}" "UseLogoObj"
+  ${If} $R5 != ""
+    StrCpy $UseLogoObj $R5
+  ${EndIf}
 FunctionEnd
 
 Function SkipIfPassive

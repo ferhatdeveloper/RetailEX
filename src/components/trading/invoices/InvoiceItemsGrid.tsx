@@ -35,6 +35,8 @@ interface InvoiceItem {
     grossProfit?: number;
     profitMargin?: number;
     cogs?: number;
+    unitsetId?: string;
+    multiplier?: number;
 }
 
 interface InvoiceItemsGridProps {
@@ -56,6 +58,7 @@ interface InvoiceItemsGridProps {
     productDropdownRef: React.RefObject<HTMLDivElement | null>;
     gridRefs: React.MutableRefObject<{ [key: string]: HTMLInputElement | null }>;
     getProductCode: (code: string) => string;
+    unitSets?: any[];
 }
 
 export const InvoiceItemsGrid = React.memo(({
@@ -76,7 +79,8 @@ export const InvoiceItemsGrid = React.memo(({
     searchingRowIndex,
     productDropdownRef,
     gridRefs,
-    getProductCode
+    getProductCode,
+    unitSets = []
 }: InvoiceItemsGridProps) => {
     const { language } = useLanguage();
     const tm = (key: string) => moduleTranslations[key]?.[language] || key;
@@ -258,15 +262,23 @@ export const InvoiceItemsGrid = React.memo(({
                                             value={item.unit}
                                             onChange={(e) => updateItem(index, 'unit', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
-                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
+                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700"
                                         >
-                                            <option>{tm('unitPiece')}</option>
-                                            <option>{tm('unitKg')}</option>
-                                            <option>{tm('unitMeter')}</option>
-                                            <option>{tm('unitLiter')}</option>
-                                            <option>{tm('unitCan')}</option>
-                                            <option>{tm('unitSet')}</option>
-                                            <option>{tm('unitBox')}</option>
+                                            {item.unitsetId ? (
+                                                unitSets.find(us => us.id === item.unitsetId)?.lines?.map((line: any) => (
+                                                    <option key={line.id} value={line.name}>{line.name}</option>
+                                                ))
+                                            ) : (
+                                                <>
+                                                    <option>{tm('unitPiece')}</option>
+                                                    <option>{tm('unitKg')}</option>
+                                                    <option>{tm('unitMeter')}</option>
+                                                    <option>{tm('unitLiter')}</option>
+                                                    <option>{tm('unitCan')}</option>
+                                                    <option>{tm('unitSet')}</option>
+                                                    <option>{tm('unitBox')}</option>
+                                                </>
+                                            )}
                                         </select>
                                     </td>
                                 )}
@@ -437,3 +449,5 @@ export const InvoiceItemsGrid = React.memo(({
         </div>
     );
 });
+
+

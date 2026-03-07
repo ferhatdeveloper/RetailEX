@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Template } from '../core/types/templates';
 import { DEFAULT_TEMPLATES } from '../core/types/templates';
@@ -77,4 +77,5 @@ export const useTemplateStore = create<TemplateState>()(
     }
   )
 );
+
 

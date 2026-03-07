@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Quotations API Service
  * Replaced Supabase with direct PostgreSQL via InvoicesAPI
  */
@@ -103,4 +103,5 @@ export async function convertQuotation(id: string, convertTo: 'FATURA' | 'SIPARI
     throw error;
   }
 }
+
 

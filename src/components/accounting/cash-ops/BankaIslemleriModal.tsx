@@ -248,3 +248,5 @@ export function BankaIslemleriModal({ banka, islemler, loading, onClose, onIslem
         </div>
     );
 }
+
+

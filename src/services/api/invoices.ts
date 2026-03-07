@@ -21,9 +21,11 @@ export const invoicesAPI = {
     try {
       console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
 
-      // Resolve Dynamic Table Names
-      const firmNr = ERP_SETTINGS.firmNr;
-      const periodNr = ERP_SETTINGS.periodNr;
+      // Resolve Dynamic Table Names - prioritize invoice data for dynamic synchronization
+      const firmNr = (invoice as any).firma_id || ERP_SETTINGS.firmNr;
+      const periodNr = (invoice as any).donem_id || ERP_SETTINGS.periodNr;
+
+      const queryOptions = { firmNr, periodNr };
 
       // Map Invoice Category to TRCODE and Fiche Type based on Logo standards
       let trcode = Number(invoice.invoice_type || 0);
@@ -76,8 +78,9 @@ export const invoicesAPI = {
             invoice.created_at || new Date(),
             ficheType,
             Number(trcode),
-            // Robust UUID Validation
-            isValidUuid(invoice.customer_id) ? invoice.customer_id : null,
+            // customer_id yoksa supplier_id'yi kullan (alış faturalarında tedarikçi UUID buraya yazılır)
+            isValidUuid(invoice.customer_id) ? invoice.customer_id
+              : isValidUuid(invoice.supplier_id) ? invoice.supplier_id : null,
             String(invoice.customer_name || invoice.supplier_name || ''),
             Number(invoice.subtotal || 0),
             Number(invoice.tax || 0),
@@ -94,7 +97,8 @@ export const invoicesAPI = {
             String((invoice as any).payment_method || 'Nakit'),
             String((invoice as any).cashier || ''),
             isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null
-          ]
+          ],
+          queryOptions
         );
         rows = result.rows;
       } catch (e) {
@@ -139,7 +143,8 @@ export const invoicesAPI = {
             Number(invoice.currency_rate || 1),
             'approved',
             String(invoice.notes || '')
-          ]
+          ],
+          queryOptions
         );
         rows = result.rows;
         console.timeEnd('[InvoicesAPI] Legacy_Insert');
@@ -155,26 +160,29 @@ export const invoicesAPI = {
           await postgres.query(
             `INSERT INTO sale_items (
                 id,
-                invoice_id, firm_nr, item_code, item_name, 
-                quantity, unit_price, discount_rate, 
+                invoice_id, firm_nr, period_nr, item_code, item_name,
+                quantity, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit
-             ) VALUES ($1::text::uuid, $2::text::uuid, $3::text, $4::text, $5::text, $6::text::numeric, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric)`,
+             ) VALUES ($1::text::uuid, $2::text::uuid, $3::text, $4::text, $5::text, $6::text, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric)`,
             [
               self.crypto.randomUUID(),
               invoiceId,
               String(firmNr),
+              String(periodNr),
               String(productId),
               String(item.description || item.productName),
               Number(item.quantity),
               Number(item.unitPrice || item.price),
               Number(item.discount || 0),
+              Number((item as any).taxRate || (item as any).vat_rate || 0),
               Number(item.total || item.netAmount),
               Number(item.netAmount || item.total),
               Number(item.unitCost || 0),
               Number(item.totalCost || 0),
               Number(item.grossProfit || 0)
-            ]
+            ],
+            queryOptions
           );
 
           // 3. Update stock (Simplified)
@@ -182,13 +190,59 @@ export const invoicesAPI = {
             let stockModifier = 0;
             if (invoice.invoice_category === 'Alis') stockModifier = item.quantity;
             else if (invoice.invoice_category === 'Satis') stockModifier = -item.quantity;
-            else if (invoice.invoice_category === 'Iade') stockModifier = item.quantity;
+            else if (invoice.invoice_category === 'Iade') {
+              // trcode 3 = Sales Return (Stock Increase), trcode 2/6 = Purchase Return (Stock Decrease)
+              if (Number(trcode) === 3) stockModifier = item.quantity;
+              else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -item.quantity;
+              else stockModifier = item.quantity; // Default to increase if unknown return type
+            }
 
             if (stockModifier !== 0) {
               await postgres.query(
-                `UPDATE products SET stock = stock + $1::text::numeric WHERE (code = $2 OR id::text = $3) AND firm_nr = $4`,
-                [stockModifier, productId, productId, firmNr]
+                `UPDATE products SET stock = stock + $1::text::numeric WHERE (code = $2 OR id::text = $3)`,
+                [stockModifier, productId, productId],
+                queryOptions
               );
+            }
+          }
+        }
+      }
+
+      // 4. Update current account balance
+      const accountId = invoice.customer_id || invoice.supplier_id;
+      if (accountId && isValidUuid(accountId)) {
+        const amount = Number(invoice.total_amount || 0);
+
+        if (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet') {
+          // Satış: müşteri borcu artar (bizim alacağımız)
+          await postgres.query(
+            `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+            [amount, accountId, firmNr],
+            queryOptions
+          ).catch(() => { }); // Müşteri bulunamazsa sessizce geç
+        } else if (invoice.invoice_category === 'Alis') {
+          // Alış: tedarikçiye borcumuz artar
+          await postgres.query(
+            `UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`,
+            [amount, accountId],
+            queryOptions
+          ).catch(() => { });
+        } else if (invoice.invoice_category === 'Iade') {
+          // İade: trcode'a göre yön belirle
+          // trcode 3 = müşteriden iade → müşteri bakiyesi azalır
+          // trcode 2 = tedarikçiye iade → tedarikçi bakiyesi azalır
+          if (trcode === 3 || ficheType === 'return_invoice') {
+            const { rowCount } = await postgres.query(
+              `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+              [amount, accountId, firmNr],
+              queryOptions
+            ).catch(() => ({ rowCount: 0 }));
+            if (!rowCount) {
+              await postgres.query(
+                `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
+                [amount, accountId],
+                queryOptions
+              ).catch(() => { });
             }
           }
         }
@@ -416,19 +470,21 @@ export const invoicesAPI = {
           const productId = item.code || item.productId;
           await postgres.query(
             `INSERT INTO sale_items (
-                invoice_id, firm_nr, item_code, item_name, 
-                quantity, unit_price, discount_rate, 
+                invoice_id, firm_nr, period_nr, item_code, item_name,
+                quantity, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
                 unit_cost, total_cost, gross_profit
-             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text::numeric, $6::text::numeric, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric)`,
+             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text, $6::text::numeric, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric)`,
             [
               id,
               String(firmNr),
+              String(ERP_SETTINGS.periodNr),
               String(productId),
               String(item.description || item.productName),
               Number(item.quantity),
               Number(item.unitPrice || item.price),
               Number(item.discount || 0),
+              Number((item as any).taxRate || (item as any).vat_rate || 0),
               Number(item.total || item.netAmount),
               Number(item.netAmount || item.total),
               Number(item.unitCost || 0),
@@ -485,7 +541,27 @@ export const invoicesAPI = {
   async refund(id: string): Promise<boolean> {
     try {
       const firmNr = ERP_SETTINGS.firmNr;
-      // Only update status for now, similar to previous salesAPI
+
+      // Faturayı getir → bakiyeyi geri al
+      const invoice = await this.getById(id);
+      if (invoice) {
+        const accountId = invoice.customer_id || invoice.supplier_id;
+        const amount = Number(invoice.total_amount || invoice.total || 0);
+        if (accountId && isValidUuid(accountId) && amount > 0) {
+          if (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet') {
+            await postgres.query(
+              `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+              [amount, accountId, firmNr]
+            ).catch(() => { });
+          } else if (invoice.invoice_category === 'Alis') {
+            await postgres.query(
+              `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
+              [amount, accountId]
+            ).catch(() => { });
+          }
+        }
+      }
+
       const { rowCount } = await postgres.query(
         `UPDATE sales SET status = 'refunded' WHERE id = $1 AND firm_nr = $2`,
         [id, String(firmNr)]

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Monitor, RefreshCcw, Wifi, ExternalLink, Activity, Search } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 import { toast } from 'sonner';
 
 interface Peer {
@@ -18,8 +18,17 @@ export function RemoteControlGrid({ onConnect }: { onConnect: (peer: Peer) => vo
     const fetchPeers = async () => {
         try {
             setLoading(true);
-            const list = await invoke<Peer[]>('get_mesh_peers');
-            setPeers(list);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const list = await invoke<Peer[]>('get_mesh_peers');
+                setPeers(list);
+            } else {
+                // Mock peers for web demo
+                setPeers([
+                    { public_key: 'peer-1-pk', virtual_ip: '10.8.0.2', hostname: 'Baghdad-Terminal-01' },
+                    { public_key: 'peer-2-pk', virtual_ip: '10.8.0.5', hostname: 'Erbil-Manager-PC' }
+                ]);
+            }
         } catch (e) {
             console.error(e);
             toast.error('Cihaz listesi alınamadı');
@@ -118,4 +127,6 @@ export function RemoteControlGrid({ onConnect }: { onConnect: (peer: Peer) => vo
         </div>
     );
 }
+
+
 

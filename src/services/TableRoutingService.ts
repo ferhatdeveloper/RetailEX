@@ -1,4 +1,4 @@
-﻿/**
+/**
  * TableRoutingService
  * 
  * Handles strict Logo-style table naming conventions.
@@ -50,4 +50,5 @@ export class TableRoutingService {
         return this.getTableName(context, baseTable);
     }
 }
+
 

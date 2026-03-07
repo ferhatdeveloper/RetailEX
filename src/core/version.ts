@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS Version Management
  * Auto-incremented version system
  */
@@ -21,9 +21,11 @@ export const APP_VERSION = {
   // Increment build number
   increment(): void {
     this.build++;
-    console.log(`ğŸ”„ Version updated to ${this.display}`);
+    console.log(`🔄 Version updated to ${this.display}`);
   }
 };
 
 // Log current version on load
-console.log(`ğŸš€ ExRetailOS ${APP_VERSION.display} (${APP_VERSION.full})`);
+console.log(`🚀 ExRetailOS ${APP_VERSION.display} (${APP_VERSION.full})`);
+
+

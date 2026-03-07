@@ -38,26 +38,13 @@ export interface BankaIslemi {
 // ===== API FUNCTIONS =====
 
 /**
- * Get active table name helpers
- */
-function getBankaTableName() {
-    const firmId = ERP_SETTINGS.firmNr;
-    return firmId ? `public.rex_${firmId}_bank_registers` : `logic.bank_registers`;
-}
-
-function getLinesTableName() {
-    const firmId = ERP_SETTINGS.firmNr;
-    return firmId ? `public.rex_${firmId}_bank_lines` : `logic.bank_lines`;
-}
-
-/**
  * Tüm bankaları getir
  */
 export async function fetchBankalar(params?: {
     aktif?: boolean;
 }): Promise<Banka[]> {
     try {
-        const table = getBankaTableName();
+        const table = 'bank_registers';
         const { rows } = await postgres.query(
             `SELECT * FROM ${table} WHERE is_active = $1 ORDER BY code ASC`,
             [params?.aktif !== false]
@@ -75,7 +62,7 @@ export async function fetchBankalar(params?: {
  */
 export async function fetchBanka(id: string): Promise<Banka> {
     try {
-        const table = getBankaTableName();
+        const table = 'bank_registers';
         const { rows } = await postgres.query(
             `SELECT * FROM ${table} WHERE id = $1`,
             [id]
@@ -94,11 +81,12 @@ export async function fetchBanka(id: string): Promise<Banka> {
  */
 export async function createBanka(banka: Partial<Banka>): Promise<Banka> {
     try {
-        const table = getBankaTableName();
+        const table = 'bank_registers';
         const { rows } = await postgres.query(
-            `INSERT INTO ${table} (code, bank_name, branch_name, account_no, iban, currency_code, balance, is_active) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            `INSERT INTO ${table} (firm_nr, code, bank_name, branch_name, account_no, iban, currency_code, balance, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
             [
+                ERP_SETTINGS.firmNr,
                 banka.banka_kodu || '',
                 banka.banka_adi || '',
                 banka.sube_adi || '',
@@ -122,7 +110,7 @@ export async function createBanka(banka: Partial<Banka>): Promise<Banka> {
  */
 export async function updateBanka(id: string, banka: Partial<Banka>): Promise<Banka> {
     try {
-        const table = getBankaTableName();
+        const table = 'bank_registers';
         const fields: string[] = [];
         const values: any[] = [];
         let i = 1;
@@ -152,7 +140,7 @@ export async function updateBanka(id: string, banka: Partial<Banka>): Promise<Ba
  */
 export async function deleteBanka(id: string): Promise<void> {
     try {
-        const table = getBankaTableName();
+        const table = 'bank_registers';
         await postgres.query(`UPDATE ${table} SET is_active = false WHERE id = $1`, [id]);
     } catch (error: any) {
         console.error('[Banka] Delete error:', error);
@@ -169,7 +157,7 @@ export async function fetchBankaIslemleri(params?: {
     bitis_tarihi?: string;
 }): Promise<BankaIslemi[]> {
     try {
-        const table = getLinesTableName();
+        const table = 'bank_lines';
         let sql = `SELECT * FROM ${table} WHERE 1=1`;
         const values: any[] = [];
         let i = 1;
@@ -202,8 +190,8 @@ export async function fetchBankaIslemleri(params?: {
  */
 export async function createBankaIslemi(islem: BankaIslemi): Promise<BankaIslemi> {
     try {
-        const table = getLinesTableName();
-        const bankaTable = getBankaTableName();
+        const table = 'bank_lines';
+        const bankaTable = 'bank_registers';
 
         // Start transaction
         await postgres.query('BEGIN');
@@ -211,11 +199,13 @@ export async function createBankaIslemi(islem: BankaIslemi): Promise<BankaIslemi
         const sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') || islem.islem_tipi === 'EFT' || islem.islem_tipi === 'HAVALE' ? -1 : 1;
 
         const { rows } = await postgres.query(
-            `INSERT INTO ${table} (register_id, fiche_no, date, amount, sign, definition, transaction_type) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            `INSERT INTO ${table} (firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type)
+         VALUES ($1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, $7::text::integer, $8::text, $9::text) RETURNING *`,
             [
+                ERP_SETTINGS.firmNr,
+                ERP_SETTINGS.periodNr || '01',
                 islem.banka_id,
-                islem.islem_no || '',
+                islem.islem_no || `BNK-${ERP_SETTINGS.firmNr}-${Date.now()}`,
                 islem.islem_tarihi || new Date().toISOString(),
                 islem.tutar,
                 sign,
@@ -271,3 +261,4 @@ function mapDbIslemToIslem(row: any): BankaIslemi {
         olusturma_tarihi: row.created_at
     };
 }
+

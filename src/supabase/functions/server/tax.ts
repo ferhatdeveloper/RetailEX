@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Tax Service (Backend)
  * 
  * Tax calculation and reporting endpoints
@@ -257,4 +257,5 @@ app.get("/monthly-declaration", async (c) => {
 });
 
 export default app;
+
 

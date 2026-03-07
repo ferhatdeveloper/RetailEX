@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Master Data API - Direct PostgreSQL Implementation
  */
 
@@ -254,3 +254,4 @@ export const definitionAPI = {
         return [];
     }
 };
+

@@ -1,4 +1,4 @@
-﻿import { supabase } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 
 export interface ProductBarcode {
     id: string;
@@ -97,4 +97,6 @@ class BarcodeAPI {
 }
 
 export const barcodeAPI = new BarcodeAPI();
+
+
 

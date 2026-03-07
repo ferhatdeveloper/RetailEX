@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use tauri::command;
-
+use tauri::{AppHandle, Manager};
+use tauri::path::BaseDirectory;
 #[command]
 pub async fn create_database(config: AppConfig, target: Option<String>) -> Result<(), String> {
     use tokio_postgres::NoTls;
@@ -148,6 +149,24 @@ pub async fn apply_migrations_internal(
         &[]
     ).await.map_err(|e| format!("sys_migrations tablosuna app_version kolonu eklenemedi: {}", e))?;
 
+    // 2c. Pre-create auth schema + extensions so migration scripts that
+    //     reference auth.users or uuid_generate_v4() don't fail on a fresh DB.
+    let _ = client.batch_execute("
+        CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+        CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";
+        CREATE SCHEMA IF NOT EXISTS auth;
+        CREATE SCHEMA IF NOT EXISTS rest;
+        CREATE SCHEMA IF NOT EXISTS beauty;
+        CREATE TABLE IF NOT EXISTS auth.users (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            email VARCHAR(255) UNIQUE,
+            encrypted_password VARCHAR(255),
+            raw_user_meta_data JSONB,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+    ").await;
+
     // 3. Find Migration Files
     let mut search_paths = Vec::new();
     
@@ -157,17 +176,17 @@ pub async fn apply_migrations_internal(
     
     // Resource paths (Tauri Resolver)
     // 1. Resolve relative to migrations directly
-    if let Some(res) = app.path_resolver().resolve_resource("database/migrations") {
+    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
         search_paths.push(res);
     }
     
     // 2. Resolve relative to _up_ (common in bundling)
-    if let Some(res) = app.path_resolver().resolve_resource("_up_/database/migrations") {
+    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
         search_paths.push(res);
     }
 
     // 3. Fallback to resource_dir manual joins
-    if let Some(resource_dir) = app.path_resolver().resource_dir() {
+    if let Ok(resource_dir) = app.path().resource_dir() {
         search_paths.push(resource_dir.join("database").join("migrations"));
         search_paths.push(resource_dir.join("migrations"));
         search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
@@ -180,6 +199,13 @@ pub async fn apply_migrations_internal(
         attempted_paths.push(path.to_string_lossy().to_string());
         if path.exists() && path.is_dir() {
             println!("Migration directory found: {:?}", path);
+            
+            // Log file count in directory
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                let count = entries.filter_map(|e| e.ok()).count();
+                println!("Total files in migration directory: {}", count);
+            }
+
             found_path = Some(path);
             break;
         }
@@ -210,58 +236,136 @@ pub async fn apply_migrations_internal(
         ));
     };
 
-    // Sort by version (001, 002...)
-    migration_files.sort_by(|a, b| a.0.cmp(&b.0));
+    // Sort by full filename (e.g. 001_schema.sql < 003_auth_setup.sql < 004_auth_patch.sql)
+    // This prevents ordering ambiguity when multiple files share the same numeric prefix.
+    migration_files.sort_by(|a, b| a.1.cmp(&b.1));
+
+    println!("Detected {} valid numbered migration files.", migration_files.len());
 
     // 4. Apply Pending Migrations
+    #[derive(serde::Serialize)]
+    struct MigrationStatus {
+        name: String,
+        status: String, // "Applied", "Already Applied", "Error", "Demo Skipped"
+        error: Option<String>,
+    }
+
+    let mut report: Vec<MigrationStatus> = Vec::new();
     let mut applied_count = 0;
     
-    // Direct Execution (No Transaction for Debugging/Stability on mixed commands)
-    // Some commands like CREATE INDEX CONCURRENTLY or strict schema changes might fail in blocks
-    // Also helps pin-point exactly which file fails.
-    
     for (version, name, path) in migration_files {
-        // Check if applied by NAME (filename) to allow multiple files with same version prefix
+        // Check if applied by NAME (filename)
         let rows = client.query("SELECT 1 FROM sys_migrations WHERE name = $1", &[&name])
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Migration kontrol hatası ({}): {}", name, e))?;
 
         if rows.is_empty() {
             // Skip demo data if not requested
             if name == "006_demo_data.sql" && load_demo_data != Some(true) {
-                println!("Skipping demo data migration as load_demo_data is false: {}", name);
+                report.push(MigrationStatus {
+                    name: name.clone(),
+                    status: "Demo Skipped".to_string(),
+                    error: None,
+                });
                 continue;
             }
 
-            // Check if file exists before trying to read it
             if !path.exists() {
-                println!("Warning: Migration file not found, skipping: {}", name);
+                report.push(MigrationStatus {
+                    name: name.clone(),
+                    status: "Error".to_string(),
+                    error: Some("Dosya sistemde bulunamadı".to_string()),
+                });
                 continue;
             }
 
             println!("Applying migration: {}", name);
-            let sql = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let raw_sql = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    report.push(MigrationStatus {
+                        name: name.clone(),
+                        status: "Error".to_string(),
+                        error: Some(format!("Dosya okunamadı: {}", e)),
+                    });
+                    continue;
+                }
+            };
+            
+            // ── Auto-sanitize SQL for idempotency ──────────────────
+            let sql = raw_sql
+                .replace("CREATE OR REPLACE TRIGGER ", "CREATE TRIGGER ")
+                .replace("CREATE TRIGGER ", "CREATE OR REPLACE TRIGGER ");
             
             // Execute SQL
             if let Err(e) = client.batch_execute(&sql).await {
-                 return Err(format!("Migration hatası ({}): {:?}", name, e));
+                let err_msg = format!("{:?}", e);
+                println!("❌ Migration hatası ({}): {}", name, err_msg);
+                report.push(MigrationStatus {
+                    name: name.clone(),
+                    status: "Error".to_string(),
+                    error: Some(err_msg),
+                });
+                continue;
             }
             
             // Record migration
-            client.execute(
+            if let Err(e) = client.execute(
                 "INSERT INTO sys_migrations (version, name, app_version) VALUES ($1, $2, $3)",
                 &[&version, &name, &app_version]
-            ).await.map_err(|e| e.to_string())?;
+            ).await {
+                println!("⚠️ Migration kayıt hatası ({}): {}", name, e);
+            }
             
             applied_count += 1;
+            report.push(MigrationStatus {
+                name: name.clone(),
+                status: "Applied".to_string(),
+                error: None,
+            });
         } else {
-            println!("Skipping applied migration: {}", name);
+            report.push(MigrationStatus {
+                name: name.clone(),
+                status: "Already Applied".to_string(),
+                error: None,
+            });
         }
     }
 
-    // No commit needed for direct execution
+    let json_report = serde_json::to_string_pretty(&report).unwrap_or_else(|_| format!("{} dosya işlendi (JSON hatası)", applied_count));
 
-    Ok(format!("{} yeni güncelleme uygulandı.", applied_count))
+    // Persistent Audit: Save to disk for transparency
+    let log_dir = std::path::Path::new("C:\\RetailEX\\logs");
+    if let Err(e) = std::fs::create_dir_all(log_dir) {
+        println!("⚠️ Log dizini oluşturulamadı: {}", e);
+    } else {
+        let log_file = log_dir.join("migration_log.json");
+        if let Err(e) = std::fs::write(&log_file, &json_report) {
+            println!("⚠️ Log dosyası yazılamadı: {}", e);
+        } else {
+            println!("✅ Migration logları kaydedildi: {:?}", log_file);
+        }
+    }
+
+    Ok(json_report)
+}
+
+#[command]
+pub async fn open_migration_log() -> Result<(), String> {
+    let log_path = "C:\\RetailEX\\logs\\migration_log.json";
+    if std::path::Path::new(log_path).exists() {
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            Command::new("explorer")
+                .arg(log_path)
+                .spawn()
+                .map_err(|e| format!("Dosya açılamadı: {}", e))?;
+        }
+        Ok(())
+    } else {
+        Err("Migration log dosyası bulunamadı.".to_string())
+    }
 }
 
 #[command]

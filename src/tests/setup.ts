@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Vitest Setup File
  */
 
@@ -28,4 +28,5 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => true,
   }),
 });
+
 

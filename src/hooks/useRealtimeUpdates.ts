@@ -1,4 +1,4 @@
-﻿// React hook for real-time updates
+// React hook for real-time updates
 
 import { useEffect, useState, useCallback } from 'react';
 import { 
@@ -148,4 +148,6 @@ export function useRealtimeTransactions(limit: number = 20) {
     count: transactions.length
   };
 }
+
+
 

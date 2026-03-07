@@ -190,3 +190,5 @@ export function BankaDefinitionModal({ banka, onClose, onSuccess }: BankaDefinit
         </div>
     );
 }
+
+

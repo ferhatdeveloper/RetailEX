@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Iraq Tax System Tests
  */
 
@@ -64,4 +64,5 @@ describe('Iraq Tax System', () => {
         });
     });
 });
+
 

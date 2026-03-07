@@ -296,3 +296,5 @@ export function BankRegisterManagement() {
         </div>
     );
 }
+
+

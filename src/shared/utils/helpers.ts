@@ -1,4 +1,4 @@
-﻿// Helper Utilities
+// Helper Utilities
 import type { Product, ProductVariant } from '../../core/types';
 
 /**
@@ -143,4 +143,5 @@ export const groupBy = <T>(array: T[], key: keyof T): Record<string, T[]> => {
     return result;
   }, {} as Record<string, T[]>);
 };
+
 

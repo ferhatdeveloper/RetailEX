@@ -1,23 +1,39 @@
-﻿// Production-Ready Logger Utility
+// Production-Ready Logger Utility
 // Automatically disables console logs in production
+
+import { invoke } from '@tauri-apps/api/core';
 
 const isDevelopment = typeof process !== 'undefined' && process.env.NODE_ENV === 'development';
 
 /**
  * Smart logger that only outputs in development mode
- * In production, all logs are no-ops for better performance
+ * In production, errors are forwarded to the Rust backend logger.
  */
 export const logger = {
-  log: isDevelopment ? console.log.bind(console) : () => {},
-  info: isDevelopment ? console.info.bind(console) : () => {},
-  warn: isDevelopment ? console.warn.bind(console) : () => {},
-  error: console.error.bind(console), // Always log errors
-  debug: isDevelopment ? console.debug.bind(console) : () => {},
-  group: isDevelopment ? console.group.bind(console) : () => {},
-  groupEnd: isDevelopment ? console.groupEnd.bind(console) : () => {},
-  table: isDevelopment ? console.table.bind(console) : () => {},
-  time: isDevelopment ? console.time.bind(console) : () => {},
-  timeEnd: isDevelopment ? console.timeEnd.bind(console) : () => {},
+  log: isDevelopment ? console.log.bind(console) : () => { },
+  info: isDevelopment ? console.info.bind(console) : () => { },
+  warn: isDevelopment ? console.warn.bind(console) : () => { },
+  error: (...args: any[]) => {
+    console.error(...args);
+    // Forward to Tauri backend
+    try {
+      const context = args.length > 1 ? String(args[0]) : "Global";
+      const details = args.map(a => {
+        if (a instanceof Error) return a.stack || a.message;
+        try {
+          return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) { return String(a); }
+      }).join(' | ');
+
+      invoke('log_from_frontend', { level: 'ERROR', context, details }).catch(() => { });
+    } catch (e) { }
+  },
+  debug: isDevelopment ? console.debug.bind(console) : () => { },
+  group: isDevelopment ? console.group.bind(console) : () => { },
+  groupEnd: isDevelopment ? console.groupEnd.bind(console) : () => { },
+  table: isDevelopment ? console.table.bind(console) : () => { },
+  time: isDevelopment ? console.time.bind(console) : () => { },
+  timeEnd: isDevelopment ? console.timeEnd.bind(console) : () => { },
 };
 
 /**
@@ -29,7 +45,7 @@ export class PerformanceLogger {
   start(label: string): void {
     if (isDevelopment) {
       this.timers.set(label, performance.now());
-      logger.log(`⏱️ [${label}] Started`);
+      logger.log(`?? [${label}] Started`);
     }
   }
 
@@ -38,7 +54,7 @@ export class PerformanceLogger {
       const startTime = this.timers.get(label);
       if (startTime) {
         const duration = performance.now() - startTime;
-        logger.log(`✅ [${label}] Completed in ${duration.toFixed(2)}ms`);
+        logger.log(`? [${label}] Completed in ${duration.toFixed(2)}ms`);
         this.timers.delete(label);
       }
     }
@@ -46,3 +62,15 @@ export class PerformanceLogger {
 }
 
 export const perfLogger = new PerformanceLogger();
+
+// Global error boundaries for unhandled frontend exceptions
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    logger.error('UncaughtException', event.message, event.error);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    logger.error('UnhandledRejection', event.reason);
+  });
+}
+

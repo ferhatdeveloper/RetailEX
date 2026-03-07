@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CostAccountingService, StockValuation, formatMoney } from '../../../services/costAccountingService';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
@@ -95,4 +95,6 @@ export function MaterialValueReport() {
         </div>
     );
 }
+
+
 

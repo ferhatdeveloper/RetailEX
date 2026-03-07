@@ -1,4 +1,4 @@
-﻿import { memo } from 'react';
+import { memo } from 'react';
 import { FixedSizeGrid as Grid } from 'react-window';
 import { Package } from 'lucide-react';
 import type { Product } from '../../App';
@@ -101,4 +101,6 @@ export const VirtualProductGrid = memo(({
 });
 
 VirtualProductGrid.displayName = 'VirtualProductGrid';
+
+
 

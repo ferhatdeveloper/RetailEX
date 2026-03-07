@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Smart Picking Logic
  * Handles splitting orders based on Zones (category) and Volume (m3) capacity.
  */
@@ -105,4 +105,6 @@ function createTask(
         reason: index > 1 ? `Split #${index} (Capacity Limit)` : `Zone: ${zone.toUpperCase()}`
     };
 }
+
+
 

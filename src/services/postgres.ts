@@ -1,4 +1,4 @@
-﻿import { invoke } from '@tauri-apps/api/tauri';
+﻿import { invoke } from '@tauri-apps/api/core';
 import { logger } from './loggingService';
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
@@ -31,7 +31,7 @@ export let DB_SETTINGS = {
 
 // ERP Settings (Logo integration)
 export let ERP_SETTINGS = {
-  firmNr: '009', // Default to 009
+  firmNr: '001', // Default to 001
   periodNr: '01',
   selected_cash_registers: [] as string[]
 };
@@ -161,7 +161,7 @@ export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_C
   }
 }
 
-class PostgresConnection {
+export class PostgresConnection {
   private static instance: PostgresConnection;
   private status: PostgresStatus = {
     connected: false,
@@ -188,21 +188,6 @@ class PostgresConnection {
     this.status = await testDbConfig(targetConfig);
     console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to ${this.status.host}`);
 
-    // DEBUG: Check schema for rex_009_01_cash_lines
-    try {
-      const schemaCheck = await this.query(
-        "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'rex_009_01_cash_lines'"
-      );
-      console.log('🔍 SCHEMA DEBUG (rex_009_01_cash_lines):', JSON.stringify(schemaCheck.rows, null, 2));
-
-      const migrationCheck = await this.query(
-        "SELECT * FROM sys_migrations ORDER BY id DESC LIMIT 5"
-      );
-      console.log('🔍 MIGRATION DEBUG:', JSON.stringify(migrationCheck.rows, null, 2));
-    } catch (e) {
-      console.error('🔍 SCHEMA DEBUG ERROR:', e);
-    }
-
     return this.status;
   }
 
@@ -211,11 +196,51 @@ class PostgresConnection {
   private static CARD_TABLES = [
     'products', 'customers', 'suppliers', 'sales_reps', 'cash_registers', 'cash_register_transactions',
     'currencies', 'categories', 'brands', 'units', 'tax_rates', 'special_codes',
-    'campaigns', 'product_variants', 'lots', 'bank_registers', 'expense_cards'
+    'campaigns', 'product_variants', 'lots', 'bank_registers', 'expense_cards',
+    // Restaurant card tables (rest schema)
+    'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
+    // Beauty card tables (beauty schema)
+    'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices'
   ];
-  private static MOVEMENT_TABLES = ['sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines'];
+  private static MOVEMENT_TABLES = [
+    'sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines',
+    'virman_operations', 'virman_items',
+    // Restaurant movement tables (rest schema)
+    'rest_orders', 'rest_order_items', 'rest_kitchen_orders', 'rest_kitchen_items', 'rest_reservations',
+    // Beauty movement tables (beauty schema)
+    'beauty_appointments', 'beauty_sessions', 'beauty_session_logs',
+    'beauty_package_purchases', 'beauty_package_sales', 'beauty_device_usage'
+  ];
 
-  async query<T = any>(sql: string, params: any[] = []): Promise<{ rows: T[]; rowCount: number }> {
+  // Tables that live in a dedicated schema (not public)
+  private static TABLE_SCHEMA: Record<string, string> = {
+    'rest_tables': 'rest', 'rest_recipes': 'rest', 'rest_recipe_ingredients': 'rest', 'rest_staff': 'rest',
+    'rest_orders': 'rest', 'rest_order_items': 'rest', 'rest_kitchen_orders': 'rest', 'rest_kitchen_items': 'rest', 'rest_reservations': 'rest',
+    'beauty_specialists': 'beauty', 'beauty_services': 'beauty', 'beauty_packages': 'beauty', 'beauty_devices': 'beauty',
+    'beauty_appointments': 'beauty', 'beauty_sessions': 'beauty', 'beauty_session_logs': 'beauty',
+    'beauty_package_purchases': 'beauty', 'beauty_package_sales': 'beauty', 'beauty_device_usage': 'beauty',
+  };
+
+  /** Returns schema-qualified prefixed name for a firm-level card table.
+   *  e.g. getCardTableName('rest_tables', 'rest') → 'rest.rex_001_rest_tables'
+   */
+  getCardTableName(table: string, schema = 'public'): string {
+    const firm = ERP_SETTINGS.firmNr || '001';
+    const prefixed = `rex_${firm}_${table}`;
+    return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
+  }
+
+  /** Returns schema-qualified prefixed name for a period movement table.
+   *  e.g. getMovementTableName('beauty_appointments', 'beauty') → 'beauty.rex_001_01_beauty_appointments'
+   */
+  getMovementTableName(table: string, schema = 'public'): string {
+    const firm = ERP_SETTINGS.firmNr || '001';
+    const period = ERP_SETTINGS.periodNr || '01';
+    const prefixed = `rex_${firm}_${period}_${table}`;
+    return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
+  }
+
+  async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string }): Promise<{ rows: T[]; rowCount: number }> {
     // 1. Resolve Dynamic Table Names (Query Rewriting)
     let resolvedSql = sql;
 
@@ -247,19 +272,35 @@ class PostgresConnection {
       console.log(`[PG Params VALUES]`, JSON.stringify(normalizedParams, null, 2));
     }
 
-    const effectiveFirmNr = ERP_SETTINGS.firmNr || '001';
-    const effectivePeriodNr = ERP_SETTINGS.periodNr || '01';
+    const effectiveFirmNr = options?.firmNr || ERP_SETTINGS.firmNr || '001';
+    const effectivePeriodNr = options?.periodNr || ERP_SETTINGS.periodNr || '01';
 
     PostgresConnection.CARD_TABLES.forEach(table => {
-      const regex = new RegExp(`(?<!\\.)\\b${table}\\b`, 'gi');
-      const prefix = `rex_${effectiveFirmNr}_`;
-      resolvedSql = resolvedSql.replace(regex, `${prefix}${table}`);
+      const schema = PostgresConnection.TABLE_SCHEMA[table];
+      const prefixed = `rex_${effectiveFirmNr}_${table}`;
+      const fullName = schema ? `${schema}.${prefixed}` : prefixed;
+      // 1. Rewrite plain table name: rest_tables → rest.rex_001_rest_tables
+      const plainRegex = new RegExp(`(?<!\\.)\\b${table}\\b`, 'gi');
+      resolvedSql = resolvedSql.replace(plainRegex, fullName);
+      // 2. Rewrite explicit schema.tablename: rest.rest_tables → rest.rex_001_rest_tables
+      if (schema) {
+        const schemaRegex = new RegExp(`\\b${schema}\\.${table}\\b`, 'gi');
+        resolvedSql = resolvedSql.replace(schemaRegex, `${schema}.${prefixed}`);
+      }
     });
 
     PostgresConnection.MOVEMENT_TABLES.forEach(table => {
-      const regex = new RegExp(`(?<!\\.)\\b${table}\\b`, 'gi');
-      const prefix = `rex_${effectiveFirmNr}_${effectivePeriodNr}_`;
-      resolvedSql = resolvedSql.replace(regex, `${prefix}${table}`);
+      const schema = PostgresConnection.TABLE_SCHEMA[table];
+      const prefixed = `rex_${effectiveFirmNr}_${effectivePeriodNr}_${table}`;
+      const fullName = schema ? `${schema}.${prefixed}` : prefixed;
+      // 1. Rewrite plain table name
+      const plainRegex = new RegExp(`(?<!\\.)\\b${table}\\b`, 'gi');
+      resolvedSql = resolvedSql.replace(plainRegex, fullName);
+      // 2. Rewrite explicit schema.tablename
+      if (schema) {
+        const schemaRegex = new RegExp(`\\b${schema}\\.${table}\\b`, 'gi');
+        resolvedSql = resolvedSql.replace(schemaRegex, `${schema}.${prefixed}`);
+      }
     });
 
     console.log(`[PG Query] [${DB_SETTINGS.activeMode}]`, resolvedSql, JSON.parse(JSON.stringify(normalizedParams)));
@@ -376,6 +417,25 @@ class PostgresConnection {
     } catch (error: any) {
       console.error('Device registration error:', error);
       return { success: false, message: `Hata: ${error.message}` };
+    }
+  }
+
+  /**
+   * Get active firm details
+   */
+  async getFirmDetails(firmNr: string): Promise<any> {
+    try {
+      const result = await this.query(
+        'SELECT * FROM firms WHERE nr = $1 AND is_active = true',
+        [firmNr]
+      );
+      if (result.rows.length > 0) {
+        return result.rows[0];
+      }
+      return null;
+    } catch (e) {
+      console.error('Failed to get firm details:', e);
+      return null;
     }
   }
 

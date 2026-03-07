@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Exchange Rate Service (v4.0)
  * 
  * Manages currency exchange rates using the centralized PostgreSQL + Rust infrastructure.
@@ -27,7 +27,7 @@ class ExchangeRateService {
   constructor() {
     // Subscribe to real-time updates from WebSocket
     wsService.on('EXCHANGE_RATE_UPDATED', (data: any) => {
-      logger.info('💱 Real-time exchange rate received:', data);
+      logger.info('?? Real-time exchange rate received:', data);
 
       const rate: ExchangeRate = {
         id: data.id || '',
@@ -118,3 +118,5 @@ class ExchangeRateService {
 }
 
 export const exchangeRateService = new ExchangeRateService();
+
+

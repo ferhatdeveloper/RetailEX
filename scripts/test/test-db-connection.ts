@@ -1,5 +1,5 @@
 // Test script to verify database connection and data
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 
 async function testDatabaseConnection() {
     console.log('🔍 Testing Database Connection...');

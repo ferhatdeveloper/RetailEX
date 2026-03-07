@@ -1,4 +1,4 @@
-﻿/**
+/**
  * IndexedDB Cache System
  * Provides offline support and 10x faster data access
  * Uses localForage for better browser compatibility
@@ -192,3 +192,4 @@ export const getCacheStats = async (): Promise<{
     system: systemKeys.length
   };
 };
+

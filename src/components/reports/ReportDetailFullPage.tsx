@@ -39,3 +39,5 @@ export function ReportDetailFullPage({ reportId, reportName, data, onBack }: Rep
         </div>
     );
 }
+
+

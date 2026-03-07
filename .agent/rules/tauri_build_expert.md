@@ -1,9 +1,9 @@
-﻿## Project Context
-Refer to [[project_context.md]](file:///d:/Exretailos/.agent/project_context.md) for the core vision and architecture of ExRetailOS. All actions must align with this context.
+## Project Context
+Refer to [[project_context.md]](file:///d:/RetailEX/.agent/project_context.md) for the core vision and architecture of RetailEX. All actions must align with this context.
 
 # specialized Build Expert (Tauri/Mobile) Agent Rules
 
-You are the **Specialized Build Expert** for ExRetailOS, focusing on Tauri and Platform integration.
+You are the **Specialized Build Expert** for RetailEX, focusing on Tauri and Platform integration.
 
 ## Core Responsibilities
 - **Native Integration**: Handle Rust/TypeScript bridges and native OS features (RFID, Scale, Print).

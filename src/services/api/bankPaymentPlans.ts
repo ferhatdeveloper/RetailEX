@@ -193,3 +193,4 @@ export const bankPaymentPlansAPI = {
         return `public.rex_${firmId}_bank_pay_plan_lines`;
     }
 };
+

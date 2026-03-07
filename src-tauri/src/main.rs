@@ -20,7 +20,8 @@ mod license;
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
-use tauri::Manager;
+use tauri::{AppHandle, Manager, Emitter};
+use tauri::path::BaseDirectory;
 use tokio_postgres::Client;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -89,13 +90,24 @@ async fn install_pg16() -> Result<String, String> {
 async fn read_init_sqls(app: tauri::AppHandle) -> Result<Vec<(String, String)>, String> {
     let mut sqls = Vec::new();
     let mut search_paths = Vec::new();
-    search_paths.push(std::path::PathBuf::from("database/init"));
-    search_paths.push(std::path::PathBuf::from("../database/init"));
-    if let Some(resource_dir) = app.path_resolver().resource_dir() {
+
+    // 1. Resolve using tauri::path::resolve_resource
+    if let Ok(res) = app.path().resolve("database/init", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    
+    // 2. Resolve relative to _up_ (common in bundling)
+    if let Ok(res) = app.path().resolve("_up_/database/init", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+ 
+    // 3. Fallback to resource_dir manual joins
+    if let Ok(resource_dir) = app.path().resource_dir() {
         search_paths.push(resource_dir.join("database").join("init"));
         search_paths.push(resource_dir.join("init"));
+        search_paths.push(resource_dir.join("_up_").join("database").join("init"));
     }
-
+    
     let mut found_path = None;
     for path in search_paths {
         if path.exists() && path.is_dir() {
@@ -165,6 +177,11 @@ async fn pg_execute(
 }
 
 #[tauri::command]
+async fn get_app_version(package_info: tauri::PackageInfo) -> String {
+    package_info.version.to_string()
+}
+
+#[tauri::command]
 async fn pg_query(
     state: tauri::State<'_, DbState>,
     conn_str: String, 
@@ -191,24 +208,136 @@ async fn pg_query(
     impl ToSql for QueryParam {
         fn to_sql(&self, ty: &tokio_postgres::types::Type, out: &mut bytes::BytesMut) -> Result<tokio_postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
             use tokio_postgres::types::Type;
+            use rust_decimal::prelude::FromPrimitive;
             
-            // Flexibly handle casting: If the expected type is text-based but we have a number/bool, 
-            // convert to string and send as text. This helps with $1::text::uuid patterns.
             let is_text_type = match *ty {
-                Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::NAME => true,
+                Type::VARCHAR | Type::TEXT | Type::BPCHAR | Type::NAME | Type::UNKNOWN => true,
                 _ => false,
             };
 
             match self {
                 QueryParam::Null => Ok(tokio_postgres::types::IsNull::Yes),
-                QueryParam::Text(s) => s.to_sql(ty, out),
+
+                // ── Text → target type conversion ──────────────────────
+                // The frontend normalises every value to a JSON string.
+                // tokio-postgres uses the *extended* (binary) protocol, so
+                // we MUST parse the string into the native Rust type that
+                // matches the PostgreSQL column, otherwise the server
+                // receives raw UTF-8 bytes where it expects a binary int /
+                // bool / uuid / date and returns 22P03.
+                QueryParam::Text(s) => {
+                    if is_text_type {
+                        return s.to_sql(ty, out);
+                    }
+                    match *ty {
+                        // Boolean
+                        Type::BOOL => {
+                            let b = match s.to_lowercase().as_str() {
+                                "true" | "t" | "1" | "yes" => true,
+                                _ => false,
+                            };
+                            b.to_sql(ty, out)
+                        },
+                        // Integers
+                        Type::INT2 => {
+                            let v: i16 = s.parse().unwrap_or(0);
+                            v.to_sql(ty, out)
+                        },
+                        Type::INT4 | Type::OID => {
+                            let v: i32 = s.parse().unwrap_or(0);
+                            v.to_sql(ty, out)
+                        },
+                        Type::INT8 => {
+                            let v: i64 = s.parse().unwrap_or(0);
+                            v.to_sql(ty, out)
+                        },
+                        // Floats
+                        Type::FLOAT4 => {
+                            let v: f32 = s.parse().unwrap_or(0.0);
+                            v.to_sql(ty, out)
+                        },
+                        Type::FLOAT8 => {
+                            let v: f64 = s.parse().unwrap_or(0.0);
+                            v.to_sql(ty, out)
+                        },
+                        // Decimal / Numeric
+                        Type::NUMERIC => {
+                            let v = s.parse::<rust_decimal::Decimal>()
+                                .unwrap_or(rust_decimal::Decimal::from(0));
+                            v.to_sql(ty, out)
+                        },
+                        // UUID
+                        Type::UUID => {
+                            if let Ok(u) = Uuid::parse_str(s) {
+                                u.to_sql(ty, out)
+                            } else {
+                                // Fallback: send as text and let PG cast
+                                s.to_sql(&Type::TEXT, out)
+                            }
+                        },
+                        // Date
+                        Type::DATE => {
+                            let d = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                                .or_else(|_| chrono::NaiveDate::parse_from_str(&s[..10.min(s.len())], "%Y-%m-%d"))
+                                .or_else(|_| chrono::NaiveDate::parse_from_str(s, "%Y/%m/%d"));
+                            if let Ok(val) = d {
+                                val.to_sql(ty, out)
+                            } else {
+                                s.to_sql(&Type::TEXT, out)
+                            }
+                        },
+                        // Timestamp without timezone
+                        Type::TIMESTAMP => {
+                            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+                                dt.to_sql(ty, out)
+                            } else if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+                                dt.to_sql(ty, out)
+                            } else {
+                                s.to_sql(&Type::TEXT, out)
+                            }
+                        },
+                        // Timestamp with timezone
+                        Type::TIMESTAMPTZ => {
+                            if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+                                let utc: DateTime<Utc> = dt.with_timezone(&Utc);
+                                utc.to_sql(ty, out)
+                            } else if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+                                let utc = DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc);
+                                utc.to_sql(ty, out)
+                            } else {
+                                s.to_sql(&Type::TEXT, out)
+                            }
+                        },
+                        // JSONB / JSON
+                        Type::JSONB | Type::JSON => {
+                            let v: serde_json::Value = serde_json::from_str(s)
+                                .unwrap_or(serde_json::Value::String(s.clone()));
+                            v.to_sql(ty, out)
+                        },
+                        // Anything else: send as text (PG will cast via ::type if query uses it)
+                        _ => {
+                            s.to_sql(&Type::TEXT, out)
+                        }
+                    }
+                },
+
+                // ── Num (Decimal) ──────────────────────────────────────
                 QueryParam::Num(n) => {
                     if is_text_type {
                         n.to_string().to_sql(ty, out)
                     } else {
-                        n.to_sql(ty, out)
+                        match *ty {
+                            Type::INT2 => { let v = n.to_string().parse::<i16>().unwrap_or(0); v.to_sql(ty, out) },
+                            Type::INT4 | Type::OID => { let v = n.to_string().parse::<i32>().unwrap_or(0); v.to_sql(ty, out) },
+                            Type::INT8 => { let v = n.to_string().parse::<i64>().unwrap_or(0); v.to_sql(ty, out) },
+                            Type::FLOAT4 => { let v = n.to_string().parse::<f32>().unwrap_or(0.0); v.to_sql(ty, out) },
+                            Type::FLOAT8 => { let v = n.to_string().parse::<f64>().unwrap_or(0.0); v.to_sql(ty, out) },
+                            _ => n.to_sql(ty, out)
+                        }
                     }
                 },
+
+                // ── Bool ───────────────────────────────────────────────
                 QueryParam::Bool(b) => {
                     if is_text_type {
                         b.to_string().to_sql(ty, out)
@@ -234,19 +363,8 @@ async fn pg_query(
             serde_json::Value::Null => query_params.push(QueryParam::Null),
             serde_json::Value::String(s) => query_params.push(QueryParam::Text(s)),
             serde_json::Value::Bool(b) => query_params.push(QueryParam::Bool(b)),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    query_params.push(QueryParam::Num(rust_decimal::Decimal::from(i)));
-                } else if let Some(f) = n.as_f64() {
-                    if let Some(d) = rust_decimal::prelude::FromPrimitive::from_f64(f) {
-                        query_params.push(QueryParam::Num(d));
-                    } else {
-                        query_params.push(QueryParam::Text(n.to_string()));
-                    }
-                } else {
-                    query_params.push(QueryParam::Text(n.to_string()));
-                }
-            }
+            // Always convert numbers to Text so that SQL-side ::text::int4 / ::text::uuid casts work
+            serde_json::Value::Number(n) => query_params.push(QueryParam::Text(n.to_string())),
             _ => query_params.push(QueryParam::Text(p.to_string())),
         }
     }
@@ -285,7 +403,19 @@ async fn pg_query(
     }
 
     let client = client_to_use.unwrap();
-    let rows = client.query(&sql, &params_to_sql).await.map_err(|e| e.to_string())?;
+    let rows = client.query(&sql, &params_to_sql).await.map_err(|e| {
+        // Expose the real Postgres error with source chain
+        let mut msg = e.to_string();
+        if let Some(db_err) = e.as_db_error() {
+            msg = format!("PG Error {}: {} | Detail: {} | Hint: {}",
+                db_err.code().code(),
+                db_err.message(),
+                db_err.detail().unwrap_or(""),
+                db_err.hint().unwrap_or(""),
+            );
+        }
+        msg
+    })?;
 
     let mut results = Vec::new();
     for row in rows {
@@ -300,6 +430,10 @@ async fn pg_query(
                 match v { Some(d) => serde_json::Value::Number(serde_json::Number::from_f64(d.to_f64().unwrap_or(0.0)).unwrap_or(serde_json::Number::from(0))), None => serde_json::Value::Null }
             } else if let Ok(v) = row.try_get::<_, Option<Uuid>>(i) {
                 match v { Some(u) => serde_json::Value::String(u.to_string()), None => serde_json::Value::Null }
+            } else if let Ok(v) = row.try_get::<_, Option<chrono::NaiveDate>>(i) {
+                match v { Some(d) => serde_json::Value::String(d.to_string()), None => serde_json::Value::Null }
+            } else if let Ok(v) = row.try_get::<_, Option<chrono::NaiveDateTime>>(i) {
+                match v { Some(dt) => serde_json::Value::String(dt.to_string()), None => serde_json::Value::Null }
             } else if let Ok(v) = row.try_get::<_, Option<DateTime<Utc>>>(i) {
                 match v { Some(dt) => serde_json::Value::String(dt.to_rfc3339()), None => serde_json::Value::Null }
             } else if let Ok(v) = row.try_get::<_, Option<i32>>(i) {
@@ -429,7 +563,7 @@ async fn dump_supabase_to_sql(window: tauri::Window, project_ref: String, token:
 
     let total_tables = table_order.len();
     for (idx, full_table_name) in table_order.iter().enumerate() {
-        let _ = window.emit("supabase-dump-progress", format!("Tablo İşleniyor ({}/{}): {}...", idx + 1, total_tables, full_table_name));
+        let _ = window.emit("supabase-dump-progress", format!("Tablo işleniyor ({}/{}): {}...", idx + 1, total_tables, full_table_name));
         sql_dump.push_str(&format!("CREATE TABLE IF NOT EXISTS {} (\n", full_table_name));
         let cols = &table_columns[full_table_name];
         let mut col_defs = Vec::new();
@@ -488,12 +622,43 @@ async fn pg_execute_file(state: tauri::State<'_, DbState>, conn_str: String, fil
 }
 
 #[tauri::command]
+async fn list_system_printers() -> Result<Vec<serde_json::Value>, String> {
+    let ps_script = r#"
+        Get-Printer | Select-Object Name, PrinterStatus, Type, DriverName, PortName | ConvertTo-Json
+    "#;
+
+    let output = Command::new("powershell")
+        .args(["-Command", ps_script])
+        .creation_flags(0x08000000) 
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().is_empty() {
+             return Ok(vec![]);
+        }
+        let printers: serde_json::Value = serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
+        
+        if printers.is_array() {
+            Ok(printers.as_array().unwrap().clone())
+        } else if printers.is_object() {
+            Ok(vec![printers])
+        } else {
+            Ok(vec![])
+        }
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+#[tauri::command]
 async fn verify_license(key: String) -> Result<license::LicenseInfo, String> {
     Ok(license::LicenseManager::check_license(&key))
 }
 
 fn check_bootstrap_config(app: &tauri::AppHandle) {
-    let bootstrap_path = app.path_resolver().app_config_dir().unwrap_or_else(|| std::path::PathBuf::from("C:\\RetailEx")).join("bootstrap.json");
+    let bootstrap_path = app.path().app_config_dir().unwrap_or_else(|_| std::path::PathBuf::from("C:\\RetailEx")).join("bootstrap.json");
     if bootstrap_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&bootstrap_path) {
             if let Ok(bootstrap_config) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -529,6 +694,9 @@ fn check_bootstrap_config(app: &tauri::AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+    .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_process::init())
+    .plugin(tauri_plugin_dialog::init())
     .setup(|app| {
         let handle = app.handle();
         let _ = config::init_config_db();
@@ -558,12 +726,6 @@ fn main() {
                         Err(e) => eprintln!("❌ Startup Migration Error: {}", e),
                     }
                     
-                    // Auto-Update Check on Startup (Non-blocking)
-                    println!("🚀 Startup: Checking for application updates...");
-                    let update_handle = app_handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = check_update(update_handle).await; 
-                    });
                 }
 
                 config.enable_mesh = true;
@@ -580,16 +742,17 @@ fn main() {
         check_pg16, install_pg16, get_system_id, get_os_username,
         list_supabase_projects, dump_supabase_to_sql, pg_execute_file,
         pg_query, pg_execute, read_init_sqls,
-        db_ops::create_database, db_ops::run_migrations, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
+        db_ops::create_database, db_ops::run_migrations, db_ops::open_migration_log, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info,
-        verify_license, check_update,
+        verify_license, check_update_status,
 
         vpn::get_vpn_status, vpn::get_mesh_peers, vpn::generate_vpn_keys, vpn::start_vpn_mesh,
         vpn_keys::generate_device_bound_vpn_keys, vpn_keys::verify_device_and_decrypt_key,
         maintenance::compact_database, security::verify_token,
+        logger::log_from_frontend,
         config::get_app_config, config::save_app_config,
         config::get_dashboard_shortcuts, config::save_dashboard_shortcuts, config::reset_dashboard_shortcuts,
-        backup_service::perform_manual_backup,
+        backup_service::perform_manual_backup, list_system_printers,
         mssql::test_mssql_connection, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data,
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction
@@ -599,40 +762,6 @@ fn main() {
 }
 
 #[tauri::command]
-async fn check_update(app: tauri::AppHandle) -> Result<String, String> {
-    let config = config::get_app_config(app.clone()).map_err(|e| e.to_string())?;
-    
-    let update_url = if config.update_source == "github" {
-        // GitHub Releases (Requires strict format or proxy, using placeholder for now)
-        // If repo is private, this won't work without a token proxy.
-        "https://github.com/OWNER/REPO/releases/latest/download/latest.json".to_string() 
-    } else {
-        // Central Server (Default)
-        // We construct the URL manually to match tauri.conf.json pattern expectation if we were to use it directly,
-        // but here we are overriding it.
-        // Note: Tauri replaces {{target}}, {{arch}} automatically if we pass the base URL.
-        // Actually, builder().urls() expects the full URL with variables or the resolved one?
-        // Tauri docs say: "The update endpoints... Tauri replaces {{target}}...".
-        "https://updates.retailex.app/{{target}}/{{arch}}/{{current_version}}".to_string()
-    };
-
-    println!("Checking for updates from: {}", config.update_source);
-    
-    // Trigger the update check with the dynamic URL
-    let builder = tauri::updater::builder(app.clone()).endpoints(&[update_url]);
-    
-    match builder.check().await {
-        Ok(update) => {
-            if update.is_update_available() {
-                let latest_v = update.latest_version().to_string();
-                println!("Update available: {}", latest_v);
-                let install_res: Result<(), tauri::updater::Error> = update.download_and_install().await;
-                install_res.map_err(|e| e.to_string())?;
-                Ok(format!("Update installed: {}", latest_v))
-            } else {
-                Ok("No updates available".to_string())
-            }
-        },
-        Err(e) => Err(format!("Update check failed: {}", e)),
-    }
+async fn check_update_status() -> Result<String, String> {
+    Ok("Update check not configured".to_string())
 }

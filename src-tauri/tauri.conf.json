@@ -3,93 +3,69 @@
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:3000",
-    "distDir": "../build"
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:6173"
   },
-  "package": {
-    "productName": "retailex",
-    "version": "0.1.22"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": true,
-      "http": {
-        "all": true,
-        "request": true,
-        "scope": [
-          "https://test.zaincash.iq/*",
-          "https://api.zaincash.iq/*",
-          "https://pg-api-uat.zaincash.iq/*"
-        ]
-      },
-      "dialog": {
-        "all": false,
-        "open": true
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "copyright": "",
+    "targets": [
+      "nsis",
+      "dmg",
+      "app",
+      "deb",
+      "appimage"
+    ],
+    "externalBin": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": "C94EB006F97617F5480CD4DA6F719A8EDCBCA37E",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "allowDowngrades": true,
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "branding/header.bmp",
+        "sidebarImage": "branding/sidebar.bmp",
+        "template": "./installer.nsi"
       }
     },
-    "bundle": {
-      "active": true,
-      "category": "DeveloperTool",
-      "copyright": "",
+    "longDescription": "",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "resources": [
+      "../database/init/**/*",
+      "../database/migrations/**/*",
+      "../database/sys/**/*"
+    ],
+    "shortDescription": "",
+    "linux": {
       "deb": {
         "depends": []
-      },
-      "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.retailex.app",
-      "longDescription": "",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [
-        "../database/init/**/*",
-        "../database/migrations/**/*",
-        "../database/sys/**/*"
-      ],
-      "shortDescription": "",
-      "targets": [
-        "nsis",
-        "dmg",
-        "app",
-        "deb",
-        "appimage"
-      ],
-      "windows": {
-        "certificateThumbprint": "C94EB006F97617F5480CD4DA6F719A8EDCBCA37E",
-        "digestAlgorithm": "sha256",
-        "timestampUrl": "http://timestamp.digicert.com",
-        "allowDowngrades": true,
-        "nsis": {
-          "displayLanguageSelector": false,
-          "installMode": "currentUser",
-          "installerIcon": "icons/icon.ico",
-          "headerImage": "branding/header.bmp",
-          "sidebarImage": "branding/sidebar.bmp",
-          "template": "./installer.nsi"
-        }
       }
     },
-    "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": true,
-      "dialog": true,
-      "endpoints": [
-        "https://updates.retailex.app/{{target}}/{{arch}}/{{current_version}}"
-      ],
-      "pubkey": "YOUR_TAURI_PUBKEY_HERE"
-    },
+    "createUpdaterArtifacts": false
+  },
+  "productName": "retailex",
+  "mainBinaryName": "retailex",
+  "version": "0.1.46",
+  "identifier": "com.retailex.app",
+  "plugins": {},
+  "app": {
     "windows": [
       {
         "fullscreen": false,
@@ -98,8 +74,12 @@
         "resizable": true,
         "title": "RetailEX",
         "width": 1024,
-        "height": 768
+        "height": 768,
+        "useHttpsScheme": true
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
   }
 }

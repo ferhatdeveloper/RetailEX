@@ -3,7 +3,7 @@ import {
     Wifi, WifiOff, Database, Clock, Globe, CheckCircle2, XCircle, Loader2,
     ArrowLeft, ArrowRight
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
 interface VpnStatus {
     is_running: boolean;
@@ -42,8 +42,13 @@ export const AppFooter: React.FC<AppFooterProps> = ({
     // Update VPN status
     const updateVpnStatus = async () => {
         try {
-            const status: VpnStatus = await invoke('get_vpn_status');
-            setVpnStatus(status);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const status: VpnStatus = await invoke('get_vpn_status');
+                setVpnStatus(status);
+            } else {
+                setVpnStatus({ is_running: false, virtual_ip: 'WEB' });
+            }
         } catch (err) {
             console.error('Failed to fetch VPN status:', err);
         }
@@ -52,12 +57,17 @@ export const AppFooter: React.FC<AppFooterProps> = ({
     // Fetch last sync time
     const fetchLastSync = async () => {
         try {
-            const config = await invoke('get_app_config');
-            const info: LastSyncInfo = await invoke('get_last_sync_info', { config });
-            if (info.last_sync_date) {
-                const date = new Date(info.last_sync_date);
-                const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                setLastSyncTime(timeStr);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const config = await invoke('get_app_config');
+                const info: LastSyncInfo = await invoke('get_last_sync_info', { config });
+                if (info.last_sync_date) {
+                    const date = new Date(info.last_sync_date);
+                    const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                    setLastSyncTime(timeStr);
+                }
+            } else {
+                setLastSyncTime('N/A');
             }
         } catch (err) {
             console.error('Failed to fetch last sync info:', err);
@@ -197,3 +207,5 @@ export const AppFooter: React.FC<AppFooterProps> = ({
         </div>
     );
 };
+
+

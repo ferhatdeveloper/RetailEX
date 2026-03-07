@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // Get from local storage then parse stored json or return initialValue
@@ -54,10 +54,10 @@ export function syncStoreWithLocalStorage<T>(
         if (stored) {
           const data = JSON.parse(stored);
           setter(data);
-          console.log(`✅ ${storeName} loaded from localStorage`);
+          console.log(`? ${storeName} loaded from localStorage`);
         }
       } catch (error) {
-        console.error(`❌ Failed to load ${storeName} from localStorage:`, error);
+        console.error(`? Failed to load ${storeName} from localStorage:`, error);
       }
     };
 
@@ -70,11 +70,13 @@ export function syncStoreWithLocalStorage<T>(
     if (data && (Array.isArray(data) ? data.length > 0 : Object.keys(data).length > 0)) {
       try {
         localStorage.setItem(`retailos_${storeName}`, JSON.stringify(data));
-        console.log(`ğŸ’¾ ${storeName} saved to localStorage`);
+        console.log(`💾 ${storeName} saved to localStorage`);
       } catch (error) {
-        console.error(`❌ Failed to save ${storeName} to localStorage:`, error);
+        console.error(`? Failed to save ${storeName} to localStorage:`, error);
       }
     }
   }, [getter()]);
 }
+
+
 

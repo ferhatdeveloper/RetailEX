@@ -1,4 +1,4 @@
-﻿// React Query hook for infinite store loading
+// React Query hook for infinite store loading
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { storeApiService, type SearchFilters, type Store } from '../services/storeApiService';
@@ -72,4 +72,6 @@ export function useStoreStats(storeId: string) {
     staleTime: 60000,
   });
 }
+
+
 

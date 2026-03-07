@@ -1,4 +1,4 @@
-﻿import { postgres, ERP_SETTINGS } from './postgres';
+import { postgres, ERP_SETTINGS } from './postgres';
 import { supabase } from '../utils/supabase/client';
 
 export interface StockCount {
@@ -140,4 +140,5 @@ class StockCountAPI {
 }
 
 export const stockCountAPI = new StockCountAPI();
+
 

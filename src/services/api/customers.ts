@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Customer API - Direct PostgreSQL Implementation
  * Note: Uses rex_{firm}_customers table
  */
@@ -149,13 +149,30 @@ export const customerAPI = {
       const values: any[] = [];
       let i = 1;
 
+      // V2 customers tablosundaki gerçek sütun adlarına map et
+      const customerFieldMap: Record<string, string | null> = {
+        totalSpent:    'total_spent',
+        taxNumber:     'tax_nr',
+        tax_number:    'tax_nr',
+        taxOffice:     'tax_office',
+        isActive:      'is_active',
+        // V2 şemada bu kolonlar yok — atla
+        company:        null,
+        title:          null,
+        totalPurchases: null,
+        customerGroup:  null,
+        customer_group: null,
+        discountRate:   null,
+        discount_rate:  null,
+        firma_id:       null,
+      };
       Object.entries(updates).forEach(([key, value]) => {
-        if (key !== 'id' && value !== undefined) {
-          // Map JS camelCase to SQL snake_case if necessary
-          const sqlKey = key === 'totalSpent' ? 'total_spent' : key;
-          fields.push(`${sqlKey} = $${i++}`);
-          values.push(value);
-        }
+        if (key === 'id' || value === undefined) return;
+        const mapped = customerFieldMap[key];
+        if (mapped === null) return; // V2'de kolonu yok, atla
+        const sqlKey = mapped ?? key;
+        fields.push(`${sqlKey} = $${i++}`);
+        values.push(value);
       });
 
       if (fields.length === 0) return this.getById(id);
@@ -246,11 +263,12 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
     points: dbCustomer.points || 0,
     totalSpent: parseFloat(dbCustomer.total_spent || 0),
     balance: parseFloat(dbCustomer.balance || 0),
-    taxNumber: dbCustomer.tax_number,
+    taxNumber: dbCustomer.tax_nr || dbCustomer.tax_number,
     taxOffice: dbCustomer.tax_office,
     company: dbCustomer.company,
     is_active: dbCustomer.is_active,
     totalPurchases: 0,
   };
 }
+
 

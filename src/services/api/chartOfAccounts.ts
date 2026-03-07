@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Chart of Accounts API Service
  */
 
@@ -83,4 +83,5 @@ export async function fetchAccountHierarchy(firmaId: string) {
   const data = await response.json();
   return data.tree || [];
 }
+
 

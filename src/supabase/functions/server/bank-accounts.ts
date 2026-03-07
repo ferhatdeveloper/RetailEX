@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Bank Accounts Service (Backend)
  * 
  * CRUD operations for bank accounts and transactions
@@ -378,4 +378,5 @@ app.get("/:id/statement", async (c) => {
 });
 
 export default app;
+
 

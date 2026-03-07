@@ -34,3 +34,26 @@ pub fn log_sync_success(record_id: &str, action: &str) {
         let _ = file.write_all(log_entry.as_bytes());
     }
 }
+
+pub fn log_system_error(level: &str, context: &str, details: &str) {
+    let log_entry = format!(
+        "[{}] [{}] [{}] - {}\n",
+        Local::now().format("%Y-%m-%d %H:%M:%S"),
+        level.to_uppercase(),
+        context,
+        details
+    );
+
+    let log_path = "retailex_system.log";
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) {
+        let _ = file.write_all(log_entry.as_bytes());
+    } else {
+        eprintln!("Failed to write to system log file: {}", log_entry);
+    }
+}
+
+#[tauri::command]
+pub fn log_from_frontend(level: String, context: String, details: String) {
+    log_system_error(&level, &context, &details);
+}

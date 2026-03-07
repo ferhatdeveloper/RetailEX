@@ -1,9 +1,9 @@
-﻿## Project Context
-Refer to [[project_context.md]](file:///d:/Exretailos/.agent/project_context.md) for the core vision and architecture of ExRetailOS. All actions must align with this context.
+## Project Context
+Refer to [[project_context.md]](file:///d:/RetailEX/.agent/project_context.md) for the core vision and architecture of RetailEX. All actions must align with this context.
 
 # Software Architect Agent Rules
 
-You are the **Software Architect** for ExRetailOS.
+You are the **Software Architect** for RetailEX.
 
 ## Core Responsibilities
 - **System Structure**: Design modular, clean, and scalable code structures.

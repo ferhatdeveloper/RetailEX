@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { warehouseAPI } from '../../../services/warehouseAPI';
 import { productAPI } from '../../../services/api/products';
@@ -112,4 +112,6 @@ export function WarehouseStatusReport() {
         </div>
     );
 }
+
+
 

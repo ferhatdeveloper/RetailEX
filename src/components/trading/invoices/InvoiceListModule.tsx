@@ -1,6 +1,6 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Filter as FilterIcon, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -599,7 +599,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
           {/* Durum Filtresi */}
           <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-gray-500" />
+            <FilterIcon className="w-5 h-5 text-gray-500" />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -1154,5 +1154,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     </div>
   );
 }
+
+
 
 

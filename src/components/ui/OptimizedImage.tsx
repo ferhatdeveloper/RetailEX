@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, memo } from 'react';
 
 interface OptimizedImageProps {
   src: string;
@@ -125,4 +125,6 @@ export const OptimizedBackgroundImage = memo(({
 });
 
 OptimizedBackgroundImage.displayName = 'OptimizedBackgroundImage';
+
+
 

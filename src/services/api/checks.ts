@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Checks & Promissory Notes API Service
  * 
  * Backend API integration for check and promissory note management
@@ -152,4 +152,5 @@ export async function fetchExpiringSoonChecks(firmaId: string, days: number = 7)
   const data = await response.json();
   return data.checks || [];
 }
+
 

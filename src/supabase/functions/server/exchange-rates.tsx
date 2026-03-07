@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Exchange Rates API Routes
  * Handles currency exchange rate operations
  */
@@ -313,3 +313,5 @@ app.post('/bulk-import', async (c) => {
 });
 
 export default app;
+
+

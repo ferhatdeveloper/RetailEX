@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Kasa Service (Direct PostgreSQL Integration)
  * Refactored to use logic.cash_registers and logic.cash_lines
  */
@@ -87,20 +87,6 @@ export async function fetchKasalar(params?: {
     );
 
     console.log(`[KasaService] Rows found: ${rows?.length || 0}`);
-    // EMERGENCY DEBUG: Write to a file in the project root so I can read it.
-    try {
-      const { writeTextFile, BaseDirectory } = await import('@tauri-apps/api/fs');
-      await writeTextFile('kasa_debug_log.json', JSON.stringify({
-        timestamp: new Date().toISOString(),
-        table,
-        firmNr: ERP_SETTINGS.firmNr,
-        rowCount: rows?.length || 0,
-        firstRow: rows?.[0] || null,
-        params: params || null
-      }, null, 2), { dir: BaseDirectory.AppConfig });
-      // Wait, AppConfig might be hard to find. Let's try to just use a local path if possible or just log it.
-      // Actually, I can't easily write to a known path without permissions.
-    } catch (e) { }
 
     return (rows || []).map(mapDbKasaToKasa);
   } catch (error: any) {
@@ -136,9 +122,10 @@ export async function createKasa(kasa: Omit<Kasa, 'id'>): Promise<string> {
   try {
     const table = 'cash_registers';
     const { rows } = await postgres.query(
-      `INSERT INTO ${table} (code, name, currency_code, balance, is_active) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      `INSERT INTO ${table} (firm_nr, code, name, currency_code, balance, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [
+        ERP_SETTINGS.firmNr,
         kasa.kasa_kodu || '',
         kasa.kasa_adi || '',
         kasa.id_doviz_kodu || 'IQD',
@@ -301,36 +288,43 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
         sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') ? -1 : 1;
     }
 
+    // fiche_no UNIQUE constraint — boşsa benzersiz oluştur
+    const ficheNo = islem.islem_no || `KL-${ERP_SETTINGS.firmNr}-${Date.now()}`;
+
     const { rows } = await postgres.query(
       `INSERT INTO ${table} (
-         register_id, fiche_no, date, amount, sign, definition, transaction_type, 
+         firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
          customer_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
          target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate
-       ) 
+       )
          VALUES (
-           $1::text::uuid, 
-           $2::text, 
-           $3::text::date, 
-           $4::text::numeric, 
-           $5::text::integer, 
-           $6::text, 
-           $7::text, 
-           $8::text::uuid, 
-           $9::text, 
-           $10::text::numeric, 
-           $11::text::numeric, 
-           0, 
-          $12::text,
-           $13::text::uuid,
-           $14::text::uuid,
+           $1::text,
+           $2::text,
+           $3::text::uuid,
+           $4::text,
+           $5::text::date,
+           $6::text::numeric,
+           $7::text::integer,
+           $8::text,
+           $9::text,
+           $10::text::uuid,
+           $11::text,
+           $12::text::numeric,
+           $13::text::numeric,
+           0,
+           $14::text,
            $15::text::uuid,
            $16::text::uuid,
-           $17::text::numeric,
-           $18::text::numeric
+           $17::text::uuid,
+           $18::text::uuid,
+           $19::text::numeric,
+           $20::text::numeric
          ) RETURNING *`,
       [
-        islem.kasa_id || null, // Ensure not undefined
-        islem.islem_no || '',
+        ERP_SETTINGS.firmNr,
+        ERP_SETTINGS.periodNr || '01',
+        islem.kasa_id || null,
+        ficheNo,
         islem.islem_tarihi || new Date().toISOString(),
         islem.tutar || 0,
         sign,
@@ -356,35 +350,56 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
       [(islem.tutar * sign).toString(), islem.kasa_id]
     );
 
+    // Update current account balance for CH_ODEME and CH_TAHSILAT
+    // CH_ODEME: We pay supplier/customer → reduces outstanding balance → balance decreases
+    // CH_TAHSILAT: We collect from customer → reduces their outstanding → balance decreases
+    if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
+      const delta = (-islem.tutar).toString();
+      // Update customers table (only one UUID will match)
+      await postgres.query(
+        `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [delta, islem.cari_hesap_id]
+      );
+      // Update suppliers table (only one UUID will match)
+      await postgres.query(
+        `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [delta, islem.cari_hesap_id]
+      );
+    }
+
     // VIRMAN Logic: Create counter transaction if target_register_id is present
     if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
       console.log('[Kasa] Executing VIRMAN Counter Transaction logic for target:', islem.target_register_id);
       // Counter transaction: Money IN (+1) for Target Register
       await postgres.query(
         `INSERT INTO ${table} (
-           register_id, fiche_no, date, amount, sign, definition, transaction_type, 
+           firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type, 
            customer_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
            target_register_id
          ) 
            VALUES (
-             $1::text::uuid, 
-             $2::text, 
-             $3::text::date, 
-             $4::text::numeric, 
-             $5::text::integer, 
-             $6::text, 
-             $7::text, 
-             $8::text::uuid, 
+             $1::text,
+             $2::text,
+             $3::text::uuid, 
+             $4::text, 
+             $5::text::date, 
+             $6::text::numeric, 
+             $7::text::integer, 
+             $8::text, 
              $9::text, 
-             $10::text::numeric, 
-             $11::text::numeric, 
+             $10::text::uuid, 
+             $11::text, 
+             $12::text::numeric, 
+             $13::text::numeric, 
              0, 
-             $12::text,
-             $13::text::uuid
+             $14::text,
+             $15::text::uuid
            )`,
         [
+          ERP_SETTINGS.firmNr,
+          ERP_SETTINGS.periodNr || '01',
           islem.target_register_id, // Target Register
-          islem.islem_no || '',
+          `${ficheNo}-VRM`, // VIRMAN karşı işlemi için benzersiz fiche_no
           islem.islem_tarihi || new Date().toISOString(),
           islem.tutar || 0,
           1, // Sign is +1 (IN) for target
@@ -431,10 +446,12 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
 
       await postgres.query(
         `INSERT INTO ${bankLinesTable} (
-           register_id, fiche_no, date, amount, sign, definition, transaction_type
+           firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type
          ) 
-         VALUES ($1::text::uuid, $2::text, $3::text::date, $4::text::numeric, $5::text::integer, $6::text, $7::text)`,
+         VALUES ($1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, $7::text::integer, $8::text, $9::text)`,
         [
+          ERP_SETTINGS.firmNr,
+          ERP_SETTINGS.periodNr || '01',
           islem.bank_id,
           islem.islem_no || '',
           islem.islem_tarihi || new Date().toISOString(),
@@ -490,3 +507,4 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     olusturma_tarihi: row.created_at
   };
 }
+

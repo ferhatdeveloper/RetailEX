@@ -13,7 +13,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { invoke } from '@tauri-apps/api';
+import { invoke } from '@tauri-apps/api/core';
 
 interface BankRegister {
     id?: string;
@@ -58,7 +58,7 @@ export function BankRegisterManagement() {
         setLoading(true);
         try {
             const config = await invoke<any>('get_app_config');
-            const firmNr = config.firm_nr || '009';
+            const firmNr = config.firm_nr || '001';
 
             const bankRegisters = await invoke<BankRegister[]>('get_bank_registers', {
                 firmNr,
@@ -313,3 +313,5 @@ export function BankRegisterManagement() {
         </div>
     );
 }
+
+

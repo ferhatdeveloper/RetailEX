@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import {
   ShoppingCart,
@@ -48,6 +49,7 @@ import { POSProductCatalogModal } from './POSProductCatalogModal';
 import { POSCloseCashRegisterModal } from './POSCloseCashRegisterModal';
 import { Receipt80mm } from './Receipt80mm';
 import { POSOpenCashRegisterModal } from './POSOpenCashRegisterModal';
+import { POSMissingBarcodesModal } from './POSMissingBarcodesModal';
 import { POSCategoryModal } from './POSCategoryModal';
 import { POSStockQueryModal } from './POSStockQueryModal';
 import { POSPageSelectorModal } from './POSPageSelectorModal';
@@ -60,7 +62,6 @@ import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/Keyboar
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useSaleStore } from '../../store';
-import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -115,6 +116,7 @@ export default function MarketPOS({
   setRtlMode,
   layoutOrder = 'cart-numpad-quick',
 }: MarketPOSProps) {
+  const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
 
@@ -244,6 +246,8 @@ export default function MarketPOS({
   const [variantSelectionCartIndex, setVariantSelectionCartIndex] = useState<number | null>(null); // Sepet içi varyant değiştirme için
   const [productSearchQuery, setProductSearchQuery] = useState<string>(''); // Ürün kataloğu arama sorgusu
   const [showBalanceLoadModal, setShowBalanceLoadModal] = useState(false);
+  const [missingBarcodes, setMissingBarcodes] = useState<string[]>([]);
+  const [showMissingBarcodesModal, setShowMissingBarcodesModal] = useState(false);
 
   // Pending action state for manager override
   type PendingAction =
@@ -525,12 +529,15 @@ export default function MarketPOS({
         addToCart(foundProduct, undefined, quantity);
         setBarcodeInput('');
         setInputValue('');
-        setSavedQuantity(null); // Kaydedilmiş adeti temizle
+          setSavedQuantity(null); // Kaydedilmiş adeti temizle
         setNumpadMode('barcode');
         setTimeout(() => barcodeInputRef.current?.focus(), 0);
       }
     } else {
-      showNotif(t.barcodeNotFound, 'error');
+      showNotif(t.barcodeNotFoundWarning.replace('{barcode}', barcodeToSearch), 'error');
+      if (!missingBarcodes.includes(barcodeToSearch)) {
+        setMissingBarcodes(prev => [barcodeToSearch, ...prev]);
+      }
     }
   };
 
@@ -579,14 +586,14 @@ export default function MarketPOS({
   // Barkod ile arama yap - ürün bulunursa true, bulunamazsa false döner
   const searchByBarcode = (barcode: string): boolean => {
     const trimmedBarcode = barcode.trim();
-    logger.log('📦 Aranan barkod:', trimmedBarcode);
+    logger.log('?? Aranan barkod:', trimmedBarcode);
 
     // Önce varyant barkodlarında ara
     for (const product of products) {
       if (product.variants && product.variants.length > 0) {
         const foundVariant = product.variants.find((v: any) => v.barcode === trimmedBarcode);
         if (foundVariant) {
-          logger.log('✅ Varyant bulundu:', product.name, foundVariant);
+          logger.log('? Varyant bulundu:', product.name, foundVariant);
           addToCart(product, foundVariant);
           return true;
         }
@@ -611,6 +618,10 @@ export default function MarketPOS({
       return true;
     } else {
       logger.log('❌ Barkod bulunamadı');
+      showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+      if (!missingBarcodes.includes(trimmedBarcode)) {
+        setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
+      }
       return false;
     }
   };
@@ -683,7 +694,7 @@ export default function MarketPOS({
         }
       }
 
-      // Ana ürün barkodunda ara
+    // Ana ürün barkodunda ara
       const foundProduct = products.find(p => p.barcode === barcodeToSearch);
       if (foundProduct) {
         if (foundProduct.variants && foundProduct.variants.length > 0) {
@@ -711,12 +722,15 @@ export default function MarketPOS({
       // Normal barkod arama (1 adet)
       const found = searchByBarcode(searchText);
 
-      // Eğer barkod bulunamadıysa, ürün arama ekranını aç
+    // Eğer barkod bulunamadıysa, ürün arama ekranını aç
       if (!found) {
         setProductSearchQuery(searchText);
         setCatalogMode('add-to-cart');
         setShowProductCatalogModal(true);
         setBarcodeInput('');
+        if (!missingBarcodes.includes(searchText)) {
+          setMissingBarcodes(prev => [searchText, ...prev]);
+        }
       }
     }
   };
@@ -903,7 +917,7 @@ export default function MarketPOS({
       cashier: currentStaff,
       firmNr: selectedFirm?.firm_nr,
       periodNr: selectedPeriod?.nr.toString().padStart(2, '0'),
-      storeId: currentUser.storeId || null,
+      storeId: currentUser.storeId || undefined,
     };
 
     try {
@@ -989,6 +1003,7 @@ export default function MarketPOS({
     { label: t.stockQuery, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowStockQueryModal(true), icon: Package },
     { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
     { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowReturnModal(true), icon: RotateCcw },
+    { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
     { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
     { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
     { label: t.receiptNote, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: FileText },
@@ -1272,6 +1287,15 @@ export default function MarketPOS({
         </div>
       )}
 
+      {/* Missing Barcodes Modal */}
+      {showMissingBarcodesModal && (
+        <POSMissingBarcodesModal
+          barcodes={missingBarcodes}
+          onClose={() => setShowMissingBarcodesModal(false)}
+          onClear={() => setMissingBarcodes([])}
+        />
+      )}
+
       {/* Main Content */}
       <div
         className={`flex-1 gap-0 overflow-hidden ${isVerticalLayout() ? '' : 'flex flex-row'}`}
@@ -1424,7 +1448,7 @@ export default function MarketPOS({
                   onClick={handleDelete}
                   className={`col-span-1 border py-3 text-sm transition-colors ${darkMode ? 'bg-blue-900/50 hover:bg-blue-800/50 border-blue-700 text-blue-300' : 'bg-blue-50 hover:bg-blue-100 border-blue-400 text-blue-700'}`}
                 >
-                  ←
+
                 </button>
 
                 {[7, 8, 9].map(num => (
@@ -1946,7 +1970,12 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              printThermalReceipt(sale, 'RetailOS');
+              printThermalReceipt(sale, {
+                name: selectedFirma?.title || selectedFirma?.name || 'RetailOS',
+                address: selectedFirma?.address || '',
+                phone: selectedFirma?.phone || '',
+                taxNo: selectedFirma?.tax_nr || ''
+              });
             });
           }}
         />
@@ -1960,7 +1989,12 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              printThermalReceipt(sale, 'RetailOS');
+              printThermalReceipt(sale, {
+                name: selectedFirma?.title || selectedFirma?.name || 'RetailOS',
+                address: selectedFirma?.address || '',
+                phone: selectedFirma?.phone || '',
+                taxNo: selectedFirma?.tax_nr || ''
+              });
             });
           }}
         />
@@ -1969,10 +2003,17 @@ export default function MarketPOS({
       {showReturnModal && (
         <POSReturnModal
           sales={sales}
+          products={products}
           onClose={() => setShowReturnModal(false)}
           onReturnComplete={(returnData) => {
             showNotif(t.returnCompleted, 'success');
             setShowReturnModal(false);
+          }}
+          onMissingBarcode={(barcode) => {
+            showNotif(t.barcodeNotFoundWarning.replace('{barcode}', barcode), 'error');
+            if (!missingBarcodes.includes(barcode)) {
+              setMissingBarcodes(prev => [barcode, ...prev]);
+            }
           }}
         />
       )}
@@ -2179,3 +2220,5 @@ export default function MarketPOS({
     </div>
   );
 }
+
+

@@ -96,7 +96,14 @@ export default defineConfig({
   },
   server: {
     host: 'localhost',
-    port: 3000,
+    port: 6173,
     open: false,
+    proxy: {
+      '/api/pg_query': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
   },
 });
+

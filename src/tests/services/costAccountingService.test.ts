@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cost Accounting Service Tests
  * 
  * Tests for FIFO cost calculation and profitability analysis
@@ -158,4 +158,5 @@ describe('CostAccountingService', () => {
     });
   });
 });
+
 

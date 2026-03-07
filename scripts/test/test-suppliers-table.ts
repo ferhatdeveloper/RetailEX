@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 
 const connStr = 'postgresql://postgres:Yq7xwQpt6c@localhost:5432/retailex_local';
 

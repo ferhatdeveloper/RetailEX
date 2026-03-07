@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { ScaleManagement } from './ScaleManagement';
 import { ScaleDeviceModal } from './ScaleDeviceModal';
 import { ScaleScannerModal } from './ScaleScannerModal';
@@ -117,4 +117,6 @@ export function ScaleManagementWrapper({ products }: ScaleManagementWrapperProps
     </>
   );
 }
+
+
 

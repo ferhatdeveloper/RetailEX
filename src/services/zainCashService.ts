@@ -153,7 +153,7 @@ export class ZainCashPaymentProvider {
 
             let tauriFetch, Body;
             try {
-                const httpModule = await import('@tauri-apps/api/http');
+                const httpModule = await import('@tauri-apps/plugin-http');
                 tauriFetch = httpModule.fetch;
                 Body = httpModule.Body;
                 console.log('[ZainCash] Tauri HTTP module imported');
@@ -264,3 +264,4 @@ export class ZainCashPaymentProvider {
 // Declare CryptoJS for TS if it's a global or need import
 // In a real module we would import it:
 // End of file
+

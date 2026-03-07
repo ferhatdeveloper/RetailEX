@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Lots API - Direct PostgreSQL Implementation
  */
 
@@ -83,3 +83,4 @@ export async function fetchExpiringSoonLots(firmaId: string, days: number = 30) 
   );
   return rows;
 }
+

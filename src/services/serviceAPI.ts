@@ -1,4 +1,4 @@
-﻿import { supabase } from '../utils/supabase/client';
+import { supabase } from '../utils/supabase/client';
 
 export interface Service {
     id: string;
@@ -96,4 +96,5 @@ class ServiceAPI {
 }
 
 export const serviceAPI = new ServiceAPI();
+
 

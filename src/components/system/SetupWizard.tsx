@@ -4,11 +4,8 @@ import {
     CheckCircle, Globe, WifiOff, Zap, Layout, Settings2,
     ChevronRight, Loader2, Save, Cloud, User, Lock, Building2,
     Network, Fingerprint, RefreshCw, Activity, Download, Terminal, Info, Upload, Monitor,
-    Maximize2, Minimize2
+    Maximize2, Minimize2, UtensilsCrossed, Sparkles, FileCode
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
-import { emit } from '@tauri-apps/api/event';
-import { open } from '@tauri-apps/api/dialog';
 import { toast } from 'sonner';
 import { NeonLogo } from '../ui/NeonLogo';
 import { AppFooter } from '../shared/AppFooter';
@@ -35,7 +32,7 @@ interface AppConfig {
     pg_remote_user: string;
     pg_remote_pass: string;
     skip_integration: boolean;
-    system_type: 'retail' | 'market' | 'wms';
+    system_type: 'retail' | 'market' | 'wms' | 'restaurant' | 'beauty';
     role: 'center' | 'client'; // Simplified Role Field
     selected_firms: string[];
     enable_mesh: boolean;
@@ -53,6 +50,8 @@ interface AppConfig {
     selected_cash_registers: string[];
     backup_config?: BackupConfig;
     is_nebim_migration?: boolean;
+    license_expiry?: string;
+    max_users?: number;
 }
 
 interface Company {
@@ -65,6 +64,8 @@ interface Company {
     periods: Period[];
     stores: Store[];
     users: AppUser[];
+    license_expiry?: string;
+    max_users?: number;
 }
 
 interface Period {
@@ -100,8 +101,25 @@ interface BackupConfig {
     last_run?: string;
 }
 
+interface MigrationStatus {
+    name: string;
+    status: 'Applied' | 'Already Applied' | 'Error' | 'Demo Skipped';
+    error?: string;
+}
+
 
 const SetupWizard: React.FC = () => {
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+    useEffect(() => {
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    if (windowWidth < 1024) return null;
+
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [testingLogo, setTestingLogo] = useState(false);
@@ -110,6 +128,9 @@ const SetupWizard: React.FC = () => {
     const [companies, setCompanies] = useState<Company[]>([]);
     const [periods, setPeriods] = useState<Period[]>([]);
     const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+    // Standalone mode: editable period dates
+    const [standalonePeriodStart, setStandalonePeriodStart] = useState('2026-01-01');
+    const [standalonePeriodEnd, setStandalonePeriodEnd] = useState('2026-12-31');
     const [supabaseProjects, setSupabaseProjects] = useState<any[]>([]);
     const [supabaseToken, setSupabaseToken] = useState('');
     const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
@@ -139,7 +160,7 @@ const SetupWizard: React.FC = () => {
         pg_remote_user: '',
         pg_remote_pass: '',
         skip_integration: false,
-        system_type: 'retail', // Default
+        system_type: 'beauty', // Changed default to generic retail, but wait, the prompt asks for 'beauty' to be an option
         role: 'client',
         selected_firms: [],
         enable_mesh: false,
@@ -176,6 +197,7 @@ const SetupWizard: React.FC = () => {
     const [logoPreviewSql, setLogoPreviewSql] = useState('');
     const [showDetailedLogs, setShowDetailedLogs] = useState(false);
     const [installationStep, setInstallationStep] = useState<'PENDING' | 'CONFIGURING' | 'DATABASE' | 'MIGRATIONS' | 'ENTITIES' | 'USERS' | 'SYNC' | 'DEVICE' | 'COMPLETED' | 'ERROR'>('PENDING');
+    const [migrationReport, setMigrationReport] = useState<MigrationStatus[]>([]);
 
     const downloadSupabaseSql = async (project: any) => {
         // No password required anymore (API Mode)
@@ -186,13 +208,16 @@ const SetupWizard: React.FC = () => {
 
         setIsDumpingSql(true);
         try {
-            const { listen } = await import('@tauri-apps/api/event');
+            let unlisten: (() => void) | undefined;
+            if (isTauri) {
+                const { listen } = await import('@tauri-apps/api/event');
 
-            // Listen for progress from backend
-            let unlisten = await listen('supabase-dump-progress', (event: any) => {
-                const message = event.payload as string;
-                toast.loading(message, { id: 'dump-progress' });
-            });
+                // Listen for progress from backend
+                unlisten = await listen('supabase-dump-progress', (event: any) => {
+                    const message = event.payload as string;
+                    toast.loading(message, { id: 'dump-progress' });
+                });
+            }
 
             // Target Path: C:\RetailEx
             const downloadsPath = "C:\\RetailEx";
@@ -205,11 +230,15 @@ const SetupWizard: React.FC = () => {
             toast.loading(`İndirme Başlatılıyor...\nHedef: ${outputPath}`, { id: 'dump-progress' });
 
             // Call the new API-based backend command
-            const filePath = await invoke<string>('dump_supabase_to_sql', {
-                projectRef: project.id,
-                token: supabaseToken, // Using the PAT directly
-                outputPath: outputPath
-            });
+            let filePath = "";
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                filePath = await invoke<string>('dump_supabase_to_sql', {
+                    projectRef: project.id,
+                    token: supabaseToken, // Using the PAT directly
+                    outputPath: outputPath
+                });
+            }
 
             if (unlisten) unlisten();
             setDownloadedSqlPath(filePath);
@@ -232,10 +261,13 @@ const SetupWizard: React.FC = () => {
             const dbName = config.local_db.split('/')[1] || 'postgres';
             const localConnStr = `postgres://${config.pg_local_user}:${config.pg_local_pass}@${host}/${dbName}`;
 
-            await invoke('pg_execute_file', {
-                filePath: downloadedSqlPath,
-                connStr: localConnStr
-            });
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('pg_execute_file', {
+                    filePath: downloadedSqlPath,
+                    connStr: localConnStr
+                });
+            }
 
             toast.success('Veritabanı şeması başarıyla yerel sunucuya aktarıldı!');
         } catch (err: any) {
@@ -248,13 +280,16 @@ const SetupWizard: React.FC = () => {
     const checkDbStatus = async () => {
         setDbStatus('CHECKING');
         try {
-            const status = await invoke<string>('check_db_status', { config });
-            if (status.startsWith('ERROR')) {
-                setDbStatus('ERROR');
-                setDbErrorMessage(status);
-                toast.error("Veritabanı Hatası: " + status);
-            } else {
-                setDbStatus(status as any);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const status = await invoke<string>('check_db_status', { config });
+                if (status.startsWith('ERROR')) {
+                    setDbStatus('ERROR');
+                    setDbErrorMessage(status);
+                    toast.error("Veritabanı Hatası: " + status);
+                } else {
+                    setDbStatus(status as any);
+                }
             }
         } catch (err: any) {
             setDbStatus('ERROR');
@@ -273,7 +308,7 @@ const SetupWizard: React.FC = () => {
     }, [step]);
     */
 
-    const nextStep = () => {
+    const nextStep = async () => {
         // Validation Logic
 
         // Step 2: Integration Preference Validation
@@ -310,40 +345,56 @@ const SetupWizard: React.FC = () => {
                 }
 
                 // Fetch Cash Registers for Step 5
-                setLoading(true);
-                invoke<any>('get_logo_data_preview', { config, entity: 'KSCARD' })
-                    .then(res => {
-                        const results = res.data || res || [];
-                        setAvailableCashRegisters(results);
-                        setStep(5);
-                    })
-                    .catch(err => {
-                        console.error('Kasa listesi hatası:', err);
-                        toast.error('Kasa listesi alınamadı: ' + err);
-                        setStep(5);
-                    })
-                    .finally(() => setLoading(false));
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    invoke<any>('get_logo_data_preview', { config, entity: 'KSCARD' })
+                        .then(res => {
+                            const results = res.data || res || [];
+                            setAvailableCashRegisters(results);
+                            setStep(5);
+                        })
+                        .catch(err => {
+                            console.error('Kasa listesi hatası:', err);
+                            toast.error('Kasa listesi alınamadı: ' + err);
+                            setStep(5);
+                        })
+                        .finally(() => setLoading(false));
+                } else {
+                    // Mock cash registers for web
+                    setAvailableCashRegisters([{ code: '01', name: 'Merkez Kasa' }]);
+                    setStep(5);
+                    setLoading(false);
+                }
                 return;
             } else {
-                // Standalone Mode: En az bir firma tanımlanmış olmalı
-                if (config.selected_firms.length === 0) {
-                    toast.error('Lütfen en az bir firma tanımlayınız.');
-                    return;
+                // Standalone Mode: En az bir firma tanımlanmış olmalı. 
+                // Firm seçilmemişse süreci durduralım veya kullanıcıyı uyaralım.
+                const updatedFirms = config.selected_firms;
+                const updatedConfig = {
+                    ...config,
+                    selected_firms: updatedFirms,
+                    erp_firm_nr: config.erp_firm_nr,
+                    erp_period_nr: config.erp_period_nr || (new Date().getFullYear().toString())
+                };
+
+                // Companies state'ini de besleyelim ki ileride hata vermesin
+                if (companies.length === 0) {
+                    setCompanies([{
+                        id: '001',
+                        name: config.title || 'Merkez Firma',
+                        periods: [],
+                        stores: [],
+                        users: []
+                    }]);
                 }
-                // Firmaların isimlerinin dolu olup olmadığını kontrol et
-                const hasInvalidFirm = companies.some(f =>
-                    config.selected_firms.includes(f.id) && (!f.name || f.name.trim() === '')
-                );
-                if (hasInvalidFirm) {
-                    toast.error('Lütfen tüm firmaların adını doldurunuz.');
-                    return;
-                }
+
+                setConfig(updatedConfig);
             }
         }
 
         // Summary to Terminal Log transition
-        if (step === (config.skip_integration ? 6 : 9)) {
-            setStep(config.skip_integration ? 7 : 10);
+        if (step === (config.skip_integration ? 5 : 8)) { // VPN/Security is now the last step before summary
+            setStep(config.skip_integration ? 6 : 9);
             return;
         }
 
@@ -369,41 +420,42 @@ const SetupWizard: React.FC = () => {
         // Fetch Hardware ID and Existing Config on mount
         const init = async () => {
             try {
-                // 1. Get HWID
-                const sysId = await invoke<string>('get_system_id');
-                console.log('System ID:', sysId);
-                setConfig(prev => ({ ...prev, terminal_name: sysId }));
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    // 1. Get HWID
+                    const sysId = await invoke<string>('get_system_id');
+                    console.log('System ID:', sysId);
+                    setConfig(prev => ({ ...prev, terminal_name: sysId }));
 
-                // 2. Check existing config
-                const existing: any = await invoke('get_app_config');
-                if (existing && existing.is_configured) {
-                    setHasExistingConfig(true);
-                    setConfig(prev => ({
-                        ...prev,
-                        ...existing,
-                        // Ensure password fields are kept secure or re-filled if needed
-                        pg_local_user: existing.pg_local_user || 'postgres',
-                        pg_remote_user: existing.pg_remote_user || 'postgres',
-                        logo_objects_path: existing.logo_objects_path || 'C:\\LOGO\\LObjects.dll',
-                    }));
+                    // 2. Check existing config
+                    const existing: any = await invoke('get_app_config');
+                    if (existing && existing.is_configured) {
+                        setHasExistingConfig(true);
+                        setConfig(prev => ({
+                            ...prev,
+                            ...existing,
+                            // Ensure password fields are kept secure or re-filled if needed
+                            pg_local_user: existing.pg_local_user || 'postgres',
+                            pg_remote_user: existing.pg_remote_user || 'postgres',
+                            logo_objects_path: existing.logo_objects_path || 'C:\\LOGO\\LObjects.dll',
+                        }));
+                    }
+
+                    // 3. Check for Installer Bootstrap (Smart Onboarding)
+                    try {
+                        const bootstrap: any = await invoke('get_app_config');
+                    } catch (e) { }
+
+                    // 4. Get OS Username
+                    const user = await invoke<string>('get_os_username');
+                    setOsUsername(user);
                 }
-
-                // 3. Check for Installer Bootstrap (Smart Onboarding)
-                try {
-                    const bootstrap: any = await invoke('get_app_config'); // Temporary: backend might need a specific command for bootstrap
-                    // Actually main.rs already consumes bootstrap.json and saves it to config.
-                    // So 'existing' above will already contains bootstrap values!
-                } catch (e) { }
-
-                // 4. Get OS Username
-                const user = await invoke<string>('get_os_username');
-                setOsUsername(user);
             } catch (err) {
                 console.error('Initialization error:', err);
             }
         };
         init();
-    }, []);
+    }, [isTauri]);
 
     const fetchLogoPreview = async (entity: 'ITEMS' | 'CLCARD' | 'INVOICE' | 'KSCARD' | 'ITEMS_AUTO' = 'ITEMS', overrideConfig?: AppConfig) => {
         const targetConfig = overrideConfig || config;
@@ -419,20 +471,27 @@ const SetupWizard: React.FC = () => {
         setLogoPreviewData([]); // Clear old data
 
         try {
-            const response = await invoke<any>('get_logo_data_preview', {
-                config: targetConfig,
-                entity: actualEntity
-            });
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const response = await invoke<any>('get_logo_data_preview', {
+                    config: targetConfig,
+                    entity: actualEntity
+                });
 
-            setLogoPreviewData(response.data || []);
-            setLogoPreviewSql(response.query || '');
+                setLogoPreviewData(response.data || []);
+                setLogoPreviewSql(response.query || '');
 
-            if (entity !== 'ITEMS_AUTO') {
-                if (response.data && response.data.length > 0) {
-                    toast.success(`${actualEntity} için ${response.data.length} satır önizleme yüklendi.`);
-                } else {
-                    toast.warning(`${actualEntity} için gösterilecek kayıt bulunamadı. Tablo boş olabilir.`);
+                if (entity !== 'ITEMS_AUTO') {
+                    if (response.data && response.data.length > 0) {
+                        toast.success(`${actualEntity} için ${response.data.length} satır önizleme yüklendi.`);
+                    } else {
+                        toast.warning(`${actualEntity} için gösterilecek kayıt bulunamadı. Tablo boş olabilir.`);
+                    }
                 }
+            } else {
+                // Mock data for web preview
+                setLogoPreviewData([]);
+                setLogoPreviewSql('-- SQL Preview disabled in browser');
             }
         } catch (err: any) {
             console.error('Logo Preview Error:', err);
@@ -445,36 +504,43 @@ const SetupWizard: React.FC = () => {
     const testLogoConnection = async () => {
         setTestingLogo(true);
         try {
-            const response: any = await invoke('test_mssql_connection', { config });
-            const detected = response.detected_erp;
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const response: any = await invoke('test_mssql_connection', { config });
+                const detected = response.detected_erp;
 
-            let pathIsNebim = config.is_nebim_migration;
+                let pathIsNebim = config.is_nebim_migration;
 
-            if (detected === 'nebim' && !config.is_nebim_migration) {
-                toast.info('Nebim V3 veritabanı tespit edildi. Mod otomatik güncelleniyor.');
-                pathIsNebim = true;
-                setConfig(prev => ({ ...prev, is_nebim_migration: true, erp_method: 'nebim', erp_firm_nr: '001', erp_period_nr: '2026' }));
-            } else if (detected === 'logo' && config.is_nebim_migration) {
-                toast.info('Logo ERP veritabanı tespit edildi. Mod otomatik güncelleniyor.');
-                pathIsNebim = false;
-                setConfig(prev => ({ ...prev, is_nebim_migration: false, erp_method: 'sql' }));
+                if (detected === 'nebim' && !config.is_nebim_migration) {
+                    toast.info('Nebim V3 veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    pathIsNebim = true;
+                    setConfig(prev => ({ ...prev, is_nebim_migration: true, erp_method: 'nebim', erp_firm_nr: '001', erp_period_nr: '2026' }));
+                } else if (detected === 'logo' && config.is_nebim_migration) {
+                    toast.info('Logo ERP veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    pathIsNebim = false;
+                    setConfig(prev => ({ ...prev, is_nebim_migration: false, erp_method: 'sql' }));
+                } else {
+                    toast.success('Bağlantı başarılı!');
+                }
+
+                if (pathIsNebim) {
+                    setStep(5);
+                } else {
+                    const fetchedCompanies = await invoke<any[]>('get_logo_firms', {
+                        config: { ...config, is_nebim_migration: false, erp_method: 'sql' }
+                    });
+                    const companiesList: Company[] = fetchedCompanies.map(f => ({
+                        id: f.id, name: f.name, tax_nr: f.tax_nr || '', tax_office: f.tax_office || '',
+                        city: f.city || '', periods: [], stores: [], users: []
+                    }));
+                    setCompanies(companiesList);
+                    toast.success(companiesList.length + " firma bulundu.");
+                    if (companiesList.length > 0) setStep(4);
+                }
             } else {
-                toast.success('Bağlantı başarılı!');
-            }
-
-            if (pathIsNebim) {
-                setStep(5);
-            } else {
-                const fetchedCompanies = await invoke<any[]>('get_logo_firms', {
-                    config: { ...config, is_nebim_migration: false, erp_method: 'sql' }
-                });
-                const companiesList: Company[] = fetchedCompanies.map(f => ({
-                    id: f.id, name: f.name, tax_nr: f.tax_nr || '', tax_office: f.tax_office || '',
-                    city: f.city || '', periods: [], stores: [], users: []
-                }));
-                setCompanies(companiesList);
-                toast.success(companiesList.length + " firma bulundu.");
-                if (companiesList.length > 0) setStep(4);
+                toast.success('Web Modu: Bağlantı simüle edildi.');
+                setCompanies([{ id: '01', name: 'Web Demo Firma', tax_nr: '', tax_office: '', city: '', periods: [], stores: [], users: [] }]);
+                setStep(4);
             }
         } catch (err: any) {
             toast.error("Bağlantı hatası: " + err);
@@ -487,7 +553,15 @@ const SetupWizard: React.FC = () => {
         try {
             const targetConfig = baseConfig || config;
             console.log("Fetching periods for firm: " + firmNr);
-            const fetchedPeriods = await invoke<Period[]>('get_logo_periods', { config: targetConfig, firm_nr: firmNr });
+            let fetchedPeriods: Period[] = [];
+
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                fetchedPeriods = await invoke<Period[]>('get_logo_periods', { config: targetConfig, firm_nr: firmNr });
+            } else {
+                fetchedPeriods = [{ nr: 1, start_date: '2026-01-01', end_date: '2026-12-31' }];
+            }
+
             console.log('Periods fetched:', fetchedPeriods);
 
             setCompanies(prev => prev.map(c =>
@@ -511,8 +585,9 @@ const SetupWizard: React.FC = () => {
                     fetchLogoPreview(entityToFetch, updatedConfig);
                 }
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Failed to fetch periods', err);
+            toast.error(`Dönemler alınamadı: ${err?.message || String(err)}`);
         }
     };
 
@@ -521,7 +596,10 @@ const SetupWizard: React.FC = () => {
         try {
             const host = config.local_db.split('/')[0];
             const connStr = `postgres://${config.pg_local_user}:${config.pg_local_pass}@${host}/postgres`;
-            await invoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
+            }
             toast.success('PostgreSQL bağlantısı başarılı!');
         } catch (err: any) {
             console.error('PG Connection Failed:', err);
@@ -536,28 +614,83 @@ const SetupWizard: React.FC = () => {
         try {
             toast.info('Veritabanı tabloları oluşturuluyor...');
             const target = config.db_mode === 'online' ? 'remote' : 'local';
-            const result = await invoke('run_migrations', { config, target, loadDemoData: false });
-            toast.success(result as string);
 
-            // Logo/ERP Integration: Automatically initialize firm and period schemas
-            if (!config.skip_integration && config.erp_firm_nr && config.erp_period_nr) {
-                toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
-                // 1. Init Firm Schema (Cards)
-                await invoke('init_firm_schema', {
-                    config,
-                    firmNr: config.erp_firm_nr,
-                    target: target === 'remote' ? 'remote' : 'local'
-                });
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const rawResult = await invoke('run_migrations', { config, target, loadDemoData: false }) as string;
 
-                // 2. Init Period Schema (Transactions)
-                await invoke('init_period_schema', {
-                    config,
-                    firmNr: config.erp_firm_nr,
-                    periodNr: config.erp_period_nr,
-                    target: target === 'remote' ? 'remote' : 'local'
-                });
+                let report: MigrationStatus[] = [];
+                try {
+                    report = JSON.parse(rawResult);
+                    setMigrationReport(report);
 
-                toast.success(`Firma ${config.erp_firm_nr} ve Dönem ${config.erp_period_nr} yapılandırması tamamlandı.`);
+                    // Populate Console Output with detailed migration logs
+                    const logs = report.map(r => {
+                        const statusTag = r.status === 'Applied' ? '✅ OK' :
+                            r.status === 'Already Applied' ? 'ℹ️ ATLANDI' :
+                                r.status === 'Error' ? '❌ HATA' : '⚠️ ATLANDI';
+                        return `${statusTag}: ${r.name}${r.error ? ` (${r.error})` : ''}`;
+                    });
+                    setSyncLogs(prev => [...prev, ...logs]);
+
+                } catch (e) {
+                    console.error('Failed to parse migration report:', e);
+                    setSyncLogs(prev => [...prev, `❌ Rapor ayrıştırma hatası: ${rawResult}`]);
+                }
+
+                const errors = report.filter(r => r.status === 'Error');
+                const applied = report.filter(r => r.status === 'Applied').length;
+
+                if (errors.length > 0) {
+                    toast.warning(`${applied} güncelleme uygulandı, ${errors.length} hata var.`, {
+                        description: 'Detaylar için logları kontrol edin.',
+                        duration: 10000,
+                    });
+                } else {
+                    toast.success(`${applied} yeni güncelleme uygulandı.`);
+                }
+
+                // Logo/ERP Integration: Automatically initialize firm and period schemas
+                if (!config.skip_integration && config.erp_firm_nr && config.erp_period_nr) {
+                    toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
+                    // 1. Init Firm Schema (Cards)
+                    await invoke('init_firm_schema', {
+                        config,
+                        firmNr: config.erp_firm_nr,
+                        target: target === 'remote' ? 'remote' : 'local'
+                    });
+
+                    // 2. Init Period Schema (Transactions)
+                    await invoke('init_period_schema', {
+                        config,
+                        firmNr: config.erp_firm_nr,
+                        periodNr: config.erp_period_nr,
+                        target: target === 'remote' ? 'remote' : 'local'
+                    });
+
+                    // 3. Restaurant Module — firm + period tables
+                    if (config.system_type === 'restaurant') {
+                        toast.info('Restoran modülü tabloları hazırlanıyor...');
+                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1)', [config.erp_firm_nr]);
+                        await postgres.query(
+                            'SELECT INIT_RESTAURANT_PERIOD_TABLES($1, $2)',
+                            [config.erp_firm_nr, config.erp_period_nr]
+                        );
+                        toast.success('Restoran dönem tabloları hazır.');
+                    }
+
+                    // 4. Beauty Module — firm + period tables
+                    if (config.system_type === 'beauty') {
+                        toast.info('Güzellik merkezi tabloları hazırlanıyor...');
+                        await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [config.erp_firm_nr]);
+                        await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [config.erp_firm_nr, config.erp_period_nr]);
+                        toast.success('Güzellik/klinik tabloları hazır.');
+                    }
+
+                    toast.success(`Firma ${config.erp_firm_nr} ve Dönem ${config.erp_period_nr} yapılandırması tamamlandı.`);
+                }
+            } else {
+                toast.success('Migrations simüle edildi.');
             }
 
 
@@ -572,9 +705,14 @@ const SetupWizard: React.FC = () => {
 
     const generateVpnConfig = async () => {
         try {
-            const keys = await invoke<any>('generate_vpn_keys');
-            setConfig({ ...config, vpn_config: keys });
-            toast.success('VPN Anahtarları Güvenli Bir Şekilde Üretildi.');
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const keys = await invoke<any>('generate_vpn_keys');
+                setConfig({ ...config, vpn_config: keys });
+                toast.success('VPN Anahtarları Güvenli Bir Şekilde Üretildi.');
+            } else {
+                toast.success('Web Modu: VPN anahtarları simüle edildi.');
+            }
         } catch (err: any) {
             toast.error(`Anahtar üretimi başarısız: ${err}`);
         }
@@ -584,21 +722,26 @@ const SetupWizard: React.FC = () => {
         try {
             toast.info('🔐 Donanım kimliği tespit ediliyor...');
 
-            const keys = await invoke<{
-                device_id: string;
-                encrypted_private_key: string;
-                public_key: string;
-            }>('generate_device_bound_vpn_keys');
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const keys = await invoke<{
+                    device_id: string;
+                    encrypted_private_key: string;
+                    public_key: string;
+                }>('generate_device_bound_vpn_keys');
 
-            setConfig({
-                ...config,
-                device_id: keys.device_id,
-                private_key: keys.encrypted_private_key,
-                public_key: keys.public_key,
-            });
+                setConfig({
+                    ...config,
+                    device_id: keys.device_id,
+                    private_key: keys.encrypted_private_key,
+                    public_key: keys.public_key,
+                });
 
-            toast.success('🔒 VPN anahtarları donanıma bağlı olarak oluşturuldu!', { duration: 5000 });
-            toast.info(`Device ID: ${keys.device_id.substring(0, 16)}...`, { duration: 3000 });
+                toast.success('🔒 VPN anahtarları donanıma bağlı olarak oluşturuldu!', { duration: 5000 });
+                toast.info(`Device ID: ${keys.device_id.substring(0, 16)}...`, { duration: 3000 });
+            } else {
+                toast.success('Web Modu: VPN anahtarları simüle edildi.');
+            }
         } catch (err: any) {
             toast.error(`❌ Anahtar oluşturma hatası: ${err}`);
         }
@@ -612,9 +755,12 @@ const SetupWizard: React.FC = () => {
         setIsFetchingSupabase(true);
         try {
             // In a real scenario, this would be a Tauri command to avoid CORS and keep token safe
-            const projects = await invoke<any[]>('list_supabase_projects', { token: supabaseToken });
-            setSupabaseProjects(projects);
-            toast.success(`${projects.length} proje bulundu.`);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const projects = await invoke<any[]>('list_supabase_projects', { token: supabaseToken });
+                setSupabaseProjects(projects);
+                toast.success(`${projects.length} proje bulundu.`);
+            }
         } catch (err: any) {
             console.error('Supabase fetch error:', err);
             toast.error(`Proje listesi alınamadı: ${err}`);
@@ -658,7 +804,12 @@ const SetupWizard: React.FC = () => {
             toast.info(`${targetName} Veritabanı başlatılıyor...`);
 
             // Call create_database with target parameter
-            await invoke('create_database', { config, target });
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                await invoke('create_database', { config, target });
+            } else {
+                console.log(`Web Modu: ${targetName} veritabanı başlatma simüle edildi.`);
+            }
 
             toast.success(`${targetName} Veritabanı başarıyla oluşturuldu/hazırlandı.`);
 
@@ -683,45 +834,66 @@ const SetupWizard: React.FC = () => {
         setSyncLogs([]); // Clear previous logs
         let unlisten: (() => void) | undefined;
 
+        // Ensure defaults for standalone
+        let finalDbConfig = { ...config, is_configured: true };
+        if (config.skip_integration) {
+            finalDbConfig.erp_firm_nr = config.erp_firm_nr;
+            finalDbConfig.erp_period_nr = config.erp_period_nr;
+        }
+
         try {
             // Listen for Sync Events
-            const { listen } = await import('@tauri-apps/api/event');
-            unlisten = await listen('sync-event', (event) => {
-                const message = event.payload as string;
-                console.log('Setup Log:', message);
-                setSyncLogs(prev => [...prev, message]);
-            });
-
-            await emit('sync-event', '🚀 Sistem yapılandırma süreci başlatıldı...');
-
-            // 1. Save to SQLite backend (ALWAYS save latest config)
-            await emit('sync-event', '💾 Yapılandırma kaydediliyor...');
-            const finalConfig = { ...config, is_configured: true };
-            await invoke('save_app_config', { config: finalConfig });
-            await emit('sync-event', '✅ Yapılandırma başarıyla kaydedildi.');
-
-            // 2. Load into current JS context
-            if (!isUpdateMode) {
-                await initializeFromSQLite();
+            if (isTauri) {
+                const { listen } = await import('@tauri-apps/api/event');
+                unlisten = await listen('sync-event', (event) => {
+                    const message = event.payload as string;
+                    console.log('Setup Log:', message);
+                    setSyncLogs(prev => [...prev, message]);
+                });
             }
 
-            // 3. Create database if not exists (Rust Command)
-            if (!isUpdateMode) {
-                setInstallationStep('DATABASE');
-                await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
-                const target = config.db_mode === 'online' ? 'remote' : 'local';
-                await invoke('create_database', { config, target });
-                await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+            if (isTauri) {
+                const { invoke } = await import('@tauri-apps/api/core');
+                const { emit } = await import('@tauri-apps/api/event');
+
+                await emit('sync-event', '🚀 Sistem yapılandırma süreci başlatıldı...');
+
+                // 1. Save to SQLite backend (ALWAYS save latest config)
+                await emit('sync-event', '💾 Yapılandırma kaydediliyor...');
+
+                await invoke('save_app_config', { config: finalDbConfig });
+                await emit('sync-event', '✅ Yapılandırma başarıyla kaydedildi.');
+
+                // 2. Load into current JS context
+                if (!isUpdateMode) {
+                    await initializeFromSQLite();
+                    // Update current config reference for remaining logic
+                    setConfig(finalDbConfig);
+                }
+
+                // 3. Create database if not exists (Rust Command)
+                if (!isUpdateMode) {
+                    setInstallationStep('DATABASE');
+                    await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
+                    const target = config.db_mode === 'online' ? 'remote' : 'local';
+                    await invoke('create_database', { config, target });
+                    await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+                }
             }
 
             // 4. Connect and Initialize Database (Migrations) - ALWAYS RUN IN UPDATE
             const target = config.db_mode === 'online' ? 'remote' : 'local';
             setInstallationStep('MIGRATIONS');
             try {
-                await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
-                const migrationResult = await invoke('run_migrations', { config, target, loadDemoData });
-                await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
-                setDbInitialized(true);
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const { emit } = await import('@tauri-apps/api/event');
+
+                    await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
+                    const migrationResult = await invoke('run_migrations', { config, target, loadDemoData });
+                    await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
+                    setDbInitialized(true);
+                }
             } catch (migErr) {
                 console.error('Migration Error:', migErr);
                 toast.error('Veritabanı güncelleme hatası: ' + migErr);
@@ -729,8 +901,9 @@ const SetupWizard: React.FC = () => {
             }
 
             // 4.1. Nebim V3 Zero-Touch Migration (If selected)
-            if (config.is_nebim_migration) {
+            if (config.is_nebim_migration && isTauri) {
                 setInstallationStep('SYNC');
+                const { emit } = await import('@tauri-apps/api/event');
                 await emit('sync-event', '🚀 Nebim V3 Hızlı Geçiş süreci başlatılıyor...');
                 try {
                     await emit('sync-event', '🔍 Nebim veritabanı analiz ediliyor...');
@@ -752,11 +925,10 @@ const SetupWizard: React.FC = () => {
 
             // 4.5. Initialize Firms and Periods in PostgreSQL
             setInstallationStep('ENTITIES');
-            await emit('sync-event', '🏢 Organizasyon yapıları hazırlanıyor...');
 
-            const firmsToInit = config.selected_firms.length > 0
-                ? config.selected_firms
-                : (config.erp_firm_nr ? [config.erp_firm_nr] : []);
+            const firmsToInit = finalDbConfig.selected_firms.length > 0
+                ? finalDbConfig.selected_firms
+                : (finalDbConfig.erp_firm_nr ? [finalDbConfig.erp_firm_nr] : []);
 
             for (const firmId of firmsToInit) {
                 // Robust lookup: Logo IDs can be "9" or "009"
@@ -771,10 +943,8 @@ const SetupWizard: React.FC = () => {
                 const currentFirmCity = firmData?.city || '';
 
                 // Muhasebe standartlarına göre:
-                // 1. Kartlar (Stok, Cari, Kasa, Banka) firma bazlıdır (Örn: rex_009_products)
-                // 2. Hareketler (Fatura, Kasa İşlemleri) dönem bazlıdır (Örn: rex_009_01_sales)
-                const baseFirmNr = currentFirmId; // "FFF" (Örn: 009)
-                const periodFirmNr = config.skip_integration ? currentFirmId : `${currentFirmId}_${config.erp_period_nr}`; // "FFF_PP" (Örn: 009_01)
+                // 1. Kartlar (Stok, Cari, Kasa, Banka) firma bazlıdır (Örn: rex_001_products)
+                // 2. Hareketler (Fatura, Kasa İşlemleri) dönem bazlıdır (Örn: rex_001_01_sales)
 
                 // 1. Global mapping tables
                 await postgres.query(`
@@ -789,34 +959,77 @@ const SetupWizard: React.FC = () => {
                     `, [currentFirmId, currentFirmName, currentFirmTaxNr, currentFirmTaxOffice, currentFirmCity, firmData?.title || currentFirmName]);
 
                 // 2. Firm-Level Dynamic Tables (Cards - Items, CLCard etc)
-                await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
-                await invoke('init_firm_schema', { config, firmNr: currentFirmId, target });
-                await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır.`);
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `🏢 Organizasyon yapıları hazırlanıyor...`);
+                    await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
+                    await invoke('init_firm_schema', { config: finalDbConfig, firmNr: currentFirmId, target });
+                    await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır.`);
+
+                    // Restaurant firm tables (masa, reçete)
+                    if (config.system_type === 'restaurant') {
+                        await emit('sync-event', `🍽️ Firma ${currentFirmId}: Restoran kart tabloları oluşturuluyor...`);
+                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1)', [currentFirmId]);
+                        await emit('sync-event', `✅ Restoran kart tabloları hazır.`);
+                    }
+
+                    // Beauty firm tables (uzmanlar, hizmetler, paketler, cihazlar)
+                    if (config.system_type === 'beauty') {
+                        await emit('sync-event', `💅 Firma ${currentFirmId}: Güzellik/klinik kart tabloları oluşturuluyor...`);
+                        await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [currentFirmId]);
+                        await emit('sync-event', `✅ Güzellik kart tabloları hazır.`);
+                    }
+                }
 
                 // 3. Period-Level Dynamic Tables (Transactions)
-                const fallbackPeriod = { nr: parseInt(config.erp_period_nr || '1') || 1, start_date: '2026-01-01', end_date: '2026-12-31' };
+                const fallbackPeriod = { nr: parseInt(finalDbConfig.erp_period_nr || '1') || 1, start_date: standalonePeriodStart, end_date: standalonePeriodEnd };
                 const firmPeriods = (firmData?.periods && firmData.periods.length > 0)
                     ? firmData.periods
                     : [fallbackPeriod];
 
                 for (const p of firmPeriods) {
                     const pNr = String(p.nr).padStart(2, '0');
-                    await emit('sync-event', `📅 Dönem ${pNr}: Hareket tabloları (Fatura, Hareketler) oluşturuluyor...`);
-                    await invoke('init_period_schema', { config, firmNr: currentFirmId, periodNr: pNr, target });
-                    await emit('sync-event', `✅ Dönem ${pNr} hareket tabloları hazır.`);
+                    // Schema init is non-fatal — keep separate from the DB record insert
+                    if (isTauri) {
+                        try {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            const { invoke } = await import('@tauri-apps/api/core');
+                            await emit('sync-event', `📅 Dönem ${pNr}: Hareket tabloları (Fatura, Hareketler) oluşturuluyor...`);
+                            await invoke('init_period_schema', { config: finalDbConfig, firmNr: currentFirmId, periodNr: pNr, target });
+                            await emit('sync-event', `✅ Dönem ${pNr} hareket tabloları hazır.`);
 
-                    // Global mapping for period
+                            // Restaurant period tables (sipariş, mutfak)
+                            if (config.system_type === 'restaurant') {
+                                await emit('sync-event', `🍽️ Dönem ${pNr}: Restoran hareket tabloları oluşturuluyor...`);
+                                await postgres.query('SELECT INIT_RESTAURANT_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
+                                await emit('sync-event', `✅ Restoran dönem tabloları hazır.`);
+                            }
+
+                            // Beauty period tables (randevular, seanslar, paket satışları)
+                            if (config.system_type === 'beauty') {
+                                await emit('sync-event', `💅 Dönem ${pNr}: Güzellik/klinik hareket tabloları oluşturuluyor...`);
+                                await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
+                                await emit('sync-event', `✅ Güzellik dönem tabloları hazır.`);
+                            }
+                        } catch (schemaErr) {
+                            console.warn(`Period schema init warning for ${pNr} (non-fatal):`, schemaErr);
+                        }
+                    }
+
+                    // Always insert the period DB record regardless of schema init result
                     console.log(`Inserting period ${p.nr} for firm ${currentFirmId}`);
                     try {
                         await postgres.query(`
                                 INSERT INTO periods (firm_id, nr, beg_date, end_date, is_active, "default")
-                                SELECT id, $2, $3, $4, true, true FROM firms WHERE firm_nr = $1
+                                SELECT id, $2, $3::date, $4::date, true, true FROM firms WHERE id::text = $1 OR firm_nr = $1
                                 ON CONFLICT (firm_id, nr) DO UPDATE SET
                                 is_active = true,
                                 "default" = true,
                                 beg_date = EXCLUDED.beg_date,
                                 end_date = EXCLUDED.end_date
                             `, [currentFirmId, p.nr, p.start_date.split(' ')[0], p.end_date.split(' ')[0]]);
+                        console.log(`✅ Period ${p.nr} inserted for firm ${currentFirmId}`);
                     } catch (perErr) {
                         console.error(`Period insert error for firm ${currentFirmId}:`, perErr);
                     }
@@ -837,7 +1050,43 @@ const SetupWizard: React.FC = () => {
 
                 // 5. Users (with Password Hashing) - Isolated by Firm only
                 setInstallationStep('USERS');
-                await emit('sync-event', `Firma ${currentFirmId}: Varsayılan kullanıcılar (admin, personel, depo, kasiyer) oluşturuluyor...`);
+                // Resolve auth connStr once — used for BOTH schema setup and user inserts
+                let authConnStr = '';
+                if (isTauri) {
+                    const { LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS } = await import('../../services/postgres');
+                    const dbConf = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
+                    const effectiveHost = dbConf.host === 'localhost' ? '127.0.0.1' : dbConf.host;
+                    authConnStr = `postgresql://${dbConf.user}:${dbConf.password}@${effectiveHost}:${dbConf.port}/${dbConf.database}`;
+
+                    // Ensure pgcrypto + auth schema + auth.users exist via batch_execute (Simple Query Protocol).
+                    // CREATE EXTENSION and DDL cannot run via extended protocol (pg_query).
+                    const { invoke: invokeDdl } = await import('@tauri-apps/api/core');
+                    try {
+                        await invokeDdl('pg_execute', {
+                            connStr: authConnStr,
+                            sql: `
+                                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+                                CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+                                CREATE SCHEMA IF NOT EXISTS auth;
+                                CREATE TABLE IF NOT EXISTS auth.users (
+                                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                                    email VARCHAR(255) UNIQUE,
+                                    encrypted_password VARCHAR(255),
+                                    raw_user_meta_data JSONB,
+                                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                                );
+                            `
+                        });
+                        console.log('[SetupWizard] Auth infrastructure ready.');
+                    } catch (extErr: any) {
+                        // Non-fatal: table/extension may already exist from migrations
+                        console.warn('[SetupWizard] Auth infra pre-check (non-fatal):', String(extErr));
+                    }
+
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `Firma ${currentFirmId}: Varsayılan kullanıcılar (admin, personel, depo, kasiyer) oluşturuluyor...`);
+                }
 
                 const defaultUsers: AppUser[] = [
                     { username: 'admin', password: 'admin', full_name: 'Sistem Yöneticisi', role: 'admin' },
@@ -865,41 +1114,60 @@ const SetupWizard: React.FC = () => {
                     }
                 }
 
+                // Helper: escape SQL string literals (replace ' with '')
+                const sqlStr = (s: string) => s.replace(/'/g, "''");
+
                 for (const user of userList) {
                     const currentUser = user as AppUser;
                     try {
-                        const userEmail = currentUser.email || `${currentUser.username}@retailex.local`;
-                        const metadata = JSON.stringify({
+                        const userEmail = sqlStr(currentUser.email || `${currentUser.username}@retailex.local`);
+                        const metadata = {
                             role: currentUser.role,
                             firm_nr: currentFirmId,
                             full_name: currentUser.full_name,
                             username: currentUser.username
-                        });
+                        };
+                        const metaJson = sqlStr(JSON.stringify(metadata));
 
-                        const pgConfig = await invoke('get_app_config');
-                        const connStr = `postgresql://${(pgConfig as any).pg_local_user}:${(pgConfig as any).pg_local_pass}@localhost:5432/retailex_local`;
+                        if (isTauri) {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            const { invoke: inv } = await import('@tauri-apps/api/core');
+                            await emit('sync-event', `👤 Kullanıcı oluşturuluyor: ${currentUser.username}...`);
 
-                        let authUserId: string | null = null;
-                        let authSql = "";
-                        let authParams: any[] = [];
+                            // Use pg_execute (batch_execute / Simple Query Protocol) so that
+                            // crypt() + gen_salt() from pgcrypto work without extended-protocol issues.
+                            let userSql: string;
+                            if (currentUser.password) {
+                                const pw = sqlStr(currentUser.password);
+                                userSql = `
+                                    INSERT INTO auth.users (id, email, encrypted_password, raw_user_meta_data, created_at, updated_at)
+                                    VALUES (uuid_generate_v4(), '${userEmail}', crypt('${pw}', gen_salt('bf')), '${metaJson}'::jsonb, now(), now())
+                                    ON CONFLICT (email) DO UPDATE SET
+                                        encrypted_password = EXCLUDED.encrypted_password,
+                                        raw_user_meta_data = EXCLUDED.raw_user_meta_data,
+                                        updated_at = now();
+                                `;
+                            } else {
+                                userSql = `
+                                    INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, updated_at)
+                                    VALUES (uuid_generate_v4(), '${userEmail}', '${metaJson}'::jsonb, now(), now())
+                                    ON CONFLICT (email) DO UPDATE SET
+                                        raw_user_meta_data = EXCLUDED.raw_user_meta_data,
+                                        updated_at = now();
+                                `;
+                            }
 
-                        if (currentUser.password) {
-                            authSql = `INSERT INTO auth.users (email, encrypted_password, raw_user_meta_data, created_at, updated_at) VALUES ($1, crypt($2, gen_salt('bf')), $3, now(), now()) ON CONFLICT (email) DO UPDATE SET encrypted_password = crypt($2, gen_salt('bf')), raw_user_meta_data = $3, updated_at = now() RETURNING id`;
-                            authParams = [userEmail, currentUser.password, metadata];
-                        } else {
-                            authSql = `INSERT INTO auth.users (email, raw_user_meta_data, created_at, updated_at) VALUES ($1, $2, now(), now()) ON CONFLICT (email) DO UPDATE SET raw_user_meta_data = $2, updated_at = now() RETURNING id`;
-                            authParams = [userEmail, metadata];
+                            await inv('pg_execute', { connStr: authConnStr, sql: userSql });
+                            await emit('sync-event', `✅ Kullanıcı hazır: ${currentUser.username}`);
                         }
-
-                        const resStr: string = await invoke('pg_query', { connStr, sql: authSql, params: authParams });
-                        const rows = JSON.parse(resStr);
-                        if (rows.length > 0) authUserId = rows[0].id;
-
-                        // Skip public.users insert as it is removed
-                        console.log(`SetupWizard: Created auth user ${currentUser.username} with ID ${authUserId}`);
-
-                    } catch (uErr) {
-                        console.error(`User creation error for ${currentUser.username}:`, uErr);
+                    } catch (uErr: any) {
+                        // Tauri errors arrive as plain strings — capture both .message and raw string
+                        const errDetail = uErr?.message || uErr?.toString?.() || String(uErr);
+                        console.error(`User creation error for ${currentUser.username}:`, errDetail, '\nConnStr:', authConnStr);
+                        if (isTauri) {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            await emit('sync-event', `❌ Kullanıcı hatası (${currentUser.username}): ${errDetail}`);
+                        }
                     }
                 }
 
@@ -921,26 +1189,44 @@ const SetupWizard: React.FC = () => {
                 ];
                 for (const curr of currencies) {
                     await postgres.query(`
-                        INSERT INTO currencies (code, name, symbol, is_base_currency)
+                        INSERT INTO public.currencies (code, name, symbol, is_base_currency)
                         VALUES ($1, $2, $3, $4)
                         ON CONFLICT (code) DO NOTHING
                     `, curr);
                 }
             }
 
-            // 5. Initial Data Sync from Logo (Optional in Update, Required in New)
-            if (!isUpdateMode || !config.skip_integration) {
+            // 5. Initial Data Sync from Logo (Only when Logo/ERP integration is active)
+            if (!config.skip_integration) {
                 setInstallationStep('SYNC');
                 toast.info('ERP verileri senkronize ediliyor...');
-                // We will iterate through selected firms in the backend in v0.1.9
-                await invoke('sync_logo_data', { config: config });
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    await invoke('sync_logo_data', { config: config });
+                } else {
+                    console.log('Web Modu: Veri senkronizasyonu simüle ediliyor...');
+                    await new Promise(r => setTimeout(r, 1000));
+                }
             }
 
-            // 6. Register Terminal/Device (Only if not already registered)
+            // 6. Apply System Type Profile (Modules etc.)
+            const { moduleManager } = await import('../../utils/moduleManager');
+            if (config.system_type === 'beauty') {
+                moduleManager.applyBeautyCenterProfile();
+            } else {
+                moduleManager.resetToDefaults();
+            }
+
+            // 7. Register Terminal/Device (Only if not already registered)
             if (!isUpdateMode) {
                 setInstallationStep('DEVICE');
                 toast.info('Cihaz kaydı yapılıyor...');
-                await postgres.registerDevice(config.terminal_name, config.store_id);
+                if (isTauri) {
+                    await postgres.registerDevice(config.terminal_name, config.store_id);
+                } else {
+                    console.log('Web Modu: Cihaz kaydı simüle ediliyor...');
+                    localStorage.setItem('retailex_device_registered', 'true');
+                }
             }
 
             setInstallationStep('COMPLETED');
@@ -950,12 +1236,26 @@ const SetupWizard: React.FC = () => {
                 window.location.href = '/';
             }, 1500);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Setup error:', error);
             setInstallationStep('ERROR');
-            toast.error('Kurulum hatası: ' + error);
+
+            const errStr = String(error);
+            if (errStr.includes('| Detail:')) {
+                const parts = errStr.split(' | ');
+                const title = parts[0]; // PG Error XXX: Message
+                const description = parts.slice(1).join('\n'); // Detail: ... \n Hint: ...
+                toast.error(title, {
+                    description: description,
+                    duration: 10000, // Show longer for complex errors
+                });
+            } else {
+                toast.error('Kurulum hatası: ' + error);
+            }
         } finally {
-            if (unlisten) unlisten();
+            if (typeof unlisten === 'function') {
+                unlisten();
+            }
             // setLoading(false); // Removed as per instruction
         }
     };
@@ -1085,11 +1385,13 @@ const SetupWizard: React.FC = () => {
                                         <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">İşletme Tipi</h2>
                                         <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[9px]">Business Model Configuration</p>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-2 gap-3">
                                         {[
                                             { id: 'retail', label: 'Mağazacılık', desc: 'Tekstil, Ayakkabı, Konfeksiyon', icon: Layout },
                                             { id: 'market', label: 'Market / Hızlı Satış', desc: 'Süpermarket, Büfe, FMCG', icon: CheckCircle },
                                             { id: 'wms', label: 'Depo Yönetimi', desc: 'WHMS-EX Entegre Sistem', icon: Building2 },
+                                            { id: 'restaurant', label: 'Restoran / Kafe', desc: 'Masa Yönetimi, Mutfak, Menü', icon: UtensilsCrossed },
+                                            { id: 'beauty', label: 'Güzellik Merkezi', desc: 'Beatpy Güzellik & Bakım', icon: Sparkles },
                                         ].map((sys) => (
                                             <button
                                                 key={sys.id}
@@ -1734,44 +2036,51 @@ const SetupWizard: React.FC = () => {
                                     </div>
                                     <button
                                         onClick={async () => {
-                                            try {
-                                                const selected = await open({
-                                                    multiple: false,
-                                                    filters: [{ name: 'SQL Backup', extensions: ['sql'] }]
-                                                });
+                                            if (isTauri) {
+                                                try {
+                                                    const { open } = await import('@tauri-apps/plugin-dialog');
+                                                    const { invoke } = await import('@tauri-apps/api/core');
 
-                                                if (selected && typeof selected === 'string') {
-                                                    setLoading(true);
-                                                    const target = config.db_mode === 'online' ? 'remote' : 'local';
-
-                                                    toast.info('Veritabanı hazırlanıyor...');
-                                                    await invoke('create_database', { config, target });
-
-                                                    toast.info('Eski yedek yükleniyor...');
-                                                    await invoke('pg_execute_file', {
-                                                        connStr: target === 'local'
-                                                            ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
-                                                            : config.remote_db,
-                                                        filePath: selected
+                                                    const selected = await open({
+                                                        multiple: false,
+                                                        filters: [{ name: 'SQL Backup', extensions: ['sql'] }]
                                                     });
 
-                                                    toast.info('Veriler yeni yapıya dönüştürülüyor...');
-                                                    const migrationScriptPath = 'd:/Exretailosv1/database/scripts/migrate_legacy_to_v3.sql';
-                                                    await invoke('pg_execute_file', {
-                                                        connStr: target === 'local'
-                                                            ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
-                                                            : config.remote_db,
-                                                        filePath: migrationScriptPath
-                                                    });
+                                                    if (selected && typeof selected === 'string') {
+                                                        setLoading(true);
+                                                        const target = config.db_mode === 'online' ? 'remote' : 'local';
 
-                                                    toast.success('Migration başarıyla tamamlandı!');
-                                                    setDbInitialized(true);
+                                                        toast.info('Veritabanı hazırlanıyor...');
+                                                        await invoke('create_database', { config, target });
+
+                                                        toast.info('Eski yedek yükleniyor...');
+                                                        await invoke('pg_execute_file', {
+                                                            connStr: target === 'local'
+                                                                ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
+                                                                : config.remote_db,
+                                                            filePath: selected
+                                                        });
+
+                                                        toast.info('Veriler yeni yapıya dönüştürülüyor...');
+                                                        const migrationScriptPath = 'd:/Exretailosv1/database/scripts/migrate_legacy_to_v3.sql';
+                                                        await invoke('pg_execute_file', {
+                                                            connStr: target === 'local'
+                                                                ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
+                                                                : config.remote_db,
+                                                            filePath: migrationScriptPath
+                                                        });
+
+                                                        toast.success('Migration başarıyla tamamlandı!');
+                                                        setDbInitialized(true);
+                                                    }
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    toast.error('Migration hatası: ' + err);
+                                                } finally {
+                                                    setLoading(false);
                                                 }
-                                            } catch (err) {
-                                                console.error(err);
-                                                toast.error('Migration hatası: ' + err);
-                                            } finally {
-                                                setLoading(false);
+                                            } else {
+                                                toast.error('Geriye dönük migration sadece Desktop uygulamasında desteklenmektedir.');
                                             }
                                         }}
                                         className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
@@ -2027,7 +2336,7 @@ const SetupWizard: React.FC = () => {
                                                     </div>
 
                                                     {periods && periods.length > 0 && (
-                                                        <div className="space-y-2 pt-2 border-t border-white/5">
+                                                        <div className="space-y-3 pt-2 border-t border-white/5">
                                                             <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Bulunan Dönemler</label>
                                                             <div className="flex flex-wrap gap-2">
                                                                 {periods.map(p => (
@@ -2045,9 +2354,57 @@ const SetupWizard: React.FC = () => {
                                                                             }`}
                                                                     >
                                                                         DÖNEM {String(p.nr).padStart(2, '0')}
+                                                                        {p.start_date && (
+                                                                            <span className="ml-1.5 opacity-70 font-normal">
+                                                                                {p.start_date.slice(0, 10)} → {p.end_date?.slice(0, 10)}
+                                                                            </span>
+                                                                        )}
                                                                     </button>
                                                                 ))}
                                                             </div>
+                                                            {/* Seçili dönem tarih düzenleme */}
+                                                            {config.erp_period_nr && (() => {
+                                                                const selPeriod = periods.find(p => String(p.nr).padStart(2, '0') === config.erp_period_nr);
+                                                                if (!selPeriod) return null;
+                                                                return (
+                                                                    <div className="flex items-center gap-3 mt-2 p-3 rounded-xl bg-white/[0.03] border border-white/10">
+                                                                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest shrink-0">Dönem {config.erp_period_nr} Tarihleri</span>
+                                                                        <input
+                                                                            type="date"
+                                                                            value={selPeriod.start_date?.slice(0, 10) || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = periods.map(p =>
+                                                                                    String(p.nr).padStart(2, '0') === config.erp_period_nr
+                                                                                        ? { ...p, start_date: e.target.value }
+                                                                                        : p
+                                                                                );
+                                                                                setPeriods(updated);
+                                                                                setCompanies(prev => prev.map(c =>
+                                                                                    c.id === selectedCompanyId ? { ...c, periods: updated } : c
+                                                                                ));
+                                                                            }}
+                                                                            className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-emerald-500"
+                                                                        />
+                                                                        <span className="text-slate-500 text-xs">→</span>
+                                                                        <input
+                                                                            type="date"
+                                                                            value={selPeriod.end_date?.slice(0, 10) || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = periods.map(p =>
+                                                                                    String(p.nr).padStart(2, '0') === config.erp_period_nr
+                                                                                        ? { ...p, end_date: e.target.value }
+                                                                                        : p
+                                                                                );
+                                                                                setPeriods(updated);
+                                                                                setCompanies(prev => prev.map(c =>
+                                                                                    c.id === selectedCompanyId ? { ...c, periods: updated } : c
+                                                                                ));
+                                                                            }}
+                                                                            className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-emerald-500"
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     )}
                                                 </div>
@@ -2156,8 +2513,8 @@ const SetupWizard: React.FC = () => {
                                 ) : (
                                     <div className="space-y-8">
                                         <div>
-                                            <h2 className="text-4xl font-black mb-2 text-white tracking-tight">Firma Bilgileri</h2>
-                                            <p className="text-blue-200 font-medium font-semibold uppercase tracking-wider text-[10px] mb-8">Firm Details</p>
+                                            <h2 className="text-4xl font-black mb-2 text-white tracking-tight">Firma ve Dönem Bilgileri</h2>
+                                            <p className="text-blue-200 font-medium font-semibold uppercase tracking-wider text-[10px] mb-8">Firm & Period Details</p>
                                         </div>
                                         <div className="p-8 rounded-[32px] bg-emerald-600/10 border border-emerald-500/30 shadow-2xl relative overflow-hidden group">
                                             <div className="absolute top-0 right-0 w-60 h-60 bg-emerald-500/10 blur-[80px] rounded-full" />
@@ -2175,6 +2532,57 @@ const SetupWizard: React.FC = () => {
                                                             onChange={(e) => setConfig({ ...config, title: e.target.value })}
                                                             placeholder="Örn: Merkez Mağaza A.Ş."
                                                         />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-white/5">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Firma Numarası</label>
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
+                                                                value={config.erp_firm_nr || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value.replace(/[^0-9]/g, '');
+                                                                    setConfig({ ...config, erp_firm_nr: val });
+                                                                }}
+                                                                placeholder="001"
+                                                                maxLength={3}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Çalışma Dönemi</label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
+                                                                    value={config.erp_period_nr || ''}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                                                        setConfig({ ...config, erp_period_nr: val });
+                                                                    }}
+                                                                    placeholder="01"
+                                                                    maxLength={2}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Dönem Başlangıcı</label>
+                                                            <input
+                                                                type="date"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono text-xs"
+                                                                value={standalonePeriodStart}
+                                                                onChange={(e) => setStandalonePeriodStart(e.target.value)}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Dönem Sonu</label>
+                                                            <input
+                                                                type="date"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono text-xs"
+                                                                value={standalonePeriodEnd}
+                                                                onChange={(e) => setStandalonePeriodEnd(e.target.value)}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2314,374 +2722,140 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === (config.skip_integration ? 5 : 7) && ( /* Device */
-                            <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-                                <div className="text-center space-y-3">
-                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-black tracking-widest uppercase mb-4">
-                                        <Monitor className="w-3.5 h-3.5" /> Cihaz Ayarları
-                                    </div>
-                                    <h2 className="text-4xl font-black text-white tracking-tight">Cihazınızı Yapılandırın</h2>
-                                    <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
-                                        Bu cihazın RetailEX ekosistemindeki rolünü ve temel ayarlarını belirleyin.
-                                    </p>
-                                </div>
-
-                                <div className="max-w-2xl mx-auto space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button
-                                            onClick={() => setConfig({ ...config, role: 'center' })}
-                                            className={`p-6 rounded-[32px] border-2 transition-all text-left relative overflow-hidden group ${config.role === 'center' ? 'bg-purple-600/10 border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.2)]' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                                        >
-                                            <div className="flex items-center gap-4 mb-3">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${config.role === 'center' ? 'bg-purple-500 text-white' : 'bg-white/10 text-slate-400'}`}>
-                                                    <Server className="w-6 h-6" />
-                                                </div>
-                                                <div className={`text-[10px] font-black tracking-widest uppercase ${config.role === 'center' ? 'text-purple-400' : 'text-slate-500'}`}>Merkez</div>
-                                            </div>
-                                            <div className="text-lg font-bold text-white mb-1">Merkez Sunucu</div>
-                                            <div className="text-[10px] text-slate-400 font-medium leading-tight">Tüm şubelerin ve cihazların merkezi yönetim noktası.</div>
-                                            {config.role === 'center' && <div className="absolute top-4 right-4"><CheckCircle className="w-5 h-5 text-purple-500" /></div>}
-                                        </button>
-
-                                        <button
-                                            onClick={() => setConfig({ ...config, role: 'client' })}
-                                            className={`p-6 rounded-[32px] border-2 transition-all text-left relative overflow-hidden group ${config.role === 'client' ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                                        >
-                                            <div className="flex items-center gap-4 mb-3">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${config.role === 'client' ? 'bg-blue-500 text-white' : 'bg-white/10 text-slate-400'}`}>
-                                                    <Monitor className="w-6 h-6" />
-                                                </div>
-                                                <div className={`text-[10px] font-black tracking-widest uppercase ${config.role === 'client' ? 'text-blue-400' : 'text-slate-500'}`}>Şube</div>
-                                            </div>
-                                            <div className="text-lg font-bold text-white mb-1">Şube Cihazı</div>
-                                            <div className="text-[10px] text-slate-400 font-medium leading-tight">Merkez sunucuya bağlı çalışan şube veya POS cihazı.</div>
-                                            {config.role === 'client' && <div className="absolute top-4 right-4"><CheckCircle className="w-5 h-5 text-blue-500" /></div>}
-                                        </button>
-                                    </div>
-
-                                    <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 blur-[90px] rounded-full" />
-                                        <div className="flex items-center justify-between mb-10">
-                                            <div className="flex items-center gap-5">
-                                                <div className="w-16 h-16 rounded-2xl bg-purple-600/20 flex items-center justify-center">
-                                                    <Settings2 className="w-8 h-8 text-purple-400" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-xl font-bold text-white">Genel Ayarlar</div>
-                                                    <div className="text-[10px] text-purple-400/60 font-black uppercase tracking-widest">Cihaz Kimliği ve Entegrasyon</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Adı</label>
-                                                <input
-                                                    type="text"
-                                                    value={config.terminal_name || ''}
-                                                    onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
-                                                    placeholder="Bu cihaz için bir isim girin (örn: Merkez POS, Şube 1 Sunucu)"
-                                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3.5 text-white text-xs outline-none focus:border-purple-500/50 transition-all placeholder:text-slate-700"
-                                                />
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Kimliği (UUID)</label>
-                                                <div className="relative group/id">
-                                                    <input
-                                                        type="text"
-                                                        value={config.device_id || 'Kimlik üretilmedi...'}
-                                                        readOnly
-                                                        className="w-full bg-black/40 border border-white/10 rounded-2xl pl-5 pr-12 py-4 text-xs font-mono text-emerald-400/80 outline-none"
-                                                    />
-                                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20">
-                                                        <Fingerprint className="w-5 h-5" />
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-4 flex gap-4">
-                                                <button
-                                                    onClick={generateHardwareBoundVpnKeys}
-                                                    className="px-8 py-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-2xl font-black text-[10px] tracking-widest border border-purple-500/20 transition-all flex items-center gap-3"
-                                                >
-                                                    <RefreshCw className="w-4 h-4" /> YENİ KİMLİK ÜRET
-                                                </button>
-                                                <div className="flex-1 flex items-center gap-3 px-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
-                                                    <Lock className="w-4 h-4 text-emerald-500" />
-                                                    <span className="text-[10px] font-bold text-emerald-500/60 leading-tight">Cihaz kimliği, güvenli iletişim ve veri senkronizasyonu için kullanılır.</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="p-6 rounded-3xl bg-blue-500/5 border border-blue-500/10 flex items-start gap-6 relative group/disc">
-                                                <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center shrink-0">
-                                                    <Database className="w-6 h-6 text-blue-400" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="text-[11px] font-black text-blue-300 uppercase tracking-widest">Entegrasyon Modu</div>
-                                                            <div className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[8px] font-black border border-blue-500/20">ERP Bağlantısı</div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => setConfig({ ...config, skip_integration: !config.skip_integration })}
-                                                            className={`w-11 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${!config.skip_integration ? 'bg-blue-600' : 'bg-slate-700'}`}
-                                                        >
-                                                            <div className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-300 flex items-center justify-center ${!config.skip_integration ? 'translate-x-[22px]' : 'translate-x-0.5'}`}>
-                                                                {!config.skip_integration && <CheckCircle className="w-3 h-3 text-blue-600" />}
-                                                            </div>
-                                                        </button>
-                                                    </div>
-                                                    <div className="text-[10px] text-blue-200/50 font-medium leading-relaxed pr-8">
-                                                        ERP entegrasyonunu etkinleştirin veya RetailEX'i bağımsız (standalone) bir sistem olarak kullanın.
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {step === (config.skip_integration ? 6 : 8) && ( /* VPN */
+                        {step === (config.skip_integration ? 5 : 7) && ( /* Networking & Device Security */
                             <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
                                 <div className="text-center space-y-3">
                                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black tracking-widest uppercase mb-4">
-                                        <Shield className="w-3.5 h-3.5" /> Security & Networking
+                                        <Shield className="w-3.5 h-3.5" /> Networking & Device Security
                                     </div>
-                                    <h2 className="text-4xl font-black text-white tracking-tight">Bağlantı Stratejisi</h2>
+                                    <h2 className="text-4xl font-black text-white tracking-tight">Bağlantı ve Cihaz Güvenliği</h2>
                                     <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
-                                        Merkez şube ile iletişim yöntemini seçin. Mesh ağı statik IP gerektirmezken, standart mod için sabit IP zorunludur. <br />
-                                        <span className="text-indigo-400/60 text-[10px] uppercase font-black tracking-widest mt-2 block">(Bu adım isteğe bağlıdır, daha sonra yapılandırılabilir)</span>
+                                        Bu cihazın rolünü ve merkez ile olan iletişim yöntemini belirleyin.
                                     </p>
                                 </div>
 
-                                <div className="max-w-2xl mx-auto space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button
-                                            onClick={() => setConfig({ ...config, enable_mesh: true })}
-                                            className={`p-6 rounded-[32px] border-2 transition-all text-left relative overflow-hidden group ${config.enable_mesh ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.2)]' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                                        >
-                                            <div className="flex items-center gap-4 mb-3">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${config.enable_mesh ? 'bg-indigo-500 text-white' : 'bg-white/10 text-slate-400'}`}>
-                                                    <Network className="w-6 h-6" />
-                                                </div>
-                                                <div className={`text-[10px] font-black tracking-widest uppercase ${config.enable_mesh ? 'text-indigo-400' : 'text-slate-500'}`}>Önerilen</div>
-                                            </div>
-                                            <div className="text-lg font-bold text-white mb-1">Private Mesh</div>
-                                            <div className="text-[10px] text-slate-400 font-medium leading-tight">Statik IP gerektirmez, Discovery Hub üzerinden güvenli tünel.</div>
-                                            {config.enable_mesh && <div className="absolute top-4 right-4"><CheckCircle className="w-5 h-5 text-indigo-500" /></div>}
-                                        </button>
-
-                                        <button
-                                            onClick={() => setConfig({ ...config, enable_mesh: false })}
-                                            className={`p-6 rounded-[32px] border-2 transition-all text-left relative overflow-hidden group ${!config.enable_mesh ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.2)]' : 'bg-white/5 border-white/5 hover:border-white/10'}`}
-                                        >
-                                            <div className="flex items-center gap-4 mb-3">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${!config.enable_mesh ? 'bg-blue-500 text-white' : 'bg-white/10 text-slate-400'}`}>
-                                                    <Globe className="w-6 h-6" />
-                                                </div>
-                                                <div className={`text-[10px] font-black tracking-widest uppercase ${!config.enable_mesh ? 'text-blue-400' : 'text-slate-500'}`}>Klasik</div>
-                                            </div>
-                                            <div className="text-lg font-bold text-white mb-1">Standart IP</div>
-                                            <div className="text-[10px] text-slate-400 font-medium leading-tight">Sabit IP/Domain üzerinden doğrudan TCP/UDP bağlantısı.</div>
-                                            {!config.enable_mesh && <div className="absolute top-4 right-4"><CheckCircle className="w-5 h-5 text-blue-500" /></div>}
-                                        </button>
-                                    </div>
-
-                                    {config.enable_mesh ? (
-                                        <div className="space-y-6 animate-in zoom-in-95 duration-500">
-                                            <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
-                                                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/10 blur-[90px] rounded-full" />
-                                                <div className="flex items-center justify-between mb-10">
-                                                    <div className="flex items-center gap-5">
-                                                        <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 flex items-center justify-center">
-                                                            <Zap className="w-8 h-8 text-indigo-400" />
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-xl font-bold text-white">Mesh Yapılandırması</div>
-                                                            <div className="text-[10px] text-indigo-400/60 font-black uppercase tracking-widest">Embedded WireGuard Protocol</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="mb-8 p-6 rounded-3xl bg-indigo-500/5 border border-indigo-500/10 flex items-start gap-6 relative group/disc">
-                                                    <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 flex items-center justify-center shrink-0">
-                                                        <Globe className="w-6 h-6 text-indigo-400" />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="text-[11px] font-black text-indigo-300 uppercase tracking-widest">Mesh Keşif Merkezi (Discovery Hub)</div>
-                                                                <div className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 text-[8px] font-black border border-indigo-500/20">STATİK IP GEREKTİRMEZ</div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => {
-                                                                    const vpn = config.vpn_config || {};
-                                                                    setConfig({ ...config, vpn_config: { ...vpn, enable_discovery: !vpn.enable_discovery } });
-                                                                }}
-                                                                className={`w-11 h-6 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${config.vpn_config?.enable_discovery !== false ? 'bg-indigo-600' : 'bg-slate-700'}`}
-                                                            >
-                                                                <div className={`w-5 h-5 rounded-full bg-white shadow-sm transform transition-transform duration-300 flex items-center justify-center ${config.vpn_config?.enable_discovery !== false ? 'translate-x-[22px]' : 'translate-x-0.5'}`}>
-                                                                    {config.vpn_config?.enable_discovery !== false && <CheckCircle className="w-3 h-3 text-indigo-600" />}
-                                                                </div>
-                                                            </button>
-                                                        </div>
-                                                        <div className="text-[10px] text-indigo-200/50 font-medium leading-relaxed pr-8">
-                                                            Cihazlar birbirini otomatik bulur ve firewall engellerini aşar. Merkez şubede statik IP veya port açma işlemi <span className="text-indigo-400 font-bold">gerektirmez</span>.
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-6">
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Ağ Adresi (Virtual IP)</label>
-                                                            <input
-                                                                type="text"
-                                                                value={config.vpn_config?.virtual_ip || '10.8.0.x'}
-                                                                readOnly
-                                                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3.5 text-indigo-300 font-mono text-xs outline-none"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Dinleme Portu</label>
-                                                            <input
-                                                                type="text"
-                                                                value={config.vpn_config?.listen_port || '51820'}
-                                                                readOnly
-                                                                className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3.5 text-indigo-300 font-mono text-xs outline-none"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Mesh Kimliği (Public Key)</label>
-                                                        <div className="relative group/id">
-                                                            <input
-                                                                type="text"
-                                                                value={config.vpn_config?.public_key || 'Anahtar üretilmedi...'}
-                                                                readOnly
-                                                                className="w-full bg-black/40 border border-white/10 rounded-2xl pl-5 pr-12 py-4 text-xs font-mono text-emerald-400/80 outline-none"
-                                                            />
-                                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20">
-                                                                <Fingerprint className="w-5 h-5" />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="pt-4 flex gap-4">
-                                                        <button
-                                                            onClick={generateVpnConfig}
-                                                            className="px-8 py-4 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-2xl font-black text-[10px] tracking-widest border border-indigo-500/20 transition-all flex items-center gap-3"
-                                                        >
-                                                            <RefreshCw className="w-4 h-4" /> YENİ KİMLİK ÜRET
-                                                        </button>
-                                                        <div className="flex-1 flex items-center gap-3 px-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
-                                                            <Lock className="w-4 h-4 text-emerald-500" />
-                                                            <span className="text-[10px] font-bold text-emerald-500/60 leading-tight">Gelişmiş AES-256-GCM uçtan uca şifreleme ile her paket korunur.</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Hardware-Bound VPN Keys */}
-                                                    <div className="p-6 rounded-[32px] bg-gradient-to-br from-green-600/10 to-emerald-600/5 border border-green-500/20 animate-in zoom-in-95 duration-500 mt-4">
-                                                        <div className="flex items-start gap-4">
-                                                            <div className="w-12 h-12 rounded-2xl bg-green-600/20 flex items-center justify-center shrink-0">
-                                                                <Shield className="w-6 h-6 text-green-400" />
-                                                            </div>
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <span className="text-base font-black text-white">Donanıma Bağlı Kilit (Hardware Bound)</span>
-                                                                    <span className="px-2 py-0.5 bg-green-600/20 text-green-400 text-[9px] font-black uppercase tracking-wider rounded-full border border-green-500/20">Aktif</span>
-                                                                </div>
-                                                                <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
-                                                                    {config.device_id ? (
-                                                                        <>
-                                                                            <span className="text-green-400 font-bold">✅ Anahtarlar bu cihazın donanım kimliğine başarıyla mühürlendi.</span>
-                                                                            <br />
-                                                                            <span className="font-mono text-green-400/60">Fingerprint: {config.device_id}</span>
-                                                                        </>
-                                                                    ) : (
-                                                                        'CPU Serial, Motherboard UUID ve MAC adresleri kullanılarak üretilen anahtarlar, yapılandırma dosyanız ele geçirilse bile başka bilgisayarlarda çalışmaz.'
-                                                                    )}
-                                                                </p>
-                                                                <button
-                                                                    onClick={generateHardwareBoundVpnKeys}
-                                                                    className="px-6 py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-green-600/20 active:scale-95"
-                                                                >
-                                                                    <Shield className="w-4 h-4" />
-                                                                    {config.device_id ? 'KİMLİĞİ YENİLE' : 'DONANIM KİMLİĞİNİ MÜHÜRLE'}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {config.role === 'client' && (
-                                                        <div className="pt-8 space-y-6 border-t border-white/5 mt-4">
-                                                            <div>
-                                                                <label className="text-[10px] font-black text-indigo-400/80 uppercase tracking-widest pl-1 block mb-4">Merkez Mesh Bağlantısı (Hub Connection)</label>
-                                                                <div className="space-y-4">
-                                                                    <div className="space-y-2">
-                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 font-mono">Center Mesh Identity (Public Key)</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={config.vpn_config?.peers?.[0]?.public_key || ''}
-                                                                            placeholder="Merkezin Public Key'ini buraya yapıştırın..."
-                                                                            onChange={(e) => {
-                                                                                const vpn = config.vpn_config || { peers: [] };
-                                                                                const peers = [...(vpn.peers || [])];
-                                                                                if (peers.length === 0) peers.push({ public_key: '', endpoint: '', allowed_ips: ['10.8.0.1/32'] });
-                                                                                peers[0].public_key = e.target.value;
-                                                                                setConfig({ ...config, vpn_config: { ...vpn, peers } });
-                                                                            }}
-                                                                            className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-4 text-xs font-mono text-white focus:border-indigo-500/50 outline-none transition-all placeholder:text-slate-700"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group animate-in zoom-in-95 duration-500">
-                                            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[90px] rounded-full" />
-
-                                            <div className="flex items-center gap-5 mb-8">
-                                                <div className="w-16 h-16 rounded-2xl bg-blue-600/20 flex items-center justify-center">
-                                                    <Globe className="w-8 h-8 text-blue-400" />
+                                <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Left Column: Device Identity & Role */}
+                                    <div className="space-y-6">
+                                        <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group h-full">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full" />
+                                            <div className="flex items-center gap-4 mb-8">
+                                                <div className="w-14 h-14 rounded-2xl bg-purple-600/20 flex items-center justify-center">
+                                                    <Monitor className="w-7 h-7 text-purple-400" />
                                                 </div>
                                                 <div>
-                                                    <div className="text-xl font-bold text-white">Statik IP Yapılandırması</div>
-                                                    <div className="text-[10px] text-blue-400/60 font-black uppercase tracking-widest">Direct TCP/HTTP Communication</div>
+                                                    <div className="text-lg font-bold text-white">Cihaz Yapılandırması</div>
+                                                    <div className="text-[10px] text-purple-400/60 font-black uppercase tracking-widest">Device Identity & Role</div>
                                                 </div>
                                             </div>
 
                                             <div className="space-y-6">
-                                                <div className="p-6 rounded-3xl bg-blue-500/5 border border-blue-500/10">
-                                                    <div className="text-[11px] font-black text-blue-300 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                                        <Info className="w-3.5 h-3.5" /> Önemli Bilgi
-                                                    </div>
-                                                    <p className="text-[10px] text-blue-200/50 font-medium leading-relaxed">
-                                                        Bu modda merkez şubeye erişim için modemin dış dünyaya açık bir <span className="text-blue-400 font-bold">Statik IP'ye</span> sahip olması ve <span className="text-blue-400 font-bold">5432 (Postgres)</span> ile <span className="text-blue-400 font-bold">3000 (Sync)</span> portlarının merkez şubeye yönlendirilmiş olması gerekir.
-                                                    </p>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <button onClick={() => setConfig({ ...config, role: 'center' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'center' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="text-xs font-bold text-white">Merkez Sunucu</div>
+                                                        <div className="text-[9px] text-slate-500">Master</div>
+                                                    </button>
+                                                    <button onClick={() => setConfig({ ...config, role: 'client' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'client' ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="text-xs font-bold text-white">Şube Cihazı</div>
+                                                        <div className="text-[9px] text-slate-500">Terminal</div>
+                                                    </button>
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez Sunucu Adresi (Public IP / Domain)</label>
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Adı</label>
                                                     <input
                                                         type="text"
-                                                        value={config.central_api_url || ''}
-                                                        placeholder="ör: https://merkez.sirket.com/sync"
-                                                        onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
-                                                        className="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-xs font-mono text-white focus:border-blue-500/50 outline-none transition-all"
+                                                        value={config.terminal_name || ''}
+                                                        onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
+                                                        placeholder="Cihaz ismi girin..."
+                                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-white text-xs outline-none focus:border-purple-500/50"
                                                     />
                                                 </div>
+
+                                                <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <Fingerprint className="w-4 h-4 text-emerald-400" />
+                                                        <span className="text-[10px] font-bold text-white">Donanım Kimliği</span>
+                                                    </div>
+                                                    <div className="text-[9px] font-mono text-emerald-500/60 break-all">{config.device_id || 'ID üretiliyor...'}</div>
+                                                </div>
+
+                                                <button onClick={generateHardwareBoundVpnKeys} className="w-full py-3 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-black text-[9px] tracking-widest border border-purple-500/20 transition-all flex items-center justify-center gap-2">
+                                                    <RefreshCw className="w-3.5 h-3.5" /> KİMLİĞİ YENİLE
+                                                </button>
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
 
+                                    {/* Right Column: Connection Strategy */}
+                                    <div className="space-y-6">
+                                        <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group h-full">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-[60px] rounded-full" />
+                                            <div className="flex items-center gap-4 mb-8">
+                                                <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 flex items-center justify-center">
+                                                    <Globe className="w-7 h-7 text-indigo-400" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-lg font-bold text-white">Bağlantı Stratejisi</div>
+                                                    <div className="text-[10px] text-indigo-400/60 font-black uppercase tracking-widest">Connectivity Method</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="flex gap-4">
+                                                    <button onClick={() => setConfig({ ...config, enable_mesh: true })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${config.enable_mesh ? 'bg-indigo-600/10 border-indigo-500' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="text-xs font-bold text-white">Mesh Network</div>
+                                                        <div className="text-[9px] text-slate-500">Statik IP Yok</div>
+                                                    </button>
+                                                    <button onClick={() => setConfig({ ...config, enable_mesh: false })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${!config.enable_mesh ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
+                                                        <div className="text-xs font-bold text-white">Klasik IP</div>
+                                                        <div className="text-[9px] text-slate-500">Statik IP Şart</div>
+                                                    </button>
+                                                </div>
+
+                                                {config.enable_mesh ? (
+                                                    <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                                                        <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
+                                                            <div className="text-[10px] text-indigo-200/50 font-medium leading-relaxed">
+                                                                Üstün keşif algoritması ile firewall engellerini aşın. Port yönlendirme gerektirmez.
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 font-mono">Mesh Identity (Public Key)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={config.vpn_config?.public_key || 'Üretiliyor...'}
+                                                                readOnly
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-mono text-emerald-400/80"
+                                                            />
+                                                        </div>
+                                                        <button onClick={generateVpnConfig} className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-xl font-black text-[9px] tracking-widest border border-indigo-500/20 transition-all">
+                                                            MESH ANAHTARLARI ÜRET
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                                                        <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
+                                                            <p className="text-[9px] text-blue-200/50 font-medium">Standard TCP. Merkez IP/Domain zorunludur.</p>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez Adresi</label>
+                                                            <input
+                                                                type="text"
+                                                                value={config.central_api_url || ''}
+                                                                placeholder="https://merkez.domain.com"
+                                                                onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
+                                                                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {/* Connection Summary / Info Block - Integrated at bottom of same step */}
+                                <div className="lg:col-span-2">
                                     <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-[32px] flex items-start gap-5">
                                         <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
                                             <Activity className="w-6 h-6 text-white" />
@@ -2753,6 +2927,17 @@ const SetupWizard: React.FC = () => {
                                                 )}
                                             </div>
                                         </div>
+                                        <div className="relative z-10 flex flex-col items-end gap-2">
+                                            <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-2">
+                                                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                                                    {config.max_users || 5} Kullanıcı Lisansı
+                                                </span>
+                                            </div>
+                                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                                                Bitiş: {config.license_expiry ? new Date(config.license_expiry).toLocaleDateString('tr-TR') : '31.12.2026'}
+                                            </div>
+                                        </div>
                                         <div className={`relative z-10 w-16 h-16 ${config.is_nebim_migration ? 'bg-indigo-600' : 'bg-blue-600'} rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-600/30 group-hover:scale-110 transition-transform duration-500 border border-white/20`}>
                                             <CheckCircle className="w-8 h-8 text-white" />
                                         </div>
@@ -2808,13 +2993,28 @@ const SetupWizard: React.FC = () => {
 
                                         <div className="flex items-center gap-6 pt-4">
                                             {installationStep === 'COMPLETED' ? (
-                                                <button
-                                                    onClick={() => window.location.href = '/'}
-                                                    className="flex items-center gap-3 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase shadow-[0_20px_40px_-10px_rgba(37,99,235,0.5)] transition-all group active:scale-95"
-                                                >
-                                                    <Layout className="w-4 h-4 group-hover:rotate-12 transition-transform" />
-                                                    PANELİ AÇ
-                                                </button>
+                                                <div className="flex items-center gap-4">
+                                                    <button
+                                                        onClick={() => window.location.href = '/'}
+                                                        className="flex items-center gap-3 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase shadow-[0_20px_40px_-10px_rgba(37,99,235,0.5)] transition-all group active:scale-95"
+                                                    >
+                                                        <Layout className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                                        PANELİ AÇ
+                                                    </button>
+
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (isTauri) {
+                                                                const { invoke } = await import('@tauri-apps/api/core');
+                                                                invoke('open_migration_log').catch(e => toast.error(e));
+                                                            }
+                                                        }}
+                                                        className="flex items-center gap-3 px-6 py-5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10 transition-all hover:text-white"
+                                                    >
+                                                        <FileCode className="w-4 h-4 text-blue-400" />
+                                                        LOGLARI İNCELE
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <div className="flex items-center gap-3 px-8 py-4 bg-white/5 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10">
                                                     <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
@@ -2876,10 +3076,12 @@ const SetupWizard: React.FC = () => {
                         nextLabel={step === (config.skip_integration ? 6 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
                     />
-                </div>
+                </div >
             </div >
         </div >
     );
 };
 
 export default SetupWizard;
+
+

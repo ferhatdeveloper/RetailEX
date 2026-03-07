@@ -1,4 +1,4 @@
-﻿import { X, Save, Trash2, Eye, RotateCcw, Coffee } from 'lucide-react';
+import { X, Save, Trash2, Eye, RotateCcw, Coffee } from 'lucide-react';
 import type { CartItem } from './types';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -170,3 +170,5 @@ export function POSParkedReceiptsModal({
     </div>
   );
 }
+
+

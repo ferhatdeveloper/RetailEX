@@ -1,4 +1,4 @@
-﻿// ğŸ”” Toast Notification System
+// 🔔 Toast Notification System
 // Lightweight toast notifications without external dependencies
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
@@ -168,19 +168,19 @@ export function setToastHandler(handler: (type: ToastType, message: string, dura
 export const toast = {
   success: (message: string, duration?: number) => {
     if (toastQueue) toastQueue('success', message, duration);
-    else console.log('✅', message);
+    else console.log('?', message);
   },
   error: (message: string, duration?: number) => {
     if (toastQueue) toastQueue('error', message, duration);
-    else console.error('❌', message);
+    else console.error('?', message);
   },
   warning: (message: string, duration?: number) => {
     if (toastQueue) toastQueue('warning', message, duration);
-    else console.warn('⚠️', message);
+    else console.warn('??', message);
   },
   info: (message: string, duration?: number) => {
     if (toastQueue) toastQueue('info', message, duration);
-    else console.info('ℹ️', message);
+    else console.info('??', message);
   }
 };
 
@@ -193,4 +193,6 @@ export function useToastInit() {
     return () => setToastHandler(null);
   }, [showToast]);
 }
+
+
 

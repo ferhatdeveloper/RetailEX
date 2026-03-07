@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Check & Promissory Note Service (Backend)
  * 
  * CRUD operations for checks and promissory notes
@@ -223,4 +223,5 @@ app.get("/expiring/soon", async (c) => {
 });
 
 export default app;
+
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Supabase Client - WMS Module
  * Singleton instance for database operations
  */
@@ -37,14 +37,14 @@ export async function checkSupabaseConnection(): Promise<boolean> {
       .select('count', { count: 'exact', head: true });
 
     if (error) {
-      console.error('❌ Supabase connection failed:', error.message);
+      console.error('? Supabase connection failed:', error.message);
       return false;
     }
 
-    console.log('✅ WMS Supabase connected!');
+    console.log('? WMS Supabase connected!');
     return true;
   } catch (error) {
-    console.error('❌ Supabase connection error:', error);
+    console.error('? Supabase connection error:', error);
     return false;
   }
 }
@@ -54,11 +54,13 @@ if (typeof window !== 'undefined') {
   setTimeout(() => {
     checkSupabaseConnection().then((success) => {
       if (success) {
-        console.log('%cğŸ¢ WMS Backend Ready!', 'color: #10b981; font-weight: bold;');
+        console.log('%c🏢 WMS Backend Ready!', 'color: #10b981; font-weight: bold;');
       } else {
-        console.log('%c⚠️ WMS Backend Offline', 'color: #f59e0b;');
+        console.log('%c?? WMS Backend Offline', 'color: #f59e0b;');
       }
     });
   }, 1000);
 }
+
+
 

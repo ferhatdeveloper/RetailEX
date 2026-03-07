@@ -1,4 +1,4 @@
-﻿import { useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { logger } from '../utils/logger';
 
 export interface KeyboardShortcut {
@@ -126,3 +126,5 @@ export function formatShortcutKey(shortcut: KeyboardShortcut): string {
 
   return parts.join(' + ');
 }
+
+

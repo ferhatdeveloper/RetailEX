@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Users, Package, ShoppingCart, AlertCircle, TrendingDown, ArrowUpCircle, ArrowDownCircle, Zap, Clock, Loader2, Map, Store as StoreIcon, Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../../utils/logger';
 import { useTheme } from '../../contexts/ThemeContext';
 

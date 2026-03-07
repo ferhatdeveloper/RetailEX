@@ -1,4 +1,4 @@
-﻿// Sale Store with SQL Integration
+// Sale Store with SQL Integration
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Sale } from '../core/types';
@@ -130,3 +130,4 @@ if (typeof window !== 'undefined') {
     store.loadSales(100);
   }
 }
+

@@ -152,12 +152,6 @@ export function MaterialExtractReport() {
                     )}
                 </table>
 
-                <div className="mt-10 p-4 border rounded bg-indigo-50 border-indigo-100 flex items-center gap-4">
-                    <div className="bg-indigo-600 p-2 rounded text-white"><FileText className="w-6 h-6" /></div>
-                    <div className="text-xs text-indigo-900 leading-relaxed">
-                        <strong>Editör Notu:</strong> Bu rapor yapısı Logo ERP'nin kurumsal standartlarıyla birebir uyumlu olacak şekilde, asenkron yürüyen bakiye (running balance) motoru kullanılarak RetailEX yerel veritabanı (PostgreSQL) üzerinden anlık olarak hesaplanmaktadır.
-                    </div>
-                </div>
             </div>
         </div>
     );

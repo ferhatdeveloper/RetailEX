@@ -1,4 +1,4 @@
-﻿// Business Calculation Utilities
+// Business Calculation Utilities
 import type { CartItem, Campaign, Product } from '../../core/types';
 
 /**
@@ -147,4 +147,5 @@ export const calculateMarkup = (price: number, cost: number): number => {
   if (cost === 0) return 0;
   return ((price - cost) / cost) * 100;
 };
+
 

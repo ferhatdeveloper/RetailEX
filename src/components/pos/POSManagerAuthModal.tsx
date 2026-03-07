@@ -1,5 +1,6 @@
-﻿import { X, Shield } from 'lucide-react';
-import { useState } from 'react';
+﻿import { X, Shield, Lock, RefreshCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { cn } from '../ui/utils';
 
 interface POSManagerAuthModalProps {
   onClose: () => void;
@@ -8,130 +9,147 @@ interface POSManagerAuthModalProps {
 
 export function POSManagerAuthModal({ onClose, onAuthorized }: POSManagerAuthModalProps) {
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (password.length >= 4) {
+      handleSubmit();
+    }
+  }, [password]);
 
   const handleNumberClick = (num: string) => {
-    setPassword(prev => prev + num);
-    setError('');
-  };
-
-  const handleDelete = () => {
-    setPassword(prev => prev.slice(0, -1));
-    setError('');
+    if (password.length < 8) {
+      setPassword(prev => prev + num);
+      setError(false);
+    }
   };
 
   const handleClear = () => {
     setPassword('');
-    setError('');
+    setError(false);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    setLoading(true);
     // Basit şifre kontrolü - gerçek uygulamada API ile kontrol edilmeli
-    if (password === '1234' || password === 'admin') {
-      onAuthorized();
-    } else {
-      setError('Hatalı şifre!');
-      setPassword('');
-    }
+    // 1234 veya admin için onay ver
+    setTimeout(() => {
+      if (password === '1234' || password === '4321') {
+        onAuthorized();
+        onClose();
+      } else {
+        setError(true);
+        setPassword('');
+        setTimeout(() => setError(false), 500);
+      }
+      setLoading(false);
+    }, 300);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-white w-full max-w-md shadow-2xl">
-        {/* Header */}
-        <div className="p-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
-          <h3 className="text-base text-white flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Yönetici Onayı Gerekli
-          </h3>
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
+      <div className="bg-white rounded-[48px] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col relative border border-white/10">
+
+        {/* Header with Blue Gradient - Matching "Masa Aç" style */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 flex items-center justify-between text-white relative overflow-hidden shrink-0">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-3xl opacity-50" />
+
+          <div className="flex items-center gap-5 relative z-10">
+            <div className="w-16 h-16 bg-white/20 rounded-3xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-lg">
+              <Shield className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black uppercase tracking-tight leading-none">Yönetici</h3>
+              <p className="text-[10px] text-blue-100 font-black uppercase tracking-widest mt-2 opacity-70">Yetki Doğrulaması</p>
+            </div>
+          </div>
+
           <button
             onClick={onClose}
-            className="text-white hover:bg-white/10 p-1 transition-colors"
+            className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-2xl flex items-center justify-center transition-all active:scale-90 relative z-10 border border-white/10"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="p-4">
-          <div className="bg-orange-50 border border-orange-200 p-3 mb-4">
-            <p className="text-sm text-orange-800">
-              Bu işlem için yönetici yetkisi gerekiyor. Lütfen yönetici şifresini girin.
+        <div className="p-10 flex flex-col items-center bg-white flex-1 relative">
+          {/* Status Badge */}
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl px-6 py-3 flex items-center gap-3 mb-10 animate-in slide-in-from-top-4 duration-500">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            <p className="text-[11px] font-black text-slate-400 leading-tight uppercase tracking-widest">
+              Lütfen 4 haneli PIN girin
             </p>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 p-3 mb-4">
-              <p className="text-sm text-red-800">{error}</p>
+          <div className={cn(
+            "w-full transition-all duration-300",
+            error && "animate-shake"
+          )}>
+            {/* PIN Display Dots */}
+            <div className="flex justify-center gap-6 mb-12">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "w-6 h-6 rounded-full border-2 transition-all duration-500 flex items-center justify-center shadow-inner",
+                    password.length > i
+                      ? "bg-blue-600 border-blue-600 scale-125 shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+                      : "border-slate-100 bg-slate-50"
+                  )}
+                >
+                  {password.length > i && <div className="w-2.5 h-2.5 bg-white rounded-full shadow-sm" />}
+                </div>
+              ))}
             </div>
-          )}
 
-          <div className="mb-4">
-            <label className="block text-sm text-gray-700 mb-2">Yönetici Şifresi:</label>
-            <input
-              type="password"
-              value={password}
-              readOnly
-              placeholder="Şifre girin..."
-              className="w-full px-3 py-3 text-center text-lg border border-gray-300 focus:outline-none focus:border-blue-600 bg-blue-50"
-            />
-          </div>
-
-          {/* NumPad */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+            {/* Numeric Keypad Grid - Modern Flat Style */}
+            <div className="grid grid-cols-3 gap-5 w-full">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => handleNumberClick(num.toString())}
+                  disabled={loading}
+                  className="w-full aspect-square rounded-[32px] bg-slate-50 hover:bg-slate-100 border border-slate-200/50 shadow-sm active:scale-90 transition-all flex items-center justify-center text-3xl font-black text-slate-800"
+                >
+                  {num}
+                </button>
+              ))}
               <button
-                key={num}
-                onClick={() => handleNumberClick(num.toString())}
-                className="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 py-4 text-lg transition-colors"
-                type="button"
+                onClick={handleClear}
+                className="w-full aspect-square rounded-[32px] bg-red-50 hover:bg-red-100 border border-red-100 active:scale-95 transition-all flex items-center justify-center text-red-500 group"
               >
-                {num}
+                <RefreshCcw className="w-8 h-8 group-hover:rotate-180 transition-transform duration-500" />
               </button>
-            ))}
-            <button
-              onClick={handleClear}
-              className="bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 py-4 text-sm transition-colors"
-              type="button"
-            >
-              Temizle
-            </button>
-            <button
-              onClick={() => handleNumberClick('0')}
-              className="bg-white hover:bg-gray-50 border border-gray-300 text-gray-800 py-4 text-lg transition-colors"
-              type="button"
-            >
-              0
-            </button>
-            <button
-              onClick={handleDelete}
-              className="bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 py-4 text-sm transition-colors"
-              type="button"
-            >
-              ←
-            </button>
-          </div>
+              <button
+                onClick={() => handleNumberClick('0')}
+                disabled={loading}
+                className="w-full aspect-square rounded-[32px] bg-slate-50 hover:bg-slate-100 border border-slate-200/50 shadow-sm active:scale-90 transition-all flex items-center justify-center text-3xl font-black text-slate-800"
+              >
+                0
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full aspect-square rounded-[32px] bg-slate-50 hover:bg-slate-100 border border-slate-200/50 active:scale-95 transition-all flex items-center justify-center text-slate-400"
+              >
+                <X className="w-8 h-8 font-black" />
+              </button>
+            </div>
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2.5 text-sm bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-            >
-              İptal
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={password.length === 0}
-              className="flex-1 px-4 py-2.5 text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Onayla
-            </button>
+            {/* Error Message */}
+            {error && (
+              <div className="mt-10 text-center animate-in fade-in slide-in-from-top-2 duration-300">
+                <span className="px-6 py-2.5 bg-red-500 text-white text-[11px] font-black uppercase tracking-[0.2em] rounded-full shadow-xl shadow-red-200">
+                  HATALI ŞİFRE!
+                </span>
+              </div>
+            )}
           </div>
+        </div>
 
-          <div className="mt-3 text-xs text-gray-500 text-center">
-            Varsayılan şifre: 1234
-          </div>
+        {/* Footer info */}
+        <div className="p-8 bg-slate-50 border-t border-slate-100 text-center">
+          <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.4em]">RETAILEX ERP SECURITY</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-﻿// LocalStorage Hook
+// LocalStorage Hook
 import { useState, useEffect } from 'react';
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
@@ -26,4 +26,5 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
   return [storedValue, setValue] as const;
 }
+
 

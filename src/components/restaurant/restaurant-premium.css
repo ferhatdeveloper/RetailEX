@@ -1,0 +1,123 @@
+/* Restaurant Premium Design System - Glassmorphism & High-End UI Tokens */
+
+:root {
+  --res-bg: #f8fafc;
+  --res-card: #ffffff;
+  --res-primary: #ef4444;
+  /* Modern Red */
+  --res-secondary: #3b82f6;
+  /* Modern Blue */
+  --res-success: #10b981;
+  /* Modern Green */
+  --res-info: #06b6d4;
+  --res-warning: #f59e0b;
+  --res-danger: #ef4444;
+  --res-dark: #1e293b;
+  --res-border: #e2e8f0;
+  --res-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --res-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --res-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.res-dashboard-tile {
+  background: white;
+  border-radius: 1rem;
+  border: 2px solid #f1f5f9;
+  /* Solid flat border */
+  box-shadow: none;
+  /* Flat design often avoids shadows */
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.res-dashboard-tile:hover {
+  transform: scale(1.02);
+  border-color: currentColor;
+  /* Highlight with tile's own icon color */
+  background: #f8fafc;
+}
+
+/* Remove glass shine */
+.res-dashboard-tile::after {
+  display: none;
+}
+
+.res-stat-card {
+  height: 120px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+  border-bottom: 4px solid rgba(0, 0, 0, 0.1);
+  /* Subtle depth without shine */
+}
+
+/* Remove glass decorative elements */
+.res-stat-card::before {
+  display: none;
+}
+
+.res-stat-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  letter-spacing: -0.01em;
+}
+
+.res-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Flat helpers */
+.res-flat {
+  background: white;
+  border: 1px solid var(--res-border);
+}
+
+.res-flat-dark {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+}
+
+/* Animations */
+@keyframes res-pulse-glow {
+  0% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+  }
+
+  100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.2);
+  }
+}
+
+.res-animate-glow {
+  animation: res-pulse-glow 3s infinite ease-in-out;
+}
+
+/* Scrollbar styling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

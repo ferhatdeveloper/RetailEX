@@ -1,4 +1,4 @@
-﻿// Customer Store with SQL Integration
+// Customer Store with SQL Integration
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Customer } from '../core/types';
@@ -19,6 +19,7 @@ interface CustomerState {
   updatePoints: (id: string, points: number) => Promise<void>;
   findByPhone: (phone: string) => Promise<Customer | null>;
   updatePurchaseHistory: (id: string, amount: number) => Promise<void>;
+  updateBalance: (id: string, amount: number) => Promise<void>;
   syncWithServer: () => Promise<void>;
 }
 
@@ -105,11 +106,11 @@ export const useCustomerStore = create<CustomerState>()(
       updatePoints: async (id, points) => {
         set({ isLoading: true, error: null });
         try {
-          const success = await customerAPI.updatePoints(id, points);
+          const success = await customerAPI.addPoints(id, points);
           if (success) {
             set((state) => ({
               customers: state.customers.map(c =>
-                c.id === id ? { ...c, points } : c
+                c.id === id ? { ...c, points: (c.points || 0) + points } : c
               ),
               isLoading: false,
               lastSync: Date.now()
@@ -138,6 +139,20 @@ export const useCustomerStore = create<CustomerState>()(
             c.id === id ? { ...c, totalPurchases: (c.totalPurchases || 0) + amount, lastPurchase: new Date().toISOString() } : c
           )
         }));
+      },
+
+      updateBalance: async (id, amount) => {
+        set((state) => ({
+          customers: state.customers.map(c =>
+            c.id === id ? { ...c, balance: (c.balance || 0) + amount } : c
+          )
+        }));
+
+        try {
+          await customerAPI.addBalance(id, amount);
+        } catch (e) {
+          console.error('Failed to persist balance update', e);
+        }
       },
 
       syncWithServer: async () => {
@@ -171,3 +186,4 @@ if (typeof window !== 'undefined') {
     store.loadCustomers();
   }
 }
+

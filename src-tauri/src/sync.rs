@@ -6,7 +6,7 @@ use tokio_postgres::NoTls;
 use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use url::Url;
-use tauri::Manager;
+use tauri::{AppHandle, Manager, Emitter};
 
 use crate::remote_input::RemoteInputManager;
 use crate::screen_capture::ScreenCaptureService;
@@ -114,8 +114,8 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     // 1. Fetch Config
     let config = crate::config::get_app_config_internal().map_err(|e| e.to_string())?;
     
-    // Skip if not configured
-    if !config.is_configured { return Ok(()); }
+    // Skip if not configured or integration is skipped
+    if !config.is_configured || config.skip_integration { return Ok(()); }
     
     let api_url = if config.central_api_url.is_empty() || config.central_api_url == "https://api.retailex.app/sync" { 
         if config.enable_mesh {
@@ -219,7 +219,6 @@ async fn send_to_center(client: &reqwest::Client, api_url: &str, item: &SyncItem
         Err(format!("Server returned {}", res.status()))
     }
 }
-
 #[derive(Debug, Serialize, Deserialize)]
 struct Heartbeat {
     #[serde(rename = "type")]
@@ -261,9 +260,9 @@ async fn start_websocket_listener(
         }
     };
 
-    // Skip if not configured
-    if !config.is_configured {
-        println!("⏳ WebSocket waiting for configuration...");
+    // Skip if not configured or integration is skipped
+    if !config.is_configured || config.skip_integration {
+        println!("⏳ WebSocket waiting for configuration or skipped due to config...");
         // Wait a bit longer before checking again if not configured
         sleep(Duration::from_secs(10)).await;
         return; 
@@ -370,7 +369,7 @@ async fn start_websocket_listener(
                                             },
                                             "RTC_OFFER" | "RTC_ANSWER" | "RTC_CANDIDATE" => {
                                                 if let Some(h) = &app {
-                                                    let _ = h.emit_all("p2p-signal", &text);
+                                                    let _ = h.emit("p2p-signal", &text);
                                                 }
                                             },
                                             _ => {}
@@ -379,7 +378,7 @@ async fn start_websocket_listener(
                                         // Fallback for raw signaling messages if any
                                         if text.contains("RTC_") {
                                              if let Some(h) = &app {
-                                                 let _ = h.emit_all("p2p-signal", &text);
+                                                 let _ = h.emit("p2p-signal", &text);
                                              }
                                         }
                                     }
@@ -407,8 +406,8 @@ async fn start_websocket_listener(
                         }
                         // 3. Periodic Heartbeat
                         _ = heartbeat_interval.tick() => {
-                            let v_ip = vpn_manager.config.lock().unwrap().as_ref()
-                                .map(|c| c.virtual_ip.clone())
+                            let v_ip = vpn_manager.tunnel.lock().unwrap().as_ref()
+                                .map(|s| s.config.virtual_ip.clone())
                                 .unwrap_or_else(|| {
                                     config.vpn_config.as_ref()
                                         .map(|c| c.virtual_ip.clone())
@@ -460,8 +459,10 @@ pub async fn enable_remote_support(app: tauri::AppHandle) -> Result<String, Stri
     // 3. Generate VPN keys if missing
     if config.vpn_config.is_none() {
         println!("🔑 VPN Anahtarları eksik, otomatik oluşturuluyor...");
-        let keys = crate::vpn::generate_vpn_keys().map_err(|e| e.to_string())?;
-        config.vpn_config = Some(keys);
+        let keys_json = crate::vpn::generate_vpn_keys().map_err(|e| e.to_string())?;
+        let priv_key = keys_json["private_key"].as_str().ok_or("Missing private key")?.to_string();
+        let pub_key = keys_json["public_key"].as_str().ok_or("Missing public key")?.to_string();
+        config.vpn_config = Some(crate::vpn::VpnConfig::from_keys(priv_key, pub_key));
     }
     
     // 4. Save updated config

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Main App Router with Authentication
  * 
  * Routes with authentication integration
@@ -34,7 +34,7 @@ export function AppRouter() {
         <LanguageProvider>
           <Toaster
             richColors
-            position="top-right"
+            position="bottom-right"
             expand={true}
             visibleToasts={5}
             toastOptions={{
@@ -66,3 +66,5 @@ export function AppRouter() {
 }
 
 export default AppRouter;
+
+

@@ -1,4 +1,4 @@
-﻿// Permission Hook - DB Connected
+// Permission Hook - DB Connected
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store';
 import { supabase } from '../../utils/supabase/client';
@@ -84,4 +84,5 @@ export const usePermission = () => {
     needsManagerAuth,
   };
 };
+
 

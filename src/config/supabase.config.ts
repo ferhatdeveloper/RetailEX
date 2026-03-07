@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Supabase Configuration
  * ExRetailOS - Database Credentials
  * 
@@ -17,17 +17,19 @@ export const supabaseConfig = {
   // Your Supabase Project URL
   // Get from: https://app.supabase.com/project/_/settings/api
   // Example: https://abcdefghijklmnop.supabase.co
-  url: 'https://fvancybedqhwhzqwpass.supabase.co',
+  url: 'https://iryqbqxvwsvksfhakkzz.supabase.co',
 
   // Your Supabase Anonymous Key (safe to use in frontend)
   // Get from: https://app.supabase.com/project/_/settings/api
-  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ2YW5jeWJlZHFod2h6cXdwYXNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4MjE4OTAsImV4cCI6MjA4MTM5Nzg5MH0._npAbJBFNbgqEUo2fv3p_0is5nObYiGASKKN-L7iEqU',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyeXFicXh2d3N2a3NmaGFra3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MzMyODIsImV4cCI6MjA3NDUwOTI4Mn0.u6L7YJ9G2gGNngdZpkrHTfDG_EfBhw9P34Gz7fSh_ek',
 };
 
-// Helper to check if configured (Manually disabled to force PostgreSQL-only mode)
+// Helper to check if configured
 export const isSupabaseConfigured = () => {
-  return false;
+  return true;
 };
 
 // Export for easy access
 export default supabaseConfig;
+
+

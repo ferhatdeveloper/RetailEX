@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Maximize, MousePointer, Keyboard, Wifi, AlertTriangle, Monitor, RefreshCcw, Activity } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/tauri';
-import { toast } from 'sonner';
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
 interface RemoteViewerProps {
     peer: {
@@ -21,7 +20,12 @@ export function RemoteViewer({ peer, onClose }: RemoteViewerProps) {
         const startRemoteSupport = async () => {
             try {
                 setConnecting(true);
-                await invoke('enable_remote_support', { targetHwid: peer.public_key });
+                if (isTauri) {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    await invoke('enable_remote_support', { targetHwid: peer.public_key });
+                } else {
+                    console.log('Web Modu: Uzak destek simüle ediliyor...');
+                }
                 setTimeout(() => {
                     setConnecting(false);
                 }, 3000);
@@ -128,3 +132,5 @@ export function RemoteViewer({ peer, onClose }: RemoteViewerProps) {
         </div>
     );
 }
+
+

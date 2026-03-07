@@ -3,6 +3,7 @@ use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 use crate::config::AppConfig;
 use serde::{Serialize};
+use tauri::Emitter;
 
 
 fn log_to_file(msg: &str) {
@@ -307,8 +308,16 @@ pub async fn get_logo_data_preview(
 #[tauri::command]
 pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<String, String> {
     log_to_file("sync_logo_data called");
+
+    // Guard: never attempt MSSQL connection in standalone (skip_integration) mode
+    if config.skip_integration {
+        log_to_file("skip_integration=true, skipping Logo sync");
+        let _ = window.emit("sync-event", "Bağımsız mod: Logo senkronizasyonu atlandı.");
+        return Ok("Bağımsız mod: Logo senkronizasyonu atlandı.".to_string());
+    }
+
     log_to_file(&format!("Syncing for firm: {}", config.erp_firm_nr));
-    
+
     let _ = window.emit("sync-event", "Bağlantılar kuruluyor...");
 
     // 1. Establish Connections

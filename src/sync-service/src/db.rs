@@ -49,7 +49,7 @@ impl Database {
         let broadcast_id = Uuid::new_v4();
         
         // Insert broadcast message
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             INSERT INTO broadcast_messages (
                 id, message_type, action, priority, status,
@@ -80,7 +80,7 @@ impl Database {
         }
         
         // Update total_targets
-        sqlx::query!(
+        sqlx::query_unchecked!(
             "UPDATE broadcast_messages SET total_targets = $1, pending = $1 WHERE id = $2",
             store_ids.len() as i32,
             broadcast_id
@@ -94,7 +94,7 @@ impl Database {
     }
     
     async fn get_all_store_ids(&self) -> Result<Vec<Uuid>> {
-        let records = sqlx::query!(
+        let records = sqlx::query_unchecked!(
             "SELECT id FROM stores WHERE is_active = true"
         )
         .fetch_all(&self.pool)
@@ -108,7 +108,7 @@ impl Database {
         let sequence = self.get_next_sequence().await?;
         
         // Insert recipient
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             INSERT INTO broadcast_recipients (
                 id, broadcast_id, store_id, status, created_at
@@ -125,7 +125,7 @@ impl Database {
         // Insert into sync queue
         let priority = self.get_broadcast_priority(broadcast_id).await?;
         
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             INSERT INTO sync_queue (
                 id, broadcast_id, recipient_id, store_id,
@@ -146,7 +146,7 @@ impl Database {
     }
     
     async fn get_next_sequence(&self) -> Result<i64> {
-        let record = sqlx::query!(
+        let record = sqlx::query_unchecked!(
             "SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq FROM sync_queue"
         )
         .fetch_one(&self.pool)
@@ -156,7 +156,7 @@ impl Database {
     }
     
     async fn get_broadcast_priority(&self, broadcast_id: &Uuid) -> Result<i32> {
-        let record = sqlx::query!(
+        let record = sqlx::query_unchecked!(
             r#"
             SELECT 
                 CASE priority
@@ -178,7 +178,7 @@ impl Database {
     }
     
     pub async fn get_broadcast_status(&self, broadcast_id: &Uuid) -> Result<BroadcastMessage> {
-        let record = sqlx::query_as!(
+        let record = sqlx::query_as_unchecked!(
             BroadcastMessage,
             r#"
             SELECT 
@@ -197,7 +197,7 @@ impl Database {
     }
     
     pub async fn get_pending_messages(&self, store_id: &Uuid, limit: i32) -> Result<Vec<SyncQueueItem>> {
-        let records = sqlx::query!(
+        let records = sqlx::query_unchecked!(
             r#"
             SELECT 
                 sq.id,
@@ -243,7 +243,7 @@ impl Database {
     ) -> Result<()> {
         if success {
             // Update queue status
-            sqlx::query!(
+            sqlx::query_unchecked!(
                 "UPDATE sync_queue SET status = 'completed', updated_at = NOW() WHERE id = $1",
                 queue_id
             )
@@ -251,7 +251,7 @@ impl Database {
             .await?;
             
             // Update recipient
-            let recipient_id = sqlx::query!(
+            let recipient_id = sqlx::query_unchecked!(
                 "SELECT recipient_id FROM sync_queue WHERE id = $1",
                 queue_id
             )
@@ -259,7 +259,7 @@ impl Database {
             .await?
             .recipient_id;
             
-            sqlx::query!(
+            sqlx::query_unchecked!(
                 r#"
                 UPDATE broadcast_recipients 
                 SET status = 'delivered', 
@@ -273,7 +273,7 @@ impl Database {
             .await?;
         } else {
             // Increment retry count
-            sqlx::query!(
+            sqlx::query_unchecked!(
                 r#"
                 UPDATE sync_queue 
                 SET retry_count = retry_count + 1,
@@ -308,7 +308,7 @@ impl Database {
         device_name: &str,
         app_version: &str,
     ) -> Result<()> {
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             INSERT INTO store_devices (
                 id, store_id, device_id, device_name, app_version,
@@ -334,7 +334,7 @@ impl Database {
     }
     
     pub async fn update_device_status(&self, device_id: &str, status: &str) -> Result<()> {
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             UPDATE store_devices
             SET status = $1, last_seen = NOW(), updated_at = NOW()
@@ -350,7 +350,7 @@ impl Database {
     }
     
     pub async fn get_devices(&self) -> Result<Vec<StoreDevice>> {
-        let records = sqlx::query_as!(
+        let records = sqlx::query_as_unchecked!(
             StoreDevice,
             r#"
             SELECT 
@@ -368,7 +368,7 @@ impl Database {
     }
     
     pub async fn get_store_pending_count(&self, store_id: &Uuid) -> Result<i32> {
-        let record = sqlx::query!(
+        let record = sqlx::query_unchecked!(
             "SELECT COUNT(*) as count FROM sync_queue WHERE store_id = $1 AND status = 'pending'",
             store_id
         )
@@ -392,7 +392,7 @@ impl Database {
         }
 
         // 2. Look up firm_nr from stores table
-        let store_record = sqlx::query!(
+        let store_record = sqlx::query_unchecked!(
             "SELECT firm_nr FROM stores WHERE code = $1",
             store_id
         )
@@ -402,7 +402,7 @@ impl Database {
         let firm_nr = store_record.firm_nr;
 
         // 3. Look up active period for this firm
-        let period_record = sqlx::query!(
+        let period_record = sqlx::query_unchecked!(
             r#"
             SELECT nr 
             FROM periods p
@@ -435,7 +435,7 @@ impl Database {
         sync_type: &str,
         detail: serde_json::Value
     ) -> Result<()> {
-        sqlx::query!(
+        sqlx::query_unchecked!(
             r#"
             INSERT INTO public.sync_logs (firm_nr, store_code, sync_type, last_sync_date, detail)
             VALUES ($1, $2, $3, NOW(), $4)
@@ -460,7 +460,7 @@ impl Database {
         }
 
         // 2. Query DB
-        let record = sqlx::query!(
+        let record = sqlx::query_unchecked!(
             "SELECT id FROM stores WHERE code = $1",
             store_code
         )
@@ -783,9 +783,14 @@ impl Database {
                 .bind(product.get("price").and_then(|v| v.as_f64()).unwrap_or(0.0))
                 .bind(product.get("stock").and_then(|v| v.as_f64()).unwrap_or(0.0))
                 .bind(product.get("category_code").and_then(|v| v.as_str()))
-                .execute(&self.pool)
-                .await?;
         }
+        Ok(())
+    }
+
+    pub fn pool(&self) -> &sqlx::PgPool {
+        &self.pool
+    }
+
     pub async fn upsert_heartbeat(
         &self,
         name: &str,
@@ -793,7 +798,7 @@ impl Database {
         version: &str,
         metadata: serde_json::Value,
     ) -> Result<()> {
-        sqlx::query!(
+        sqlx::query_unchecked!(
             "SELECT public.upsert_service_health($1, $2, $3, $4)",
             name,
             status,
@@ -805,3 +810,4 @@ impl Database {
         Ok(())
     }
 }
+

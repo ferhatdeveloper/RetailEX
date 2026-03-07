@@ -1,0 +1,70 @@
+/* 
+  Beauty Clinic Exact Design Synchronization
+  Matching tokens from C:\Users\FERHAT\Desktop\Beautycentermanagementsystem-main\src\index.css
+*/
+
+:root {
+    --clinic-purple-50: oklch(.977 .014 308.299);
+    --clinic-purple-100: oklch(.946 .033 307.174);
+    --clinic-purple-600: oklch(.558 .288 302.321);
+    --clinic-purple-700: oklch(.496 .265 301.924);
+
+    --clinic-blue-100: oklch(.932 .032 255.585);
+    --clinic-blue-600: oklch(.546 .245 262.881);
+
+    --clinic-pink-100: oklch(.948 .028 342.258);
+    --clinic-pink-600: oklch(.592 .249 .584);
+
+    --clinic-green-100: oklch(.962 .044 156.743);
+    --clinic-green-600: oklch(.627 .194 149.214);
+
+    --clinic-gray-50: oklch(.985 .002 247.839);
+    --clinic-gray-100: oklch(.967 .003 264.542);
+    --clinic-gray-200: oklch(.928 .006 264.531);
+    --clinic-gray-500: oklch(.551 .027 264.364);
+    --clinic-gray-900: oklch(.21 .034 264.665);
+}
+
+.clinic-card {
+    background-color: white;
+    border: 1px solid var(--clinic-gray-200);
+    border-radius: 0.75rem;
+    /* 12px */
+    padding: 1.5rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.clinic-card:hover {
+    border-color: var(--clinic-purple-600);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.clinic-header {
+    font-weight: 600;
+    color: var(--clinic-gray-900);
+    letter-spacing: -0.025em;
+}
+
+.clinic-subtext {
+    color: var(--clinic-gray-500);
+    font-size: 0.875rem;
+}
+
+.clinic-icon-bg {
+    width: 3rem;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+}
+
+.clinic-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}

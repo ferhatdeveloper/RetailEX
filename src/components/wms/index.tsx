@@ -1,7 +1,8 @@
-﻿// WMS Main Entry Point
+// WMS Main Entry Point
 import { useState, useEffect } from 'react';
 import { Dashboard } from './components/Dashboard';
-import { ReceivingCenter } from './components/ReceivingCenter';
+import { WMSReceiving } from './components/WMSReceiving';
+import { WMSDispatch } from './components/WMSDispatch';
 import { StockQuery } from './components/StockQuery';
 import { ApiTest } from './components/ApiTest';
 import { PerformanceDashboard } from './components/PerformanceDashboard';
@@ -18,10 +19,11 @@ import { ProfitLossReports } from './components/ProfitLossReports';
 import { CashierManagement } from './components/CashierManagement';
 import { LiveGPSTrackingEnhanced } from './components/LiveGPSTrackingEnhanced';
 import {
-  IssueCenter, TransferManagement, CountingModule,
+  TransferManagement, CountingModule,
   ReturnsManagement, AlertCenter, QualityControl,
   ReportsCenter, TaskManagement
 } from './components/AllWMSModules';
+import { SlottingOptimization, YardManagement, LaborManagement } from './RemainingWMSModules';
 import { ToastProvider } from './utils/toast';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import type { Product, Customer, Sale, Campaign } from '../../core/types';
@@ -58,7 +60,7 @@ function WarehouseManagementInner() {
       case 'dashboard':
         return <Dashboard darkMode={darkMode} onNavigate={setCurrentPage} />;
       case 'receiving':
-        return <ReceivingCenter darkMode={darkMode} onBack={onBack} />;
+        return <WMSReceiving darkMode={darkMode} onBack={onBack} />;
       case 'stock-query':
         return <StockQuery darkMode={darkMode} onBack={onBack} />;
       case 'multi-warehouse':
@@ -88,7 +90,7 @@ function WarehouseManagementInner() {
       case 'live-gps-tracking-enhanced':
         return <LiveGPSTrackingEnhanced darkMode={darkMode} onBack={onBack} />;
       case 'issue':
-        return <IssueCenter darkMode={darkMode} onBack={onBack} />;
+        return <WMSDispatch darkMode={darkMode} onBack={onBack} />;
       case 'transfer':
         return <TransferManagement darkMode={darkMode} onBack={onBack} />;
       case 'counting':
@@ -101,6 +103,12 @@ function WarehouseManagementInner() {
         return <ReportsCenter darkMode={darkMode} onBack={onBack} />;
       case 'tasks':
         return <TaskManagement darkMode={darkMode} onBack={onBack} />;
+      case 'slotting':
+        return <SlottingOptimization onBack={onBack} />;
+      case 'yard':
+        return <YardManagement onBack={onBack} />;
+      case 'labor':
+        return <LaborManagement onBack={onBack} />;
       default:
         return <Dashboard darkMode={darkMode} onNavigate={setCurrentPage} />;
     }
@@ -130,3 +138,5 @@ export default WarehouseManagement;
 // Export types for external use
 export * from './types';
 export * from './utils';
+
+

@@ -2,7 +2,7 @@
 
 const config = {
     appId: 'com.retailex.app',
-    appName: 'RetailEx',
+    appName: 'RetailEX',
     webDir: 'build',
     server: {
         androidScheme: 'https'

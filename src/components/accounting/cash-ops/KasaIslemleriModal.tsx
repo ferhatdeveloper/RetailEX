@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { X, TrendingUp, TrendingDown, Plus, Minus, Wallet, FileText, ArrowRightLeft } from 'lucide-react';
 import { Kasa, KasaIslemi } from '../../../services/api/kasa';
 import { formatCurrency } from '../../../utils/formatNumber';
@@ -214,3 +214,5 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
     </div>
   );
 }
+
+

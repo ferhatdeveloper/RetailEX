@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CostAccountingService } from '../../../services/costAccountingService';
 import { productAPI } from '../../../services/api/products';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -133,4 +133,6 @@ export function InOutTotalsReport() {
         </div>
     );
 }
+
+
 
