@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
 import '../ClinicStyles.css';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -132,8 +133,38 @@ export function BeautyPOS() {
 
     const clearCart = () => { setCart([]); setCustomer(null); setDiscount(0); setPaidInput(''); };
 
-    const handleComplete = () => {
-        // TODO: call beautyService.createSale()
+    const handleComplete = async () => {
+        const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+        const discAmt  = subtotal * (discount / 100);
+        const total    = subtotal - discAmt;
+
+        try {
+            const saleItems = cart.map(item => ({
+                item_type:         item.type,
+                item_id:           item.item_id,
+                name:              item.name,
+                quantity:          item.qty,
+                unit_price:        item.price,
+                discount:          0,
+                total:             item.price * item.qty,
+                staff_id:          item.staff_id ?? null,
+                commission_amount: 0,
+            }));
+            await beautyService.createSale({
+                customer_id:      customer?.id ?? null,
+                subtotal,
+                discount:         discAmt,
+                tax:              0,
+                total,
+                payment_method:   payMethod,
+                payment_status:   'paid',
+                paid_amount:      total,
+                remaining_amount: 0,
+            }, saleItems);
+        } catch (e) {
+            console.error('Sale save error:', e);
+        }
+
         setDone(true);
         setShowPayModal(false);
         setTimeout(() => { setDone(false); clearCart(); }, 2000);

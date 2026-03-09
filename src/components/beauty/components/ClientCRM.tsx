@@ -2,20 +2,21 @@ import React, { useEffect, useState } from 'react';
 import {
     Users, Search, Plus, Phone, Mail, Calendar,
     CreditCard, ChevronRight, Star, X, Save, Edit2,
-    MapPin, FileText, TrendingUp
+    MapPin, FileText, TrendingUp, Package, CheckCircle2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useBeautyStore } from '../store/useBeautyStore';
-import type { BeautyCustomer } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
+import type { BeautyCustomer, BeautyPackagePurchase } from '../../../types/beauty';
 
 const EMPTY_FORM: Partial<BeautyCustomer> = {
     name: '', phone: '', email: '', address: '', city: '', notes: '',
 };
 
 export function ClientCRM() {
-    const { customers, isLoading, loadCustomers, createCustomer, updateCustomer } = useBeautyStore();
+    const { customers, packages, isLoading, loadCustomers, loadPackages, createCustomer, updateCustomer } = useBeautyStore();
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<BeautyCustomer | null>(null);
     const [showModal, setShowModal] = useState(false);
@@ -23,7 +24,67 @@ export function ClientCRM() {
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => { loadCustomers(); }, []);
+    // Package purchase state
+    const [customerPackages, setCustomerPackages] = useState<BeautyPackagePurchase[]>([]);
+    const [showPkgModal, setShowPkgModal] = useState(false);
+    const [selectedPkg, setSelectedPkg] = useState('');
+    const [pkgBuying, setPkgBuying] = useState(false);
+    const [pkgLoading, setPkgLoading] = useState(false);
+
+    useEffect(() => { loadCustomers(); loadPackages(); }, []);
+
+    useEffect(() => {
+        if (!selected) { setCustomerPackages([]); return; }
+        setPkgLoading(true);
+        beautyService.getCustomerPackages(selected.id)
+            .then(setCustomerPackages)
+            .catch(() => setCustomerPackages([]))
+            .finally(() => setPkgLoading(false));
+    }, [selected?.id]);
+
+    const handleBuyPackage = async () => {
+        if (!selected || !selectedPkg) return;
+        const pkg = packages.find(p => p.id === selectedPkg);
+        if (!pkg) return;
+        setPkgBuying(true);
+        try {
+            const finalPrice = pkg.price * (1 - (pkg.discount_pct ?? 0) / 100);
+            await beautyService.purchasePackage({
+                customer_id:       selected.id,
+                package_id:        pkg.id,
+                total_sessions:    pkg.total_sessions,
+                sale_price:        finalPrice,
+                expiry_date:       new Date(Date.now() + (pkg.validity_days ?? 365) * 86400000).toISOString().split('T')[0],
+            });
+            // Also record the sale
+            await beautyService.createSale({
+                customer_id:      selected.id,
+                subtotal:         finalPrice,
+                discount:         pkg.price - finalPrice,
+                tax:              0,
+                total:            finalPrice,
+                payment_method:   'cash',
+                payment_status:   'paid',
+                paid_amount:      finalPrice,
+                remaining_amount: 0,
+                notes:            `Paket satın alma: ${pkg.name}`,
+            }, [{
+                item_type:         'package',
+                item_id:           pkg.id,
+                name:              pkg.name,
+                quantity:          1,
+                unit_price:        finalPrice,
+                discount:          pkg.price - finalPrice,
+                total:             finalPrice,
+                commission_amount: 0,
+            }]);
+            const updated = await beautyService.getCustomerPackages(selected.id);
+            setCustomerPackages(updated);
+            setShowPkgModal(false);
+            setSelectedPkg('');
+        } catch (e) { console.error(e); }
+        finally { setPkgBuying(false); }
+    };
 
     const filtered = customers.filter(c =>
         !search ||
@@ -289,6 +350,55 @@ export function ClientCRM() {
                                     </div>
                                 </Card>
                             )}
+
+                            {/* Package Purchases */}
+                            <Card className="rounded-3xl border-slate-200 shadow-sm overflow-hidden">
+                                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Package size={16} className="text-purple-500" />
+                                        <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Paketler</h3>
+                                        {customerPackages.length > 0 && (
+                                            <Badge className="bg-purple-100 text-purple-700 border-none text-[10px]">{customerPackages.length}</Badge>
+                                        )}
+                                    </div>
+                                    <Button
+                                        onClick={() => setShowPkgModal(true)}
+                                        className="h-7 px-3 text-xs rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                                    >
+                                        <Plus size={12} className="mr-1" /> Paket Sat
+                                    </Button>
+                                </div>
+                                <div className="divide-y divide-slate-50">
+                                    {pkgLoading ? (
+                                        <div className="p-4 text-center text-xs text-slate-400">Yükleniyor...</div>
+                                    ) : customerPackages.length === 0 ? (
+                                        <div className="p-4 text-center text-xs text-slate-400">Henüz paket yok</div>
+                                    ) : customerPackages.map(pp => {
+                                        const usedPct = pp.total_sessions > 0 ? (pp.used_sessions / pp.total_sessions) * 100 : 0;
+                                        const isExpired = pp.expiry_date && new Date(pp.expiry_date) < new Date();
+                                        return (
+                                            <div key={pp.id} className="p-4">
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div>
+                                                        <p className="text-xs font-bold text-slate-800">{pp.package_name ?? 'Paket'}</p>
+                                                        <p className="text-[10px] text-slate-500 mt-0.5">
+                                                            {pp.used_sessions}/{pp.total_sessions} seans ·{' '}
+                                                            {pp.expiry_date ? `Son: ${formatDate(pp.expiry_date)}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <Badge className={`text-[10px] border-none ${isExpired ? 'bg-red-100 text-red-600' : pp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                        {isExpired ? 'Süresi Doldu' : pp.status === 'active' ? 'Aktif' : 'Tüketildi'}
+                                                    </Badge>
+                                                </div>
+                                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${Math.min(usedPct, 100)}%` }} />
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 mt-1">{pp.remaining_sessions} seans kaldı</p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </Card>
                         </>
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-300">
@@ -298,6 +408,62 @@ export function ClientCRM() {
                     )}
                 </div>
             </div>
+
+            {/* Package Purchase Modal */}
+            {showPkgModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+                        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-5 text-white flex items-center justify-between">
+                            <div>
+                                <h2 className="text-base font-black">Paket Sat</h2>
+                                <p className="text-white/70 text-xs mt-0.5">{selected?.name}</p>
+                            </div>
+                            <button onClick={() => setShowPkgModal(false)} className="p-2 hover:bg-white/20 rounded-xl transition">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-3">
+                            {packages.length === 0 ? (
+                                <p className="text-sm text-slate-400 text-center py-4">Tanımlı paket yok</p>
+                            ) : packages.map(pkg => {
+                                const fp = pkg.price * (1 - (pkg.discount_pct ?? 0) / 100);
+                                const active = selectedPkg === pkg.id;
+                                return (
+                                    <button
+                                        key={pkg.id}
+                                        onClick={() => setSelectedPkg(pkg.id)}
+                                        className={`w-full text-left p-3 rounded-2xl border-2 transition-all ${active ? 'border-purple-500 bg-purple-50' : 'border-slate-100 hover:border-purple-200'}`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{pkg.name}</p>
+                                                <p className="text-[10px] text-slate-500 mt-0.5">{pkg.total_sessions} seans · {pkg.validity_days}gün geçerli</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-black text-purple-600">{formatCurrency(fp)}</p>
+                                                {(pkg.discount_pct ?? 0) > 0 && (
+                                                    <p className="text-[10px] text-slate-400 line-through">{formatCurrency(pkg.price)}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {active && <CheckCircle2 size={14} className="text-purple-600 mt-1" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="px-5 pb-5 flex gap-3">
+                            <Button variant="outline" onClick={() => setShowPkgModal(false)} className="flex-1 rounded-xl border-slate-200 font-bold">İptal</Button>
+                            <Button
+                                onClick={handleBuyPackage}
+                                disabled={!selectedPkg || pkgBuying}
+                                className="flex-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold"
+                            >
+                                {pkgBuying ? 'Kaydediliyor...' : 'Satışı Onayla'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Create / Edit Modal */}
             {showModal && (

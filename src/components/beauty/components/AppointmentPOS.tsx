@@ -18,6 +18,7 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyCustomer } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
 import { POSPaymentModal } from '../../pos/POSPaymentModal';
 import '../ClinicStyles.css';
 
@@ -188,11 +189,34 @@ export function AppointmentPOS({ prefillDate, prefillTime, onBack }: Props) {
         } catch (e) { console.error(e); }
     };
 
-    const handlePayComplete = async (_paymentData: any) => {
+    const handlePayComplete = async (paymentData: any) => {
         if (!canSave) return;
         try {
             await createAppointment({ ...buildAptPayload(), status: AppointmentStatus.CONFIRMED });
-            // TODO: beautyService.createSale({ ..._paymentData, total, customer_id: customer!.id })
+
+            const saleItems = cart.map(line => ({
+                item_type:         line.type,
+                item_id:           line.item_id,
+                name:              line.name,
+                quantity:          line.qty,
+                unit_price:        line.unit_price,
+                discount:          0,
+                total:             line.unit_price * line.qty,
+                staff_id:          line.staff_id ?? null,
+                commission_amount: 0,
+            }));
+            await beautyService.createSale({
+                customer_id:     customer!.id,
+                subtotal,
+                discount:        discAmt,
+                tax:             0,
+                total,
+                payment_method:  paymentData?.payments?.[0]?.method ?? 'cash',
+                payment_status:  'paid',
+                paid_amount:     total,
+                remaining_amount: 0,
+            }, saleItems);
+
             setDoneMsg('Randevu & Ödeme tamamlandı!');
             setShowPay(false);
             setTimeout(() => { setDoneMsg(''); clearCart(); onBack?.(); }, 1400);

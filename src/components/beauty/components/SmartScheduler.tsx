@@ -3,10 +3,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CalendarDays, CheckCircle2, ArrowLeft, Sparkles
+    CalendarDays, CheckCircle2, ArrowLeft, Sparkles, Star
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyAppointment, AppointmentStatus } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
 import { WeekView, MonthView } from './WeekMonthViews';
 import { StaffTimelineView } from './StaffTimelineView';
 import { AppointmentPOS } from './AppointmentPOS';
@@ -293,6 +294,12 @@ export function SmartScheduler() {
     const [showNewPage,  setShowNewPage]  = useState(false);
     const [prefillTime,  setPrefillTime]  = useState('09:00');
 
+    // Feedback state (shown after marking appointment as completed)
+    const [feedbackApt,      setFeedbackApt]      = useState<BeautyAppointment | null>(null);
+    const [feedbackRatings,  setFeedbackRatings]  = useState({ service: 5, staff: 5, overall: 5 });
+    const [feedbackComment,  setFeedbackComment]  = useState('');
+    const [feedbackSaving,   setFeedbackSaving]   = useState(false);
+
     useEffect(() => {
         loadSpecialists();
         loadServices();
@@ -323,6 +330,37 @@ export function SmartScheduler() {
         else if (view === 'week') d.setDate(d.getDate() + 7);
         else if (view === 'month') d.setMonth(d.getMonth() + 1);
         setCurrentDate(d);
+    };
+
+    const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
+        await updateAppointmentStatus(apt.id, newStatus);
+        if (newStatus === AppointmentStatus.COMPLETED) {
+            setFeedbackApt({ ...apt, status: newStatus });
+            setFeedbackRatings({ service: 5, staff: 5, overall: 5 });
+            setFeedbackComment('');
+        }
+        setSelectedApt(null);
+    };
+
+    const handleFeedbackSubmit = async () => {
+        if (!feedbackApt) return;
+        setFeedbackSaving(true);
+        try {
+            await beautyService.addFeedback({
+                appointment_id:     feedbackApt.id,
+                customer_id:        feedbackApt.customer_id ?? feedbackApt.client_id,
+                service_rating:     feedbackRatings.service,
+                staff_rating:       feedbackRatings.staff,
+                cleanliness_rating: 5,
+                overall_rating:     feedbackRatings.overall,
+                comment:            feedbackComment || null,
+                would_recommend:    feedbackRatings.overall >= 4,
+            });
+        } catch (e) { console.error(e); }
+        finally {
+            setFeedbackSaving(false);
+            setFeedbackApt(null);
+        }
     };
 
     const timeSlots = Array.from({ length: 13 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`);
@@ -591,6 +629,135 @@ export function SmartScheduler() {
                     </>
                 )}
             </div>
+
+            {/* ── APPOINTMENT DETAIL PANEL ─────────────────────────── */}
+            {selectedApt && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
+                    onClick={() => setSelectedApt(null)}
+                >
+                    <div
+                        style={{ width: 360, height: '100%', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f7f6fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div>
+                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{selectedApt.customer_name ?? '—'}</p>
+                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{selectedApt.service_name ?? '—'} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
+                            </div>
+                            <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
+                        </div>
+                        <div style={{ padding: 20, flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+                                {[
+                                    { label: 'Uzman',  value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
+                                    { label: 'Süre',   value: `${selectedApt.duration ?? 30}dk` },
+                                    { label: 'Cihaz',  value: selectedApt.device_name ?? '—' },
+                                    { label: 'Ücret',  value: (selectedApt.total_price ?? 0) > 0 ? `₺${selectedApt.total_price!.toLocaleString('tr-TR')}` : '—' },
+                                ].map(({ label, value }) => (
+                                    <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
+                                        <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
+                                        <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {selectedApt.notes && (
+                                <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Notlar</p>
+                                    <p style={{ fontSize: 12, color: '#374151' }}>{selectedApt.notes}</p>
+                                </div>
+                            )}
+                            <div style={{ marginBottom: 14 }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Durum Güncelle</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {([
+                                        { status: AppointmentStatus.CONFIRMED,   label: 'Onayla',       color: '#0284c7', bg: '#e0f2fe' },
+                                        { status: AppointmentStatus.IN_PROGRESS, label: 'Başladı',       color: '#d97706', bg: '#fef3c7' },
+                                        { status: AppointmentStatus.COMPLETED,   label: '✓ Tamamlandı', color: '#059669', bg: '#d1fae5' },
+                                        { status: AppointmentStatus.CANCELLED,   label: 'İptal Et',      color: '#dc2626', bg: '#fee2e2' },
+                                        { status: AppointmentStatus.NO_SHOW,     label: 'Gelmedi',       color: '#9ca3af', bg: '#f3f4f6' },
+                                    ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
+                                        const isCurrent = selectedApt.status === opt.status;
+                                        return (
+                                            <button
+                                                key={opt.status}
+                                                onClick={() => handleStatusChange(selectedApt, opt.status)}
+                                                disabled={isCurrent}
+                                                style={{
+                                                    width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
+                                                    background: isCurrent ? opt.bg : '#f9fafb',
+                                                    color: isCurrent ? opt.color : '#6b7280',
+                                                    fontSize: 12, fontWeight: 700, cursor: isCurrent ? 'default' : 'pointer',
+                                                    textAlign: 'left',
+                                                    outline: isCurrent ? `2px solid ${opt.color}40` : 'none',
+                                                    transition: 'all 0.1s',
+                                                }}
+                                            >
+                                                {isCurrent ? `● ${opt.label} (Mevcut)` : opt.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── FEEDBACK MODAL (after completion) ───────────────────── */}
+            {feedbackApt && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                    <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+                        <div style={{ padding: '16px 20px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <CheckCircle2 size={20} color="#059669" />
+                            <div>
+                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>Randevu Tamamlandı!</p>
+                                <p style={{ fontSize: 11, color: '#6b7280' }}>{feedbackApt.customer_name} — {feedbackApt.service_name}</p>
+                            </div>
+                        </div>
+                        <div style={{ padding: 20 }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>Müşteri geri bildirimi (opsiyonel)</p>
+                            {([
+                                { key: 'service' as const, label: 'Hizmet Kalitesi'       },
+                                { key: 'staff'   as const, label: 'Uzman Memnuniyeti'     },
+                                { key: 'overall' as const, label: 'Genel Değerlendirme'   },
+                            ]).map(({ key, label }) => (
+                                <div key={key} style={{ marginBottom: 12 }}>
+                                    <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        {[1, 2, 3, 4, 5].map(star => (
+                                            <button
+                                                key={star}
+                                                onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
+                                                style={{
+                                                    width: 32, height: 32, borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                    background: star <= feedbackRatings[key] ? '#fbbf24' : '#f3f4f6',
+                                                    color: star <= feedbackRatings[key] ? '#fff' : '#9ca3af',
+                                                    fontSize: 14, fontWeight: 800, transition: 'all 0.1s',
+                                                }}
+                                            >★</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                            <textarea
+                                value={feedbackComment}
+                                onChange={e => setFeedbackComment(e.target.value)}
+                                placeholder="Yorum ekleyin..."
+                                rows={2}
+                                style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', marginTop: 8 }}
+                            />
+                        </div>
+                        <div style={{ padding: '0 20px 20px', display: 'flex', gap: 10 }}>
+                            <button onClick={() => setFeedbackApt(null)} style={{ flex: 1, height: 38, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                                Geç
+                            </button>
+                            <button onClick={handleFeedbackSubmit} disabled={feedbackSaving} style={{ flex: 2, height: 38, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                                {feedbackSaving ? 'Kaydediliyor...' : 'Geri Bildirimi Kaydet'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

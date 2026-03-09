@@ -570,4 +570,121 @@ export const beautyService = {
         }
         return id;
     },
+
+    // =========================================================================
+    // REPORT STATS  (aggregated analytics)
+    // =========================================================================
+    async getReportStats(): Promise<{
+        monthlyRevenue: number;
+        transactionCount: number;
+        newCustomers: number;
+        avgCartValue: number;
+        prevMonthRevenue: number;
+        prevMonthTransactions: number;
+        revenueTrend: { month: string; label: string; revenue: number; transactions: number }[];
+        serviceDistribution: { category: string; count: number; revenue: number }[];
+        staffPerformance: { specialist_id: string; name: string; commission_rate: number; transactions: number; revenue: number; commission: number }[];
+    }> {
+        const st  = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const it  = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+        const spt = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const svt = postgres.getCardTableName('beauty_services', 'beauty');
+        const ct  = postgres.getCardTableName('customers');
+
+        const MONTH_TR: Record<string, string> = {
+            '01':'OCA','02':'ŞUB','03':'MAR','04':'NİS','05':'MAY','06':'HAZ',
+            '07':'TEM','08':'AĞU','09':'EYL','10':'EKİ','11':'KAS','12':'ARA',
+        };
+
+        const [monthlyRes, prevRes, newCustRes, trendRes, svcRes, staffRes] = await Promise.all([
+            // Current month stats
+            postgres.query(`
+                SELECT
+                    COALESCE(SUM(total), 0)::float  AS revenue,
+                    COUNT(*)::int                    AS transactions,
+                    COALESCE(AVG(total), 0)::float  AS avg_cart
+                FROM ${st}
+                WHERE payment_status = 'paid'
+                  AND created_at >= date_trunc('month', CURRENT_DATE)
+            `),
+            // Previous month stats (for % change)
+            postgres.query(`
+                SELECT
+                    COALESCE(SUM(total), 0)::float AS revenue,
+                    COUNT(*)::int                   AS transactions
+                FROM ${st}
+                WHERE payment_status = 'paid'
+                  AND created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+                  AND created_at <  date_trunc('month', CURRENT_DATE)
+            `),
+            // New customers this month
+            postgres.query(`
+                SELECT COUNT(*)::int AS count
+                FROM ${ct}
+                WHERE created_at >= date_trunc('month', CURRENT_DATE)
+            `),
+            // Revenue trend — last 6 months
+            postgres.query(`
+                SELECT
+                    to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+                    COALESCE(SUM(total), 0)::float  AS revenue,
+                    COUNT(*)::int                    AS transactions
+                FROM ${st}
+                WHERE payment_status = 'paid'
+                  AND created_at >= (CURRENT_DATE - INTERVAL '6 months')
+                GROUP BY date_trunc('month', created_at)
+                ORDER BY date_trunc('month', created_at)
+            `),
+            // Service distribution (current month)
+            postgres.query(`
+                SELECT
+                    COALESCE(s.category, 'other') AS category,
+                    COUNT(si.id)::int               AS count,
+                    COALESCE(SUM(si.total), 0)::float AS revenue
+                FROM ${it} si
+                LEFT JOIN ${svt} s ON si.item_id = s.id
+                WHERE si.item_type = 'service'
+                  AND si.created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+                GROUP BY s.category
+                ORDER BY revenue DESC
+                LIMIT 6
+            `),
+            // Staff performance (current month)
+            postgres.query(`
+                SELECT
+                    sp.id   AS specialist_id,
+                    sp.name,
+                    sp.commission_rate,
+                    COUNT(si.id)::int                       AS transactions,
+                    COALESCE(SUM(si.total), 0)::float       AS revenue,
+                    COALESCE(SUM(si.commission_amount), 0)::float AS commission
+                FROM ${spt} sp
+                LEFT JOIN ${it} si ON si.staff_id = sp.id
+                  AND si.created_at >= date_trunc('month', CURRENT_DATE)
+                WHERE sp.is_active = true
+                GROUP BY sp.id, sp.name, sp.commission_rate
+                ORDER BY revenue DESC
+                LIMIT 10
+            `),
+        ]);
+
+        const trend = (trendRes.rows as any[]).map(r => ({
+            month: r.month,
+            label: MONTH_TR[r.month.split('-')[1]] ?? r.month,
+            revenue: r.revenue,
+            transactions: r.transactions,
+        }));
+
+        return {
+            monthlyRevenue:       monthlyRes.rows[0]?.revenue      ?? 0,
+            transactionCount:     monthlyRes.rows[0]?.transactions  ?? 0,
+            avgCartValue:         monthlyRes.rows[0]?.avg_cart      ?? 0,
+            newCustomers:         newCustRes.rows[0]?.count         ?? 0,
+            prevMonthRevenue:     prevRes.rows[0]?.revenue          ?? 0,
+            prevMonthTransactions:prevRes.rows[0]?.transactions     ?? 0,
+            revenueTrend:         trend,
+            serviceDistribution:  svcRes.rows  as any[],
+            staffPerformance:     staffRes.rows as any[],
+        };
+    },
 };
