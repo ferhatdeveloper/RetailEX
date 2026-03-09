@@ -92,6 +92,11 @@ target/
 src-tauri/target/
 **/*.rs.bk
 
+# Large binary dependencies (downloaded separately)
+src-tauri/dependencies/*.exe
+src-tauri/dependencies/*.msi
+src-tauri/dependencies/*.dmg
+
 # ExRetailOS Specific
 tools/**/.git
 .agent/skills/**/.git
