@@ -16,12 +16,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 import { RestaurantService } from '../../../services/restaurant';
+import { POSSalesHistoryModal } from '../../pos/POSSalesHistoryModal';
+import { Sale } from '@/core/types/models';
 
 interface TicketHistoryProps {
     onClose?: () => void;
 }
 
-interface Ticket {
+interface Ticket extends Sale {
     id: string;
     orderNo: string;
     customer: string;
@@ -44,6 +46,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
     const [toDate, setToDate] = useState('');
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(false);
+    const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
 
     const loadTickets = async () => {
         setLoading(true);
@@ -57,12 +60,28 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
             setTickets(rows.map((r: any) => ({
                 id: r.id,
                 orderNo: r.order_no ?? `#${r.id.slice(0, 8)}`,
+                receiptNumber: r.order_no ?? `#${r.id.slice(0, 8)}`,
                 customer: r.customer_name ?? 'Peşin Satış',
+                customerName: r.customer_name ?? 'Peşin Satış',
                 table: r.table_number ?? '—',
                 openTime: fmt(r.opened_at),
                 closeTime: fmt(r.closed_at),
+                date: r.opened_at ?? r.created_at ?? new Date().toISOString(),
                 waiter: r.waiter ?? '—',
+                cashier: r.waiter ?? '—',
                 total: Number(r.total_amount ?? 0),
+                subtotal: Number(r.total_amount ?? 0),
+                discount: Number(r.discount_amount ?? 0),
+                tax: Number(r.tax_amount ?? 0),
+                paymentMethod: r.payment_method ?? 'cash',
+                items: (r.items ?? []).map((i: any) => ({
+                    productId: i.product_id ?? '',
+                    productName: i.product_name,
+                    quantity: Number(i.quantity),
+                    price: Number(i.unit_price ?? 0),
+                    discount: Number(i.discount_pct ?? 0),
+                    total: Number(i.subtotal ?? 0),
+                })),
             })));
         } catch (err) {
             console.error('[TicketHistory] load error:', err);
@@ -188,9 +207,15 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                                     </div>
                                 </td>
                                 <td className="p-4">
-                                    <div className="w-8 h-8 rounded-lg bg-blue-50/50 flex items-center justify-center border border-blue-100 group-hover:bg-blue-600 group-hover:border-blue-700 transition-colors">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedTicket(t);
+                                        }}
+                                        className="w-8 h-8 rounded-lg bg-blue-50/50 flex items-center justify-center border border-blue-100 group-hover:bg-blue-600 group-hover:border-blue-700 transition-colors"
+                                    >
                                         <Printer className="w-4 h-4 text-blue-600 group-hover:text-white" />
-                                    </div>
+                                    </button>
                                 </td>
                                 <td className="p-4 text-[12px] font-black text-slate-400">{t.orderNo}</td>
                                 <td className="p-4 text-[12px] font-black text-slate-700 uppercase">{t.customer}</td>
@@ -269,6 +294,17 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {selectedTicket && (
+                <POSSalesHistoryModal
+                    sales={[selectedTicket]}
+                    onClose={() => setSelectedTicket(null)}
+                    autoSelectLast={true}
+                    onPrintReceipt={() => {
+                        window.print();
+                    }}
+                />
             )}
         </div>
     );

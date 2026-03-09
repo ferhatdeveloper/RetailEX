@@ -13,7 +13,7 @@ interface RestaurantReservationsProps {
     onBack: () => void;
 }
 
-export const RestaurantReservations: React.FC<RestaurantReservationsProps> = ({ onBack }) => {
+export function RestaurantReservations({ onBack }: RestaurantReservationsProps) {
     const { reservations, loadReservations, addReservation, updateReservation, deleteReservation, tables } = useRestaurantStore();
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);

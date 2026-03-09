@@ -2,34 +2,69 @@
 import React, { useState } from 'react';
 import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
-    UserCog, BarChart3, Settings, Bell, Search, Plus,
-    ArrowLeft, Box
+    UserCog, BarChart3, Bell, Search, Plus,
+    ChevronLeft, ChevronRight, Box, Megaphone,
+    Sparkles, Settings2, ShoppingBag
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
-import { useLanguage } from '@/contexts/LanguageContext';
 
-// Sub-components
-import { SmartScheduler } from './components/SmartScheduler';
-import { ClientCRM } from './components/ClientCRM';
+import { SmartScheduler }    from './components/SmartScheduler';
+import { ClientCRM }         from './components/ClientCRM';
 import { PackageManagement } from './components/PackageManagement';
-import { ClinicDashboard } from './components/ClinicDashboard';
+import { ClinicDashboard }   from './components/ClinicDashboard';
 import { ServiceManagement } from './components/ServiceManagement';
-import { StaffManagement } from './components/StaffManagement';
-import { DeviceManagement } from './components/DeviceManagement';
-import { ReportDashboard } from './components/ReportDashboard';
+import { StaffManagement }   from './components/StaffManagement';
+import { DeviceManagement }  from './components/DeviceManagement';
+import { ReportDashboard }   from './components/ReportDashboard';
+import { LeadManagement }    from './components/LeadManagement';
+import { AppointmentPOS }    from './components/AppointmentPOS';
 import './ClinicStyles.css';
 
-interface MenuItem {
-    id: string;
-    icon: React.ElementType;
-    label: string;
-}
+const MENU_GROUPS = [
+    {
+        title: 'Genel',
+        items: [{ id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' }],
+    },
+    {
+        title: 'Operasyonlar',
+        items: [
+            { id: 'clients',  icon: Users,        label: 'Müşteriler' },
+            { id: 'calendar', icon: Calendar,      label: 'Randevular' },
+            { id: 'pos',      icon: ShoppingBag,   label: 'Kasa / POS'  },
+        ],
+    },
+    {
+        title: 'Tanımlar',
+        items: [
+            { id: 'services', icon: Scissors, label: 'Hizmetler' },
+            { id: 'packages', icon: Package,  label: 'Paketler'  },
+            { id: 'devices',  icon: Box,      label: 'Cihazlar'  },
+        ],
+    },
+    {
+        title: 'Yönetim',
+        items: [
+            { id: 'staff',   icon: UserCog,   label: 'Personel'   },
+            { id: 'leads',   icon: Megaphone, label: 'Leads & CRM' },
+            { id: 'reports', icon: BarChart3, label: 'Raporlar'   },
+        ],
+    },
+];
+
+const PAGE_TITLES: Record<string, string> = {
+    dashboard: 'Dashboard', clients: 'Müşteriler', calendar: 'Randevular',
+    pos: 'Kasa / POS', services: 'Hizmetler', packages: 'Paketler',
+    devices: 'Cihazlar', staff: 'Personel', leads: 'Leads & CRM', reports: 'Raporlar',
+};
+
+// Sidebar constants
+const SIDEBAR_W  = 220;
+const COLLAPSED_W = 56;
 
 export default function BeautyModule() {
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const [collapsed,  setCollapsed] = useState(false);
     const { loadSpecialists, loadServices, loadAppointments } = useBeautyStore();
-    const { t } = useLanguage();
 
     React.useEffect(() => {
         const today = new Date().toISOString().split('T')[0];
@@ -38,155 +73,217 @@ export default function BeautyModule() {
         loadAppointments(today);
     }, []);
 
-    const menuGroups = {
-        main: [
-            { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        ],
-        operations: [
-            { id: 'clients', icon: Users, label: 'Müşteriler' },
-            { id: 'calendar', icon: Calendar, label: 'Randevular' },
-        ],
-        catalog: [
-            { id: 'services', icon: Scissors, label: 'Hizmetler' },
-            { id: 'packages', icon: Package, label: 'Paketler' },
-            { id: 'devices', icon: Box, label: 'Cihazlar' },
-        ],
-        management: [
-            { id: 'staff', icon: UserCog, label: 'Personel' },
-            { id: 'reports', icon: BarChart3, label: 'Raporlar' }
-        ]
-    };
-
-    const renderMenuItem = (item: MenuItem) => {
-        const isActive = activeTab === item.id;
-        const Icon = item.icon;
-
-        return (
-            <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${isActive
-                    ? 'bg-purple-50 text-purple-600 shadow-sm font-medium'
-                    : 'text-gray-600 hover:bg-gray-100'
-                    } ${sidebarCollapsed ? 'justify-center' : ''}`}
-            >
-                <Icon size={20} className={isActive ? 'text-purple-600' : 'text-gray-500'} />
-                {!sidebarCollapsed && <span className="text-sm">{item.label}</span>}
-            </button>
-        );
-    };
-
-    const renderMenuGroup = (title: string, items: MenuItem[]) => (
-        <div key={title} className="mb-6">
-            {!sidebarCollapsed && (
-                <h3 className="text-[10px] uppercase tracking-widest text-gray-400 px-3 mb-2 font-bold">
-                    {title}
-                </h3>
-            )}
-            <div className="space-y-1">
-                {items.map(renderMenuItem)}
-            </div>
-        </div>
-    );
-
     return (
-        <div className="flex h-screen bg-gray-50 text-gray-900 font-sans">
-            {/* Sidebar */}
+        <div className="flex h-screen overflow-hidden" style={{ background: '#f7f6fb', fontFamily: 'inherit' }}>
+
+            {/* ── SIDEBAR ─────────────────────────────────────────── */}
             <aside
-                className={`${sidebarCollapsed ? 'w-20' : 'w-64'
-                    } bg-white border-r border-gray-200 transition-all duration-300 flex flex-col z-20`}
+                className="flex flex-col shrink-0 transition-all duration-200"
+                style={{
+                    width: collapsed ? COLLAPSED_W : SIDEBAR_W,
+                    background: '#12082a',
+                    borderRight: '1px solid #1f0f3a',
+                }}
             >
-                <div className="h-14 border-b border-gray-200 flex items-center justify-between px-4">
-                    {!sidebarCollapsed && (
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
-                                <Box className="text-white w-5 h-5" />
-                            </div>
-                            <span className="text-gray-900 font-bold tracking-tight">ClinicERP</span>
+                {/* Brand */}
+                <div
+                    className="flex items-center shrink-0 overflow-hidden"
+                    style={{ height: 52, padding: collapsed ? '0 14px' : '0 16px', borderBottom: '1px solid #1f0f3a' }}
+                >
+                    <div
+                        className="flex items-center justify-center shrink-0"
+                        style={{ width: 28, height: 28, background: '#7c3aed', borderRadius: 6 }}
+                    >
+                        <Sparkles size={14} color="#fff" />
+                    </div>
+                    {!collapsed && (
+                        <div className="ml-2.5 min-w-0">
+                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>ClinicERP</p>
+                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Beauty Suite</p>
                         </div>
                     )}
                     <button
-                        onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-500"
+                        onClick={() => setCollapsed(c => !c)}
+                        className="ml-auto shrink-0 flex items-center justify-center transition-colors"
+                        style={{ width: 24, height: 24, borderRadius: 4, color: 'rgba(167,139,250,0.4)' }}
+                        onMouseEnter={e => (e.currentTarget.style.color = 'rgba(196,181,253,0.8)')}
+                        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(167,139,250,0.4)')}
                     >
-                        {sidebarCollapsed ? <Plus size={20} className="rotate-45" /> : <ArrowLeft size={20} />}
+                        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                     </button>
                 </div>
 
-                <nav className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                    {renderMenuGroup('Genel', menuGroups.main)}
-                    {renderMenuGroup('Operasyonlar', menuGroups.operations)}
-                    {renderMenuGroup('Tanımlar', menuGroups.catalog)}
-                    {renderMenuGroup('Yönetim', menuGroups.management)}
+                {/* Nav */}
+                <nav className="flex-1 overflow-y-auto py-3" style={{ scrollbarWidth: 'none' }}>
+                    {MENU_GROUPS.map(group => (
+                        <div key={group.title} style={{ marginBottom: 16 }}>
+                            {!collapsed && (
+                                <p style={{
+                                    color: 'rgba(167,139,250,0.35)', fontWeight: 800,
+                                    fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
+                                    padding: '0 16px', marginBottom: 4,
+                                }}>
+                                    {group.title}
+                                </p>
+                            )}
+                            {group.items.map(item => {
+                                const active = activeTab === item.id;
+                                const Icon   = item.icon;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => setActiveTab(item.id)}
+                                        title={collapsed ? item.label : undefined}
+                                        style={{
+                                            display: 'flex', alignItems: 'center',
+                                            width: '100%', padding: collapsed ? '7px 0' : '7px 12px',
+                                            marginBottom: 1,
+                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            gap: 9,
+                                            background: active ? '#7c3aed' : 'transparent',
+                                            borderLeft: active ? '2px solid #a78bfa' : '2px solid transparent',
+                                            color: active ? '#fff' : 'rgba(196,181,253,0.65)',
+                                            fontSize: 13, fontWeight: active ? 700 : 500,
+                                            cursor: 'pointer', border: 'none', outline: 'none',
+                                            transition: 'background 0.12s, color 0.12s',
+                                        }}
+                                        onMouseEnter={e => {
+                                            if (!active) {
+                                                e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
+                                                e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
+                                            }
+                                        }}
+                                        onMouseLeave={e => {
+                                            if (!active) {
+                                                e.currentTarget.style.background = 'transparent';
+                                                e.currentTarget.style.color = 'rgba(196,181,253,0.65)';
+                                            }
+                                        }}
+                                    >
+                                        <Icon size={15} style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }} />
+                                        {!collapsed && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ))}
                 </nav>
 
-                <div className="border-t border-gray-200 p-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">
-                            C
-                        </div>
-                        {!sidebarCollapsed && (
-                            <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-900 truncate">Clinic Admin</p>
-                                <p className="text-xs text-gray-500 truncate">Yönetici</p>
-                            </div>
+                {/* User */}
+                <div style={{ borderTop: '1px solid #1f0f3a', padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{
+                            width: 30, height: 30, background: '#7c3aed', borderRadius: 6,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0,
+                        }}>C</div>
+                        {!collapsed && (
+                            <>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>Clinic Admin</p>
+                                    <p style={{ color: 'rgba(167,139,250,0.5)', fontSize: 10, fontWeight: 600 }}>Yönetici</p>
+                                </div>
+                                <button style={{ color: 'rgba(167,139,250,0.4)', flexShrink: 0 }}>
+                                    <Settings2 size={13} />
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-10">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-lg font-bold text-gray-900 capitalize tracking-tight">
-                            {activeTab.replace('-', ' ')}
-                        </h2>
-                        <div className="hidden md:flex items-center gap-2 text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            SİSTEM AKTİF
-                        </div>
+            {/* ── MAIN ────────────────────────────────────────────── */}
+            <div className="flex flex-col flex-1 overflow-hidden">
+
+                {/* Header */}
+                <header
+                    className="flex items-center justify-between shrink-0"
+                    style={{
+                        height: 52, background: '#fff',
+                        borderBottom: '1px solid #e5e7eb',
+                        padding: '0 20px',
+                    }}
+                >
+                    <div className="flex items-center gap-3">
+                        <span style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
+                            {PAGE_TITLES[activeTab] ?? activeTab}
+                        </span>
+                        <span style={{
+                            display: 'flex', alignItems: 'center', gap: 5,
+                            fontSize: 10, fontWeight: 700, color: '#059669',
+                            background: '#ecfdf5', border: '1px solid #a7f3d0',
+                            padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.08em',
+                        }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                            Sistem Aktif
+                        </span>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        {/* Search */}
                         <div className="relative hidden lg:block">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                            <Search
+                                size={14}
+                                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }}
+                            />
                             <input
                                 type="text"
                                 placeholder="Müşteri veya işlem ara..."
-                                className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 w-64 transition-all"
+                                style={{
+                                    paddingLeft: 30, paddingRight: 12, height: 32,
+                                    background: '#f9fafb', border: '1px solid #e5e7eb',
+                                    borderRadius: 6, fontSize: 12, fontWeight: 500, color: '#374151',
+                                    width: 220, outline: 'none',
+                                }}
+                                onFocus={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(124,58,237,0.1)'; }}
+                                onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.boxShadow = 'none'; }}
                             />
                         </div>
 
-                        <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl relative">
-                            <Bell size={20} />
-                            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-                        </button>
-                        <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl">
-                            <Settings size={20} />
+                        {/* Bell */}
+                        <button
+                            className="relative flex items-center justify-center"
+                            style={{ width: 32, height: 32, borderRadius: 6, background: '#f9fafb', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer' }}
+                        >
+                            <Bell size={14} />
+                            <span style={{ position: 'absolute', top: 6, right: 6, width: 6, height: 6, background: '#ef4444', borderRadius: '50%', border: '1.5px solid #fff' }} />
                         </button>
 
-                        <button className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl transition-all shadow-lg shadow-purple-600/20 active:scale-95 font-bold text-sm">
-                            <Plus size={18} />
-                            <span>YENİ RANDEVU</span>
+                        {/* CTA */}
+                        <button
+                            onClick={() => setActiveTab('calendar')}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                height: 32, padding: '0 12px',
+                                background: '#7c3aed', color: '#fff',
+                                fontSize: 12, fontWeight: 700,
+                                border: 'none', borderRadius: 6, cursor: 'pointer',
+                                letterSpacing: '0.02em',
+                                transition: 'background 0.12s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = '#6d28d9')}
+                            onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
+                        >
+                            <Plus size={13} />
+                            Yeni Randevu
                         </button>
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto bg-gray-50">
+                {/* Content */}
+                <main className="flex-1 overflow-hidden">
                     {activeTab === 'dashboard' && <ClinicDashboard />}
-                    {activeTab === 'calendar' && <SmartScheduler />}
-                    {activeTab === 'clients' && <ClientCRM />}
-                    {activeTab === 'packages' && <PackageManagement />}
-                    {activeTab === 'services' && <ServiceManagement />}
-                    {activeTab === 'staff' && <StaffManagement />}
-                    {activeTab === 'devices' && <DeviceManagement />}
-                    {activeTab === 'reports' && <ReportDashboard />}
+                    {activeTab === 'calendar'  && <SmartScheduler />}
+                    {activeTab === 'pos'       && <AppointmentPOS />}
+                    {activeTab === 'clients'   && <ClientCRM />}
+                    {activeTab === 'packages'  && <PackageManagement />}
+                    {activeTab === 'services'  && <ServiceManagement />}
+                    {activeTab === 'staff'     && <StaffManagement />}
+                    {activeTab === 'devices'   && <DeviceManagement />}
+                    {activeTab === 'leads'     && <LeadManagement />}
+                    {activeTab === 'reports'   && <ReportDashboard />}
                 </main>
             </div>
         </div>
     );
 }
-
-
-

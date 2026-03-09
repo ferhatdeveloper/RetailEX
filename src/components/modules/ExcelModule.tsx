@@ -246,12 +246,21 @@ function strFromExcel(val: any): string {
 function downloadExcel(sheetName: string, data: any[], fileName: string) {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
-  // Sütun genişliklerini otomatik ayarla
   const maxWidth = 30;
   const cols = Object.keys(data[0] ?? {}).map(k => ({ wch: Math.min(Math.max(k.length + 2, 12), maxWidth) }));
   ws['!cols'] = cols;
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, fileName);
+  // Blob + anchor click — XLSX.writeFile Tauri webview'da çalışmaz
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── Dışa aktarım fonksiyonları ───────────────────────────────────────────────

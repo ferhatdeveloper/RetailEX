@@ -181,6 +181,10 @@ export interface Sale {
   campaignName?: string;      // Kampanya adı
   campaignDiscount?: number;  // Kampanya indirimi
   cashier: string;
+  table?: string;
+  discountReason?: string;
+  cashAmount?: number;
+  change?: number;
   storeId?: string;
   userId?: string;
   firmNr?: string;

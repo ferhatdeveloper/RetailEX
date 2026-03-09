@@ -78,8 +78,8 @@ export const salesAPI = {
           // invoicesAPI `create` -> `INSERT`: `discount_rate` takes `item.discount` (which is mapped to `discount_rate`).
           // So if MarketPOS sends percent, we are good.
 
-          total: item.total, // Net amount (after discount)
-          netAmount: item.total,
+          total: item.total ?? (item.quantity * item.price - (item.discount || 0)),
+          netAmount: item.total ?? (item.quantity * item.price - (item.discount || 0)),
           unitCost: unitCost,
           totalCost: totalCost,
           grossProfit: grossProfit
@@ -97,8 +97,12 @@ export const salesAPI = {
       const totalGrossProfit = invoiceItems.reduce((sum, item) => sum + item.grossProfit, 0);
       const profitMargin = sale.total > 0 ? (totalGrossProfit / sale.total) * 100 : 0;
 
+      // Safety fallback for receiptNumber to prevent "undefined" in DB
+      const finalReceiptNumber = sale.receiptNumber ||
+        `SAL-${new Date().getTime()}-${Math.floor(Math.random() * 1000)}`;
+
       const invoiceData: any = {
-        invoice_no: sale.receiptNumber,
+        invoice_no: finalReceiptNumber,
         invoice_date: sale.date,
         invoice_type: 7, // Retail Sales Invoice
         invoice_category: 'Satis', // Category
@@ -312,6 +316,37 @@ export const salesAPI = {
         totalTax: 0,
         paymentMethods: {},
       };
+    }
+  },
+
+  /**
+   * Get daily and monthly sale counts for sequence numbering
+   */
+  async getSequenceCounts(): Promise<{ daily: number; monthly: number }> {
+    try {
+      const firmNr = ERP_SETTINGS.firmNr;
+      const periodNr = ERP_SETTINGS.periodNr;
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const monthStr = todayStr.substring(0, 7); // YYYY-MM
+
+      // SQL for daily and monthly counts
+      // Using universal sales table (rex_FIRM_PERIOD_sales via dynamic routing in postgres.ts)
+      const dailySql = `SELECT COUNT(*) as count FROM sales WHERE date::date = $1::date AND firm_nr = $2 AND period_nr = $3`;
+      const monthlySql = `SELECT COUNT(*) as count FROM sales WHERE date::text LIKE $1 || '%' AND firm_nr = $2 AND period_nr = $3`;
+
+      const [dailyRes, monthlyRes] = await Promise.all([
+        postgres.query(dailySql, [todayStr, String(firmNr), String(periodNr)]),
+        postgres.query(monthlySql, [monthStr, String(firmNr), String(periodNr)])
+      ]);
+
+      return {
+        daily: (parseInt(dailyRes.rows[0]?.count) || 0) + 1,
+        monthly: (parseInt(monthlyRes.rows[0]?.count) || 0) + 1
+      };
+    } catch (error) {
+      console.error('[SalesAPI] getSequenceCounts failed:', error);
+      return { daily: 1, monthly: 1 };
     }
   },
 

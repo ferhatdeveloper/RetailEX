@@ -24,7 +24,7 @@ export class RestaurantService {
 
     static async saveFloor(floor: {
         id?: string;
-        store_id: string;
+        store_id: string | null;
         name: string;
         color?: string;
         display_order?: number;
@@ -196,9 +196,9 @@ export class RestaurantService {
         const { rows } = await this.db.query(sql, [
             orderNo,
             params.tableId,
-            params.floorId ?? null,
+            (params.floorId && params.floorId.trim() !== '') ? params.floorId : null,
             params.waiter ?? null,
-            params.customerId ?? null,
+            (params.customerId && params.customerId.trim() !== '') ? params.customerId : null,
             params.note ?? null
         ]);
         return rows[0];
@@ -207,11 +207,13 @@ export class RestaurantService {
     static async getActiveOrder(tableId: string) {
         const sql = `
             SELECT o.*,
+                   t.number as table_number,
                    json_agg(i ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL) as items
             FROM rest_orders o
+            LEFT JOIN rest_tables t ON t.id = o.table_id
             LEFT JOIN rest_order_items i ON i.order_id = o.id
             WHERE o.table_id = $1 AND o.status = 'open'
-            GROUP BY o.id
+            GROUP BY o.id, t.number
             ORDER BY o.opened_at DESC
             LIMIT 1
         `;
@@ -238,7 +240,7 @@ export class RestaurantService {
         `;
         const { rows } = await this.db.query(sql, [
             orderId,
-            item.productId ?? null,
+            (item.productId && item.productId.trim() !== '') ? item.productId : null,
             item.productName,
             item.quantity,
             item.unitPrice,
@@ -297,38 +299,101 @@ export class RestaurantService {
     static async closeOrder(orderId: string, params?: {
         discountAmount?: number;
         taxAmount?: number;
+        paymentMethod?: string;
     }) {
         await this.db.query(
             `UPDATE rest_orders
              SET status='closed', closed_at=NOW(), billed_at=COALESCE(billed_at,NOW()),
-                 discount_amount=$2, tax_amount=$3, updated_at=NOW()
+                 discount_amount=$2, tax_amount=$3, payment_method=$4, updated_at=NOW()
              WHERE id=$1`,
-            [orderId, params?.discountAmount ?? 0, params?.taxAmount ?? 0]
+            [orderId, params?.discountAmount ?? 0, params?.taxAmount ?? 0, params?.paymentMethod ?? null]
         );
     }
 
     /**
      * Consolidates closing the order and resetting the table status into a single service call.
-     * This improves data consistency between the orders table and the tables UI.
+     * Also closes any linked (merged) orders and clears linked_order_ids.
      */
     static async completeTablePayment(params: {
         tableId: string;
         orderId: string;
+        linkedOrderIds?: string[];
         discountAmount?: number;
         taxAmount?: number;
+        paymentMethod?: string;
     }) {
-        // We use a manual transaction if the PostgresConnection supports it,
-        // otherwise we execute them sequentially which is still better than doing it in the store.
         try {
+            // Close main order
             await this.closeOrder(params.orderId, {
                 discountAmount: params.discountAmount,
-                taxAmount: params.taxAmount
+                taxAmount: params.taxAmount,
+                paymentMethod: params.paymentMethod,
             });
-            await this.updateTableStatus(params.tableId, 'empty', undefined, undefined, 0);
+
+            // Close all linked (merged table) orders
+            for (const linkedId of (params.linkedOrderIds || [])) {
+                await this.closeOrder(linkedId, { paymentMethod: params.paymentMethod });
+            }
+
+            // Reset table: empty status + clear linked_order_ids
+            await this.db.query(
+                `UPDATE rest_tables
+                 SET status = 'empty', waiter = NULL, staff_id = NULL, total = 0,
+                     linked_order_ids = '{}', updated_at = NOW()
+                 WHERE id = $1`,
+                [params.tableId]
+            );
         } catch (error) {
             console.error('[RestaurantService] completeTablePayment failed:', error);
             throw error;
         }
+    }
+
+    /**
+     * Links source table's order to target table WITHOUT moving items.
+     * Each order keeps its own fatura (invoice) code in DB.
+     * Returns the source order record (with order_no/faturaNo).
+     */
+    static async linkOrderToTable(sourceTableId: string, targetTableId: string) {
+        const sourceOrder = await this.getActiveOrder(sourceTableId);
+        if (!sourceOrder) return null;
+
+        // Append source order ID to target table's linked_order_ids array
+        await this.db.query(
+            `UPDATE rest_tables
+             SET linked_order_ids = array_append(COALESCE(linked_order_ids, '{}'), $2),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [targetTableId, sourceOrder.id]
+        );
+
+        // Clear source table (order stays open in DB)
+        await this.updateTableStatus(sourceTableId, 'empty', undefined, undefined, 0);
+        await this.db.query(
+            `UPDATE rest_tables SET linked_order_ids = '{}', updated_at = NOW() WHERE id = $1`,
+            [sourceTableId]
+        );
+
+        return sourceOrder;
+    }
+
+    /**
+     * Fetches multiple open orders by their IDs (for merged table display).
+     */
+    static async getLinkedOrders(orderIds: string[]) {
+        if (!orderIds || orderIds.length === 0) return [];
+        const { rows } = await this.db.query(
+            `SELECT o.*,
+                    t.number as table_number,
+                    json_agg(i ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL) as items
+             FROM rest_orders o
+             LEFT JOIN rest_tables t ON t.id = o.table_id
+             LEFT JOIN rest_order_items i ON i.order_id = o.id
+             WHERE o.id = ANY($1::uuid[]) AND o.status = 'open'
+             GROUP BY o.id, t.number`,
+            [orderIds]
+        );
+        return rows;
     }
 
     /**
@@ -447,8 +512,10 @@ export class RestaurantService {
     }) {
         let sql = `
             SELECT o.*,
+                   t.number as table_number,
                    json_agg(i ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL) as items
             FROM rest_orders o
+            LEFT JOIN rest_tables t ON t.id = o.table_id
             LEFT JOIN rest_order_items i ON i.order_id = o.id
             WHERE 1=1
         `;
@@ -458,7 +525,7 @@ export class RestaurantService {
         if (params?.toDate) { sql += ` AND o.opened_at <  $${idx++}`; vals.push(params.toDate); }
         if (params?.status) { sql += ` AND o.status = $${idx++}`; vals.push(params.status); }
         if (params?.tableId) { sql += ` AND o.table_id = $${idx++}`; vals.push(params.tableId); }
-        sql += ' GROUP BY o.id ORDER BY o.opened_at DESC';
+        sql += ' GROUP BY o.id, t.number ORDER BY o.opened_at DESC';
         if (params?.limit) { sql += ` LIMIT $${idx++}`; vals.push(params.limit); }
         if (params?.offset) { sql += ` OFFSET $${idx++}`; vals.push(params.offset); }
         const { rows } = await this.db.query(sql, vals);
@@ -488,7 +555,7 @@ export class RestaurantService {
         // 1. Fetch preparation times for all products
         const productIds = params.items.map(i => i.productId);
         const { rows: products } = await this.db.query(
-            'SELECT id, preparation_time FROM public.products WHERE id = ANY($1)',
+            'SELECT id, preparation_time FROM products WHERE id = ANY($1)',
             [productIds]
         );
 
@@ -578,11 +645,23 @@ export class RestaurantService {
     static async getRecipes() {
         const sql = `
             SELECT r.*,
-                   json_agg(ri ORDER BY ri.id) FILTER (WHERE ri.id IS NOT NULL) as ingredients
+                   p.name as menu_item_name,
+                   json_agg(
+                       json_build_object(
+                           'id', ri.id,
+                           'material_id', ri.material_id,
+                           'material_name', mp.name,
+                           'quantity', ri.quantity,
+                           'unit', ri.unit,
+                           'cost', ri.cost
+                       ) ORDER BY ri.id
+                   ) FILTER (WHERE ri.id IS NOT NULL) as ingredients
             FROM rest_recipes r
+            JOIN products p ON p.id = r.menu_item_id
             LEFT JOIN rest_recipe_ingredients ri ON ri.recipe_id = r.id
+            LEFT JOIN products mp ON mp.id = ri.material_id
             WHERE r.is_active = true
-            GROUP BY r.id
+            GROUP BY r.id, p.name
         `;
         const { rows } = await this.db.query(sql);
         return rows;
@@ -1119,6 +1198,140 @@ export class RestaurantService {
             'UPDATE rest_reservations SET status=$2, updated_at=NOW() WHERE id=$1',
             [id, status]
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Z-REPORT  — aggregate closed orders for a given work-day date
+    // -------------------------------------------------------------------------
+
+    static async getZReportData(workDayDate: string) {
+        // 1. Payment method breakdown + totals
+        const { rows: paymentRows } = await this.db.query(`
+            SELECT
+                COALESCE(UPPER(payment_method), 'DİĞER') AS method,
+                SUM(total_amount)                         AS amount,
+                COUNT(*)                                  AS count
+            FROM rest_orders
+            WHERE status = 'closed'
+              AND DATE(closed_at) = $1
+            GROUP BY COALESCE(UPPER(payment_method), 'DİĞER')
+            ORDER BY SUM(total_amount) DESC
+        `, [workDayDate]);
+
+        const totalSales = paymentRows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+        const netCash = paymentRows
+            .filter((r: any) => /NAK[İI]T|CASH/i.test(r.method))
+            .reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+
+        // 2. Category breakdown (via product join)
+        const { rows: catRows } = await this.db.query(`
+            SELECT
+                COALESCE(p.category, 'Diğer') AS category,
+                SUM(oi.subtotal)               AS amount,
+                COUNT(oi.id)                   AS count
+            FROM rest_order_items oi
+            JOIN rest_orders o  ON oi.order_id  = o.id
+            LEFT JOIN products p ON oi.product_id = p.id
+            WHERE o.status = 'closed'
+              AND DATE(o.closed_at) = $1
+              AND (oi.is_void IS NOT TRUE)
+            GROUP BY COALESCE(p.category, 'Diğer')
+            ORDER BY SUM(oi.subtotal) DESC
+        `, [workDayDate]);
+
+        // 3. Voids
+        const { rows: voidRows } = await this.db.query(`
+            SELECT
+                COALESCE(oi.void_reason, 'İptal') AS reason,
+                SUM(oi.subtotal)                  AS amount,
+                COUNT(oi.id)                      AS count
+            FROM rest_order_items oi
+            JOIN rest_orders o ON oi.order_id = o.id
+            WHERE o.status = 'closed'
+              AND DATE(o.closed_at) = $1
+              AND oi.is_void = TRUE
+            GROUP BY COALESCE(oi.void_reason, 'İptal')
+        `, [workDayDate]);
+
+        // 4. Complements
+        const { rows: compRows } = await this.db.query(`
+            SELECT SUM(oi.subtotal) AS amount, COUNT(oi.id) AS count
+            FROM rest_order_items oi
+            JOIN rest_orders o ON oi.order_id = o.id
+            WHERE o.status = 'closed'
+              AND DATE(o.closed_at) = $1
+              AND oi.is_complementary = TRUE
+        `, [workDayDate]);
+
+        return {
+            totalSales,
+            netCash,
+            paymentsByType: paymentRows.map((r: any) => ({
+                type: r.method,
+                amount: parseFloat(r.amount) || 0,
+                count: parseInt(r.count) || 0,
+            })),
+            salesByCategory: catRows.map((r: any) => ({
+                category: r.category,
+                amount: parseFloat(r.amount) || 0,
+                count: parseInt(r.count) || 0,
+            })),
+            voids: voidRows.map((r: any) => ({
+                reason: r.reason,
+                amount: parseFloat(r.amount) || 0,
+                count: parseInt(r.count) || 0,
+            })),
+            complements: {
+                amount: parseFloat(compRows[0]?.amount) || 0,
+                count: parseInt(compRows[0]?.count) || 0,
+            },
+        };
+    }
+
+    static async saveStaff(firmNr: string, staff: Partial<Staff>): Promise<Staff> {
+        const prefix = `rex_${firmNr.toLowerCase()}`;
+        const tableName = `rest.${prefix}_rest_staff`;
+
+        if (staff.id) {
+            const sql = `
+                UPDATE ${tableName}
+                SET name = $2, role = $3, pin = $4, is_active = $5, updated_at = NOW()
+                WHERE id = $1
+                RETURNING *
+            `;
+            const { rows } = await this.db.query(sql, [
+                staff.id, staff.name, staff.role, staff.pin, staff.isActive ?? true
+            ]);
+            return {
+                id: rows[0].id,
+                name: rows[0].name,
+                role: rows[0].role,
+                pin: rows[0].pin,
+                isActive: rows[0].is_active
+            };
+        } else {
+            const sql = `
+                INSERT INTO ${tableName} (name, role, pin, is_active)
+                VALUES ($1, $2, $3, $4)
+                RETURNING *
+            `;
+            const { rows } = await this.db.query(sql, [
+                staff.name, staff.role, staff.pin, staff.isActive ?? true
+            ]);
+            return {
+                id: rows[0].id,
+                name: rows[0].name,
+                role: rows[0].role,
+                pin: rows[0].pin,
+                isActive: rows[0].is_active
+            };
+        }
+    }
+
+    static async deleteStaff(firmNr: string, staffId: string): Promise<void> {
+        const prefix = `rex_${firmNr.toLowerCase()}`;
+        const tableName = `rest.${prefix}_rest_staff`;
+        await this.db.query(`UPDATE ${tableName} SET is_active = false, updated_at = NOW() WHERE id = $1`, [staffId]);
     }
 }
 

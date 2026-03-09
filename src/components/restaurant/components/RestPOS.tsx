@@ -37,8 +37,10 @@ import {
     ShoppingBag,
 } from 'lucide-react';
 import { cn } from '../../ui/utils';
-import { POSPaymentModalV2 } from '../../pos/POSPaymentModalV2';
+import { POSPaymentModal } from '../../pos/POSPaymentModal';
+import { Receipt80mm } from '../../pos/Receipt80mm';
 import { POSSalesHistoryModal } from '../../pos/POSSalesHistoryModal';
+import { salesAPI } from '../../../services/api/sales';
 import { POSReturnModal } from '../../pos/POSReturnModal';
 import { RestaurantStaffPinModal } from './RestaurantStaffPinModal';
 import { POSCustomerModal } from '../../pos/POSCustomerModal';
@@ -50,6 +52,7 @@ import { RestaurantProductOptionsModal } from './RestaurantProductOptionsModal';
 import { RestaurantMoveTableModal } from './RestaurantMoveTableModal';
 import { RestaurantSplitBillModal } from './RestaurantSplitBillModal';
 import { RestaurantVoidReasonModal } from './RestaurantVoidReasonModal';
+import { RestaurantTableCloseConfirmModal } from './RestaurantTableCloseConfirmModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../../core/types';
 import type { CartItem } from '../../pos/types';
 import type { Table, Staff } from '../types';
@@ -97,12 +100,36 @@ const PLATE_PALETTE = [
 
 export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedCustomer: initCustomer, currentStaff, onSaleComplete, onBack, table, covers = 0, posMode = 'table' }) => {
     const [query, setQuery] = useState('');
+    const [showPrintDialog, setShowPrintDialog] = useState(false);
+    const [completedSaleForPrint, setCompletedSaleForPrint] = useState<any>(null);
     const [selectedCat, setSelectedCat] = useState<string | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [expandedCartItem, setExpandedCartItem] = useState<number | null>(null);
-    const [cartView, setCartView] = useState<'table' | 'card'>('table');
+    const [cartView, setCartView] = useState<'table' | 'card'>('card');
     const [orderDiscount, setOrderDiscount] = useState(0);
     const [orderNote, setOrderNote] = useState('');
+    const [showTableCloseConfirm, setShowTableCloseConfirm] = useState(false);
+    const [receiptNumber, setReceiptNumber] = useState(() =>
+        `RES-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0')}`
+    );
+
+    const generateNewReceiptNumber = async () => {
+        try {
+            const counts = await salesAPI.getSequenceCounts();
+            const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+            setReceiptNumber(`RES-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
+        } catch (error) {
+            console.error('Failed to generate sequence counts:', error);
+            const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+            setReceiptNumber(`RES-${datePart}-${randomPart}`);
+        }
+    };
+
+    useEffect(() => {
+        generateNewReceiptNumber();
+    }, []);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initCustomer ?? null);
     const swipeStartX = useRef<number | null>(null);
     const swipeStartTime = useRef<number>(0);
@@ -121,6 +148,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     };
     const [parkedOrders, setParkedOrders] = useState<ParkedOrder[]>(loadParked);
     const [showParkedModal, setShowParkedModal] = useState(false);
+    const [showPrintPreview, setShowPrintPreview] = useState(false);
 
     const updateItemNote = (idx: number, note: string) => {
         const next = [...cart];
@@ -195,23 +223,41 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     };
 
     const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
-    const { closeBill, setCustomerForTable, tables, lockTable, unlockTable } = useRestaurantStore();
+    const {
+        closeBill, setCustomerForTable, tables, openTable,
+        addItemToTable, sendToKitchen, requestBill,
+        categories, loadCategories, moveTable,
+        splitOrder, updateOrderItemOptions, voidOrderItem, markItemAsComplementary,
+        markAsClean
+    } = useRestaurantStore();
 
-    // Lock table on entry, unlock on exit
+    // ── Masa oturum kilidi ───────────────────────────────────────────────
+    // window.__tableLocks: Map<tableId, staffName>  → in-memory, sekme bazlı
     useEffect(() => {
-        if (table?.id && posMode === 'table') {
-            const trylock = async () => {
-                const locked = await lockTable(table.id);
-                if (!locked) {
-                    notify('Bu masa şu an başka bir personel tarafından kullanılıyor!', 'error');
-                    setTimeout(() => onBack?.(), 2000);
-                }
-            };
-            trylock();
-            return () => {
-                unlockTable(table.id);
-            };
+        if (!table?.id || posMode !== 'table') return;
+
+        const locks: Map<string, string> = (window as any).__tableLocks ??
+            ((window as any).__tableLocks = new Map<string, string>());
+
+        const myName = currentStaff?.name || 'Garson';
+        const holder = locks.get(table.id);
+
+        // Kilidi başka garson tutuyorsa engelle
+        if (holder && holder !== myName) {
+            notify(`Bu masada şu an "${holder}" aktif, giremezsiniz!`, 'error');
+            setTimeout(() => onBack?.(), 2000);
+            return;
         }
+
+        // Kilidi al
+        locks.set(table.id, myName);
+
+        return () => {
+            // Sadece kendi kilidimizi bırak
+            if (locks.get(table.id) === myName) {
+                locks.delete(table.id);
+            }
+        };
     }, [table?.id, posMode]);
 
     // Sync local selectedCustomer with table's customer if provided
@@ -225,7 +271,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         }
     }, [table, tables, customers]);
 
-    // Load order history when history/return modals open
+    // ── DB'den sipariş yükle (masaya geri dönüldüğünde) ───────────────────
+    useEffect(() => {
+        if (!table?.id || posMode !== 'table') return;
+        const storeTable = tables.find(t => t.id === table.id);
+        if (!storeTable?.orders?.length || cart.length > 0) return;
+        // Convert DB OrderItems to local CartItems
+        const loaded = storeTable.orders
+            .filter(o => !o.isVoid)
+            .map(o => ({
+                product: { id: o.menuItemId, name: o.name, price: o.price, category: '' } as any,
+                quantity: o.quantity,
+                price: o.price,
+                subtotal: o.price * o.quantity,
+                discount: 0,
+                kitchenStatus: (o.status === 'pending' ? 'pending'
+                    : o.status === 'cooking' ? 'cooking' : 'served') as CartItem['kitchenStatus']
+            } as CartItem));
+        setCart(loaded);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [table?.id]);
+
+    useEffect(() => {
+        loadCategories();
+    }, [loadCategories]);
+
     const loadSalesHistory = useCallback(async () => {
         try {
             const rows = await RestaurantService.getOrderHistory({ status: 'closed', limit: 100 });
@@ -246,6 +316,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 total: Number(r.total_amount ?? 0),
                 paymentMethod: 'Nakit',
                 cashier: r.waiter ?? '',
+                table: r.table_number ?? '—',
                 notes: r.note,
             } as Sale)));
         } catch (err) {
@@ -264,9 +335,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [splitSelectedItems, setSplitSelectedItems] = useState<number[]>([]);
     const [targetTableId, setTargetTableId] = useState<string | null>(null);
-    const { moveTable, splitOrder, updateOrderItemOptions, voidOrderItem, markItemAsComplementary } = useRestaurantStore();
     const [showVoidReasonModal, setShowVoidReasonModal] = useState(false);
-    const [itemToVoid, setItemToVoid] = useState<{ tableId: string; itemId: string; name: string } | null>(null);
+    const [voidingItem, setVoidingItem] = useState<{ tableId: string; itemId: string; name: string } | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [discountInput, setDiscountInput] = useState('');
     const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -275,6 +345,20 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         setNotification({ msg, type });
         setTimeout(() => setNotification(null), 3000);
     };
+
+    // Close expanded cart item when clicking outside
+    useEffect(() => {
+        const handleGlobalClick = (e: MouseEvent) => {
+            if (expandedCartItem !== null) {
+                const target = e.target as HTMLElement;
+                if (!target.closest('.cart-item-expanded')) {
+                    setExpandedCartItem(null);
+                }
+            }
+        };
+        document.addEventListener('mousedown', handleGlobalClick);
+        return () => document.removeEventListener('mousedown', handleGlobalClick);
+    }, [expandedCartItem]);
 
     // Long-press state
     const [longPressedProduct, setLongPressedProduct] = useState<Product | null>(null);
@@ -311,15 +395,23 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
 
     /* ---------- category groups ---------- */
     const allCats = useMemo(() => {
+        // 1. Try DB categories FIRST
+        if (categories && categories.length > 0) {
+            return categories.map(c => c.name);
+        }
+
+        // 2. Fallback to deriving from products
         const cats = Array.from(new Set(products.map(p =>
             Array.isArray(p.category) ? p.category[0] : p.category
         ))).filter(Boolean) as string[];
+
+        // 3. Last resort hardcoded list
         return cats.length > 0 ? cats : [
             'Kırmızı Etler', 'Beyaz Etler', 'Deniz Ürünleri', 'Pide',
             'Tatlılar', 'Fast Food', 'Kahvaltı', 'Çorbalar', 'Menüler', 'Pizza',
             'Soğuk İçecekler', 'Sıcak İçecekler',
         ];
-    }, [products]);
+    }, [categories, products]);
 
     const groups = useMemo(() => {
         const food = allCats.filter(c => !DRINK_CATS.includes(c));
@@ -331,7 +423,28 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     }, [allCats]);
 
     /* ---------- cart ---------- */
-    const addToCart = (product: Product) => {
+    const addToCart = async (product: Product) => {
+        try {
+            // Masa modunda: DB'ye de kaydet (addItemToTable artık async + DB)
+            if (posMode === 'table' && table?.id) {
+                const storeTable = tables.find(t => t.id === table.id);
+                // Masa henüz açılmamışsa aç
+                if (!storeTable || storeTable.status === 'empty') {
+                    await openTable(table.id, waiter || currentStaff?.name || 'Garson');
+                }
+                await addItemToTable(table.id, {
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    category: Array.isArray(product.category) ? product.category[0] : (product.category ?? ''),
+                }, 1);
+            }
+        } catch (err: any) {
+            console.error('[RestPOS] addToCart db error:', err);
+            notify('Ürün eklenirken hata oluştu: ' + (err.message || 'Bilinmeyen hata'), 'error');
+            return;
+        }
+
         // Aktif tabak varsa: aynı ürün + aynı tabak satırını birleştir, yoksa yeni satır
         // Aktif tabak yoksa: tabaksız aynı ürünü birleştir
         const idx = cart.findIndex(i =>
@@ -373,43 +486,20 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     const remaining = grandTotal - paid;
 
     const handlePaymentComplete = async (paymentData: any) => {
-        // 1. Persist to rest_orders if a table is active
-        if (table) {
-            try {
-                await closeBill(table.id, paymentData);
-            } catch (err) {
-                console.error('[RestPOS] closeBill error:', err);
-                // Fallback: direct DB persist
-                try {
-                    const dbOrder = await RestaurantService.createOrder({
-                        tableId: table.id,
-                        waiter: currentStaff,
-                        note: orderNote,
-                    });
-                    for (const item of cart) {
-                        if (!item.product) continue;
-                        await RestaurantService.addOrderItem(dbOrder.id, {
-                            productId: item.product.id,
-                            productName: item.product.name,
-                            quantity: item.quantity,
-                            unitPrice: item.price ?? item.product.price,
-                            discountPct: item.discount ?? 0,
-                        });
-                    }
-                    await RestaurantService.closeOrder(dbOrder.id, {
-                        discountAmount,
-                    });
-                } catch (e2) {
-                    console.error('[RestPOS] fallback order persist failed:', e2);
-                }
-            }
-        }
-
-        // 2. Notify parent
-        const sale = {
+        // Build sale object for print receipt (not for DB save — closeBill does that)
+        const sale: any = {
             id: `RES-${Date.now()}`,
+            receiptNumber,
             date: new Date().toISOString(),
-            items: cart,
+            items: cart.map(item => ({
+                productId: item.product.id,
+                productName: item.product.name,
+                quantity: item.quantity,
+                price: item.price || item.product.price,
+                discount: item.discount || 0,
+                total: item.subtotal || (item as any).total,
+                variant: item.variant
+            })),
             subtotal,
             discount: (discountAmount || 0) + (paymentData.discount || 0),
             total: paymentData.finalTotal || grandTotal,
@@ -417,18 +507,91 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
             tableNumber: table?.number,
             waiter: currentStaff,
             note: orderNote,
-            periodNr: (window as any).selectedPeriod?.nr?.toString()?.padStart(2, '0'),
-            firmNr: (window as any).selectedFirm?.firm_nr,
         };
-        onSaleComplete?.(sale);
-        setCart([]);
-        setOrderDiscount(0);
-        setOrderNote('');
-        setShowPaymentModal(false);
+
+        try {
+            // closeBill handles: DB order close + table status reset + salesStore.addSale
+            if (table) {
+                await closeBill(table.id, paymentData);
+            }
+        } catch (err) {
+            console.error('[RestPOS] closeBill error:', err);
+            // Fallback: at least try to close the order directly
+            if (table) {
+                try {
+                    const activeOrder = await RestaurantService.getActiveOrder(table.id);
+                    if (activeOrder) {
+                        await RestaurantService.closeOrder(activeOrder.id, { discountAmount });
+                    }
+                    await RestaurantService.updateTableStatus(table.id, 'empty', undefined, undefined, 0);
+                } catch (e2) {
+                    console.error('[RestPOS] fallback close failed:', e2);
+                }
+            }
+        } finally {
+            // Always clean up UI regardless of DB errors
+            generateNewReceiptNumber();
+            setCart([]);
+            setOrderDiscount(0);
+            setOrderNote('');
+            setShowPaymentModal(false);
+            setCompletedSaleForPrint(sale);
+            setShowPrintDialog(true);
+        }
+    };
+
+    /* ---------- ödeme başlatma — masa billing durumuna geç ---------- */
+    const handleOpenPayment = async () => {
+        if (cart.length === 0) return;
+        if (table) {
+            try { await requestBill(table.id); } catch (e) { /* DB yoksa devam et */ }
+        }
+        setShowPaymentModal(true);
+    };
+
+    /* ---------- print dialog handlers ---------- */
+    const handlePrintReceipt = () => {
+        if (!completedSaleForPrint) return;
+        const s = completedSaleForPrint;
+        const win = window.open('', '_blank', 'width=400,height=600');
+        if (!win) return;
+        const itemRows = (s.items || []).map((it: any) =>
+            `<tr><td>${it.productName || ''}</td><td style="text-align:center">${it.quantity}</td><td style="text-align:right">${(it.price ?? 0).toFixed(2)}</td><td style="text-align:right">${((it.total ?? 0)).toFixed(2)}</td></tr>`
+        ).join('');
+        win.document.write(`
+            <html><head><title>Adisyon - ${s.receiptNumber}</title>
+            <style>body{font-family:monospace;margin:0;padding:8px;font-size:12px}h2{text-align:center;margin:4px 0}hr{border-top:1px dashed #333}table{width:100%;border-collapse:collapse}td{padding:2px 4px}.total{font-size:14px;font-weight:bold;text-align:right}</style>
+            </head><body>
+            <h2>ADİSYON FİŞİ</h2>
+            <p style="text-align:center;margin:2px 0">${s.receiptNumber}</p>
+            <p style="text-align:center;margin:2px 0">${new Date(s.date).toLocaleString('tr-TR')}</p>
+            ${s.tableNumber ? `<p style="text-align:center">Masa: ${s.tableNumber}</p>` : ''}
+            ${s.waiter ? `<p style="text-align:center">Garson: ${typeof s.waiter === 'object' ? s.waiter.name : s.waiter}</p>` : ''}
+            <hr/>
+            <table><thead><tr><th style="text-align:left">Ürün</th><th>Adet</th><th style="text-align:right">Fiyat</th><th style="text-align:right">Toplam</th></tr></thead>
+            <tbody>${itemRows}</tbody></table>
+            <hr/>
+            <p class="total">TOPLAM: ${(s.total ?? 0).toFixed(2)} IQD</p>
+            <hr/><p style="text-align:center;font-size:10px">Teşekkür ederiz!</p>
+            </body></html>
+        `);
+        win.document.close();
+        win.focus();
+        win.print();
+        win.close();
+    };
+
+    const handleDismissPrintDialog = (doPrint: boolean) => {
+        if (doPrint) handlePrintReceipt();
+        setShowPrintDialog(false);
+        setCompletedSaleForPrint(null);
         notify('Ödeme tamamlandı!');
+        onBack?.();
     };
 
     /* ---------- filtered products ---------- */
+
+
     const filtered = useMemo(() =>
         products.filter(p => {
             const cat = Array.isArray(p.category) ? p.category[0] : p.category;
@@ -439,6 +602,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
 
 
     /* ================================================================ */
+    const handleBackWithWarning = () => {
+        if (posMode === 'table' && table && cart.length === 0) {
+            setShowTableCloseConfirm(true);
+        } else {
+            onBack?.();
+        }
+    };
+
     const handleTouchStart = (e: React.TouchEvent) => {
         swipeStartX.current = e.touches[0].clientX;
         swipeStartTime.current = Date.now();
@@ -453,7 +624,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         // Sağa doğru kaydırma (Swipe from left to right)
         // Eşik değerler: 100px mesafe, 300ms süre, 50px'den küçükse (başlangıç noktası ekranın solunda)
         if (deltaX > 100 && deltaTime < 300 && swipeStartX.current < 80) {
-            onBack?.();
+            handleBackWithWarning();
         }
         swipeStartX.current = null;
     };
@@ -477,7 +648,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
 
                     <div className="flex items-center gap-4 w-[380px] relative z-10 transition-all">
                         <button
-                            onClick={onBack}
+                            onClick={handleBackWithWarning}
                             className="flex items-center gap-2.5 px-5 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl font-black text-[12px] uppercase transition-all shadow-lg border border-white/20 group active:scale-90"
                         >
                             <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
@@ -516,6 +687,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                         >
                             <History className="w-4.5 h-4.5" /> FİŞ LİSTESİ
                         </button>
+
+                        <button
+                            onClick={() => setShowPrintPreview(true)}
+                            disabled={cart.length === 0}
+                            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-[12px] font-black uppercase transition-all whitespace-nowrap bg-blue-500 hover:bg-blue-400 text-white border border-blue-400 active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-30 disabled:grayscale"
+                        >
+                            <Printer className="w-4.5 h-4.5" /> YAZDIR (80mm)
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-4 relative z-10 transition-all">
@@ -528,12 +707,24 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                 <div className="flex items-center gap-2 bg-green-600/40 px-5 py-2.5 rounded-2xl border border-green-300/30 shadow-inner backdrop-blur-sm">
                                     <span className="text-green-200 font-black text-[12px] uppercase tracking-[0.15em] leading-none">SELF SERVİS</span>
                                 </div>
-                            ) : (
-                                <div className="flex items-center gap-2 bg-blue-900/40 px-5 py-2.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-sm">
-                                    <span className="text-white/50 font-black text-[10px] uppercase tracking-[0.2em] leading-none">MASA</span>
-                                    <span className="text-white font-black text-[18px] leading-none drop-shadow-md">{table?.number || '----'}</span>
-                                </div>
-                            )}
+                            ) : (() => {
+                                const storeTable = tables.find(t => t.id === table?.id);
+                                const mergedFaturas = storeTable?.mergedOrders?.map(m => m.faturaNo).filter(Boolean) || [];
+                                return (
+                                    <div className="flex flex-col items-end gap-0.5">
+                                        <div className="flex items-center gap-2 bg-blue-900/40 px-5 py-2.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-sm">
+                                            <span className="text-white/50 font-black text-[10px] uppercase tracking-[0.2em] leading-none">MASA</span>
+                                            <span className="text-white font-black text-[18px] leading-none drop-shadow-md">{table?.number || '----'}</span>
+                                        </div>
+                                        {storeTable?.faturaNo && (
+                                            <span className="text-white/40 font-mono text-[9px] tracking-wider px-1">
+                                                {storeTable.faturaNo}
+                                                {mergedFaturas.length > 0 && ` + ${mergedFaturas.join(' + ')}`}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div
@@ -693,23 +884,25 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 {/* ── LEFT SIDEBAR ────────────────────────────────────── */}
                 <aside className="w-[200px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col shadow-inner z-10 pb-8 content-start">
                     {/* All categories button */}
-                    <button
-                        onClick={() => setSelectedCat(null)}
-                        className={cn(
-                            'mx-3 mt-6 mb-3 rounded-[20px] flex items-center gap-3.5 px-5 py-4.5 transition-all text-left group shadow-lg active:scale-95 border-2',
-                            !selectedCat
-                                ? 'bg-blue-600 text-white font-black border-blue-400 shadow-blue-500/20'
-                                : 'text-slate-600 bg-white hover:bg-slate-50 font-bold border-transparent hover:border-slate-200'
-                        )}
-                    >
-                        <div className={cn(
-                            "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-all",
-                            !selectedCat ? "bg-white/20 rotate-12" : "bg-blue-50 group-hover:rotate-12"
-                        )}>
-                            <Utensils className={cn("w-5.5 h-5.5 transition-transform", !selectedCat ? "text-white" : "text-blue-500")} />
-                        </div>
-                        <span className="text-[14px] font-black uppercase tracking-widest">TÜMÜ</span>
-                    </button>
+                    <div className="px-3 mt-6 mb-3">
+                        <button
+                            onClick={() => setSelectedCat(null)}
+                            className={cn(
+                                'w-full rounded-[20px] flex items-center gap-3.5 px-5 py-4.5 transition-all text-left group shadow-lg active:scale-95 border-2',
+                                !selectedCat
+                                    ? 'bg-blue-600 text-white font-black border-blue-400 shadow-blue-500/20'
+                                    : 'text-slate-600 bg-white hover:bg-slate-50 font-bold border-transparent hover:border-slate-200'
+                            )}
+                        >
+                            <div className={cn(
+                                "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-all",
+                                !selectedCat ? "bg-white/20 rotate-12" : "bg-blue-50 group-hover:rotate-12"
+                            )}>
+                                <Utensils className={cn("w-5.5 h-5.5 transition-transform", !selectedCat ? "text-white" : "text-blue-500")} />
+                            </div>
+                            <span className="text-[14px] font-black uppercase tracking-widest flex-1">TÜMÜ</span>
+                        </button>
+                    </div>
 
                     {
                         groups.map((group, groupIndex) => (
@@ -723,29 +916,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                 </div>
 
                                 {/* Category list */}
-                                {group.cats.map((cat, ci) => {
-                                    const active = selectedCat === cat;
-                                    const emojis = ['🥩', '🍗', '🦐', '🫓', '🍰', '🍔', '🥐', '🍲', '🍱', '🍕', '🥤', '☕'];
-                                    const emoji = emojis[ci % emojis.length];
-                                    return (
-                                        <button
-                                            key={cat}
-                                            onClick={() => setSelectedCat(active ? null : cat)}
-                                            className={cn(
-                                                'mx-3 my-1 rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left w-[calc(100%-24px)] border-2 group active:scale-[0.97]',
-                                                active
-                                                    ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
-                                                    : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "text-[18px] shrink-0 opacity-90 transition-transform group-hover:scale-110",
-                                                active ? "scale-110" : ""
-                                            )}>{emoji}</span>
-                                            <span className="text-[13px] font-bold tracking-tight leading-tight uppercase truncate">{cat}</span>
-                                        </button>
-                                    );
-                                })}
+                                <div className="px-3 flex flex-col items-stretch space-y-2">
+                                    {group.cats.map((cat, ci) => {
+                                        const active = selectedCat === cat;
+                                        const emojis = ['🥩', '🍗', '🦐', '🫓', '🍰', '🍔', '🥐', '🍲', '🍱', '🍕', '🥤', '☕'];
+                                        const emoji = emojis[ci % emojis.length];
+                                        return (
+                                            <button
+                                                key={cat}
+                                                onClick={() => setSelectedCat(active ? null : cat)}
+                                                className={cn(
+                                                    'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 group active:scale-[0.97]',
+                                                    active
+                                                        ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                        : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "text-[18px] shrink-0 opacity-90 transition-transform group-hover:scale-110",
+                                                    active ? "scale-110" : ""
+                                                )}>{emoji}</span>
+                                                <span className="text-[13px] font-bold tracking-tight leading-tight uppercase truncate">{cat}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         ))
                     }
@@ -874,94 +1069,111 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                         <div
                                             key={`${item.product.id}-${idx}`}
                                             className={cn(
-                                                "rounded-[22px] border transition-all flex flex-col relative overflow-hidden bg-white select-none",
+                                                "rounded-[16px] border transition-all flex flex-col relative overflow-hidden bg-white select-none",
                                                 expandedCartItem === idx
-                                                    ? "shadow-2xl border-blue-400 ring-4 ring-blue-500/10 z-10 -translate-y-1"
-                                                    : "border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300"
+                                                    ? "shadow-2xl border-blue-400 ring-4 ring-blue-500/10 z-10 -translate-y-0.5 cart-item-expanded"
+                                                    : "border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300"
                                             )}
                                             onDoubleClick={() => updateQty(idx, 1)}
                                         >
                                             {/* Top color indicator */}
-                                            <div className="absolute top-0 left-0 bottom-0 w-2 shadow-[2px_0_10px_rgba(0,0,0,0.05)]" style={{ backgroundColor: plateColor }} />
+                                            <div className="absolute top-0 left-0 bottom-0 w-1 shadow-[2px_0_10px_rgba(0,0,0,0.05)]" style={{ backgroundColor: plateColor }} />
 
-                                            <div className="flex items-center p-4 pl-5 gap-4 cursor-pointer" onClick={() => setExpandedCartItem(expandedCartItem === idx ? null : idx)}>
+                                            <div
+                                                className="flex items-center p-2.5 pl-4 gap-3 cursor-pointer"
+                                                onMouseDown={() => {
+                                                    longPressTimerRef.current = setTimeout(() => {
+                                                        setExpandedCartItem(expandedCartItem === idx ? null : idx);
+                                                        isLongPress.current = true;
+                                                    }, 500);
+                                                }}
+                                                onMouseUp={() => {
+                                                    if (longPressTimerRef.current) {
+                                                        clearTimeout(longPressTimerRef.current);
+                                                        longPressTimerRef.current = null;
+                                                    }
+                                                }}
+                                                onMouseLeave={() => {
+                                                    if (longPressTimerRef.current) {
+                                                        clearTimeout(longPressTimerRef.current);
+                                                        longPressTimerRef.current = null;
+                                                    }
+                                                }}
+                                                onTouchStart={() => {
+                                                    longPressTimerRef.current = setTimeout(() => {
+                                                        setExpandedCartItem(expandedCartItem === idx ? null : idx);
+                                                        isLongPress.current = true;
+                                                    }, 500);
+                                                }}
+                                                onTouchEnd={() => {
+                                                    if (longPressTimerRef.current) {
+                                                        clearTimeout(longPressTimerRef.current);
+                                                        longPressTimerRef.current = null;
+                                                    }
+                                                }}
+                                            >
                                                 {/* Qty Badge Premium */}
                                                 <div
-                                                    className="flex-shrink-0 w-14 h-14 rounded-[18px] text-white flex flex-col items-center justify-center shadow-lg transition-transform active:scale-90"
-                                                    style={{ backgroundColor: plateColor, boxShadow: `0 8px 16px ${plateColor}33` }}
+                                                    className="flex-shrink-0 w-11 h-11 rounded-[12px] text-white flex flex-col items-center justify-center shadow-md transition-transform active:scale-90"
+                                                    style={{ backgroundColor: plateColor, boxShadow: `0 4px 10px ${plateColor}33` }}
                                                 >
-                                                    <div className="text-[18px] font-black leading-none drop-shadow-sm">{item.quantity}</div>
-                                                    <div className="text-[9px] font-black opacity-80 leading-none mt-1 uppercase tracking-tighter">{item.product.unit || 'ADET'}</div>
+                                                    <div className="text-[16px] font-black leading-none drop-shadow-sm">{item.quantity}</div>
+                                                    <div className="text-[8px] font-black opacity-80 leading-none mt-0.5 uppercase tracking-tighter">{item.product.unit || 'ADET'}</div>
                                                 </div>
 
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <h4 className="font-black text-slate-900 truncate text-[15px] leading-tight flex-1">{item.product.name}</h4>
-                                                        <PlateBadge plate={(item as any).plate} plates={plates} onCycle={(e) => { e.stopPropagation(); cycleItemPlate(idx); }} />
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="text-[10px] text-slate-400 font-bold tracking-[0.1em] uppercase">
-                                                            REF: {item.product.barcode?.slice(-6) || 'STANDART'}
+                                                <div className="flex-1 min-w-0 pr-12 flex items-center">
+                                                    <div className="flex flex-col gap-0.5 min-w-0">
+                                                        <h4 className="font-extrabold text-slate-900 truncate text-[14px] leading-tight tracking-tight">{item.product.name}</h4>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <div className="text-[14px] font-black text-blue-600 tabular-nums leading-none">
+                                                                {fmt(item.subtotal ?? 0)}
+                                                            </div>
+                                                            <PlateBadge plate={(item as any).plate} plates={plates} onCycle={(e) => { e.stopPropagation(); cycleItemPlate(idx); }} />
+                                                            {hasDiscount && (
+                                                                <div className="px-1 py-0.5 bg-orange-100 text-orange-600 rounded text-[8px] font-black uppercase">
+                                                                    %{item.discount}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        {hasDiscount && (
-                                                            <div className="px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded text-[9px] font-black uppercase tracking-tighter">
-                                                                %{item.discount}
+                                                        {(item as any).note && (
+                                                            <div className="inline-flex mt-1 text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg font-bold items-center gap-1 border border-amber-100/50 w-fit">
+                                                                <StickyNote className="w-2.5 h-2.5" />
+                                                                <span className="truncate max-w-[120px]">{(item as any).note}</span>
                                                             </div>
                                                         )}
                                                     </div>
-                                                    {(item as any).note && (
-                                                        <div className="inline-flex mt-2 text-[10px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg font-bold items-center gap-1.5 border border-amber-100/50">
-                                                            <StickyNote className="w-3 h-3" />
-                                                            <span className="truncate max-w-[180px]">{(item as any).note}</span>
-                                                        </div>
-                                                    )}
                                                 </div>
 
-                                                <div className="flex flex-col items-end gap-1" onClick={e => e.stopPropagation()}>
-                                                    <div className="flex items-center gap-0.5">
-                                                        <button onClick={() => updateQty(idx, -1)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors border border-slate-200/50 text-slate-700 active:scale-95">
-                                                            <Minus className="w-4 h-4" />
-                                                        </button>
-                                                        <div className="w-8 h-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg mx-0.5 shadow-sm font-black text-slate-800 text-[13px] tabular-nums">
-                                                            {item.quantity}
-                                                        </div>
-                                                        <button onClick={() => updateQty(idx, 1)} className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors border border-slate-200/50 text-slate-700 active:scale-95">
-                                                            <Plus className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="text-right mt-1">
-                                                        {hasDiscount && (
-                                                            <div className="text-[10px] text-slate-400 line-through font-bold leading-none mb-0.5">
-                                                                {fmt((item.price || item.product.price) * item.quantity)}
-                                                            </div>
-                                                        )}
-                                                        <div className="text-[16px] font-black text-blue-600 tabular-nums leading-none">
-                                                            {fmt(item.subtotal ?? 0)}
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                {/* Right Minus Action Stripe - Flat Red Style */}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); updateQty(idx, -1); }}
+                                                    style={{ backgroundColor: '#dc2626' }}
+                                                    className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center transition-all active:scale-95"
+                                                    title="Azalt"
+                                                >
+                                                    <Minus className="w-6 h-6 text-white font-black" />
+                                                </button>
                                             </div>
 
                                             {/* Action Overlay when expanded */}
                                             {expandedCartItem === idx && (
-                                                <div className="bg-blue-50/50 border-t border-blue-100 p-2.5 flex items-center justify-center gap-2 transform transition-all duration-200 z-10" onClick={e => e.stopPropagation()}>
-                                                    <button onClick={() => updateItemDiscount(idx, 100)} className="flex-1 h-10 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-bold text-[11px] uppercase flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm">
-                                                        <Percent className="w-4 h-4 border border-white/40 rounded p-0.5" />
+                                                <div className="bg-blue-50/50 border-t border-blue-100 p-2 flex items-center justify-center gap-1.5 transform transition-all duration-200 z-10" onClick={e => e.stopPropagation()}>
+                                                    <button onClick={() => updateItemDiscount(idx, 100)} className="flex-1 h-8 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm">
+                                                        <Percent className="w-3 h-3 border border-white/40 rounded p-0.5" />
                                                         İkram / İndirim
                                                     </button>
-                                                    <div className="relative flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm w-[150px]">
-                                                        <span className="pl-3 text-slate-400"><MessageSquareMore className="w-4 h-4" /></span>
+                                                    <div className="relative flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden h-8 shadow-sm flex-1 max-w-[140px]">
+                                                        <span className="pl-2 text-slate-400"><MessageSquareMore className="w-3.5 h-3.5" /></span>
                                                         <input
                                                             type="text"
-                                                            placeholder="Not (az pişmiş...)"
-                                                            className="w-full px-2 py-1 text-[11px] font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:bg-yellow-50/30 transition-colors"
+                                                            placeholder="Not ekle..."
+                                                            className="w-full px-1.5 py-1 text-[10px] font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:bg-yellow-50/30 transition-colors"
                                                             value={(item as any).note || ''}
                                                             onChange={e => updateItemNote(idx, e.target.value)}
                                                         />
                                                     </div>
-                                                    <button onClick={() => setCart(cart.filter((_, i) => i !== idx))} className="flex-1 h-10 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[11px] uppercase flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm max-w-[80px]">
-                                                        <Trash2 className="w-4 h-4" />
+                                                    <button onClick={() => setCart(cart.filter((_, i) => i !== idx))} className="flex-1 h-8 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm max-w-[60px]">
+                                                        <Trash2 className="w-3.5 h-3.5" />
                                                         SİL
                                                     </button>
                                                 </div>
@@ -1009,13 +1221,35 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                         </td>
                                                         <td className="px-3 py-2.5 border-l border-transparent">
                                                             <div className="flex flex-col justify-center gap-0.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="text-[13px] font-bold text-slate-900 leading-tight">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <div className={cn(
+                                                                        "text-[13px] font-bold leading-tight",
+                                                                        item.kitchenStatus && item.kitchenStatus !== 'pending'
+                                                                            ? "text-slate-400"
+                                                                            : "text-slate-900"
+                                                                    )}>
                                                                         {item.product.name}
                                                                     </div>
                                                                     <div className="flex-shrink-0">
                                                                         <PlateBadge plate={(item as any).plate} plates={plates} onCycle={(e) => { e.stopPropagation(); cycleItemPlate(idx); }} />
                                                                     </div>
+                                                                    {/* Mutfak durum badge */}
+                                                                    {item.kitchenStatus && item.kitchenStatus !== 'pending' && (() => {
+                                                                        const ksCfg: Record<string, { label: string; bg: string; color: string }> = {
+                                                                            cooking: { label: '🍳 Mutfakta', bg: '#ffedd5', color: '#ea580c' },
+                                                                            ready: { label: '✅ Hazır', bg: '#dcfce7', color: '#16a34a' },
+                                                                            served: { label: '🍽 Servis', bg: '#f5f3ff', color: '#7c3aed' },
+                                                                        };
+                                                                        const cfg = ksCfg[item.kitchenStatus!];
+                                                                        return cfg ? (
+                                                                            <span
+                                                                                style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                                                                                className="text-[9px] font-black px-1.5 py-0.5 rounded-md"
+                                                                            >
+                                                                                {cfg.label}
+                                                                            </span>
+                                                                        ) : null;
+                                                                    })()}
                                                                 </div>
                                                                 {(item as any).note && (
                                                                     <div className="text-[10px] text-yellow-600 font-bold flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 w-fit rounded">
@@ -1024,6 +1258,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                                 )}
                                                             </div>
                                                         </td>
+
                                                         <td className="px-2 py-2.5 border-l border-gray-100" onClick={e => e.stopPropagation()}>
                                                             <div className="flex items-center justify-between bg-white rounded-lg p-0.5 border border-slate-200 max-w-[100px] mx-auto shadow-sm">
                                                                 <button onClick={() => updateQty(idx, -1)} className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all active:scale-95">
@@ -1063,7 +1298,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                                 </button>
 
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); setDiscountInput(String(item.discount ?? 0)); setEditingItemIdx(idx); setShowDiscountModal(true); }}
+                                                                    onClick={(e) => { e.stopPropagation(); setDiscountInput(String(item.discount ?? 0)); setShowDiscountModal(true); }}
                                                                     className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold transition-colors border border-emerald-100/50"
                                                                 >
                                                                     <Percent className="w-4 h-4" />
@@ -1150,7 +1385,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                     {/* ── PAYMENT BUTTONS ───────────────────────────── */}
                     <div className="flex items-stretch shrink-0 bg-slate-50 border-t border-slate-200">
                         <button
-                            onClick={() => cart.length > 0 && setShowPaymentModal(true)}
+                            onClick={handleOpenPayment}
                             disabled={cart.length === 0}
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-emerald-500 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
@@ -1158,7 +1393,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                             <span className="text-[11px] font-black uppercase tracking-widest">NAKİT</span>
                         </button>
                         <button
-                            onClick={() => cart.length > 0 && setShowPaymentModal(true)}
+                            onClick={handleOpenPayment}
                             disabled={cart.length === 0}
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-blue-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
@@ -1166,7 +1401,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                             <span className="text-[11px] font-black uppercase tracking-widest">K. KARTI</span>
                         </button>
                         <button
-                            onClick={() => cart.length > 0 && setShowPaymentModal(true)}
+                            onClick={handleOpenPayment}
                             disabled={cart.length === 0}
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-indigo-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
@@ -1174,7 +1409,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                             <span className="text-[11px] font-black uppercase tracking-widest">YEMEK ÇEKI</span>
                         </button>
                         <button
-                            onClick={() => cart.length > 0 && setShowPaymentModal(true)}
+                            onClick={handleOpenPayment}
                             disabled={cart.length === 0}
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-purple-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
@@ -1190,8 +1425,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                             >
                                 <MessageSquareMore className={cn("w-5.5 h-5.5", orderNote ? "text-amber-500 animate-pulse" : "text-slate-300")} />
                             </button>
-                            <button className="w-14 h-1/2 flex items-center justify-center hover:bg-slate-100 transition-colors">
-                                <MoreVertical className="w-5.5 h-5.5 text-slate-300" />
+                            <button
+                                onClick={() => setShowPrintPreview(true)}
+                                disabled={cart.length === 0}
+                                className="w-14 h-1/2 flex items-center justify-center hover:bg-blue-50 transition-colors border-b border-slate-100 disabled:opacity-20"
+                                title="Adisyon Yazdır (80mm)"
+                            >
+                                <Printer className={cn("w-5.5 h-5.5", cart.length > 0 ? "text-blue-500" : "text-slate-300")} />
                             </button>
                         </div>
                     </div>
@@ -1200,18 +1440,77 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
 
             {/* ── MODALS ──────────────────────────────────────────────── */}
 
+            {/* Print Preview Modal (80mm) */}
+            {showPrintPreview && table && (
+                <Receipt80mm
+                    sale={{
+                        id: 'preview',
+                        receiptNumber: 'TASLAK',
+                        date: new Date().toISOString(),
+                        items: cart.map(item => ({
+                            productId: item.id,
+                            productName: item.name,
+                            quantity: item.quantity,
+                            price: item.price,
+                            discount: 0,
+                            total: item.price * item.quantity,
+                            variant: item.variant
+                        })),
+                        subtotal: subtotal,
+                        discount: orderDiscount,
+                        total: grandTotal,
+                        paymentMethod: 'Nakit',
+                        cashier: waiter || 'Kasiyer',
+                        table: table.number.toString(),
+                    }}
+                    paymentData={{
+                        payments: [{ method: 'cash', amount: grandTotal, currency: 'IQD' }],
+                        totalPaid: grandTotal,
+                        change: 0
+                    }}
+                    onClose={() => setShowPrintPreview(false)}
+                />
+            )}
+
+            {/* ── MODALS ──────────────────────────────────────────────── */}
+
             {/* Payment Modal */}
             {showPaymentModal && (
-                <POSPaymentModalV2
+                <POSPaymentModal
                     total={grandTotal}
                     subtotal={subtotal}
-                    itemDiscount={discountAmount}
-                    campaignDiscount={0}
+                    itemDiscount={0}
+                    campaignDiscount={discountAmount}
                     selectedCampaign={null}
                     selectedCustomer={selectedCustomer}
                     onClose={() => setShowPaymentModal(false)}
                     onComplete={handlePaymentComplete}
                 />
+            )}
+
+            {/* Print Dialog */}
+            {showPrintDialog && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+                    <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-5" style={{ minWidth: 320 }}>
+                        <div className="text-4xl">🖨️</div>
+                        <h2 className="text-lg font-bold text-gray-800 text-center">Adisyon fişi yazdırılsın mı?</h2>
+                        <p className="text-sm text-gray-500 text-center">Masa kapatılacak ve masalar listesine dönülecek.</p>
+                        <div className="flex gap-3 w-full">
+                            <button
+                                onClick={() => handleDismissPrintDialog(false)}
+                                className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
+                            >
+                                Hayır
+                            </button>
+                            <button
+                                onClick={() => handleDismissPrintDialog(true)}
+                                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <span>🖨️</span> Yazdır
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* Sales History Modal */}
@@ -1226,7 +1525,6 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
             {showReturnModal && (
                 <POSReturnModal
                     sales={salesHistory}
-                    products={products}
                     onClose={() => setShowReturnModal(false)}
                     onReturnComplete={() => { setShowReturnModal(false); notify('İade işlemi tamamlandı'); }}
                 />
@@ -1254,8 +1552,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 <RestaurantParkedOrdersModal
                     orders={parkedOrders as any[]}
                     onClose={() => setShowParkedModal(false)}
-                    onResume={resumeParked}
-                    onDelete={(id) => setParkedOrders(prev => prev.filter(x => x.id !== id))}
+                    onResume={resumeParked as any}
+                    onDelete={(id: any) => setParkedOrders((prev: any[]) => prev.filter((x: any) => x.id !== id))}
                     fmt={fmt}
                 />
             )}
@@ -1293,7 +1591,30 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                     plates={plates}
                     platePalette={PLATE_PALETTE}
                     onClose={() => setShowKitchenConfirm(false)}
-                    onConfirm={() => { setShowKitchenConfirm(false); notify('Sipariş mutfağa gönderildi!'); }}
+                    onConfirm={async () => {
+                        setShowKitchenConfirm(false);
+                        // Sadece henüz gönderilmemiş (pending) satırlar
+                        const pendingCart = cart.filter(item => !item.kitchenStatus || item.kitchenStatus === 'pending');
+                        if (pendingCart.length === 0) { notify('Tüm ürünler zaten mutfakta!'); return; }
+                        if (table) {
+                            try {
+                                // Items are already saved to DB via addToCart → addItemToTable
+                                // Just send to kitchen (updates item statuses to 'cooking')
+                                await sendToKitchen(table.id);
+
+                                // Gönderilen satırları 'cooking' olarak işaretle — bir daha gönderilmez
+                                setCart(prev => prev.map(item =>
+                                    (!item.kitchenStatus || item.kitchenStatus === 'pending')
+                                        ? { ...item, kitchenStatus: 'cooking' as const }
+                                        : item
+                                ));
+                                notify('Sipariş mutfağa gönderildi!');
+                            } catch (err) {
+                                console.error('[RestPOS] sendToKitchen error:', err);
+                                notify('HATA: Sipariş mutfağa gönderilirken hata oluştu. Veritabanı yapısını güncellemek için uygulamayı kapatıp açın.');
+                            }
+                        }
+                    }}
                     fmt={fmt}
                 />
             )}
@@ -1314,14 +1635,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                     onAddNote={() => setShowNoteModal(true)}
                     onSendToKitchen={() => setShowKitchenConfirm(true)}
                     onMarkComplementary={() => {
-                        if (selectedTable && longPressedProduct) {
-                            markItemAsComplementary(selectedTable.id, longPressedProduct.id);
+                        if (table && longPressedProduct) {
+                            markItemAsComplementary(table.id, longPressedProduct.id);
                             notify('İkram olarak işaretlendi');
                         }
                     }}
                     onVoidItem={() => {
-                        if (selectedTable && longPressedProduct) {
-                            setItemToVoid({ tableId: selectedTable.id, itemId: longPressedProduct.id, name: longPressedProduct.name });
+                        if (table && longPressedProduct) {
+                            setVoidingItem({ tableId: table.id, itemId: longPressedProduct.id, name: longPressedProduct.name });
                             setShowVoidReasonModal(true);
                         }
                     }}
@@ -1407,15 +1728,34 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 />
             )}
             {/* Void Reason Modal */}
-            {showVoidReasonModal && table && itemToVoid && (
+            {showVoidReasonModal && table && voidingItem && (
                 <RestaurantVoidReasonModal
-                    itemName={itemToVoid.name}
-                    onClose={() => { setShowVoidReasonModal(false); setItemToVoid(null); }}
-                    onConfirm={(reason) => {
-                        voidOrderItem(table.id, itemToVoid.itemId, reason, currentStaff?.name || 'Bilinmiyor');
+                    itemName={voidingItem.name}
+                    reason={voidReason}
+                    onReasonChange={setVoidReason}
+                    onClose={() => { setShowVoidReasonModal(false); setVoidingItem(null); setVoidReason(''); }}
+                    onConfirm={async (reason) => {
+                        await voidOrderItem(table?.id || '', voidingItem?.itemId || '', reason);
                         setShowVoidReasonModal(false);
-                        setItemToVoid(null);
+                        setVoidingItem(null);
+                        setVoidReason('');
                         notify('Ürün iptal edildi');
+                    }}
+                />
+            )}
+
+            {showTableCloseConfirm && table && (
+                <RestaurantTableCloseConfirmModal
+                    tableNumber={table.number}
+                    onClose={() => setShowTableCloseConfirm(false)}
+                    onConfirmClose={async () => {
+                        await markAsClean(table.id);
+                        setShowTableCloseConfirm(false);
+                        onBack?.();
+                    }}
+                    onJustLeave={() => {
+                        setShowTableCloseConfirm(false);
+                        onBack?.();
                     }}
                 />
             )}

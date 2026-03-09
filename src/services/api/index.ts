@@ -21,6 +21,7 @@ export * from './cashRegisters';
 export * from './chartOfAccounts';
 export * from './organization';
 export * from './users';
+export * from './roles';
 export * from '../storeApiService';
 export * from '../warehouseAPI';
 export * from './sync';

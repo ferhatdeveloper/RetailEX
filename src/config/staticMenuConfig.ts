@@ -261,11 +261,6 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileSpreadsheet
             },
             {
-                label: t.menu.advancedReports100,
-                screen: 'advanced-reports',
-                icon: FileText
-            },
-            {
                 label: 'Dizayn Merkezi',
                 screen: 'report-designer',
                 icon: Layout,
@@ -283,18 +278,10 @@ export const getStaticMenuSections = (t: Translations) => [
         title: t.menu.systemManagement,
         items: [
             { label: t.menu.firmPeriodDefinitions, screen: 'firm-period-definitions', icon: Building },
-            { label: t.menu.workflowAutomation, screen: 'workflow-automation', icon: Zap, badge: 'AI' },
-            { label: t.menu.demoDataManagement, screen: 'demo-data', icon: Database, badge: 'TEST' },
-            { label: t.menu.databaseInfrastructure, screen: 'database-settings', icon: Database, badge: 'YENİ' },
-            { label: t.menu.exSecureGateSecurity, screen: 'security-modules', icon: Shield, badge: 'BETA' },
-            { label: t.menu.generalSettings, screen: 'generalsettings', icon: Settings },
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
-            { label: t.menu.definitionsParameters, screen: 'Tanımlar', icon: Database },
-            { label: t.menu.backupRestore, screen: 'backuprestore', icon: Layers },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock },
-            { label: t.menu.systemHealth, screen: 'systemhealth', icon: AlertCircle },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
         ]
     }
@@ -402,7 +389,7 @@ export const staticMenuSections = getStaticMenuSections({
         smsManagement: 'SMS Yönetimi',
         emailCampaigns: 'E-posta Kampanyaları',
         aiProductAnalytics: 'AI Ürün Analitiği',
-        profitabilityAnalyticsDashboard: '💰 Karlılık Analizi',
+        profitabilityAnalyticsDashboard: 'Karlılık Analizi',
         graphicalAnalysis: 'Grafiksel Analiz',
         biDashboardAi: 'BI Dashboard & AI',
         trialBalance: 'Mizan (Trial Balance)',
@@ -411,7 +398,7 @@ export const staticMenuSections = getStaticMenuSections({
         salesReports: 'Satış Raporları',
         stockReports: 'Stok Raporları',
         customerAnalysis: 'Müşteri Analizi',
-        advancedReports100: '⭐ Gelişmiş Raporlar (100+)',
+        advancedReports100: 'Gelişmiş Raporlar',
         customReports: 'Özel Raporlar',
         firmPeriodDefinitions: 'Firma/Dönem Tanımları',
         workflowAutomation: 'Workflow Otomasyonu',

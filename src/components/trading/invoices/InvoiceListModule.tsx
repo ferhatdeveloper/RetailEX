@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -540,123 +540,129 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-[#2196F3] px-6 py-3 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <FileText className="w-5 h-5 text-white" />
-          <div>
-            <h2 className="text-base text-white">{title || tm('invoices')}</h2>
-            <p className="text-blue-100 text-xs">{description || tm('allInvoicesDesc')}</p>
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-medium">{title || tm('invoices')}</h2>
+              <span className="text-blue-100 text-[10px]">• {totalCount.toLocaleString('tr-TR')} {tm('invoicesCount')}</span>
+              <span className="text-blue-100 text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {tm('currencyCode')}</span>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleCreateInvoice}
-            className="px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            {tm('newInvoice')}
-          </button>
-          <span className="text-sm bg-white/20 px-3 py-1 rounded-lg text-white">
-            {totalCount.toLocaleString('tr-TR')} {tm('invoicesCount')}
-          </span>
-          <span className="text-sm bg-white/20 px-3 py-1 rounded-lg text-white">
-            {formatNumber(totalAmount, 2, true)} {tm('currencyCode')}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]"
+              onClick={loadInvoices}
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>{tm('refresh')}</span>
+            </button>
+            <button
+              onClick={handleCreateInvoice}
+              className="flex items-center gap-1 px-3 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold"
+            >
+              <Plus className="w-3 h-3" />
+              {tm('newInvoice')}
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border-b px-6 py-4 space-y-3">
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Arama */}
-          <div className="flex-1 min-w-[300px]">
+      <div className="bg-white border-b px-4 py-2 space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search */}
+          <div className="flex-1 min-w-[200px]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
               <input
                 type="text"
                 placeholder={tm('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all"
               />
             </div>
           </div>
 
-          {/* Tarih Filtresi */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-500" />
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="today">{tm('today')}</option>
-              <option value="week">{tm('thisWeek')}</option>
-              <option value="month">{tm('thisMonth')}</option>
-              <option value="all">{tm('all')}</option>
-            </select>
-          </div>
+          <div className="flex items-center gap-3">
+            {/* Date Filter */}
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
+              <Calendar className="w-3.5 h-3.5 text-gray-500" />
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[100px]"
+              >
+                <option value="today">{tm('today')}</option>
+                <option value="week">{tm('thisWeek')}</option>
+                <option value="month">{tm('thisMonth')}</option>
+                <option value="all">{tm('all')}</option>
+              </select>
+            </div>
 
-          {/* Durum Filtresi */}
-          <div className="flex items-center gap-2">
-            <FilterIcon className="w-5 h-5 text-gray-500" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">{tm('allStatuses')}</option>
-              <option value="completed">{tm('completed')}</option>
-              <option value="pending">{tm('pending')}</option>
-              <option value="refunded">{tm('refunded')}</option>
-              <option value="cancelled">{tm('cancelled')}</option>
-            </select>
-          </div>
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
+              <FilterIcon className="w-3.5 h-3.5 text-gray-500" />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[110px]"
+              >
+                <option value="all">{tm('allStatuses')}</option>
+                <option value="completed">{tm('completed')}</option>
+                <option value="pending">{tm('pending')}</option>
+                <option value="refunded">{tm('refunded')}</option>
+                <option value="cancelled">{tm('cancelled')}</option>
+              </select>
+            </div>
 
-          {/* Fatura Türü Filtresi */}
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-500" />
-            <select
-              value={invoiceTypeFilter}
-              onChange={(e) => {
-                setInvoiceTypeFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">{tm('allInvoiceTypes')}</option>
-              <optgroup label={tm('salesInvoices')}>
-                <option value="8">{tm('salesInvoices')}</option>
-                <option value="7">{tm('retailSale')}</option>
-                <option value="8">{tm('wholesale')}</option>
-                <option value="8">{tm('consignmentSale')}</option>
-              </optgroup>
-              <optgroup label={tm('purchaseInvoices')}>
-                <option value="1">{tm('purchaseInvoices')}</option>
-              </optgroup>
-              <optgroup label={tm('return')}>
-                <option value="3">{tm('salesReturn')}</option>
-                <option value="6">{tm('purchaseReturn')}</option>
-              </optgroup>
-              <optgroup label={tm('service')}>
-                <option value="9">{tm('serviceGiven')}</option>
-                <option value="4">{tm('serviceReceived')}</option>
-              </optgroup>
-              <optgroup label={tm('waybill')}>
-                <option value="10">{tm('salesWaybill')}</option>
-                <option value="11">{tm('purchaseWaybill')}</option>
-                <option value="12">{tm('warehouseTransferWaybill')}</option>
-                <option value="13">{tm('wastageWaybill')}</option>
-              </optgroup>
-              <optgroup label={tm('order')}>
-                <option value="20">{tm('salesOrder')}</option>
-                <option value="21">{tm('purchaseOrder')}</option>
-              </optgroup>
-              <optgroup label={tm('quote')}>
-                <option value="30">{tm('salesQuote')}</option>
-                <option value="31">{tm('purchaseQuote')}</option>
-              </optgroup>
-            </select>
+            {/* Type Filter */}
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
+              <FileText className="w-3.5 h-3.5 text-gray-500" />
+              <select
+                value={invoiceTypeFilter}
+                onChange={(e) => {
+                  setInvoiceTypeFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px]"
+              >
+                <option value="all">{tm('allInvoiceTypes')}</option>
+                <optgroup label={tm('salesInvoices')}>
+                  <option value="8">{tm('salesInvoices')}</option>
+                  <option value="7">{tm('retailSale')}</option>
+                  <option value="8">{tm('wholesale')}</option>
+                  <option value="8">{tm('consignmentSale')}</option>
+                </optgroup>
+                <optgroup label={tm('purchaseInvoices')}>
+                  <option value="1">{tm('purchaseInvoices')}</option>
+                </optgroup>
+                <optgroup label={tm('return')}>
+                  <option value="3">{tm('salesReturn')}</option>
+                  <option value="6">{tm('purchaseReturn')}</option>
+                </optgroup>
+                <optgroup label={tm('service')}>
+                  <option value="9">{tm('serviceGiven')}</option>
+                  <option value="4">{tm('serviceReceived')}</option>
+                </optgroup>
+                <optgroup label={tm('waybill')}>
+                  <option value="10">{tm('salesWaybill')}</option>
+                  <option value="11">{tm('purchaseWaybill')}</option>
+                  <option value="12">{tm('warehouseTransferWaybill')}</option>
+                  <option value="13">{tm('wastageWaybill')}</option>
+                </optgroup>
+                <optgroup label={tm('order')}>
+                  <option value="20">{tm('salesOrder')}</option>
+                  <option value="21">{tm('purchaseOrder')}</option>
+                </optgroup>
+                <optgroup label={tm('quote')}>
+                  <option value="30">{tm('salesQuote')}</option>
+                  <option value="31">{tm('purchaseQuote')}</option>
+                </optgroup>
+              </select>
+            </div>
           </div>
         </div>
       </div>

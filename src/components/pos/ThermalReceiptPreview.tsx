@@ -1,4 +1,4 @@
-﻿import type { Sale } from '../../App';
+﻿import type { Sale } from '../../core/types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatNumber } from '../../utils/formatNumber';
 
@@ -11,9 +11,9 @@ interface ThermalReceiptPreviewProps {
  * 80mm Termal Fiş Önizleme Komponenti
  * Gerçek fiş görünümünü ekranda gösterir
  */
-export function ThermalReceiptPreview({ 
-  sale, 
-  companyName = 'ExRetailOS' 
+export function ThermalReceiptPreview({
+  sale,
+  companyName = 'ExRetailOS'
 }: ThermalReceiptPreviewProps) {
   const { darkMode } = useTheme();
 
@@ -26,9 +26,9 @@ export function ThermalReceiptPreview({
       <div className="text-center text-[9px] mb-2">
         Tel: 0850 XXX XX XX
       </div>
-      
+
       <div className="border-t-2 border-black my-2"></div>
-      
+
       {/* Receipt Info */}
       <div className="flex justify-between mb-1">
         <span>Fiş No:</span>
@@ -48,29 +48,35 @@ export function ThermalReceiptPreview({
         <span>Kasiyer:</span>
         <span>{sale.cashier}</span>
       </div>
+      {sale.table && (
+        <div className="flex justify-between mb-1 font-bold">
+          <span>Masa:</span>
+          <span>{sale.table}</span>
+        </div>
+      )}
       {sale.customerName && (
         <div className="flex justify-between mb-1">
           <span>Müşteri:</span>
           <span>{sale.customerName}</span>
         </div>
       )}
-      
+
       <div className="border-t border-dashed border-black my-2"></div>
-      
+
       {/* Items Header */}
       <div className="flex justify-between font-bold mb-1">
         <span className="w-[60%]">Ürün</span>
         <span className="w-[15%] text-center">Adet</span>
         <span className="w-[25%] text-right">Tutar</span>
       </div>
-      
+
       {/* Items */}
       {sale.items.map((item, index) => {
         const itemTotal = item.price * item.quantity;
-        const variantInfo = item.variant 
-          ? [item.variant.color, item.variant.size].filter(Boolean).join(' / ') 
+        const variantInfo = item.variant
+          ? [item.variant.color, item.variant.size].filter(Boolean).join(' / ')
           : '';
-        
+
         return (
           <div key={index} className="mb-1">
             <div className="flex justify-between">
@@ -86,16 +92,16 @@ export function ThermalReceiptPreview({
           </div>
         );
       })}
-      
+
       <div className="border-t border-dashed border-black my-2"></div>
-      
+
       {/* Totals */}
       <div className="space-y-1">
         <div className="flex justify-between">
           <span>ARA TOPLAM:</span>
           <span>{formatNumber(sale.subtotal, 2, true)}</span>
         </div>
-        
+
         {sale.campaignDiscount && sale.campaignDiscount > 0 && (
           <>
             <div className="flex justify-between">
@@ -109,7 +115,7 @@ export function ThermalReceiptPreview({
             )}
           </>
         )}
-        
+
         {sale.discount > 0 && (
           <>
             <div className="flex justify-between">
@@ -128,16 +134,16 @@ export function ThermalReceiptPreview({
           <span>{formatNumber(sale.total, 2, true)}</span>
         </div>
       </div>
-      
+
       <div className="border-t border-dashed border-black my-2"></div>
-      
+
       {/* Payment Info */}
       <div className="flex justify-between py-1 border-b border-dashed border-gray-400">
         <span>Ödeme Yöntemi:</span>
         <span className="font-bold">
-          {sale.paymentMethod === 'cash' ? 'Nakit' : 
-           sale.paymentMethod === 'card' ? 'Kredi Kartı' : 
-           'Cash&CreditCard'}
+          {sale.paymentMethod === 'cash' ? 'Nakit' :
+            sale.paymentMethod === 'card' ? 'Kredi Kartı' :
+              'Cash&CreditCard'}
         </span>
       </div>
       {sale.paymentMethod === 'cash' && sale.cashAmount && (
@@ -152,18 +158,18 @@ export function ThermalReceiptPreview({
           </div>
         </>
       )}
-      
+
       <div className="border-t-2 border-black my-2"></div>
-      
+
       {/* Footer */}
       <div className="text-center text-[10px] my-2">
         Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz!
       </div>
-      
+
       <div className="text-center text-[10px] tracking-widest my-2">
         * {sale.receiptNumber} *
       </div>
-      
+
       <div className="text-center text-[8px] mt-2 text-gray-500">
         ExRetailOS - Profesyonel Satış Yönetimi
       </div>

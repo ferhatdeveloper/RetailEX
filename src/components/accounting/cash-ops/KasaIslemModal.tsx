@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar, Search, Save, Wallet } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { createKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
@@ -34,6 +35,7 @@ export function KasaIslemModal({
   onSuccess,
 }: KasaIslemModalProps) {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
+  const { t } = useLanguage();
 
   // State
   const [loading, setLoading] = useState(false);
@@ -152,12 +154,12 @@ export function KasaIslemModal({
     e.preventDefault();
 
     if (!formData.tutar || formData.tutar <= 0) {
-      toast.error('Lütfen tutar girin');
+      toast.error(t['pleaseEnterAmount']);
       return;
     }
 
     if ((islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME') && !formData.cari_hesap_id) {
-      toast.error('Lütfen bir cari hesap seçin');
+      toast.error(t['pleaseSelectCurrentAccount']);
       return;
     }
 
@@ -165,13 +167,13 @@ export function KasaIslemModal({
     try {
       console.log('[KasaIslemModal] Submitting formData:', formData);
       if (!formData.kasa_id) {
-        throw new Error('Kasa ID eksik! Lütfen sayfayı yenileyip tekrar deneyin.');
+        throw new Error(t['missingKasaId']);
       }
       await createKasaIslemi(formData as KasaIslemi);
-      toast.success('İşlem başarıyla kaydedildi');
+      toast.success(t['operationSavedSuccessfully']);
       onSuccess();
     } catch (error: any) {
-      toast.error(error.message || 'İşlem kaydedilemedi');
+      toast.error(error.message || t['operationSaveFailed']);
     } finally {
       setLoading(false);
     }
@@ -198,23 +200,23 @@ export function KasaIslemModal({
 
   const getModalTitle = () => {
     const titles: Record<string, string> = {
-      'CH_TAHSILAT': 'Cari Hesap Tahsilat',
-      'CH_ODEME': 'Cari Hesap Ödeme',
-      'KASA_GIRIS': 'Kasa Giriş',
-      'KASA_CIKIS': 'Kasa Çıkış',
-      'BANKA_YATIRILAN': 'Bankaya Yatırılan',
-      'BANKADAN_CEKILEN': 'Bankadan Çekilen',
-      'VIRMAN': 'Kasa Virman',
-      'GIDER_PUSULASI': 'Gider Pusulası',
-      'VERILEN_SERBEST_MESLEK': 'Verilen Serbest Meslek Makbuzu',
-      'ALINAN_SERBEST_MESLEK': 'Alınan Serbest Meslek Makbuzu',
-      'MUSTAHSIL_MAKBUZU': 'Müstahsil Makbuzu',
-      'ACILIS_BORC': 'Açılış (Borç)',
-      'ACILIS_ALACAK': 'Açılış (Alacak)',
-      'KUR_FARKI_BORC': 'Kur Farkı (Borç)',
-      'KUR_FARKI_ALACAK': 'Kur Farkı (Alacak)',
+      'CH_TAHSILAT': t['chCollection'],
+      'CH_ODEME': t['chPayment'],
+      'KASA_GIRIS': t['cashIn'],
+      'KASA_CIKIS': t['cashOut'],
+      'BANKA_YATIRILAN': t['bankDeposit'],
+      'BANKADAN_CEKILEN': t['bankWithdrawal'],
+      'VIRMAN': t['cashTransfer'],
+      'GIDER_PUSULASI': t['expenseVoucher'],
+      'VERILEN_SERBEST_MESLEK': t['selfEmployedReceiptGiven'],
+      'ALINAN_SERBEST_MESLEK': t['selfEmployedReceiptReceived'],
+      'MUSTAHSIL_MAKBUZU': t['farmersReceipt'],
+      'ACILIS_BORC': t['openingDebit'],
+      'ACILIS_ALACAK': t['openingCredit'],
+      'KUR_FARKI_BORC': t['exchangeDifferenceDebit'],
+      'KUR_FARKI_ALACAK': t['exchangeDifferenceCredit'],
     };
-    return titles[islemTipi] || 'Kasa İşlemi';
+    return titles[islemTipi] || t['cashOperation'];
   };
 
   return (
@@ -236,11 +238,11 @@ export function KasaIslemModal({
           {/* Main Info */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Kasa</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['cashRegister']}</label>
               <input readOnly value={`${kasa.kasa_kodu} - ${kasa.kasa_adi}`} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm text-gray-500" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tarih</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['dateLabel']}</label>
               <div className="relative">
                 <input type="date" value={formData.islem_tarihi} onChange={(e) => setFormData({ ...formData, islem_tarihi: e.target.value })} className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none" />
                 <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -251,7 +253,7 @@ export function KasaIslemModal({
           {/* Cari Selection (Conditional) */}
           {(islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME' || islemTipi === 'VERILEN_SERBEST_MESLEK' || islemTipi === 'ALINAN_SERBEST_MESLEK' || islemTipi === 'MUSTAHSIL_MAKBUZU') && (
             <div className="space-y-1.5 relative">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Cari Hesap / Personel</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['currentAccountPersonel']}</label>
               {/* ... existing search input ... */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -267,7 +269,7 @@ export function KasaIslemModal({
                     }
                   }}
                   onFocus={() => setShowCariDropdown(true)}
-                  placeholder="Cari hesap veya personel arayın..."
+                  placeholder={t['searchCurrentAccountPlaceholder']}
                   className={`w-full pl-9 pr-10 py-2.5 bg-white dark:bg-gray-800 border ${formData.cari_hesap_id ? 'border-blue-500 ring-1 ring-blue-500 font-bold text-blue-700' : 'border-gray-300 dark:border-gray-700'} rounded text-sm outline-none transition-all`}
                 />
                 {/* ... existing clear button and dropdown ... */}
@@ -313,7 +315,7 @@ export function KasaIslemModal({
                 <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${selectedCariBakiye >= 0 ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]'}`} />
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Güncel Bakiye</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{t['currentBalance']}</span>
                   </div>
                   <div className={`text-lg font-black ${selectedCariBakiye >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {formatCurrency(selectedCariBakiye)} <span className="text-xs font-normal opacity-70">IQD</span>
@@ -326,13 +328,13 @@ export function KasaIslemModal({
           {/* Virman: Target Register Selection */}
           {islemTipi === 'VIRMAN' && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Hedef Kasa</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['targetKasa']}</label>
               <select
                 value={formData.target_register_id || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, target_register_id: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               >
-                <option value="">Seçiniz...</option>
+                <option value="">{t['select']}...</option>
                 {digerKasalar.map(k => (
                   <option key={k.id} value={k.id}>
                     {k.kasa_kodu} - {k.kasa_adi} ({formatCurrency(k.bakiye)} {k.id_doviz_kodu})
@@ -345,13 +347,13 @@ export function KasaIslemModal({
           {/* Bank Selection */}
           {(islemTipi === 'BANKA_YATIRILAN' || islemTipi === 'BANKADAN_CEKILEN') && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Banka Hesabı</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['bankAccount']}</label>
               <select
                 value={formData.bank_id || ''}
                 onChange={(e) => setFormData(prev => ({ ...prev, bank_id: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               >
-                <option value="">Seçiniz...</option>
+                <option value="">{t['select']}...</option>
                 {bankalar.map(b => (
                   <option key={b.id} value={b.id}>
                     {b.banka_kodu} - {b.banka_adi} / {b.sube_adi} ({b.hesap_no}) - {formatCurrency(b.bakiye)} {b.id_doviz_kodu}
@@ -364,13 +366,13 @@ export function KasaIslemModal({
           {/* Expense Card Selection */}
           {islemTipi === 'GIDER_PUSULASI' && (
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Gider Kodu / Açıklama</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['expenseCodeDescription']}</label>
               <input
                 type="text"
                 value={formData.expense_card_id || ''} // Using expense_card_id field for text code for now if no lookup
                 onChange={(e) => setFormData(prev => ({ ...prev, expense_card_id: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono uppercase"
-                placeholder="Gider Kodu veya Adı..."
+                placeholder={t['expenseCodePlaceholder']}
               />
             </div>
           )}
@@ -379,7 +381,7 @@ export function KasaIslemModal({
           {(islemTipi === 'VERILEN_SERBEST_MESLEK' || islemTipi === 'ALINAN_SERBEST_MESLEK' || islemTipi === 'MUSTAHSIL_MAKBUZU') && (
             <div className="grid grid-cols-2 gap-4 pt-2 border-t dark:border-gray-700">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Stopaj Oranı (%)</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['withholdingTaxRate']}</label>
                 <input
                   type="number"
                   value={formData.withholding_tax_rate || 0}
@@ -389,7 +391,7 @@ export function KasaIslemModal({
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">KDV / Vergi Oranı (%)</label>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['taxRateLabel']}</label>
                 <input
                   type="number"
                   value={formData.tax_rate || 0}
@@ -404,7 +406,7 @@ export function KasaIslemModal({
           {/* Amounts */}
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">İşlem Tutarı ({formData.doviz_kodu})</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['operationAmount']} ({formData.doviz_kodu})</label>
               <input
                 type="text"
                 inputMode="decimal"
@@ -418,7 +420,7 @@ export function KasaIslemModal({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Para Birimi</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['currency']}</label>
               <select
                 value={formData.doviz_kodu}
                 onChange={(e) => setFormData({ ...formData, doviz_kodu: e.target.value })}
@@ -434,35 +436,35 @@ export function KasaIslemModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fiş / Belge No</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['documentNo']}</label>
               <input
                 type="text"
                 value={formData.islem_no || ''}
                 onChange={(e) => setFormData({ ...formData, islem_no: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                placeholder="Örn: 000123"
+                placeholder={t['placeholderDocumentNo']}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Özel Kod</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['specialCode']}</label>
               <input
                 type="text"
                 value={formData.ozel_kod || ''}
                 onChange={(e) => setFormData({ ...formData, ozel_kod: e.target.value.toUpperCase() })}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                placeholder="Örn: PRJ001"
+                placeholder={t['placeholderSpecialCode']}
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Açıklama</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['description']}</label>
             <textarea
               value={formData.islem_aciklamasi || ''}
               onChange={(e) => setFormData({ ...formData, islem_aciklamasi: e.target.value })}
               className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
               rows={2}
-              placeholder="İşlem ile ilgili not..."
+              placeholder={t['placeholderDescription']}
             />
           </div>
 
@@ -473,7 +475,7 @@ export function KasaIslemModal({
               onClick={onClose}
               className="flex-1 px-4 py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
-              Vazgeç
+              {t['giveUp']}
             </button>
             <button
               type="submit"
@@ -481,7 +483,7 @@ export function KasaIslemModal({
               className="flex-[2] px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded transition-colors flex items-center justify-center gap-2"
             >
               {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              {loading ? 'Kaydediliyor...' : 'İşlemi Kaydet'}
+              {loading ? t['saving'] : t['saveOperation']}
             </button>
           </div>
         </form>

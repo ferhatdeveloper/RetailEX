@@ -1,9 +1,18 @@
-﻿import { AuthorizationSettings } from './AuthorizationSettings';
+﻿import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { RoleManagement } from './RoleManagement';
+import { Settings, Building2, Calendar, MapPin, Box, Store } from 'lucide-react';
 
 export function SettingsPanel() {
   const {
     selectedFirm,
-    // ... (keep existing setup)
+    selectedPeriod,
+    selectedBranch,
+    selectedWarehouse,
+    branches,
+    warehouses,
+    selectBranch: handleBranchChange,
+    selectWarehouse: handleWarehouseChange,
+    refreshFirms: handleChangeFirmaDonem
   } = useFirmaDonem();
 
   // Need to handle state inside component or just render
@@ -21,10 +30,10 @@ export function SettingsPanel() {
 
       <div className="p-6 space-y-6">
 
-        {/* TOP: Authorization Module (Requested by User) */}
-        <div className="bg-white rounded-lg border border-indigo-200 shadow-sm">
-          <div className="p-6 border-b bg-indigo-50/50">
-            <AuthorizationSettings />
+        {/* TOP: Role Management Module */}
+        <div className="bg-white rounded-lg border border-indigo-200 shadow-sm overflow-hidden">
+          <div className="bg-indigo-50/50">
+            <RoleManagement />
           </div>
         </div>
 

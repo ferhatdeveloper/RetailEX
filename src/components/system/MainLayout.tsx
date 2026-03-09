@@ -14,6 +14,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { FirmaDonemQuickSetup } from './FirmaDonemQuickSetup';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { VoiceAssistantWeb } from '../modules/VoiceAssistantWeb';
 import { wsService } from '../../services/websocket';
@@ -59,27 +60,29 @@ export function MainLayout({
   const { selectedFirm, selectedPeriod, firms, periods, selectFirm, selectPeriod, refreshFirms, loading: firmaLoading } = useFirmaDonem();
   const [showQuickSetup, setShowQuickSetup] = useState(false);
 
+  const { hasPermission, isAdmin } = usePermission();
+
   // Kullanıcı rolüne göre başlangıç modülünü belirle
-  // Kasiyer → 'pos' (MMPOS)
-  // Admin/Manager → 'management' (Yönetim Paneli)
   const getInitialModule = (): Module => {
     // 1. Önce localStorage'da kayıtlı modüle bak (Sayfa yenileme durumu)
     const savedModule = localStorage.getItem('retailex_active_module') as Module;
     if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
-      return savedModule;
+      // Modül yetkisini kontrol et
+      if (savedModule === 'management' && !isAdmin()) {
+        // Management yetkisi yoksa, diğerlerine bak (Dashboard yetkisi genelde herkese verilir ama yönetmek için admin/manager gerekir)
+      } else {
+        return savedModule;
+      }
     }
 
-    const role = currentUser.role?.toLowerCase() || '';
+    // Yetki bazlı öncelik:
+    if (hasPermission('restaurant', 'READ')) return 'restaurant';
+    if (hasPermission('beauty', 'READ')) return 'beauty';
+    if (hasPermission('wms', 'READ')) return 'wms';
+    if (hasPermission('management', 'READ')) return 'management';
 
-    // Cashier/Kasiyer rolü → POS ekranı
-    if (role === 'cashier' || role === 'kasiyer' || role === 'kassiyer') {
-      logger.info('🛒 Kasiyer detected - Starting with MMPOS');
-      return 'pos';
-    }
-
-    // Admin/Manager rolü → Yönetim Paneli
-    logger.info(`👔 ${currentUser.role} detected - Starting with Management Module`);
-    return 'management';
+    // Varsayılan POS
+    return 'pos';
   };
 
   const [currentModule, setCurrentModule] = useState<Module>(getInitialModule());
@@ -141,12 +144,12 @@ export function MainLayout({
 
   // POS state - müşteri ve personel seçimi
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [currentStaff, setCurrentStaff] = useState(currentUser.fullName);
+  const [currentStaff, setCurrentStaff] = useState(currentUser.full_name || currentUser.username || (currentUser as any).fullName);
 
   // Sync staff name when user changes (e.g. after switching user in POSStaffModal)
   useEffect(() => {
-    setCurrentStaff(currentUser.fullName);
-  }, [currentUser.fullName]);
+    setCurrentStaff(currentUser.full_name || currentUser.username || (currentUser as any).fullName);
+  }, [currentUser.full_name, currentUser.username, (currentUser as any).fullName]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showStaffModal, setShowStaffModal] = useState(false);
   const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'connecting'>(wsService.getStatus());
@@ -368,8 +371,8 @@ export function MainLayout({
         fontWeight: fontWeight,
       } as React.CSSProperties}
     >
-      {/* Top Bar - Hidden on mobile POS mode */}
-      {!(isMobile && currentModule === 'pos') && (
+      {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
+      {!(isMobile && currentModule === 'pos') && currentModule !== 'restaurant' && (
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white border-b border-blue-800">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 gap-2">
             {/* Left - Logo */}
@@ -387,60 +390,70 @@ export function MainLayout({
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center flex-1 min-w-0">
               {/* Module Tabs */}
               <div className="flex gap-1 sm:gap-1.5 flex-shrink-0">
-                <button
-                  onClick={() => setCurrentModule('pos')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'pos'
-                    ? 'bg-white text-blue-700 shadow-md'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                >
-                  <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium hidden xs:inline">Satış</span>
-                </button>
+                {hasPermission('pos', 'READ') && (
+                  <button
+                    onClick={() => setCurrentModule('pos')}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'pos'
+                      ? 'bg-white text-blue-700 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="font-medium hidden xs:inline">Satış</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={requestManagementAccess}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'management'
-                    ? 'bg-white text-blue-700 shadow-md'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium hidden xs:inline">Yönetim</span>
-                </button>
+                {hasPermission('management', 'READ') && (
+                  <button
+                    onClick={requestManagementAccess}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'management'
+                      ? 'bg-white text-blue-700 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="font-medium hidden xs:inline">Yönetim</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setCurrentModule('wms')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'wms'
-                    ? 'bg-white text-blue-700 shadow-md'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                >
-                  <Warehouse className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium hidden xs:inline">WMS</span>
-                </button>
+                {hasPermission('wms', 'READ') && (
+                  <button
+                    onClick={() => setCurrentModule('wms')}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'wms'
+                      ? 'bg-white text-blue-700 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                  >
+                    <Warehouse className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="font-medium hidden xs:inline">WMS</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setCurrentModule('restaurant')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'restaurant'
-                    ? 'bg-white text-blue-700 shadow-md'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                >
-                  <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium hidden xs:inline">Restoran</span>
-                </button>
+                {hasPermission('restaurant', 'READ') && (
+                  <button
+                    onClick={() => setCurrentModule('restaurant')}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'restaurant'
+                      ? 'bg-white text-blue-700 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                  >
+                    <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="font-medium hidden xs:inline">Restoran</span>
+                  </button>
+                )}
 
-                <button
-                  onClick={() => setCurrentModule('beauty')}
-                  className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'beauty'
-                    ? 'bg-white text-blue-700 shadow-md'
-                    : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium hidden xs:inline">Beauty</span>
-                </button>
+                {hasPermission('beauty', 'READ') && (
+                  <button
+                    onClick={() => setCurrentModule('beauty')}
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'beauty'
+                      ? 'bg-white text-blue-700 shadow-md'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="font-medium hidden xs:inline">Beauty</span>
+                  </button>
+                )}
               </div>
 
               {/* Firma Selector - Enhanced */}
@@ -636,7 +649,19 @@ export function MainLayout({
               </div>
             </div>
           }>
-            <RestaurantMain />
+            <RestaurantMain
+              products={products}
+              customers={customers}
+              campaigns={campaigns}
+              currentUser={currentUser}
+              onSaleComplete={onSaleComplete}
+              onLogout={onLogout}
+              setActiveModule={setCurrentModule}
+              zoomLevel={zoomLevel}
+              setZoomLevel={setZoomLevel}
+              rtlMode={rtlMode}
+              setRtlMode={setRtlMode}
+            />
           </Suspense>
         ) : currentModule === 'beauty' ? (
           <Suspense fallback={

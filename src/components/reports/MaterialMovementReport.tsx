@@ -1,6 +1,7 @@
-﻿import React, { useState } from 'react';
-import { Package, TrendingUp, TrendingDown, ArrowRight, Filter, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Package, TrendingUp, TrendingDown, ArrowRight, Filter, Calendar, Loader2 } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
+import { postgres } from '../../services/postgres';
 
 interface Movement {
   id: string;
@@ -17,102 +18,157 @@ interface Movement {
   note?: string;
 }
 
+interface Warehouse {
+  id: string;
+  name: string;
+}
+
+// Map DB movement_type to UI type
+function dbTypeToUiType(dbType: string): Movement['type'] {
+  switch (dbType) {
+    case 'in':         return 'purchase';
+    case 'out':        return 'sale';
+    case 'transfer':   return 'transfer';
+    case 'adjustment': return 'adjustment';
+    default:           return 'purchase';
+  }
+}
+
+// Map UI filter value to DB movement_type
+function uiTypeToDbType(uiType: string): string | null {
+  switch (uiType) {
+    case 'purchase':   return 'in';
+    case 'sale':       return 'out';
+    case 'transfer':   return 'transfer';
+    case 'adjustment': return 'adjustment';
+    default:           return null;
+  }
+}
+
 export function MaterialMovementReport() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [movementType, setMovementType] = useState<string>('all');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Demo data
-  const movements: Movement[] = [
-    {
-      id: '1',
-      date: '2024-12-24 10:30',
-      productCode: 'PRD-001',
-      productName: 'Laptop HP EliteBook',
-      type: 'purchase',
-      quantity: 10,
-      unit: 'Adet',
-      unitCost: 15000,
-      totalCost: 150000,
-      warehouse: 'Merkez Depo',
-      reference: 'ALI-2024-001'
-    },
-    {
-      id: '2',
-      date: '2024-12-24 11:15',
-      productCode: 'PRD-001',
-      productName: 'Laptop HP EliteBook',
-      type: 'sale',
-      quantity: -3,
-      unit: 'Adet',
-      unitCost: 15000,
-      totalCost: -45000,
-      warehouse: 'Merkez Depo',
-      reference: 'SAT-2024-156'
-    },
-    {
-      id: '3',
-      date: '2024-12-24 14:20',
-      productCode: 'PRD-002',
-      productName: 'Mouse Logitech MX',
-      type: 'purchase',
-      quantity: 50,
-      unit: 'Adet',
-      unitCost: 800,
-      totalCost: 40000,
-      warehouse: 'Merkez Depo',
-      reference: 'ALI-2024-002'
-    },
-    {
-      id: '4',
-      date: '2024-12-24 15:45',
-      productCode: 'PRD-001',
-      productName: 'Laptop HP EliteBook',
-      type: 'transfer',
-      quantity: -5,
-      unit: 'Adet',
-      unitCost: 15000,
-      totalCost: -75000,
-      warehouse: 'Merkez Depo',
-      reference: 'TRF-2024-012',
-      note: 'Şube 2\'ye transfer'
-    },
-    {
-      id: '5',
-      date: '2024-12-24 16:00',
-      productCode: 'PRD-001',
-      productName: 'Laptop HP EliteBook',
-      type: 'transfer',
-      quantity: 5,
-      unit: 'Adet',
-      unitCost: 15000,
-      totalCost: 75000,
-      warehouse: 'Şube 2',
-      reference: 'TRF-2024-012',
-      note: 'Merkez Depo\'dan transfer'
-    },
-  ];
+  useEffect(() => {
+    loadWarehouses();
+  }, []);
+
+  useEffect(() => {
+    loadMovements();
+  }, [startDate, endDate, movementType, selectedWarehouse]);
+
+  const loadWarehouses = async () => {
+    try {
+      const { rows } = await postgres.query(
+        `SELECT id, name FROM stores ORDER BY name`
+      );
+      setWarehouses(rows);
+    } catch (err) {
+      console.error('[MaterialMovementReport] loadWarehouses failed:', err);
+    }
+  };
+
+  const loadMovements = async () => {
+    setLoading(true);
+    try {
+      let sql = `
+        SELECT
+          mi.id,
+          m.movement_date  AS date,
+          p.code           AS product_code,
+          p.name           AS product_name,
+          m.movement_type  AS type,
+          mi.quantity,
+          COALESCE(p.unit, 'Adet') AS unit,
+          COALESCE(mi.unit_price, 0) AS unit_cost,
+          m.document_no    AS reference,
+          m.description    AS note,
+          s.name           AS warehouse
+        FROM stock_movement_items mi
+        JOIN stock_movements m ON mi.movement_id = m.id
+        JOIN products p        ON mi.product_id  = p.id
+        LEFT JOIN stores s     ON m.warehouse_id  = s.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+
+      if (startDate) {
+        params.push(startDate);
+        sql += ` AND m.movement_date >= $${params.length}`;
+      }
+      if (endDate) {
+        params.push(endDate + ' 23:59:59');
+        sql += ` AND m.movement_date <= $${params.length}`;
+      }
+
+      const dbType = uiTypeToDbType(movementType);
+      if (dbType) {
+        params.push(dbType);
+        sql += ` AND m.movement_type = $${params.length}`;
+      }
+
+      if (selectedWarehouse !== 'all') {
+        params.push(selectedWarehouse);
+        sql += ` AND m.warehouse_id = $${params.length}`;
+      }
+
+      sql += ` ORDER BY m.movement_date DESC, m.created_at DESC LIMIT 500`;
+
+      const { rows } = await postgres.query(sql, params);
+
+      setMovements(rows.map(r => {
+        const qty = parseFloat(r.quantity) || 0;
+        const dbType = r.type as string;
+        // Out-type movements display as negative
+        const displayQty = (dbType === 'out') ? -qty : qty;
+        const unitCost = parseFloat(r.unit_cost) || 0;
+        const totalCost = displayQty * unitCost;
+        return {
+          id: r.id,
+          date: r.date ? new Date(r.date).toLocaleString('tr-TR') : '',
+          productCode: r.product_code || '',
+          productName: r.product_name || '',
+          type: dbTypeToUiType(dbType),
+          quantity: displayQty,
+          unit: r.unit || 'Adet',
+          unitCost,
+          totalCost,
+          warehouse: r.warehouse || '-',
+          reference: r.reference || '',
+          note: r.note || undefined,
+        };
+      }));
+    } catch (err) {
+      console.error('[MaterialMovementReport] loadMovements failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'purchase': return 'Alış';
-      case 'sale': return 'Satış';
-      case 'transfer': return 'Transfer';
+      case 'purchase':   return 'Alış';
+      case 'sale':       return 'Satış';
+      case 'transfer':   return 'Transfer';
       case 'adjustment': return 'Düzeltme';
-      case 'return': return 'İade';
-      default: return type;
+      case 'return':     return 'İade';
+      default:           return type;
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'purchase': return 'bg-green-100 text-green-700';
-      case 'sale': return 'bg-blue-100 text-blue-700';
-      case 'transfer': return 'bg-purple-100 text-purple-700';
+      case 'purchase':   return 'bg-green-100 text-green-700';
+      case 'sale':       return 'bg-blue-100 text-blue-700';
+      case 'transfer':   return 'bg-purple-100 text-purple-700';
       case 'adjustment': return 'bg-yellow-100 text-yellow-700';
-      case 'return': return 'bg-red-100 text-red-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'return':     return 'bg-red-100 text-red-700';
+      default:           return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -170,7 +226,6 @@ export function MaterialMovementReport() {
               <option value="sale">Satış</option>
               <option value="transfer">Transfer</option>
               <option value="adjustment">Düzeltme</option>
-              <option value="return">İade</option>
             </select>
           </div>
           <div>
@@ -184,9 +239,9 @@ export function MaterialMovementReport() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="all">Tüm Depolar</option>
-              <option value="merkez">Merkez Depo</option>
-              <option value="sube1">Şube 1</option>
-              <option value="sube2">Şube 2</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -235,66 +290,72 @@ export function MaterialMovementReport() {
 
       {/* Movements Table */}
       <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between">
           <h3 className="text-lg flex items-center gap-2">
             <Package className="w-5 h-5 text-indigo-600" />
             Malzeme Hareketleri
           </h3>
+          {loading && <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />}
         </div>
         <div className="overflow-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm">Tarih/Saat</th>
-                <th className="px-4 py-3 text-left text-sm">Ürün</th>
-                <th className="px-4 py-3 text-left text-sm">Hareket Tipi</th>
-                <th className="px-4 py-3 text-right text-sm">Miktar</th>
-                <th className="px-4 py-3 text-right text-sm">Birim Maliyet</th>
-                <th className="px-4 py-3 text-right text-sm">Toplam</th>
-                <th className="px-4 py-3 text-left text-sm">Depo</th>
-                <th className="px-4 py-3 text-left text-sm">Referans</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {movements.map((movement) => (
-                <tr key={movement.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">{movement.date}</td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{movement.productName}</p>
-                      <p className="text-xs text-gray-500">{movement.productCode}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTypeColor(movement.type)}`}>
-                      {getTypeLabel(movement.type)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`text-sm font-medium ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {movement.quantity > 0 ? '+' : ''}{movement.quantity} {movement.unit}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-900">
-                    {formatNumber(movement.unitCost, 2, false)} IQD
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`text-sm font-medium ${movement.totalCost > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {movement.totalCost > 0 ? '+' : ''}{formatNumber(movement.totalCost, 2, false)} IQD
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{movement.warehouse}</td>
-                  <td className="px-4 py-3">
-                    <p className="text-sm text-gray-900">{movement.reference}</p>
-                    {movement.note && <p className="text-xs text-gray-500">{movement.note}</p>}
-                  </td>
+          {movements.length === 0 && !loading ? (
+            <div className="p-8 text-center text-gray-400">Kayıt bulunamadı</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm">Tarih/Saat</th>
+                  <th className="px-4 py-3 text-left text-sm">Ürün</th>
+                  <th className="px-4 py-3 text-left text-sm">Hareket Tipi</th>
+                  <th className="px-4 py-3 text-right text-sm">Miktar</th>
+                  <th className="px-4 py-3 text-right text-sm">Birim Maliyet</th>
+                  <th className="px-4 py-3 text-right text-sm">Toplam</th>
+                  <th className="px-4 py-3 text-left text-sm">Depo</th>
+                  <th className="px-4 py-3 text-left text-sm">Referans</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {movements.map((movement) => (
+                  <tr key={movement.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900">{movement.date}</td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{movement.productName}</p>
+                        <p className="text-xs text-gray-500">{movement.productCode}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTypeColor(movement.type)}`}>
+                        {getTypeLabel(movement.type)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`text-sm font-medium ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {movement.quantity > 0 ? '+' : ''}{movement.quantity} {movement.unit}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm text-gray-900">
+                      {formatNumber(movement.unitCost, 2, false)} IQD
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`text-sm font-medium ${movement.totalCost > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {movement.totalCost > 0 ? '+' : ''}{formatNumber(movement.totalCost, 2, false)} IQD
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{movement.warehouse}</td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm text-gray-900">{movement.reference}</p>
+                      {movement.note && <p className="text-xs text-gray-500">{movement.note}</p>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
 

@@ -30,8 +30,9 @@ import { RestaurantZReport } from './RestaurantZReport';
 import { POSOpenCashRegisterModal } from '../../pos/POSOpenCashRegisterModal';
 import { RestaurantTableOpenModal } from './RestaurantTableOpenModal';
 import { RestaurantManageModal } from './RestaurantManageModal';
+import { getStatusConfig } from '../utils/tableStatusConfig';
 
-function getStoreId(): string {
+async function getStoreId(): Promise<string | null> {
     try {
         const dev = localStorage.getItem('retailex_registered_device');
         if (dev) {
@@ -39,7 +40,15 @@ function getStoreId(): string {
             if (parsed.storeId) return parsed.storeId;
         }
     } catch { /* ignore */ }
-    return '1'; // Default store ID if none registered
+    // Fallback: query DB for first store matching current firm
+    try {
+        const { rows } = await RestaurantService.db.query(
+            'SELECT id FROM public.stores WHERE firm_nr = $1 LIMIT 1',
+            [(await import('../../../services/postgres')).ERP_SETTINGS.firmNr]
+        );
+        if (rows[0]) return rows[0].id;
+    } catch { /* ignore */ }
+    return null;
 }
 
 interface RestaurantFloorPlanProps {
@@ -60,13 +69,14 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
         addTable,
         updateTable,
         mergeTables,
-        transferTable,
+        moveTable,
         currentStaff,
         logout,
         isRegisterOpen,
         openRegister,
         closeRegister,
-        registerOpeningCash
+        registerOpeningCash,
+        workDayDate,
     } = useRestaurantStore();
     const { width } = useResponsive();
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -83,6 +93,98 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [bulkPrefix, setBulkPrefix] = useState('M');
     const [bulkCount, setBulkCount] = useState(5);
+
+    const handlePrintZReport = () => {
+        if (!zReportData) return;
+        const d = zReportData;
+        const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD' }).format(num);
+
+        const win = window.open('', '_blank', 'width=450,height=800');
+        if (!win) return;
+
+        const categoryRows = (d.salesByCategory || []).map((c: any) =>
+            `<tr><td>${c.category}</td><td style="text-align:right">${c.count}</td><td style="text-align:right">${fmt(c.amount)}</td></tr>`
+        ).join('');
+
+        const paymentRows = (d.paymentsByType || []).map((p: any) =>
+            `<tr><td>${p.type}</td><td style="text-align:right">${p.count}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
+        ).join('');
+
+        const voidRows = (d.voids || []).map((v: any) =>
+            `<tr><td>${v.reason}</td><td style="text-align:right">${v.count}</td><td style="text-align:right">${fmt(v.amount)}</td></tr>`
+        ).join('');
+
+        win.document.write(`
+            <html><head><title>Z-Raporu - ${new Date(d.date).toLocaleDateString('tr-TR')}</title>
+            <style>
+                body{font-family:'Courier New',Courier,monospace;margin:0;padding:30px;font-size:13px;color:#000;background:#fff}
+                .ticket{max-width:400px;margin:0 auto}
+                h1{text-align:center;margin:0;font-size:22px;font-weight:900;letter-spacing:-1px}
+                h2{text-align:center;margin:5px 0;font-size:16px;border-bottom:2px solid #000;padding-bottom:10px;text-transform:uppercase}
+                hr{border:0;border-top:1px dashed #000;margin:15px 0}
+                table{width:100%;border-collapse:collapse;margin:10px 0}
+                th{text-align:left;border-bottom:1px solid #000;padding:5px 2px;font-weight:900;text-transform:uppercase;font-size:11px}
+                td{padding:5px 2px}
+                .summary-box{margin:20px 0;padding:15px;border:1px solid #000;background:#f9f9f9}
+                .summary-item{display:flex;justify-content:space-between;margin-bottom:5px;font-weight:900;font-size:15px}
+                .footer{text-align:center;font-size:11px;margin-top:40px;border-top:1px solid #eee;padding-top:20px}
+                .label{font-weight:bold;color:#666;width:100px;display:inline-block}
+            </style>
+            </head><body>
+            <div class="ticket">
+                <h1>RETAILEX ERP</h1>
+                <h2>Z-RAPORU ÖZETİ</h2>
+                
+                <p><span class="label">TARİH:</span> ${new Date(d.date).toLocaleDateString('tr-TR')}</p>
+                <p><span class="label">AÇILIŞ:</span> ${new Date(d.openedAt).toLocaleString('tr-TR')}</p>
+                <p><span class="label">KAPANIŞ:</span> ${new Date(d.closedAt).toLocaleString('tr-TR')}</p>
+                <p><span class="label">SORUMLU:</span> ${d.staffName}</p>
+                
+                <hr/>
+                
+                <div class="summary-box">
+                    <div style="display:flex; justify-content:space-between"><span>TOPLAM SATIŞ:</span> <span>${fmt(d.totalSales)}</span></div>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px"><span>NET NAKİT:</span> <span>${fmt(d.netCash)}</span></div>
+                </div>
+                
+                <hr/>
+                
+                <h3 style="font-size:13px;text-transform:uppercase;margin-bottom:5px">Kategori Bazlı Satışlar</h3>
+                <table>
+                    <thead><tr><th>Kategori</th><th style="text-align:right">Adet</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <tbody>${categoryRows}</tbody>
+                </table>
+                
+                <hr/>
+                
+                <h3 style="font-size:13px;text-transform:uppercase;margin-bottom:5px">Ödeme Tipleri</h3>
+                <table>
+                    <thead><tr><th>Tip</th><th style="text-align:right">İşlem</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <tbody>${paymentRows}</tbody>
+                </table>
+                
+                <hr/>
+                
+                <h3 style="font-size:13px;text-transform:uppercase;margin-bottom:5px">İptaller (Voids)</h3>
+                <table>
+                    <thead><tr><th>Neden</th><th style="text-align:right">Adet</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <tbody>${voidRows || '<tr><td colspan="3" style="text-align:center">- İptal Yok -</td></tr>'}</tbody>
+                </table>
+                
+                <hr/>
+                
+                <p style="font-weight:bold">İKRAMLAR: ${d.complements.count} Ürün (${fmt(d.complements.amount)})</p>
+                
+                <div class="footer">
+                    <p>RetailEX AI-Native Platform</p>
+                    <p>Baskı Tarihi: ${new Date().toLocaleString('tr-TR')}</p>
+                </div>
+            </div>
+            <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); }</script>
+            </body></html>
+        `);
+        win.document.close();
+    };
 
     const cols = width >= 1024 ? 10 : width >= 768 ? 8 : width >= 640 ? 6 : 3;
 
@@ -123,34 +225,33 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
 
                     {/* Register Status Badge */}
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             if (!isRegisterOpen) {
                                 setShowRegisterModal(true);
                             } else if (confirm('Kasayı kapatmak ve Z-Raporu almak istediğinize emin misiniz?')) {
-                                // Generate mock data for Z-Report (Real data logic will be added later)
-                                const mockData = {
-                                    date: new Date().toISOString(),
-                                    openedAt: new Date(Date.now() - 8 * 3600000).toISOString(),
-                                    closedAt: new Date().toISOString(),
-                                    staffName: currentStaff?.name || 'Garson',
-                                    openingCash: registerOpeningCash,
-                                    salesByCategory: [
-                                        { category: 'Ana Yemekler', amount: 1250000, count: 45 },
-                                        { category: 'İçecekler', amount: 450000, count: 82 },
-                                        { category: 'Tatlılar', amount: 320000, count: 24 }
-                                    ],
-                                    paymentsByType: [
-                                        { type: 'NAKİT', amount: 980000, count: 65 },
-                                        { type: 'KREDI KARTI', amount: 1040000, count: 86 }
-                                    ],
-                                    voids: [
-                                        { reason: 'Yanlış Sipariş', amount: 45000, count: 2 }
-                                    ],
-                                    complements: { amount: 25000, count: 3 },
-                                    totalSales: 2020000,
-                                    netCash: 980000
-                                };
-                                setZReportData(mockData);
+                                const closedAt = new Date().toISOString();
+                                const dateStr = workDayDate || new Date().toISOString().slice(0, 10);
+                                try {
+                                    const dbData = await RestaurantService.getZReportData(dateStr);
+                                    setZReportData({
+                                        date: closedAt,
+                                        openedAt: new Date(Date.now() - 8 * 3600000).toISOString(),
+                                        closedAt,
+                                        staffName: currentStaff?.name || 'Garson',
+                                        openingCash: registerOpeningCash,
+                                        ...dbData,
+                                    });
+                                } catch (err) {
+                                    console.error('[Z-Report] getZReportData failed:', err);
+                                    setZReportData({
+                                        date: closedAt, openedAt: closedAt, closedAt,
+                                        staffName: currentStaff?.name || 'Garson',
+                                        openingCash: registerOpeningCash,
+                                        totalSales: 0, netCash: 0,
+                                        salesByCategory: [], paymentsByType: [],
+                                        voids: [], complements: { amount: 0, count: 0 },
+                                    });
+                                }
                                 setShowZReport(true);
                                 closeRegister();
                             }
@@ -249,22 +350,38 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
             {/* Content Area */}
             <main className="flex-1 overflow-hidden relative">
                 {activeView === 'tables' && (
-                    <div className="h-full overflow-auto p-4" style={{ backgroundColor: '#f1f3f5' }}>
-                        <div
-                            className="grid gap-4 w-full"
-                            style={{
-                                gridTemplateColumns: `repeat(${cols}, 1fr)`
-                            }}
-                        >
-                            {floorTables.map((table) => (
-                                <TableCard
-                                    key={table.id}
-                                    table={table}
-                                    onClick={() => {
-                                        setOpenModal({ table, covers: table.seats });
-                                    }}
-                                />
-                            ))}
+                    <div className="h-full overflow-auto flex flex-col" style={{ backgroundColor: '#f1f3f5' }}>
+                        <div className="flex-1 p-4">
+                            <div
+                                className="grid gap-4 w-full"
+                                style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+                            >
+                                {floorTables.map((table) => (
+                                    <TableCard
+                                        key={table.id}
+                                        table={table}
+                                        onClick={() => {
+                                            if (table.status === 'empty') {
+                                                setOpenModal({ table, covers: table.seats });
+                                            } else {
+                                                onSelectTable(table, table.seats);
+                                            }
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        {/* Renk Legend Bar */}
+                        <div className="shrink-0 px-4 py-2 border-t border-slate-200 bg-white/80 backdrop-blur-sm flex items-center gap-3 flex-wrap">
+                            {(['empty', 'occupied', 'kitchen', 'served', 'billing', 'cleaning'] as const).map(s => {
+                                const c = getStatusConfig(s);
+                                return (
+                                    <div key={s} className="flex items-center gap-1.5">
+                                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: c.bg }} />
+                                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{c.label}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -297,8 +414,19 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                             const { updateReservationStatus } = useRestaurantStore.getState();
                             await updateReservationStatus(reservationId, 'seated');
                         }
-                        onSelectTable(openModal.table, covers);
-                        setOpenModal(null);
+
+                        // Masayı aç (Adisyon oluştur)
+                        try {
+                            const storeTable = useRestaurantStore.getState().tables.find(t => t.id === openModal.table.id);
+                            if (!storeTable || storeTable.status === 'empty') {
+                                await useRestaurantStore.getState().openTable(openModal.table.id, currentStaff?.name || 'Garson');
+                            }
+                            onSelectTable(openModal.table, covers);
+                            setOpenModal(null);
+                        } catch (err: any) {
+                            console.error('[RestaurantFloorPlan] Masa açılırken hata:', err);
+                            alert('Masa açılırken bir hata oluştu: ' + (err.message || 'Bilinmeyen hata'));
+                        }
                     }}
                 />
             )}
@@ -311,10 +439,8 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                     initialRegionId={targetRegionId}
                     onClose={() => { setShowManageModal(false); setManageType(null); }}
                     onSaveRegion={async (name) => {
-                        const storeId = getStoreId();
-                        if (storeId) {
-                            await addRegion({ id: uuidv4(), name, order: regions.length + 1 }, storeId);
-                        }
+                        const storeId = await getStoreId();
+                        await addRegion({ id: uuidv4(), name, order: regions.length + 1 }, storeId ?? null);
                     }}
                     onSaveTable={async (data) => {
                         if (data.isBulk) {
@@ -341,7 +467,6 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                 />
             )}
 
-            {/* Register Opening Modal */}
             {showRegisterModal && (
                 <POSOpenCashRegisterModal
                     onClose={() => setShowRegisterModal(false)}
@@ -352,46 +477,56 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                     currentStaff={currentStaff?.name || 'Garson'}
                 />
             )}
+
+            {showZReport && zReportData && (
+                <RestaurantZReport
+                    data={zReportData}
+                    onClose={() => {
+                        setShowZReport(false);
+                        setZReportData(null);
+                    }}
+                    onPrint={handlePrintZReport}
+                />
+            )}
         </div>
     );
 }
 
 function TableCard({ table, onClick }: { table: Table, onClick: () => void }) {
-    const statusConfig = {
-        empty: { bg: "#10b981", shadow: "shadow-emerald-500/20", label: "BOŞ" },
-        occupied: { bg: "#3b82f6", shadow: "shadow-blue-500/30", label: "DOLU" },
-        kitchen: { bg: "#f59e0b", shadow: "shadow-orange-500/30", label: "MUTFAK" },
-        served: { bg: "#8b5cf6", shadow: "shadow-purple-500/30", label: "SERVİS" },
-        billing: { bg: "#ef4444", shadow: "shadow-red-500/40", label: "HESAP" },
-        reserved: { bg: "#f59e0b", shadow: "shadow-amber-500/20", label: "REZERVE" },
-        cleaning: { bg: "#64748b", shadow: "shadow-slate-500/20", label: "TEMİZLİK" },
-    };
+    const { markAsClean } = useRestaurantStore();
+    const config = getStatusConfig(table.status);
 
-    const config = statusConfig[table.status] || statusConfig.empty;
-    const isLocked = table.lockedByStaffId && table.lockedByStaffId !== useRestaurantStore.getState().currentStaff?.id;
+    // window.__tableLocks'tan aktif garson adını oku (her 1.5sn poll)
+    const [activeStaff, setActiveStaff] = React.useState<string | null>(null);
+    React.useEffect(() => {
+        const read = () => {
+            const locks: Map<string, string> | undefined = (window as any).__tableLocks;
+            setActiveStaff(locks?.get(table.id) ?? null);
+        };
+        read();
+        const iv = setInterval(read, 1500);
+        return () => clearInterval(iv);
+    }, [table.id]);
+
+    const myName = useRestaurantStore.getState().currentStaff?.name;
+    const isLocked = !!activeStaff && activeStaff !== myName;
+    const isCleaning = table.status === 'cleaning';
 
     return (
         <div
-            onClick={isLocked ? undefined : onClick}
+            onClick={isCleaning ? undefined : (isLocked ? undefined : onClick)}
             style={{ backgroundColor: config.bg }}
             className={cn(
                 "relative cursor-pointer flex flex-col justify-between p-2 sm:p-3 lg:p-4 group hover:brightness-110 active:scale-[0.98] transition-all border border-white/20 rounded-xl sm:rounded-2xl lg:rounded-[2rem] aspect-square shadow-xl",
                 config.shadow,
                 table.isLarge ? "col-span-2 !aspect-[2/1]" : "col-span-1",
                 "text-white",
-                isLocked && "cursor-not-allowed grayscale-[0.5] brightness-75"
+                (isLocked || isCleaning) && "cursor-default"
             )}
         >
-            {isLocked && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] rounded-xl sm:rounded-2xl lg:rounded-[2rem]">
-                    <div className="bg-white/90 p-2 rounded-full mb-2">
-                        <Users className="w-5 h-5 text-red-600" />
-                    </div>
-                    <span className="text-[10px] font-black uppercase text-white drop-shadow-md">MEŞGUL</span>
-                    <span className="text-[8px] font-bold text-white/80">{table.lockedByStaffName?.split(' ')[0]}</span>
-                </div>
-            )}
             <div className="absolute top-0 left-0 right-0 h-[40%] bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+
+            {/* Üst satır: toplam + timer */}
             <div className="flex justify-between items-start w-full pointer-events-none relative z-10">
                 <div className="flex items-center gap-1 bg-black/30 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-white/10">
                     <History className="w-3 h-3 sm:w-3.5 sm:h-3.5 opacity-70" />
@@ -406,24 +541,63 @@ function TableCard({ table, onClick }: { table: Table, onClick: () => void }) {
                     </div>
                 )}
             </div>
+
+            {/* Orta: masa numarası */}
             <div className="flex flex-col items-center justify-center flex-1 py-1 pointer-events-none relative z-10">
                 <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-none drop-shadow-2xl">{table.number}</span>
                 <span className="text-[8px] sm:text-[9px] lg:text-[11px] font-black uppercase tracking-widest mt-1 opacity-80 italic">{table.location}</span>
-            </div>
-            <div className="flex justify-between items-center w-full pointer-events-none relative z-10">
-                <div className="flex items-center gap-1 sm:gap-2 px-2 py-1 sm:px-3 sm:py-2 bg-black/20 rounded-lg sm:rounded-2xl border border-white/5 shadow-inner">
-                    <Users className="w-3 h-3 sm:w-4 sm:h-4 text-white/80" />
-                    <span className="text-[10px] sm:text-xs font-black">{table.seats}</span>
-                </div>
-                {table.total && table.total > 0 && (
-                    <div className="bg-white/10 backdrop-blur-xl px-2 py-1 sm:px-4 sm:py-2 rounded-lg sm:rounded-2xl text-[10px] sm:text-[13px] font-black tracking-tighter border border-white/20 shadow-md">
-                        {table.total.toLocaleString('tr-TR')}
-                    </div>
+                {/* Durum etiketi — empty hariç */}
+                {table.status !== 'empty' && (
+                    <span
+                        style={{ backgroundColor: 'rgba(0,0,0,0.25)', color: '#fff' }}
+                        className="mt-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                    >
+                        {config.label}
+                    </span>
                 )}
             </div>
+
+            {/* Alt satır: kişi + tutar */}
+            <div className="flex justify-between items-center w-full relative z-10">
+                {/* Temizlik butonu */}
+                {isCleaning ? (
+                    <button
+                        onClick={e => { e.stopPropagation(); markAsClean(table.id); }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-white/20 hover:bg-white/35 active:scale-95 rounded-xl transition-all text-[10px] font-black uppercase border border-white/20"
+                    >
+                        <span>✓</span> Temizlendi
+                    </button>
+                ) : (
+                    <>
+                        <div className="flex items-center gap-1 sm:gap-2 px-2 py-1 sm:px-3 sm:py-2 bg-black/20 rounded-lg sm:rounded-2xl border border-white/5 shadow-inner pointer-events-none">
+                            <Users className="w-3 h-3 sm:w-4 sm:h-4 text-white/80" />
+                            <span className="text-[10px] sm:text-xs font-black">{table.seats}</span>
+                        </div>
+                        {table.total && table.total > 0 && (
+                            <div className="bg-white/10 backdrop-blur-xl px-2 py-1 sm:px-4 sm:py-2 rounded-lg sm:rounded-2xl text-[10px] sm:text-[13px] font-black tracking-tighter border border-white/20 shadow-md pointer-events-none">
+                                {table.total.toLocaleString('tr-TR')}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {/* Aktif garson badge — sağ alt köşe */}
+            {activeStaff && !isCleaning && (
+                <div className={cn(
+                    "absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-xl text-[9px] font-black uppercase tracking-wide border backdrop-blur-md z-20 pointer-events-none",
+                    isLocked
+                        ? "bg-red-900/80 border-red-400/40 text-red-200"
+                        : "bg-black/40 border-white/20 text-white/90"
+                )}>
+                    <Utensils className="w-2.5 h-2.5 opacity-80" />
+                    <span>{activeStaff.split(' ')[0]}</span>
+                </div>
+            )}
         </div>
     );
 }
+
 
 function TableTimer({ startTime }: { startTime: string }) {
     const [elapsed, setElapsed] = React.useState('');

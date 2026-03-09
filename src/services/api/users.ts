@@ -9,8 +9,11 @@ export interface User {
     username: string;
     email?: string;
     full_name: string;
-    role: string;
+    role: string; // Legacy role name
+    role_id?: string;
+    role_name?: string; // From join
     store_id?: string;
+    store_name?: string; // From join
     phone?: string;
     is_active: boolean;
     last_login_at?: string;
@@ -25,10 +28,11 @@ export const userAPI = {
     async getAll(): Promise<User[]> {
         try {
             const { rows } = await postgres.query(
-                `SELECT u.*, s.name as store_name 
+                `SELECT u.*, s.name as store_name, r.name as role_name
          FROM users u 
          LEFT JOIN stores s ON u.store_id = s.id 
-         WHERE u.firm_nr = $1 AND u.is_active = true 
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.firm_nr = $1
          ORDER BY u.username ASC`,
                 [ERP_SETTINGS.firmNr]
             );
@@ -45,9 +49,10 @@ export const userAPI = {
     async getById(id: string): Promise<User | null> {
         try {
             const { rows } = await postgres.query(
-                `SELECT u.*, s.name as store_name 
+                `SELECT u.*, s.name as store_name, r.name as role_name
          FROM users u 
          LEFT JOIN stores s ON u.store_id = s.id 
+         LEFT JOIN roles r ON u.role_id = r.id
          WHERE u.id = $1 AND u.firm_nr = $2`,
                 [id, ERP_SETTINGS.firmNr]
             );
@@ -64,13 +69,14 @@ export const userAPI = {
     async create(user: any): Promise<User | null> {
         try {
             const { rows } = await postgres.query(
-                `INSERT INTO users (username, password_hash, full_name, role, store_id, phone, email, is_active, firm_nr) 
-         VALUES ($1, crypt($2, gen_salt('bf')), $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+                `INSERT INTO users (username, password_hash, full_name, role, role_id, store_id, phone, email, is_active, firm_nr) 
+         VALUES ($1, crypt($2, gen_salt('bf')), $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
                 [
                     user.username,
                     user.password,
                     user.full_name,
-                    user.role,
+                    user.role || 'cashier',
+                    user.role_id || null,
                     user.store_id || null,
                     user.phone || '',
                     user.email || '',
@@ -95,7 +101,7 @@ export const userAPI = {
             let i = 1;
 
             Object.entries(updates).forEach(([key, value]) => {
-                if (key !== 'id' && key !== 'password' && value !== undefined) {
+                if (key !== 'id' && key !== 'password' && key !== 'role_name' && key !== 'store_name' && value !== undefined) {
                     fields.push(`${key} = $${i++}`);
                     values.push(value);
                 }
@@ -112,7 +118,7 @@ export const userAPI = {
             values.push(id);
             values.push(ERP_SETTINGS.firmNr);
             const { rows } = await postgres.query(
-                `UPDATE users SET ${fields.join(', ')} WHERE id = $${i} AND firm_nr = $${i + 1} RETURNING *`,
+                `UPDATE users SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${i} AND firm_nr = $${i + 1} RETURNING *`,
                 values
             );
 

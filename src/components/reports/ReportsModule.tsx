@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, DollarSign, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
@@ -14,15 +14,56 @@ import {
   BarChart, Bar, LineChart, Line, PieChart as RePieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { RestaurantService } from '../../services/restaurant';
+import { Layout, Menu, ConfigProvider, theme, Input, Button } from 'antd';
+import {
+  RobotOutlined,
+  CalendarOutlined,
+  PrinterOutlined,
+  SwapOutlined,
+  LineChartOutlined,
+  PieChartOutlined,
+  ClockCircleOutlined,
+  TeamOutlined,
+  UserOutlined,
+  RiseOutlined,
+  ThunderboltOutlined,
+  AccountBookOutlined,
+  TransactionOutlined,
+  HistoryOutlined,
+  AuditOutlined,
+  DatabaseOutlined,
+  HourglassOutlined,
+  RetweetOutlined,
+  ApartmentOutlined,
+  DeploymentUnitOutlined,
+  ExclamationCircleOutlined,
+  CreditCardOutlined,
+  TagsOutlined,
+  BankOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  MailOutlined,
+  FilePdfOutlined,
+  FileExcelOutlined,
+  CaretDownOutlined
+} from '@ant-design/icons';
+
+const { Sider, Content } = Layout;
 
 interface ReportsModuleProps {
   sales: Sale[];
   products: Product[];
 }
 
+type BusinessType = 'retail' | 'market' | 'restaurant' | 'beauty';
+
 type ReportTab =
   // AI & Genel
-  'chat-ai' | 'daily' | 'z-report' | 'comparison' |
+  'chat-ai' | 'daily' | 'daily-sales-executive' | 'z-report' | 'comparison' |
+  // Restoran Otomasyon Özel
+  'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' |
   // Finansal Raporlar
@@ -40,23 +81,88 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
   const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [businessType, setBusinessType] = useState<BusinessType>('restaurant');
+  const [restOrders, setRestOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const getBusinessConfig = () => {
+    switch (businessType) {
+      case 'market':
+        return {
+          color: '#10b981',
+          lightColor: '#ecfdf5',
+          icon: <ShoppingCart className="text-white w-5 h-5" />,
+          title: 'Market Otomasyonu',
+          groupLabel: 'MARKET ÖZEL'
+        };
+      case 'restaurant':
+        return {
+          color: '#f59e0b',
+          lightColor: '#fffbeb',
+          icon: <BarChart3 className="text-white w-5 h-5" />,
+          title: 'Rapor Yönetimi',
+          groupLabel: 'RESTORAN ÖZEL'
+        };
+      case 'beauty':
+        return {
+          color: '#ec4899',
+          lightColor: '#fdf2f8',
+          icon: <User className="text-white w-5 h-5" />,
+          title: 'Güzellik Merkezi',
+          groupLabel: 'GÜZELLİK ÖZEL'
+        };
+      default:
+        return {
+          color: '#2563eb',
+          lightColor: '#eff6ff',
+          icon: <BarChart3 className="text-white w-5 h-5" />,
+          title: 'Perakende Satış',
+          groupLabel: 'MAĞAZA ÖZEL'
+        };
+    }
+  };
+
+  const bizConfig = getBusinessConfig();
+  const { token } = theme.useToken();
 
   // Fetch expiring products
   useEffect(() => {
-    if (selectedTab === 'expiring-products' && selectedFirm) {
+    if (selectedTab === 'expiring-products' && selectedFirm?.id) {
       setLoadingExpiring(true);
-      fetchExpiringSoonLots(selectedFirm.id, expiringDays)
-        .then(data => {
+      fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
+        .then((data: any) => {
           setExpiringProducts(data);
           setLoadingExpiring(false);
         })
-        .catch(error => {
+        .catch((error: any) => {
           console.error('Error fetching expiring products:', error);
           setExpiringProducts([]);
           setLoadingExpiring(false);
         });
     }
   }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id]);
+
+  // Fetch Restaurant Orders
+  useEffect(() => {
+    if (businessType === 'restaurant' && selectedFirm) {
+      setLoadingOrders(true);
+      // Fetch for selected date or last 30 days if not specific
+      const fromDate = selectedDate + 'T00:00:00Z';
+      const toDate = selectedDate + 'T23:59:59Z';
+
+      RestaurantService.getOrderHistory({ fromDate, toDate, status: 'closed' })
+        .then((data: any) => {
+          setRestOrders(data);
+          setLoadingOrders(false);
+        })
+        .catch((err: any) => {
+          console.error('[ReportsModule] Error fetching rest orders:', err);
+          setRestOrders([]);
+          setLoadingOrders(false);
+        });
+    }
+  }, [businessType, selectedDate, selectedFirm]);
 
   // Daily sales
   const getDailySales = () => {
@@ -97,6 +203,34 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
 
   // Product sales analysis
   const getProductSales = () => {
+    if (businessType === 'restaurant') {
+      const productMap = new Map<string, {
+        product: any;
+        quantity: number;
+        revenue: number;
+        discount: number;
+      }>();
+
+      restOrders.forEach(order => {
+        (order.items || []).forEach((item: any) => {
+          const existing = productMap.get(item.product_id);
+          if (existing) {
+            existing.quantity += Number(item.quantity || 0);
+            existing.revenue += Number(item.subtotal || 0);
+            existing.discount += Number(item.discount_amount || 0);
+          } else {
+            productMap.set(item.product_id, {
+              product: { id: item.product_id, name: item.product_name, category: item.category_name },
+              quantity: Number(item.quantity || 0),
+              revenue: Number(item.subtotal || 0),
+              discount: Number(item.discount_amount || 0)
+            });
+          }
+        });
+      });
+      return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
+    }
+
     if (!sales || !Array.isArray(sales)) return [];
     const productMap = new Map<string, {
       product: Product;
@@ -129,44 +263,84 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
     return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
   };
 
-  // Cashier performance
+  const getPaymentDistribution = () => {
+    if (businessType === 'restaurant') {
+      const distribution = restOrders.reduce((acc: any, order: any) => {
+        const method = order.payment_method || 'NAKİT';
+        acc[method] = (acc[method] || 0) + Number(order.total_amount || 0);
+        return acc;
+      }, {});
+
+      const chartData = Object.entries(distribution).map(([name, value]) => ({
+        name,
+        value: Number(value || 0)
+      }));
+      return { chartData, ...distribution };
+    }
+
+    if (!sales || !Array.isArray(sales)) return { chartData: [], cash: 0, card: 0 };
+    const cash = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+    const card = sales.filter(s => s.paymentMethod === 'card').reduce((sum, s) => sum + s.total, 0);
+    return {
+      chartData: [
+        { name: 'Nakit', value: cash },
+        { name: 'Kredi Kartı', value: card }
+      ],
+      cash,
+      card
+    };
+  };
+
   const getCashierPerformance = () => {
-    if (!sales || !Array.isArray(sales)) return [];
-    const cashierMap = new Map<string, {
-      name: string;
-      salesCount: number;
-      totalRevenue: number;
-      avgSale: number;
-      cashSales: number;
-      cardSales: number;
-    }>();
-
-    sales.forEach(sale => {
-      // Null check for cashier - if null or undefined, skip or use default
-      const cashierName = sale.cashier || 'Bilinmeyen Kasiyer';
-
-      const existing = cashierMap.get(cashierName);
-      if (existing) {
+    if (businessType === 'restaurant') {
+      const cashierMap = new Map<string, any>();
+      restOrders.forEach((order: any) => {
+        const name = order.waiter || 'Genel';
+        const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
         existing.salesCount += 1;
-        existing.totalRevenue += sale.total;
+        existing.totalRevenue += Number(order.total_amount || 0);
         existing.avgSale = existing.totalRevenue / existing.salesCount;
-        if (sale.paymentMethod === 'cash') existing.cashSales += sale.total;
-        else existing.cardSales += sale.total;
-      } else {
-        cashierMap.set(cashierName, {
-          name: cashierName,
-          salesCount: 1,
-          totalRevenue: sale.total,
-          avgSale: sale.total,
-          cashSales: sale.paymentMethod === 'cash' ? sale.total : 0,
-          cardSales: sale.paymentMethod === 'card' ? sale.total : 0
-        });
-      }
-    });
+        if (order.payment_method === 'NAKİT') existing.cashSales += Number(order.total_amount || 0);
+        else existing.cardSales += Number(order.total_amount || 0);
+        cashierMap.set(name, existing);
+      });
+      return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    }
 
+    if (!sales || !Array.isArray(sales)) return [];
+    const cashierMap = new Map<string, any>();
+    sales.forEach(sale => {
+      const name = sale.cashier || 'Bilinmeyen Kasiyer';
+      const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
+      existing.salesCount += 1;
+      existing.totalRevenue += sale.total;
+      existing.avgSale = existing.totalRevenue / existing.salesCount;
+      if (sale.paymentMethod === 'cash') existing.cashSales += sale.total;
+      else existing.cardSales += sale.total;
+      cashierMap.set(name, existing);
+    });
     return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
   };
 
+  const getRestaurantStats = () => {
+    if (businessType !== 'restaurant') return null;
+    const totalSales = restOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const payments = restOrders.reduce((acc: any, o) => {
+      const method = o.payment_method || 'NAKİT';
+      acc[method] = (acc[method] || 0) + Number(o.total_amount || 0);
+      return acc;
+    }, {});
+    const discountTotal = restOrders.reduce((sum, o) => sum + Number(o.discount_amount || 0), 0);
+
+    return {
+      totalSales,
+      payments,
+      discountTotal,
+      orderCount: restOrders.length
+    };
+  };
+
+  const restStats = getRestaurantStats();
   const zReport = generateZReport();
   const productSales = getProductSales();
   const cashierPerformance = getCashierPerformance();
@@ -207,6 +381,41 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
 
   // Category Analysis
   const getCategoryAnalysis = () => {
+    if (businessType === 'restaurant') {
+      const categoryMap = new Map<string, {
+        name: string;
+        totalRevenue: number;
+        totalQuantity: number;
+        productCount: number;
+        avgPrice: number;
+        items?: any[];
+      }>();
+
+      restOrders.forEach(order => {
+        (order.items || []).forEach((item: any) => {
+          const categoryName = item.category_name || 'Diğer';
+          const existing = categoryMap.get(categoryName);
+          if (existing) {
+            existing.totalRevenue += Number(item.subtotal || 0);
+            existing.totalQuantity += Number(item.quantity || 0);
+            existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
+            if (!existing.items) existing.items = [];
+            existing.items.push(item);
+          } else {
+            categoryMap.set(categoryName, {
+              name: categoryName,
+              totalRevenue: Number(item.subtotal || 0),
+              totalQuantity: Number(item.quantity || 0),
+              productCount: 1,
+              avgPrice: Number(item.unit_price || 0),
+              items: [item]
+            });
+          }
+        });
+      });
+      return Array.from(categoryMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    }
+
     if (!sales || !Array.isArray(sales) || !products || !Array.isArray(products)) return [];
     const categoryMap = new Map<string, {
       name: string;
@@ -421,26 +630,42 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
     };
   };
 
-  // Payment Distribution
-  const getPaymentDistribution = () => {
-    const totalSales = sales.length || 245;
-    const cashSales = sales.filter(s => s.paymentMethod === 'cash').length || 142;
-    const cardSales = sales.filter(s => s.paymentMethod === 'card').length || 98;
-    const transferSales = sales.filter(s => s.paymentMethod === 'transfer').length || 5;
+  // Payment Distribution Summary
+  const getPaymentSummary = () => {
+    if (businessType === 'restaurant') {
+      const stats = restStats || { totalSales: 0, payments: {}, orderCount: 0 };
+      const totalSales = stats.totalSales;
+      const cashAmount = stats.payments['NAKİT'] || 0;
+      const cardAmount = stats.payments['POS'] || 0;
+      const otherAmount = totalSales - cashAmount - cardAmount;
 
+      return {
+        total: stats.orderCount,
+        cash: { count: 0, amount: cashAmount, percentage: totalSales > 0 ? (cashAmount / totalSales * 100) : 0 },
+        card: { count: 0, amount: cardAmount, percentage: totalSales > 0 ? (cardAmount / totalSales * 100) : 0 },
+        transfer: { count: 0, amount: otherAmount, percentage: totalSales > 0 ? (otherAmount / totalSales * 100) : 0 },
+        chartData: [
+          { name: 'Nakit', value: cashAmount, count: 0, fill: '#10b981' },
+          { name: 'Kart', value: cardAmount, count: 0, fill: '#3b82f6' },
+          { name: 'Diğer', value: otherAmount, count: 0, fill: '#f59e0b' },
+        ]
+      };
+    }
+
+    const totalSales = sales.length || 245;
     const cashAmount = sales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0) || 28450;
     const cardAmount = sales.filter(s => s.paymentMethod === 'card').reduce((sum, s) => sum + s.total, 0) || 46800;
     const transferAmount = sales.filter(s => s.paymentMethod === 'transfer').reduce((sum, s) => sum + s.total, 0) || 3400;
 
     return {
       total: totalSales,
-      cash: { count: cashSales, amount: cashAmount, percentage: (cashSales / totalSales * 100) },
-      card: { count: cardSales, amount: cardAmount, percentage: (cardSales / totalSales * 100) },
-      transfer: { count: transferSales, amount: transferAmount, percentage: (transferSales / totalSales * 100) },
+      cash: { count: 0, amount: cashAmount, percentage: (cashAmount / (cashAmount + cardAmount + transferAmount) * 100) },
+      card: { count: 0, amount: cardAmount, percentage: (cardAmount / (cashAmount + cardAmount + transferAmount) * 100) },
+      transfer: { count: 0, amount: transferAmount, percentage: (transferAmount / (cashAmount + cardAmount + transferAmount) * 100) },
       chartData: [
-        { name: 'Nakit', value: cashAmount, count: cashSales, fill: '#10b981' },
-        { name: 'Kart', value: cardAmount, count: cardSales, fill: '#3b82f6' },
-        { name: 'Transfer', value: transferAmount, count: transferSales, fill: '#f59e0b' },
+        { name: 'Nakit', value: cashAmount, count: 0, fill: '#10b981' },
+        { name: 'Kart', value: cardAmount, count: 0, fill: '#3b82f6' },
+        { name: 'Transfer', value: transferAmount, count: 0, fill: '#f59e0b' },
       ]
     };
   };
@@ -603,483 +828,260 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
     }
   };
 
+  // Menu Groups Based on Business Type
+  const getMenuItems = (): any[] => {
+    const commonGroups = [
+      {
+        key: 'grp-general',
+        label: 'GENEL & YAPAY ZEKA',
+        type: 'group',
+        children: [
+          { key: 'chat-ai', label: 'AI Asistan', icon: <RobotOutlined /> },
+          { key: 'daily-sales-executive', label: 'Yönetici Günlük Satış', icon: <RiseOutlined /> },
+          { key: 'daily', label: 'Günlük Rapor', icon: <CalendarOutlined /> },
+          { key: 'end-of-day', label: 'Gün Sonu Raporu', icon: <HistoryOutlined /> },
+          { key: 'z-report', label: 'Z Raporu', icon: <PrinterOutlined /> },
+          { key: 'comparison', label: 'Dönem Karşılaştırma', icon: <SwapOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-sales',
+        label: 'SATIŞ ANALİZLERİ',
+        type: 'group',
+        children: [
+          { key: 'top-products', label: 'En Çok Satanlar', icon: <LineChartOutlined /> },
+          { key: 'category-analysis', label: 'Kategori Analizi', icon: <PieChartOutlined /> },
+          { key: 'hourly-analysis', label: 'Saatlik Analiz', icon: <ClockCircleOutlined /> },
+          { key: 'cashiers', label: 'Kasiyer Performansı', icon: <TeamOutlined /> },
+          { key: 'customer-sales', label: 'Müşteri Satış', icon: <UserOutlined /> },
+          { key: 'sales-trend', label: 'Satış Trend Analizi', icon: <RiseOutlined /> },
+          { key: 'sales-target', label: 'Hedef vs Gerçekleşen', icon: <ThunderboltOutlined /> },
+          { key: 'detailed-sales', label: 'Detaylı Satış Raporu', icon: <LineChartOutlined /> },
+          { key: 'analysis', label: 'Analiz', icon: <BarChart3 /> },
+        ],
+      },
+      {
+        key: 'grp-financial',
+        label: 'FİNANSAL RAPORLAR',
+        type: 'group',
+        children: [
+          { key: 'profit-loss', label: 'Kar-Zarar Raporu', icon: <AccountBookOutlined /> },
+          { key: 'cash-flow', label: 'Nakit Akış Raporu', icon: <TransactionOutlined /> },
+          { key: 'debt-aging', label: 'Borç/Alacak Yaşlandırma', icon: <HistoryOutlined /> },
+          { key: 'check-tracking', label: 'Çek/Senet Takibi', icon: <AuditOutlined /> },
+          { key: 'current-account', label: 'Cari Hesap Özeti', icon: <BankOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-inventory',
+        label: 'STOK RAPORLARI',
+        type: 'group',
+        children: [
+          { key: 'stock-status', label: 'Stok Durumu', icon: <DatabaseOutlined /> },
+          { key: 'stock-aging', label: 'Stok Yaşlandırma', icon: <HourglassOutlined /> },
+          { key: 'stock-turnover', label: 'Stok Dönüş Hızı', icon: <RetweetOutlined /> },
+          { key: 'stock-abc', label: 'Stok ABC Analizi', icon: <ApartmentOutlined /> },
+          { key: 'materials', label: 'Mal Hareket Raporu', icon: <DeploymentUnitOutlined /> },
+          { key: 'expiring-products', label: 'SKT Yaklaşanlar', icon: <ExclamationCircleOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-payment',
+        label: 'ÖDEME VE İŞLEMLER',
+        type: 'group',
+        children: [
+          { key: 'payment-distribution', label: 'Ödeme Dağılımı', icon: <CreditCardOutlined /> },
+          { key: 'discount-report', label: 'İndirim Raporu', icon: <TagsOutlined /> },
+          { key: 'cash-status', label: 'Kasa Durumu', icon: <BankOutlined /> },
+          { key: 'commission', label: 'Komisyon Raporu', icon: <SafetyCertificateOutlined /> },
+          { key: 'cash-report', label: 'Kasa Raporu', icon: <BankOutlined /> },
+        ],
+      },
+    ];
+
+    return [
+      ...commonGroups,
+      {
+        key: 'grp-business-specific',
+        label: bizConfig.groupLabel,
+        type: 'group',
+        children: businessType === 'restaurant' ? [
+          { key: 'product-reports', label: 'Ürün Raporları', icon: <ShoppingCart className="w-4 h-4" /> },
+          { key: 'category-reports', label: 'Kategori Raporları', icon: <PieChartIcon className="w-4 h-4" /> },
+          { key: 'staff-reports', label: 'Personel Raporları', icon: <User className="w-4 h-4" /> },
+          { key: 'staff-performance', label: 'Personel H. Raporlar', icon: <TrendingUp className="w-4 h-4" /> },
+          { key: 'table-reports', label: 'Masa Raporları', icon: <ApartmentOutlined /> },
+          { key: 'payment-reports', label: 'Ödeme Raporları', icon: <CreditCard className="w-4 h-4" /> },
+          { key: 'discount-reports', label: 'İndirim Raporları', icon: <Percent className="w-4 h-4" /> },
+          { key: 'sales-movements', label: 'Satış Hareket Raporu', icon: <RiseOutlined /> },
+          { key: 'receipts', label: 'Adisyonlar', icon: <FileText className="w-4 h-4" /> },
+          { key: 'courier-reports', label: 'Kurye Raporları', icon: <Package className="w-4 h-4" /> },
+          { key: 'cash-register-reports', label: 'YazarKasa Raporları', icon: <PrinterOutlined /> },
+          { key: 'turnover-reports', label: 'Ciro Raporları', icon: <DollarSign className="w-4 h-4" /> },
+        ] : [
+          { key: 'detailed-sales', label: 'Detaylı Satış Raporu', icon: <LineChartOutlined /> },
+          { key: 'analysis', label: 'Analiz Raporu', icon: <PieChartOutlined /> },
+        ]
+      }
+    ];
+  };
+
+  const menuItems = getMenuItems();
+
   return (
-    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex-shrink-0">
-        <h2 className="text-2xl flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-blue-600" />
-          Raporlama
-        </h2>
-        <p className="text-sm text-gray-600 mt-1">Satış raporları ve analizler</p>
-      </div>
-
-      {/* Tabs */}
-      <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b-2 border-gray-200 overflow-x-auto flex-shrink-0 shadow-sm" style={{ scrollbarWidth: 'thin' }}>
-        <div className="flex gap-3 min-w-max">
-          {([
-            // AI & Genel
-            { id: 'chat-ai', label: 'AI Asistan', highlight: true },
-            { id: 'daily', label: 'Günlük Rapor' },
-            { id: 'z-report', label: 'Z Raporu' },
-            { id: 'comparison', label: 'Dönem Karşılaştırma' },
-            // Satış Raporları
-            { id: 'top-products', label: 'En Çok Satan Ürünler' },
-            { id: 'category-analysis', label: 'Kategori Analizi' },
-            { id: 'hourly-analysis', label: 'Saatlik Satış Analizi' },
-            { id: 'cashiers', label: 'Kasiyer Performansı' },
-            { id: 'customer-sales', label: 'Müşteri Satış Analizi' },
-            { id: 'sales-trend', label: 'Satış Trend Analizi' },
-            { id: 'sales-target', label: 'Hedef vs Gerçekleşen' },
-            // Finansal Raporlar
-            { id: 'profit-loss', label: 'Kar-Zarar Raporu' },
-            { id: 'cash-flow', label: 'Nakit Akış Raporu' },
-            { id: 'debt-aging', label: 'Borç/Alacak Yaşlandırma' },
-            { id: 'check-tracking', label: 'Çek/Senet Takibi' },
-            { id: 'current-account', label: 'Cari Hesap Özeti' },
-            // Stok Raporları
-            { id: 'stock-status', label: 'Stok Durumu' },
-            { id: 'stock-aging', label: 'Stok Yaşlandırma' },
-            { id: 'stock-turnover', label: 'Stok Dönüş Hızı' },
-            { id: 'stock-abc', label: 'Stok ABC Analizi' },
-            { id: 'materials', label: 'Mal Hareket Raporu' },
-            { id: 'expiring-products', label: 'Son Kullanma Tarihi Yaklaşanlar' },
-            // Ödeme & İşlem
-            { id: 'payment-distribution', label: 'Ödeme Yöntemi Dağılımı' },
-            { id: 'discount-report', label: 'İndirim Raporu' },
-            { id: 'cash-status', label: 'Kasa Durumu' },
-            { id: 'commission', label: 'Komisyon Raporu' },
-          ] as const).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedTab(tab.id as ReportTab)}
-              className={`px-5 py-3 rounded-lg border-2 transition-all whitespace-nowrap text-base font-medium shadow-sm ${selectedTab === tab.id
-                ? 'border-blue-600 text-blue-700 bg-blue-50 font-bold scale-105'
-                : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-50 hover:border-gray-300'
-                } ${(tab as any).highlight ? 'bg-gradient-to-r from-blue-100 via-purple-50 to-pink-50 border-blue-400 shadow-md font-bold text-lg' : ''}`}
-              style={{
-                fontSize: (tab as any).highlight ? '1.1rem' : '1rem',
-                minHeight: '48px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-        {selectedTab === 'daily' && (
-          <div className="space-y-4">
-            {/* Date Selector */}
-            <div className="bg-white rounded-lg border p-4">
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-gray-600" />
-                  <span>Tarih Seçin:</span>
-                </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                />
-              </div>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: bizConfig.color,
+          borderRadius: 8,
+        },
+      }}
+    >
+      <Layout className="h-full bg-slate-50 overflow-hidden">
+        {/* Sol Sidebar */}
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={(value) => setCollapsed(value)}
+          width={280}
+          theme="light"
+          className="border-r border-slate-200 shadow-sm z-10"
+          style={{ overflow: 'auto', height: '100%', position: 'relative' }}
+        >
+          <div className="p-4 border-b border-slate-100 flex items-center gap-3 bg-white sticky top-0 z-20 h-[72px]">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"
+              style={{ backgroundColor: bizConfig.color, boxShadow: `0 10px 15px -3px ${bizConfig.color}44` }}>
+              {bizConfig.icon}
             </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Toplam Satış</p>
-                    <p className="text-3xl text-blue-600 mt-1">{dailySales.length}</p>
-                  </div>
-                  <ShoppingCart className="w-12 h-12 text-blue-600 opacity-20" />
-                </div>
+            {!collapsed && (
+              <div className="overflow-hidden">
+                <h2 className="text-base font-black text-slate-800 leading-tight truncate">{bizConfig.title}</h2>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Analiz & İstatistik</p>
               </div>
+            )}
+          </div>
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedTab]}
+            defaultOpenKeys={['grp-general', 'grp-sales']}
+            onClick={({ key }) => setSelectedTab(key as ReportTab)}
+            items={menuItems}
+            className="border-none py-2"
+          />
+        </Sider>
 
-              <div className="bg-white rounded-lg p-4 border-2 border-green-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Toplam Ciro</p>
-                    <p className="text-2xl text-green-600 mt-1">{formatNumber(dailyTotal, 2, false)}</p>
-                  </div>
-                  <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border-2 border-purple-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Nakit</p>
-                    <p className="text-2xl text-purple-600 mt-1">{formatNumber(dailyCash, 2, false)}</p>
-                  </div>
-                  <DollarSign className="w-12 h-12 text-purple-600 opacity-20" />
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg p-4 border-2 border-orange-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Kart</p>
-                    <p className="text-2xl text-orange-600 mt-1">{formatNumber(dailyCard, 2, false)}</p>
-                  </div>
-                  <DollarSign className="w-12 h-12 text-orange-600 opacity-20" />
-                </div>
-              </div>
+        <Layout className="h-full flex flex-col overflow-hidden bg-slate-50">
+          {/* Header */}
+          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm shrink-0 h-[72px]">
+            <div>
+              <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || 'Rapor'}
+              </h1>
+              <p className="text-xs text-slate-500 font-medium">Verilerinizi kontrol edin ve performansı izleyin</p>
             </div>
-
-            {/* Sales List */}
-            <div className="bg-white rounded-lg border">
-              <div className="p-4 border-b">
-                <h3 className="text-lg">Satış Detayları</h3>
-              </div>
-              <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                <table className="w-full min-w-[800px]">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm">Fiş No</th>
-                      <th className="px-4 py-3 text-left text-sm">Saat</th>
-                      <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
-                      <th className="px-4 py-3 text-left text-sm">Müşteri</th>
-                      <th className="px-4 py-3 text-right text-sm">Tutar</th>
-                      <th className="px-4 py-3 text-left text-sm">Ödeme</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {dailySales.map(sale => (
-                      <tr key={sale.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm">{sale.receiptNumber}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {new Date(sale.date).toLocaleTimeString('tr-TR')}
-                        </td>
-                        <td className="px-4 py-3 text-sm">{sale.cashier || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{sale.customerName || '-'}</td>
-                        <td className="px-4 py-3 text-right text-sm">{formatNumber(sale.total, 2, false)}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${sale.paymentMethod === 'cash'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-blue-100 text-blue-700'
-                            }`}>
-                            {sale.paymentMethod === 'cash' ? 'Nakit' : 'Kart'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="flex items-center gap-3">
+              {/* Ekstra butonlar buraya gelebilir, örneğin genel dışa aktar */}
             </div>
           </div>
-        )}
 
-        {selectedTab === 'z-report' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-lg border">
-              <div className="p-6 border-b flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl">Gün Sonu Z Raporu</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {new Date(zReport.date).toLocaleDateString('tr-TR', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <button
-                  onClick={printZReport}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  <Download className="w-5 h-5" />
-                  Yazdır
-                </button>
-              </div>
+          <Content className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: 'thin' }}>
 
-              <div className="p-6 space-y-6">
-                {/* Sales Summary */}
-                <div>
-                  <h4 className="text-sm text-gray-600 mb-3">SATIŞ ÖZETİ</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Toplam İşlem</p>
-                      <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Toplam Ciro</p>
-                      <p className="text-3xl text-green-600 mt-1">{formatNumber(zReport.totalAmount, 2, false)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Payment Summary */}
-                <div>
-                  <h4 className="text-sm text-gray-600 mb-3">ÖDEME ÖZETİ</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <span>Nakit Ödemeler</span>
-                      <span className="text-lg">{formatNumber(zReport.cashAmount, 2, false)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <span>Kart Ödemeleri</span>
-                      <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg text-orange-700">
-                      <span>Toplam İndirim</span>
-                      <span className="text-lg">{formatNumber(zReport.totalDiscount, 2, false)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Receipt Range */}
-                <div>
-                  <h4 className="text-sm text-gray-600 mb-3">FİŞ ARALIĞI</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">İlk Fiş</p>
-                      <p className="text-lg mt-1">{zReport.firstSale}</p>
-                    </div>
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">Son Fiş</p>
-                      <p className="text-lg mt-1">{zReport.lastSale}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {selectedTab === 'products' && (
-          <div className="bg-white rounded-lg border">
-            <div className="p-4 border-b">
-              <h3 className="text-lg">Ürün Satış Analizi</h3>
-            </div>
-            <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-              <table className="w-full min-w-[800px]">
-                <thead className="bg-gray-50 border-b sticky top-0">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm">Sıra</th>
-                    <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                    <th className="px-4 py-3 text-right text-sm">Satış Adedi</th>
-                    <th className="px-4 py-3 text-right text-sm">Ciro</th>
-                    <th className="px-4 py-3 text-right text-sm">İndirim</th>
-                    <th className="px-4 py-3 text-right text-sm">Net Ciro</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {productSales.map((item, index) => (
-                    <tr key={item.product.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm">{index + 1}</td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p>{item.product.name}</p>
-                          <p className="text-xs text-gray-500">{item.product.category}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                          {item.quantity}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm">{formatNumber(item.revenue, 2, false)}</td>
-                      <td className="px-4 py-3 text-right text-sm text-orange-600">
-                        {formatNumber(item.discount, 2, false)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-green-600">
-                          {formatNumber(item.revenue - item.discount, 2, false)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {selectedTab === 'cashiers' && (
-          <div className="bg-white rounded-lg border">
-            <div className="p-4 border-b">
-              <h3 className="text-lg">Kasiyer Performans Raporu</h3>
-            </div>
-            <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-              <table className="w-full min-w-[800px]">
-                <thead className="bg-gray-50 border-b sticky top-0">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
-                    <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
-                    <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
-                    <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
-                    <th className="px-4 py-3 text-right text-sm">Nakit</th>
-                    <th className="px-4 py-3 text-right text-sm">Kart</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {cashierPerformance.map(cashier => (
-                    <tr key={cashier.name} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
-                            {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
-                          </div>
-                          <span>{cashier.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                          {cashier.salesCount}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-lg text-green-600">
-                        {formatNumber(cashier.totalRevenue, 2, false)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm">
-                        {formatNumber(cashier.avgSale, 2, false)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm">
-                        {formatNumber(cashier.cashSales, 2, false)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm">
-                        {formatNumber(cashier.cardSales, 2, false)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {selectedTab === 'top-products' && (() => {
-          const topProducts = getTopProducts(20);
-          return (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg border p-4">
-                <h3 className="text-lg mb-4 flex items-center gap-2">
-                  <Award className="w-5 h-5 text-yellow-600" />
-                  En Çok Satan Ürünler (TOP 20)
-                </h3>
-                <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                  <table className="w-full min-w-[900px]">
-                    <thead className="bg-gray-50 border-b sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm">Sıra</th>
-                        <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                        <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                        <th className="px-4 py-3 text-right text-sm">Satış Adedi</th>
-                        <th className="px-4 py-3 text-right text-sm">Ciro</th>
-                        <th className="px-4 py-3 text-right text-sm">Ort. Fiyat</th>
-                        <th className="px-4 py-3 text-right text-sm">Stok</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {topProducts.map((product) => (
-                        <tr key={product.rank} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
-                              }`}>
-                              {product.rank}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 font-medium">{product.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
-                              {product.quantity}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                            {formatNumber(product.revenue, 2, false)} IQD
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} IQD</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                              }`}>
-                              {product.stock}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {selectedTab === 'category-analysis' && (() => {
-          const categories = getCategoryAnalysis();
-          const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            {selectedTab === 'daily' && (
+              <div className="space-y-4">
+                {/* Date Selector */}
                 <div className="bg-white rounded-lg border p-4">
-                  <h3 className="text-lg mb-4 flex items-center gap-2">
-                    <PieChartIcon className="w-5 h-5 text-blue-600" />
-                    Kategori Dağılımı (Ciro)
-                  </h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RePieChart>
-                      <Pie
-                        data={categories.slice(0, 8).map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {categories.slice(0, 8).map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
-                    </RePieChart>
-                  </ResponsiveContainer>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-gray-600" />
+                      <span>Tarih Seçin:</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-                <div className="bg-white rounded-lg border p-4">
-                  <h3 className="text-lg mb-4 flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-green-600" />
-                    Kategori Performansı
-                  </h3>
-                  <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                    <table className="w-full min-w-[700px]">
-                      <thead className="bg-gray-50 border-b sticky top-0">
+
+                {/* Stats */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Toplam Satış</p>
+                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailySales.length}</p>
+                      </div>
+                      <ShoppingCart className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Toplam Ciro</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyTotal, 2, false)}</p>
+                      </div>
+                      <DollarSign className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Nakit</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCash, 2, false)}</p>
+                      </div>
+                      <DollarSign className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Kart</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCard, 2, false)}</p>
+                      </div>
+                      <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sales List */}
+                <div className="bg-white rounded-lg border">
+                  <div className="p-4 border-b">
+                    <h3 className="text-lg">Satış Detayları</h3>
+                  </div>
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                    <table className="w-full min-w-[800px]">
+                      <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="px-4 py-2 text-left text-sm">Kategori</th>
-                          <th className="px-4 py-2 text-right text-sm">Ciro</th>
-                          <th className="px-4 py-2 text-right text-sm">Adet</th>
-                          <th className="px-4 py-2 text-right text-sm">Ort. Fiyat</th>
+                          <th className="px-4 py-3 text-left text-sm">Fiş No</th>
+                          <th className="px-4 py-3 text-left text-sm">Saat</th>
+                          <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
+                          <th className="px-4 py-3 text-left text-sm">Müşteri</th>
+                          <th className="px-4 py-3 text-right text-sm">Tutar</th>
+                          <th className="px-4 py-3 text-left text-sm">Ödeme</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {categories.map((cat, idx) => (
-                          <tr key={cat.name} className="hover:bg-gray-50">
-                            <td className="px-4 py-2">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                                {cat.name}
-                              </div>
+                        {dailySales.map(sale => (
+                          <tr key={sale.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm">{sale.receiptNumber}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {new Date(sale.date).toLocaleTimeString('tr-TR')}
                             </td>
-                            <td className="px-4 py-2 text-right font-semibold text-green-600">
-                              {formatNumber(cat.totalRevenue, 2, false)} IQD
-                            </td>
-                            <td className="px-4 py-2 text-right">
-                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                {cat.totalQuantity}
+                            <td className="px-4 py-3 text-sm">{sale.cashier || '-'}</td>
+                            <td className="px-4 py-3 text-sm">{sale.customerName || '-'}</td>
+                            <td className="px-4 py-3 text-right text-sm">{formatNumber(sale.total, 2, false)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 rounded text-xs ${sale.paymentMethod === 'cash'
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                {sale.paymentMethod === 'cash' ? 'Nakit' : 'Kart'}
                               </span>
                             </td>
-                            <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} IQD</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1087,404 +1089,179 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            )}
 
-        {selectedTab === 'hourly-analysis' && (() => {
-          const hourlyData = getHourlyAnalysis();
-          return (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg border p-4">
-                <h3 className="text-lg mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-purple-600" />
-                  Saatlik Satış Analizi
-                </h3>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={hourlyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" />
-                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="sales" fill="#3b82f6" name="Satış Sayısı" />
-                    <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Ciro (IQD)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="bg-white rounded-lg border">
-                <div className="p-4 border-b">
-                  <h4 className="text-md">Detaylı Saatlik Veriler</h4>
-                </div>
-                <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                  <table className="w-full min-w-[700px]">
-                    <thead className="bg-gray-50 border-b sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm">Saat</th>
-                        <th className="px-4 py-3 text-right text-sm">Satış Sayısı</th>
-                        <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
-                        <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {hourlyData.map((hour) => (
-                        <tr key={hour.hour} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">{hour.label}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                              {hour.sales}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                            {formatNumber(hour.revenue, 2, false)} IQD
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">
-                            {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} IQD
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+            {selectedTab === 'z-report' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-lg border">
+                  <div className="p-6 border-b flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl">Gün Sonu Z Raporu</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {new Date(zReport.date).toLocaleDateString('tr-TR', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={printZReport}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Download className="w-5 h-5" />
+                      Yazdır
+                    </button>
+                  </div>
 
-        {selectedTab === 'cash-status' && (() => {
-          const cashStatus = getCashStatus();
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                  <div className="flex items-center justify-between">
+                  <div className="p-6 space-y-6">
+                    {/* Sales Summary */}
                     <div>
-                      <p className="text-sm text-gray-600">Açılış Kasası</p>
-                      <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} IQD</p>
-                    </div>
-                    <DollarSign className="w-12 h-12 text-blue-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Günlük Nakit</p>
-                      <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} IQD</p>
-                    </div>
-                    <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Günlük Kart</p>
-                      <p className="text-2xl text-purple-600 mt-1 font-bold">{formatNumber(cashStatus.todayCard, 2, false)} IQD</p>
-                    </div>
-                    <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Kapanış Kasası</p>
-                      <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} IQD</p>
-                    </div>
-                    <DollarSign className="w-12 h-12 text-orange-600 opacity-20" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg border p-4">
-                  <h3 className="text-lg mb-4">Ödeme Dağılımı</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-green-500 rounded"></div>
-                        Nakit
-                      </span>
-                      <span className="font-semibold text-green-600">{formatNumber(cashStatus.todayCash, 2, false)} IQD</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                        Kart
-                      </span>
-                      <span className="font-semibold text-blue-600">{formatNumber(cashStatus.todayCard, 2, false)} IQD</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <span className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                        Transfer
-                      </span>
-                      <span className="font-semibold text-orange-600">{formatNumber(cashStatus.todayTransfer, 2, false)} IQD</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                      <span className="font-semibold">Toplam</span>
-                      <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} IQD</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg border p-4">
-                  <h3 className="text-lg mb-4">Kart Türleri</h3>
-                  <div className="space-y-3">
-                    {cashStatus.cards.map((card) => (
-                      <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <span>{card.name}</span>
-                        <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} IQD</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {selectedTab === 'payment-distribution' && (() => {
-          const paymentDist = getPaymentDistribution();
-          const COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Nakit</p>
-                      <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} IQD</p>
-                      <p className="text-xs text-gray-500 mt-1">{paymentDist.cash.count} işlem ({paymentDist.cash.percentage.toFixed(1)}%)</p>
-                    </div>
-                    <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Kart</p>
-                      <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} IQD</p>
-                      <p className="text-xs text-gray-500 mt-1">{paymentDist.card.count} işlem ({paymentDist.card.percentage.toFixed(1)}%)</p>
-                    </div>
-                    <CreditCard className="w-12 h-12 text-blue-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Transfer</p>
-                      <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} IQD</p>
-                      <p className="text-xs text-gray-500 mt-1">{paymentDist.transfer.count} işlem ({paymentDist.transfer.percentage.toFixed(1)}%)</p>
-                    </div>
-                    <CreditCard className="w-12 h-12 text-orange-600 opacity-20" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg border p-4">
-                <h3 className="text-lg mb-4 flex items-center gap-2">
-                  <PieChartIcon className="w-5 h-5 text-blue-600" />
-                  Ödeme Yöntemi Dağılımı
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RePieChart>
-                      <Pie
-                        data={paymentDist.chartData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {paymentDist.chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
-                    </RePieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-3">
-                    {paymentDist.chartData.map((item, idx) => (
-                      <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[idx] }}></div>
-                          <span className="font-medium">{item.name}</span>
+                      <h4 className="text-sm text-gray-600 mb-3">SATIŞ ÖZETİ</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">Toplam İşlem</p>
+                          <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{formatNumber(item.value, 2, false)} IQD</p>
-                          <p className="text-xs text-gray-500">{item.count} işlem</p>
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">Toplam Ciro</p>
+                          <p className="text-3xl text-green-600 mt-1">{formatNumber(zReport.totalAmount, 2, false)}</p>
                         </div>
                       </div>
-                    ))}
+                    </div>
+
+                    {/* Payment Summary */}
+                    <div>
+                      <h4 className="text-sm text-gray-600 mb-3">ÖDEME ÖZETİ</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <span>Nakit Ödemeler</span>
+                          <span className="text-lg">{formatNumber(zReport.cashAmount, 2, false)}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <span>Kart Ödemeleri</span>
+                          <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg text-orange-700">
+                          <span>Toplam İndirim</span>
+                          <span className="text-lg">{formatNumber(zReport.totalDiscount, 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Receipt Range */}
+                    <div>
+                      <h4 className="text-sm text-gray-600 mb-3">FİŞ ARALIĞI</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">İlk Fiş</p>
+                          <p className="text-lg mt-1">{zReport.firstSale}</p>
+                        </div>
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">Son Fiş</p>
+                          <p className="text-lg mt-1">{zReport.lastSale}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            )}
 
-        {selectedTab === 'discount-report' && (() => {
-          const discounts = getDiscountReport();
-          const totalDiscount = discounts.reduce((sum, d) => sum + d.discountAmount, 0);
-          return (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">Toplam İndirim Tutarı</p>
-                    <p className="text-3xl text-orange-600 mt-1 font-bold">{formatNumber(totalDiscount, 2, false)} IQD</p>
-                    <p className="text-xs text-gray-500 mt-1">{discounts.reduce((sum, d) => sum + d.salesCount, 0)} işlemde uygulandı</p>
-                  </div>
-                  <Percent className="w-16 h-16 text-orange-600 opacity-20" />
-                </div>
-              </div>
-
+            {selectedTab === 'top-products' && (
               <div className="bg-white rounded-lg border">
                 <div className="p-4 border-b">
-                  <h3 className="text-lg flex items-center gap-2">
-                    <Percent className="w-5 h-5 text-orange-600" />
-                    İndirim Detayları
-                  </h3>
+                  <h3 className="text-lg">Ürün Satış Analizi</h3>
                 </div>
                 <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                   <table className="w-full min-w-[800px]">
                     <thead className="bg-gray-50 border-b sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm">İndirim Türü</th>
-                        <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
-                        <th className="px-4 py-3 text-right text-sm">Toplam İndirim</th>
-                        <th className="px-4 py-3 text-right text-sm">Ortalama İndirim</th>
-                        <th className="px-4 py-3 text-right text-sm">Oran</th>
+                        <th className="px-4 py-3 text-left text-sm">Sıra</th>
+                        <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
+                        <th className="px-4 py-3 text-right text-sm">Satış Adedi</th>
+                        <th className="px-4 py-3 text-right text-sm">Ciro</th>
+                        <th className="px-4 py-3 text-right text-sm">İndirim</th>
+                        <th className="px-4 py-3 text-right text-sm">Net Ciro</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {discounts.map((discount) => (
-                        <tr key={discount.name} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">{discount.name}</td>
+                      {productSales.map((item: any, index: number) => (
+                        <tr key={item.product.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm">{index + 1}</td>
+                          <td className="px-4 py-3">
+                            <div>
+                              <p>{item.product.name}</p>
+                              <p className="text-xs text-gray-500">{item.product.category}</p>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                              {discount.salesCount}
+                              {item.quantity}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right text-orange-600 font-semibold">
-                            {formatNumber(discount.discountAmount, 2, false)} IQD
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">
-                            {formatNumber(discount.avgDiscount, 2, false)} IQD
+                          <td className="px-4 py-3 text-right text-sm">{formatNumber(item.revenue, 2, false)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-orange-600">
+                            {formatNumber(item.discount, 2, false)}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
-                              {((discount.discountAmount / totalDiscount) * 100).toFixed(1)}%
+                            <span className="text-green-600">
+                              {formatNumber(item.revenue - item.discount, 2, false)}
                             </span>
                           </td>
                         </tr>
                       ))}
-                      <tr className="bg-gray-50 font-bold">
-                        <td className="px-4 py-3">TOPLAM</td>
-                        <td className="px-4 py-3 text-right">{discounts.reduce((sum, d) => sum + d.salesCount, 0)}</td>
-                        <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} IQD</td>
-                        <td className="px-4 py-3 text-right">{formatNumber(totalDiscount / discounts.reduce((sum, d) => sum + d.salesCount, 0), 2, false)} IQD</td>
-                        <td className="px-4 py-3 text-right">100%</td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            )}
 
-        {selectedTab === 'stock-status' && (() => {
-          const stockStatus = getStockStatus();
-          return (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-4">
-                <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Toplam Ürün</p>
-                      <p className="text-3xl text-blue-600 mt-1 font-bold">{stockStatus.totalProducts}</p>
-                    </div>
-                    <Package className="w-12 h-12 text-blue-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-red-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Tükendi</p>
-                      <p className="text-3xl text-red-600 mt-1 font-bold">{stockStatus.outOfStock}</p>
-                    </div>
-                    <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Düşük Stok</p>
-                      <p className="text-3xl text-orange-600 mt-1 font-bold">{stockStatus.lowStock}</p>
-                    </div>
-                    <TrendingDown className="w-12 h-12 text-orange-600 opacity-20" />
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-600">Stok Değeri</p>
-                      <p className="text-xl text-green-600 mt-1 font-bold">{formatNumber(stockStatus.totalStockValue, 2, false)} IQD</p>
-                    </div>
-                    <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
-                  </div>
-                </div>
-              </div>
-
+            {selectedTab === 'cashiers' && (
               <div className="bg-white rounded-lg border">
-                <div className="p-4 border-b flex items-center justify-between">
-                  <h3 className="text-lg flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-orange-600" />
-                    Düşük Stok Uyarıları
-                  </h3>
-                  <span className="text-sm text-gray-600">Kritik Seviye: 30 adet</span>
+                <div className="p-4 border-b">
+                  <h3 className="text-lg">Kasiyer Performans Raporu</h3>
                 </div>
                 <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                  <table className="w-full min-w-[900px]">
+                  <table className="w-full min-w-[800px]">
                     <thead className="bg-gray-50 border-b sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                        <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                        <th className="px-4 py-3 text-right text-sm">Mevcut Stok</th>
-                        <th className="px-4 py-3 text-right text-sm">Min. Stok</th>
-                        <th className="px-4 py-3 text-right text-sm">Fiyat</th>
-                        <th className="px-4 py-3 text-right text-sm">Stok Değeri</th>
-                        <th className="px-4 py-3 text-center text-sm">Durum</th>
+                        <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
+                        <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
+                        <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
+                        <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
+                        <th className="px-4 py-3 text-right text-sm">Nakit</th>
+                        <th className="px-4 py-3 text-right text-sm">Kart</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {stockStatus.lowStockItems.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium">{item.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
+                      {cashierPerformance.map(cashier => (
+                        <tr key={cashier.name} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
+                                {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
+                              </div>
+                              <span>{cashier.name}</span>
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-right">
-                            <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
-                              ? 'bg-red-100 text-red-700'
-                              : item.stock <= item.minStock
-                                ? 'bg-orange-100 text-orange-700'
-                                : 'bg-green-100 text-green-700'
-                              }`}>
-                              {item.stock}
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                              {cashier.salesCount}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
-                          <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} IQD</td>
-                          <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} IQD</td>
-                          <td className="px-4 py-3 text-center">
-                            {item.stock === 0 ? (
-                              <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Tükendi</span>
-                            ) : (
-                              <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Düşük</span>
-                            )}
+                          <td className="px-4 py-3 text-right text-lg text-green-600">
+                            {formatNumber(cashier.totalRevenue, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.avgSale, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.cashSales, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.cardSales, 2, false)}
                           </td>
                         </tr>
                       ))}
@@ -1492,400 +1269,1548 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                   </table>
                 </div>
               </div>
-            </div>
-          );
-        })()}
+            )}
 
-        {selectedTab === 'comparison' && (() => {
-          const comparison = getComparisonData(comparisonPeriod);
-          return (
-            <div className="space-y-4">
-              <div className="bg-white rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-purple-600" />
-                    Dönem Karşılaştırması
-                  </h3>
-                  <select
-                    value={comparisonPeriod}
-                    onChange={(e) => setComparisonPeriod(e.target.value as 'week' | 'month')}
-                    className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="week">Haftalık</option>
-                    <option value="month">Aylık</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-4 border-2 border-blue-200">
-                    <p className="text-sm text-gray-600 mb-2">Toplam Satış</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-blue-600">{comparison.current.totalSales}</p>
-                      <span className={`text-sm font-semibold ${comparison.change.sales > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {comparison.change.sales > 0 ? '↑' : '↓'} {Math.abs(comparison.change.sales)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.totalSales}</p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4 border-2 border-green-200">
-                    <p className="text-sm text-gray-600 mb-2">Toplam Ciro</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-green-600">{formatNumber(comparison.current.totalRevenue, 0, false)} IQD</p>
-                      <span className={`text-sm font-semibold ${comparison.change.revenue > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {comparison.change.revenue > 0 ? '↑' : '↓'} {Math.abs(comparison.change.revenue)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.totalRevenue, 0, false)} IQD</p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4 border-2 border-purple-200">
-                    <p className="text-sm text-gray-600 mb-2">Ortalama Satış</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-purple-600">{formatNumber(comparison.current.avgSale, 0, false)} IQD</p>
-                      <span className={`text-sm font-semibold ${comparison.change.avgSale > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {comparison.change.avgSale > 0 ? '↑' : '↓'} {Math.abs(comparison.change.avgSale)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.avgSale, 0, false)} IQD</p>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-lg p-4 border-2 border-orange-200">
-                    <p className="text-sm text-gray-600 mb-2">Müşteri Sayısı</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-orange-600">{comparison.current.customerCount}</p>
-                      <span className={`text-sm font-semibold ${comparison.change.customerCount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {comparison.change.customerCount > 0 ? '↑' : '↓'} {Math.abs(comparison.change.customerCount)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.customerCount}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {selectedTab === 'materials' && <MaterialMovementReport />}
-
-        {selectedTab === 'expiring-products' && (() => {
-          const getDaysUntilExpiry = (expiryDate: string) => {
-            const today = new Date();
-            const expiry = new Date(expiryDate);
-            const diffTime = expiry.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays;
-          };
-
-          const getExpiryStatus = (expiryDate: string) => {
-            const days = getDaysUntilExpiry(expiryDate);
-            if (days < 0) return { status: 'expired', color: 'red', label: 'Süresi Geçmiş' };
-            if (days <= 7) return { status: 'critical', color: 'red', label: 'Kritik' };
-            if (days <= 30) return { status: 'warning', color: 'orange', label: 'Yakında' };
-            return { status: 'normal', color: 'yellow', label: 'Normal' };
-          };
-
-          const expiredCount = expiringProducts.filter(p => p.expiry_date && getDaysUntilExpiry(p.expiry_date) < 0).length;
-          const criticalCount = expiringProducts.filter(p => {
-            if (!p.expiry_date) return false;
-            const days = getDaysUntilExpiry(p.expiry_date);
-            return days >= 0 && days <= 7;
-          }).length;
-          const warningCount = expiringProducts.filter(p => {
-            if (!p.expiry_date) return false;
-            const days = getDaysUntilExpiry(p.expiry_date);
-            return days > 7 && days <= 30;
-          }).length;
-
-          const totalValue = expiringProducts.reduce((sum, p) => {
-            return sum + ((p.unit_cost || 0) * (p.available_quantity || 0));
-          }, 0);
-
-          return (
-            <div className="space-y-4">
-              {/* Filter & Stats */}
-              <div className="bg-white rounded-lg border p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-orange-600" />
-                    Son Kullanma Tarihi Yaklaşanlar
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm text-gray-600">Gün:</label>
-                    <select
-                      value={expiringDays}
-                      onChange={(e) => setExpiringDays(Number(e.target.value))}
-                      className="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm"
-                    >
-                      <option value={7}>7 Gün</option>
-                      <option value={15}>15 Gün</option>
-                      <option value={30}>30 Gün</option>
-                      <option value={60}>60 Gün</option>
-                      <option value={90}>90 Gün</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="bg-red-50 rounded-lg border-2 border-red-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">Süresi Geçmiş</p>
-                        <p className="text-3xl text-red-600 mt-1 font-bold">{expiredCount}</p>
-                      </div>
-                      <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
-                    </div>
-                  </div>
-                  <div className="bg-orange-50 rounded-lg border-2 border-orange-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">Kritik (≤7 gün)</p>
-                        <p className="text-3xl text-orange-600 mt-1 font-bold">{criticalCount}</p>
-                      </div>
-                      <AlertTriangle className="w-12 h-12 text-orange-600 opacity-20" />
-                    </div>
-                  </div>
-                  <div className="bg-yellow-50 rounded-lg border-2 border-yellow-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">Yakında (≤30 gün)</p>
-                        <p className="text-3xl text-yellow-600 mt-1 font-bold">{warningCount}</p>
-                      </div>
-                      <Clock className="w-12 h-12 text-yellow-600 opacity-20" />
-                    </div>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg border-2 border-blue-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-gray-600">Toplam Değer</p>
-                        <p className="text-xl text-blue-600 mt-1 font-bold">{formatNumber(totalValue, 2, false)} IQD</p>
-                      </div>
-                      <DollarSign className="w-12 h-12 text-blue-600 opacity-20" />
+            {selectedTab === 'top-products' && (() => {
+              const topProducts = getTopProducts(20);
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-yellow-600" />
+                      En Çok Satan Ürünler (TOP 20)
+                    </h3>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[900px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">Sıra</th>
+                            <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
+                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
+                            <th className="px-4 py-3 text-right text-sm">Satış Adedi</th>
+                            <th className="px-4 py-3 text-right text-sm">Ciro</th>
+                            <th className="px-4 py-3 text-right text-sm">Ort. Fiyat</th>
+                            <th className="px-4 py-3 text-right text-sm">Stok</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {topProducts.map((product) => (
+                            <tr key={product.rank} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
+                                  }`}>
+                                  {product.rank}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-medium">{product.name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
+                                  {product.quantity}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                {formatNumber(product.revenue, 2, false)} IQD
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} IQD</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                  }`}>
+                                  {product.stock}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
-              </div>
+              );
+            })()}
 
-              {/* Products Table */}
-              <div className="bg-white rounded-lg border">
-                <div className="p-4 border-b flex items-center justify-between">
-                  <h4 className="text-md font-semibold">Ürün Listesi</h4>
-                  {loadingExpiring && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                      Yükleniyor...
+            {selectedTab === 'category-analysis' && (() => {
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4 flex items-center gap-2">
+                        <PieChartIcon className="w-5 h-5 text-blue-600" />
+                        Kategori Dağılımı (Ciro)
+                      </h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RePieChart>
+                          <Pie
+                            data={categories.slice(0, 8).map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {categories.slice(0, 8).map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
+                        </RePieChart>
+                      </ResponsiveContainer>
                     </div>
-                  )}
-                </div>
-                {loadingExpiring ? (
-                  <div className="p-8 text-center">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-600">Yükleniyor...</p>
-                  </div>
-                ) : expiringProducts.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">Son {expiringDays} gün içinde son kullanma tarihi yaklaşan ürün bulunamadı.</p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                    <table className="w-full min-w-[1000px]">
-                      <thead className="bg-gray-50 border-b sticky top-0">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm">Ürün Kodu</th>
-                          <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                          <th className="px-4 py-3 text-left text-sm">Lot/Seri No</th>
-                          <th className="px-4 py-3 text-left text-sm">Depo</th>
-                          <th className="px-4 py-3 text-right text-sm">Miktar</th>
-                          <th className="px-4 py-3 text-left text-sm">Son Kullanma Tarihi</th>
-                          <th className="px-4 py-3 text-right text-sm">Kalan Gün</th>
-                          <th className="px-4 py-3 text-right text-sm">Birim Maliyet</th>
-                          <th className="px-4 py-3 text-right text-sm">Toplam Değer</th>
-                          <th className="px-4 py-3 text-center text-sm">Durum</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {expiringProducts
-                          .sort((a, b) => {
-                            if (!a.expiry_date) return 1;
-                            if (!b.expiry_date) return -1;
-                            return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
-                          })
-                          .map((product, idx) => {
-                            if (!product.expiry_date) return null;
-                            const days = getDaysUntilExpiry(product.expiry_date);
-                            const status = getExpiryStatus(product.expiry_date);
-                            const productValue = (product.unit_cost || 0) * (product.available_quantity || 0);
-
-                            return (
-                              <tr key={product.id || idx} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 text-sm font-medium">{product.product_code || '-'}</td>
-                                <td className="px-4 py-3">
-                                  <div>
-                                    <p className="font-medium">{product.product_name || '-'}</p>
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 text-sm">
-                                  {product.lot_no && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Lot: {product.lot_no}</span>}
-                                  {product.serial_no && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">Seri: {product.serial_no}</span>}
-                                </td>
-                                <td className="px-4 py-3 text-sm">{product.warehouse_name || '-'}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm font-semibold">
-                                    {product.available_quantity || 0}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-green-600" />
+                        Kategori Performansı
+                      </h3>
+                      <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                        <table className="w-full min-w-[700px]">
+                          <thead className="bg-gray-50 border-b sticky top-0">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-sm">Kategori</th>
+                              <th className="px-4 py-2 text-right text-sm">Ciro</th>
+                              <th className="px-4 py-2 text-right text-sm">Adet</th>
+                              <th className="px-4 py-2 text-right text-sm">Ort. Fiyat</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {categories.map((cat, idx) => (
+                              <tr key={cat.name} className="hover:bg-gray-50">
+                                <td className="px-4 py-2">
                                   <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4 text-gray-400" />
-                                    <span className="text-sm">
-                                      {new Date(product.expiry_date).toLocaleDateString('tr-TR')}
-                                    </span>
+                                    <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                                    {cat.name}
                                   </div>
                                 </td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className={`px-2 py-1 rounded text-sm font-semibold ${days < 0
-                                    ? 'bg-red-100 text-red-700'
-                                    : days <= 7
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : days <= 30
-                                        ? 'bg-yellow-100 text-yellow-700'
-                                        : 'bg-green-100 text-green-700'
-                                    }`}>
-                                    {days < 0 ? `${Math.abs(days)} gün geçmiş` : `${days} gün`}
+                                <td className="px-4 py-2 text-right font-semibold text-green-600">
+                                  {formatNumber(cat.totalRevenue, 2, false)} IQD
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                    {cat.totalQuantity}
                                   </span>
                                 </td>
-                                <td className="px-4 py-3 text-right text-sm">{formatNumber(product.unit_cost || 0, 2, false)} IQD</td>
-                                <td className="px-4 py-3 text-right text-sm font-semibold">{formatNumber(productValue, 2, false)} IQD</td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${status.color === 'red'
-                                    ? 'bg-red-100 text-red-700'
-                                    : status.color === 'orange'
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : 'bg-yellow-100 text-yellow-700'
-                                    }`}>
-                                    {status.label}
-                                  </span>
+                                <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} IQD</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'hourly-analysis' && (() => {
+              const hourlyData = getHourlyAnalysis();
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-purple-600" />
+                      Saatlik Satış Analizi
+                    </h3>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={hourlyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="label" />
+                        <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                        <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="sales" fill="#3b82f6" name="Satış Sayısı" />
+                        <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Ciro (IQD)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b">
+                      <h4 className="text-md">Detaylı Saatlik Veriler</h4>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[700px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">Saat</th>
+                            <th className="px-4 py-3 text-right text-sm">Satış Sayısı</th>
+                            <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
+                            <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {hourlyData.map((hour) => (
+                            <tr key={hour.hour} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{hour.label}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                  {hour.sales}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                {formatNumber(hour.revenue, 2, false)} IQD
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} IQD
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'cash-status' && (() => {
+              const cashStatus = getCashStatus();
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Açılış Kasası</p>
+                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} IQD</p>
+                        </div>
+                        <DollarSign className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Günlük Nakit</p>
+                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} IQD</p>
+                        </div>
+                        <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Günlük Kart</p>
+                          <p className="text-2xl text-purple-600 mt-1 font-bold">{formatNumber(cashStatus.todayCard, 2, false)} IQD</p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Kapanış Kasası</p>
+                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} IQD</p>
+                        </div>
+                        <DollarSign className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4">Ödeme Dağılımı</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-green-500 rounded"></div>
+                            Nakit
+                          </span>
+                          <span className="font-semibold text-green-600">{formatNumber(cashStatus.todayCash, 2, false)} IQD</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                            Kart
+                          </span>
+                          <span className="font-semibold text-blue-600">{formatNumber(cashStatus.todayCard, 2, false)} IQD</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                            Transfer
+                          </span>
+                          <span className="font-semibold text-orange-600">{formatNumber(cashStatus.todayTransfer, 2, false)} IQD</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                          <span className="font-semibold">Toplam</span>
+                          <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} IQD</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4">Kart Türleri</h3>
+                      <div className="space-y-3">
+                        {cashStatus.cards.map((card) => (
+                          <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <span>{card.name}</span>
+                            <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} IQD</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'payment-distribution' && (() => {
+              const paymentDist: any = getPaymentDistribution();
+              const COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Nakit</p>
+                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} IQD</p>
+                          <p className="text-xs text-gray-500 mt-1">{paymentDist.cash.count} işlem ({paymentDist.cash.percentage.toFixed(1)}%)</p>
+                        </div>
+                        <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Kart</p>
+                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} IQD</p>
+                          <p className="text-xs text-gray-500 mt-1">{paymentDist.card.count} işlem ({paymentDist.card.percentage.toFixed(1)}%)</p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Transfer</p>
+                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} IQD</p>
+                          <p className="text-xs text-gray-500 mt-1">{paymentDist.transfer.count} işlem ({paymentDist.transfer.percentage.toFixed(1)}%)</p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <PieChartIcon className="w-5 h-5 text-blue-600" />
+                      Ödeme Yöntemi Dağılımı
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RePieChart>
+                          <Pie
+                            data={paymentDist.chartData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {paymentDist.chartData.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
+                        </RePieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-3">
+                        {paymentDist.chartData.map((item: any, idx: number) => (
+                          <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[idx] }}></div>
+                              <span className="font-medium">{item.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{formatNumber(item.value, 2, false)} IQD</p>
+                              <p className="text-xs text-gray-500">{item.count} işlem</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'discount-report' && (() => {
+              const discounts = getDiscountReport();
+              const totalDiscount = discounts.reduce((sum, d) => sum + d.discountAmount, 0);
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Toplam İndirim Tutarı</p>
+                        <p className="text-3xl text-orange-600 mt-1 font-bold">{formatNumber(totalDiscount, 2, false)} IQD</p>
+                        <p className="text-xs text-gray-500 mt-1">{discounts.reduce((sum, d) => sum + d.salesCount, 0)} işlemde uygulandı</p>
+                      </div>
+                      <Percent className="w-16 h-16 text-orange-600 opacity-20" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <Percent className="w-5 h-5 text-orange-600" />
+                        İndirim Detayları
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[800px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">İndirim Türü</th>
+                            <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
+                            <th className="px-4 py-3 text-right text-sm">Toplam İndirim</th>
+                            <th className="px-4 py-3 text-right text-sm">Ortalama İndirim</th>
+                            <th className="px-4 py-3 text-right text-sm">Oran</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {discounts.map((discount) => (
+                            <tr key={discount.name} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{discount.name}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                  {discount.salesCount}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-orange-600 font-semibold">
+                                {formatNumber(discount.discountAmount, 2, false)} IQD
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {formatNumber(discount.avgDiscount, 2, false)} IQD
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                                  {((discount.discountAmount / totalDiscount) * 100).toFixed(1)}%
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-gray-50 font-bold">
+                            <td className="px-4 py-3">TOPLAM</td>
+                            <td className="px-4 py-3 text-right">{discounts.reduce((sum, d) => sum + d.salesCount, 0)}</td>
+                            <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} IQD</td>
+                            <td className="px-4 py-3 text-right">{formatNumber(totalDiscount / discounts.reduce((sum, d) => sum + d.salesCount, 0), 2, false)} IQD</td>
+                            <td className="px-4 py-3 text-right">100%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'stock-status' && (() => {
+              const stockStatus = getStockStatus();
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Toplam Ürün</p>
+                          <p className="text-3xl text-blue-600 mt-1 font-bold">{stockStatus.totalProducts}</p>
+                        </div>
+                        <Package className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-red-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Tükendi</p>
+                          <p className="text-3xl text-red-600 mt-1 font-bold">{stockStatus.outOfStock}</p>
+                        </div>
+                        <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Düşük Stok</p>
+                          <p className="text-3xl text-orange-600 mt-1 font-bold">{stockStatus.lowStock}</p>
+                        </div>
+                        <TrendingDown className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">Stok Değeri</p>
+                          <p className="text-xl text-green-600 mt-1 font-bold">{formatNumber(stockStatus.totalStockValue, 2, false)} IQD</p>
+                        </div>
+                        <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center justify-between">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 text-orange-600" />
+                        Düşük Stok Uyarıları
+                      </h3>
+                      <span className="text-sm text-gray-600">Kritik Seviye: 30 adet</span>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[900px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
+                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
+                            <th className="px-4 py-3 text-right text-sm">Mevcut Stok</th>
+                            <th className="px-4 py-3 text-right text-sm">Min. Stok</th>
+                            <th className="px-4 py-3 text-right text-sm">Fiyat</th>
+                            <th className="px-4 py-3 text-right text-sm">Stok Değeri</th>
+                            <th className="px-4 py-3 text-center text-sm">Durum</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {stockStatus.lowStockItems.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{item.name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
+                                  ? 'bg-red-100 text-red-700'
+                                  : item.stock <= item.minStock
+                                    ? 'bg-orange-100 text-orange-700'
+                                    : 'bg-green-100 text-green-700'
+                                  }`}>
+                                  {item.stock}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
+                              <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} IQD</td>
+                              <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} IQD</td>
+                              <td className="px-4 py-3 text-center">
+                                {item.stock === 0 ? (
+                                  <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Tükendi</span>
+                                ) : (
+                                  <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Düşük</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'comparison' && (() => {
+              const comparison = getComparisonData(comparisonPeriod);
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-purple-600" />
+                        Dönem Karşılaştırması
+                      </h3>
+                      <select
+                        value={comparisonPeriod}
+                        onChange={(e) => setComparisonPeriod(e.target.value as 'week' | 'month')}
+                        className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="week">Haftalık</option>
+                        <option value="month">Aylık</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-blue-200">
+                        <p className="text-sm text-gray-600 mb-2">Toplam Satış</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-blue-600">{comparison.current.totalSales}</p>
+                          <span className={`text-sm font-semibold ${comparison.change.sales > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {comparison.change.sales > 0 ? '↑' : '↓'} {Math.abs(comparison.change.sales)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.totalSales}</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-green-200">
+                        <p className="text-sm text-gray-600 mb-2">Toplam Ciro</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-green-600">{formatNumber(comparison.current.totalRevenue, 0, false)} IQD</p>
+                          <span className={`text-sm font-semibold ${comparison.change.revenue > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {comparison.change.revenue > 0 ? '↑' : '↓'} {Math.abs(comparison.change.revenue)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.totalRevenue, 0, false)} IQD</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-purple-200">
+                        <p className="text-sm text-gray-600 mb-2">Ortalama Satış</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-purple-600">{formatNumber(comparison.current.avgSale, 0, false)} IQD</p>
+                          <span className={`text-sm font-semibold ${comparison.change.avgSale > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {comparison.change.avgSale > 0 ? '↑' : '↓'} {Math.abs(comparison.change.avgSale)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.avgSale, 0, false)} IQD</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-orange-200">
+                        <p className="text-sm text-gray-600 mb-2">Müşteri Sayısı</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-orange-600">{comparison.current.customerCount}</p>
+                          <span className={`text-sm font-semibold ${comparison.change.customerCount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {comparison.change.customerCount > 0 ? '↑' : '↓'} {Math.abs(comparison.change.customerCount)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.customerCount}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'materials' && <MaterialMovementReport />}
+
+            {selectedTab === 'expiring-products' && (() => {
+              const getDaysUntilExpiry = (expiryDate: string) => {
+                const today = new Date();
+                const expiry = new Date(expiryDate);
+                const diffTime = expiry.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays;
+              };
+
+              const getExpiryStatus = (expiryDate: string) => {
+                const days = getDaysUntilExpiry(expiryDate);
+                if (days < 0) return { status: 'expired', color: 'red', label: 'Süresi Geçmiş' };
+                if (days <= 7) return { status: 'critical', color: 'red', label: 'Kritik' };
+                if (days <= 30) return { status: 'warning', color: 'orange', label: 'Yakında' };
+                return { status: 'normal', color: 'yellow', label: 'Normal' };
+              };
+
+              const expiredCount = expiringProducts.filter(p => p.expiry_date && getDaysUntilExpiry(p.expiry_date) < 0).length;
+              const criticalCount = expiringProducts.filter(p => {
+                if (!p.expiry_date) return false;
+                const days = getDaysUntilExpiry(p.expiry_date);
+                return days >= 0 && days <= 7;
+              }).length;
+              const warningCount = expiringProducts.filter(p => {
+                if (!p.expiry_date) return false;
+                const days = getDaysUntilExpiry(p.expiry_date);
+                return days > 7 && days <= 30;
+              }).length;
+
+              const totalValue = expiringProducts.reduce((sum, p) => {
+                return sum + ((p.unit_cost || 0) * (p.available_quantity || 0));
+              }, 0);
+
+              return (
+                <div className="space-y-4">
+                  {/* Filter & Stats */}
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-orange-600" />
+                        Son Kullanma Tarihi Yaklaşanlar
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm text-gray-600">Gün:</label>
+                        <select
+                          value={expiringDays}
+                          onChange={(e) => setExpiringDays(Number(e.target.value))}
+                          className="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                        >
+                          <option value={7}>7 Gün</option>
+                          <option value={15}>15 Gün</option>
+                          <option value={30}>30 Gün</option>
+                          <option value={60}>60 Gün</option>
+                          <option value={90}>90 Gün</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="bg-red-50 rounded-lg border-2 border-red-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">Süresi Geçmiş</p>
+                            <p className="text-3xl text-red-600 mt-1 font-bold">{expiredCount}</p>
+                          </div>
+                          <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg border-2 border-orange-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">Kritik (≤7 gün)</p>
+                            <p className="text-3xl text-orange-600 mt-1 font-bold">{criticalCount}</p>
+                          </div>
+                          <AlertTriangle className="w-12 h-12 text-orange-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-yellow-50 rounded-lg border-2 border-yellow-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">Yakında (≤30 gün)</p>
+                            <p className="text-3xl text-yellow-600 mt-1 font-bold">{warningCount}</p>
+                          </div>
+                          <Clock className="w-12 h-12 text-yellow-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg border-2 border-blue-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">Toplam Değer</p>
+                            <p className="text-xl text-blue-600 mt-1 font-bold">{formatNumber(totalValue, 2, false)} IQD</p>
+                          </div>
+                          <DollarSign className="w-12 h-12 text-blue-600 opacity-20" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Products Table */}
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center justify-between">
+                      <h4 className="text-md font-semibold">Ürün Listesi</h4>
+                      {loadingExpiring && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          Yükleniyor...
+                        </div>
+                      )}
+                    </div>
+                    {loadingExpiring ? (
+                      <div className="p-8 text-center">
+                        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-600">Yükleniyor...</p>
+                      </div>
+                    ) : expiringProducts.length === 0 ? (
+                      <div className="p-8 text-center">
+                        <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">Son {expiringDays} gün içinde son kullanma tarihi yaklaşan ürün bulunamadı.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                        <table className="w-full min-w-[1000px]">
+                          <thead className="bg-gray-50 border-b sticky top-0">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-sm">Ürün Kodu</th>
+                              <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
+                              <th className="px-4 py-3 text-left text-sm">Lot/Seri No</th>
+                              <th className="px-4 py-3 text-left text-sm">Depo</th>
+                              <th className="px-4 py-3 text-right text-sm">Miktar</th>
+                              <th className="px-4 py-3 text-left text-sm">Son Kullanma Tarihi</th>
+                              <th className="px-4 py-3 text-right text-sm">Kalan Gün</th>
+                              <th className="px-4 py-3 text-right text-sm">Birim Maliyet</th>
+                              <th className="px-4 py-3 text-right text-sm">Toplam Değer</th>
+                              <th className="px-4 py-3 text-center text-sm">Durum</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {expiringProducts
+                              .sort((a, b) => {
+                                if (!a.expiry_date) return 1;
+                                if (!b.expiry_date) return -1;
+                                return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
+                              })
+                              .map((product, idx) => {
+                                if (!product.expiry_date) return null;
+                                const days = getDaysUntilExpiry(product.expiry_date);
+                                const status = getExpiryStatus(product.expiry_date);
+                                const productValue = (product.unit_cost || 0) * (product.available_quantity || 0);
+
+                                return (
+                                  <tr key={product.id || idx} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-sm font-medium">{product.product_code || '-'}</td>
+                                    <td className="px-4 py-3">
+                                      <div>
+                                        <p className="font-medium">{product.product_name || '-'}</p>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      {product.lot_no && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Lot: {product.lot_no}</span>}
+                                      {product.serial_no && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">Seri: {product.serial_no}</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">{product.warehouse_name || '-'}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm font-semibold">
+                                        {product.available_quantity || 0}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-gray-400" />
+                                        <span className="text-sm">
+                                          {new Date(product.expiry_date).toLocaleDateString('tr-TR')}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className={`px-2 py-1 rounded text-sm font-semibold ${days < 0
+                                        ? 'bg-red-100 text-red-700'
+                                        : days <= 7
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : days <= 30
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-green-100 text-green-700'
+                                        }`}>
+                                        {days < 0 ? `${Math.abs(days)} gün geçmiş` : `${days} gün`}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(product.unit_cost || 0, 2, false)} IQD</td>
+                                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatNumber(productValue, 2, false)} IQD</td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span className={`px-2 py-1 rounded text-xs font-semibold ${status.color === 'red'
+                                        ? 'bg-red-100 text-red-700'
+                                        : status.color === 'orange'
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                        {status.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            {expiringProducts.filter(p => !p.expiry_date).length > 0 && (
+                              <tr className="bg-gray-50">
+                                <td colSpan={10} className="px-4 py-3 text-center text-sm text-gray-500">
+                                  {expiringProducts.filter(p => !p.expiry_date).length} ürün için son kullanma tarihi belirtilmemiş
                                 </td>
                               </tr>
-                            );
-                          })}
-                        {expiringProducts.filter(p => !p.expiry_date).length > 0 && (
-                          <tr className="bg-gray-50">
-                            <td colSpan={10} className="px-4 py-3 text-center text-sm text-gray-500">
-                              {expiringProducts.filter(p => !p.expiry_date).length} ürün için son kullanma tarihi belirtilmemiş
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                      <tfoot className="bg-gray-50 border-t">
-                        <tr>
-                          <td colSpan={8} className="px-4 py-3 text-right font-semibold">TOPLAM:</td>
-                          <td className="px-4 py-3 text-right font-bold text-green-600">{formatNumber(totalValue, 2, false)} IQD</td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
+                            )}
+                          </tbody>
+                          <tfoot className="bg-gray-50 border-t">
+                            <tr>
+                              <td colSpan={8} className="px-4 py-3 text-right font-semibold">TOPLAM:</td>
+                              <td className="px-4 py-3 text-right font-bold text-green-600">{formatNumber(totalValue, 2, false)} IQD</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'profit-loss' && <ProfitLossReport />}
+
+            {selectedTab === 'customer-sales' && (
+              <CustomerSalesReport sales={sales} customers={[]} />
+            )}
+
+            {selectedTab === 'sales-trend' && (
+              <SalesTrendReport sales={sales} />
+            )}
+
+            {selectedTab === 'sales-target' && (
+              <SalesTargetReport sales={sales} />
+            )}
+
+            {selectedTab === 'cash-flow' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <DollarSign className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Nakit Akış Raporu</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
               </div>
-            </div>
-          );
-        })()}
+            )}
 
-        {selectedTab === 'profit-loss' && <ProfitLossReport />}
+            {selectedTab === 'debt-aging' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <FileText className="w-12 h-12 text-orange-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Borç/Alacak Yaşlandırma</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'customer-sales' && (
-          <CustomerSalesReport sales={sales} customers={[]} />
-        )}
+            {selectedTab === 'check-tracking' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <CreditCard className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Çek/Senet Takibi</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'sales-trend' && (
-          <SalesTrendReport sales={sales} />
-        )}
+            {selectedTab === 'current-account' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <BarChart3 className="w-12 h-12 text-green-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Cari Hesap Özeti</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'sales-target' && (
-          <SalesTargetReport sales={sales} />
-        )}
+            {selectedTab === 'stock-aging' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <Clock className="w-12 h-12 text-red-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Stok Yaşlandırma</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'cash-flow' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <DollarSign className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Nakit Akış Raporu</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+            {selectedTab === 'stock-turnover' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <TrendingUp className="w-12 h-12 text-blue-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Stok Dönüş Hızı</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'debt-aging' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <FileText className="w-12 h-12 text-orange-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Borç/Alacak Yaşlandırma</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+            {selectedTab === 'stock-abc' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <Award className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Stok ABC Analizi</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'check-tracking' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <CreditCard className="w-12 h-12 text-purple-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Çek/Senet Takibi</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+            {selectedTab === 'commission' && (
+              <div className="bg-white rounded-lg border p-6 text-center">
+                <Percent className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Komisyon Raporu</h3>
+                <p className="text-gray-600">Yakında eklenecek...</p>
+              </div>
+            )}
 
-        {selectedTab === 'current-account' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <BarChart3 className="w-12 h-12 text-green-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Cari Hesap Özeti</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+            {selectedTab === 'chat-ai' && (
+              <ReportChatAI
+                sales={sales}
+                products={products}
+                dailySales={dailySales}
+                dailyTotal={dailyTotal}
+                dailyCash={dailyCash}
+                dailyCard={dailyCard}
+                productSales={productSales}
+                cashierPerformance={cashierPerformance}
+                categoryAnalysis={getCategoryAnalysis()}
+                hourlyAnalysis={getHourlyAnalysis()}
+              />
+            )}
 
-        {selectedTab === 'stock-aging' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <Clock className="w-12 h-12 text-red-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Stok Yaşlandırma</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+            {selectedTab === 'daily-sales-executive' && (() => {
+              const paymentDist = getPaymentDistribution();
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316'];
 
-        {selectedTab === 'stock-turnover' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <TrendingUp className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Stok Dönüş Hızı</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+              return (
+                <div className="space-y-6">
+                  {/* Upper Section: Pie Chart & Financial Totals */}
+                  <div className="grid grid-cols-12 gap-6">
+                    {/* Left: Pie Chart */}
+                    <div className="col-span-5 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Ödeme Tipi Dağılımı</h3>
+                      <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={paymentDist.chartData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={80}
+                              outerRadius={120}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {paymentDist.chartData.map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Legend verticalAlign="bottom" height={36} />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
 
-        {selectedTab === 'stock-abc' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <Award className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Stok ABC Analizi</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+                    {/* Right: Detailed Totals */}
+                    <div className="col-span-7 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <div className="space-y-4">
+                        {(() => {
+                          const stats = businessType === 'restaurant' ? restStats : {
+                            totalSales: dailyTotal,
+                            payments: { 'NAKİT': dailyCash, 'POS': dailyCard },
+                            discountTotal: dailyDiscount
+                          };
+                          const items = [
+                            { label: 'Cariye aktarılan', value: 0, sub: 'Satış: 0,00, Çıkış: 0,00, Giriş: 0,00', color: 'text-slate-600' },
+                            { label: 'NAKİT', value: stats?.payments?.['NAKİT'] || 0, sub: `Satış: ${formatNumber(stats?.payments?.['NAKİT'] || 0, 2, false)}, Çıkış: 0,00, Giriş: 0,00`, color: 'text-slate-800 font-bold' },
+                            { label: 'POS', value: stats?.payments?.['POS'] || 0, sub: `Satış: ${formatNumber(stats?.payments?.['POS'] || 0, 2, false)}, Çıkış: 0,00, Giriş: 0,00`, color: 'text-slate-800' },
+                            { label: 'MULTİNET', value: stats?.payments?.['MULTİNET'] || 0, color: 'text-slate-800' },
+                            { label: 'Servis Ücreti', value: 0.00, color: 'text-red-500' },
+                            { label: 'Açık Masalar', value: 0.00, color: 'text-green-500' },
+                            { label: 'Genel Toplam', value: stats?.totalSales || 0, color: 'text-amber-500 font-black' },
+                            { label: 'Tahsilat Toplam', value: stats?.totalSales || 0, color: 'text-red-500' },
+                            { label: 'Satışlar Toplamı', value: stats?.totalSales || 0, color: 'text-blue-500' },
+                          ];
 
-        {selectedTab === 'commission' && (
-          <div className="bg-white rounded-lg border p-6 text-center">
-            <Percent className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Komisyon Raporu</h3>
-            <p className="text-gray-600">Yakında eklenecek...</p>
-          </div>
-        )}
+                          return items.map((item, i) => (
+                            <div key={i} className={`flex items-start justify-between border-b border-slate-50 pb-2 ${item.color}`}>
+                              <div>
+                                <p className="text-sm">{item.label}</p>
+                                {item.sub && <p className="text-[10px] text-slate-400 italic">{item.sub}</p>}
+                              </div>
+                              <p className="text-sm">₺ {formatNumber(item.value, 2, false)}</p>
+                            </div>
+                          ));
+                        })()}
+                        <div className="flex items-center gap-2 pt-2 text-purple-600 font-bold">
+                          <TagsOutlined />
+                          <span className="text-sm">İndirim Toplam</span>
+                          <span className="ml-auto">₺ {formatNumber(businessType === 'restaurant' ? (restStats?.discountTotal || 0) : dailyDiscount, 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-        {selectedTab === 'chat-ai' && (
-          <ReportChatAI
-            sales={sales}
-            products={products}
-            dailySales={dailySales}
-            dailyTotal={dailyTotal}
-            dailyCash={dailyCash}
-            dailyCard={dailyCard}
-            productSales={productSales}
-            cashierPerformance={cashierPerformance}
-            categoryAnalysis={getCategoryAnalysis()}
-            hourlyAnalysis={getHourlyAnalysis()}
-          />
-        )}
-      </div>
-    </div>
+                  {/* Middle: Yemek Entegrasyonları (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Yemek Entegrasyonları Satış Dağılımı</h3>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[
+                          { name: 'Yemek Sepeti', value: 0 },
+                          { name: 'Getir Yemek', value: 0 },
+                          { name: 'Trendyol Yemek', value: 0 }
+                        ]}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" fill="#d1d5db" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Lower Section: Category Sales (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kategori Bazlı Satış Dağılımı</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categories.slice(0, 5).map(c => ({ name: c.name, value: c.totalRevenue }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={60}>
+                            {categories.slice(0, 5).map((_entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index === 0 ? '#e1f57d' : '#f9a825'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Region Table Section (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Bölge Masa Tablosu</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[
+                          { name: 'SALON', value: 18145.00, color: '#a7f3d0' },
+                          { name: 'TERAS', value: 9060.00, color: '#c084fc' },
+                          { name: 'BAHÇE', value: 840.00, color: '#bcaaa4' },
+                          { name: 'Perakende', value: 651.00, color: '#cfd8dc' },
+                          { name: 'Paket Servis', value: 130.00, color: '#fff9c4' }
+                        ]}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50}>
+                            {[
+                              { name: 'SALON', value: 18145.00, color: '#a7f3d0' },
+                              { name: 'TERAS', value: 9060.00, color: '#c084fc' },
+                              { name: 'BAHÇE', value: 840.00, color: '#bcaaa4' },
+                              { name: 'Perakende', value: 651.00, color: '#cfd8dc' },
+                              { name: 'Paket Servis', value: 130.00, color: '#fff9c4' }
+                            ].map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Footer Section: Cashier and Department Summaries */}
+                  <div className="grid grid-cols-2 gap-6 pb-6">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kasiyer İşlem Özeti</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={[{ name: 'YONETICİ', value: 28826.00 }]}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              dataKey="value"
+                            >
+                              <Cell fill="#ffab91" />
+                            </Pie>
+                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Legend />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Bölüm İşlem Özeti</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={[
+                                { name: 'BARİSTA', value: 225.00 },
+                                { name: 'IZGARA', value: 28601.00 }
+                              ] as any[]}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              dataKey="value"
+                            >
+                              <Cell fill="#90caf9" />
+                              <Cell fill="#80cbc4" />
+                            </Pie>
+                            <Tooltip formatter={(value: any) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Legend />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'end-of-day' && (() => {
+              const paymentDist: any = getPaymentDistribution();
+              const COLORS = ['#90caf9', '#81c784', '#ce93d8', '#ffab91', '#4db6ac'];
+              return (
+                <div className="space-y-6">
+                  {/* Top Summary Cards */}
+                  <div className="grid grid-cols-6 gap-4">
+                    {(() => {
+                      const totalGuests = restOrders.reduce((sum, o) => sum + (o.guest_count || 2), 0);
+                      const totalItems = restOrders.reduce((sum, o) => sum + (o.items?.length || 0), 0);
+                      const takeawayOrders = restOrders.filter(o => o.table_id === 'TAKEAWAY');
+                      const tableOrders = restOrders.filter(o => o.table_id !== 'TAKEAWAY' && o.table_id !== 'RETAIL');
+                      const retailOrders = restOrders.filter(o => o.table_id === 'RETAIL');
+
+                      return [
+                        { label: 'Kişi Sayısı', value: totalGuests, icon: <TeamOutlined className="text-blue-200" />, color: 'border-blue-50' },
+                        { label: 'Toplam Sipariş', value: restOrders.length, sub: `${totalItems} ürün`, icon: <HistoryOutlined className="text-purple-200" />, color: 'border-purple-50' },
+                        { label: 'Servis (Masa)', value: tableOrders.length, sub: `${tableOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <ApartmentOutlined className="text-orange-200" />, color: 'border-orange-50' },
+                        { label: 'Paket Servis', value: takeawayOrders.length, sub: `${takeawayOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <Package className="text-red-200" />, color: 'border-red-50' },
+                        { label: 'Perakende', value: retailOrders.length, sub: `${retailOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <ShoppingCart className="text-green-200" />, color: 'border-green-50' },
+                        { label: 'Self Servis', value: '0', sub: '0 ürün', icon: <PieChartIcon className="text-pink-200" />, color: 'border-pink-50' },
+                      ].map((card, i) => (
+                        <div key={i} className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}>
+                          <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                            {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                          </div>
+                          <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">{card.label}</p>
+                          <p className="text-2xl font-black text-blue-600">{card.value}</p>
+                          {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
+                          <div className="mt-2 flex justify-center">
+                            {React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-6">
+                    <div className="col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Ödeme Tipi Dağılımı</h3>
+                      <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={paymentDist.chartData}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={120}
+                              dataKey="value"
+                            >
+                              {paymentDist.chartData.map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip />
+                            <Legend />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    <div className="col-span-6 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <div className="space-y-4">
+                        {[
+                          { label: 'Cariye aktarılan', value: 1433.70, sub: 'Satış: 1.433,70, Çıkış: 0,00, Giriş: 0,00', color: 'text-slate-600' },
+                          { label: 'NAKİT', value: 28209.00, sub: 'Satış: 28.309,00, Çıkış: 240,00, Giriş: 140,00', color: 'text-slate-800 font-black' },
+                          { label: 'POS', value: 9374.00, sub: 'Satış: 9.374,00, Çıkış: 0,00, Giriş: 0,00', color: 'text-slate-800' },
+                          { label: 'MULTİNET', value: 170.00, sub: 'Satış: 170,00, Çıkış: 0,00, Giriş: 0,00', color: 'text-slate-800' },
+                          { label: 'Servis Ücreti', value: 0.00, color: 'text-red-500' },
+                          { label: 'Açık Masalar', value: 4972.50, color: 'text-green-500' },
+                          { label: 'Genel Toplam', value: 42825.50, color: 'text-amber-500 font-black' },
+                          { label: 'Tahsilat Toplam', value: 37753.00, color: 'text-red-500' },
+                          { label: 'Satışlar Toplamı', value: 39186.70, color: 'text-blue-500' },
+                        ].map((item, i) => (
+                          <div key={i} className={`flex items-start justify-between border-b border-slate-50 pb-2 ${item.color}`}>
+                            <div>
+                              <p className="text-sm">{item.label}</p>
+                              {item.sub && <p className="text-[10px] text-slate-400 italic">{item.sub}</p>}
+                            </div>
+                            <p className="text-sm">₺ {formatNumber(item.value, 2, false)}</p>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 pt-2 text-purple-600 font-bold">
+                          <TagsOutlined />
+                          <span className="text-sm uppercase font-black">İndirim Toplam</span>
+                          <span className="ml-auto">₺ 0,00</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'cash-report' && (() => {
+              const payments = restOrders.reduce((acc: any, o) => {
+                const method = o.payment_method || 'NAKİT';
+                acc[method] = (acc[method] || 0) + Number(o.total_amount || 0);
+                return acc;
+              }, {});
+
+              const chartData = Object.entries(payments).map(([name, value]: [string, any]) => ({
+                name,
+                value: Number(value || 0),
+                fill: name === 'NAKİT' ? '#64b5f6' : name === 'POS' ? '#b39ddb' : '#9575cd'
+              }));
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kasa Hareket Raporları</h3>
+                    <div className="h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <HistoryOutlined />
+                        <span>Açıklama</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>Miktar</span>
+                        <span>Tutar</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {Object.entries(payments).map(([method, total], i) => (
+                        <div key={i} className={`p-3 flex justify-between items-center ${i % 2 === 0 ? 'bg-orange-50' : 'bg-white'}`}>
+                          <span className="text-sm font-bold text-slate-700">{method}</span>
+                          <div className="flex gap-20">
+                            <span className="text-sm font-bold">-</span>
+                            <span className="text-sm font-bold">₺ {formatNumber(total as number, 2, false)}</span>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
+                        <span className="text-sm font-bold text-slate-700">Toplamlar</span>
+                        <div className="flex gap-20">
+                          <span className="text-sm font-bold">-</span>
+                          <span className="text-sm font-bold">₺ {formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'product-reports' && (() => {
+              const productSalesData = getProductSales();
+              const chartData = productSalesData.slice(0, 10).map((p, i) => ({
+                name: p.product.name,
+                value: p.revenue,
+                fill: `hsl(${25 + i * 20}, 70%, 60%)`
+              }));
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">En Çok Satan Ürünler</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={25} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="w-4 h-4" />
+                        <span>Ürün Adı</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>Miktar</span>
+                        <span>Toplam Tutar</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {productSalesData.map((prod, i) => (
+                        <React.Fragment key={i}>
+                          <div className="p-2 text-white font-bold text-[10px] uppercase pl-4" style={{ backgroundColor: `${bizConfig.color}cc` }}>{prod.product.name}</div>
+                          <div className="p-2 flex justify-between items-center pl-8 border-b" style={{ backgroundColor: `${bizConfig.color}11`, borderColor: `${bizConfig.color}22` }}>
+                            <span className="text-xs font-bold text-slate-500">Satış Verisi</span>
+                            <div className="flex gap-20 font-bold text-xs">
+                              <span>{formatNumber(prod.quantity, 2, false)} Adet</span>
+                              <span>₺ {formatNumber(prod.revenue, 2, false)}</span>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-slate-100 font-bold border-t-2 border-slate-200">
+                        <span className="text-sm font-bold text-slate-700">Genel Toplam</span>
+                        <div className="flex gap-20">
+                          <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.quantity || 0), 0), 2, false)}</span>
+                          <span className="text-sm font-bold">₺ {formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.revenue || 0), 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'category-reports' && (() => {
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#f06292', '#d4e157', '#64b5f6', '#9575cd', '#4db6ac', '#ffb74d'];
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kategori Raporları</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categories.map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <PieChartIcon className="w-4 h-4" />
+                        <span>Kategori Adı</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>Miktar</span>
+                        <span>Toplam Tutar</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {categories.map((cat, i) => (
+                        <React.Fragment key={i}>
+                          <div className="bg-orange-400 p-2 text-white font-bold text-xs uppercase pl-4">{cat.name}</div>
+                          {cat.items && cat.items.slice(0, 3).map((item, j) => (
+                            <div key={j} className="p-2 flex justify-between items-center bg-orange-50 pl-8 border-b border-orange-100 border-l-4 border-l-orange-200">
+                              <span className="text-[11px] font-medium text-slate-600">{item.product_name}</span>
+                              <div className="flex gap-20 font-bold text-[11px]">
+                                <span>{formatNumber(item.quantity, 0, false)}</span>
+                                <span>₺ {formatNumber(item.subtotal, 2, false)}</span>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="p-2 flex justify-between items-center bg-amber-50 pl-8 font-bold border-b border-amber-200">
+                            <span className="text-xs text-amber-700">Kategori Toplamı</span>
+                            <div className="flex gap-20 text-xs text-amber-700">
+                              <span>{formatNumber(cat.totalQuantity, 2, false)}</span>
+                              <span>₺ {formatNumber(cat.totalRevenue, 2, false)}</span>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
+                        <span className="text-sm">Genel Toplam</span>
+                        <div className="flex gap-20">
+                          <span>{formatNumber(categories.reduce((s, c) => s + c.totalQuantity, 0), 2, false)}</span>
+                          <span>₺ {formatNumber(categories.reduce((s, c) => s + c.totalRevenue, 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'detailed-sales' && (() => {
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-4 flex-1">
+                      <Input
+                        placeholder="Aranacak kelime giriniz"
+                        prefix={<SearchOutlined className="text-slate-400" />}
+                        className="max-w-md border-slate-200"
+                      />
+                      <Button icon={<FilterOutlined />}>Filtre</Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button icon={<MailOutlined />} type="text" />
+                      <Button icon={<FilePdfOutlined />} type="text" />
+                      <Button icon={<FileExcelOutlined />} type="text" />
+                      <Button icon={<PrinterOutlined />} type="text" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-[11px]">
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 border-b border-slate-100 italic text-slate-500">
+                      <HistoryOutlined className="w-3 h-3" />
+                      <span>Detaylar</span>
+                    </div>
+
+                    {/* Table Header */}
+                    <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 font-bold text-blue-600 uppercase tracking-tighter">
+                      <div className="col-span-1">Açılış za...</div>
+                      <div className="col-span-1">Kapanış ...</div>
+                      <div className="col-span-1">Sipariş No</div>
+                      <div className="col-span-1">Masa Adı</div>
+                      <div className="col-span-1">Ürün Adı</div>
+                      <div className="col-span-1">Cari</div>
+                      <div className="col-span-1 text-center">Miktar</div>
+                      <div className="col-span-1">Birim Fiyat</div>
+                      <div className="col-span-1">Satır Topl...</div>
+                      <div className="col-span-1">Durum</div>
+                      <div className="col-span-2">Satır Öze...</div>
+                    </div>
+
+                    {/* Grouped Data Mockup */}
+                    {[
+                      {
+                        id: '621',
+                        items: [
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'ÇİLEK REÇELİ', cari: 'Peşin Satış', qty: 1, price: 18, total: 18, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'DOMATES', cari: 'Peşin Satış', qty: 1, price: 8, total: 8, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'SOSİS', cari: 'Peşin Satış', qty: 1, price: 23, total: 23, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'SALATALIK', cari: 'Peşin Satış', qty: 1, price: 14, total: 14, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'SİYAH ZEYTİN', cari: 'Peşin Satış', qty: 2, price: 0, total: 0, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'ŞİŞ KÖFTE', cari: 'Peşin Satış', qty: 1, price: 85, total: 85, status: 'Aktif' },
+                          { open: '22/02/2025', close: '01/01/1970', table: 'S 10', product: 'BAL', cari: 'Peşin Satış', qty: 1, price: 90, total: 90, status: 'Aktif' },
+                        ],
+                        summary: { qty: 11, total: 220, discount: 0, count: 10 }
+                      },
+                      {
+                        id: '647',
+                        items: [],
+                        summary: { qty: 4, total: 120, discount: 0, count: 4 }
+                      },
+                      {
+                        id: '649',
+                        items: [],
+                        summary: { qty: 8, total: 320, discount: 0, count: 8 }
+                      }
+                    ].map((group, idx) => (
+                      <div key={idx} className="border-b border-slate-100 last:border-0">
+                        <div className="bg-slate-50/50 p-2 flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <CaretDownOutlined className="text-red-500 w-3 h-3" />
+                            <span className="text-red-600 font-bold">Sipariş No : {group.id}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-[10px]">
+                            <span className="text-green-600 font-bold">(Miktar {group.summary.qty}.0, Tutar {group.summary.total.toFixed(2)}, İndirim {group.summary.discount.toFixed(1)})</span>
+                            <span className="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-black">
+                              {group.summary.count}
+                            </span>
+                          </div>
+                        </div>
+                        {group.items.map((item, i) => (
+                          <div key={i} className="grid grid-cols-12 gap-2 p-2 hover:bg-red-50/10 text-slate-600 transition-colors border-b border-slate-50 last:border-0">
+                            <div className="col-span-1">{item.open}</div>
+                            <div className="col-span-1">{item.close}</div>
+                            <div className="col-span-1">{group.id}</div>
+                            <div className="col-span-1">{item.table}</div>
+                            <div className="col-span-1 font-bold text-slate-800">{item.product}</div>
+                            <div className="col-span-1">{item.cari}</div>
+                            <div className="col-span-1 text-center font-bold">{item.qty}</div>
+                            <div className="col-span-1 font-bold">₺{item.price}</div>
+                            <div className="col-span-1 font-black">₺{item.total}</div>
+                            <div className="col-span-1 text-green-500 font-bold">{item.status}</div>
+                            <div className="col-span-2">---</div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                    <div className="p-2 bg-slate-100 flex justify-between items-center font-bold text-slate-500 border-t border-slate-200">
+                      <span>Zeroolt Yazılım A.Ş.</span>
+                      <span>Toplam Kayıt : 202</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'analysis' && (() => {
+              const cards = [
+                'Aylara Göre Satışlar', 'Kullanıcıya Göre Ciro Toplamları', 'Kategoriye Göre Aylık Satış Toplamları',
+                'Ürüne Göre Aylık Satış Miktarları', 'Kategoriye Göre Aylık Satış Miktarları', 'Bölümlere Göre Satış Toplamları',
+                'Bölgelere Göre Satış Toplamları', 'Masalara Göre Satış Toplamları', 'Aylara Göre Tahsilat Toplamları'
+              ];
+              return (
+                <div className="grid grid-cols-4 gap-4">
+                  {cards.map((card, i) => (
+                    <div key={i} className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-4 hover:shadow-md hover:border-red-200 transition-all cursor-pointer group">
+                      <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <PieChartIcon className="text-red-600 w-6 h-6" />
+                      </div>
+                      <span className="text-[13px] font-bold text-slate-600 text-center leading-snug">{card}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Content>
+        </Layout>
+      </Layout>
+    </ConfigProvider>
   );
 }

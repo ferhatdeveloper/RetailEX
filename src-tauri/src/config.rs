@@ -79,17 +79,10 @@ fn default_hidden_modules() -> Vec<String> {
         "sales-invoice-wholesale".to_string(),
         "purchaserequest".to_string(),
         "serviceinvoice-received".to_string(),
-        "material-classes".to_string(),
-        "variants".to_string(),
-        "special-codes".to_string(),
-        "brand-definitions".to_string(),
-        "group-codes".to_string(),
-        "product-categories".to_string(),
         "Dashboard".to_string(),
         "store-management-group".to_string(),
         "databroadcast".to_string(),
         "integrations".to_string(),
-        "excel".to_string(),
     ]
 }
 
@@ -221,6 +214,13 @@ pub fn get_app_config(_app_handle: AppHandle) -> Result<AppConfig, String> {
             if let Some(ref mut vpn) = config.vpn_config {
                 vpn.private_key = decode_base64(&vpn.private_key);
             }
+
+            // Ensure requested material management modules are NOT hidden
+            let show_always = vec![
+                "material-classes", "variants", "special-codes", 
+                "brand-definitions", "group-codes", "product-categories"
+            ];
+            config.hidden_modules.retain(|m| !show_always.contains(&m.as_str()));
             
             Ok(config)
         }
@@ -247,6 +247,14 @@ pub fn get_app_config_internal() -> Result<AppConfig, String> {
             if let Some(ref mut vpn) = config.vpn_config {
                 vpn.private_key = decode_base64(&vpn.private_key);
             }
+
+            // Ensure requested material management modules are NOT hidden
+            let show_always = vec![
+                "material-classes", "variants", "special-codes", 
+                "brand-definitions", "group-codes", "product-categories"
+            ];
+            config.hidden_modules.retain(|m| !show_always.contains(&m.as_str()));
+
             Ok(config)
         }
         Err(_) => Ok(AppConfig::default()),

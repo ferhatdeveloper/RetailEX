@@ -7,6 +7,8 @@ export interface CartItem {
   subtotal: number;
   variant?: ProductVariant;
   price?: number; // Overridden price
+  /** Mutfak durumu — sadece Restoran POS'unda kullanılır */
+  kitchenStatus?: 'pending' | 'cooking' | 'ready' | 'served';
 }
 
 export interface ParkedReceipt {

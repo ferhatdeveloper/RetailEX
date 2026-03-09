@@ -138,6 +138,12 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
                   <span>{sale.customerName}</span>
                 </div>
               )}
+              {sale.table && (
+                <div className="flex justify-between">
+                  <span>MASA:</span>
+                  <span className="font-bold">{sale.table}</span>
+                </div>
+              )}
             </div>
 
             <div className="border-t-2 border-dashed border-gray-400 my-3"></div>

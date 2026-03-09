@@ -55,154 +55,107 @@ function App() {
 
   // Unified Infrastructure & Config Check
   useEffect(() => {
-    const bootstrapWebConfig = async (firmId: string) => {
-      try {
-        const { data, error } = await supabase
-          .from('firmalar')
-          .select('*')
-          .eq('firma_id', firmId)
-          .maybeSingle();
-
-        if (error || !data) return null;
-
-        const conn = data.connection_config || {};
-        const config = {
-          is_configured: true,
-          db_mode: "hybrid",
-          remote_db: `${conn.host || '91.205.41.130'}:${conn.port || 5432}/${conn.database || 'EXFINOPS'}`,
-          pg_remote_user: conn.username || 'postgres',
-          pg_remote_pass: conn.password || '',
-          erp_firm_nr: data.firma_id || '001',
-          terminal_name: data.firma_adi || 'RETAILEX DEMO',
-          license_expiry: data.license_expiry || data.lisans_bitis || '2026-12-31',
-          max_users: data.max_users || data.kullanici_hakki || 5,
-        };
-
-        localStorage.setItem('retailex_web_config', JSON.stringify(config));
+    const applyConfig = (config: any) => {
+      if (config?.is_configured === true) {
+        setIsConfigured(true);
         localStorage.setItem('exretail_selected_firma_id', config.erp_firm_nr);
+        localStorage.setItem('exretail_selected_donem_id', config.erp_period_nr || '01');
         localStorage.setItem('exretail_firma_donem_configured', 'true');
-        return config;
-      } catch (e) {
-        console.error('Bootstrap failed:', e);
-        return null;
+      } else {
+        setIsConfigured(false);
       }
     };
 
     const startupFlow = async () => {
       try {
-        let config: any = null;
-        let tauriInvoke: any = null;
-        let backendVersion: string = "unknown";
-
         if (isTauri) {
           const { invoke } = await import('@tauri-apps/api/core');
-          tauriInvoke = invoke;
 
-          // 1. Get backend version first (fast)
-          try {
-            backendVersion = await Promise.race([
-              tauriInvoke('get_app_version'),
-              new Promise<string>((_, reject) => setTimeout(() => reject(new Error('get_app_version timeout')), 2000))
-            ]);
-            setVersion(backendVersion);
-            console.log(`[Startup] Backend version: ${backendVersion}`);
-          } catch (e) {
-            console.warn('[Startup] Could not fetch backend version', e);
-          }
-
-          // 2. Fetch config with timeout
-          try {
-            config = await Promise.race([
-              tauriInvoke('get_app_config'),
-              new Promise<any>((_, reject) => setTimeout(() => reject(new Error('get_app_config timeout')), 5000))
-            ]);
-          } catch (configErr) {
-            console.warn('Config fetch failed, using defaults:', configErr);
-            config = null;
-          }
-
-          // 3. Database initialization (non-blocking)
-          const dbInitPromise = (async () => {
+          // ── FAST PATH ────────────────────────────────────────────────────────
+          // Eğer önceki oturumdan cache'lenmiş config varsa, Tauri'yi bekleme
+          const cachedRaw = localStorage.getItem('retailex_web_config');
+          if (cachedRaw) {
             try {
-              if (config) {
-                localStorage.setItem('retailex_web_config', JSON.stringify(config));
-              }
-              await initializeFromSQLite(config);
-              try {
-                const { postgres } = await import('./services/postgres');
-                await postgres.connect(config);
-              } catch (e) { console.error('DB Connect failed:', e); }
-            } catch (e) {
-              console.error('DB Init failed:', e);
-            }
-          })();
+              const cachedConfig = JSON.parse(cachedRaw);
+              await initializeFromSQLite(); // initializeFromSQLite takes no arguments based on lint
+              setIsPgReady(true);
+              applyConfig(cachedConfig);
 
-          // 4. PG check (background)
-          const pgCheckPromise = (async () => {
-            try {
-              const pgExists = await Promise.race([
-                tauriInvoke('check_pg16'),
-                new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error('check_pg16 timeout')), 5000))
-              ]) as boolean;
-
-              if (!pgExists) {
-                setInstallingPg(true);
-                try {
-                  await tauriInvoke('install_pg16');
-                } catch (err) {
-                  console.error('PG Install error:', err);
+              // Arka planda config'i yenile (bir sonraki açılış için)
+              invoke('get_app_version').then((v: any) => setVersion(String(v))).catch(() => { });
+              invoke('get_app_config').then((fresh: any) => {
+                if (fresh) {
+                  localStorage.setItem('retailex_web_config', JSON.stringify(fresh));
+                  import('./services/postgres').then(({ postgres }) =>
+                    postgres.connect(fresh).catch(() => { })
+                  ).catch(() => { });
                 }
-                setInstallingPg(false);
-              }
-            } catch (e) {
-              console.error('PG Check failed:', e);
-              setInstallingPg(false);
-            }
-          })();
+              }).catch(() => { });
+              return; // UI gösterildi, bitti
+            } catch { /* cache bozuksa slow path'e düş */ }
+          }
 
-          // We wait at most 8 seconds for everything to settle before showing UI
-          await Promise.race([
-            Promise.all([dbInitPromise, pgCheckPromise]),
-            new Promise<void>((resolve) => setTimeout(() => {
-              console.warn('Startup: UI break-through timeout reached');
-              resolve();
-            }, 8000))
+          // ── SLOW PATH (ilk açılış) ────────────────────────────────────────────
+          // get_app_version + get_app_config PARALEL, 3 saniye max bekle
+          const results = await Promise.race([
+            Promise.allSettled([
+              invoke('get_app_config'),
+              invoke('get_app_version'),
+            ]),
+            new Promise<PromiseSettledResult<any>[]>(r =>
+              setTimeout(() => r([
+                { status: 'rejected', reason: 'timeout' },
+                { status: 'rejected', reason: 'timeout' },
+              ]), 3000)
+            ),
           ]);
-        }
-        else {
-          // Web Flow
-          const saved = localStorage.getItem('retailex_web_config');
-          if (saved) config = JSON.parse(saved);
-          await initializeFromSQLite();
-        }
 
-        setIsPgReady(true);
+          const config = results[0].status === 'fulfilled' ? results[0].value : null;
+          const ver = results[1].status === 'fulfilled' ? results[1].value : null;
+          if (ver) setVersion(String(ver));
+          if (config) localStorage.setItem('retailex_web_config', JSON.stringify(config));
 
-        // 5. Decide state
-        if (config && config.is_configured === true) {
-          setIsConfigured(true);
-          localStorage.setItem('exretail_selected_firma_id', config.erp_firm_nr);
-          localStorage.setItem('exretail_selected_donem_id', config.erp_period_nr || '01');
-          localStorage.setItem('exretail_firma_donem_configured', 'true');
-        } else if (!isTauri) {
-          setIsConfigured(true);
+          await initializeFromSQLite().catch(() => { });
+          if (config) {
+            import('./services/postgres').then(({ postgres }) =>
+              postgres.connect().catch(() => { })
+            ).catch(() => { });
+          }
+
+          setIsPgReady(true);
+          applyConfig(config || { is_configured: !!localStorage.getItem('exretail_firma_donem_configured') });
+
+          // PG kontrolü arka planda — UI'yı bloke etme
+          invoke('check_pg16').then((exists: any) => {
+            if (!exists) {
+              setInstallingPg(true);
+              invoke('install_pg16').catch(() => { }).finally(() => setInstallingPg(false));
+            }
+          }).catch(() => { });
         } else {
-          setIsConfigured(false);
+          // ── Web Flow ──────────────────────────────────────────────────────────
+          const saved = localStorage.getItem('retailex_web_config');
+          if (saved) { try { await initializeFromSQLite(); } catch { await initializeFromSQLite(); } }
+          else await initializeFromSQLite();
+          setIsPgReady(true);
+          setIsConfigured(true);
         }
       } catch (err) {
-        console.error('Startup flow failed:', err);
+        console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
         setIsConfigured(!!localStorage.getItem('exretail_firma_donem_configured'));
       }
     };
+
     startupFlow();
 
+    // Güvenlik ağı: 5 saniyede UI'ı zorla göster
     const emergencyTimer = setTimeout(() => {
-      console.warn('Emergency timeout: Startup taking too long, forcing UI recovery');
+      console.warn('[Startup] Emergency timeout — forcing UI');
       setIsPgReady(true);
-      setIsConfigured(prev => prev === null ? false : prev);
+      setIsConfigured(prev => prev === null ? !!localStorage.getItem('exretail_firma_donem_configured') : prev);
       if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 10000);
+    }, 5000);
 
     return () => clearTimeout(emergencyTimer);
   }, [isTauri]);
@@ -328,16 +281,7 @@ function App() {
               ) : (
                 /* Main Application */
                 <MainLayout
-                  currentUser={{
-                    id: user!.id,
-                    username: user!.username,
-                    fullName: user!.full_name,
-                    role: user!.role_ids?.[0] === 'admin' ? 'admin' :
-                      user!.role_ids?.[0] === 'accountant' ? 'manager' : 'cashier',
-                    email: user!.email,
-                    permissions: user!.role_ids?.includes('admin') ? ['all'] : ['pos', 'reports'],
-                    createdAt: user!.created_at,
-                  } as any}
+                  currentUser={user as any}
                   products={products}
                   setProducts={setProducts}
                   customers={customers}

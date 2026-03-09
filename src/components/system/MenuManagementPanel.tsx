@@ -38,6 +38,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const [dragOverItem, setDragOverItem] = useState<number | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [menuSource, setMenuSource] = useState<'supabase' | 'static'>('static');
+  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
   const [newItem, setNewItem] = useState<Partial<MenuItem>>({
     menu_type: 'main',
     label: '',
@@ -46,10 +48,61 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
     is_visible: true
   });
 
-  // Menü öğelerini yükle - Supabase'den direkt
+  // Yerel config'den hidden_modules yükle
+  const loadLocalConfig = useCallback(async () => {
+    try {
+      // @ts-ignore
+      const { invoke } = await import('@tauri-apps/api/core');
+      const config: any = await invoke('get_app_config');
+      if (config && Array.isArray(config.hidden_modules)) {
+        setHiddenModules(config.hidden_modules);
+      }
+    } catch (err) {
+      console.warn('Tauri config yüklenemedi (Web ortamı olabilir):', err);
+    }
+  }, []);
+
+  // Menü öğelerini yükle
   const loadMenuItems = useCallback(async () => {
     try {
       setLoading(true);
+      await loadLocalConfig();
+
+      if (menuSource === 'static') {
+        const staticData = await fetchStaticMenuStructure();
+        // Statik menüyü MenuItem formatına dönüştür
+        const convertStaticToMenuItem = (item: any, idCounter: { val: number }, parentId?: number, sectionId?: number): MenuItem => {
+          const currentId = idCounter.val++;
+          const screenId = item.screen_id || item.screen || `static_${currentId}`;
+
+          return {
+            id: currentId,
+            menu_type: item.menu_type || (parentId ? 'main' : 'section'),
+            label: item.label || item.title || 'İsimsiz',
+            label_tr: item.label_tr || item.label || item.title,
+            label_en: item.label_en,
+            label_ar: item.label_ar,
+            screen_id: screenId as string,
+            parent_id: parentId,
+            section_id: sectionId,
+            is_active: true,
+            is_visible: !hiddenModules.includes(screenId as string),
+            display_order: item.display_order || 0,
+            icon_name: item.icon_name || (typeof item.icon === 'string' ? item.icon : null),
+            children: item.items ? item.items.map((c: any) => convertStaticToMenuItem(c, idCounter, currentId, sectionId || currentId)) :
+              item.children ? item.children.map((c: any) => convertStaticToMenuItem(c, idCounter, currentId, sectionId || currentId)) : []
+          };
+        };
+
+        const idCounter = { val: 10000 };
+        const tree = (Array.isArray(staticData) ? staticData : []).map(section => convertStaticToMenuItem(section, idCounter));
+        setMenuItems(tree);
+
+        const sectionIds = tree.map(t => t.id);
+        setExpandedSections(new Set(sectionIds));
+        setLoading(false);
+        return;
+      }
 
       // Supabase'den tüm menü öğelerini çek
       const { data, error } = await supabase
@@ -69,25 +122,20 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         return;
       }
 
-      // Hiyerarşik yapı oluştur
       const tree = buildMenuTree(data);
       setMenuItems(tree);
 
-      // Tüm section'ları genişlet
       const sectionIds = data
         .filter((item: MenuItem) => item.menu_type === 'section')
         .map((item: MenuItem) => item.id);
       setExpandedSections(new Set(sectionIds));
-
-      // Not: Burada event göndermiyoruz çünkü bu sadece local state güncellemesi
-      // Gerçek değişikliklerde (add, update, delete, save) event gönderiliyor
     } catch (error: any) {
       console.error('Menü yüklenirken hata:', error);
       setMenuItems([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [menuSource, hiddenModules, loadLocalConfig]);
 
   // Mevcut statik menü yapısını veritabanına aktar
   const seedCurrentMenu = async () => {
@@ -596,58 +644,62 @@ export default staticMenuSections;
     setDragOverItem(null);
   };
 
-  // Sıralamayı kaydet - Supabase'e direkt
+  // Menüyü kaydet
   const saveMenuOrder = async () => {
     try {
       setSaving(true);
-      const flatItems = flattenMenuItems(menuItems);
 
-      // Her bir öğeyi Supabase'de güncelle
-      const updates = flatItems.map((item) => ({
-        id: item.id,
-        display_order: item.display_order,
-        parent_id: item.parent_id || null,
-        section_id: item.section_id || null
-      }));
+      if (menuSource === 'static') {
+        const flatItems = flattenMenuItems(menuItems);
+        const newHiddenModules = flatItems
+          .filter(item => !item.is_visible && item.screen_id)
+          .map(item => item.screen_id as string);
 
-      console.log('ğŸ’¾ Menü sıralaması kaydediliyor:', updates.length, 'öğe');
-      console.log('ğŸ“‹ İlk 5 öğe:', updates.slice(0, 5));
+        try {
+          // @ts-ignore
+          const { invoke } = await import('@tauri-apps/api/core');
+          const config: any = await invoke('get_app_config');
+          config.hidden_modules = newHiddenModules;
+          await invoke('save_app_config', { config });
 
-      // Batch update için Promise.all kullan
-      const updatePromises = updates.map(update =>
-        supabase
-          .from('menu_items')
-          .update({
-            display_order: update.display_order,
-            parent_id: update.parent_id,
-            section_id: update.section_id
-          })
-          .eq('id', update.id)
-      );
+          setHiddenModules(newHiddenModules);
+          alert('Statik menü görünürlük ayarları yerel veritabanına kaydedildi!');
+        } catch (e) {
+          console.error('Tauri save hatası:', e);
+          alert('Yerel konfigürasyon kaydedilemedi.');
+        }
+      } else {
+        const flatItems = flattenMenuItems(menuItems);
+        const updates = flatItems.map((item) => ({
+          id: item.id,
+          display_order: item.display_order,
+          parent_id: item.parent_id || null,
+          section_id: item.section_id || null
+        }));
 
-      const results = await Promise.all(updatePromises);
-      const errors = results.filter(r => r.error);
+        const updatePromises = updates.map(update =>
+          supabase
+            .from('menu_items')
+            .update({
+              display_order: update.display_order,
+              parent_id: update.parent_id,
+              section_id: update.section_id
+            })
+            .eq('id', update.id)
+        );
 
-      if (errors.length > 0) {
-        console.error('❌ Update errors:', errors);
-        throw new Error('Bazı öğeler güncellenemedi');
+        const results = await Promise.all(updatePromises);
+        const errors = results.filter(r => r.error);
+        if (errors.length > 0) throw new Error('Bazı öğeler güncellenemedi');
+        alert('Dinamik menü kaydedildi!');
       }
 
-      console.log('✅ Tüm öğeler başarıyla güncellendi');
-
-      // Önce kendi state'i güncelle
       await loadMenuItems();
-
-      // Kısa bir gecikme ekle (Supabase'in güncellemeyi işlemesi için)
       await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Menü güncellendiğini bildir - tüm dinleyicilere (force reload ile cache temizlensin)
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
-
-      alert('Menü sıralaması kaydedildi!');
     } catch (error) {
       console.error('Kaydetme hatası:', error);
-      alert('Menü sıralaması kaydedilirken hata oluştu!');
+      alert('Menü kaydedilirken hata oluştu!');
     } finally {
       setSaving(false);
     }
@@ -680,8 +732,24 @@ export default staticMenuSections;
     }
   };
 
-  // Menü öğesini güncelle - Supabase'e direkt
+  // Menü öğesini güncelle
   const updateMenuItem = async (item: MenuItem) => {
+    if (menuSource === 'static') {
+      // Statik mönüde sadece yerel state güncelle
+      setMenuItems(prev => {
+        const updateInTree = (items: MenuItem[]): MenuItem[] => {
+          return items.map(i => {
+            if (i.id === item.id) return { ...i, ...item };
+            if (i.children) return { ...i, children: updateInTree(i.children) };
+            return i;
+          });
+        };
+        return updateInTree(prev);
+      });
+      setEditingItem(null);
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('menu_items')
@@ -701,15 +769,11 @@ export default staticMenuSections;
         })
         .eq('id', item.id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       await loadMenuItems();
       setEditingItem(null);
-      // Kısa bir gecikme ekle (Supabase'in güncellemeyi işlemesi için)
       await new Promise(resolve => setTimeout(resolve, 300));
-      // Menü güncellendiğini bildir - force reload ile
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
       console.error('Güncelleme hatası:', error);
@@ -911,9 +975,22 @@ export default staticMenuSections;
       <div className="bg-white border-b p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Settings className="w-6 h-6 text-blue-600" />
-          <div>
+          <div className="flex flex-col">
             <h2 className="text-xl font-semibold text-gray-900">Menü Yönetimi</h2>
-            <p className="text-sm text-gray-500">Menü öğelerini sürükleyip bırakarak düzenleyin</p>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={() => setMenuSource('supabase')}
+                className={`px-3 py-1 text-xs rounded-full border transition-all ${menuSource === 'supabase' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300'}`}
+              >
+                Dinamik (Supabase)
+              </button>
+              <button
+                onClick={() => setMenuSource('static')}
+                className={`px-3 py-1 text-xs rounded-full border transition-all ${menuSource === 'static' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
+              >
+                Statik (Yerel Config)
+              </button>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">

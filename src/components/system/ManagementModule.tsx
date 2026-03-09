@@ -50,7 +50,7 @@ import { IntegrationsModule } from '../modules/IntegrationsModule';
 import { ReportsModule } from '../reports/ReportsModule';
 import { ProfitDashboard } from '../reports/ProfitDashboard';
 import { SettingsPanel } from './SettingsPanel';
-import { AuthorizationSettings } from './AuthorizationSettings';
+
 import { ExcelModule } from '../modules/ExcelModule';
 import { ScaleManagementWrapper } from '../scale/ScaleManagementWrapper';
 import { MultiStoreManagement } from './MultiStoreManagement';
@@ -85,7 +85,6 @@ import { DiscountManagement } from '../trading/invoices/DiscountManagement';
 import { CashRegisterManagement } from '../accounting/cash-ops/CashRegisterManagement';
 import { KasalarModule } from '../accounting/cash-ops/KasalarModule';
 import { BankRegisterManagement } from '../accounting/cash-ops/BankRegisterManagement';
-import { AdvancedReportingModule } from '../reports/AdvancedReportingModule';
 import { StoreTransferModule } from '../inventory/warehouse/StoreTransferModule';
 import { MobileInventoryCountModule } from '../inventory/stock/MobileInventoryCountModule';
 import InterStoreTransfersView from '../inventory/warehouse/InterStoreTransfersView';
@@ -138,6 +137,7 @@ import type { Product, Customer, Sale, Campaign } from '../../core/types';
 import type { ManagementScreen } from '../../App';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useResponsive } from '../../hooks/useResponsive';
+import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
 
 // Custom z-index constants to ensure consistent layering
@@ -208,7 +208,8 @@ export function ManagementModule({
   sidebarOpen,
   setSidebarOpen
 }: ManagementModuleProps) {
-  const { user } = useAuth();
+  const { user, hasPermission: contextHasPermission } = useAuth();
+  const { hasPermission, isAdmin } = usePermission();
   const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
   // Sidebar state — managed internally; prop overrides are optional
@@ -550,6 +551,15 @@ export function ManagementModule({
     fetchConfig();
   }, []);
 
+  // MenuManagementPanel gibi bileşenlerin statik menü yapısına erişebilmesi için event listener
+  useEffect(() => {
+    const handleRequest = () => {
+      window.dispatchEvent(new CustomEvent('staticMenuRequested', { detail: staticMenuSections }));
+    };
+    window.addEventListener('requestStaticMenu', handleRequest);
+    return () => window.removeEventListener('requestStaticMenu', handleRequest);
+  }, [staticMenuSections]);
+
 
   const languages = [
     { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
@@ -581,7 +591,23 @@ export function ManagementModule({
 
     const filterHidden = (items: any[]): any[] => {
       return items
-        .filter(item => !hiddenModules.includes(item.id))
+        .filter(item => {
+          // 1. Check hidden_modules from config
+          if (hiddenModules.includes(item.id)) return false;
+
+          // 2. Check RBAC permissions
+          // If the item ID contains a dot (e.g. 'stock.reports'), check it specifically
+          // Otherwise check the ID as a module
+          if (!isAdmin()) {
+            const hasModuleAccess = hasPermission(item.id, 'READ');
+            if (!hasModuleAccess) {
+              // Check if any children are accessible? No, standard RBAC is module-based for now
+              return false;
+            }
+          }
+
+          return true;
+        })
         .map(item => {
           if (item.items) {
             return { ...item, items: filterHidden(item.items) };
@@ -594,7 +620,7 @@ export function ManagementModule({
     };
 
     return filterHidden(baseSections);
-  }, [dynamicMenuSections, staticMenuSections, hiddenModules]);
+  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
@@ -1050,7 +1076,8 @@ export function ManagementModule({
         case 'roles':
         case 'role_management':
         case 'authorization':
-          return <AuthorizationSettings />;
+        case 'roles_mgmt':
+          return <RoleManagement />;
         case 'eledger':
         case 'etransform':
           return <ETransformModule />;
@@ -1103,8 +1130,7 @@ export function ManagementModule({
           return <StoreConfigModule />;
         case 'campaigns_mgmt':
           return <CampaignManagement campaigns={campaigns} setCampaigns={setCampaigns} products={products} />;
-        case 'roles_mgmt':
-          return <RoleManagement />;
+
         case 'loyalty':
           return <LoyaltyProgramModule />;
         case 'giftcard':
@@ -1153,8 +1179,6 @@ export function ManagementModule({
         case 'interstore-transfer':
         case 'storetransfer':
           return <StoreTransferModule />;
-        case 'advanced-reports':
-          return <AdvancedReportingModule />;
         case 'price-change-vouchers':
           return <PriceChangeVouchersModule products={products} />;
         case 'new-modules':
@@ -1246,10 +1270,7 @@ export function ManagementModule({
           <ModernSidebar
             menuSections={menuSections}
             currentScreen={currentScreen}
-            setCurrentScreen={(screen) => {
-              setCurrentScreen(screen);
-              if (isMobile) effectiveSetSidebarOpen(false);
-            }}
+            setCurrentScreen={setCurrentScreen}
             menuSearchQuery={menuSearchQuery}
             setMenuSearchQuery={setMenuSearchQuery}
             searchResults={searchResults}
@@ -1262,7 +1283,7 @@ export function ManagementModule({
             setShowLanguageMenu={setShowLanguageMenu}
             languages={languages}
             APP_VERSION={APP_VERSION}
-            menuSource={dynamicMenuSections ? 'database' : 'static'}
+            menuSource={'static'}
           />
         </div>
       </div>

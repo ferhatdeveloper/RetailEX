@@ -1,201 +1,485 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-    ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon,
-    Clock, User, Users, Cpu, ShoppingCart, List, Grid, Columns,
-    Search, Filter
+    ChevronLeft, ChevronRight, Plus, Clock,
+    User, Cpu, List, Search, X,
+    CalendarDays, CheckCircle2, ArrowLeft, Sparkles
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { BeautyAppointment, AppointmentStatus } from '../../../types/beauty';
 import { WeekView, MonthView } from './WeekMonthViews';
 import { StaffTimelineView } from './StaffTimelineView';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/components/ui/utils';
+import { AppointmentPOS } from './AppointmentPOS';
 import '../ClinicStyles.css';
 
-type ViewType = 'day' | 'week' | 'month' | 'timeline';
+type ViewType = 'day' | 'week' | 'month' | 'timeline' | 'device' | 'list';
 
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+    scheduled:   { label: 'Planlandı',    color: '#6366f1', bg: '#eef2ff' },
+    confirmed:   { label: 'Onaylandı',    color: '#0284c7', bg: '#e0f2fe' },
+    in_progress: { label: 'Devam Ediyor', color: '#d97706', bg: '#fef3c7' },
+    completed:   { label: 'Tamamlandı',   color: '#059669', bg: '#d1fae5' },
+    cancelled:   { label: 'İptal',         color: '#dc2626', bg: '#fee2e2' },
+    no_show:     { label: 'Gelmedi',       color: '#9ca3af', bg: '#f3f4f6' },
+};
+
+const EMPTY_FORM = {
+    customer_id: '', service_id: '', staff_id: '', device_id: '',
+    date: new Date().toISOString().split('T')[0],
+    time: '09:00', duration: 30, total_price: 0,
+    status: AppointmentStatus.SCHEDULED, notes: '', type: 'regular', is_package_session: false,
+};
+
+// ─── New Appointment Full Page ────────────────────────────────────────────────
+function NewAppointmentPage({
+    prefillDate,
+    prefillTime,
+    onBack,
+    onSaved,
+}: {
+    prefillDate: string;
+    prefillTime: string;
+    onBack: () => void;
+    onSaved: () => void;
+}) {
+    const { specialists, services, customers, devices, createAppointment } = useBeautyStore();
+    const [form, setForm] = useState({ ...EMPTY_FORM, date: prefillDate, time: prefillTime });
+    const [saving, setSaving] = useState(false);
+    const [done, setDone] = useState(false);
+
+    const selectedService  = services.find(s => s.id === form.service_id);
+    const selectedCustomer = customers.find(c => c.id === form.customer_id);
+    const selectedStaff    = specialists.find(s => s.id === form.staff_id);
+
+    const onServiceChange = (id: string) => {
+        const svc = services.find(s => s.id === id);
+        setForm(p => ({ ...p, service_id: id, duration: svc?.duration_min ?? 30, total_price: svc?.price ?? 0 }));
+    };
+
+    const handleSave = async () => {
+        if (!form.customer_id || !form.service_id) return;
+        setSaving(true);
+        try {
+            await createAppointment({ ...form });
+            setDone(true);
+            setTimeout(() => { onSaved(); }, 1200);
+        } finally { setSaving(false); }
+    };
+
+    const inputStyle: React.CSSProperties = {
+        width: '100%', height: 38, padding: '0 12px',
+        border: '1px solid #e5e7eb', borderRadius: 6,
+        fontSize: 13, fontWeight: 500, color: '#111827',
+        background: '#fafafa', outline: 'none', boxSizing: 'border-box',
+    };
+    const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' };
+    const labelStyle: React.CSSProperties = {
+        fontSize: 11, fontWeight: 700, color: '#6b7280',
+        textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5,
+    };
+    const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' };
+
+    if (done) return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#f7f6fb' }}>
+            <CheckCircle2 size={56} style={{ color: '#059669' }} />
+            <p style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>Randevu Oluşturuldu!</p>
+        </div>
+    );
+
+    return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
+
+            {/* Top bar */}
+            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                <button
+                    onClick={onBack}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                >
+                    <ArrowLeft size={14} /> Takvime Dön
+                </button>
+                <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
+                <div>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', lineHeight: 1 }}>Yeni Randevu</p>
+                    <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', marginTop: 2 }}>Randevu bilgilerini doldurun</p>
+                </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ flex: 1, overflow: 'auto', padding: 24, display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignContent: 'start' }} className="custom-scrollbar">
+
+                {/* LEFT: Form */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                    {/* Section: Kişi */}
+                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <User size={13} /> Müşteri & Uzman
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Müşteri <span style={{ color: '#ef4444' }}>*</span></label>
+                                <select value={form.customer_id} onChange={e => setForm(p => ({ ...p, customer_id: e.target.value }))} style={selectStyle}>
+                                    <option value="">Seçiniz...</option>
+                                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ''}</option>)}
+                                </select>
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Uzman</label>
+                                <select value={form.staff_id} onChange={e => setForm(p => ({ ...p, staff_id: e.target.value }))} style={selectStyle}>
+                                    <option value="">Uzman seçin...</option>
+                                    {specialists.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}{s.specialty ? ` (${s.specialty})` : ''}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section: Hizmet */}
+                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Sparkles size={13} /> Hizmet & Cihaz
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Hizmet <span style={{ color: '#ef4444' }}>*</span></label>
+                                <select value={form.service_id} onChange={e => onServiceChange(e.target.value)} style={selectStyle}>
+                                    <option value="">Hizmet seçin...</option>
+                                    {services.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — ₺{s.price}</option>)}
+                                </select>
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Cihaz (Opsiyonel)</label>
+                                <select value={form.device_id} onChange={e => setForm(p => ({ ...p, device_id: e.target.value }))} style={selectStyle}>
+                                    <option value="">Cihaz seçin...</option>
+                                    {devices.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section: Tarih & Zaman */}
+                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
+                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <CalendarDays size={13} /> Tarih & Saat
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Tarih</label>
+                                <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} style={inputStyle} />
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Saat</label>
+                                <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={inputStyle} />
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Süre (dk)</label>
+                                <input type="number" min={5} step={5} value={form.duration} onChange={e => setForm(p => ({ ...p, duration: Number(e.target.value) }))} style={inputStyle} />
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Ücret (₺)</label>
+                                <input type="number" min={0} value={form.total_price} onChange={e => setForm(p => ({ ...p, total_price: Number(e.target.value) }))} style={inputStyle} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section: Durum & Notlar */}
+                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 14 }}>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Durum</label>
+                                <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as AppointmentStatus }))} style={selectStyle}>
+                                    {Object.entries(STATUS_CFG).map(([v, cfg]) => (
+                                        <option key={v} value={v}>{cfg.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div style={fieldStyle}>
+                                <label style={labelStyle}>Notlar</label>
+                                <textarea
+                                    value={form.notes}
+                                    onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+                                    placeholder="Randevu notları, özel istekler..."
+                                    rows={2}
+                                    style={{ ...inputStyle, height: 'auto', padding: '8px 12px', resize: 'none', lineHeight: 1.5 }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* RIGHT: Summary */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                    {/* Preview card */}
+                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
+                        <div style={{ background: selectedService?.color ?? '#7c3aed', padding: '14px 16px' }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Randevu Özeti</p>
+                            <p style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 4 }}>
+                                {selectedService?.name ?? 'Hizmet seçilmedi'}
+                            </p>
+                        </div>
+                        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {[
+                                { label: 'Müşteri',  value: selectedCustomer?.name ?? '—' },
+                                { label: 'Uzman',    value: selectedStaff?.name ?? '—' },
+                                { label: 'Tarih',    value: form.date ? new Date(form.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
+                                { label: 'Saat',     value: form.time },
+                                { label: 'Süre',     value: `${form.duration} dakika` },
+                                { label: 'Ücret',    value: form.total_price > 0 ? `₺${form.total_price.toLocaleString('tr-TR')}` : '—' },
+                            ].map(({ label, value }) => (
+                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Status badge preview */}
+                    {form.status && (() => {
+                        const cfg = STATUS_CFG[form.status];
+                        return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 6, background: cfg.bg, border: `1px solid ${cfg.color}20` }}>
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Save button */}
+                    <button
+                        onClick={handleSave}
+                        disabled={!form.customer_id || !form.service_id || saving}
+                        style={{
+                            width: '100%', height: 44, borderRadius: 6, border: 'none',
+                            background: (!form.customer_id || !form.service_id) ? '#e5e7eb' : '#7c3aed',
+                            color: (!form.customer_id || !form.service_id) ? '#9ca3af' : '#fff',
+                            fontSize: 13, fontWeight: 800, cursor: (!form.customer_id || !form.service_id) ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                            transition: 'background 0.12s',
+                        }}
+                        onMouseEnter={e => { if (form.customer_id && form.service_id) e.currentTarget.style.background = '#6d28d9'; }}
+                        onMouseLeave={e => { if (form.customer_id && form.service_id) e.currentTarget.style.background = '#7c3aed'; }}
+                    >
+                        <CalendarDays size={15} />
+                        {saving ? 'Kaydediliyor...' : 'Randevu Oluştur'}
+                    </button>
+
+                    <button
+                        onClick={onBack}
+                        style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                        İptal
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Scheduler ────────────────────────────────────────────────────────────
 export function SmartScheduler() {
-    const { appointments, loadAppointments, isLoading } = useBeautyStore();
-    const { t } = useLanguage();
+    const {
+        appointments, loadAppointments, updateAppointmentStatus, isLoading,
+        specialists, services, customers, devices,
+        loadSpecialists, loadServices, loadCustomers, loadDevices,
+    } = useBeautyStore();
+
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [view, setView] = useState<ViewType>('day');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [view,        setView]        = useState<ViewType>('day');
+    const [searchTerm,  setSearchTerm]  = useState('');
+    const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
+
+    // Full-page new appointment state
+    const [showNewPage,  setShowNewPage]  = useState(false);
+    const [prefillTime,  setPrefillTime]  = useState('09:00');
+
+    useEffect(() => {
+        loadSpecialists();
+        loadServices();
+        loadCustomers();
+        loadDevices();
+    }, []);
 
     useEffect(() => {
         const dateStr = currentDate.toISOString().split('T')[0];
         loadAppointments(dateStr);
     }, [currentDate]);
 
+    const openNewApt = (time?: string) => {
+        setPrefillTime(time ?? '09:00');
+        setShowNewPage(true);
+    };
+
     const handlePrevious = () => {
-        const newDate = new Date(currentDate);
-        if (view === 'day') newDate.setDate(newDate.getDate() - 1);
-        else if (view === 'week') newDate.setDate(newDate.getDate() - 7);
-        else if (view === 'month') newDate.setMonth(newDate.getMonth() - 1);
-        setCurrentDate(newDate);
+        const d = new Date(currentDate);
+        if (view === 'day') d.setDate(d.getDate() - 1);
+        else if (view === 'week') d.setDate(d.getDate() - 7);
+        else if (view === 'month') d.setMonth(d.getMonth() - 1);
+        setCurrentDate(d);
     };
-
     const handleNext = () => {
-        const newDate = new Date(currentDate);
-        if (view === 'day') newDate.setDate(newDate.getDate() + 1);
-        else if (view === 'week') newDate.setDate(newDate.getDate() + 7);
-        else if (view === 'month') newDate.setMonth(newDate.getMonth() + 1);
-        setCurrentDate(newDate);
+        const d = new Date(currentDate);
+        if (view === 'day') d.setDate(d.getDate() + 1);
+        else if (view === 'week') d.setDate(d.getDate() + 7);
+        else if (view === 'month') d.setMonth(d.getMonth() + 1);
+        setCurrentDate(d);
     };
 
-    const handleToday = () => setCurrentDate(new Date());
+    const timeSlots = Array.from({ length: 13 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`);
 
-    const formatDate = (date: Date) => {
-        return date.toLocaleDateString('tr-TR', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
+    const formatDate = (d: Date) => d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-    const timeSlots = Array.from({ length: 13 }, (_, i) => {
-        const hour = i + 9;
-        return `${hour.toString().padStart(2, '0')}:00`;
-    });
-
-    const getStatusStyles = (status: AppointmentStatus) => {
-        const styles = {
-            scheduled: 'bg-blue-50 text-blue-700 border-blue-100',
-            confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-            in_progress: 'bg-purple-50 text-purple-700 border-purple-100',
-            completed: 'bg-gray-50 text-gray-700 border-gray-100',
-            cancelled: 'bg-red-50 text-red-700 border-red-100',
-            no_show: 'bg-orange-50 text-orange-700 border-orange-100'
-        };
-        return styles[status] || 'bg-gray-50 text-gray-700 border-gray-100';
-    };
-
-    const renderAppointmentCard = (apt: BeautyAppointment) => {
-        const color = apt.service_color || '#9333ea';
+    const renderAptCard = (apt: BeautyAppointment) => {
+        const color = apt.service_color ?? '#7c3aed';
+        const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
         return (
             <div
                 key={apt.id}
-                className="group p-4 rounded-2xl border border-gray-100 bg-white hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
+                onClick={() => setSelectedApt(apt)}
+                style={{
+                    background: '#fff', border: '1px solid #e8e4f0',
+                    borderLeft: `3px solid ${color}`,
+                    borderRadius: 6, padding: '10px 12px', cursor: 'pointer',
+                    transition: 'box-shadow 0.1s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)')}
+                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
             >
-                <div
-                    className="absolute left-0 top-0 bottom-0 w-1.5"
-                    style={{ backgroundColor: color }}
-                ></div>
-                <div className="flex justify-between items-start">
-                    <div className="flex-1 min-w-0">
-                        <h4 className="font-black text-gray-900 uppercase text-sm truncate">{apt.customer_name}</h4>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">{apt.service_name}</p>
-                    </div>
-                    <span className="text-[10px] font-black text-gray-900 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
-                        {apt.appointment_time}
-                    </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>{apt.customer_name ?? '—'}</p>
+                    <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
                 </div>
-                <div className="mt-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600">
-                            <User size={12} />
-                        </div>
-                        <span className="text-[10px] font-bold text-gray-500 uppercase">{apt.specialist_name}</span>
+                <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{apt.service_name ?? '—'}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#9ca3af' }}>
+                        <User size={10} />
+                        <span style={{ fontSize: 10, fontWeight: 600 }}>{apt.specialist_name ?? apt.staff_name ?? '—'}</span>
                     </div>
-                    <span className={cn(
-                        "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border",
-                        getStatusStyles(apt.status)
-                    )}>
-                        {apt.status}
-                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
                 </div>
             </div>
         );
     };
 
+    // ── Render new appointment full page ──────────────────────────────────
+    if (showNewPage) {
+        return (
+            <AppointmentPOS
+                prefillDate={currentDate.toISOString().split('T')[0]}
+                prefillTime={prefillTime}
+                onBack={() => {
+                    setShowNewPage(false);
+                    loadAppointments(currentDate.toISOString().split('T')[0]);
+                }}
+            />
+        );
+    }
+
     return (
-        <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
-            {/* Control Header */}
-            <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 z-20 shadow-sm">
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <button onClick={handlePrevious} className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-400">
-                            <ChevronLeft size={20} />
-                        </button>
-                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest min-w-[200px] text-center">
-                            {formatDate(currentDate)}
-                        </h3>
-                        <button onClick={handleNext} className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-400">
-                            <ChevronRight size={20} />
-                        </button>
-                    </div>
-                    <Button
-                        onClick={handleToday}
-                        variant="ghost"
-                        className="text-[10px] font-black uppercase tracking-widest text-purple-600 hover:bg-purple-50"
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f7f6fb', overflow: 'hidden' }}>
+
+            {/* ── TOOLBAR ──────────────────────────────────────────── */}
+            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 16 }}>
+
+                {/* Date nav */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button onClick={handlePrevious} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
+                        <ChevronLeft size={14} />
+                    </button>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 200, textAlign: 'center' }}>{formatDate(currentDate)}</span>
+                    <button onClick={handleNext} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
+                        <ChevronRight size={14} />
+                    </button>
+                    <button
+                        onClick={() => setCurrentDate(new Date())}
+                        style={{ padding: '4px 10px', border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', fontSize: 11, fontWeight: 700, color: '#7c3aed', cursor: 'pointer' }}
                     >
-                        BUGÜN
-                    </Button>
+                        Bugün
+                    </button>
                 </div>
 
-                <div className="flex items-center bg-gray-100 p-1 rounded-2xl">
-                    {(['day', 'week', 'month', 'timeline'] as ViewType[]).map((v) => (
+                {/* View tabs */}
+                <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2 }}>
+                    {([
+                        { id: 'day',      label: 'Gün'      },
+                        { id: 'week',     label: 'Hafta'    },
+                        { id: 'month',    label: 'Ay'       },
+                        { id: 'timeline', label: 'Personel' },
+                        { id: 'device',   label: 'Cihaz'    },
+                        { id: 'list',     label: 'Liste'    },
+                    ] as { id: ViewType; label: string }[]).map(({ id: v, label }) => (
                         <button
                             key={v}
                             onClick={() => setView(v)}
-                            className={cn(
-                                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                                view === v
-                                    ? "bg-white text-purple-600 shadow-sm"
-                                    : "text-gray-400 hover:text-gray-600"
-                            )}
-                        >
-                            {v === 'day' ? 'GÜN' : v === 'week' ? 'HAFTA' : v === 'month' ? 'AY' : 'TİMELİNE'}
-                        </button>
+                            style={{
+                                padding: '5px 10px', borderRadius: 5, border: 'none',
+                                background: view === v ? '#fff' : 'transparent',
+                                color: view === v ? '#7c3aed' : '#6b7280',
+                                fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                transition: 'all 0.1s',
+                            }}
+                        >{label}</button>
                     ))}
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <Input
-                            placeholder="RANDEVU ARA..."
-                            className="pl-10 h-10 w-48 bg-gray-50 border-gray-100 rounded-xl text-[10px] font-black"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                {/* Right actions */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                        <input
+                            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                            placeholder="Ara..."
+                            style={{ height: 30, paddingLeft: 26, paddingRight: 10, border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: '#f9fafb', outline: 'none', width: 150 }}
                         />
                     </div>
-                    <Button className="bg-purple-600 hover:bg-purple-700 text-white font-black text-[10px] tracking-widest px-4 h-10 rounded-xl shadow-lg shadow-purple-600/20 active:scale-95 transition-all">
-                        <Plus size={16} className="mr-2" />
-                        YENİ RANDEVU
-                    </Button>
+                    <button
+                        onClick={() => openNewApt()}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            height: 32, padding: '0 14px',
+                            background: '#7c3aed', color: '#fff',
+                            border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                            transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#6d28d9')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
+                    >
+                        <Plus size={14} /> Yeni Randevu
+                    </button>
                 </div>
             </div>
 
-            {/* Calendar Content */}
-            <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+            {/* ── CALENDAR BODY ─────────────────────────────────────── */}
+            <div style={{ flex: 1, overflow: 'auto', padding: 16 }} className="custom-scrollbar">
                 {isLoading ? (
-                    <div className="h-full flex flex-col items-center justify-center space-y-4">
-                        <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Randevular Yükleniyor...</p>
+                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af' }}>Yükleniyor...</p>
                     </div>
                 ) : (
                     <>
+                        {/* ── DAY VIEW ──────────────────────────────────── */}
                         {view === 'day' && (
-                            <div className="space-y-6 max-w-5xl mx-auto">
+                            <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                                 {timeSlots.map(time => {
-                                    const slotApts = appointments.filter(a => a.appointment_time.startsWith(time.split(':')[0]));
+                                    const slotApts = appointments.filter(a => (a.appointment_time ?? a.time ?? '').startsWith(time.split(':')[0]));
                                     return (
-                                        <div key={time} className="flex gap-6 group">
-                                            <div className="w-20 pt-1 shrink-0">
-                                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest group-hover:text-purple-600 transition-colors">{time}</span>
+                                        <div key={time} style={{ display: 'flex', gap: 12, minHeight: 72 }}>
+                                            <div style={{ width: 48, paddingTop: 8, flexShrink: 0, textAlign: 'right' }}>
+                                                <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
                                             </div>
-                                            <div className="flex-1 min-h-[100px] border-l-2 border-gray-100 pl-6 space-y-3 group-hover:border-purple-200 transition-colors">
+                                            <div style={{ width: 1, background: '#e8e4f0', flexShrink: 0, marginTop: 12 }} />
+                                            <div style={{ flex: 1, paddingTop: 4, paddingBottom: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
                                                 {slotApts.length === 0 ? (
-                                                    <div className="h-full border border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-300 hover:bg-gray-50 transition-colors cursor-pointer group/btn">
-                                                        <Plus size={20} className="group-hover/btn:scale-125 transition-transform" />
+                                                    <div
+                                                        onClick={() => openNewApt(time)}
+                                                        style={{ flex: 1, border: '1px dashed #e5e7eb', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', minHeight: 56, color: '#d1d5db', transition: 'border-color 0.1s, color 0.1s' }}
+                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.color = '#a78bfa'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#d1d5db'; }}
+                                                    >
+                                                        <Plus size={16} />
                                                     </div>
-                                                ) : (
-                                                    slotApts.map(renderAppointmentCard)
-                                                )}
+                                                ) : slotApts.map(renderAptCard)}
                                             </div>
                                         </div>
                                     );
@@ -203,30 +487,106 @@ export function SmartScheduler() {
                             </div>
                         )}
 
-                        {view === 'week' && (
-                            <WeekView
-                                currentDate={currentDate}
-                                appointments={appointments}
-                                onAppointmentClick={() => { }}
-                            />
+                        {view === 'week'  && <WeekView currentDate={currentDate} appointments={appointments} onAppointmentClick={setSelectedApt} />}
+                        {view === 'month' && <MonthView currentDate={currentDate} appointments={appointments} onDayClick={d => { setCurrentDate(d); setView('day'); }} />}
+                        {view === 'timeline' && <StaffTimelineView currentDate={currentDate} appointments={appointments} />}
+
+                        {/* ── DEVICE VIEW ───────────────────────────────── */}
+                        {view === 'device' && (
+                            <div style={{ display: 'flex', gap: 12, overflowX: 'auto', height: '100%' }} className="custom-scrollbar">
+                                {devices.length === 0 ? (
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#d1d5db', gap: 8 }}>
+                                        <Cpu size={36} />
+                                        <p style={{ fontSize: 12, fontWeight: 600 }}>Cihaz tanımlanmamış</p>
+                                    </div>
+                                ) : devices.map(device => {
+                                    const devApts = appointments.filter(a => a.device_id === device.id);
+                                    return (
+                                        <div key={device.id} style={{ flexShrink: 0, width: 260, background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                            <div style={{ padding: '10px 14px', borderBottom: '1px solid #e8e4f0', background: '#f5f3ff', display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <div style={{ width: 28, height: 28, background: '#7c3aed', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <Cpu size={13} color="#fff" />
+                                                </div>
+                                                <div>
+                                                    <p style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{device.name}</p>
+                                                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{devApts.length} randevu</p>
+                                                </div>
+                                            </div>
+                                            <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                                                {timeSlots.map(time => {
+                                                    const slot = devApts.filter(a => (a.appointment_time ?? a.time ?? '').startsWith(time.split(':')[0]));
+                                                    return (
+                                                        <div key={time} style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', minHeight: 52 }}>
+                                                            <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 8 }}>
+                                                                <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
+                                                            </div>
+                                                            <div style={{ flex: 1, padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                                {slot.map(apt => (
+                                                                    <div key={apt.id} style={{ padding: '4px 8px', borderRadius: 4, background: '#ede9fe', borderLeft: `3px solid ${apt.service_color ?? '#7c3aed'}`, fontSize: 11 }}>
+                                                                        <p style={{ fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
+                                                                        <p style={{ color: '#6b7280' }}>{apt.service_name ?? '—'}</p>
+                                                                    </div>
+                                                                ))}
+                                                                {slot.length === 0 && (
+                                                                    <div onClick={() => openNewApt(time)} style={{ height: 36, borderRadius: 4, border: '1px dashed #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#d1d5db' }}>
+                                                                        <Plus size={12} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         )}
 
-                        {view === 'month' && (
-                            <MonthView
-                                currentDate={currentDate}
-                                appointments={appointments}
-                                onDayClick={(day) => {
-                                    setCurrentDate(day);
-                                    setView('day');
-                                }}
-                            />
-                        )}
-
-                        {view === 'timeline' && (
-                            <StaffTimelineView
-                                currentDate={currentDate}
-                                appointments={appointments}
-                            />
+                        {/* ── LIST VIEW ─────────────────────────────────── */}
+                        {view === 'list' && (
+                            <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
+                                {/* Header */}
+                                <div style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                                    {['Saat', '', 'Müşteri / Hizmet', 'Uzman', 'Süre', 'Durum', 'Ücret'].map((h, i) => (
+                                        <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
+                                    ))}
+                                </div>
+                                {appointments.length === 0 ? (
+                                    <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#d1d5db', gap: 8 }}>
+                                        <List size={32} />
+                                        <p style={{ fontSize: 12, fontWeight: 600 }}>Randevu yok</p>
+                                    </div>
+                                ) : [...appointments]
+                                    .sort((a, b) => (a.appointment_time ?? '').localeCompare(b.appointment_time ?? ''))
+                                    .filter(a => !searchTerm || (a.customer_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) || (a.service_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()))
+                                    .map(apt => {
+                                        const cfg = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+                                        return (
+                                            <div
+                                                key={apt.id}
+                                                onClick={() => setSelectedApt(apt)}
+                                                style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '11px 16px', borderBottom: '1px solid #f3f4f6', alignItems: 'center', cursor: 'pointer', transition: 'background 0.08s' }}
+                                                onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
+                                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                            >
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: 'monospace' }}>{(apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}</span>
+                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
+                                                <div>
+                                                    <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
+                                                    <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{apt.service_name ?? '—'}</p>
+                                                </div>
+                                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{apt.specialist_name ?? '—'}</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#9ca3af' }}>
+                                                    <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}dk</span>
+                                                </div>
+                                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right' }}>{(apt.total_price ?? 0) > 0 ? `₺${apt.total_price.toLocaleString('tr-TR')}` : '—'}</span>
+                                            </div>
+                                        );
+                                    })
+                                }
+                            </div>
                         )}
                     </>
                 )}
@@ -234,6 +594,3 @@ export function SmartScheduler() {
         </div>
     );
 }
-
-
-

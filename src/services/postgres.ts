@@ -200,7 +200,7 @@ export class PostgresConnection {
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
     // Beauty card tables (beauty schema)
-    'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices'
+    'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices', 'beauty_leads'
   ];
   private static MOVEMENT_TABLES = [
     'sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines',
@@ -209,7 +209,8 @@ export class PostgresConnection {
     'rest_orders', 'rest_order_items', 'rest_kitchen_orders', 'rest_kitchen_items', 'rest_reservations',
     // Beauty movement tables (beauty schema)
     'beauty_appointments', 'beauty_sessions', 'beauty_session_logs',
-    'beauty_package_purchases', 'beauty_package_sales', 'beauty_device_usage'
+    'beauty_package_purchases', 'beauty_package_sales', 'beauty_device_usage',
+    'beauty_device_alerts', 'beauty_customer_feedback', 'beauty_sales', 'beauty_sale_items'
   ];
 
   // Tables that live in a dedicated schema (not public)
@@ -219,6 +220,9 @@ export class PostgresConnection {
     'beauty_specialists': 'beauty', 'beauty_services': 'beauty', 'beauty_packages': 'beauty', 'beauty_devices': 'beauty',
     'beauty_appointments': 'beauty', 'beauty_sessions': 'beauty', 'beauty_session_logs': 'beauty',
     'beauty_package_purchases': 'beauty', 'beauty_package_sales': 'beauty', 'beauty_device_usage': 'beauty',
+    'beauty_leads': 'beauty', 'beauty_device_alerts': 'beauty', 'beauty_customer_feedback': 'beauty',
+    'beauty_sales': 'beauty', 'beauty_sale_items': 'beauty',
+    'products': 'public', 'customers': 'public', 'suppliers': 'public', 'categories': 'public'
   };
 
   /** Returns schema-qualified prefixed name for a firm-level card table.
@@ -276,17 +280,15 @@ export class PostgresConnection {
     const effectivePeriodNr = options?.periodNr || ERP_SETTINGS.periodNr || '01';
 
     PostgresConnection.CARD_TABLES.forEach(table => {
-      const schema = PostgresConnection.TABLE_SCHEMA[table];
+      const schema = PostgresConnection.TABLE_SCHEMA[table] || 'public';
       const prefixed = `rex_${effectiveFirmNr}_${table}`;
-      const fullName = schema ? `${schema}.${prefixed}` : prefixed;
+      const fullName = schema === 'public' ? prefixed : `${schema}.${prefixed}`;
       // 1. Rewrite plain table name: rest_tables → rest.rex_001_rest_tables
       const plainRegex = new RegExp(`(?<!\\.)\\b${table}\\b`, 'gi');
       resolvedSql = resolvedSql.replace(plainRegex, fullName);
       // 2. Rewrite explicit schema.tablename: rest.rest_tables → rest.rex_001_rest_tables
-      if (schema) {
-        const schemaRegex = new RegExp(`\\b${schema}\\.${table}\\b`, 'gi');
-        resolvedSql = resolvedSql.replace(schemaRegex, `${schema}.${prefixed}`);
-      }
+      const schemaRegex = new RegExp(`\\b${schema}\\.${table}\\b`, 'gi');
+      resolvedSql = resolvedSql.replace(schemaRegex, `${schema}.${prefixed}`);
     });
 
     PostgresConnection.MOVEMENT_TABLES.forEach(table => {

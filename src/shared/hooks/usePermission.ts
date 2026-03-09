@@ -1,47 +1,44 @@
-// Permission Hook - DB Connected
-import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '../../store';
-import { supabase } from '../../utils/supabase/client';
+// Permission Hook - Unified RBAC System
+import { useAuth } from '../../contexts/AuthContext';
 import { DISCOUNT_LIMITS, USER_ROLES } from '../../core/config/constants';
 
 export const usePermission = () => {
-  const user = useAuthStore((state) => state.user);
+  const { user, hasPermission: contextHasPermission } = useAuth();
 
-  // Fetch permissions for the user's role
-  const { data: permissions } = useQuery({
-    queryKey: ['permissions', user?.role],
-    queryFn: async () => {
-      if (!user?.role) return [];
+  /**
+   * Check if user has permission for an action on a module.
+   * Format: hasPermission('pos', 'CREATE') or hasPermission('products', 'READ')
+   */
+  const hasPermission = (moduleOrCode: string, action?: string): boolean => {
+    // Admin bypass
+    if (user?.roles?.some(r => r.id === 'admin' || r.name?.toLowerCase() === 'admin')) {
+      return true;
+    }
 
-      const { data, error } = await supabase
-        .from('role_permissions')
-        .select(`
-          permission:permissions(code)
-        `)
-        .eq('role', user.role);
+    // If second argument is provided, use the new rbac system: hasPermission('module', 'ACTION')
+    if (action) {
+      return contextHasPermission(moduleOrCode, action);
+    }
 
-      if (error) {
-        console.error('Error fetching permissions:', error);
-        return [];
-      }
+    // Legacy support: hasPermission('module.action') or hasPermission('permissionCode')
+    if (moduleOrCode.includes('.')) {
+      const [module, act] = moduleOrCode.split('.');
+      return contextHasPermission(module, act.toUpperCase());
+    }
 
-      // Flatten the structure: [{permission: {code: 'X'}}] -> ['X']
-      return data.map((item: any) => item.permission?.code).filter(Boolean);
-    },
-    enabled: !!user?.role,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const hasPermission = (permissionCode: string): boolean => {
-    // Admin always has logic or specific override
-    if (user?.role === USER_ROLES.ADMIN) return true;
-    return permissions?.includes(permissionCode) || false;
+    // Default to READ if only module is provided
+    return contextHasPermission(moduleOrCode, 'READ');
   };
 
   const getMaxDiscount = (): number => {
     if (!user) return 0;
-    // Ideally this also comes from DB, but keeping constant for now as per task scope
-    return DISCOUNT_LIMITS[user.role as keyof typeof DISCOUNT_LIMITS] || 0;
+    // Map role names/IDs to discount limits
+    const roleId = user.roles?.[0]?.id || '';
+    const roleName = user.roles?.[0]?.name?.toLowerCase() || '';
+
+    if (roleId === 'admin' || roleName === 'admin') return DISCOUNT_LIMITS.admin;
+    if (roleId === 'manager' || roleName === 'manager') return DISCOUNT_LIMITS.manager;
+    return DISCOUNT_LIMITS.cashier;
   };
 
   const canApplyDiscount = (discountPercentage: number): boolean => {
@@ -49,20 +46,20 @@ export const usePermission = () => {
     return discountPercentage <= maxDiscount;
   };
 
-  const isRole = (role: string): boolean => {
-    return user?.role === role;
+  const isRole = (roleName: string): boolean => {
+    return user?.roles?.some(r => r.name?.toLowerCase() === roleName.toLowerCase() || r.id === roleName.toLowerCase()) || false;
   };
 
   const isCashier = (): boolean => {
-    return user?.role === USER_ROLES.CASHIER;
+    return isRole(USER_ROLES.CASHIER);
   };
 
   const isManager = (): boolean => {
-    return user?.role === USER_ROLES.MANAGER;
+    return isRole(USER_ROLES.MANAGER);
   };
 
   const isAdmin = (): boolean => {
-    return user?.role === USER_ROLES.ADMIN;
+    return isRole(USER_ROLES.ADMIN);
   };
 
   const needsManagerAuth = (discountPercentage: number): boolean => {
@@ -73,7 +70,7 @@ export const usePermission = () => {
 
   return {
     user,
-    permissions,
+    permissions: user?.roles?.flatMap(r => r.permissions) || [],
     hasPermission,
     getMaxDiscount,
     canApplyDiscount,
@@ -84,5 +81,3 @@ export const usePermission = () => {
     needsManagerAuth,
   };
 };
-
-

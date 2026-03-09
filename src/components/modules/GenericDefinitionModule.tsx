@@ -4,11 +4,14 @@ import { definitionAPI, DefinitionItem } from '../../services/definitionAPI';
 import { BaseModal } from '../shared/BaseModal';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
+import { IconPicker } from '../shared/IconPicker';
+import * as LucideIcons from 'lucide-react';
+import { Check, Minus } from 'lucide-react';
 
 interface ColumnDef {
     key: string;
     header: string;
-    type?: 'text' | 'boolean' | 'number';
+    type?: 'text' | 'boolean' | 'number' | 'icon';
 }
 
 interface GenericDefinitionModuleProps {
@@ -59,6 +62,7 @@ export function GenericDefinitionModule({
             if (editingItem) {
                 await definitionAPI.update(tableName, editingItem.id, formData);
             } else {
+                console.log('[GenericDefinitionModule] Creating with formData:', formData);
                 await definitionAPI.create(tableName, { ...formData, is_active: true });
             }
             setShowModal(false);
@@ -94,10 +98,11 @@ export function GenericDefinitionModule({
         const initialData: any = {};
         columns.forEach(col => {
             if (col.key !== 'is_active' && col.key !== 'actions') {
-                initialData[col.key] = '';
+                initialData[col.key] = col.type === 'boolean' ? false : '';
             }
         });
         setFormData(initialData);
+        console.log('[GenericDefinitionModule] Form Reset:', initialData);
         setEditingItem(null);
     };
 
@@ -125,7 +130,22 @@ export function GenericDefinitionModule({
         const cols = columns.map(col =>
             columnHelper.accessor(col.key as any, {
                 header: col.header,
-                cell: info => info.getValue(),
+                cell: info => {
+                    const value = info.getValue();
+                    if (col.type === 'boolean') {
+                        return value ? <Check className="w-4 h-4 text-green-600" /> : <Minus className="w-4 h-4 text-gray-300" />;
+                    }
+                    if (col.type === 'icon') {
+                        const IconComp = (LucideIcons as any)[value as string] || LucideIcons.HelpCircle;
+                        return (
+                            <div className="flex items-center gap-2">
+                                <IconComp className="w-4 h-4 text-blue-600" />
+                                <span className="text-[10px] text-gray-500 font-mono">{value}</span>
+                            </div>
+                        );
+                    }
+                    return value;
+                },
             })
         );
 
@@ -342,16 +362,37 @@ export function GenericDefinitionModule({
                     {columns.map(col => (
                         <div key={col.key}>
                             <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
-                                {col.header} <span className="text-red-500">*</span>
+                                {col.header} {(col.key === 'code' || col.key === 'name') && <span className="text-red-500">*</span>}
                             </label>
-                            <input
-                                type={col.type === 'number' ? 'number' : 'text'}
-                                required={col.key === 'code' || col.key === 'name'} // Basic validation assumption
-                                value={formData[col.key] || ''}
-                                onChange={(e) => setFormData({ ...formData, [col.key]: e.target.value })}
-                                className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400"
-                                placeholder={`${col.header} giriniz`}
-                            />
+
+                            {col.type === 'boolean' ? (
+                                <label className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-300 rounded cursor-pointer hover:bg-white transition-all">
+                                    <div className="relative">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!formData[col.key]}
+                                            onChange={(e) => setFormData({ ...formData, [col.key]: e.target.checked })}
+                                            className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-slate-300 checked:bg-blue-600 transition-all"
+                                        />
+                                        <Check className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                                    </div>
+                                    <span className="text-sm text-gray-700 font-medium">Aktif et</span>
+                                </label>
+                            ) : col.type === 'icon' ? (
+                                <IconPicker
+                                    value={formData[col.key] || ''}
+                                    onChange={(name) => setFormData({ ...formData, [col.key]: name })}
+                                />
+                            ) : (
+                                <input
+                                    type={col.type === 'number' ? 'number' : 'text'}
+                                    required={col.key === 'code' || col.key === 'name'}
+                                    value={formData[col.key] || ''}
+                                    onChange={(e) => setFormData({ ...formData, [col.key]: e.target.value })}
+                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm text-gray-900 placeholder-gray-400"
+                                    placeholder={`${col.header} giriniz`}
+                                />
+                            )}
                         </div>
                     ))}
                     <button type="submit" className="hidden" />

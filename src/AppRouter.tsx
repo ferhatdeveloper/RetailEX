@@ -16,6 +16,8 @@ import { InfrastructureSettingsPage } from './components/system/InfrastructureSe
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import App from './App';
 import { Toaster } from 'sonner';
+import { RoleManagement } from './components/system/RoleManagement';
+import { RoleForm } from './components/system/RoleForm';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +54,30 @@ export function AppRouter() {
                 <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
 
                 {/* Protected routes */}
+                <Route
+                  path="/system/roles"
+                  element={
+                    <ProtectedRoute>
+                      <div className="h-screen w-full bg-slate-50"><RoleManagement /></div>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/system/roles/new"
+                  element={
+                    <ProtectedRoute>
+                      <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/system/roles/:id"
+                  element={
+                    <ProtectedRoute>
+                      <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/*"
                   element={<App />}

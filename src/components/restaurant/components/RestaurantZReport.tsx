@@ -168,7 +168,7 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
                     </button>
                     <button
                         onClick={onPrint}
-                        className="flex-1 px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-slate-800 transition-all shadow-xl shadow-slate-200"
+                        className="flex-1 px-8 py-4 bg-[#0f172a] text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-[#1e293b] transition-all shadow-xl shadow-slate-300 active:scale-95"
                     >
                         <Printer className="w-4 h-4" />
                         RAPORU YAZDIR

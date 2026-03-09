@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import rbacService, { Role } from '../services/rbacService';
 import { postgres, ERP_SETTINGS } from '../services/postgres';
 import { logger } from '../services/loggingService';
+import { useAuthStore } from '../store';
 
 // ===== TYPES =====
 
@@ -69,12 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = JSON.parse(sessionData);
 
         if (session.user) {
-          // Load user roles
-          const roles = (session.user.role_ids || []).map((roleId: string) =>
-            rbacService.getRoleById(roleId)
-          ).filter(Boolean);
+          // Enhance dynamic roles with resolve logic if they are just flat permissions
+          const resolvedRoles = (session.user.roles || []).map((role: any) => {
+            let perms = role.permissions;
+            if (typeof perms === 'string') {
+              try { perms = JSON.parse(perms); } catch (e) { perms = []; }
+            }
+            return {
+              ...role,
+              permissions: Array.isArray(perms) ? rbacService.resolveDynamicPermissions(perms) : []
+            };
+          });
 
-          setUser({ ...session.user, roles });
+          const userObj = { ...session.user, roles: resolvedRoles };
+          setUser(userObj);
+          useAuthStore.getState().login(userObj as any);
 
           // Restore firm and period context from session
           // Try to get from localStorage metadata or re-query user
@@ -109,79 +119,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       logger.info('Auth', `Login attempt: ${username} (Firm: ${ERP_SETTINGS.firmNr})`);
 
-      // 1. Query user directly from auth.users
+      // 1. Query user directly from public.users joined with roles
       const sql = `
-        SELECT id, email, raw_user_meta_data::text as raw_user_meta_data, created_at
-        FROM auth.users
-        WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)
-        AND (
-          raw_user_meta_data->>'firm_nr' = $3 
-          OR raw_user_meta_data->>'firm_nr' IS NULL 
-          OR raw_user_meta_data->>'role' = 'admin'
-          OR (raw_user_meta_data->'allowed_firms')::jsonb @> jsonb_build_array($3)::jsonb
-        )
-        AND encrypted_password = crypt($2, encrypted_password)
+        SELECT u.*, r.name as role_name, r.permissions as role_permissions, r.color as role_color
+        FROM users u
+        LEFT JOIN roles r ON u.role_id = r.id
+        WHERE LOWER(u.username) = LOWER($1)
+        AND u.firm_nr = $2
+        AND u.password_hash = crypt($3, u.password_hash)
+        AND u.is_active = true
       `;
 
       const { ERP_SETTINGS: latestSettings } = await import('../services/postgres');
-      const result = await postgres.query(sql, [username, password, latestSettings.firmNr]);
+      const result = await postgres.query(sql, [username, latestSettings.firmNr, password]);
 
       if (result.rowCount > 0) {
         const dbUser = result.rows[0];
-        let meta = dbUser.raw_user_meta_data;
 
-        // Robust parsing (always string due to ::text cast)
-        if (typeof meta === 'string') {
-          try {
-            meta = JSON.parse(meta);
-          } catch (e) {
-            console.error('Auth: Failed to parse user metadata string:', meta);
-            meta = null;
-          }
+        logger.info('Auth', `Login successful for user: ${dbUser.username} (ID: ${dbUser.id})`);
+
+        // Parse and resolve permissions robustly
+        let rawPerms = dbUser.role_permissions;
+        if (typeof rawPerms === 'string') {
+          try { rawPerms = JSON.parse(rawPerms); } catch (e) { rawPerms = []; }
         }
+        if (!Array.isArray(rawPerms)) rawPerms = [];
 
-        if (!meta || Object.keys(meta).length === 0) {
-          logger.error('Auth', `Metadata is missing for user: ${username}`);
-          toast.error('Kullanıcı profil verileri eksik. Lütfen sistem yöneticisine danışın.');
-          setLoading(false);
-          return false;
-        }
+        const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
 
-        logger.info('Auth', `Login successful for user: ${meta.username || username} (ID: ${dbUser.id})`);
-
-        // Map roles
-        const roleIds = [meta.role || 'cashier'];
-        const roles = roleIds.map(id => rbacService.getRoleById(id)).filter((role): role is Role => !!role);
+        const resolvedRole: Role = {
+          id: dbUser.role_id || 'dynamic',
+          name: dbUser.role_name || dbUser.role || 'User',
+          description: '',
+          permissions: dynamicPermissions,
+          isSystemRole: false,
+          isActive: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
 
         const userWithRoles: User = {
           id: dbUser.id,
-          username: meta.username || username,
-          email: dbUser.email || meta.email || `${meta.username || username}@retailex.local`,
-          full_name: meta.full_name || username,
-          role_ids: roleIds,
-          roles: roles,
-          firm_nr: meta.firm_nr, // Firma numarası
-          period_nr: meta.period_nr, // Dönem numarası
-          store_id: meta.store_id,
+          username: dbUser.username,
+          email: dbUser.email || `${dbUser.username}@retailex.local`,
+          full_name: dbUser.full_name,
+          role_ids: [dbUser.role_id || dbUser.role],
+          roles: [resolvedRole],
+          firm_nr: dbUser.firm_nr,
+          period_nr: latestSettings.periodNr,
+          store_id: dbUser.store_id,
           created_at: dbUser.created_at
         };
 
         setUser(userWithRoles);
+        useAuthStore.getState().login(userWithRoles as any);
 
-        // Update ERP_SETTINGS with logged-in user's firm and period
-        if (meta.firm_nr) {
-          ERP_SETTINGS.firmNr = meta.firm_nr;
-          logger.info('Auth', `Firm context updated to: ${meta.firm_nr}`);
-        }
-        if (meta.period_nr) {
-          ERP_SETTINGS.periodNr = meta.period_nr;
-          logger.info('Auth', `Period context updated to: ${meta.period_nr}`);
-        }
-
-        // Save metadata for session restore
+        // Restore firm and period context from session
         localStorage.setItem('exretail_user_meta', JSON.stringify({
-          firm_nr: meta.firm_nr,
-          period_nr: meta.period_nr
+          firm_nr: dbUser.firm_nr,
+          period_nr: latestSettings.periodNr
         }));
 
         // Save session
@@ -212,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Logout function
   const logout = () => {
     setUser(null);
+    useAuthStore.getState().logout();
     localStorage.removeItem('exretail_session');
     toast.success('Çıkış yapıldı');
   };
@@ -230,8 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
 
       const sql = `
-        INSERT INTO auth.users (id, email, encrypted_password, raw_user_meta_data) 
-        VALUES ($1, $2, crypt($3, gen_salt('bf')), $4)
+        INSERT INTO public.users (id, email, password_hash, username, full_name, role, role_id, firm_nr) 
+        VALUES ($1, $2, crypt($3, gen_salt('bf')), $4, $5, $6, $7, $8)
         RETURNING id
       `;
 
@@ -239,7 +236,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userId,
         data.email,
         data.password,
-        JSON.stringify(metaData)
+        data.username,
+        data.full_name,
+        data.role_ids?.[0] || 'cashier',
+        data.role_ids?.[0], // Assuming role_id is passed as uuid if available, or name
+        ERP_SETTINGS.firmNr
       ]);
 
       if (result.rowCount > 0) {

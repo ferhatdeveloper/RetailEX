@@ -3,12 +3,14 @@ import { persist } from 'zustand/middleware';
 import {
     Table, KitchenOrder, MenuItem, Recipe, OrderItem,
     Region, PrinterRouting, CourseType, PrinterProfile,
-    Staff, LoginResult, Reservation
+    Staff, LoginResult, Reservation, MergedOrderRef
 } from '../types';
 import { useProductStore } from '../../../store/useProductStore';
 import { useSaleStore } from '../../../store/useSaleStore';
 import { useCustomerStore } from '../../../store/useCustomerStore';
 import { RestaurantService } from '../../../services/restaurant';
+import { stockMovementAPI } from '../../../services/stockMovementAPI';
+import { categoryAPI, type Category } from '../../../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { convertUnit } from '../utils/unitConverter';
 
@@ -20,6 +22,7 @@ interface RestaurantState {
     printerRoutes: PrinterRouting[];
     printerProfiles: PrinterProfile[];
     commonPrinterId?: string;
+    categories: Category[];
     kitchenOrders: KitchenOrder[];
     currentStaff: Staff | null;
     staffList: Staff[];
@@ -33,14 +36,16 @@ interface RestaurantState {
 
     // Table Actions
     openTable: (tableId: string, waiter: string) => Promise<void>;
-    addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => void;
+    addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => Promise<void>;
     requestBill: (tableId: string) => Promise<void>;
     closeBill: (tableId: string, paymentData: any) => Promise<void>;
+    markAsClean: (tableId: string) => Promise<void>;
     addTable: (table: Omit<Table, 'orders' | 'status' | 'total'>) => Promise<void>;
     updateTable: (table: Partial<Table>, persist?: boolean) => Promise<void>;
     removeTable: (tableId: string) => Promise<void>;
     mergeTables: (sourceTableId: string, targetTableId: string) => Promise<void>;
     transferTable: (sourceTableId: string, targetTableId: string) => Promise<void>;
+    moveTable: (sourceTableId: string, targetTableId: string) => Promise<void>;
 
     // Kitchen Actions
     sendToKitchen: (tableId: string) => Promise<void>;
@@ -53,12 +58,13 @@ interface RestaurantState {
     // Load (DB sync) Actions
     loadTables: (floorId?: string) => Promise<void>;
     loadMenu: () => Promise<void>;
+    loadCategories: () => Promise<void>;
     loadRegions: (storeId?: string) => Promise<void>;
     loadRecipes: () => Promise<void>;
     loadKitchenOrders: () => Promise<void>;
 
     // Region & Printer Actions
-    addRegion: (region: Region, storeId: string) => Promise<void>;
+    addRegion: (region: Region, storeId: string | null) => Promise<void>;
     removeRegion: (regionId: string) => Promise<void>;
     updatePrinterRoute: (route: PrinterRouting) => void;
     removePrinterRoute: (routeId: string) => void;
@@ -80,6 +86,8 @@ interface RestaurantState {
     loginWithPin: (pin: string) => Promise<LoginResult>;
     logout: () => void;
     loadStaff: () => Promise<void>;
+    addStaff: (staff: Omit<Staff, 'id'>) => Promise<void>;
+    removeStaff: (staffId: string) => Promise<void>;
     setCurrentStaff: (staff: Staff) => void;
 
     // Phase 4: Financial
@@ -115,25 +123,109 @@ export const useRestaurantStore = create<RestaurantState>()(
             isDayActive: false,
             systemPrinters: [],
             reservations: [],
+            categories: [],
 
             openTable: async (tableId, waiter) => {
-                const staffId = get().currentStaff?.id;
-                await RestaurantService.updateTableStatus(tableId, 'occupied', waiter, staffId, 0);
-                set(state => ({
-                    tables: state.tables.map(t =>
-                        t.id === tableId
-                            ? { ...t, status: 'occupied', waiter, staffId, orders: [], total: 0, startTime: new Date().toISOString() }
-                            : t
-                    )
-                }));
+                try {
+                    const staffId = get().currentStaff?.id;
+                    await RestaurantService.updateTableStatus(tableId, 'occupied', waiter, staffId, 0);
+                    // Create DB order immediately so items can be persisted before sendToKitchen
+                    const table = get().tables.find(t => t.id === tableId);
+                    const dbOrder = await RestaurantService.createOrder({
+                        tableId,
+                        floorId: table?.floorId,
+                        waiter
+                    });
+                    set(state => ({
+                        tables: state.tables.map(t =>
+                            t.id === tableId
+                                ? {
+                                    ...t, status: 'occupied', waiter, staffId, orders: [], total: 0,
+                                    startTime: new Date().toISOString(),
+                                    activeOrderId: dbOrder.id,
+                                    faturaNo: dbOrder.order_no,
+                                    mergedOrders: []
+                                }
+                                : t
+                        )
+                    }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] openTable hatası:', err);
+                    throw err;
+                }
             },
 
-            addItemToTable: (tableId, item, quantity, options) => {
+            addItemToTable: async (tableId, item, quantity, options) => {
+                const state0 = get();
+                const table = state0.tables.find(t => t.id === tableId);
+                let orderId = table?.activeOrderId;
+
+                // Create order in DB if not yet created
+                if (!orderId) {
+                    const dbOrder = await RestaurantService.createOrder({
+                        tableId,
+                        floorId: table?.floorId,
+                        waiter: table?.waiter
+                    });
+                    orderId = dbOrder.id;
+                    set(state => ({
+                        tables: state.tables.map(tb =>
+                            tb.id === tableId
+                                ? { ...tb, activeOrderId: dbOrder.id, faturaNo: dbOrder.order_no }
+                                : tb
+                        )
+                    }));
+                }
+
+                // Save item to DB and get back the DB-generated ID
+                const dbItem = await RestaurantService.addOrderItem(orderId!, {
+                    productId: item.id,
+                    productName: item.name,
+                    quantity,
+                    unitPrice: item.price,
+                    note: options,
+                });
+
+                // ✅ Immediate Stock Deduction (Recipe-based)
+                try {
+                    const productStore = useProductStore.getState();
+                    const recipe = state0.recipes.find(r => r.menuItemId === item.id);
+                    if (recipe) {
+                        for (const ingredient of recipe.ingredients) {
+                            if (ingredient.materialId) {
+                                const prod = productStore.products.find(p => p.id === ingredient.materialId);
+                                if (prod) {
+                                    const deduction = convertUnit(ingredient.quantity * quantity, (ingredient.unit || 'gr').toLowerCase(), (prod.unit || 'kg').toLowerCase());
+                                    await productStore.updateStock(prod.id, prod.stock - deduction);
+
+                                    // Log Stock Movement
+                                    await stockMovementAPI.create(
+                                        {
+                                            trcode: 1, // Sarf
+                                            movement_type: 'out',
+                                            description: `Restoran Satış: ${item.name}`,
+                                            document_no: table?.faturaNo || `REST-${table?.number}`
+                                        },
+                                        [{
+                                            product_id: prod.id,
+                                            quantity: deduction,
+                                            unit_price: prod.cost || 0,
+                                            notes: `Reçeteli Satış`
+                                        }]
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } catch (stockErr) {
+                    console.error('[addItemToTable] Stock deduction failed:', stockErr);
+                }
+
                 set(state => ({
                     tables: state.tables.map(t => {
                         if (t.id !== tableId) return t;
                         const newOrder: OrderItem = {
-                            id: uuidv4(),
+                            id: dbItem.id,         // Use DB-assigned ID for void/update ops
                             menuItemId: item.id,
                             name: item.name,
                             quantity,
@@ -142,7 +234,9 @@ export const useRestaurantStore = create<RestaurantState>()(
                             options
                         };
                         const updatedOrders = [...t.orders, newOrder];
-                        const updatedTotal = updatedOrders.reduce((sum, o) => sum + o.price * o.quantity, 0);
+                        const updatedTotal = updatedOrders
+                            .filter(o => !o.isVoid)
+                            .reduce((sum, o) => sum + o.price * o.quantity, 0);
                         return { ...t, orders: updatedOrders, total: updatedTotal };
                     })
                 }));
@@ -159,71 +253,57 @@ export const useRestaurantStore = create<RestaurantState>()(
             sendToKitchen: async (tableId) => {
                 const table = get().tables.find(t => t.id === tableId);
                 if (!table) return;
-                const pendingItems = table.orders.filter(o => o.status === 'pending');
+                const pendingItems = table.orders.filter(o => o.status === 'pending' && !o.isVoid);
                 if (pendingItems.length === 0) return;
 
-                let dbOrderId = table.activeOrderId;
-                if (!dbOrderId) {
-                    const dbOrder = await RestaurantService.createOrder({ tableId, waiter: table.waiter });
-                    dbOrderId = dbOrder.id;
-                    for (const item of table.orders) {
-                        await RestaurantService.addOrderItem(dbOrderId!, {
-                            productId: item.menuItemId,
-                            productName: item.name,
-                            quantity: item.quantity,
-                            unitPrice: item.price,
-                            course: item.course,
-                            note: item.notes,
-                        });
-                    }
-                    set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, activeOrderId: dbOrderId } : t) }));
-                } else {
+                // Items are already saved to DB in addItemToTable — just need activeOrderId
+                const dbOrderId = table.activeOrderId;
+                if (!dbOrderId) return;
+
+                try {
+                    // Update pending items status to 'cooking' in DB
                     for (const item of pendingItems) {
-                        await RestaurantService.addOrderItem(dbOrderId, {
-                            productId: item.menuItemId,
-                            productName: item.name,
-                            quantity: item.quantity,
-                            unitPrice: item.price,
-                            course: item.course,
-                            note: item.notes,
-                        });
+                        await RestaurantService.updateOrderItem(item.id, { status: 'cooking' });
                     }
+
+                    const kitchenOrderId = await RestaurantService.createKitchenOrder({
+                        orderId: dbOrderId!,
+                        tableNumber: table.number,
+                        floorName: table.location,
+                        waiter: table.waiter,
+                        items: pendingItems.map(i => ({
+                            orderItemId: i.id,
+                            productId: i.menuItemId,
+                            productName: i.name,
+                            quantity: i.quantity,
+                            course: i.course,
+                            note: i.notes,
+                        })),
+                    });
+
+                    const kitchenOrder: KitchenOrder = {
+                        id: kitchenOrderId,
+                        tableId: table.id,
+                        tableName: table.number,
+                        waiter: table.waiter || 'Genel',
+                        time: new Date().toLocaleTimeString(),
+                        elapsed: 0,
+                        items: pendingItems,
+                        status: 'new'
+                    };
+                    set(state => ({
+                        kitchenOrders: [...state.kitchenOrders, kitchenOrder],
+                        tables: state.tables.map(t =>
+                            t.id === tableId
+                                ? { ...t, status: 'kitchen', orders: t.orders.map(o => o.status === 'pending' ? { ...o, status: 'cooking' } : o) }
+                                : t
+                        )
+                    }));
+                    await RestaurantService.updateTableStatus(tableId, 'kitchen', table.waiter, table.staffId, table.total);
+                } catch (error) {
+                    console.error("Mutfak siparişi gönderilirken hata oluştu:", error);
+                    throw error;
                 }
-
-                await RestaurantService.createKitchenOrder({
-                    orderId: dbOrderId!,
-                    tableNumber: table.number,
-                    floorName: table.location,
-                    waiter: table.waiter,
-                    items: pendingItems.map(i => ({
-                        orderItemId: i.id,
-                        productId: i.menuItemId,
-                        productName: i.name,
-                        quantity: i.quantity,
-                        course: i.course,
-                        note: i.notes,
-                    })),
-                });
-
-                const kitchenOrder: KitchenOrder = {
-                    id: uuidv4(),
-                    tableId: table.id,
-                    tableName: table.number,
-                    waiter: table.waiter || 'Genel',
-                    time: new Date().toLocaleTimeString(),
-                    elapsed: 0,
-                    items: pendingItems,
-                    status: 'new'
-                };
-                set(state => ({
-                    kitchenOrders: [...state.kitchenOrders, kitchenOrder],
-                    tables: state.tables.map(t =>
-                        t.id === tableId
-                            ? { ...t, status: 'kitchen', orders: t.orders.map(o => o.status === 'pending' ? { ...o, status: 'cooking' } : o) }
-                            : t
-                    )
-                }));
-                await RestaurantService.updateTableStatus(tableId, 'kitchen', table.waiter, table.staffId, table.total);
             },
 
             markAsReady: async (orderId) => {
@@ -251,83 +331,85 @@ export const useRestaurantStore = create<RestaurantState>()(
 
             closeBill: async (tableId, paymentData) => {
                 const table = get().tables.find(t => t.id === tableId);
-                if (!table || !table.total) return;
+                if (!table) return;
                 try {
                     let orderId = table.activeOrderId;
                     if (!orderId) {
                         const dbOrder = await RestaurantService.createOrder({ tableId, waiter: table.waiter });
                         orderId = dbOrder.id;
-                        for (const item of table.orders) {
-                            await RestaurantService.addOrderItem(orderId as string, {
+                        // Parallel insert of items
+                        await Promise.all(table.orders.map(item =>
+                            RestaurantService.addOrderItem(orderId as string, {
                                 productId: item.menuItemId,
                                 productName: item.name,
                                 quantity: item.quantity,
                                 unitPrice: item.price,
                                 course: item.course,
                                 note: item.options
-                            });
-                        }
+                            })
+                        ));
                     }
                     if (!orderId) throw new Error('Order selection failed');
-                    await RestaurantService.completeTablePayment({ tableId, orderId });
-
-                    const salesStore = useSaleStore.getState();
-                    const productStore = useProductStore.getState();
+                    const linkedOrderIds = (table.mergedOrders || []).map(m => m.orderId);
                     const paymentMethod = paymentData.payments?.[0]?.method || 'cash';
 
-                    await salesStore.addSale({
-                        id: uuidv4(),
-                        receiptNumber: `REST-${table.number}-${Date.now()}`,
-                        date: new Date().toISOString(),
-                        total: table.total || 0,
-                        subtotal: table.total || 0,
-                        discount: 0,
-                        items: table.orders.map(o => ({
-                            productId: o.menuItemId,
-                            productName: o.name,
-                            quantity: o.quantity,
-                            price: o.price,
-                            discount: 0,
-                            total: o.price * o.quantity
-                        })),
-                        paymentMethod,
-                        status: 'completed',
-                        cashier: table.waiter || 'Garson'
+                    // ✅ CRITICAL: Close order + reset table status (must block payment)
+                    await RestaurantService.completeTablePayment({ tableId, orderId, linkedOrderIds, paymentMethod });
+
+                    // ✅ Update local state immediately (unblocks UI)
+                    set(state => ({
+                        tables: state.tables.map(t => t.id === tableId
+                            ? { ...t, status: 'cleaning', orders: [], total: 0, waiter: undefined, startTime: undefined, activeOrderId: undefined, faturaNo: undefined, mergedOrders: [] }
+                            : t)
+                    }));
+
+                    // 🔄 Secondary operations in background (non-blocking)
+                    const tableSnapshot = { ...table };
+                    Promise.resolve().then(async () => {
+                        try {
+                            const salesStore = useSaleStore.getState();
+                            await salesStore.addSale({
+                                id: uuidv4(),
+                                receiptNumber: `REST-${tableSnapshot.number}-${Date.now()}`,
+                                date: new Date().toISOString(),
+                                total: tableSnapshot.total || 0,
+                                subtotal: tableSnapshot.total || 0,
+                                discount: 0,
+                                items: tableSnapshot.orders.map(o => ({
+                                    productId: o.menuItemId,
+                                    productName: o.name,
+                                    quantity: o.quantity,
+                                    price: o.price,
+                                    discount: 0,
+                                    total: o.price * o.quantity
+                                })),
+                                paymentMethod,
+                                status: 'completed',
+                                cashier: tableSnapshot.waiter || 'Garson'
+                            });
+                        } catch (e) { console.error('[closeBill bg] addSale failed:', e); }
+
+                        try {
+                            if (tableSnapshot.customerId) {
+                                const customerStore = useCustomerStore.getState();
+                                await customerStore.updatePurchaseHistory(tableSnapshot.customerId, tableSnapshot.total || 0);
+                                const accountPayments = paymentData.payments?.filter((p: any) => p.method === 'account') || [];
+                                const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+                                if (totalAccountAmount > 0) await customerStore.updateBalance(tableSnapshot.customerId, totalAccountAmount);
+                                const points = Math.floor((tableSnapshot.total || 0) / 100);
+                                if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
+                            }
+                        } catch (e) { console.error('[closeBill bg] customer update failed:', e); }
+
+                        // ✅ Recipe-based stock deduction removed (now handled in addItemToTable/voidOrderItem)
                     });
 
-                    if (table.customerId) {
-                        const customerStore = useCustomerStore.getState();
-                        await customerStore.updatePurchaseHistory(table.customerId, table.total);
-                        const accountPayments = paymentData.payments.filter((p: any) => p.method === 'account');
-                        const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-                        if (totalAccountAmount > 0) await customerStore.updateBalance(table.customerId, totalAccountAmount);
-                        const points = Math.floor(table.total / 100);
-                        if (points > 0) await customerStore.updatePoints(table.customerId, points);
-                    }
-
-                    for (const orderItem of table.orders) {
-                        const recipe = get().recipes.find(r => r.menuItemId === orderItem.menuItemId);
-                        if (recipe) {
-                            for (const ingredient of recipe.ingredients) {
-                                if (ingredient.materialId) {
-                                    const product = productStore.products.find(p => p.id === ingredient.materialId);
-                                    if (product) {
-                                        const finalDeduction = convertUnit(ingredient.quantity * orderItem.quantity, ingredient.unit || 'gr', product.unit || 'kg');
-                                        await productStore.updateStock(product.id, product.stock - finalDeduction);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    set(state => ({
-                        tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'empty', orders: [], total: 0, waiter: undefined, startTime: undefined, activeOrderId: undefined } : t)
-                    }));
-                    await RestaurantService.updateTableStatus(tableId, 'empty', undefined, undefined, 0);
                 } catch (error) {
                     console.error('[RestaurantStore] closeBill error:', error);
+                    throw error;
                 }
             },
+
 
             addTable: async (tableData) => {
                 const row = await RestaurantService.addTable({ floor_id: tableData.floorId, number: tableData.number, seats: tableData.seats, is_large: tableData.isLarge });
@@ -345,50 +427,113 @@ export const useRestaurantStore = create<RestaurantState>()(
             },
 
             mergeTables: async (sourceTableId, targetTableId) => {
-                await RestaurantService.mergeTables(sourceTableId, targetTableId);
+                // Link source order to target table without moving items in DB
+                // Each order keeps its own fatura code
+                const sourceOrder = await RestaurantService.linkOrderToTable(sourceTableId, targetTableId);
                 const sourceTable = get().tables.find(t => t.id === sourceTableId);
-                const sourcePending = sourceTable?.orders.filter(o => o.status === 'pending') || [];
+
                 set(state => ({
                     tables: state.tables.map(t => {
                         if (t.id === targetTableId) {
-                            const updatedOrders = [...t.orders, ...sourcePending];
-                            return { ...t, orders: updatedOrders, total: updatedOrders.reduce((sum, o) => sum + o.price * o.quantity, 0), status: 'occupied' };
+                            const mergedItems = sourceTable?.orders || [];
+                            const allOrders = [...t.orders, ...mergedItems];
+                            const newMergedOrders: MergedOrderRef[] = [
+                                ...(t.mergedOrders || []),
+                                ...(sourceOrder ? [{
+                                    orderId: sourceOrder.id,
+                                    faturaNo: sourceOrder.order_no,
+                                    tableId: sourceTableId,
+                                    tableNumber: sourceTable?.number || ''
+                                }] : [])
+                            ];
+                            return {
+                                ...t,
+                                orders: allOrders,
+                                total: allOrders.filter(o => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0),
+                                status: t.status === 'empty' ? 'occupied' : t.status,
+                                mergedOrders: newMergedOrders
+                            };
                         }
-                        if (t.id === sourceTableId) return { ...t, orders: [], total: 0, status: 'empty', waiter: undefined, activeOrderId: undefined };
+                        if (t.id === sourceTableId) {
+                            return { ...t, status: 'empty', orders: [], total: 0, waiter: undefined, activeOrderId: undefined, faturaNo: undefined, mergedOrders: [] };
+                        }
                         return t;
                     })
                 }));
             },
 
             transferTable: async (sourceTableId, targetTableId) => {
-                await RestaurantService.transferTable(sourceTableId, targetTableId);
-                const sourceTable = get().tables.find(t => t.id === sourceTableId);
-                if (!sourceTable) return;
-                set(state => ({
-                    tables: state.tables.map(t => {
-                        if (t.id === targetTableId) return { ...t, status: sourceTable.status, orders: sourceTable.orders, total: sourceTable.total, waiter: sourceTable.waiter, startTime: sourceTable.startTime, activeOrderId: sourceTable.activeOrderId };
-                        if (t.id === sourceTableId) return { ...t, status: 'empty', orders: [], total: 0, waiter: undefined, startTime: undefined, activeOrderId: undefined };
-                        return t;
-                    })
-                }));
+                try {
+                    await RestaurantService.transferTable(sourceTableId, targetTableId);
+                    // Re-load all tables to ensure state is perfectly in sync with DB
+                    const currentFloorId = get().tables.find(t => t.id === sourceTableId)?.floorId;
+                    await get().loadTables(currentFloorId);
+                } catch (err) {
+                    console.error('[RestaurantStore] transferTable error:', err);
+                    throw err;
+                }
+            },
+
+            moveTable: async (sourceTableId, targetTableId) => {
+                try {
+                    await RestaurantService.moveTable(sourceTableId, targetTableId);
+                    const currentFloorId = get().tables.find(t => t.id === sourceTableId)?.floorId;
+                    await get().loadTables(currentFloorId);
+                } catch (err) {
+                    console.error('[RestaurantStore] moveTable error:', err);
+                    throw err;
+                }
             },
 
             updateRecipe: async (recipe) => {
                 await RestaurantService.saveRecipe({ id: recipe.id, menuItemId: recipe.menuItemId, totalCost: recipe.totalCost, wastagePercent: recipe.wastagePercent, ingredients: recipe.ingredients.map(ing => ({ materialId: ing.materialId ?? '', quantity: ing.quantity, unit: ing.unit, cost: ing.cost })) });
-                set(state => ({ recipes: state.recipes.some(r => r.menuItemId === recipe.menuItemId) ? state.recipes.map(r => r.menuItemId === recipe.menuItemId ? recipe : r) : [...state.recipes, recipe] }));
+                await get().loadRecipes();
             },
 
             loadTables: async (floorId) => {
                 const rows = await RestaurantService.getTables(floorId);
                 const tablesWithOrders = await Promise.all(rows.map(async (r: any) => {
-                    const baseTable: Table = { id: r.id, number: r.number, seats: r.seats ?? 4, status: r.status ?? 'empty', floorId: r.floor_id ?? '', location: r.location, orders: [], startTime: r.start_time, waiter: r.waiter, total: Number(r.total || 0), isLarge: r.is_large ?? false };
+                    const baseTable: Table = {
+                        id: r.id, number: r.number, seats: r.seats ?? 4,
+                        status: r.status ?? 'empty', floorId: r.floor_id ?? '',
+                        location: r.location, orders: [], startTime: r.start_time,
+                        waiter: r.waiter, total: Number(r.total || 0), isLarge: r.is_large ?? false,
+                        faturaNo: undefined, mergedOrders: []
+                    };
                     if (baseTable.status !== 'empty') {
                         const activeOrder = await RestaurantService.getActiveOrder(baseTable.id);
                         if (activeOrder) {
                             baseTable.activeOrderId = activeOrder.id;
-                            baseTable.orders = (activeOrder.items || []).map((i: any) => ({ id: i.id, menuItemId: i.product_id, name: i.product_name, quantity: Number(i.quantity), price: Number(i.unit_price), status: i.status || 'cooking', course: i.course, options: i.note, isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary }));
-                            baseTable.total = baseTable.orders.reduce((sum, o) => o.isVoid ? sum : sum + o.price * o.quantity, 0);
+                            baseTable.faturaNo = activeOrder.order_no;
+                            baseTable.orders = (activeOrder.items || []).map((i: any) => ({
+                                id: i.id, menuItemId: i.product_id, name: i.product_name,
+                                quantity: Number(i.quantity), price: Number(i.unit_price),
+                                status: i.status || 'cooking', course: i.course, options: i.note,
+                                isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary
+                            }));
                         }
+
+                        // Load linked (merged) orders
+                        const linkedIds: string[] = r.linked_order_ids || [];
+                        if (linkedIds.length > 0) {
+                            const linkedOrders = await RestaurantService.getLinkedOrders(linkedIds);
+                            const mergedRefs: MergedOrderRef[] = [];
+                            for (const lo of linkedOrders) {
+                                mergedRefs.push({ orderId: lo.id, faturaNo: lo.order_no, tableId: '', tableNumber: '' });
+                                const loItems = (lo.items || []).map((i: any) => ({
+                                    id: i.id, menuItemId: i.product_id, name: i.product_name,
+                                    quantity: Number(i.quantity), price: Number(i.unit_price),
+                                    status: i.status || 'cooking', course: i.course, options: i.note,
+                                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary
+                                }));
+                                baseTable.orders = [...baseTable.orders, ...loItems];
+                            }
+                            baseTable.mergedOrders = mergedRefs;
+                        }
+
+                        baseTable.total = baseTable.orders
+                            .filter(o => !o.isVoid)
+                            .reduce((sum, o) => sum + o.price * o.quantity, 0);
                     }
                     return baseTable;
                 }));
@@ -398,6 +543,11 @@ export const useRestaurantStore = create<RestaurantState>()(
             loadMenu: async () => {
                 const products = useProductStore.getState().products;
                 set({ menu: products.map((p: any) => ({ id: p.id, name: p.name, price: p.price ?? p.sale_price ?? 0, category: p.category ?? p.group_name ?? 'Genel', image: p.image })) });
+            },
+
+            loadCategories: async () => {
+                const categories = await categoryAPI.getAll();
+                set({ categories });
             },
 
             loadRegions: async (storeId) => {
@@ -412,6 +562,7 @@ export const useRestaurantStore = create<RestaurantState>()(
 
             loadKitchenOrders: async () => {
                 const rows = await RestaurantService.getActiveKitchenOrders();
+                console.log("KITCHEN ORDERS LOADED:", rows);
                 set({ kitchenOrders: rows.map((ko: any) => ({ id: ko.id, tableId: ko.order_id ?? '', tableName: ko.table_number ?? '', waiter: ko.waiter ?? '', time: ko.sent_at ? new Date(ko.sent_at).toLocaleTimeString() : new Date().toLocaleTimeString(), elapsed: ko.sent_at ? Math.floor((Date.now() - new Date(ko.sent_at).getTime()) / 60000) : 0, items: (ko.items ?? []).map((i: any) => ({ id: i.id, menuItemId: i.order_item_id ?? '', name: i.product_name, quantity: Number(i.quantity), price: 0, status: i.status ?? 'cooking', course: i.course, notes: i.note, startAt: i.start_at, preparationTime: i.preparation_time, estimatedReadyAt: i.estimated_ready_at })), status: ko.status ?? 'new', estimatedReadyAt: ko.estimated_ready_at })) });
             },
 
@@ -442,8 +593,48 @@ export const useRestaurantStore = create<RestaurantState>()(
                 set(state => ({ tables: state.tables.map(t => ({ ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, options } : o) })) }));
             },
             voidOrderItem: async (tableId, itemId, reason) => {
+                const state = get();
+                const table = state.tables.find(t => t.id === tableId);
+                const orderItem = table?.orders.find(o => o.id === itemId);
+
+                // ✅ Stock Restoration on Void
+                if (orderItem && !orderItem.isVoid) {
+                    try {
+                        const productStore = useProductStore.getState();
+                        const recipe = state.recipes.find(r => r.menuItemId === orderItem.menuItemId);
+                        if (recipe) {
+                            for (const ingredient of recipe.ingredients) {
+                                if (ingredient.materialId) {
+                                    const prod = productStore.products.find(p => p.id === ingredient.materialId);
+                                    if (prod) {
+                                        const restoration = convertUnit(ingredient.quantity * orderItem.quantity, ingredient.unit || 'gr', prod.unit || 'kg');
+                                        await productStore.updateStock(prod.id, prod.stock + restoration);
+
+                                        // Log Stock Movement (Reversal)
+                                        await stockMovementAPI.create(
+                                            {
+                                                trcode: 1, // Sarf (Reversal)
+                                                movement_type: 'in',
+                                                description: `Sipariş İptal (İade): ${orderItem.name}`,
+                                                document_no: table?.faturaNo || `VOID-${table?.number}`
+                                            },
+                                            [{
+                                                product_id: prod.id,
+                                                quantity: restoration,
+                                                unit_price: prod.cost || 0,
+                                                notes: `Void İptal İadesi`
+                                            }]
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    } catch (stockErr) {
+                        console.error('[voidOrderItem] Stock restoration failed:', stockErr);
+                    }
+                }
+
                 await RestaurantService.voidOrderItem(itemId, reason);
-                const table = get().tables.find(t => t.id === tableId);
                 if (table) await get().loadTables(table.floorId);
             },
             markItemAsComplementary: async (tableId, itemId) => {
@@ -457,7 +648,18 @@ export const useRestaurantStore = create<RestaurantState>()(
                 return result;
             },
             logout: () => set({ currentStaff: null }),
-            loadStaff: async () => set({ staffList: await RestaurantService.getStaffList(RestaurantService.firmNr) }),
+            loadStaff: async () => {
+                const staff = await RestaurantService.getStaffList(RestaurantService.firmNr);
+                set({ staffList: staff });
+            },
+            addStaff: async (staffData) => {
+                const newStaff = await RestaurantService.saveStaff(RestaurantService.firmNr, staffData);
+                set(state => ({ staffList: [...state.staffList, newStaff] }));
+            },
+            removeStaff: async (staffId) => {
+                await RestaurantService.deleteStaff(RestaurantService.firmNr, staffId);
+                set(state => ({ staffList: state.staffList.filter(s => s.id !== staffId) }));
+            },
             setCurrentStaff: (staff) => set({ currentStaff: staff }),
             openRegister: (cash, note) => set({ isRegisterOpen: true, registerOpeningCash: cash, registerOpeningNote: note, workDayDate: new Date().toLocaleDateString('tr-TR'), isDayActive: true }),
             closeRegister: () => set({ isRegisterOpen: false, registerOpeningCash: 0, registerOpeningNote: '', isDayActive: false }),
@@ -508,6 +710,13 @@ export const useRestaurantStore = create<RestaurantState>()(
                 await RestaurantService.updateTableStatus(tableId, 'cleaning');
                 set(state => ({
                     tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'cleaning' } : t)
+                }));
+            },
+
+            markAsClean: async (tableId: string) => {
+                await RestaurantService.updateTableStatus(tableId, 'empty', undefined, undefined, 0);
+                set(state => ({
+                    tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'empty', orders: [], total: 0, waiter: undefined } : t)
                 }));
             }
         }),

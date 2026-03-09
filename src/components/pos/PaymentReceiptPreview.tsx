@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef } from 'react';
-import type { Sale } from '../../App';
+import type { Sale } from '../../core/types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Banknote } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
@@ -15,8 +15,8 @@ interface PaymentReceiptPreviewProps {
  * Ödeme Fişi Önizleme Komponenti
  * Görüntüdeki formata uygun ödeme fişi gösterir
  */
-export function PaymentReceiptPreview({ 
-  sale, 
+export function PaymentReceiptPreview({
+  sale,
   companyName = 'ExRetailOS',
   location = 'Bağdat, Irak'
 }: PaymentReceiptPreviewProps) {
@@ -93,6 +93,12 @@ export function PaymentReceiptPreview({
           <span className="text-gray-600">KASİYER:</span>
           <span>{sale.cashier || 'Sistem Yöneticisi'}</span>
         </div>
+        {sale.table && (
+          <div className="flex justify-between font-bold text-blue-700">
+            <span className="text-gray-600">MASA:</span>
+            <span>{sale.table}</span>
+          </div>
+        )}
       </div>
 
       {/* Items */}
@@ -131,7 +137,7 @@ export function PaymentReceiptPreview({
           <span className="text-gray-600">ARA TOPLAM:</span>
           <span className="font-semibold">{formatMoney(sale.subtotal)} IQD</span>
         </div>
-        
+
         {(sale.campaignDiscount && sale.campaignDiscount > 0) || sale.campaignName ? (
           <div className="space-y-1">
             <div className="flex justify-between items-center">
@@ -150,14 +156,14 @@ export function PaymentReceiptPreview({
             )}
           </div>
         ) : null}
-        
+
         {sale.discount > 0 && (
           <div className="flex justify-between text-red-600">
             <span>İNDİRİM:</span>
             <span>-{formatMoney(sale.discount)} IQD</span>
           </div>
         )}
-        
+
         <div className="flex justify-between pt-2 border-t border-gray-300">
           <span className="text-lg font-bold">TOPLAM:</span>
           <span className="text-xl font-bold text-blue-600">{formatMoney(sale.total)} IQD</span>

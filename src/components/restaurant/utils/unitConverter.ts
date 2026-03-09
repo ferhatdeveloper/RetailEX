@@ -7,6 +7,7 @@ export const UNIT_CONVERSIONS: Record<string, { base: string; factor: number }> 
     // Mass (Base: gr)
     'kg': { base: 'gr', factor: 1000 },
     'gr': { base: 'gr', factor: 1 },
+    'g': { base: 'gr', factor: 1 },
     'mg': { base: 'gr', factor: 0.001 },
 
     // Volume (Base: ml)
@@ -17,8 +18,11 @@ export const UNIT_CONVERSIONS: Record<string, { base: string; factor: number }> 
 
     // Count (Base: unit)
     'adet': { base: 'adet', factor: 1 },
+    'ad': { base: 'adet', factor: 1 },
     'porsiyon': { base: 'porsiyon', factor: 1 },
+    'pors': { base: 'porsiyon', factor: 1 },
     'paket': { base: 'paket', factor: 1 },
+    'pkt': { base: 'paket', factor: 1 },
 };
 
 export function convertUnit(amount: number, fromUnit: string, toUnit: string): number {

@@ -25,6 +25,7 @@ import {
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { ProductProfitabilityReport } from './ProductProfitabilityReport';
 import { CustomerProfitabilityReport } from '../trading/contacts/CustomerProfitabilityReport';
+import { postgres } from '../../services/postgres';
 
 type TabType = 'overview' | 'products' | 'customers';
 
@@ -32,28 +33,103 @@ export function ProfitDashboard() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(false);
+  const [kpiData, setKpiData] = useState({
+    totalRevenue: 0,
+    totalCost: 0,
+    grossProfit: 0,
+    profitMargin: 0,
+    transactionCount: 0,
+    productCount: 0,
+    customerCount: 0,
+    avgTransactionValue: 0,
+    topProduct: '-',
+    topCustomer: '-',
+    profitableProducts: 0,
+    lossProducts: 0
+  });
+  const trends = { revenueChange: 0, profitChange: 0, marginChange: 0, transactionChange: 0 };
 
-  // Mock KPI data
-  const kpiData = {
-    totalRevenue: 258000000,
-    totalCost: 171000000,
-    grossProfit: 87000000,
-    profitMargin: 33.72,
-    transactionCount: 88,
-    productCount: 45,
-    customerCount: 25,
-    avgTransactionValue: 2931818,
-    topProduct: 'MILK001 - Süt',
-    topCustomer: 'Fatima Al-Zubaidi',
-    profitableProducts: 38,
-    lossProducts: 7
-  };
+  useEffect(() => {
+    if (selectedFirma && selectedDonem) loadKpiData();
+  }, [selectedFirma, selectedDonem]);
 
-  const trends = {
-    revenueChange: 12.5,
-    profitChange: 15.3,
-    marginChange: 2.1,
-    transactionChange: 8.7
+  const loadKpiData = async () => {
+    setLoading(true);
+    try {
+      const { rows: kpiRows } = await postgres.query(`
+        SELECT
+          COALESCE(SUM(net_amount), 0)   AS total_revenue,
+          COALESCE(SUM(total_cost), 0)   AS total_cost,
+          COALESCE(SUM(gross_profit), 0) AS gross_profit,
+          CASE WHEN COALESCE(SUM(net_amount), 0) > 0
+            THEN (COALESCE(SUM(gross_profit), 0) / SUM(net_amount)) * 100
+            ELSE 0 END                   AS profit_margin,
+          COUNT(*)                       AS transaction_count,
+          COUNT(DISTINCT customer_id)    AS customer_count
+        FROM sales
+        WHERE fiche_type = 'sales_invoice' AND status = 'completed'
+      `);
+
+      const { rows: topProductRows } = await postgres.query(`
+        SELECT si.product_code, si.product_name, SUM(si.gross_profit) AS total_profit
+        FROM sale_items si
+        JOIN sales s ON si.invoice_id = s.id
+        WHERE s.fiche_type = 'sales_invoice'
+        GROUP BY si.product_code, si.product_name
+        ORDER BY SUM(si.gross_profit) DESC
+        LIMIT 1
+      `);
+
+      const { rows: topCustomerRows } = await postgres.query(`
+        SELECT customer_name, SUM(gross_profit) AS total_profit
+        FROM sales
+        WHERE fiche_type = 'sales_invoice'
+          AND customer_name IS NOT NULL AND customer_name != ''
+        GROUP BY customer_name
+        ORDER BY SUM(gross_profit) DESC
+        LIMIT 1
+      `);
+
+      const { rows: prodCountRows } = await postgres.query(`
+        SELECT
+          COUNT(DISTINCT CASE WHEN t.total_profit > 0  THEN t.product_code END) AS profitable,
+          COUNT(DISTINCT CASE WHEN t.total_profit <= 0 THEN t.product_code END) AS loss_count,
+          COUNT(DISTINCT t.product_code)                                        AS total_count
+        FROM (
+          SELECT si.product_code, SUM(si.gross_profit) AS total_profit
+          FROM sale_items si
+          JOIN sales s ON si.invoice_id = s.id
+          WHERE s.fiche_type = 'sales_invoice'
+          GROUP BY si.product_code
+        ) t
+      `);
+
+      const k = kpiRows[0] || {};
+      const pc = prodCountRows[0] || {};
+      const tp = topProductRows[0];
+      const tc = topCustomerRows[0];
+      const txCount = parseInt(k.transaction_count) || 0;
+      const totalRev = parseFloat(k.total_revenue) || 0;
+
+      setKpiData({
+        totalRevenue: totalRev,
+        totalCost: parseFloat(k.total_cost) || 0,
+        grossProfit: parseFloat(k.gross_profit) || 0,
+        profitMargin: parseFloat(k.profit_margin) || 0,
+        transactionCount: txCount,
+        productCount: parseInt(pc.total_count) || 0,
+        customerCount: parseInt(k.customer_count) || 0,
+        avgTransactionValue: txCount > 0 ? totalRev / txCount : 0,
+        topProduct: tp ? `${tp.product_code} - ${tp.product_name}` : '-',
+        topCustomer: tc ? tc.customer_name : '-',
+        profitableProducts: parseInt(pc.profitable) || 0,
+        lossProducts: parseInt(pc.loss_count) || 0,
+      });
+    } catch (err) {
+      console.error('[ProfitDashboard] loadKpiData failed:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const formatMoney = (amount: number) => {
@@ -89,7 +165,9 @@ export function ProfitDashboard() {
             </p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold">{formatMoney(kpiData.grossProfit)} IQD</div>
+            <div className="text-3xl font-bold">
+              {loading ? '...' : `${formatMoney(kpiData.grossProfit)} IQD`}
+            </div>
             <div className="text-purple-100">Toplam Brüt Kar</div>
           </div>
         </div>
@@ -284,7 +362,7 @@ export function ProfitDashboard() {
 
               {/* Quick Insights */}
               <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
-                <h3 className="font-semibold text-blue-900 mb-4">ğŸ’¡ Hızlı İçgörüler</h3>
+                <h3 className="font-semibold text-blue-900 mb-4">Hızlı İçgörüler</h3>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />

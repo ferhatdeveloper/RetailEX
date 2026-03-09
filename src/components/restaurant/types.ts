@@ -38,6 +38,13 @@ export interface OrderItem {
     preparationTime?: number;
 }
 
+export interface MergedOrderRef {
+    orderId: string;
+    faturaNo: string;
+    tableId: string;
+    tableNumber: string;
+}
+
 export interface Table {
     id: string;
     number: string;
@@ -53,6 +60,10 @@ export interface Table {
     isLarge?: boolean;
     /** DB order ID for the currently open rest_orders row */
     activeOrderId?: string;
+    /** Invoice/fatura code, e.g. RES-2026-00001 */
+    faturaNo?: string;
+    /** Orders merged into this table (each keeps its own fatura code in DB) */
+    mergedOrders?: MergedOrderRef[];
     customerId?: string;
     customerName?: string;
     lockedByStaffId?: string;

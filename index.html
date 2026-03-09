@@ -151,13 +151,34 @@
     <div class="loading-bar-container">
       <div class="loading-bar"></div>
     </div>
-    <div class="loading-text">Sistem Hazırlanıyor...</div>
+    <div class="loading-text" id="loading-text">Sistem Hazırlanıyor...</div>
   </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
+    // Loading text messages
+    const loadingMessages = [
+      "Sistem Hazırlanıyor...",
+      "Veritabanı Bekleniyor...",
+      "Bağlantı Kuruluyor...",
+      "Modüller Yükleniyor...",
+      "Arayüz Hazırlanıyor...",
+      "Son Ayarlar Yapılıyor..."
+    ];
+    let msgIndex = 0;
+    const loadingTextEl = document.getElementById('loading-text');
+
+    const msgInterval = setInterval(() => {
+      msgIndex = (msgIndex + 1) % loadingMessages.length;
+      if (loadingTextEl) {
+        // fade out slightly or just replace
+        loadingTextEl.innerText = loadingMessages[msgIndex];
+      }
+    }, 1500); // changes every 1.5s
+
     // Remove loader when app is mounted
     window.removeLoader = function () {
+      clearInterval(msgInterval);
       const loader = document.getElementById('app-loader');
       if (loader) {
         loader.style.opacity = '0';
@@ -166,11 +187,10 @@
         }, 300);
       }
     };
-    // Safety net: auto-remove splash after 8 seconds even if React fails to mount
+    // Safety net: instead of auto-removing, we just keep the logo until React is ready.
     setTimeout(function () {
       if (document.getElementById('app-loader')) {
-        console.warn('[Splash] Auto-removing splash after timeout');
-        window.removeLoader();
+        console.warn('[Splash] Still waiting for React to mount...');
       }
     }, 8000);
   </script>

@@ -61,7 +61,11 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
                     title: tm('productCategories'),
                     description: tm('productCatDesc'),
                     tableName: 'categories',
-                    columns: commonColumns, // TODO: Add parent selection for hierarchy later
+                    columns: [
+                        ...commonColumns,
+                        { key: 'is_restaurant', header: 'REST. KATEGORİ', type: 'boolean' },
+                        { key: 'icon', header: 'İKON', type: 'icon' }
+                    ],
                     icon: FileText
                 };
             case 'material-classes':

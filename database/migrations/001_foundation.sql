@@ -13,6 +13,7 @@ CREATE SCHEMA IF NOT EXISTS logic;
 CREATE SCHEMA IF NOT EXISTS wms;
 CREATE SCHEMA IF NOT EXISTS rest;
 CREATE SCHEMA IF NOT EXISTS beauty;
+CREATE SCHEMA IF NOT EXISTS pos;
 
 -- 1.0 ORGANIZATIONAL & SYSTEM TABLES
 ----------------------------------------------------------------------------
@@ -82,6 +83,35 @@ CREATE TABLE IF NOT EXISTS currencies (
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 1.1 RBAC SYSTEM (v5.5 - Absolute Parity)
+CREATE TABLE IF NOT EXISTS public.roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    permissions JSONB DEFAULT '[]',
+    is_system_role BOOLEAN DEFAULT false,
+    color VARCHAR(20) DEFAULT '#3B82F6',
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    firm_nr VARCHAR(10) NOT NULL,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password_hash TEXT,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    role VARCHAR(50) DEFAULT 'cashier',
+    role_id UUID REFERENCES public.roles(id),
+    store_id UUID REFERENCES public.stores(id),
+    is_active BOOLEAN DEFAULT true,
+    last_login_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2.0 GLOBAL INFRASTRUCTURE (Restored Gems)
@@ -315,7 +345,10 @@ CREATE TABLE IF NOT EXISTS categories (
   name VARCHAR(255) NOT NULL,
   description TEXT,
   parent_id UUID REFERENCES categories(id),
-  is_active BOOLEAN DEFAULT true
+  is_restaurant BOOLEAN DEFAULT false,
+  icon VARCHAR(100),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS units (

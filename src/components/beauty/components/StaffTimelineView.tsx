@@ -90,7 +90,7 @@ export function StaffTimelineView({ currentDate, onAppointmentClick, timeSlots, 
                                             </div>
                                             <div>
                                                 <div className="font-bold text-white uppercase tracking-tight">{staff.name}</div>
-                                                <div className="text-[10px] text-white/70 font-bold uppercase tracking-widest">{staff.role || 'UZMAN'}</div>
+                                                <div className="text-[10px] text-white/70 font-bold uppercase tracking-widest">{staff.specialty || 'UZMAN'}</div>
                                             </div>
                                         </div>
                                         <div className="bg-white/20 px-2 py-1 rounded text-xs font-bold">

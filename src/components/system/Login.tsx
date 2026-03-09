@@ -71,6 +71,7 @@ export function Login({ onLogin }: LoginProps) {
 
   useEffect(() => {
     loadFirms();
+    loadUsers();
 
     // Load existing configuration to persist license display
     const loadCurrentConfig = async () => {
@@ -175,6 +176,24 @@ export function Login({ onLogin }: LoginProps) {
       console.error('Firms load error:', error);
     } finally {
       setLoadingFirms(false);
+    }
+  };
+
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const loadUsers = async () => {
+    try {
+      const { postgres } = await import('../../services/postgres');
+      const result = await postgres.query(
+        `SELECT u.username, u.full_name as "fullName", r.name as role 
+         FROM users u 
+         LEFT JOIN roles r ON u.role_id = r.id 
+         WHERE u.is_active = true 
+         ORDER BY u.full_name ASC`,
+        []
+      );
+      setDbUsers(result.rows);
+    } catch (e) {
+      console.error('Failed to load users for login:', e);
     }
   };
 
@@ -369,11 +388,13 @@ export function Login({ onLogin }: LoginProps) {
 
     try {
       const { postgres } = await import('../../services/postgres');
+      // Fix: Query public.users instead of auth.users
       const sql = `
-        SELECT id, raw_user_meta_data->>'username' as db_username
-        FROM auth.users
-        WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)
-        AND encrypted_password = crypt($2, encrypted_password)
+        SELECT id, username
+        FROM users
+        WHERE LOWER(username) = LOWER($1)
+        AND password_hash = crypt($2, password_hash)
+        AND is_active = true
       `;
       console.log('Login: Verifying credentials for', trimmedUsername);
       const result = await postgres.query(sql, [trimmedUsername, trimmedPassword]);
@@ -451,10 +472,6 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  const demoUsers = [
-    { username: 'admin', fullName: 'Sistem Yöneticisi', role: 'Yönetici' },
-    { username: 'kasiyer', fullName: 'Ahmed Al-Maliki', role: 'Kasiyer' }
-  ];
 
   const zoomLevel = parseInt(localStorage.getItem('retailos_zoom_level') || '100');
 
@@ -487,7 +504,7 @@ export function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={() => setShowDbSettings(true)}
                 className="p-2.5 bg-blue-500/20 hover:bg-blue-500/30 rounded-sm border border-blue-500/10 transition-all backdrop-blur-md group"
-                  title="Dışa Aktar"
+                title="Dışa Aktar"
               >
                 <Database className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
               </button>
@@ -546,7 +563,7 @@ export function Login({ onLogin }: LoginProps) {
                   </div>
                   {showUserSearch && (
                     <div className={`mt-2 border-2 shadow-2xl relative z-50 rounded-sm overflow-hidden ${darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
-                      {demoUsers.map(u => (
+                      {dbUsers.map(u => (
                         <button key={u.username} type="button" onClick={() => { setUsername(u.username); setShowUserSearch(false); }} className={`w-full px-4 py-3 text-left border-b last:border-0 hover:bg-blue-600 hover:text-white transition-colors flex items-center gap-3`}>
                           <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
                             <User className="w-4 h-4 opacity-50" />
@@ -692,7 +709,7 @@ export function Login({ onLogin }: LoginProps) {
                       </div>
 
                       <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
                         <input
                           type="text"
                           value={dbConfig.database}
@@ -703,7 +720,7 @@ export function Login({ onLogin }: LoginProps) {
 
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
                           <input
                             type="text"
                             value={dbConfig.user}
@@ -712,7 +729,7 @@ export function Login({ onLogin }: LoginProps) {
                           />
                         </div>
                         <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
                           <input
                             type="password"
                             value={dbConfig.password}
@@ -819,7 +836,7 @@ export function Login({ onLogin }: LoginProps) {
                     if (isTauri) {
                       const { invoke } = await import('@tauri-apps/api/core');
                       await invoke('enable_remote_support');
-                    toast.success('Hızlı destek isteği merkeze iletildi.');
+                      toast.success('Hızlı destek isteği merkeze iletildi.');
                     } else {
                       toast.info('Hızlı destek sadece masaüstü uygulamasında mevcuttur.');
                     }
@@ -846,7 +863,6 @@ export function Login({ onLogin }: LoginProps) {
             <div className="p-6 bg-blue-800 flex items-center justify-between border-b border-white/10">
               <div className="flex items-center gap-3 text-white">
                 <Building2 className="w-5 h-5" />
-                            <p className="text-xs font-black uppercase tracking-tight">{u.fullName}</p>
               </div>
               <CloseIcon className="w-5 h-5 text-white cursor-pointer" onClick={() => !isSetupLoading && setShowSetupWizard(false)} />
             </div>
@@ -860,18 +876,14 @@ export function Login({ onLogin }: LoginProps) {
                         <CheckCircle className="w-6 h-6 text-blue-600" />
                       </div>
                       <div>
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
                         <h3 className={`text-base font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{setupSuccessData.terminal_name}</h3>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-100 group hover:border-blue-200 transition-colors">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
-                            <p className="text-xs font-black uppercase tracking-tight">{u.fullName}</p>
                       </div>
                       <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-100 group hover:border-blue-200 transition-colors">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
                         <p className="text-sm font-black text-black">
                           {new Date(setupSuccessData.license_expiry).toLocaleDateString('tr-TR')}
                         </p>
@@ -1065,7 +1077,6 @@ export function Login({ onLogin }: LoginProps) {
             <div className="p-6 bg-blue-800 flex items-center justify-between border-b border-white/10">
               <div className="flex items-center gap-3 text-white">
                 <Database className="w-5 h-5" />
-                          <p className="text-[10px] font-black uppercase tracking-tight">{f.name}</p>
               </div>
               <CloseIcon className="w-5 h-5 text-white cursor-pointer" onClick={() => setShowDbSettings(false)} />
             </div>
@@ -1093,7 +1104,7 @@ export function Login({ onLogin }: LoginProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">VERİTABANI</label>
                 <input
                   type="text"
                   value={dbConfig.database}
@@ -1113,13 +1124,13 @@ export function Login({ onLogin }: LoginProps) {
                   />
                 </div>
                 <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">ŞİFRE</label>
                   <input
                     type="password"
                     value={dbConfig.password}
                     onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })}
                     className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                      placeholder="••••••••"
+                    placeholder="••••••••"
                   />
                 </div>
               </div>

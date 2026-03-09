@@ -503,7 +503,8 @@ function DraggableTableCard({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
-            onDoubleClick={() => unlocked && onDoubleClick(table)}
+            onClick={() => !unlocked && onDoubleClick(table)}
+            onDoubleClick={() => { /* Çift tıklama davranışı, onClick'e taşındı ama mobil uyum vs için boş tutulabilir */ }}
             style={{
                 position: 'absolute',
                 left: position.x,
@@ -615,13 +616,21 @@ function DraggableTableCard({
 
 // ─── Table List Panel ─────────────────────────────────────────────────────────
 function TableListPanel({
-    tables, layout, selectedId, hiddenIds, onSelect, onToggleHidden, onClose
+    tables,
+    layout,
+    selectedId,
+    hiddenIds,
+    onSelect,
+    onDoubleClick,
+    onToggleHidden,
+    onClose,
 }: {
     tables: Table[];
     layout: LayoutMap;
     selectedId: string | null;
     hiddenIds: Set<string>;
     onSelect: (table: Table) => void;
+    onDoubleClick: (table: Table) => void;
     onToggleHidden: (id: string) => void;
     onClose: () => void;
 }) {
@@ -675,7 +684,13 @@ function TableListPanel({
                             return (
                                 <div
                                     key={table.id}
-                                    onClick={() => onSelect(table)}
+                                    onClick={() => {
+                                        if (table.status === 'empty') {
+                                            onSelect(table); // Seç (modal vesaire için)
+                                        } else {
+                                            onDoubleClick(table); // Direkt içine gir
+                                        }
+                                    }}
                                     className={cn(
                                         "flex items-center gap-4 p-4 rounded-[20px] transition-all cursor-pointer border group active:scale-[0.98]",
                                         isActive
@@ -754,7 +769,7 @@ interface KrokiViewProps {
     activeFloor: string;
 }
 export function KrokiView({ activeFloor }: KrokiViewProps) {
-    const { tables, mergeTables, transferTable } = useRestaurantStore();
+    const { tables, mergeTables, moveTable } = useRestaurantStore();
     const [selectionMode, setSelectionMode] = useState<'merge' | 'transfer' | null>(null);
     const [sourceTableId, setSourceTableId] = useState<string | null>(null);
 
@@ -769,7 +784,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                 return;
             }
             if (selectionMode === 'merge') mergeTables(sourceTableId, table.id);
-            else transferTable(sourceTableId, table.id);
+            else moveTable(sourceTableId, table.id);
             setSelectionMode(null);
             setSourceTableId(null);
         }
@@ -1186,6 +1201,10 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                         selectedId={selectedTableId}
                         hiddenIds={hiddenIds}
                         onSelect={handleListSelect}
+                        onDoubleClick={(t) => {
+                            if (selectionMode) handleTableClick(t);
+                            else { setSettingsTable(t); setSelectedTableId(t.id); }
+                        }}
                         onToggleHidden={toggleHidden}
                         onClose={() => setShowList(false)}
                     />

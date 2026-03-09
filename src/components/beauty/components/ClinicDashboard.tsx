@@ -1,185 +1,299 @@
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
-    TrendingUp, TrendingDown, Calendar, Users, DollarSign,
-    Package, ShoppingCart, Activity, ArrowUpRight, ArrowDownRight
+    Calendar, Users, CheckCircle2, Clock,
+    Activity, Zap, TrendingUp, Star,
+    ArrowUpRight, Circle
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
+import { AppointmentStatus } from '../../../types/beauty';
 import '../ClinicStyles.css';
 
+// ─── Design tokens (flat) ────────────────────────────────────────────────────
+const T = {
+    bg:          '#f7f6fb',
+    surface:     '#ffffff',
+    border:      '#e8e4f0',
+    borderHover: '#c4b5fd',
+    textPrimary: '#111827',
+    textSub:     '#6b7280',
+    textMuted:   '#9ca3af',
+    violet:      '#7c3aed',
+    violetLight: '#ede9fe',
+    pink:        '#db2777',
+    pinkLight:   '#fce7f3',
+    green:       '#059669',
+    greenLight:  '#d1fae5',
+    amber:       '#d97706',
+    amberLight:  '#fef3c7',
+    blue:        '#2563eb',
+    blueLight:   '#dbeafe',
+};
+
+const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+    scheduled:   { label: 'Planlandı',    color: '#6366f1', bg: '#eef2ff' },
+    confirmed:   { label: 'Onaylandı',    color: '#0284c7', bg: '#e0f2fe' },
+    in_progress: { label: 'Devam Ediyor', color: '#d97706', bg: '#fef3c7' },
+    completed:   { label: 'Tamamlandı',   color: '#059669', bg: '#d1fae5' },
+    cancelled:   { label: 'İptal',         color: '#dc2626', bg: '#fee2e2' },
+    no_show:     { label: 'Gelmedi',       color: '#6b7280', bg: '#f3f4f6' },
+};
+
+const CATEGORY_TR: Record<string, string> = {
+    laser: 'Lazer', hair_salon: 'Kuaför', beauty: 'Güzellik',
+    botox: 'Botoks', filler: 'Dolgu', massage: 'Masaj',
+    skincare: 'Cilt', makeup: 'Makyaj', nails: 'Tırnak', spa: 'Spa',
+};
+
+// ─── Flat KPI card ───────────────────────────────────────────────────────────
+function KpiCard({ label, value, sub, accent, icon: Icon }: {
+    label: string; value: string | number; sub?: string;
+    accent: string; accentBg?: string; icon: React.ElementType;
+}) {
+    return (
+        <div style={{
+            background: T.surface, border: `1px solid ${T.border}`,
+            borderTop: `3px solid ${accent}`,
+            borderRadius: 8, padding: '16px 18px',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</span>
+                <Icon size={15} style={{ color: accent }} />
+            </div>
+            <p style={{ fontSize: 26, fontWeight: 800, color: T.textPrimary, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</p>
+            {sub && <p style={{ fontSize: 11, fontWeight: 600, color: T.textMuted, marginTop: 4 }}>{sub}</p>}
+        </div>
+    );
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export function ClinicDashboard() {
-    const { appointments, services, specialists } = useBeautyStore();
+    const { appointments, services, specialists, loadAppointments, loadServices, loadSpecialists } = useBeautyStore();
 
-    const metrics = useMemo(() => {
-        const today = new Date().toISOString().split('T')[0];
-        const todayAppointments = appointments.filter(a => a.appointment_date === today);
-        const completed = todayAppointments.filter(a => a.status === 'completed').length;
+    const todayStr = new Date().toISOString().split('T')[0];
 
-        return {
-            todayRevenue: todayAppointments.reduce((sum, a) => sum + (a.total_price || 0), 0),
-            todayCount: todayAppointments.length,
-            completedCount: completed,
-            activeStaff: specialists.filter(s => s.active).length,
-            monthlyRevenue: appointments.reduce((sum, a) => sum + (a.total_price || 0), 0), // Mock logic for simplicity
-            monthlyTarget: 1000000,
-        };
-    }, [appointments, specialists]);
+    useEffect(() => {
+        loadAppointments(todayStr);
+        loadServices();
+        loadSpecialists();
+    }, []);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('tr-TR', {
-            style: 'currency',
-            currency: 'TRY',
-            minimumFractionDigits: 0
-        }).format(amount);
-    };
+    const stats = useMemo(() => {
+        const todayApts = appointments.filter(a => (a.appointment_date ?? a.date) === todayStr);
+        const completed = todayApts.filter(a => a.status === AppointmentStatus.COMPLETED);
+        const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
+        const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
+        const revenue   = completed.reduce((s, a) => s + (a.total_price || 0), 0);
+        const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;
 
-    const progressPercentage = (metrics.monthlyRevenue / metrics.monthlyTarget) * 100;
+        const sorted = [...todayApts].sort((a, b) => {
+            return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
+        });
+
+        return { todayApts: sorted, completed: completed.length, pending: pending.length, inProg: inProg.length, revenue, rate, total: todayApts.length };
+    }, [appointments, todayStr]);
+
+    const fmt = (n: number) =>
+        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
+
+    const activeStaff = specialists.filter(s => s.is_active);
+    const topServices = services.slice(0, 6);
 
     return (
-        <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
-            <header className="mb-8">
-                <h1 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Klinik Özeti</h1>
-                <p className="text-gray-500 text-sm font-bold uppercase tracking-widest mt-1">Güzellik merkezinizdeki güncel durum ve veriler.</p>
-            </header>
+        <div style={{ height: '100%', overflowY: 'auto', background: T.bg, padding: 20 }} className="custom-scrollbar">
 
-            {/* Metrics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Revenue Card */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                    <div className="flex items-center justify-between mb-6 relative z-10">
-                        <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 shadow-sm border border-purple-100">
-                            <DollarSign size={28} />
-                        </div>
-                        <div className="flex items-center gap-1 bg-green-50 px-3 py-1 rounded-full border border-green-100">
-                            <ArrowUpRight size={14} className="text-green-600" />
-                            <span className="text-xs font-black text-green-600 tracking-tighter">+12.4%</span>
-                        </div>
-                    </div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-none mb-1">GÜNLÜK CİRO</p>
-                    <p className="text-2xl font-black text-gray-900 tracking-tight">{formatCurrency(metrics.todayRevenue)}</p>
-                    <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            {/* ── Date strip ──────────────────────────────────────── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                <div>
+                    <h1 style={{ fontSize: 18, fontWeight: 800, color: T.textPrimary, letterSpacing: '-0.02em' }}>
+                        Klinik Paneli
+                    </h1>
+                    <p style={{ fontSize: 12, fontWeight: 500, color: T.textMuted, marginTop: 2 }}>
+                        {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
                 </div>
-
-                {/* Appointments Card */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                    <div className="flex items-center justify-between mb-6 relative z-10">
-                        <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-blue-100">
-                            <Calendar size={28} />
-                        </div>
-                        <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">BUGÜN</span>
-                    </div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-none mb-1">RANDEVU SAYISI</p>
-                    <p className="text-2xl font-black text-gray-900 tracking-tight">{metrics.todayCount}</p>
-                    <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase">{metrics.completedCount} TAMAMLANAN</p>
-                </div>
-
-                {/* Customers Card */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                    <div className="flex items-center justify-between mb-6 relative z-10">
-                        <div className="w-14 h-14 bg-pink-50 rounded-2xl flex items-center justify-center text-pink-600 shadow-sm border border-pink-100">
-                            <Users size={28} />
-                        </div>
-                        <span className="text-xs font-black text-pink-600 bg-pink-50 px-3 py-1 rounded-full border border-pink-100">AKTİF</span>
-                    </div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-none mb-1">AKTİF PERSONEL</p>
-                    <p className="text-2xl font-black text-gray-900 tracking-tight">{metrics.activeStaff}</p>
-                </div>
-
-                {/* Target Progress */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
-                    <div className="flex items-center justify-between mb-6 relative z-10">
-                        <div className="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600 shadow-sm border border-orange-100">
-                            <Activity size={28} />
-                        </div>
-                        <span className="text-xs font-black text-orange-600 bg-orange-50 px-3 py-1 rounded-full border border-orange-100">%{progressPercentage.toFixed(0)}</span>
-                    </div>
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] leading-none mb-1">HEDEF DOLULUK</p>
-                    <div className="mt-4">
-                        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-gray-50">
-                            <div
-                                className="bg-gradient-to-r from-orange-500 to-pink-500 h-full rounded-full transition-all duration-1000 group-hover:brightness-110"
-                                style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                            ></div>
-                        </div>
-                        <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tight">Kalan Hedef: {formatCurrency(metrics.monthlyTarget - metrics.monthlyRevenue)}</p>
-                    </div>
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: T.surface, border: `1px solid ${T.border}`,
+                    borderRadius: 6, padding: '6px 12px',
+                }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.green, display: 'inline-block' }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: T.green, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Canlı</span>
+                    <span style={{ fontSize: 11, color: T.textMuted, fontWeight: 600 }}>·</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>Bugün {stats.total} randevu</span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Popular Services */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm">
-                    <div className="flex items-center justify-between mb-8">
+            {/* ── KPI Strip ───────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+                <KpiCard label="Günlük Ciro"       value={fmt(stats.revenue)}   accent={T.violet}  icon={TrendingUp} />
+                <KpiCard label="Tamamlanan"         value={stats.completed}      sub={`${stats.rate}% tamamlanma`} accent={T.green}   icon={CheckCircle2} />
+                <KpiCard label="Bekleyen"           value={stats.pending}        sub={`${stats.inProg} devam ediyor`} accent={T.amber} icon={Clock} />
+                <KpiCard label="Aktif Personel"     value={activeStaff.length}   sub={`${specialists.length} toplam`} accent={T.blue}  icon={Users} />
+            </div>
+
+            {/* ── Main Grid ───────────────────────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+
+                {/* Today's Appointments */}
+                <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                    {/* Header */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '14px 18px', borderBottom: `1px solid ${T.border}`,
+                    }}>
                         <div>
-                            <h3 className="text-lg font-black text-gray-900 uppercase">Popüler Hizmetler</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">BU AY EN ÇOK TERCİH EDİLENLER</p>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: T.textPrimary }}>Bugünün Randevuları</p>
+                            <p style={{ fontSize: 11, fontWeight: 500, color: T.textMuted, marginTop: 1 }}>{stats.total} kayıtlı randevu</p>
                         </div>
-                        <div className="w-12 h-12 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600">
-                            <ShoppingCart size={24} />
-                        </div>
+                        <Calendar size={16} style={{ color: T.violet }} />
                     </div>
 
-                    <div className="space-y-6">
-                        {services.slice(0, 4).map((service, index) => (
-                            <div key={index} className="group">
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center font-black text-gray-400 group-hover:bg-purple-100 group-hover:text-purple-600 transition-colors">
-                                            {index + 1}
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-gray-900 uppercase">{service.name}</p>
-                                            <p className="text-[10px] font-bold text-gray-400 tracking-widest">{service.category}</p>
-                                        </div>
-                                    </div>
-                                    <span className="text-xs font-black text-gray-900">{formatCurrency(service.price)}</span>
-                                </div>
-                                <div className="w-full bg-gray-50 rounded-full h-2 overflow-hidden">
-                                    <div
-                                        className="bg-purple-600 h-full rounded-full transition-all duration-500"
-                                        style={{ width: `${100 - (index * 20)}%` }}
-                                    ></div>
-                                </div>
-                            </div>
+                    {/* Column headers */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
+                        gap: 8, padding: '8px 18px',
+                        borderBottom: `1px solid ${T.border}`,
+                        background: '#faf9fd',
+                    }}>
+                        {['Saat', '', 'Müşteri / Hizmet', 'Süre', 'Durum', 'Tutar'].map((h, i) => (
+                            <span key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
                         ))}
+                    </div>
+
+                    {/* Rows */}
+                    <div style={{ maxHeight: 400, overflowY: 'auto' }} className="custom-scrollbar">
+                        {stats.todayApts.length === 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', color: T.textMuted }}>
+                                <Calendar size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
+                                <p style={{ fontSize: 12, fontWeight: 600 }}>Bugün randevu bulunmuyor</p>
+                            </div>
+                        ) : stats.todayApts.map(apt => {
+                            const cfg  = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+                            const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
+                            return (
+                                <div
+                                    key={apt.id}
+                                    style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
+                                        gap: 8, padding: '11px 18px',
+                                        borderBottom: `1px solid ${T.border}`,
+                                        alignItems: 'center',
+                                        transition: 'background 0.1s',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                >
+                                    {/* Time */}
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, fontFamily: 'monospace' }}>{time}</span>
+
+                                    {/* Status dot */}
+                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, display: 'inline-block', boxShadow: `0 0 0 2px ${cfg.bg}` }} />
+
+                                    {/* Info */}
+                                    <div>
+                                        <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>{apt.customer_name ?? 'Müşteri'}</p>
+                                        <p style={{ fontSize: 11, fontWeight: 500, color: T.textMuted, marginTop: 1 }}>
+                                            {apt.service_name ?? '—'}{apt.specialist_name ? ` · ${apt.specialist_name}` : ''}
+                                        </p>
+                                    </div>
+
+                                    {/* Duration */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: T.textMuted }}>
+                                        <Clock size={11} />
+                                        <span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration ?? '?'}dk</span>
+                                    </div>
+
+                                    {/* Status pill */}
+                                    <span style={{
+                                        display: 'inline-block', fontSize: 10, fontWeight: 700,
+                                        padding: '2px 8px', borderRadius: 4,
+                                        background: cfg.bg, color: cfg.color,
+                                    }}>{cfg.label}</span>
+
+                                    {/* Price */}
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, textAlign: 'right' }}>
+                                        {(apt.total_price ?? 0) > 0 ? fmt(apt.total_price) : '—'}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Top Performers */}
-                <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm">
-                    <div className="flex items-center justify-between mb-8">
-                        <div>
-                            <h3 className="text-lg font-black text-gray-900 uppercase">En İyi Performans</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">CİRO BAZLI PERSONEL SIRALAMASI</p>
+                {/* Right column */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                    {/* Services */}
+                    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: 18 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: T.textPrimary }}>Hizmetler</p>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>{services.length} tanımlı</span>
                         </div>
-                        <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
-                            <Users size={24} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {topServices.length === 0 ? (
+                                <p style={{ fontSize: 11, color: T.textMuted, textAlign: 'center', padding: '12px 0' }}>Hizmet tanımlanmamış</p>
+                            ) : topServices.map((svc, i) => (
+                                <div key={svc.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                    <span style={{
+                                        width: 22, height: 22, borderRadius: 4,
+                                        background: svc.color ?? T.violet,
+                                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: 10, fontWeight: 800, flexShrink: 0,
+                                    }}>{i + 1}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{svc.name}</span>
+                                            <span style={{ fontSize: 11, fontWeight: 700, color: T.textSub, flexShrink: 0, marginLeft: 6 }}>{fmt(svc.price)}</span>
+                                        </div>
+                                        <div style={{ height: 3, background: '#f0ecfc', borderRadius: 2, overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${100 - i * 14}%`, background: svc.color ?? T.violet, borderRadius: 2 }} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
-                    <div className="space-y-4">
-                        {specialists.slice(0, 4).map((staff, index) => (
-                            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-lg transition-all cursor-pointer group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-lg shadow-purple-200">
-                                        {staff.name.charAt(0)}
+                    {/* Staff */}
+                    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, padding: 18 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: T.textPrimary }}>Personel</p>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: T.textMuted }}>{activeStaff.length} aktif</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {activeStaff.length === 0 ? (
+                                <p style={{ fontSize: 11, color: T.textMuted, textAlign: 'center', padding: '12px 0' }}>Personel tanımlanmamış</p>
+                            ) : activeStaff.slice(0, 6).map((s, i) => {
+                                const init = s.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                                return (
+                                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', borderRadius: 6, background: '#faf9fd' }}>
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, width: 14, textAlign: 'center' }}>{i + 1}</span>
+                                        <div style={{
+                                            width: 28, height: 28, borderRadius: 6,
+                                            background: s.color ?? T.violet,
+                                            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontSize: 10, fontWeight: 800, flexShrink: 0,
+                                        }}>{init}</div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</p>
+                                            <p style={{ fontSize: 10, fontWeight: 500, color: T.textMuted }}>{s.specialty ?? 'Uzman'}</p>
+                                        </div>
+                                        <span style={{
+                                            fontSize: 10, fontWeight: 700,
+                                            padding: '2px 6px', borderRadius: 4,
+                                            background: `${s.color ?? T.violet}18`,
+                                            color: s.color ?? T.violet,
+                                        }}>%{s.commission_rate}</span>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-900 uppercase">{staff.name}</p>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{staff.role}</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-sm font-black text-gray-900">{formatCurrency(45000 / (index + 1))}</p>
-                                    <p className="text-[10px] font-bold text-green-600 uppercase">+%8 VERİM</p>
-                                </div>
-                            </div>
-                        ))}
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     );
 }
-
-

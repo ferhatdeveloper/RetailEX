@@ -204,26 +204,120 @@ export function hasPermission(
   action: PermissionAction
 ): boolean {
   // Admin has all permissions
-  if (userRoles.some(role => role.id === 'admin')) {
+  if (userRoles.some(role => role.id === 'admin' || role.name?.toLowerCase() === 'admin')) {
     return true;
   }
 
+  // Map incoming action to standard RBAC action
+  const actionLower = action.toLowerCase();
+  let mappedAction: PermissionAction = action.toUpperCase() as PermissionAction;
+
+  if (['view', 'read', 'list', 'show', 'browse'].includes(actionLower)) mappedAction = 'READ';
+  else if (['sell', 'execute', 'print', 'approve', 'discount', 'refund', 'cancel_sale', 'void', 'pay'].includes(actionLower)) mappedAction = 'EXECUTE';
+  else if (['edit', 'update', 'modify', 'save'].includes(actionLower)) mappedAction = 'UPDATE';
+  else if (['add', 'create', 'insert', 'new'].includes(actionLower)) mappedAction = 'CREATE';
+  else if (['delete', 'remove', 'destroy', 'purge'].includes(actionLower)) mappedAction = 'DELETE';
+
   // Check each role
   for (const role of userRoles) {
-    for (const permission of role.permissions) {
+    for (const permission of role.permissions || []) {
+      // Robust string handling for legacy DB formats
+      if (typeof permission === 'string') {
+        const pStr = permission as string;
+        if (pStr === '*') return true;
+        if (pStr === `${module}.*` || pStr === module) return true;
+        const [pModule, pAction] = pStr.split('.');
+        if (pModule === module && (!pAction || pAction === '*' || pAction.toUpperCase() === mappedAction)) {
+          return true;
+        }
+        continue;
+      }
+
       // Wildcard module
-      if (permission.module === '*' && permission.actions.includes(action)) {
+      if (permission.module === '*' && (permission.actions.includes(mappedAction) || permission.actions.includes('*' as any))) {
         return true;
       }
 
       // Specific module
-      if (permission.module === module && permission.actions.includes(action)) {
+      if (permission.module === module && (permission.actions.includes(mappedAction) || permission.actions.includes('*' as any))) {
         return true;
       }
     }
   }
 
   return false;
+}
+
+/**
+ * Resolves flat permission strings (e.g., "pos.view", "management.*") into structured Permission objects.
+ */
+export function resolveDynamicPermissions(flatPermissions: any[]): Permission[] {
+  const permissionsMap = new Map<string, Set<PermissionAction>>();
+
+  (flatPermissions || []).forEach(perm => {
+    // If it's already a Permission object, just merge it
+    if (typeof perm === 'object' && perm !== null && perm.module) {
+      if (!permissionsMap.has(perm.module)) {
+        permissionsMap.set(perm.module, new Set());
+      }
+      const actionsSet = permissionsMap.get(perm.module)!;
+      if (Array.isArray(perm.actions)) {
+        perm.actions.forEach((a: string) => actionsSet.add(a.toUpperCase() as PermissionAction));
+      }
+      return;
+    }
+
+    // Otherwise handle it as a string
+    if (typeof perm !== 'string') return;
+
+    if (perm === '*') {
+      const allActions: PermissionAction[] = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'];
+      permissionsMap.set('*', new Set(allActions));
+      return;
+    }
+
+    const [module, action] = perm.split('.');
+    if (!module) return;
+
+    if (!permissionsMap.has(module)) {
+      permissionsMap.set(module, new Set());
+    }
+
+    const actionsSet = permissionsMap.get(module)!;
+
+    if (!action || action === '*') {
+      const allActions: PermissionAction[] = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'];
+      allActions.forEach(a => actionsSet.add(a));
+    } else {
+      // Map common UI actions to RBAC actions
+      const rbacAction = action.toUpperCase() as PermissionAction;
+      const validActions: PermissionAction[] = ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'];
+
+      // Handle mapping common synonyms
+      const actionLower = action.toLowerCase();
+      if (['view', 'read', 'list', 'show', 'browse'].includes(actionLower)) {
+        actionsSet.add('READ');
+      } else if (['sell', 'execute', 'print', 'approve', 'discount', 'refund', 'cancel_sale', 'void', 'pay'].includes(actionLower)) {
+        actionsSet.add('EXECUTE');
+      } else if (['edit', 'update', 'modify', 'save'].includes(actionLower)) {
+        actionsSet.add('UPDATE');
+      } else if (['add', 'create', 'insert', 'new'].includes(actionLower)) {
+        actionsSet.add('CREATE');
+      } else if (['delete', 'remove', 'destroy', 'purge'].includes(actionLower)) {
+        actionsSet.add('DELETE');
+      } else if (validActions.includes(rbacAction)) {
+        actionsSet.add(rbacAction);
+      } else {
+        // Fallback for custom actions to EXECUTE
+        actionsSet.add('EXECUTE');
+      }
+    }
+  });
+
+  return Array.from(permissionsMap.entries()).map(([module, actionsSet]) => ({
+    module,
+    actions: Array.from(actionsSet)
+  }));
 }
 
 /**
@@ -273,7 +367,7 @@ export function canPerformAction(
 
   // Check conditions
   for (const role of userRoles) {
-    const permission = role.permissions.find(p => 
+    const permission = role.permissions.find(p =>
       p.module === module || p.module === '*'
     );
 
@@ -286,9 +380,9 @@ export function canPerformAction(
       // Check maxAmount condition
       if (permission.conditions.maxAmount && context?.amount) {
         if (context.amount > permission.conditions.maxAmount) {
-          return { 
-            allowed: false, 
-            reason: `Maksimum tutar limiti: ${permission.conditions.maxAmount}` 
+          return {
+            allowed: false,
+            reason: `Maksimum tutar limiti: ${permission.conditions.maxAmount}`
           };
         }
       }
@@ -410,9 +504,9 @@ export function createPermissionMatrix(roles: Role[]): {
 /**
  * Validate role permissions
  */
-export function validateRolePermissions(permissions: Permission[]): { 
-  valid: boolean; 
-  errors: string[] 
+export function validateRolePermissions(permissions: Permission[]): {
+  valid: boolean;
+  errors: string[]
 } {
   const errors: string[] = [];
 
@@ -447,6 +541,7 @@ export default {
   logAction,
   shouldLogAction,
   createPermissionMatrix,
-  validateRolePermissions
+  validateRolePermissions,
+  resolveDynamicPermissions
 };
 

@@ -93,6 +93,48 @@ export interface Translations {
   wsDisconnected: string;
   wsConnecting: string;
 
+  // MarketPOS & Kasa Operations
+  saleSaveFailed: string;
+  unknownError: string;
+  chCollection: string;
+  chPayment: string;
+  cashIn: string;
+  cashOut: string;
+  bankDeposit: string;
+  bankWithdrawal: string;
+  cashTransfer: string;
+  expenseVoucher: string;
+  selfEmployedReceiptGiven: string;
+  selfEmployedReceiptReceived: string;
+  farmersReceipt: string;
+  openingDebit: string;
+  openingCredit: string;
+  exchangeDifferenceDebit: string;
+  exchangeDifferenceCredit: string;
+  pleaseEnterAmount: string;
+  pleaseSelectCurrentAccount: string;
+  operationSavedSuccessfully: string;
+  operationSaveFailed: string;
+  missingKasaId: string;
+  currentAccountPersonel: string;
+  searchCurrentAccountPlaceholder: string;
+  currentBalance: string;
+  targetKasa: string;
+  bankAccount: string;
+  expenseCodeDescription: string;
+  expenseCodePlaceholder: string;
+  withholdingTaxRate: string;
+  taxRateLabel: string;
+  operationAmount: string;
+  documentNo: string;
+  specialCode: string;
+  placeholderDocumentNo: string;
+  placeholderSpecialCode: string;
+  placeholderDescription: string;
+  saving: string;
+  saveOperation: string;
+  cashOperation: string;
+
   // Store Info
   centralStore: string;
   dayShift: string;
@@ -851,7 +893,7 @@ export interface Translations {
   reset: string;
 }
 
-export const translations: Record<Language, Translations> = {
+export const translations: any = {
   tr: {
     // Header
     systemTitle: 'RestPOS ERP',
@@ -1247,6 +1289,15 @@ export const translations: Record<Language, Translations> = {
     rememberMe: 'Beni Hatırla',
     connectionSettings: 'Bağlantı Ayarları',
     loginButton: 'Giriş Yap',
+    verifying: 'Doğrulanıyor...',
+    continue: 'Devam Et',
+    systemLogin: 'Sisteme Giriş',
+    editInfo: 'BİLGİLERİ DÜZENLE',
+    step01Auth: 'ADIM 01 / KİMLİK DOĞRULAMA',
+    step02Scope: 'ADIM 02 / KAPSAM BELİRLEME',
+    firmSelectionScope: 'FİRMA SEÇİMİ',
+    storeSelectionScope: 'MAĞAZA SEÇİMİ',
+    selectFirmPrompt: 'Firma Seçin',
 
     // Campaign Modal
     selectCampaign: 'Kampanya Seç',
@@ -1804,8 +1855,6 @@ export const translations: Record<Language, Translations> = {
     noLogsYet: 'HENÜZ KAYIT BULUNMUYOR',
     totalEntries: 'Toplam Kayıt',
     enterUsernamePassword: 'Lütfen kullanıcı adı ve şifre giriniz.',
-    step01Auth: 'Adım 01 / Kimlik Doğrulama',
-    step02Scope: 'Adım 02 / Kapsam',
     networkError: 'Bir ağ hatası oluştu.',
     factoryResetConfirm: 'Tebrikler: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Kurulum sihirbazı tekrar açılacak.\n- Veritabanı verileri korunacaktır.\n\nİşlemi onaylıyor musunuz?',
     resetFailed: 'Sıfırlama başarısız:',
@@ -1829,6 +1878,50 @@ export const translations: Record<Language, Translations> = {
     discountRatioApplied: 'Girdiğiniz oran tüm sipariş toplamına uygulanacaktır.',
     apply: 'UYGULA',
     reset: 'Sıfırla',
+
+
+
+    // MarketPOS & Kasa Operations
+    saleSaveFailed: 'Satış kaydedilemedi',
+    unknownError: 'Bilinmeyen hata',
+    chCollection: 'Cari Hesap Tahsilat',
+    chPayment: 'Cari Hesap Ödeme',
+    cashIn: 'Kasa Giriş',
+    cashOut: 'Kasa Çıkış',
+    bankDeposit: 'Bankaya Yatırılan',
+    bankWithdrawal: 'Bankadan Çekilen',
+    cashTransfer: 'Kasa Virman',
+    expenseVoucher: 'Gider Pusulası',
+    selfEmployedReceiptGiven: 'Verilen Serbest Meslek Makbuzu',
+    selfEmployedReceiptReceived: 'Alınan Serbest Meslek Makbuzu',
+    farmersReceipt: 'Müstahsil Makbuzu',
+    openingDebit: 'Açılış (Borç)',
+    openingCredit: 'Açılış (Alacak)',
+    exchangeDifferenceDebit: 'Kur Farkı (Borç)',
+    exchangeDifferenceCredit: 'Kur Farkı (Alacak)',
+    pleaseEnterAmount: 'Lütfen tutar girin',
+    pleaseSelectCurrentAccount: 'Lütfen bir cari hesap seçin',
+    operationSavedSuccessfully: 'İşlem başarıyla kaydedildi',
+    operationSaveFailed: 'İşlem kaydedilemedi',
+    missingKasaId: 'Kasa ID eksik! Lütfen sayfayı yenileyip tekrar deneyin.',
+    currentAccountPersonel: 'Cari Hesap / Personel',
+    searchCurrentAccountPlaceholder: 'Cari hesap veya personel arayın...',
+    currentBalance: 'Güncel Bakiye',
+    targetKasa: 'Hedef Kasa',
+    bankAccount: 'Banka Hesabı',
+    expenseCodeDescription: 'Gider Kodu / Açıklama',
+    expenseCodePlaceholder: 'Gider Kodu veya Adı...',
+    withholdingTaxRate: 'Stopaj Oranı (%)',
+    taxRateLabel: 'KDV / Vergi Oranı (%)',
+    operationAmount: 'İşlem Tutarı',
+    documentNo: 'Fiş / Belge No',
+    specialCode: 'Özel Kod',
+    placeholderDocumentNo: 'Örn: 000123',
+    placeholderSpecialCode: 'Örn: PRJ001',
+    placeholderDescription: 'İşlem ile ilgili not...',
+    saving: 'Kaydediliyor...',
+    saveOperation: 'İşlemi Kaydet',
+    cashOperation: 'Kasa İşlemi',
   },
   en: {
     // Header
@@ -2818,6 +2911,50 @@ export const translations: Record<Language, Translations> = {
     discountRatioApplied: 'The entered percentage will be applied to the order total.',
     apply: 'APPLY',
     reset: 'Reset',
+
+
+
+    // MarketPOS & Kasa Operations
+    saleSaveFailed: 'Sale save failed',
+    unknownError: 'Unknown error',
+    chCollection: 'Current Account Collection',
+    chPayment: 'Current Account Payment',
+    cashIn: 'Cash In',
+    cashOut: 'Cash Out',
+    bankDeposit: 'Bank Deposit',
+    bankWithdrawal: 'Bank Withdrawal',
+    cashTransfer: 'Cash Transfer',
+    expenseVoucher: 'Expense Voucher',
+    selfEmployedReceiptGiven: 'Self-Employed Receipt (Given)',
+    selfEmployedReceiptReceived: 'Self-Employed Receipt (Received)',
+    farmersReceipt: 'Farmers Receipt',
+    openingDebit: 'Opening (Debit)',
+    openingCredit: 'Opening (Credit)',
+    exchangeDifferenceDebit: 'Exchange Difference (Debit)',
+    exchangeDifferenceCredit: 'Exchange Difference (Credit)',
+    pleaseEnterAmount: 'Please enter amount',
+    pleaseSelectCurrentAccount: 'Please select a current account',
+    operationSavedSuccessfully: 'Operation saved successfully',
+    operationSaveFailed: 'Operation save failed',
+    missingKasaId: 'Safe ID missing! Please refresh and try again.',
+    currentAccountPersonel: 'Current Account / Personnel',
+    searchCurrentAccountPlaceholder: 'Search current account or personnel...',
+    currentBalance: 'Current Balance',
+    targetKasa: 'Target Safe',
+    bankAccount: 'Bank Account',
+    expenseCodeDescription: 'Expense Code / Description',
+    expenseCodePlaceholder: 'Expense Code or Name...',
+    withholdingTaxRate: 'Withholding Tax Rate (%)',
+    taxRateLabel: 'VAT / Tax Rate (%)',
+    operationAmount: 'Operation Amount',
+    documentNo: 'Receipt / Document No',
+    specialCode: 'Special Code',
+    placeholderDocumentNo: 'e.g., 000123',
+    placeholderSpecialCode: 'e.g., PRJ001',
+    placeholderDescription: 'Note regarding operation...',
+    saving: 'Saving...',
+    saveOperation: 'Save Operation',
+    cashOperation: 'Cash Operation',
   },
   ar: {
     // Restaurant Specific
@@ -3840,7 +3977,50 @@ export const translations: Record<Language, Translations> = {
     remoteSupportWarning: 'تنبيه: عند بدء الدعم عن بعد، فإنك تمنح الفريق الفني صلاحية وصول محدودة.',
     confirmClearLogs: 'سیتم مسح جميع السجلات. هل أنت متأكد؟',
 
-    confirmClearLogs: 'سیتم مسح جميع السجلات. هل أنت متأكد؟',
+
+
+    // MarketPOS & Kasa Operations
+    saleSaveFailed: 'فشل حفظ عملية البيع',
+    unknownError: 'خطأ غير معروف',
+    chCollection: 'تحصيل حساب جاري',
+    chPayment: 'دفع حساب جاري',
+    cashIn: 'وارد صندوق',
+    cashOut: 'صادر صندوق',
+    bankDeposit: 'إيداع بنكي',
+    bankWithdrawal: 'سحب بنكي',
+    cashTransfer: 'تحويل بين الصناديق',
+    expenseVoucher: 'قسيمة ميعاد مصرف',
+    selfEmployedReceiptGiven: 'إيصال عمل حر (صادر)',
+    selfEmployedReceiptReceived: 'إيصال عمل حر (وارد)',
+    farmersReceipt: 'إيصال مزارع',
+    openingDebit: 'افتتاح (مدين)',
+    openingCredit: 'افتتاح (دائن)',
+    exchangeDifferenceDebit: 'فروق عملة (مدين)',
+    exchangeDifferenceCredit: 'فروق عملة (دائن)',
+    pleaseEnterAmount: 'يرجى إدخال المبلغ',
+    pleaseSelectCurrentAccount: 'يرجى اختيار حساب جاري',
+    operationSavedSuccessfully: 'تم حفظ العملية بنجاح',
+    operationSaveFailed: 'فشل حفظ العملية',
+    missingKasaId: 'معرف الصندوق مفقود! يرجى التنشيط والمحاولة مرة أخرى.',
+    currentAccountPersonel: 'الحساب الجاري / الموظفين',
+    searchCurrentAccountPlaceholder: 'البحث عن حساب جاري أو موظف...',
+    currentBalance: 'الرصيد الحالي',
+    targetKasa: 'الصندوق المستهدف',
+    bankAccount: 'حساب بنكي',
+    expenseCodeDescription: 'كود المصرف / الوصف',
+    expenseCodePlaceholder: 'كود أو اسم المصرف...',
+    withholdingTaxRate: 'نسبة الاستقطاع الضريبي (%)',
+    taxRateLabel: 'نسبة الضريبة / القيمة المضافة (%)',
+    operationAmount: 'مبلغ العملية',
+    documentNo: 'رقم الإيصال / المستند',
+    specialCode: 'كود خاص',
+    placeholderDocumentNo: 'مثال: 000123',
+    placeholderSpecialCode: 'مثال: PRJ001',
+    placeholderDescription: 'ملاحظة حول العملية...',
+    saving: 'جاري الحفظ...',
+    saveOperation: 'حفظ العملية',
+    cashOperation: 'عملية صندوق',
+
   },
   ku: {
     // Header
@@ -4798,6 +4978,50 @@ export const translations: Record<Language, Translations> = {
     discountRatioApplied: 'ڕێژەی داخڵکراو لەسەر کۆی گشتی داواکارییەکە جێبەجێ دەکرێت.',
     apply: 'جێبەجێکردن',
     reset: 'سفرکردنەوە',
+
+
+
+    // MarketPOS & Kasa Operations
+    saleSaveFailed: 'فڕۆشتن پاشەکەوت نەکرا',
+    unknownError: 'هەڵەیەکی نەزانراو',
+    chCollection: 'وەرگرتنی هەژماری جاری',
+    chPayment: 'تەختی هەژماری جاری',
+    cashIn: 'هاتنی کاش',
+    cashOut: 'چوونی کاش',
+    bankDeposit: 'دانانی بانکی',
+    bankWithdrawal: 'ڕاکێشانی بانکی',
+    cashTransfer: 'گواستنەوەی کاش',
+    expenseVoucher: 'پسووڵەی خەرجی',
+    selfEmployedReceiptGiven: 'پسووڵەی کاری سەربەخۆ (دراو)',
+    selfEmployedReceiptReceived: 'پسووڵەی کاری سەربەخۆ (وەرگیراو)',
+    farmersReceipt: 'پسووڵەی جووتیار',
+    openingDebit: 'کردنەوە (قەرزار)',
+    openingCredit: 'کردنەوە (داواکار)',
+    exchangeDifferenceDebit: 'جیاوازی دراو (قەرزار)',
+    exchangeDifferenceCredit: 'جیاوازی دراو (داواکار)',
+    pleaseEnterAmount: 'تکایە بڕەکە بنووسە',
+    pleaseSelectCurrentAccount: 'تکایە هەژمارێکی جاری هەڵبژێرە',
+    operationSavedSuccessfully: 'کردارەکە بە سەرکەوتوویی پاشەکەوت کرا',
+    operationSaveFailed: 'کردارەکە پاشەکەوت نەکرا',
+    missingKasaId: 'ناسنامەی کاش دەست نەکەوت! تکایە لاپەڕەکە نوێ بکەرەوە.',
+    currentAccountPersonel: 'هەژماری جاری / کارمەندان',
+    searchCurrentAccountPlaceholder: 'بۆ هەژماری جاری یان کارمەند بگەڕێ...',
+    currentBalance: 'باڵانسی ئێستا',
+    targetKasa: 'کاشی مەبەست',
+    bankAccount: 'هەژماری بانکی',
+    expenseCodeDescription: 'کۆدی خەرجی / وەسف',
+    expenseCodePlaceholder: 'کۆد یان ناوی خەرجی...',
+    withholdingTaxRate: 'ڕێژەی باج (٪)',
+    taxRateLabel: 'ڕێژەی باجی بەها / باج (٪)',
+    operationAmount: 'بڕی کردارەکە',
+    documentNo: 'ژمارەی پسووڵە / بەڵگەنامە',
+    specialCode: 'کۆدی تایبەت',
+    placeholderDocumentNo: 'بۆ نموونە: 000123',
+    placeholderSpecialCode: 'بۆ نموونە: PRJ001',
+    placeholderDescription: 'تێبینی دەربارەی کردارەکە...',
+    saving: 'پاشەکەوت دەکرێت...',
+    saveOperation: 'پاشەکەوتکردنی کردارەکە',
+    cashOperation: 'کرداری کاش',
   }
 };
 

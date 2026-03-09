@@ -37,7 +37,6 @@ import {
   Mic
 } from 'lucide-react';
 import { POSPaymentModal } from './POSPaymentModal';
-import { POSPaymentModalV2 } from './POSPaymentModalV2';
 import { POSManagerAuthModal } from './POSManagerAuthModal';
 import { POSParkedReceiptsModal } from './POSParkedReceiptsModal';
 import { POSSalesHistoryModal } from './POSSalesHistoryModal';
@@ -59,6 +58,7 @@ import { VariantSelectionPanelForCart } from './VariantSelectionPanelForCart';
 import { POSDetailSidebar } from './POSDetailSidebar';
 import { BalanceLoadModal } from '../wallet/BalanceLoadModal';
 import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/KeyboardShortcutOverlay';
+import { salesAPI } from '../../services/api/sales';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useSaleStore } from '../../store';
@@ -306,9 +306,23 @@ export default function MarketPOS({
   );
 
   // Generate new receipt number when cart is cleared or payment is completed
-  const generateNewReceiptNumber = () => {
-    setReceiptNumber(`MRK-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0')}`);
+  const generateNewReceiptNumber = async () => {
+    try {
+      const counts = await salesAPI.getSequenceCounts();
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+      setReceiptNumber(`MRK-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
+    } catch (error) {
+      console.error('Failed to generate sequence counts:', error);
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+      setReceiptNumber(`MRK-${datePart}-${randomPart}`);
+    }
   };
+
+  useEffect(() => {
+    generateNewReceiptNumber();
+  }, []);
 
   // Notification state
   const [showNotification, setShowNotification] = useState(false);
@@ -529,7 +543,7 @@ export default function MarketPOS({
         addToCart(foundProduct, undefined, quantity);
         setBarcodeInput('');
         setInputValue('');
-          setSavedQuantity(null); // Kaydedilmiş adeti temizle
+        setSavedQuantity(null); // Kaydedilmiş adeti temizle
         setNumpadMode('barcode');
         setTimeout(() => barcodeInputRef.current?.focus(), 0);
       }
@@ -694,7 +708,7 @@ export default function MarketPOS({
         }
       }
 
-    // Ana ürün barkodunda ara
+      // Ana ürün barkodunda ara
       const foundProduct = products.find(p => p.barcode === barcodeToSearch);
       if (foundProduct) {
         if (foundProduct.variants && foundProduct.variants.length > 0) {
@@ -722,7 +736,7 @@ export default function MarketPOS({
       // Normal barkod arama (1 adet)
       const found = searchByBarcode(searchText);
 
-    // Eğer barkod bulunamadıysa, ürün arama ekranını aç
+      // Eğer barkod bulunamadıysa, ürün arama ekranını aç
       if (!found) {
         setProductSearchQuery(searchText);
         setCatalogMode('add-to-cart');
@@ -1970,12 +1984,8 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              printThermalReceipt(sale, {
-                name: selectedFirma?.title || selectedFirma?.name || 'RetailOS',
-                address: selectedFirma?.address || '',
-                phone: selectedFirma?.phone || '',
-                taxNo: selectedFirma?.tax_nr || ''
-              });
+              const companyName = selectedFirma?.title || selectedFirma?.name || 'RetailOS';
+              printThermalReceipt(sale, companyName);
             });
           }}
         />
@@ -1989,12 +1999,8 @@ export default function MarketPOS({
           onPrintReceipt={(sale) => {
             // Dinamik import ile thermalPrinter modülünü yükle
             import('../../utils/thermalPrinter').then(({ printThermalReceipt }) => {
-              printThermalReceipt(sale, {
-                name: selectedFirma?.title || selectedFirma?.name || 'RetailOS',
-                address: selectedFirma?.address || '',
-                phone: selectedFirma?.phone || '',
-                taxNo: selectedFirma?.tax_nr || ''
-              });
+              const companyName = selectedFirma?.title || selectedFirma?.name || 'RetailOS';
+              printThermalReceipt(sale, companyName);
             });
           }}
         />
@@ -2003,17 +2009,10 @@ export default function MarketPOS({
       {showReturnModal && (
         <POSReturnModal
           sales={sales}
-          products={products}
           onClose={() => setShowReturnModal(false)}
           onReturnComplete={(returnData) => {
             showNotif(t.returnCompleted, 'success');
             setShowReturnModal(false);
-          }}
-          onMissingBarcode={(barcode) => {
-            showNotif(t.barcodeNotFoundWarning.replace('{barcode}', barcode), 'error');
-            if (!missingBarcodes.includes(barcode)) {
-              setMissingBarcodes(prev => [barcode, ...prev]);
-            }
           }}
         />
       )}

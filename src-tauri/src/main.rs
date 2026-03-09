@@ -38,26 +38,36 @@ pub struct DbState(pub Arc<Mutex<DbConnection>>);
 
 #[tauri::command]
 async fn check_pg16() -> Result<bool, String> {
-    // Check for ANY PostgreSQL service
+    // Fast path 1: Check common PostgreSQL install paths (microseconds, no process spawn)
+    let pg_paths = [
+        "C:\\Program Files\\PostgreSQL\\17\\bin\\pg_ctl.exe",
+        "C:\\Program Files\\PostgreSQL\\16\\bin\\pg_ctl.exe",
+        "C:\\Program Files\\PostgreSQL\\15\\bin\\pg_ctl.exe",
+        "C:\\Program Files\\PostgreSQL\\14\\bin\\pg_ctl.exe",
+    ];
+    for path in &pg_paths {
+        if std::path::Path::new(path).exists() {
+            return Ok(true);
+        }
+    }
+
+    // Fast path 2: Check if PostgreSQL is already accepting connections on port 5432 (200ms max)
+    use std::net::TcpStream;
+    use std::time::Duration;
+    if let Ok(addr) = "127.0.0.1:5432".parse() {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+            return Ok(true);
+        }
+    }
+
+    // Slow path: PowerShell service check (only reached if above checks fail)
     let output = Command::new("powershell")
         .args(["-Command", "Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue"])
-        .creation_flags(0x08000000) 
+        .creation_flags(0x08000000)
         .output()
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() && !output.stdout.is_empty() {
-        return Ok(true);
-    }
-
-    // Fallback: Check for common install paths if service check fails (optional, but keeping simple for now)
-    // Checking for v16 specifically as a fallback, but service check should catch most active installs.
-    let path = std::path::Path::new("C:\\Program Files\\PostgreSQL\\16\\bin\\pg_ctl.exe");
-    if path.exists() { return Ok(true); }
-    
-    let path15 = std::path::Path::new("C:\\Program Files\\PostgreSQL\\15\\bin\\pg_ctl.exe");
-    if path15.exists() { return Ok(true); }
-
-    Ok(false)
+    Ok(output.status.success() && !output.stdout.is_empty())
 }
 
 #[tauri::command]
