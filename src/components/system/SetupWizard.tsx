@@ -668,7 +668,7 @@ const SetupWizard: React.FC = () => {
                         target: target === 'remote' ? 'remote' : 'local'
                     });
 
-                    // 3. Restaurant Module — firm + period tables
+                    // 3. Restaurant Module — firm + period tables (only when restaurant system)
                     if (config.system_type === 'restaurant') {
                         toast.info('Restoran modülü tabloları hazırlanıyor...');
                         await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1)', [config.erp_firm_nr]);
@@ -679,13 +679,11 @@ const SetupWizard: React.FC = () => {
                         toast.success('Restoran dönem tabloları hazır.');
                     }
 
-                    // 4. Beauty Module — firm + period tables
-                    if (config.system_type === 'beauty') {
-                        toast.info('Güzellik merkezi tabloları hazırlanıyor...');
-                        await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [config.erp_firm_nr]);
-                        await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [config.erp_firm_nr, config.erp_period_nr]);
-                        toast.success('Güzellik/klinik tabloları hazır.');
-                    }
+                    // 4. Beauty Module — ALWAYS initialized (used alongside any system type)
+                    toast.info('Güzellik/klinik modül tabloları hazırlanıyor...');
+                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [config.erp_firm_nr]);
+                    await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [config.erp_firm_nr, config.erp_period_nr]);
+                    toast.success('Güzellik/klinik tabloları hazır.');
 
                     toast.success(`Firma ${config.erp_firm_nr} ve Dönem ${config.erp_period_nr} yapılandırması tamamlandı.`);
                 }
@@ -974,12 +972,10 @@ const SetupWizard: React.FC = () => {
                         await emit('sync-event', `✅ Restoran kart tabloları hazır.`);
                     }
 
-                    // Beauty firm tables (uzmanlar, hizmetler, paketler, cihazlar)
-                    if (config.system_type === 'beauty') {
-                        await emit('sync-event', `💅 Firma ${currentFirmId}: Güzellik/klinik kart tabloları oluşturuluyor...`);
-                        await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [currentFirmId]);
-                        await emit('sync-event', `✅ Güzellik kart tabloları hazır.`);
-                    }
+                    // Beauty firm tables — ALWAYS initialized alongside any system type
+                    await emit('sync-event', `💅 Firma ${currentFirmId}: Güzellik/klinik kart tabloları oluşturuluyor...`);
+                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1)', [currentFirmId]);
+                    await emit('sync-event', `✅ Güzellik kart tabloları hazır.`);
                 }
 
                 // 3. Period-Level Dynamic Tables (Transactions)
@@ -1006,12 +1002,10 @@ const SetupWizard: React.FC = () => {
                                 await emit('sync-event', `✅ Restoran dönem tabloları hazır.`);
                             }
 
-                            // Beauty period tables (randevular, seanslar, paket satışları)
-                            if (config.system_type === 'beauty') {
-                                await emit('sync-event', `💅 Dönem ${pNr}: Güzellik/klinik hareket tabloları oluşturuluyor...`);
-                                await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
-                                await emit('sync-event', `✅ Güzellik dönem tabloları hazır.`);
-                            }
+                            // Beauty period tables — ALWAYS initialized alongside any system type
+                            await emit('sync-event', `💅 Dönem ${pNr}: Güzellik/klinik hareket tabloları oluşturuluyor...`);
+                            await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1, $2)', [currentFirmId, pNr]);
+                            await emit('sync-event', `✅ Güzellik dönem tabloları hazır.`);
                         } catch (schemaErr) {
                             console.warn(`Period schema init warning for ${pNr} (non-fatal):`, schemaErr);
                         }
