@@ -169,6 +169,21 @@ export interface Translations {
   fullAmount: string;
   completePayment: string;
   campaignDiscountLabel: string;
+  cashLabel: string;
+  cardLabel: string;
+  veresiyeLabel: string;
+  gatewayLabel: string;
+  addPaymentLabel: string;
+  currencyAndRates: string;
+  insufficientPayment: string;
+  processingText: string;
+  qrScanCode: string;
+  qrCustomerInstruction: string;
+  paymentAmount: string;
+  step1: string;
+  step2: string;
+  holdPhoneToQr: string;
+  confirmPaymentText: string;
   campaignAppliedDescription: string;
 
   // Language Modal
@@ -332,14 +347,7 @@ export interface Translations {
   remainingAmount: string;
   changeAmount: string;
   addedPayments: string;
-  currencyAndRates: string;
   amountInput: string;
-  fullAmountBtn: string;
-  addPaymentBtn: string;
-  numpadPrice: string;
-  numpadConfirm: string;
-  paymentProcessing: string;
-  insufficientPayment: string;
   paymentStartError: string;
   posPaymentDesc: string;
   scanQRCode: string;
@@ -974,6 +982,24 @@ export const translations: any = {
     receivePayment: 'Ödeme Al',
     sales: 'Satışlar',
 
+    // Payment Modal
+    cashLabel: 'Nakit',
+    cardLabel: 'Kart (POS)',
+    veresiyeLabel: 'Veresiye (Cari)',
+    gatewayLabel: 'QR Ödeme Sağlayıcı',
+    addPaymentLabel: 'Ödeme Ekle',
+    currencyAndRates: 'Para Birimi & Kurlar',
+    insufficientPayment: 'Ödeme tutarı yetersiz!',
+    paymentFailed: 'Ödeme başlatılamadı:',
+    processingText: 'İŞLENİYOR...',
+    qrScanCode: 'QR Kodu Okutun',
+    qrCustomerInstruction: 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir',
+    paymentAmount: 'Ödeme Tutarı',
+    step1: 'Adım 1',
+    step2: 'Adım 2',
+    holdPhoneToQr: 'Telefonu QR koda tutun',
+    confirmPaymentText: 'Ödemeyi onaylayın',
+
     // New Labels
     reporting: 'Raporlama',
     reportingDesc: 'Satış raporları ve analizler',
@@ -1115,14 +1141,12 @@ export const translations: any = {
     remainingAmount: 'Kalan',
     changeAmount: 'Para Üstü',
     addedPayments: 'Eklenen Ödemeler',
-    currencyAndRates: 'Para Birimi & Kurlar',
     amountInput: 'Miktar',
     fullAmountBtn: 'Tam Tutar',
     addPaymentBtn: 'Ödeme Ekle',
     numpadPrice: 'Fiyat',
     numpadConfirm: 'Tamam',
     paymentProcessing: 'İŞLENİYOR...',
-    insufficientPayment: 'Ödeme tutarı yetersiz!',
     paymentStartError: 'Ödeme başlatılamadı',
     posPaymentDesc: 'POS Satış Ödemesi',
     scanQRCode: 'QR Kodu Okutun',
@@ -1597,7 +1621,6 @@ export const translations: any = {
     customerChangedMind: 'Müşteri vazgeçti',
     wrongProductAdded: 'Yanlış ürün eklendi',
     priceProblem: 'Fiyat problemi',
-    paymentFailed: 'Ödeme yapılamadı',
     systemError: 'Sistem hatası',
     explainCancelReason: 'İptal Nedenini Açıklayın',
     cancelReasonPlaceholder: 'İptal nedenini yazın...',
@@ -2048,6 +2071,22 @@ export const translations: any = {
     fullAmount: 'Full Amount',
     completePayment: 'Complete Payment',
     campaignDiscountLabel: 'Campaign Discount',
+    cashLabel: 'Cash',
+    cardLabel: 'Card (POS)',
+    veresiyeLabel: 'Credit',
+    gatewayLabel: 'QR Payment Provider',
+    addPaymentLabel: 'Add Payment',
+    currencyAndRates: 'Currency & Rates',
+    insufficientPayment: 'Insufficient payment amount!',
+    paymentFailed: 'Payment could not be initiated:',
+    processingText: 'PROCESSING...',
+    qrScanCode: 'Scan QR Code',
+    qrCustomerInstruction: 'Customer can complete payment by scanning QR code with their phone',
+    paymentAmount: 'Payment Amount',
+    step1: 'Step 1',
+    step2: 'Step 2',
+    holdPhoneToQr: 'Hold phone to QR code',
+    confirmPaymentText: 'Confirm payment',
     campaignAppliedDescription: 'applied',
 
     // Main Layout (Lines 500-509)
@@ -2582,14 +2621,12 @@ export const translations: any = {
     remainingAmount: 'Remaining',
     changeAmount: 'Change',
     addedPayments: 'Added Payments',
-    currencyAndRates: 'Currency & Rates',
     amountInput: 'Amount',
     fullAmountBtn: 'Full Amount',
     addPaymentBtn: 'Add Payment',
     numpadPrice: 'Price',
     numpadConfirm: 'Confirm',
     paymentProcessing: 'PROCESSING...',
-    insufficientPayment: 'Insufficient payment amount!',
     paymentStartError: 'Payment could not be started',
     posPaymentDesc: 'POS Sales Payment',
     scanQRCode: 'Scan QR Code',
@@ -2680,7 +2717,6 @@ export const translations: any = {
     customerChangedMind: 'Customer changed mind',
     wrongProductAdded: 'Wrong product added',
     priceProblem: 'Price problem',
-    paymentFailed: 'Payment could not be made',
     systemError: 'System error',
     explainCancelReason: 'Explain Cancel Reason',
     cancelReasonPlaceholder: 'Write the cancel reason...',
@@ -3105,6 +3141,22 @@ export const translations: any = {
     fullAmount: 'المبلغ الكامل',
     completePayment: 'إتمام الدفع',
     campaignDiscountLabel: 'خصم الحملة',
+    cashLabel: 'نقد',
+    cardLabel: 'بطاقة (POS)',
+    veresiyeLabel: 'دفع آجل',
+    gatewayLabel: 'دفع عبر QR',
+    addPaymentLabel: 'إضافة دفعة',
+    currencyAndRates: 'العملة وأسعار الصرف',
+    insufficientPayment: 'قيمة الدفع غير كافية!',
+    paymentFailed: 'تعذر بدء الدفع:',
+    processingText: 'جار المعالجة...',
+    qrScanCode: 'امسح رمز الاستجابة السريعة',
+    qrCustomerInstruction: 'يمكن للعميل إكمال الدفع عن طريق مسح رمز الاستجابة السريعة بهاتفه',
+    paymentAmount: 'مبلغ الدفع',
+    step1: 'الخطوة 1',
+    step2: 'الخطوة 2',
+    holdPhoneToQr: 'وجه الهاتف نحو رمز الاستجابة السريعة',
+    confirmPaymentText: 'تأكيد الدفع',
     campaignAppliedDescription: 'مطبق',
 
     // Language Modal
@@ -3707,14 +3759,12 @@ export const translations: any = {
     remainingAmount: 'المتبقي',
     changeAmount: 'الباقي (الفكة)',
     addedPayments: 'المدفوعات المضافة',
-    currencyAndRates: 'العملة والأسعار',
     amountInput: 'المبلغ',
     fullAmountBtn: 'المبلغ الكامل',
     addPaymentBtn: 'إضافة دفع',
     numpadPrice: 'السعر',
     numpadConfirm: 'تأكيد',
     paymentProcessing: 'جاري المعالجة...',
-    insufficientPayment: 'مبلغ الدفع غير كافٍ!',
     paymentStartError: 'تعذر بدء الدفع',
     posPaymentDesc: 'دفع مبيعات POS',
     scanQRCode: 'امسح رمز QR',
@@ -3793,7 +3843,6 @@ export const translations: any = {
     customerChangedMind: 'العميل تراجع',
     wrongProductAdded: 'تمت إضافة منتج خاطئ',
     priceProblem: 'مشكلة السعر',
-    paymentFailed: 'لم يتم الدفع',
     systemError: 'خطأ في النظام',
     explainCancelReason: 'اشرح سبب الإلغاء',
     cancelReasonPlaceholder: 'اكتب سبب الإلغاء...',
@@ -4223,6 +4272,22 @@ export const translations: any = {
     fullAmount: 'بڕی تەواو',
     completePayment: 'تەواوکردنی پارەدان',
     campaignDiscountLabel: 'داشکاندنی کەمپەین',
+    cashLabel: 'نەختینە',
+    cardLabel: 'کارت (POS)',
+    veresiyeLabel: 'قەرز (نەختینە)',
+    gatewayLabel: 'دابینکەری پارەدانی QR',
+    addPaymentLabel: 'زیادکردنی پارەدان',
+    currencyAndRates: 'دراو و نرخەکان',
+    insufficientPayment: 'بڕی پارەدان کەمە!',
+    paymentFailed: 'پارەدان دەستی پێ نەکرا:',
+    processingText: 'لە پرۆسەدایە...',
+    qrScanCode: 'سکانکردنی کۆدی QR',
+    qrCustomerInstruction: 'کڕیار دەتوانێت پارەدان تەواو بکات بە سکانکردنی کۆدی QR بە مۆبایلەکەی',
+    paymentAmount: 'بڕی پارەدان',
+    step1: 'هەنگاوی 1',
+    step2: 'هەنگاوی 2',
+    holdPhoneToQr: 'مۆبایلەکە بەرەو کۆدی QR بگرە',
+    confirmPaymentText: 'پشتڕاستکردنەوەی پارەدان',
     campaignAppliedDescription: 'جێبەجێکرا',
 
     // Language Modal
@@ -4645,14 +4710,12 @@ export const translations: any = {
     remainingAmount: 'ماوە',
     changeAmount: 'ماوەی پارە',
     addedPayments: 'پارەدانە زیادکراوەکان',
-    currencyAndRates: 'دروا و نرخەکان',
     amountInput: 'بڕ',
     fullAmountBtn: 'تەواوی بڕەکە',
     addPaymentBtn: 'پارەدان زیاد بکە',
     numpadPrice: 'نرخ',
     numpadConfirm: 'پەسەند بکە',
     paymentProcessing: 'خەریکی کارکردنە...',
-    insufficientPayment: 'بڕی پارەدان بەس نییە!',
     paymentStartError: 'پارەدان دەستی پێنەکرد',
     posPaymentDesc: 'پارەدانی فرۆشتنی POS',
     scanQRCode: 'کۆدی QR سکان بکە',
@@ -4821,7 +4884,6 @@ export const translations: any = {
     customerChangedMind: 'کڕیار پەشیمان بووەوە',
     wrongProductAdded: 'بەرهەمی هەڵە زیادکراوە',
     priceProblem: 'کێشەی نرخ',
-    paymentFailed: 'پارەدان سەرکەوتوو نەبوو',
     systemError: 'هەڵەی سیستەم',
     explainCancelReason: 'هۆکاری هەڵوەشاندنەوە ڕوون بکەرەوە...',
     cancelReasonPlaceholder: 'هۆکاری هەڵوەشاندنەوە هەڵبژێرە...',

@@ -20,7 +20,7 @@ mod license;
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
-use tauri::{AppHandle, Manager, Emitter};
+use tauri::{Manager, Emitter};
 use tauri::path::BaseDirectory;
 use tokio_postgres::Client;
 use std::sync::Arc;
@@ -186,10 +186,8 @@ async fn pg_execute(
     Ok("Success".to_string())
 }
 
-#[tauri::command]
-async fn get_app_version(package_info: tauri::PackageInfo) -> String {
-    package_info.version.to_string()
-}
+// get_app_version removed because it was unused
+
 
 #[tauri::command]
 async fn pg_query(

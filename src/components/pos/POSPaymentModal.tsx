@@ -226,10 +226,10 @@ export function POSPaymentModal({
   ];
 
   const paymentMethods = [
-    { id: 'cash', name: 'Nakit', icon: Wallet },
-    { id: 'card', name: 'Kart (POS)', icon: CreditCard },
-    { id: 'veresiye', name: 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
-    { id: 'gateway', name: 'QR Ödeme Sağlayıcı', icon: QrCode }
+    { id: 'cash', name: t.cashLabel || 'Nakit', icon: Wallet },
+    { id: 'card', name: t.cardLabel || 'Kart (POS)', icon: CreditCard },
+    { id: 'veresiye', name: t.veresiyeLabel || 'Veresiye (Cari)', icon: Wallet, disabled: !selectedCustomer },
+    { id: 'gateway', name: t.gatewayLabel || 'QR Ödeme Sağlayıcı', icon: QrCode }
   ];
 
   return (
@@ -254,7 +254,7 @@ export function POSPaymentModal({
                 }`}
             >
               <Calculator className="w-4 h-4" />
-              Numpad
+              {t.numpad || 'Numpad'}
             </button>
             {activeProviders.map(provider => (
               <button
@@ -275,7 +275,7 @@ export function POSPaymentModal({
                     setCurrentAmount(amount.toString());
                     setShowQRCode(true);
                   } else {
-                    alert(`${provider.name} ödemesi başlatılamadı: ${result.error}`);
+                    alert(`${provider.name} ${t.paymentFailed || 'ödemesi başlatılamadı:'} ${result.error}`);
                   }
                 }}
                 className="px-3 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-700 text-white transition-colors font-medium"
@@ -295,7 +295,7 @@ export function POSPaymentModal({
             <Tag className="w-5 h-5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium">{selectedCampaign.name}</div>
-              <div className="text-xs text-orange-100">Kampanya İndirimi: -{formatCurrency(campaignDiscount)}</div>
+              <div className="text-xs text-orange-100">{t.campaignDiscount || 'Kampanya İndirimi'}: -{formatCurrency(campaignDiscount)}</div>
             </div>
           </div>
         )}
@@ -341,7 +341,7 @@ export function POSPaymentModal({
                   type="number"
                   value={discountValue}
                   onChange={(e) => setDiscountValue(e.target.value)}
-                  placeholder={discountType === 'percentage' ? 'İndirim %' : 'İndirim Tutarı'}
+                  placeholder={discountType === 'percentage' ? t.discountPercentage || 'İndirim %' : t.discountAmount || 'İndirim Tutarı'}
                   className={`w-full px-3 py-2.5 text-sm border focus:outline-none focus:border-blue-600 mb-3 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
                     }`}
                 />
@@ -386,27 +386,27 @@ export function POSPaymentModal({
                 </h4>
                 <div className="space-y-2.5 text-sm">
                   <div className={`flex justify-between ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    <span>ARA TOPLAM:</span>
+                    <span>{t.subtotalLabel || 'ARA TOPLAM'}:</span>
                     <span className="font-medium font-mono">{formatNumber(subtotal)}</span>
                   </div>
 
                   {selectedCampaign && campaignDiscount > 0 && (
                     <div className="flex justify-between text-orange-600">
-                      <span>{selectedCampaign.name} İndirimi:</span>
+                      <span>{selectedCampaign.name} {t.discount || 'İndirimi'}:</span>
                       <span className="font-medium font-mono">-{formatNumber(campaignDiscount)}</span>
                     </div>
                   )}
 
                   {itemDiscount > 0 && (
                     <div className="flex justify-between text-red-600">
-                      <span>İndirim:</span>
+                      <span>{t.itemDiscount || 'Ürün İndirimi'}:</span>
                       <span className="font-medium font-mono">-{formatNumber(itemDiscount)}</span>
                     </div>
                   )}
 
                   {calculatedDiscount > 0 && (
                     <div className="flex justify-between text-red-600">
-                      <span>İlave İndirim:</span>
+                      <span>{t.additionalDiscount || 'İlave İndirim'}:</span>
                       <span className="font-medium font-mono">-{formatNumber(calculatedDiscount)}</span>
                     </div>
                   )}
@@ -415,7 +415,7 @@ export function POSPaymentModal({
 
                   <div className="flex justify-between text-xl pt-1">
                     <span className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-                      TOPLAM:
+                      {t.total || 'TOPLAM'}:
                     </span>
                     <span className={`font-bold font-mono px-3 py-1 rounded ${darkMode ? 'text-blue-400 bg-blue-900/30' : 'text-blue-700 bg-blue-50'
                       }`}>
@@ -426,13 +426,13 @@ export function POSPaymentModal({
                   {totalPaid > 0 && (
                     <>
                       <div className="flex justify-between text-green-600">
-                        <span>Ödenen:</span>
+                        <span>{t.totalPaid || 'Ödenen'}:</span>
                         <span className="font-medium font-mono">{formatNumber(totalPaid)} IQD</span>
                       </div>
 
                       {remaining > 0 ? (
                         <div className="flex justify-between text-red-600 font-medium">
-                          <span>Kalan:</span>
+                          <span>{t.remainingAmount || 'Kalan'}:</span>
                           <span className="font-mono">{formatNumber(remaining)} IQD</span>
                         </div>
                       ) : (
@@ -440,7 +440,7 @@ export function POSPaymentModal({
                           }`}>
                           <div className="flex justify-between items-center">
                             <span className="text-green-700 dark:text-green-400 font-semibold">
-                              Para Üstü:
+                              {t.changeAmount || 'Para Üstü'}:
                             </span>
                             <span className="text-2xl font-bold font-mono text-green-700 dark:text-green-300">
                               {formatNumber(change)} IQD
@@ -456,7 +456,7 @@ export function POSPaymentModal({
               {/* Added Payments List */}
               {payments.length > 0 && (
                 <div className={`border p-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}>
-                  <h4 className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Eklenen Ödemeler:</h4>
+                  <h4 className={`text-xs mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{t.addedPayments || 'Eklenen Ödemeler'}:</h4>
                   <div className="space-y-2">
                     {payments.map((payment, index) => (
                       <div key={index} className={`flex items-center justify-between p-2 border rounded ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-200 bg-gray-50'
@@ -533,7 +533,7 @@ export function POSPaymentModal({
               {/* Currency Selector */}
               <div>
                 <h4 className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Para Birimi & Kurlar:
+                  {t.currencyAndRates || 'Para Birimi & Kurlar'}:
                 </h4>
                 <div className="grid grid-cols-2 gap-2">
                   {currencies.map(curr => (
@@ -568,7 +568,7 @@ export function POSPaymentModal({
               {/* Amount Input */}
               <div>
                 <h4 className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Miktar:
+                  {t.amountLabel || 'Miktar'}:
                 </h4>
                 <div className="relative">
                   <input
@@ -626,7 +626,7 @@ export function POSPaymentModal({
                     : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200'
                     }`}
                 >
-                  Tam Tutar
+                  {t.fullAmount || 'Tam Tutar'}
                 </button>
 
                 <button
@@ -638,7 +638,7 @@ export function POSPaymentModal({
                     }`}
                 >
                   <Plus className="w-4 h-4" />
-                  Ödeme Ekle
+                  {t.addPaymentLabel || 'Ödeme Ekle'}
                 </button>
               </div>
             </div>
@@ -647,7 +647,7 @@ export function POSPaymentModal({
             {showNumpad && (
               <div>
                 <h4 className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Numpad:
+                  {t.numpad || 'Numpad'}:
                 </h4>
                 <div className="grid grid-cols-4 gap-0.5">
                   {/* Row 1: 00, 000, Clear icon, × */}
@@ -736,7 +736,7 @@ export function POSPaymentModal({
                       : 'bg-blue-200 hover:bg-blue-300 text-blue-700 active:bg-blue-400'
                       }`}
                   >
-                    Fiyat
+                    {t.priceLabel || 'Fiyat'}
                   </button>
 
                   {/* Row 4-5: 1, 2, 3, TAMAM (row-span-2) */}
@@ -761,7 +761,7 @@ export function POSPaymentModal({
                       : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
                       }`}
                   >
-                    Tamam
+                    {t.okLabel || 'Tamam'}
                   </button>
 
                   {/* Row 5: 0 (col-span-2), comma */}
@@ -800,7 +800,7 @@ export function POSPaymentModal({
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
           >
-            İptal
+            {t.cancel || 'İptal'}
           </button>
           <button
             onClick={handleConfirmPayment}
@@ -810,7 +810,7 @@ export function POSPaymentModal({
             {isLoading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>İŞLENİYOR...</span>
+                <span>{t.processingText || 'İŞLENİYOR...'}</span>
               </>
             ) : (
               <>
@@ -848,16 +848,16 @@ export function POSPaymentModal({
               </div>
 
               <h4 className="text-3xl font-bold text-white">
-                QR Kodu Okutun
+                {t.qrScanCode || 'QR Kodu Okutun'}
               </h4>
 
               <p className="text-xl text-gray-300">
-                Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir
+                {t.qrCustomerInstruction || 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir'}
               </p>
 
               {/* Amount Display */}
               <div className="mt-8 p-6 bg-white/10 rounded-xl border-2 border-white/20">
-                <p className="text-sm text-gray-400 mb-2">Ödeme Tutarı</p>
+                <p className="text-sm text-gray-400 mb-2">{t.paymentAmount || 'Ödeme Tutarı'}</p>
                 <p className="text-5xl font-bold text-white font-mono">
                   {formatNumberTR(parseFloat(currentAmount), 2, true)} <span className="text-3xl text-gray-300">{currentCurrency}</span>
                 </p>
@@ -874,16 +874,16 @@ export function POSPaymentModal({
                   <Smartphone className="w-6 h-6" />
                 </div>
                 <p className="text-left">
-                  <span className="block text-sm">Adım 1</span>
-                  <span className="block text-white">Telefonu QR koda tutun</span>
+                  <span className="block text-sm">{t.step1 || 'Adım 1'}</span>
+                  <span className="block text-white">{t.holdPhoneToQr || 'Telefonu QR koda tutun'}</span>
                 </p>
                 <div className="text-2xl text-white/30">→</div>
                 <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center">
                   <Check className="w-6 h-6 text-green-400" />
                 </div>
                 <p className="text-left">
-                  <span className="block text-sm">Adım 2</span>
-                  <span className="block text-white">Ödemeyi onaylayın</span>
+                  <span className="block text-sm">{t.step2 || 'Adım 2'}</span>
+                  <span className="block text-white">{t.confirmPaymentText || 'Ödemeyi onaylayın'}</span>
                 </p>
               </div>
             </div>

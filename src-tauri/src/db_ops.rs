@@ -1,6 +1,6 @@
 use crate::config::AppConfig;
 use tauri::command;
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 use tauri::path::BaseDirectory;
 #[command]
 pub async fn create_database(config: AppConfig, target: Option<String>) -> Result<(), String> {

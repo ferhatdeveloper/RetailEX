@@ -1132,7 +1132,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
           console.log('[UniversalInvoiceForm] ✅ Suppliers loaded from database:', data.length);
         } catch (error) {
           console.error('[UniversalInvoiceForm] ❌ Failed to load suppliers:', error);
-          toast.error('Tedarikçiler yüklenemedi');
+          toast.error(tm('suppliersNotLoaded'));
         } finally {
           setLoadingSuppliers(false);
         }
@@ -1150,7 +1150,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
             console.log('[UniversalInvoiceForm] ✅ Customers loaded from database:', data.length);
           } catch (error) {
             console.error('[UniversalInvoiceForm] ❌ Failed to load customers:', error);
-            toast.error('Müşteriler yüklenemedi');
+            toast.error(tm('customersNotLoaded'));
           } finally {
             setLoadingCustomers(false);
           }
@@ -1415,7 +1415,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   // Kaydetme
   const handleSave = async () => {
     if (!selectedFirm || !selectedPeriod) {
-      toast.error('❌ Lütfen firma ve dönem seçiniz!');
+      toast.error('❌ ' + tm('selectFirmAndPeriod'));
       return;
     }
 
@@ -1433,24 +1433,24 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     }
 
     if (!isTransactionAllowed(invoiceDate)) {
-      toast.error('❌ Bu tarihte işlem yapılamaz!');
+      toast.error('❌ ' + tm('transactionNotAllowedDate'));
       return;
     }
 
     // Cari kontrol
     if (invoiceType.category === 'Alis' && !supplierTitle) {
-      toast.error('❌ Tedarikçi seçilmedi!');
+      toast.error('❌ ' + tm('supplierNotSelected'));
       return;
     }
     if ((invoiceType.category === 'Satis' || invoiceType.category === 'Iade') && !customerTitle) {
-      toast.error('❌ Müşteri seçilmedi!');
+      toast.error('❌ ' + tm('customerNotSelected'));
       return;
     }
 
     // Kalem kontrolü
     const validItems = items.filter(item => item.quantity > 0 && item.unitPrice > 0);
     if (validItems.length === 0) {
-      toast.error('❌ Fatura kalemi yok!');
+      toast.error('❌ ' + tm('noInvoiceItems'));
       return;
     }
 
@@ -1551,9 +1551,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         savedInvoice = await invoicesAPI.create(invoiceData);
       }
 
-      if (!savedInvoice) throw new Error('Fatura kaydedilemedi!');
+      if (!savedInvoice) throw new Error(tm('invoiceSaveError'));
 
-      toast.success('✅ Fatura kaydedildi!');
+      toast.success('✅ ' + tm('invoiceSaved'));
 
       // Stok ve FIFO Hareketleri
       if (!editData?.id) {

@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::net::{UdpSocket, SocketAddr};
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::{StaticSecret, PublicKey};
-use wintun::Adapter;
 use tauri::State;
 use tokio::sync::mpsc;
 use std::time::Duration;
