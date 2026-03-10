@@ -9,6 +9,7 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Language } from '../../locales/module-translations';
 import { useResponsive } from '../../hooks/useResponsive';
+import { Translations } from '../../locales/translations';
 
 interface MenuSection {
   title: string;
@@ -42,6 +43,7 @@ interface ModernSidebarProps {
   setShowLanguageMenu: (show: boolean) => void;
   languages: { code: Language; name: string; flag: string; }[];
   APP_VERSION: any;
+  t: Translations;
   menuSource?: 'database' | 'static'; // Yeni prop
 }
 
@@ -61,6 +63,7 @@ export function ModernSidebar({
   setShowLanguageMenu,
   languages,
   APP_VERSION,
+  t,
   menuSource = 'static' // Default value
 }: ModernSidebarProps) {
   const { darkMode, toggleDarkMode } = useTheme();
@@ -191,7 +194,7 @@ export function ModernSidebar({
           </div>
           <input
             type="text"
-            placeholder={isMobile ? "Ara..." : "Menüde hızlı ara... (Ctrl+K)"}
+            placeholder={isMobile ? t.sidebar.searchPlaceholderShort : t.sidebar.searchPlaceholderFull}
             value={menuSearchQuery}
             onChange={(e) => setMenuSearchQuery(e.target.value)}
             className={`w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3.5 border-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 sm:focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 min-h-[44px] ${darkMode
@@ -207,7 +210,7 @@ export function ModernSidebar({
                 ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
                 : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
                 }`}
-              title="Temizle (ESC)"
+              title={t.sidebar.clearSearch}
             >
               <X className="w-4 h-4" />
             </button>
@@ -231,7 +234,7 @@ export function ModernSidebar({
             <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className={`text-xs font-semibold px-3 py-1.5 ${darkMode ? 'text-gray-400' : 'text-gray-600'
                 }`}>
-                {searchResults.length} sonuç bulundu
+                {searchResults.length} {t.sidebar.resultsFound}
               </div>
             </div>
             <div className="py-1">
@@ -284,8 +287,8 @@ export function ModernSidebar({
             : 'bg-white/95 border border-gray-200 text-gray-500'
             }`}>
             <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Sonuç bulunamadı</p>
-            <p className="text-xs mt-1 opacity-75">Farklı bir arama terimi deneyin</p>
+            <p className="text-sm">{t.sidebar.noResultsFound}</p>
+            <p className="text-xs mt-1 opacity-75">{t.sidebar.tryDifferentSearch}</p>
           </div>
         )}
       </div>
@@ -329,11 +332,11 @@ export function ModernSidebar({
             ? 'text-gray-200 hover:bg-gray-700 bg-gray-800 hover:text-white active:bg-gray-600'
             : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
             }`}
-          title="Dil Seçimi"
+          title={t.sidebar.languageSelection}
         >
           <span className="flex items-center gap-3">
             <Languages className="w-5 h-5" />
-            <span>Dil Seçimi</span>
+            <span>{t.sidebar.languageSelection}</span>
           </span>
         </button>
         <button
@@ -342,11 +345,11 @@ export function ModernSidebar({
             ? 'text-gray-200 hover:bg-gray-700 bg-gray-800 hover:text-white active:bg-gray-600'
             : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
             }`}
-          title={darkMode ? 'Light Mode' : 'Dark Mode'}
+          title={darkMode ? t.sidebar.lightMode : t.sidebar.darkMode}
         >
           <span className="flex items-center gap-3">
             {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+            <span>{darkMode ? t.sidebar.lightMode : t.sidebar.darkMode}</span>
           </span>
         </button>
       </div>
@@ -365,7 +368,7 @@ export function ModernSidebar({
           }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${menuSource === 'database' ? 'bg-green-500' : 'bg-yellow-500'
             }`} />
-          {menuSource === 'database' ? '📊 DB Menü' : '📋 Statik Menü'}
+          {menuSource === 'database' ? t.sidebar.dbMenu : t.sidebar.staticMenu}
         </div>
       </div>
     </div>

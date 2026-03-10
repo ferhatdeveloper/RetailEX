@@ -62,20 +62,32 @@ export function MainLayout({
 
   const { hasPermission, isAdmin } = usePermission();
 
+  // Module visibility: bayi_seti mode restricts visible modules to the selected list
+  const isModuleVisible = (moduleId: string): boolean => {
+    // management/backoffice is always visible
+    if (moduleId === 'management') return true;
+    const bayiSeti = localStorage.getItem('retailex_bayi_seti') === 'true';
+    if (!bayiSeti) return true; // no restriction
+    try {
+      const enabled: string[] = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]');
+      return enabled.length === 0 || enabled.includes(moduleId);
+    } catch {
+      return true;
+    }
+  };
+
   // Kullanıcı rolüne göre başlangıç modülünü belirle
   const getInitialModule = (): Module => {
+    // 0. Yetki bazlı kesin öncelik:
+    if (isAdmin() || (currentUser?.role && ['admin', 'manager'].includes(currentUser.role))) return 'management';
+
     // 1. Önce localStorage'da kayıtlı modüle bak (Sayfa yenileme durumu)
     const savedModule = localStorage.getItem('retailex_active_module') as Module;
     if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
-      // Modül yetkisini kontrol et
-      if (savedModule === 'management' && !isAdmin()) {
-        // Management yetkisi yoksa, diğerlerine bak (Dashboard yetkisi genelde herkese verilir ama yönetmek için admin/manager gerekir)
-      } else {
-        return savedModule;
-      }
+      return savedModule;
     }
 
-    // Yetki bazlı öncelik:
+    // 2. Diğer Yetki bazlı öncelikler:
     if (hasPermission('restaurant', 'READ')) return 'restaurant';
     if (hasPermission('beauty', 'READ')) return 'beauty';
     if (hasPermission('wms', 'READ')) return 'wms';
@@ -390,7 +402,7 @@ export function MainLayout({
             <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center flex-1 min-w-0">
               {/* Module Tabs */}
               <div className="flex gap-1 sm:gap-1.5 flex-shrink-0">
-                {hasPermission('pos', 'READ') && (
+                {hasPermission('pos', 'READ') && isModuleVisible('pos') && (
                   <button
                     onClick={() => setCurrentModule('pos')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'pos'
@@ -399,11 +411,11 @@ export function MainLayout({
                       }`}
                   >
                     <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">Satış</span>
+                    <span className="font-medium hidden xs:inline">{t.sales}</span>
                   </button>
                 )}
 
-                {hasPermission('management', 'READ') && (
+                {hasPermission('management', 'READ') && isModuleVisible('management') && (
                   <button
                     onClick={requestManagementAccess}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'management'
@@ -412,11 +424,11 @@ export function MainLayout({
                       }`}
                   >
                     <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">Yönetim</span>
+                    <span className="font-medium hidden xs:inline">{t.management}</span>
                   </button>
                 )}
 
-                {hasPermission('wms', 'READ') && (
+                {hasPermission('wms', 'READ') && isModuleVisible('wms') && (
                   <button
                     onClick={() => setCurrentModule('wms')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'wms'
@@ -429,7 +441,7 @@ export function MainLayout({
                   </button>
                 )}
 
-                {hasPermission('restaurant', 'READ') && (
+                {hasPermission('restaurant', 'READ') && isModuleVisible('restaurant') && (
                   <button
                     onClick={() => setCurrentModule('restaurant')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'restaurant'
@@ -438,11 +450,11 @@ export function MainLayout({
                       }`}
                   >
                     <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">Restoran</span>
+                    <span className="font-medium hidden xs:inline">{t.menu.restaurant}</span>
                   </button>
                 )}
 
-                {hasPermission('beauty', 'READ') && (
+                {hasPermission('beauty', 'READ') && isModuleVisible('beauty') && (
                   <button
                     onClick={() => setCurrentModule('beauty')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'beauty'
@@ -696,7 +708,7 @@ export function MainLayout({
             <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-base text-white flex items-center gap-2">
                 <Calendar className="w-5 h-5" />
-                Tarih ve Saat Ayarla
+                {t.setDateTime}
               </h3>
               <button
                 onClick={() => {
@@ -713,7 +725,7 @@ export function MainLayout({
               <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-4">
                 <p className="text-xs text-yellow-800">
                   <Lock className="w-4 h-4 inline mr-1" />
-                  Bu işlem yönetici yetkisi gerektirir. Tarih değişikliği satış kayıtlarını etkileyebilir.
+                  {t.requiresAdminPassword}
                 </p>
               </div>
 
@@ -769,7 +781,7 @@ export function MainLayout({
                 onClick={handleDateChange}
                 className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
               >
-                Ayarla
+                {t.apply}
               </button>
             </div>
           </div>
@@ -836,7 +848,7 @@ export function MainLayout({
             <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-base text-white flex items-center gap-2">
                 <Lock className="w-5 h-5" />
-                Yönetim Paneli Erişimi
+                {t.managementPanelAccess}
               </h3>
               <button
                 onClick={() => {
@@ -854,7 +866,7 @@ export function MainLayout({
               <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
                 <p className="text-xs text-blue-800">
                   <Lock className="w-4 h-4 inline mr-1" />
-                  Yönetim paneline erişmek için yönetici şifresi gereklidir.
+                  {t.requiresAdminPassword}
                 </p>
                 <p className="text-xs text-blue-600 mt-2">
                   Tip: Hızlı Erişim: <kbd className="px-1.5 py-0.5 bg-white border border-blue-300 rounded text-xs">Ctrl</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-blue-300 rounded text-xs">Shift</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-blue-300 rounded text-xs">M</kbd>
@@ -917,7 +929,7 @@ export function MainLayout({
                 }}
                 className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
               >
-                Giriş Yap
+                {t.login}
               </button>
             </div>
           </div>

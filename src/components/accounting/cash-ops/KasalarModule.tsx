@@ -59,7 +59,7 @@ interface Props {
 }
 
 export function KasalarModule({ initialKasaId, onBack }: Props) {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
 
   // State
@@ -151,7 +151,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       setKasalar(data);
     } catch (error: any) {
       console.error('[Kasalar] Load error:', error);
-      toast.error('Kasalar yüklenirken hata oluştu');
+      toast.error(tm('loadingError'));
       // Mock data fallback
       setKasalar([
         {
@@ -159,7 +159,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           firma_id: selectedFirma.firm_nr || (selectedFirma as any).firma_kodu || '',
           kasa_kodu: 'ANA KASA (OFFLINE/MOCK)',
           kasa_adi: 'ANA KASA',
-          aciklama: 'Veritabanı bağlantısı kurulamadı',
+          aciklama: tm('dbConnectionFailed'),
           bakiye: 0,
           id_bakiye: 0,
           id_doviz_kodu: 'USD',
@@ -185,7 +185,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       setKasaIslemleri(data);
     } catch (error: any) {
       console.error('[Kasalar] İşlem load error:', error);
-      toast.error('Kasa işlemleri yüklenirken hata oluştu');
+      toast.error(tm('loadingError'));
       setKasaIslemleri([]);
     } finally {
       setLoading(false);
@@ -210,7 +210,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const handleIslemClick = (type: 'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK') => {
     if (!selectedKasa) {
-      toast.error('Lütfen önce bir kasa seçin');
+      toast.error(tm('selectSafeFirst'));
       return;
     }
     setIslemModalType(type);
@@ -252,8 +252,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
               <Wallet className="w-7 h-7 text-purple-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 leading-tight">Kasalar</h1>
-              <p className="text-sm text-gray-500">Kasa hesaplarını ve bakiyelerini yönetin</p>
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">{tm('safesCode')}</h1>
+              <p className="text-sm text-gray-500">{tm('safesDescription')}</p>
             </div>
           </div>
 
@@ -261,7 +261,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
-                placeholder="Kasa ara..."
+                placeholder={tm('searchTitle')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 w-64 h-10 bg-gray-50 border border-gray-200 focus:bg-white transition-all rounded-lg text-sm outline-none focus:ring-1 focus:ring-purple-500"
@@ -280,11 +280,11 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
         <div className="bg-white border-b px-4 py-1.5 flex items-center justify-between shadow-sm sticky top-0 z-10">
           <div className="flex items-center gap-1">
             <button className="h-9 px-3 gap-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center text-sm font-medium rounded-md">
-              <Plus className="w-4 h-4" /> Ekle
+              <Plus className="w-4 h-4" /> {tm('add')}
             </button>
             <div className="w-px h-6 bg-gray-200 mx-1" />
             <button className="h-9 px-3 gap-2 text-gray-700 hover:bg-gray-100 transition-colors flex items-center text-sm font-medium rounded-md" onClick={loadKasalar}>
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Yenile
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> {tm('refreshData')}
             </button>
           </div>
         </div>
@@ -293,14 +293,14 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           {loading ? (
             <div className="col-span-full h-64 flex flex-col items-center justify-center gap-4">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-500" />
-              <p className="text-sm text-gray-500 font-medium">Yükleniyor...</p>
+              <p className="text-sm text-gray-500 font-medium">{tm('loadingData')}</p>
             </div>
           ) : filteredKasalar.length === 0 ? (
             <div className="col-span-full h-64 flex flex-col items-center justify-center gap-3">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
                 <Wallet className="w-8 h-8 text-gray-300" />
               </div>
-              <p className="text-gray-400 font-medium">Kasa bulunamadı</p>
+              <p className="text-gray-400 font-medium">{tm('noRecordFound')}</p>
             </div>
           ) : (
             filteredKasalar.map((kasa) => (
@@ -318,7 +318,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
                     <Wallet className="w-5 h-5" />
                   </div>
                   <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${kasa.aktif ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {kasa.aktif ? 'Aktif' : 'Pasif'}
+                    {kasa.aktif ? tm('active') : tm('passive')}
                   </div>
                 </div>
                 <div className="flex-1">
@@ -327,7 +327,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
                 </div>
                 <div className="w-full pt-4 border-t border-gray-50 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Bakiye</span>
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{tm('crmBalance')}</span>
                     <p className="text-lg font-black text-gray-900 leading-none mt-1">
                       {formatCurrency(kasa.bakiye || 0)} <span className="text-xs font-normal text-gray-500">IQD</span>
                     </p>
@@ -361,7 +361,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-tight">
-              {selectedKasa.kasa_adi} - Hareketleri
+              {selectedKasa.kasa_adi} - {tm('transactions')}
             </h1>
             <p className="text-sm text-gray-500">{selectedKasa.kasa_kodu} • {formatCurrency(selectedKasa.bakiye || 0)} IQD</p>
           </div>
@@ -371,7 +371,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
-              placeholder="Detaylarda ara..."
+              placeholder={tm('searchTitle')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 w-64 h-10 bg-gray-50 border border-gray-200 focus:bg-white transition-all rounded-lg text-sm outline-none focus:ring-1 focus:ring-purple-500"
@@ -387,36 +387,36 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             onClick={() => setShowIslemTurleriModal(true)}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center text-sm font-medium rounded-md"
           >
-            <Plus className="w-4 h-4" /> Ekle
+            <Plus className="w-4 h-4" /> {tm('add')}
           </button>
           <button
             disabled={!selectedId}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
-            <Edit className="w-4 h-4" /> Düzenle
+            <Edit className="w-4 h-4" /> {tm('edit')}
           </button>
           <button
             disabled={!selectedId}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
-            <Eye className="w-4 h-4" /> Görüntüle
+            <Eye className="w-4 h-4" /> {tm('view')}
           </button>
           <div className="w-px h-6 bg-gray-200 mx-1" />
           <button
             disabled={!selectedId}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
-            <Trash2 className="w-4 h-4" /> Sil
+            <Trash2 className="w-4 h-4" /> {tm('deleteAction')}
           </button>
           <div className="w-px h-6 bg-gray-200 mx-1" />
           <button className="h-9 px-3 gap-2 text-gray-700 hover:bg-gray-100 transition-colors flex items-center text-sm font-medium rounded-md">
-            <FileText className="w-4 h-4" /> Yazdır
+            <FileText className="w-4 h-4" /> {tm('print')}
           </button>
           <button
             onClick={() => loadKasaIslemleri(selectedKasa.id)}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-gray-100 transition-colors flex items-center text-sm font-medium rounded-md"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Yenile
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> {tm('refreshData')}
           </button>
         </div>
 
@@ -431,9 +431,9 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       <div className="bg-white border-b px-6 flex items-center justify-between">
         <div className="flex">
           {[
-            { id: 'all', label: 'Tümü' },
-            { id: 'in', label: 'Giriş' },
-            { id: 'out', label: 'Çıkış' }
+            { id: 'all', label: tm('all') },
+            { id: 'in', label: tm('chCollection') },
+            { id: 'out', label: tm('chPayment') }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -451,7 +451,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           ))}
         </div>
         <div className="text-xs font-medium text-gray-400 italic">
-          {filteredTransactions.length} Kayıt
+          {filteredTransactions.length} {tm('record')}
         </div>
       </div>
 
@@ -478,16 +478,16 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       <div className="bg-white border-t px-4 py-2.5 flex items-center justify-between text-xs text-gray-500 font-medium">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <span className="text-gray-400 uppercase tracking-tighter">Durum:</span>
+            <span className="text-gray-400 uppercase tracking-tighter">{tm('status')}:</span>
             <span className="text-green-600 flex items-center gap-1">
               <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              Sistem Aktif
+              {tm('systemActive')}
             </span>
           </div>
           <div className="w-px h-3 bg-gray-200" />
           <div>
-            <span className="text-gray-400 mr-2 uppercase tracking-tighter">Toplam:</span>
-            <span className="text-gray-900">{filteredTransactions.length} Kayıt</span>
+            <span className="text-gray-400 mr-2 uppercase tracking-tighter">{tm('total')}:</span>
+            <span className="text-gray-900">{filteredTransactions.length} {tm('record')}</span>
           </div>
         </div>
       </div>
@@ -518,7 +518,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             setSelectedIslem(null);
           }}
           onIslemClick={(islemType) => {
-            console.log('İşlem seçildi:', islemType);
+            console.log('Processed selected:', islemType);
           }}
         />
       )}
@@ -546,7 +546,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             // Cari Hesap İşlemleri
             {
               id: 'ch_tahsilat',
-              label: 'Cari Hesap Tahsilat',
+              label: tm('chCollection'),
               icon: TrendingDown,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -556,7 +556,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'ch_odeme',
-              label: 'Cari Hesap Ödeme',
+              label: tm('chPayment'),
               icon: TrendingUp,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -569,7 +569,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             // Banka İşlemleri
             {
               id: 'banka_yatirilan',
-              label: 'Bankaya Yatırılan',
+              label: tm('bankDeposit'),
               icon: TrendingUp,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -579,7 +579,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'bankadan_cekilen',
-              label: 'Bankadan Çekilen',
+              label: tm('bankWithdrawal'),
               icon: TrendingDown,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -592,7 +592,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             // Kasa İşlemleri
             {
               id: 'virman',
-              label: 'Virman',
+              label: tm('bankTransfer'),
               icon: ArrowUpDown,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -602,7 +602,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'gider',
-              label: 'Gider Pusulası',
+              label: tm('expenseVoucher'),
               icon: FileText,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -612,7 +612,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'acilis_borc',
-              label: 'Açılış (Borç)',
+              label: tm('openingDebit'),
               icon: Plus,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -622,7 +622,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'acilis_alacak',
-              label: 'Açılış (Alacak)',
+              label: tm('openingCredit'),
               icon: Minus,
               onClick: () => {
                 setSelectedKasa(contextMenu.data as Kasa);
@@ -634,7 +634,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             // İşlem Detayları
             {
               id: 'detay',
-              label: 'Detay Görüntüle',
+              label: tm('viewDetails'),
               icon: Eye,
               onClick: () => {
                 setSelectedIslem(contextMenu.data as KasaIslemi);
@@ -643,23 +643,23 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             },
             {
               id: 'duzenle',
-              label: 'Düzenle',
+              label: tm('edit'),
               icon: Edit,
-              onClick: () => toast.info('Düzenleme özelliği yakında eklenecek.')
+              onClick: () => toast.info(tm('editComingSoon'))
             },
             {
               id: 'yazdir',
-              label: 'Yazdır',
+              label: tm('print'),
               icon: FileText,
-              onClick: () => toast.info('Yazdırma özelliği yakında eklenecek.')
+              onClick: () => toast.info(tm('printComingSoon'))
             },
             { id: 'div_del', label: '', icon: MoreVertical, onClick: () => { }, divider: true },
             {
               id: 'sil',
-              label: 'Sil',
+              label: tm('deleteAction'),
               icon: Trash2,
               variant: 'danger',
-              onClick: () => toast.info('Silme özelliği yakında eklenecek.')
+              onClick: () => toast.info(tm('deleteComingSoon'))
             }
           ]}
         />
@@ -685,16 +685,17 @@ function KasaIslemleriTable({
   onSelectionChange,
   selectedId
 }: KasaIslemleriTableProps) {
+  const { tm } = useLanguage();
   const columnHelper = createColumnHelper<KasaIslemi>();
 
   const columns = [
     columnHelper.accessor('islem_no', {
-      header: 'FİŞ NO',
+      header: tm('ficheNo'),
       cell: info => <span className="font-mono font-bold text-gray-700">{info.getValue() || '-'}</span>,
       size: 150,
     }),
     columnHelper.accessor('islem_tarihi', {
-      header: 'TARİH',
+      header: tm('dateLabel'),
       cell: info => {
         const tarih = info.getValue();
         return tarih ? new Date(tarih).toLocaleDateString('tr-TR') : '-';
@@ -703,16 +704,16 @@ function KasaIslemleriTable({
     }),
     columnHelper.accessor('islem_tipi', {
       id: 'tur',
-      header: 'TÜR',
+      header: tm('type'),
       cell: info => {
         const tip = info.getValue();
         const labels: Record<string, string> = {
-          'CH_TAHSILAT': 'CH Tahsilat',
-          'CH_ODEME': 'CH Ödeme',
-          'KASA_GIRIS': 'Kasa Giriş',
-          'KASA_CIKIS': 'Kasa Çıkış',
-          'ACILIS': 'Açılış',
-          'KAPANIS': 'Kapanış',
+          'CH_TAHSILAT': tm('chCollection'),
+          'CH_ODEME': tm('chPayment'),
+          'KASA_GIRIS': tm('cashIn'),
+          'KASA_CIKIS': tm('cashOut'),
+          'ACILIS': tm('openingDebit'), // Assuming ACILIS maps to opening debit/credit general concept.
+          'KAPANIS': tm('openingCredit'),
         };
         const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS';
         return (
@@ -727,17 +728,17 @@ function KasaIslemleriTable({
       size: 130,
     }),
     columnHelper.accessor('cari_hesap_unvani', {
-      header: 'CARİ HESAP / ÜNVAN',
+      header: tm('currentAccountTitle'),
       cell: info => <span className="font-medium text-gray-900">{info.getValue() || '-'}</span>,
       size: 200,
     }),
     columnHelper.accessor('islem_aciklamasi', {
-      header: 'AÇIKLAMA',
+      header: tm('description'),
       cell: info => info.getValue() || '-',
       size: 250,
     }),
     columnHelper.accessor('tutar', {
-      header: 'TUTAR',
+      header: tm('amount'),
       cell: info => {
         const tutar = info.getValue() || 0;
         const tip = info.row.original.islem_tipi;
@@ -752,11 +753,11 @@ function KasaIslemleriTable({
     }),
     columnHelper.display({
       id: 'durum',
-      header: 'DURUM',
+      header: tm('status'),
       cell: info => (
         <span className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
-          <span className="text-gray-700 font-medium whitespace-nowrap">Onaylandı</span>
+          <span className="text-gray-700 font-medium whitespace-nowrap">{tm('approved')}</span>
         </span>
       ),
       size: 100,

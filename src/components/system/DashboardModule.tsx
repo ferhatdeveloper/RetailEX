@@ -13,6 +13,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { logger } from '../../services/loggingService';
 
 interface DashboardShortcut {
   id?: number;
@@ -87,7 +88,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     // Diğer
     { id: 'settings', icon: Settings, label: t.settings, color: 'from-gray-500 to-gray-600', category: t.systemSettings },
     { id: 'integrations', icon: Zap, label: t.integrations, color: 'from-yellow-500 to-yellow-600', category: t.systemSettings },
-    { id: 'excel', icon: FileSpreadsheet, label: 'Excel İçe/Dışa Aktar', color: 'from-emerald-500 to-emerald-600', category: t.systemSettings },
+    { id: 'excel', icon: FileSpreadsheet, label: t.excelImportExport || 'Excel İçe/Dışa Aktar', color: 'from-emerald-500 to-emerald-600', category: t.systemSettings },
   ];
 
   // Filter actions based on menuMode
@@ -211,8 +212,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       });
       setShowCustomizeModal(false);
     } catch (error) {
-      console.error('Failed to save shortcuts:', error);
-      alert('Kısayollar kaydedilemedi. Lütfen tekrar deneyin.');
+      logger.crudError('DashboardModule', 'saveShortcuts', error);
+      alert(t.shortcutsSaveError || 'Kısayollar kaydedilemedi. Lütfen tekrar deneyin.');
     }
   };
 
@@ -355,12 +356,12 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg text-white">Dashboard</h2>
-            <p className="text-blue-100 text-[10px] mt-0.5">Hoş geldiniz, işletme performansınızı takip edin</p>
+            <h2 className="text-lg text-white">{t.dashboard || 'Dashboard'}</h2>
+            <p className="text-blue-100 text-[10px] mt-0.5">{t.welcomeDashboard || 'Hoş geldiniz, işletme performansınızı takip edin'}</p>
           </div>
           <div className="text-right">
-            <p className="text-blue-100 text-[10px]">{new Date().toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-            <p className="text-blue-200 text-[9px] mt-0.5">{new Date().toLocaleTimeString('tr-TR')}</p>
+            <p className="text-blue-100 text-[10px]">{new Date().toLocaleDateString(t.locale || 'tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p className="text-blue-200 text-[9px] mt-0.5">{new Date().toLocaleTimeString(t.locale || 'tr-TR')}</p>
           </div>
         </div>
       </div>
@@ -370,7 +371,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
         <div>
           <div className="flex items-center gap-1.5 mb-2">
             <Zap className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm text-gray-800">Hızlı Erişim</h3>
+            <h3 className="text-sm text-gray-800">{t.quickAccess || 'Hızlı Erişim'}</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             {currentQuickActions.map((action) => {
@@ -401,7 +402,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
               className="text-[10px] text-blue-500 hover:text-blue-600 font-medium"
               onClick={() => setShowCustomizeModal(true)}
             >
-              Hızlı Erişimleri Düzenle
+              {t.editQuickAccess || 'Hızlı Erişimleri Düzenle'}
             </button>
           </div>
         </div>
@@ -409,36 +410,36 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
         {/* Kurumsal Özet Panel - Modern KPI Cards yerine */}
         <div className="bg-white border border-gray-300 rounded">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">Günlük Özet</h3>
+            <h3 className="text-[11px] text-gray-700">{t.dailySummary || 'Günlük Özet'}</h3>
           </div>
           <div className="grid grid-cols-4 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <DollarSign className="w-4 h-4 text-blue-600" />
-                <span className="text-[10px] text-gray-600">Bugünkü Satış</span>
+                <span className="text-[10px] text-gray-600">{t.todaysSales || 'Bugünkü Satış'}</span>
                 {revenueChange !== 0 && (
                   <span className={`text-[9px] ${revenueChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {revenueChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(revenueChange), 1, false)}%
                   </span>
                 )}
               </div>
-              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} IQD</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} işlem</div>
+              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {t.transaction || 'işlem'}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-[10px] text-gray-600">Haftalık Satış</span>
+                <span className="text-[10px] text-gray-600">{t.weeklySales || 'Haftalık Satış'}</span>
               </div>
-              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} IQD</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} işlem</div>
+              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {t.transaction || 'işlem'}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Package className="w-4 h-4 text-purple-600" />
-                <span className="text-[10px] text-gray-600">Toplam Ürün</span>
+                <span className="text-[10px] text-gray-600">{t.totalProductsDashboard || 'Toplam Ürün'}</span>
                 {lowStockProducts.length > 0 && (
                   <span className="text-[9px] text-red-600">
                     ⚠ {lowStockProducts.length}
@@ -446,16 +447,16 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 )}
               </div>
               <div className="text-base text-gray-900">{products.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">Stok: {formatNumber(totalStockSaleValue, 0, false)} IQD</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{t.stockManagement || 'Stok'}: {formatNumber(totalStockSaleValue, 0, false)} {t.currencyCode || 'IQD'}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-orange-600" />
-                <span className="text-[10px] text-gray-600">Aktif Müşteri</span>
+                <span className="text-[10px] text-gray-600">{t.activeCustomers || 'Aktif Müşteri'}</span>
               </div>
               <div className="text-base text-gray-900">{customers.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">Kayıtlı müşteri</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{t.registeredCustomers || 'Kayıtlı müşteri'}</div>
             </div>
           </div>
         </div>
@@ -465,24 +466,24 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
             <div className="flex items-center gap-2">
               <Wallet className="w-4 h-4 text-blue-600" />
-              <h3 className="text-[11px] text-gray-700">Finansal Özet</h3>
+              <h3 className="text-[11px] text-gray-700">{t.financialSummary || 'Finansal Özet'}</h3>
             </div>
           </div>
           <div className="grid grid-cols-4 divide-x divide-gray-200">
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">Stok Değeri (Maliyet)</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} IQD</div>
+              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueCost || 'Stok Değeri (Maliyet)'}</div>
+              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} {t.currencyCode || 'IQD'}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">Stok Değeri (Satış)</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} IQD</div>
+              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueSales || 'Stok Değeri (Satış)'}</div>
+              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} {t.currencyCode || 'IQD'}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">Potansiyel Kar</div>
-              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} IQD</div>
+              <div className="text-[10px] text-gray-600 mb-1">{t.potentialProfit || 'Potansiyel Kar'}</div>
+              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} {t.currencyCode || 'IQD'}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">Kar Marjı</div>
+              <div className="text-[10px] text-gray-600 mb-1">{t.profitMarginDashboard || 'Kar Marjı'}</div>
               <div className="text-sm text-blue-600">
                 {totalStockValue > 0 ? formatNumber((potentialProfit / totalStockValue) * 100, 1, false) : 0}%
               </div>
@@ -495,8 +496,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           {/* Sales Trend */}
           <div className="bg-white rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-blue-100">
-              <h3 className="text-sm text-gray-800">Son 7 Gün Satış Trendi</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">Günlük satış performansı</p>
+              <h3 className="text-sm text-gray-800">{t.last7DaysSalesTrend || 'Son 7 Gün Satış Trendi'}</h3>
+              <p className="text-[10px] text-gray-600 mt-0.5">{t.dailySalesPerformance || 'Günlük satış performansı'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
@@ -514,8 +515,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           {/* Payment Methods */}
           <div className="bg-white rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gradient-to-r from-green-50 to-green-100">
-              <h3 className="text-sm text-gray-800">Ödeme Yöntemleri</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">Müşteri ödeme tercihleri</p>
+              <h3 className="text-sm text-gray-800">{t.paymentMethodsChart || 'Ödeme Yöntemleri'}</h3>
+              <p className="text-[10px] text-gray-600 mt-0.5">{t.customerPaymentPreferences || 'Müşteri ödeme tercihleri'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
@@ -546,8 +547,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           {/* Top Products */}
           <div className="bg-white rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-purple-100">
-              <h3 className="text-sm text-gray-800">En Çok Satan Ürünler</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">Ciro bazında sıralama</p>
+              <h3 className="text-sm text-gray-800">{t.topSellingProductsInfo || 'En Çok Satan Ürünler'}</h3>
+              <p className="text-[10px] text-gray-600 mt-0.5">{t.rankingByRevenue || 'Ciro bazında sıralama'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
@@ -565,8 +566,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           {/* Category Distribution */}
           <div className="bg-white rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gradient-to-r from-orange-50 to-orange-100">
-              <h3 className="text-sm text-gray-800">Kategori Bazlı Stok</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">Envanter dağılımı</p>
+              <h3 className="text-sm text-gray-800">{t.categoryBasedStock || 'Kategori Bazlı Stok'}</h3>
+              <p className="text-[10px] text-gray-600 mt-0.5">{t.inventoryDistribution || 'Envanter dağılımı'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
@@ -589,9 +590,9 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-red-100">
               <div className="flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-red-600" />
-                <h3 className="text-sm text-gray-800">Kritik Stok Uyarıları</h3>
+                <h3 className="text-sm text-gray-800">{t.criticalStockAlerts || 'Kritik Stok Uyarıları'}</h3>
               </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{criticalStockProducts.length} ürün kritik seviyede</p>
+              <p className="text-[10px] text-gray-600 mt-0.5">{criticalStockProducts.length} {t.productsAtCriticalLevel || 'ürün kritik seviyede'}</p>
             </div>
             <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
               {criticalStockProducts.length > 0 ? (
@@ -603,8 +604,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                         <p className="text-[9px] text-gray-500">{product.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] text-red-600">Kalan: {product.stock}</p>
-                        <p className="text-[9px] text-red-500">Acil sipariş!</p>
+                        <p className="text-[11px] text-red-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
+                        <p className="text-[9px] text-red-500">{t.urgentOrder || 'Acil sipariş!'}</p>
                       </div>
                     </div>
                   ))}
@@ -614,7 +615,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Package className="w-6 h-6 text-green-600" />
                   </div>
-                  <p className="text-[11px] text-gray-500">Kritik stok seviyesinde ürün yok</p>
+                  <p className="text-[11px] text-gray-500">{t.noCriticalStock || 'Kritik stok seviyesinde ürün yok'}</p>
                 </div>
               )}
             </div>
@@ -625,9 +626,9 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             <div className="px-3 py-2 bg-gradient-to-r from-yellow-50 to-yellow-100">
               <div className="flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-yellow-600" />
-                <h3 className="text-sm text-gray-800">Düşük Stok Uyarıları</h3>
+                <h3 className="text-sm text-gray-800">{t.lowStockWarningsItem || 'Düşük Stok Uyarıları'}</h3>
               </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{lowStockProducts.length} ürün düşük seviyede</p>
+              <p className="text-[10px] text-gray-600 mt-0.5">{lowStockProducts.length} {t.productsAtLowLevel || 'ürün düşük seviyede'}</p>
             </div>
             <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
               {lowStockProducts.length > 0 ? (
@@ -639,8 +640,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                         <p className="text-[9px] text-gray-500">{product.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] text-yellow-600">Kalan: {product.stock}</p>
-                        <p className="text-[9px] text-yellow-500">Sipariş önerilir</p>
+                        <p className="text-[11px] text-yellow-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
+                        <p className="text-[9px] text-yellow-500">{t.orderRecommended || 'Sipariş önerilir'}</p>
                       </div>
                     </div>
                   ))}
@@ -650,7 +651,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Package className="w-6 h-6 text-green-600" />
                   </div>
-                  <p className="text-[11px] text-gray-500">Düşük stok seviyesinde ürün yok</p>
+                  <p className="text-[11px] text-gray-500">{t.noLowStockInfo || 'Düşük stok seviyesinde ürün yok'}</p>
                 </div>
               )}
             </div>
@@ -665,8 +666,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-xl text-white">Hızlı Erişimleri Özelleştir</h3>
-                <p className="text-blue-100 text-sm mt-1">En fazla 8 kısayol seçebilirsiniz ({selectedActions.length}/8)</p>
+                <h3 className="text-xl text-white">{t.customizeQuickAccess || 'Hızlı Erişimleri Özelleştir'}</h3>
+                <p className="text-blue-100 text-sm mt-1">{t.max8Shortcuts || 'En fazla 8 kısayol seçebilirsiniz'} ({selectedActions.length}/8)</p>
               </div>
               <button
                 className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
@@ -741,9 +742,9 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between">
               <p className="text-sm text-gray-600">
                 {selectedActions.length === 0 ? (
-                  <span className="text-red-600">En az 1 kısayol seçmelisiniz</span>
+                  <span className="text-red-600">{t.min1Shortcut || 'En az 1 kısayol seçmelisiniz'}</span>
                 ) : (
-                  <span>{selectedActions.length} kısayol seçildi</span>
+                  <span>{selectedActions.length} {t.shortcutsSelected || 'kısayol seçildi'}</span>
                 )}
               </p>
               <div className="flex gap-3">
@@ -758,7 +759,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                     }
                   }}
                 >
-                  İptal
+                  {t.cancel || 'İptal'}
                 </button>
                 <button
                   className={`px-6 py-2 rounded-lg transition-all ${selectedActions.length === 0
@@ -768,7 +769,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   onClick={saveQuickActions}
                   disabled={selectedActions.length === 0}
                 >
-                  Kaydet
+                  {t.save || 'Kaydet'}
                 </button>
               </div>
             </div>

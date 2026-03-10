@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -20,7 +20,7 @@ interface ProductManagementProps {
 }
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
-  const { tm } = useLanguage();
+  const { t, tm } = useLanguage();
   const addProduct = useProductStore((state) => state.addProduct);
   const updateProduct = useProductStore((state) => state.updateProduct);
   const deleteProduct = useProductStore((state) => state.deleteProduct);
@@ -99,15 +99,17 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     setShowViewer(true);
   };
 
-  const filteredProducts = displayProducts.filter(product => {
-    const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = searchQuery === '' ||
-      (product.name?.toLowerCase() || '').includes(searchLower) ||
-      (product.barcode || '').includes(searchQuery) ||
-      (product.category?.toLowerCase() || '').includes(searchLower);
-    const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredProducts = useMemo(() => {
+    return displayProducts.filter(product => {
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch = searchQuery === '' ||
+        (product.name?.toLowerCase() || '').includes(searchLower) ||
+        (product.barcode || '').includes(searchQuery) ||
+        (product.category?.toLowerCase() || '').includes(searchLower);
+      const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [displayProducts, searchQuery, categoryFilter]);
 
   const openProductForm = (productId?: string) => {
     setEditingProductId(productId);
@@ -130,7 +132,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   const columnHelper = createColumnHelper<Product>();
 
-  const columns = [
+  const columns = useMemo<ColumnDef<Product, any>[]>(() => [
     columnHelper.accessor('barcode', {
       header: tm('barcode').toUpperCase(),
       cell: info => info.getValue(),
@@ -193,7 +195,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue(),
       size: 100
     }),
-  ];
+  ], [tm]);
 
   return (
     <div className="h-full flex flex-col">
@@ -324,7 +326,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           items={[
             {
               id: 'hub',
-              label: 'İşlem Merkezi',
+              label: t.actionCenter,
               icon: Package,
               onClick: () => {
                 setActiveHubProduct(contextMenu.product);
@@ -334,13 +336,13 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             },
             {
               id: 'edit',
-              label: 'Düzenle',
+              label: t.edit,
               icon: Edit,
               onClick: () => openProductForm(contextMenu.product.id)
             },
             {
               id: 'label-40-20',
-              label: 'Etiket Yazdır (40x20mm)',
+              label: `${t.print} (40x20mm)`,
               icon: Barcode,
               onClick: () => {
                 setActiveHubProduct(contextMenu.product);
@@ -350,7 +352,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             },
             {
               id: 'label-50-30',
-              label: 'Etiket Yazdır (50x30mm)',
+              label: `${t.print} (50x30mm)`,
               icon: Barcode,
               onClick: () => {
                 setActiveHubProduct(contextMenu.product);
@@ -360,7 +362,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             },
             {
               id: 'label-60-40',
-              label: 'Etiket Yazdır (60x40mm)',
+              label: `${t.print} (60x40mm)`,
               icon: Barcode,
               onClick: () => {
                 setActiveHubProduct(contextMenu.product);
@@ -370,7 +372,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             },
             {
               id: 'movements',
-              label: 'Stok Hareketleri',
+              label: t.historyMovements || t.movements,
               icon: TrendingUp,
               onClick: () => {
                 setActiveHubProduct(contextMenu.product);
@@ -382,11 +384,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             },
             {
               id: 'delete',
-              label: 'Sil',
+              label: t.deleteAction,
               icon: Trash2,
               variant: 'danger',
               onClick: () => {
-                if (window.confirm(`${contextMenu.product.name} isimli ürünü silmek istediğinize emin misiniz?`)) {
+                const message = t.confirmItemDelete
+                  ? t.confirmItemDelete.replace('{item}', contextMenu.product.name)
+                  : `${contextMenu.product.name} ${t.deleteAction}?`;
+
+                if (window.confirm(message)) {
                   deleteProduct(contextMenu.product.id);
                 }
               }

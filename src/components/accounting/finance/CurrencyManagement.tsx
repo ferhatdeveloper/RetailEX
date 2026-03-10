@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface Currency {
   id: string;
@@ -46,7 +47,7 @@ const columnHelper = createColumnHelper<Currency>();
 
 const currencyColumns = [
   columnHelper.accessor('code', {
-    header: 'Kod',
+    header: 'Kod', // will be replaced dynamically inside the component, but let's keep it clean or make a factory function for columns. Actually, wait! The best way is to generate columns *inside* the component, or pass `tm` as a parameter to a column generator function.
     cell: info => (
       <div className="flex items-center gap-2">
         <DollarSign className="w-4 h-4 text-gray-400" />
@@ -112,8 +113,8 @@ const currencyColumns = [
     header: 'Durum',
     cell: info => (
       <span className={`px-2 py-1 rounded text-xs font-semibold ${info.getValue()
-          ? 'bg-green-100 text-green-700'
-          : 'bg-gray-100 text-gray-700'
+        ? 'bg-green-100 text-green-700'
+        : 'bg-gray-100 text-gray-700'
         }`}>
         {info.getValue() ? 'Aktif' : 'Pasif'}
       </span>
@@ -122,6 +123,7 @@ const currencyColumns = [
 ];
 
 export function CurrencyManagement() {
+  const { tm } = useLanguage();
   const [activeTab, setActiveTab] = useState<'list' | 'rates' | 'history' | 'charts'>('list');
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([]);
@@ -129,6 +131,84 @@ export function CurrencyManagement() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRateModal, setShowRateModal] = useState(false);
+
+  // Moved columns inside to access tm()
+  const currencyColumns = [
+    columnHelper.accessor('code', {
+      header: tm('code'),
+      cell: info => (
+        <div className="flex items-center gap-2">
+          <DollarSign className="w-4 h-4 text-gray-400" />
+          <span className="font-semibold">{info.getValue()}</span>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('name', {
+      header: tm('currencyLabel'),
+      cell: info => info.getValue(),
+    }),
+    columnHelper.accessor('symbol', {
+      header: tm('currencySymbol'),
+      cell: info => <span className="font-mono">{info.getValue()}</span>,
+    }),
+    columnHelper.accessor('lastRate', {
+      header: tm('lastRate'),
+      cell: info => (
+        <span className="font-semibold text-blue-600">
+          {info.getValue().toFixed(4)}
+        </span>
+      ),
+    }),
+    columnHelper.accessor('changePercent', {
+      header: tm('changePercent'),
+      cell: info => {
+        const value = info.getValue();
+        const isPositive = value >= 0;
+        return (
+          <div className={`flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+            {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+            <span className="font-semibold">{Math.abs(value).toFixed(2)}%</span>
+          </div>
+        );
+      },
+    }),
+    columnHelper.accessor('lastUpdateDate', {
+      header: tm('lastUpdateDate'),
+      cell: info => (
+        <div className="flex items-center gap-1 text-gray-600">
+          <Calendar className="w-4 h-4" />
+          <span>{new Date(info.getValue()).toLocaleDateString('tr-TR')}</span>
+        </div>
+      ),
+    }),
+    columnHelper.accessor('isBaseCurrency', {
+      header: tm('baseCurrency'),
+      cell: info => info.getValue() ? (
+        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+          {tm('baseCurrencyShort')}
+        </span>
+      ) : null,
+    }),
+    columnHelper.accessor('isReportingCurrency', {
+      header: tm('reportingCurrency'),
+      cell: info => info.getValue() ? (
+        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">
+          {tm('reportingCurrencyShort')}
+        </span>
+      ) : null,
+    }),
+    columnHelper.accessor('isActive', {
+      header: tm('status'),
+      cell: info => (
+        <span className={`px-2 py-1 rounded text-xs font-semibold ${info.getValue()
+          ? 'bg-green-100 text-green-700'
+          : 'bg-gray-100 text-gray-700'
+          }`}>
+          {info.getValue() ? tm('active') : tm('passive')}
+        </span>
+      ),
+    }),
+  ];
 
   // Mock data - gerçek uygulamada API'den gelecek
   useEffect(() => {
@@ -230,10 +310,10 @@ export function CurrencyManagement() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Globe className="w-8 h-8 text-blue-600" />
-            Para Birimi Yönetimi
+            {tm('currencyManagement')}
           </h1>
           <p className="text-gray-600 mt-1">
-            Para birimleri ve döviz kurları yönetimi
+            {tm('currencyManagementDesc')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -242,21 +322,21 @@ export function CurrencyManagement() {
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
-            Kurları Güncelle
+            {tm('updateRates')}
           </button>
           <button
             onClick={handleAddRate}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Kur Girişi
+            {tm('enterRate')}
           </button>
           <button
             onClick={handleAddCurrency}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Para Birimi Ekle
+            {tm('addCurrency')}
           </button>
         </div>
       </div>
@@ -267,38 +347,38 @@ export function CurrencyManagement() {
           <button
             onClick={() => setActiveTab('list')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'list'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
-            Para Birimleri
+            {tm('currenciesTab')}
           </button>
           <button
             onClick={() => setActiveTab('rates')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'rates'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
-            Günlük Kurlar
+            {tm('dailyRatesTab')}
           </button>
           <button
             onClick={() => setActiveTab('history')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'history'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
-            Kur Geçmişi
+            {tm('rateHistoryTab')}
           </button>
           <button
             onClick={() => setActiveTab('charts')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'charts'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
-            Grafikler
+            {tm('chartsTab')}
           </button>
         </nav>
       </div>
@@ -324,7 +404,7 @@ export function CurrencyManagement() {
             <div className="flex items-center gap-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tarih Seçin
+                  {tm('selectDate')}
                 </label>
                 <input
                   type="date"
@@ -367,26 +447,26 @@ export function CurrencyManagement() {
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Alış:</span>
+                    <span className="text-sm text-gray-600">{tm('buyRate')}:</span>
                     <span className="text-lg font-semibold text-green-600">
                       {rate.buyRate.toFixed(4)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Satış:</span>
+                    <span className="text-sm text-gray-600">{tm('sellRate')}:</span>
                     <span className="text-lg font-semibold text-red-600">
                       {rate.sellRate.toFixed(4)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-3 border-t">
-                    <span className="text-sm text-gray-600">Ortalama:</span>
+                    <span className="text-sm text-gray-600">{tm('average')}:</span>
                     <span className="text-lg font-bold text-blue-600">
                       {rate.averageRate.toFixed(4)}
                     </span>
                   </div>
                 </div>
                 <div className="mt-4 pt-4 border-t text-xs text-gray-500">
-                  <div>Giren: {rate.enteredBy}</div>
+                  <div>{tm('enteredBy')}: {rate.enteredBy}</div>
                   <div>{new Date(rate.enteredDate).toLocaleString('tr-TR')}</div>
                 </div>
               </div>
@@ -400,10 +480,10 @@ export function CurrencyManagement() {
           <div className="text-center py-12">
             <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Kur Geçmişi
+              {tm('rateHistoryTab')}
             </h3>
             <p className="text-gray-600">
-              Seçili para biriminin geçmiş kur bilgileri burada görüntülenecek
+              {tm('rateHistoryPlaceholder')}
             </p>
           </div>
         </div>
@@ -414,10 +494,10 @@ export function CurrencyManagement() {
           <div className="text-center py-12">
             <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Kur Grafikleri
+              {tm('chartsTab')}
             </h3>
             <p className="text-gray-600">
-              Para birimi kur değişim grafikleri burada görüntülenecek
+              {tm('rateChartsPlaceholder')}
             </p>
           </div>
         </div>
@@ -427,11 +507,11 @@ export function CurrencyManagement() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Yeni Para Birimi Ekle</h2>
+            <h2 className="text-xl font-bold mb-4">{tm('newCurrency')}</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Para Birimi Kodu
+                  {tm('currencyCode')}
                 </label>
                 <input
                   type="text"
@@ -441,7 +521,7 @@ export function CurrencyManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Para Birimi Adı
+                  {tm('currencyName')}
                 </label>
                 <input
                   type="text"
@@ -451,7 +531,7 @@ export function CurrencyManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Sembol
+                  {tm('currencySymbol')}
                 </label>
                 <input
                   type="text"
@@ -466,7 +546,7 @@ export function CurrencyManagement() {
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <label htmlFor="isActive" className="text-sm text-gray-700">
-                  Aktif
+                  {tm('active')}
                 </label>
               </div>
             </div>
@@ -475,7 +555,7 @@ export function CurrencyManagement() {
                 onClick={() => setShowAddModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
               >
-                İptal
+                {tm('cancel')}
               </button>
               <button
                 onClick={() => {
@@ -484,7 +564,7 @@ export function CurrencyManagement() {
                 }}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
-                Kaydet
+                {tm('save')}
               </button>
             </div>
           </div>
@@ -495,11 +575,11 @@ export function CurrencyManagement() {
       {showRateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Kur Girişi</h2>
+            <h2 className="text-xl font-bold mb-4">{tm('enterRate')}</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Para Birimi
+                  {tm('currencyLabel')}
                 </label>
                 <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                   {currencies.filter(c => !c.isBaseCurrency).map(currency => (
@@ -511,7 +591,7 @@ export function CurrencyManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Tarih
+                  {tm('dateLabel')}
                 </label>
                 <input
                   type="date"
@@ -521,7 +601,7 @@ export function CurrencyManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Alış Kuru
+                  {tm('buyRate')}
                 </label>
                 <input
                   type="number"
@@ -532,7 +612,7 @@ export function CurrencyManagement() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Satış Kuru
+                  {tm('sellRate')}
                 </label>
                 <input
                   type="number"
@@ -547,7 +627,7 @@ export function CurrencyManagement() {
                 onClick={() => setShowRateModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
               >
-                İptal
+                {tm('cancel')}
               </button>
               <button
                 onClick={() => {
@@ -556,7 +636,7 @@ export function CurrencyManagement() {
                 }}
                 className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
-                Kaydet
+                {tm('save')}
               </button>
             </div>
           </div>

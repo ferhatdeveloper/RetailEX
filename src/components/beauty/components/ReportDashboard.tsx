@@ -7,15 +7,10 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService } from '../../../services/beautyService';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 import '../ClinicStyles.css';
-
-const CATEGORY_TR: Record<string, string> = {
-    laser: 'Lazer Epilasyon', hair_salon: 'Kuaför', beauty: 'Güzellik',
-    botox: 'Botoks', filler: 'Dolgu', massage: 'Masaj',
-    skincare: 'Cilt Bakımı', makeup: 'Makyaj', nails: 'Tırnak', spa: 'Spa', other: 'Diğer',
-};
 
 const fmt = (n: number) =>
     new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
@@ -30,9 +25,17 @@ type ReportStats = Awaited<ReturnType<typeof beautyService.getReportStats>>;
 
 export function ReportDashboard() {
     const { specialists } = useBeautyStore();
+    const { tm } = useLanguage();
     const [stats, setStats]     = useState<ReportStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError]     = useState<string | null>(null);
+
+    const CATEGORY_LABEL: Record<string, string> = {
+        laser: tm('bCatLaser'), hair_salon: tm('bCatHairSalon'), beauty: tm('bCatBeauty'),
+        botox: tm('bCatBotox'), filler: tm('bCatFiller'), massage: tm('bCatMassage'),
+        skincare: tm('bCatSkincare'), makeup: tm('bCatMakeup'), nails: tm('bCatNails'),
+        spa: tm('bCatSpa'), other: tm('bCatOther'),
+    };
 
     useEffect(() => {
         setLoading(true);
@@ -45,18 +48,18 @@ export function ReportDashboard() {
     if (loading) return (
         <div className="flex items-center justify-center h-full gap-3 text-purple-600">
             <Loader2 size={24} className="animate-spin" />
-            <span className="text-sm font-bold">Rapor verileri yükleniyor...</span>
+            <span className="text-sm font-bold">{tm('bLoadingReport')}</span>
         </div>
     );
 
     if (error) return (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-red-500">
             <BarChart3 size={32} />
-            <p className="text-sm font-bold">Veriler yüklenemedi</p>
+            <p className="text-sm font-bold">{tm('bReportLoadFailed')}</p>
             <p className="text-xs text-slate-400">{error}</p>
             <Button onClick={() => { setLoading(true); setError(null); beautyService.getReportStats().then(setStats).catch(e => setError(String(e))).finally(() => setLoading(false)); }}
                 className="mt-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl px-4 h-9 text-xs font-bold">
-                Tekrar Dene
+                {tm('bRetry')}
             </Button>
         </div>
     );
@@ -66,10 +69,10 @@ export function ReportDashboard() {
     const totalRevDist  = stats!.serviceDistribution.reduce((s, r) => s + r.revenue, 0) || 1;
 
     const kpiStats = [
-        { label: 'AYLIK TOPLAM CİRO',  value: fmt(stats!.monthlyRevenue),    ...revenueChg, icon: DollarSign, color: 'purple' },
-        { label: 'TOPLAM İŞLEM SAYISI', value: stats!.transactionCount.toString(), ...txChg, icon: Activity, color: 'blue' },
-        { label: 'YENİ MÜŞTERİ',        value: stats!.newCustomers.toString(),   pct: '—', up: true, icon: Users, color: 'pink' },
-        { label: 'ORTALAMA SEPET',       value: fmt(stats!.avgCartValue),          pct: '—', up: true, icon: ShoppingBag, color: 'orange' },
+        { label: tm('bMonthlyRevenue'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: DollarSign, color: 'purple' },
+        { label: tm('bTransactionCount'), value: stats!.transactionCount.toString(), ...txChg,       icon: Activity,   color: 'blue' },
+        { label: tm('bNewCustomersKPI'),  value: stats!.newCustomers.toString(),     pct: '—', up: true, icon: Users, color: 'pink' },
+        { label: tm('bAvgCart'),          value: fmt(stats!.avgCartValue),           pct: '—', up: true, icon: ShoppingBag, color: 'orange' },
     ];
 
     // Pad trend to always show 6 bars
@@ -85,12 +88,12 @@ export function ReportDashboard() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Performans Raporları</h1>
-                    <p className="text-sm text-gray-500 mt-1">Klinik verilerinizi analiz edin ve büyüme stratejinizi belirleyin.</p>
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{tm('bPerformanceReports')}</h1>
+                    <p className="text-sm text-gray-500 mt-1">{tm('bReportSubtitle')}</p>
                 </div>
                 <div className="flex gap-2">
                     <Button className="bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold px-5 py-2 rounded-2xl shadow-sm flex items-center gap-2 text-sm">
-                        <Calendar size={16} /> Bu Ay
+                        <Calendar size={16} /> {tm('bThisMonth')}
                     </Button>
                 </div>
             </div>
@@ -119,7 +122,7 @@ export function ReportDashboard() {
                                     {stat.up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                                     {stat.pct}
                                 </span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">geçen aya göre</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{tm('bRevenueVsPrev')}</span>
                             </div>
                         )}
                     </div>
@@ -132,14 +135,14 @@ export function ReportDashboard() {
                 <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm">
                     <div className="flex items-center justify-between mb-8">
                         <div>
-                            <h3 className="text-lg font-black text-gray-900 uppercase">CİRO TRENDİ</h3>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">SON 6 AYIN KARŞILAŞTIRMASI</p>
+                            <h3 className="text-lg font-black text-gray-900 uppercase">{tm('bRevenueTrend')}</h3>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{tm('bLast6Months')}</p>
                         </div>
                     </div>
                     {trendData.length === 0 ? (
                         <div className="h-64 flex items-center justify-center text-gray-300 flex-col gap-2">
                             <BarChart3 size={36} />
-                            <p className="text-xs font-bold">Henüz satış verisi yok</p>
+                            <p className="text-xs font-bold">{tm('bNoSalesData')}</p>
                         </div>
                     ) : (
                         <div className="h-64 flex items-end justify-between gap-4 px-2">
@@ -152,7 +155,7 @@ export function ReportDashboard() {
                                             style={{ height: `${Math.max(r.pct, 4)}%` }}
                                         >
                                             <div className="opacity-0 group-hover:opacity-100 absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-lg font-bold pointer-events-none whitespace-nowrap">
-                                                {fmt(r.revenue)}<br />{r.transactions} işlem
+                                                {fmt(r.revenue)}<br />{r.transactions} {tm('bTransactions')}
                                             </div>
                                         </div>
                                     </div>
@@ -165,12 +168,12 @@ export function ReportDashboard() {
 
                 {/* Service Distribution */}
                 <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm flex flex-col">
-                    <h3 className="text-lg font-black text-gray-900 uppercase mb-1">HİZMET DAĞILIMI</h3>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6">KATEGORİ BAZLI ANALİZ</p>
+                    <h3 className="text-lg font-black text-gray-900 uppercase mb-1">{tm('bServiceDistribution')}</h3>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6">{tm('bCategoryAnalysis')}</p>
                     {stats!.serviceDistribution.length === 0 ? (
                         <div className="flex-1 flex items-center justify-center text-gray-300 flex-col gap-2">
                             <PieChart size={28} />
-                            <p className="text-xs font-bold">Veri yok</p>
+                            <p className="text-xs font-bold">{tm('bNoData')}</p>
                         </div>
                     ) : (
                         <div className="flex-1 space-y-5">
@@ -180,13 +183,13 @@ export function ReportDashboard() {
                                 return (
                                     <div key={i}>
                                         <div className="flex justify-between text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">
-                                            <span>{CATEGORY_TR[cat.category] ?? cat.category}</span>
+                                            <span>{CATEGORY_LABEL[cat.category] ?? cat.category}</span>
                                             <span>%{pct}</span>
                                         </div>
                                         <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
                                             <div className={cn("h-full rounded-full transition-all duration-700", COLORS[i % COLORS.length])} style={{ width: `${pct}%` }} />
                                         </div>
-                                        <p className="text-[10px] text-gray-400 mt-1">{cat.count} işlem · {fmt(cat.revenue)}</p>
+                                        <p className="text-[10px] text-gray-400 mt-1">{cat.count} {tm('bTransactions')} · {fmt(cat.revenue)}</p>
                                     </div>
                                 );
                             })}
@@ -198,24 +201,24 @@ export function ReportDashboard() {
             {/* Staff Performance */}
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
                 <div className="p-8 border-b border-gray-50 flex items-center justify-between">
-                    <h3 className="text-lg font-black text-gray-900 uppercase">PERSONEL PERFORMANSI</h3>
+                    <h3 className="text-lg font-black text-gray-900 uppercase">{tm('bStaffPerformance')}</h3>
                     <PieChart className="text-gray-300" size={24} />
                 </div>
                 {stats!.staffPerformance.length === 0 ? (
                     <div className="py-12 text-center text-gray-300">
                         <Users size={32} className="mx-auto mb-2" />
-                        <p className="text-xs font-bold">Bu ay henüz işlem yok</p>
+                        <p className="text-xs font-bold">{tm('bNoStaffData')}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-gray-50/50">
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">UZMAN</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">İŞLEM SAYISI</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">TOPLAM CİRO</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">HAKEDİŞ</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">KOMİSYON</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffName')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffTransactions')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffRevenue')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffEarnings')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffCommission')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
@@ -229,7 +232,7 @@ export function ReportDashboard() {
                                                 <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
                                             </div>
                                         </td>
-                                        <td className="px-8 py-5 font-bold text-gray-600 text-xs">{staff.transactions} işlem</td>
+                                        <td className="px-8 py-5 font-bold text-gray-600 text-xs">{staff.transactions} {tm('bTransactions')}</td>
                                         <td className="px-8 py-5 font-black text-gray-900 text-sm">{fmt(staff.revenue)}</td>
                                         <td className="px-8 py-5 font-bold text-purple-600 text-sm">{fmt(staff.commission)}</td>
                                         <td className="px-8 py-5 font-bold text-gray-500 text-xs">%{staff.commission_rate}</td>

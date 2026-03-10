@@ -2,11 +2,15 @@
 import {
   ArrowLeft, Scan, Package, CheckCircle, AlertCircle,
   Plus, Minus, Check, X, Save, List, BarChart3,
-  MapPin, Calendar, User, Upload, Download, RefreshCw
+  MapPin, Calendar, User, Upload, Download, RefreshCw,
+  Building, Loader2
 } from 'lucide-react';
+import { postgres } from '../../../services/postgres';
+import { stockCountAPI } from '../../../services/stockCountAPI';
 
 interface CountedItem {
   barcode: string;
+  productId: string;
   productName: string;
   location: string;
   systemQty: number;
@@ -21,16 +25,34 @@ interface InventoryCountProps {
 }
 
 export function InventoryCount({ onBack }: InventoryCountProps) {
-  const [step, setStep] = useState<'type-select' | 'location-scan' | 'item-count' | 'summary'>('type-select');
+  const [step, setStep] = useState<'type-select' | 'warehouse-select' | 'location-scan' | 'item-count' | 'summary'>('type-select');
   const [countType, setCountType] = useState<'full' | 'cycle' | 'location'>('full');
+  const [warehouses, setWarehouses] = useState<any[]>([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
   const [location, setLocation] = useState('');
   const [scannedBarcode, setScannedBarcode] = useState('');
   const [countedItems, setCountedItems] = useState<CountedItem[]>([]);
   const [currentItem, setCurrentItem] = useState<any>(null);
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const [countedBy, setCountedBy] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadWarehouses();
+  }, []);
+
+  const loadWarehouses = async () => {
+    try {
+      const { rows } = await postgres.query('SELECT id, name FROM stores WHERE is_active = true');
+      setWarehouses(rows);
+      if (rows.length > 0) setSelectedWarehouseId(rows[0].id);
+    } catch (error) {
+      console.error('Error loading warehouses:', error);
+    }
+  };
 
   useEffect(() => {
     if (inputRef.current) {
@@ -48,16 +70,16 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
     const context = new AudioContext();
     const oscillator = context.createOscillator();
     const gainNode = context.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(context.destination);
-    
+
     oscillator.frequency.value = success ? 1000 : 500;
     oscillator.type = 'sine';
-    
+
     gainNode.gain.setValueAtTime(0.3, context.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.1);
-    
+
     oscillator.start(context.currentTime);
     oscillator.stop(context.currentTime + 0.1);
   };
@@ -69,39 +91,62 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
     beep(true);
   };
 
-  const handleItemScan = (barcode: string) => {
-    // Simulate product lookup
-    const mockProduct = {
-      barcode: barcode,
-      productName: `Product ${barcode}`,
-      systemQty: Math.floor(Math.random() * 100) + 10,
-      location: location || 'A-01-05'
-    };
+  const handleItemScan = async (barcode: string) => {
+    setSearching(true);
+    try {
+      // Find product by barcode or code
+      const { rows } = await postgres.query(
+        `SELECT p.id, p.name, p.code, p.stock
+         FROM products p
+         LEFT JOIN product_barcodes pb ON pb.product_id = p.id
+         WHERE pb.barcode = $1 OR p.code = $1
+         LIMIT 1`,
+        [barcode]
+      );
 
-    setCurrentItem(mockProduct);
-    setQuantity(0);
-    vibrate();
-    beep(true);
+      if (rows.length > 0) {
+        const product = rows[0];
+        setCurrentItem({
+          barcode: barcode,
+          productId: product.id,
+          productName: product.name,
+          systemQty: Number(product.stock) || 0,
+          location: location || '-'
+        });
+        setQuantity(1); // Default to 1 for easier scanning
+        vibrate();
+        beep(true);
+      } else {
+        beep(false);
+        alert('Ürün bulunamadı: ' + barcode);
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      beep(false);
+    } finally {
+      setSearching(false);
+    }
   };
 
   const handleAddCount = () => {
     if (currentItem) {
       const variance = quantity - currentItem.systemQty;
-      
+
       setCountedItems([
         ...countedItems,
         {
           barcode: currentItem.barcode,
+          productId: currentItem.productId,
           productName: currentItem.productName,
           location: currentItem.location,
           systemQty: currentItem.systemQty,
           countedQty: quantity,
-          variance: variance,
+          variance: quantity - currentItem.systemQty,
           countedAt: new Date().toISOString(),
           countedBy: countedBy || 'Operator'
         }
       ]);
-      
+
       setCurrentItem(null);
       setScannedBarcode('');
       setQuantity(0);
@@ -112,11 +157,37 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
     }
   };
 
-  const handleComplete = () => {
-    console.log('Completing inventory count:', { countType, location, items: countedItems });
-    vibrate();
-    beep(true);
-    onBack();
+  const handleComplete = async () => {
+    if (countedItems.length === 0) return;
+
+    setSaving(true);
+    try {
+      const warehouseName = warehouses.find(w => w.id === selectedWarehouseId)?.name || 'Depo';
+
+      await stockCountAPI.create({
+        count_no: `CNT-${Date.now().toString().slice(-6)}`,
+        warehouse_id: selectedWarehouseId,
+        count_date: new Date().toISOString(),
+        status: 'completed',
+        notes: `${countType.toUpperCase()} - ${location || 'Genel'} - Yapan: ${countedBy || 'Sistem'}`
+      }, countedItems.map(item => ({
+        product_id: item.productId,
+        expected_quantity: item.systemQty,
+        counted_quantity: item.countedQty,
+        notes: item.location
+      })));
+
+      vibrate();
+      beep(true);
+      alert('Sayım başarıyla veritabanına kaydedildi.');
+      onBack();
+    } catch (err) {
+      console.error('Save error:', err);
+      beep(false);
+      alert('Sayım kaydedilirken bir hata oluştu!');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getTotalVariance = () => {
@@ -147,14 +218,14 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
 
         <div className="p-6 md:p-8 max-w-4xl mx-auto">
           <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4 md:mb-6">Sayım Türü Seçin</h2>
-          
+
           {/* Count Type Options */}
           <div className="space-y-3">
             {/* Full Count */}
             <button
               onClick={() => {
                 setCountType('full');
-                setStep('item-count');
+                setStep('warehouse-select');
               }}
               className="w-full md:max-w-md bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl p-5 md:p-6 shadow-lg hover:shadow-xl transition-all"
             >
@@ -174,7 +245,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
             <button
               onClick={() => {
                 setCountType('cycle');
-                setStep('item-count');
+                setStep('warehouse-select');
               }}
               className="w-full md:max-w-md bg-white border-2 border-purple-300 rounded-xl p-5 md:p-6 shadow-sm hover:shadow-md transition-all"
             >
@@ -194,7 +265,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
             <button
               onClick={() => {
                 setCountType('location');
-                setStep('location-scan');
+                setStep('warehouse-select');
               }}
               className="w-full md:max-w-md bg-white border-2 border-purple-300 rounded-xl p-5 md:p-6 shadow-sm hover:shadow-md transition-all"
             >
@@ -242,6 +313,68 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
     );
   }
 
+  // Warehouse Selection Step
+  if (step === 'warehouse-select') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-purple-100">
+        <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setStep('type-select')} className="p-2 hover:bg-white/10 rounded-lg">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1">
+              <h1 className="text-lg font-bold">Depo Seç</h1>
+              <p className="text-xs text-purple-100">Warehouse Selection</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 md:p-8 max-w-4xl mx-auto">
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-6">Sayım Yapılacak Depo</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {warehouses.map((w) => (
+              <button
+                key={w.id}
+                onClick={() => {
+                  setSelectedWarehouseId(w.id);
+                  if (countType === 'location') setStep('location-scan');
+                  else setStep('item-count');
+                }}
+                className={`p-6 rounded-2xl border-2 text-left transition-all ${selectedWarehouseId === w.id
+                  ? 'border-purple-600 bg-purple-50 shadow-md'
+                  : 'border-white bg-white hover:border-purple-200 shadow-sm'
+                  }`}
+              >
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${selectedWarehouseId === w.id ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-600'
+                    }`}>
+                    <Building className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900">{w.name}</div>
+                    <div className="text-xs text-gray-500 uppercase">Warehouse Code: {w.id.slice(0, 8)}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              if (countType === 'location') setStep('location-scan');
+              else setStep('item-count');
+            }}
+            disabled={!selectedWarehouseId}
+            className="w-full mt-8 py-4 bg-purple-600 text-white rounded-xl font-bold disabled:opacity-50"
+          >
+            Devam Et
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Location Scan Step
   if (step === 'location-scan') {
     return (
@@ -262,7 +395,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
           <div className="w-32 h-32 bg-purple-500 rounded-3xl flex items-center justify-center mb-6 animate-pulse shadow-xl">
             <MapPin className="w-16 h-16 text-white" />
           </div>
-          
+
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Raf/Konum</h2>
           <p className="text-gray-600 text-center mb-8">
             Sayım yapılacak lokasyonu okutun<br />
@@ -284,7 +417,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
               placeholder="Lokasyon barkodu..."
               className="w-full px-4 py-4 text-lg border-2 border-purple-300 rounded-xl focus:outline-none focus:border-purple-500 text-center font-mono"
             />
-            
+
             <button
               onClick={() => {
                 const loc = prompt('Lokasyon kodu:');
@@ -336,7 +469,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Ürün Barkodu Okutun</h3>
               <p className="text-sm text-gray-600 mb-4">Sayılacak ürünü okutun</p>
-              
+
               <input
                 ref={inputRef}
                 type="text"
@@ -363,9 +496,15 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
                 <h3 className="text-lg font-bold text-gray-900 mb-1">{currentItem.productName}</h3>
                 <p className="text-sm text-gray-500 font-mono">{currentItem.barcode}</p>
                 <p className="text-xs text-gray-600 mt-2 flex items-center justify-center gap-1">
-                  <MapPin className="w-3 h-3" />
+                  <MapPin className="w-3" />
                   {currentItem.location}
                 </p>
+                {searching && (
+                  <div className="mt-2 flex items-center justify-center gap-2 text-purple-600 text-xs font-bold">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    ARANIYOR...
+                  </div>
+                )}
               </div>
 
               {/* System vs Count */}
@@ -382,18 +521,15 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
 
               {/* Variance Warning */}
               {quantity > 0 && quantity !== currentItem.systemQty && (
-                <div className={`p-3 rounded-xl mb-4 ${
-                  Math.abs(quantity - currentItem.systemQty) > 5 
-                    ? 'bg-red-50 border-2 border-red-300' 
-                    : 'bg-yellow-50 border-2 border-yellow-300'
-                }`}>
+                <div className={`p-3 rounded-xl mb-4 ${Math.abs(quantity - currentItem.systemQty) > 5
+                  ? 'bg-red-50 border-2 border-red-300'
+                  : 'bg-yellow-50 border-2 border-yellow-300'
+                  }`}>
                   <div className="flex items-center gap-2 justify-center">
-                    <AlertCircle className={`w-5 h-5 ${
-                      Math.abs(quantity - currentItem.systemQty) > 5 ? 'text-red-600' : 'text-yellow-600'
-                    }`} />
-                    <span className={`font-bold ${
-                      Math.abs(quantity - currentItem.systemQty) > 5 ? 'text-red-600' : 'text-yellow-600'
-                    }`}>
+                    <AlertCircle className={`w-5 h-5 ${Math.abs(quantity - currentItem.systemQty) > 5 ? 'text-red-600' : 'text-yellow-600'
+                      }`} />
+                    <span className={`font-bold ${Math.abs(quantity - currentItem.systemQty) > 5 ? 'text-red-600' : 'text-yellow-600'
+                      }`}>
                       Fark: {quantity - currentItem.systemQty > 0 ? '+' : ''}{quantity - currentItem.systemQty}
                     </span>
                   </div>
@@ -482,11 +618,10 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
             </h3>
             <div className="space-y-2">
               {countedItems.map((item, idx) => (
-                <div key={idx} className={`bg-white rounded-xl p-4 shadow-sm border-l-4 ${
-                  item.variance === 0 ? 'border-green-500' :
+                <div key={idx} className={`bg-white rounded-xl p-4 shadow-sm border-l-4 ${item.variance === 0 ? 'border-green-500' :
                   Math.abs(item.variance) > 5 ? 'border-red-500' :
-                  'border-yellow-500'
-                }`}>
+                    'border-yellow-500'
+                  }`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-gray-900">{item.productName}</span>
                     <div className="text-right">
@@ -497,9 +632,8 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-mono text-gray-500">{item.barcode}</span>
                     {item.variance !== 0 && (
-                      <span className={`font-bold ${
-                        Math.abs(item.variance) > 5 ? 'text-red-600' : 'text-yellow-600'
-                      }`}>
+                      <span className={`font-bold ${Math.abs(item.variance) > 5 ? 'text-red-600' : 'text-yellow-600'
+                        }`}>
                         Fark: {item.variance > 0 ? '+' : ''}{item.variance}
                       </span>
                     )}
@@ -568,9 +702,8 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
                   <div className="text-xl font-bold text-purple-600">{item.countedQty}</div>
                   <div className="text-xs text-gray-500">Sistem: {item.systemQty}</div>
                   {item.variance !== 0 && (
-                    <div className={`text-xs font-bold mt-1 ${
-                      Math.abs(item.variance) > 5 ? 'text-red-600' : 'text-yellow-600'
-                    }`}>
+                    <div className={`text-xs font-bold mt-1 ${Math.abs(item.variance) > 5 ? 'text-red-600' : 'text-yellow-600'
+                      }`}>
                       {item.variance > 0 ? '+' : ''}{item.variance}
                     </div>
                   )}
@@ -618,10 +751,11 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
           </button>
           <button
             onClick={handleComplete}
-            className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-bold hover:shadow-lg flex items-center justify-center gap-2"
+            disabled={saving || countedItems.length === 0}
+            className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-xl font-bold hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Save className="w-5 h-5" />
-            Tamamla
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {saving ? 'Kaydediliyor...' : 'Tamamla'}
           </button>
         </div>
       </div>

@@ -195,7 +195,8 @@ export class PostgresConnection {
 
   private static CARD_TABLES = [
     'products', 'customers', 'suppliers', 'sales_reps', 'cash_registers', 'cash_register_transactions',
-    'currencies', 'categories', 'brands', 'units', 'tax_rates', 'special_codes',
+    'categories', 'brands', 'units', 'tax_rates', 'special_codes',
+    'unitsets', 'unitsetl',
     'campaigns', 'product_variants', 'lots', 'bank_registers', 'expense_cards',
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
@@ -276,8 +277,10 @@ export class PostgresConnection {
       console.log(`[PG Params VALUES]`, JSON.stringify(normalizedParams, null, 2));
     }
 
-    const effectiveFirmNr = options?.firmNr || ERP_SETTINGS.firmNr || '001';
-    const effectivePeriodNr = options?.periodNr || ERP_SETTINGS.periodNr || '01';
+    const effectiveFirmNr = (options?.firmNr || ERP_SETTINGS.firmNr || '001')
+      .toString().padStart(3, '0');
+    const effectivePeriodNr = (options?.periodNr || ERP_SETTINGS.periodNr || '01')
+      .toString().padStart(2, '0');
 
     PostgresConnection.CARD_TABLES.forEach(table => {
       const schema = PostgresConnection.TABLE_SCHEMA[table] || 'public';

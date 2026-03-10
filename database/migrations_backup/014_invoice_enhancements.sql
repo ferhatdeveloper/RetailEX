@@ -131,29 +131,29 @@ DO $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN SELECT tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sales' LOOP
+    FOR r IN SELECT schemaname, tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sales' LOOP
         -- Basic Info
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS document_no VARCHAR(100)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS total_discount DECIMAL(15,2) DEFAULT 0';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS description TEXT';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS document_no VARCHAR(100)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS total_discount DECIMAL(15,2) DEFAULT 0';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS description TEXT';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50)';
         
         -- Dates
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS delivery_date TIMESTAMPTZ';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS due_date TIMESTAMPTZ';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS delivery_date TIMESTAMPTZ';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()';
         
         -- Logistics
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS waybill_no VARCHAR(100)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS shipment_agent VARCHAR(100)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS driver_name VARCHAR(100)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(50)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS shipping_address TEXT';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS waybill_no VARCHAR(100)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS shipment_agent VARCHAR(100)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS driver_name VARCHAR(100)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS vehicle_plate VARCHAR(50)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS shipping_address TEXT';
         
         -- E-Invoice
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS is_e_invoice BOOLEAN DEFAULT false';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS e_invoice_status VARCHAR(50)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS e_invoice_uuid UUID';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS is_e_invoice BOOLEAN DEFAULT false';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS e_invoice_status VARCHAR(50)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS e_invoice_uuid UUID';
     END LOOP;
 END$$;
 
@@ -162,10 +162,10 @@ DO $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN SELECT tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sale_items' LOOP
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS discount_rate DECIMAL(5,2) DEFAULT 0';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(15,2) DEFAULT 0';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS description TEXT';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT ''Adet''';
+    FOR r IN SELECT schemaname, tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sale_items' LOOP
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS discount_rate DECIMAL(5,2) DEFAULT 0';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(15,2) DEFAULT 0';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS description TEXT';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT ''Adet''';
     END LOOP;
 END$$;

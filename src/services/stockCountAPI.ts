@@ -64,11 +64,10 @@ class StockCountAPI {
             // Items
             const { rows: items } = await postgres.query(
                 `SELECT 
-                    ci.id, ci.slip_id as count_id, ci.product_id, 
-                    ci.expected_qty as expected_quantity, ci.counted_qty as counted_quantity, ci.variance as difference, ci.notes,
+                    ci.*,
                     p.name as product_name, p.code as product_code
                  FROM wms.counting_lines ci
-                 LEFT JOIN rex_${ERP_SETTINGS.firmNr}_products p ON ci.product_id = p.id
+                 LEFT JOIN products p ON ci.product_id = p.id
                  WHERE ci.slip_id = $1`,
                 [id]
             );
@@ -79,7 +78,7 @@ class StockCountAPI {
                     ...i,
                     products: { name: i.product_name, code: i.product_code }
                 }))
-            };
+            } as any;
         } catch (error) {
             console.error('Error fetching stock count:', error);
             return null;
@@ -96,9 +95,9 @@ class StockCountAPI {
                  RETURNING id, fiche_no as count_no`,
                 [
                     ERP_SETTINGS.firmNr,
-                    count.count_no,
+                    count.count_no || `CNT-${Date.now()}`,
                     count.warehouse_id,
-                    count.count_date,
+                    count.count_date || new Date().toISOString(),
                     count.status || 'draft',
                     count.notes,
                     count.created_by
@@ -109,9 +108,10 @@ class StockCountAPI {
             // Items
             for (const item of items) {
                 await postgres.query(
-                    `INSERT INTO wms.counting_lines (slip_id, product_id, expected_qty, counted_qty, variance, notes)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    `INSERT INTO wms.counting_lines (firm_nr, slip_id, product_id, expected_qty, counted_qty, variance, notes)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
+                        ERP_SETTINGS.firmNr,
                         newCount.id,
                         item.product_id,
                         item.expected_quantity || 0,

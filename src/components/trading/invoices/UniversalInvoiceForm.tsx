@@ -33,6 +33,7 @@ import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
 import { invoicesAPI } from '../../../services/api/index';
 import { serviceAPI, Service } from '../../../services/serviceAPI';
+import { postgres } from '../../../services/postgres';
 
 // Electron API tip tanımı
 declare global {
@@ -85,6 +86,12 @@ interface InvoiceItem {
   grossProfit?: number; // Brüt kar (netAmount - totalCost)
   profitMargin?: number; // Kar marjı % ((grossProfit / netAmount) * 100)
   cogs?: number; // Cost of Goods Sold (Satış maliyeti - satış faturaları için)
+  // Birim seti & çarpan (ambalaj hiyerarşisi)
+  unitsetId?: string;    // Ürünün birim setinin ID'si
+  multiplier?: number;   // Seçili birimin conv_fact1 değeri (örn. KOLI=24)
+  baseQuantity?: number; // quantity * multiplier → stok güncellemesi için
+  // Döviz
+  unitPriceFC?: number;  // Fatura dövizindeki orijinal birim fiyat
 }
 
 interface UniversalInvoiceFormProps {
@@ -105,6 +112,9 @@ const mockProducts = [
 ];
 
 export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [], products: productsProp = [], onClose, editData }: UniversalInvoiceFormProps) {
+  const { language, tm: globalTm } = useLanguage();
+  const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
+
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   // Alias for backward compatibility with existing code
   const selectedFirma = selectedFirm;
@@ -167,16 +177,16 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   });
   const [editDate, setEditDate] = useState(() => {
     if (editData?.invoice_date) {
-      return new Date(editData.invoice_date).toLocaleDateString('tr-TR');
+      return new Date(editData.invoice_date).toLocaleDateString(tm('localeCode'));
     }
-    return new Date().toLocaleDateString('tr-TR');
+    return new Date().toLocaleDateString(tm('localeCode'));
   });
   const [transactionNo, setTransactionNo] = useState('0000004');
   const [transactionDate, setTransactionDate] = useState(() => {
     if (editData?.invoice_date) {
-      return new Date(editData.invoice_date).toLocaleDateString('tr-TR');
+      return new Date(editData.invoice_date).toLocaleDateString(tm('localeCode'));
     }
-    return new Date().toLocaleDateString('tr-TR');
+    return new Date().toLocaleDateString(tm('localeCode'));
   });
   const [specialCode, setSpecialCode] = useState('');
   const [tradingGroup, setTradingGroup] = useState('');
@@ -227,8 +237,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [workplace, setWorkplace] = useState('000, Merkez'); // İşyeri
   const [salespersonCode, setSalespersonCode] = useState(''); // Satış Elemanı Kodu
   const [authorizationCode, setAuthorizationCode] = useState(''); // Yetki Kodu
-  const [currency, setCurrency] = useState('IQD'); // Döviz
-  const [currencyRate, setCurrencyRate] = useState(1); // Kuru
+  const [currency, setCurrency] = useState(() => (editData as any)?.currency || 'IQD'); // Döviz
+  const [currencyRate, setCurrencyRate] = useState(() => parseFloat((editData as any)?.currency_rate) || 1); // Kuru
+  const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [transactionType, setTransactionType] = useState(''); // İşlem
   const [shippingAccountCode, setShippingAccountCode] = useState(''); // Sevkiyat Hesabı Kodu
   const [shippingAccountTitle, setShippingAccountTitle] = useState(''); // Sevkiyat Hesabı Ünvanı
@@ -253,7 +264,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [isTaxFree, setIsTaxFree] = useState(false); // Tax Free
   const [affectCollateralRisk, setAffectCollateralRisk] = useState(false); // Teminat Riskini Etkileyecek
   const [affectRisk, setAffectRisk] = useState(false); // Riski Etkileyecek
-  const [time, setTime] = useState(new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })); // Zaman
+  const [time, setTime] = useState(new Date().toLocaleTimeString(tm('localeCode'), { hour: '2-digit', minute: '2-digit', second: '2-digit' })); // Zaman
   const [distributedTotal, setDistributedTotal] = useState(0); // Dağılacak Toplam
 
   // Items
@@ -455,8 +466,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const isColumnVisible = (columnId: string) => {
     return itemColumnVisibility[columnId] !== false;
   };
-  const { language } = useLanguage();
-  const tm = (key: string) => moduleTranslations[key]?.[language] || key;
 
   const itemColumns = useMemo(() => [
     { id: 'type', label: tm('type'), visible: isColumnVisible('type') },
@@ -782,7 +791,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     });
 
     setItems(updatedItems);
-    toast.success(`Tüm ürün fiyatları %${bulkPriceIncreasePercent} artırıldı`);
+    toast.success(tm('priceBulkUpdateSuccess').replace('{percent}', bulkPriceIncreasePercent.toString()));
     setBulkPriceIncreasePercent('');
   };
 

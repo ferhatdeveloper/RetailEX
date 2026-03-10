@@ -9,6 +9,8 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { logger } from '../../../services/loggingService';
 import '../ClinicStyles.css';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -25,17 +27,8 @@ interface CartItem {
 
 type PayMethod = 'cash' | 'card' | 'transfer';
 
-const PAY_LABELS: Record<PayMethod, string> = {
-    cash: 'Nakit', card: 'Kart', transfer: 'Havale',
-};
 const PAY_ICONS: Record<PayMethod, React.ElementType> = {
     cash: Banknote, card: CreditCard, transfer: ArrowLeftRight,
-};
-
-const CATEGORY_TR: Record<string, string> = {
-    laser: 'Lazer', hair_salon: 'Kuaför', beauty: 'Güzellik',
-    botox: 'Botoks', filler: 'Dolgu', massage: 'Masaj',
-    skincare: 'Cilt', makeup: 'Makyaj', nails: 'Tırnak', spa: 'Spa',
 };
 
 let _itemId = 0;
@@ -50,6 +43,17 @@ export function BeautyPOS() {
         services, packages, specialists, customers,
         loadServices, loadPackages, loadSpecialists, loadCustomers,
     } = useBeautyStore();
+    const { t, tm } = useLanguage();
+
+    const PAY_LABELS: Record<PayMethod, string> = {
+        cash: tm('cash') || 'Nakit', card: tm('card') || 'Kart', transfer: tm('bankTransfer') || 'Havale',
+    };
+
+    const CATEGORY_TR: Record<string, string> = {
+        laser: tm('bCatLaser'), hair_salon: tm('bCatHairSalon'), beauty: tm('bCatBeauty'),
+        botox: tm('bCatBotox'), filler: tm('bCatFiller'), massage: tm('bCatMassage'),
+        skincare: tm('bCatSkincare'), makeup: tm('bCatMakeup'), nails: tm('bCatNails'), spa: tm('bCatSpa'),
+    };
 
     const [tab,         setTab]         = useState<'services' | 'packages'>('services');
     const [category,    setCategory]    = useState<string>('all');
@@ -162,7 +166,7 @@ export function BeautyPOS() {
                 remaining_amount: 0,
             }, saleItems);
         } catch (e) {
-            console.error('Sale save error:', e);
+            logger.crudError('BeautyPOS', 'createSale', e);
         }
 
         setDone(true);
@@ -174,7 +178,7 @@ export function BeautyPOS() {
         return (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: '#f7f6fb' }}>
                 <CheckCircle2 size={64} style={{ color: '#059669' }} />
-                <p style={{ fontSize: 20, fontWeight: 800, color: '#111827' }}>Ödeme Tamamlandı!</p>
+                <p style={{ fontSize: 20, fontWeight: 800, color: '#111827' }}>{tm('bPaymentCompleted')}</p>
                 <p style={{ fontSize: 13, color: '#6b7280' }}>Kasa sıfırlanıyor...</p>
             </div>
         );
@@ -230,7 +234,7 @@ export function BeautyPOS() {
                                         fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
                                     }}
                                 >
-                                    {cat === 'all' ? 'Tümü' : (CATEGORY_TR[cat] ?? cat)}
+                                    {cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat)}
                                 </button>
                             ))}
                         </div>
@@ -474,7 +478,7 @@ export function BeautyPOS() {
                         onMouseLeave={e => { if (cart.length > 0) e.currentTarget.style.background = '#7c3aed'; }}
                     >
                         <Receipt size={16} />
-                        Ödeme Al · {fmt(total)}
+                        {t.receivePayment} · {fmt(total)}
                     </button>
                 </div>
             </div>
@@ -485,7 +489,7 @@ export function BeautyPOS() {
                     <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 400, overflow: 'hidden' }}>
                         {/* Header */}
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827' }}>Ödeme Al</p>
+                            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827' }}>{t.receivePayment}</p>
                             <button onClick={() => setShowPayModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>
                         <div style={{ padding: '20px' }}>
@@ -504,7 +508,7 @@ export function BeautyPOS() {
                             {/* Paid input */}
                             <div style={{ marginBottom: 12 }}>
                                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>
-                                    {payMethod === 'cash' ? 'Alınan Nakit' : 'Tutar'}
+                                    {payMethod === 'cash' ? tm('bCashReceived') : t.amount}
                                 </label>
                                 <input
                                     type="number" value={paidInput} onChange={e => setPaidInput(e.target.value)}
@@ -530,7 +534,7 @@ export function BeautyPOS() {
                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: change >= 0 ? '#065f46' : '#991b1b' }}>
-                                        {change >= 0 ? 'Para Üstü' : 'Kalan Tutar'}
+                                        {change >= 0 ? tm('bChange') : t.remainingAmount}
                                     </span>
                                     <span style={{ fontSize: 14, fontWeight: 800, color: change >= 0 ? '#059669' : '#dc2626' }}>
                                         {fmt(Math.abs(change))}
@@ -549,7 +553,7 @@ export function BeautyPOS() {
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                                 }}
                             >
-                                <CheckCircle2 size={16} /> Ödemeyi Tamamla
+                                <CheckCircle2 size={16} /> {t.complete}
                             </button>
                         </div>
                     </div>

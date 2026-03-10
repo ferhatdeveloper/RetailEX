@@ -9,11 +9,11 @@ import {
     ArrowLeft, Plus, Scan, Package, CheckCircle, AlertCircle,
     Minus, Check, X, ClipboardList, MapPin, User, RefreshCw,
     Warehouse, Calendar, Loader2, Trash2, Eye,
-    BarChart3, AlertTriangle,
-    CheckCircle2, XCircle, FileText
+    CheckCircle2, XCircle, FileText, Camera
 } from 'lucide-react';
 import { wmsStockCount, CountingSlip, CountingLine } from '../../../services/wmsStockCount';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { BarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 
 interface StockCountModuleProps {
     darkMode: boolean;
@@ -25,17 +25,17 @@ type View = 'orders' | 'create' | 'entry' | 'reconciliation';
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<string, { tmKey: string; color: string }> = {
-    draft:          { tmKey: 'statusDraft',          color: 'bg-gray-100 text-gray-700' },
-    active:         { tmKey: 'statusActive',          color: 'bg-blue-100 text-blue-700' },
-    counting:       { tmKey: 'statusCounting',        color: 'bg-yellow-100 text-yellow-700' },
-    reconciliation: { tmKey: 'statusReconciliation',  color: 'bg-purple-100 text-purple-700' },
-    completed:      { tmKey: 'statusCompleted',       color: 'bg-green-100 text-green-700' },
-    cancelled:      { tmKey: 'statusCancelled',       color: 'bg-red-100 text-red-700' },
+    draft: { tmKey: 'statusDraft', color: 'bg-gray-100 text-gray-700' },
+    active: { tmKey: 'statusActive', color: 'bg-blue-100 text-blue-700' },
+    counting: { tmKey: 'statusCounting', color: 'bg-yellow-100 text-yellow-700' },
+    reconciliation: { tmKey: 'statusReconciliation', color: 'bg-purple-100 text-purple-700' },
+    completed: { tmKey: 'statusCompleted', color: 'bg-green-100 text-green-700' },
+    cancelled: { tmKey: 'statusCancelled', color: 'bg-red-100 text-red-700' },
 };
 
 const COUNT_TYPE_KEYS: Record<string, string> = {
-    full:     'countTypeFull',
-    cycle:    'countTypeCycle',
+    full: 'countTypeFull',
+    cycle: 'countTypeCycle',
     location: 'countTypeLocation',
 };
 
@@ -236,6 +236,7 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
     const [saving, setSaving] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [activeSection, setActiveSection] = useState<'scan' | 'list'>('scan');
+    const [showCamera, setShowCamera] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -447,28 +448,37 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                             </div>
                             <h3 className={`text-lg font-bold ${textClass} mb-2`}>{tm('scanProductBarcode')}</h3>
                             <p className="text-sm text-gray-500 mb-4">{tm('manualEntry')}</p>
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                value={scannedBarcode}
-                                onChange={e => setScannedBarcode(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === 'Enter' && scannedBarcode.trim()) {
-                                        handleBarcodeScanned(scannedBarcode);
-                                        setScannedBarcode('');
-                                    }
-                                }}
-                                placeholder={tm('scannerPlaceholder')}
-                                className={`w-full px-4 py-3 border-2 rounded-xl text-center font-mono text-lg focus:outline-none focus:border-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
-                                    }`}
-                                autoFocus
-                            />
+                            <div className="flex gap-2 mb-3">
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={scannedBarcode}
+                                    onChange={e => setScannedBarcode(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && scannedBarcode.trim()) {
+                                            handleBarcodeScanned(scannedBarcode);
+                                            setScannedBarcode('');
+                                        }
+                                    }}
+                                    placeholder={tm('scannerPlaceholder')}
+                                    className={`flex-1 px-4 py-3 border-2 rounded-xl text-center font-mono text-lg focus:outline-none focus:border-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
+                                        }`}
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={() => setShowCamera(true)}
+                                    className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md flex items-center justify-center group"
+                                    title={tm('cameraScan')}
+                                >
+                                    <Camera className="w-6 h-6 group-hover:scale-110 transition-transform" />
+                                </button>
+                            </div>
                             <button
                                 onClick={() => {
                                     const bc = prompt(`${tm('barcodeInput')}:`);
                                     if (bc) handleBarcodeScanned(bc);
                                 }}
-                                className="mt-3 w-full py-2 border-2 border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+                                className="w-full py-2 border-2 border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
                             >
                                 {tm('manualEntry')}
                             </button>
@@ -660,6 +670,18 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Camera Scanner Modal */}
+            {showCamera && (
+                <BarcodeScanner
+                    onScan={(result) => {
+                        handleBarcodeScanned(result.code);
+                        setShowCamera(false);
+                    }}
+                    onClose={() => setShowCamera(false)}
+                    continuous={false}
+                />
             )}
 
             {/* Success Toast */}

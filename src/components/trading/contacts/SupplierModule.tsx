@@ -9,8 +9,10 @@ import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function SupplierModule() {
+  const { t, tm } = useLanguage();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -102,31 +104,31 @@ export function SupplierModule() {
   };
 
   const handleDelete = async (id: string, name: string, cardType: 'customer' | 'supplier') => {
-    if (!confirm(`${name} silinsin mi?`)) return;
+    if (!confirm(t.confirmDeleteAccount || `${name} silinsin mi?`)) return;
     try {
       await supplierAPI.delete(id, cardType);
-      toast.success('Silindi');
+      toast.success(tm('deleted'));
       if (selectedAccount?.id === id) setSelectedAccount(null);
       loadSuppliers();
-    } catch (e: any) { toast.error(e.message || 'Silinemedi'); }
+    } catch (e: any) { toast.error(e.message || tm('deleteFailed')); }
   };
 
   const columnHelper = createColumnHelper<Supplier>();
   const columns: any[] = [
     columnHelper.accessor('code', {
-      header: 'KOD',
+      header: tm('code'),
       cell: info => <span className="font-mono text-xs text-blue-600 font-bold">{info.getValue() || '-'}</span>,
       size: 100
     }),
     columnHelper.accessor('cardType', {
-      header: 'TİP',
+      header: tm('type'),
       cell: info => {
         const type = info.getValue() as 'customer' | 'supplier';
         return (
           <div className="flex items-center gap-1.5">
             {type === 'customer' ? <Users className="w-3.5 h-3.5 text-blue-600" /> : <Truck className="w-3.5 h-3.5 text-orange-600" />}
             <span className={`text-[10px] font-black uppercase ${type === 'customer' ? 'text-blue-700' : 'text-orange-700'}`}>
-              {type === 'customer' ? 'Müşteri' : 'Tedarikçi'}
+              {type === 'customer' ? tm('customer') : tm('supplierLabel')}
             </span>
           </div>
         );
@@ -134,11 +136,11 @@ export function SupplierModule() {
       size: 110
     }),
     columnHelper.accessor('name', {
-      header: 'CARİ HESAP ÜNVANI',
+      header: tm('currentAccountTitle'),
       cell: info => <span className="font-semibold text-gray-800">{info.getValue()}</span>
     }),
     columnHelper.accessor('phone', {
-      header: 'İLETİŞİM',
+      header: tm('contact'),
       cell: info => {
         const row = info.row.original;
         return (
@@ -151,7 +153,7 @@ export function SupplierModule() {
       }
     }),
     columnHelper.accessor('balance', {
-      header: 'BAKİYE',
+      header: tm('crmBalance'),
       cell: info => {
         const val = info.getValue() || 0;
         const isSupplier = info.row.original.cardType === 'supplier';
@@ -170,16 +172,16 @@ export function SupplierModule() {
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İŞLEMLER',
+      header: tm('actions'),
       cell: ({ row }) => (
         <div className="flex items-center justify-center gap-1">
-          <button onClick={e => { e.stopPropagation(); handleEditClick(row.original); }} className="p-1 hover:bg-blue-100 rounded" title="Düzenle">
+          <button onClick={e => { e.stopPropagation(); handleEditClick(row.original); }} className="p-1 hover:bg-blue-100 rounded" title={tm('edit')}>
             <Edit className="w-3.5 h-3.5 text-blue-600" />
           </button>
-          <button onClick={e => { e.stopPropagation(); selectAccount(row.original); }} className="p-1 hover:bg-indigo-100 rounded" title="Ekstresi">
+          <button onClick={e => { e.stopPropagation(); selectAccount(row.original); }} className="p-1 hover:bg-indigo-100 rounded" title={tm('extractTitle')}>
             <FileText className="w-3.5 h-3.5 text-indigo-600" />
           </button>
-          <button onClick={e => { e.stopPropagation(); handleDelete(row.original.id, row.original.name, row.original.cardType || 'supplier'); }} className="p-1 hover:bg-red-100 rounded" title="Sil">
+          <button onClick={e => { e.stopPropagation(); handleDelete(row.original.id, row.original.name, row.original.cardType || 'supplier'); }} className="p-1 hover:bg-red-100 rounded" title={tm('deleteAction')}>
             <Trash2 className="w-3.5 h-3.5 text-red-500" />
           </button>
         </div>
@@ -232,17 +234,17 @@ export function SupplierModule() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <h2 className="text-sm font-semibold">Cari Hesaplar / Tedarikçiler</h2>
-            <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} hesap</span>
+            <h2 className="text-sm font-semibold">{t.menu?.currentAccountPersonel || 'Cari Hesap / Personel'}</h2>
+            <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} {tm('account')}</span>
           </div>
           <div className="flex gap-1.5">
             <button onClick={loadSuppliers} className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-              <span>Yenile</span>
+              <span>{tm('refreshData')}</span>
             </button>
             <button onClick={handleAddClick} className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold">
               <Plus className="w-3 h-3" />
-              <span>Yeni Cari Hesap</span>
+              <span>{tm('newCustomer')} / {tm('supplierLabel')}</span>
             </button>
           </div>
         </div>
@@ -256,7 +258,7 @@ export function SupplierModule() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Kod, ad, telefon veya e-posta ile ara..."
+              placeholder={tm('searchCurrentAccountPlaceholder')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -269,7 +271,7 @@ export function SupplierModule() {
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <RefreshCw className="w-6 h-6 animate-spin text-blue-600 mr-2" />
-              <span className="text-sm text-gray-500">Yükleniyor...</span>
+              <span className="text-sm text-gray-500">{tm('loadingData')}</span>
             </div>
           ) : (
             <DevExDataGrid
@@ -295,9 +297,9 @@ export function SupplierModule() {
                 <FileText className="w-4 h-4 text-indigo-500" />
                 <span className="text-sm font-bold text-gray-700">{selectedAccount.name}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${selectedAccount.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                  {selectedAccount.cardType === 'customer' ? 'MÜŞTERİ' : 'TEDARİKÇİ'}
+                  {selectedAccount.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
                 </span>
-                <span className="text-xs text-gray-400 ml-1">— Cari Hesap Ekstresi</span>
+                <span className="text-xs text-gray-400 ml-1">— {tm('accountStatement')}</span>
               </div>
               <div className="flex items-center gap-2">
                 {/* Date filters */}
@@ -305,7 +307,7 @@ export function SupplierModule() {
                 <span className="text-gray-400 text-xs">—</span>
                 <input type="date" value={ekstresiEnd} onChange={e => setEkstresiEnd(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                 <button onClick={() => loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition-colors">
-                  Getir
+                  {tm('bring')}
                 </button>
                 {/* Summary chips */}
                 <div className="flex items-center gap-1.5 ml-2">
@@ -317,13 +319,13 @@ export function SupplierModule() {
                     const netCls = netBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : netBalance < 0 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
                     return (
                       <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`}>
-                        Net: {formatNumber(Math.abs(netBalance), 2, false)} {netLabel}
+                        {tm('netAmount')}: {formatNumber(Math.abs(netBalance), 2, false)} {netLabel}
                       </span>
                     );
                   })()}
                 </div>
-                <button onClick={() => window.print()} className="p-1 hover:bg-gray-100 rounded" title="Yazdır"><Printer className="w-3.5 h-3.5 text-gray-400" /></button>
-                <button onClick={() => setSelectedAccount(null)} className="p-1 hover:bg-gray-100 rounded" title="Kapat"><X className="w-4 h-4 text-gray-400" /></button>
+                <button onClick={() => window.print()} className="p-1 hover:bg-gray-100 rounded" title={tm('print')}><Printer className="w-3.5 h-3.5 text-gray-400" /></button>
+                <button onClick={() => setSelectedAccount(null)} className="p-1 hover:bg-gray-100 rounded" title={tm('close')}><X className="w-4 h-4 text-gray-400" /></button>
               </div>
             </div>
 
@@ -332,19 +334,19 @@ export function SupplierModule() {
               {ekstresiLoading ? (
                 <div className="flex items-center justify-center h-20 gap-2 text-gray-400">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-xs">Yükleniyor...</span>
+                  <span className="text-xs">{tm('loading')}</span>
                 </div>
               ) : ekstresiRows.length === 0 ? (
                 <div className="flex items-center justify-center h-20 gap-2 text-gray-300">
                   <FileText className="w-5 h-5" />
-                  <span className="text-xs">Bu tarih aralığında hareket bulunamadı.</span>
+                  <span className="text-xs">{tm('noRecordFound')}</span>
                 </div>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-gray-50 border-b">
                     <tr>
-                      {['TARİH', 'FİŞ NO', 'TÜR', 'AÇIKLAMA', 'BORÇ', 'ALACAK', 'BAKİYE'].map(h => (
-                        <th key={h} className={`px-3 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider ${['BORÇ', 'ALACAK', 'BAKİYE'].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
+                      {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map(h => (
+                        <th key={h} className={`px-3 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider ${[tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -381,9 +383,9 @@ export function SupplierModule() {
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
-            { id: 'edit', label: 'Düzenle', icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
-            { id: 'extract', label: 'Cari Hesap Ekstresi', icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
-            { id: 'delete', label: 'Sil', icon: Trash2, variant: 'danger' as const, onClick: () => { if (contextMenu.supplier) handleDelete(contextMenu.supplier.id, contextMenu.supplier.name, contextMenu.supplier.cardType || 'supplier'); setContextMenu(null); } }
+            { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
+            { id: 'extract', label: tm('accountStatement'), icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
+            { id: 'delete', label: tm('deleteAction'), icon: Trash2, variant: 'danger' as const, onClick: () => { if (contextMenu.supplier) handleDelete(contextMenu.supplier.id, contextMenu.supplier.name, contextMenu.supplier.cardType || 'supplier'); setContextMenu(null); } }
           ]}
         />
       )}
@@ -394,8 +396,8 @@ export function SupplierModule() {
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-black text-slate-800 uppercase tracking-tighter">{editingSupplier ? 'Düzenle' : 'Yeni Cari Hesap'}</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">{formData.cardType === 'customer' ? 'Müşteri' : 'Tedarikçi'}</p>
+                <h3 className="text-base font-black text-slate-800 uppercase tracking-tighter">{editingSupplier ? tm('edit') : tm('newCurrentAccount')}</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase">{formData.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}</p>
               </div>
               <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-200 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
             </div>
@@ -406,38 +408,38 @@ export function SupplierModule() {
                   <button type="button" onClick={async () => { const c = await supplierAPI.generateCode('customer'); setFormData({ ...formData, cardType: 'customer', code: c }); }}
                     className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'customer' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
                     <Users className={`w-5 h-5 ${formData.cardType === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${formData.cardType === 'customer' ? 'text-blue-700' : 'text-gray-500'}`}>Müşteri</span>
+                    <span className={`text-sm font-bold ${formData.cardType === 'customer' ? 'text-blue-700' : 'text-gray-500'}`}>{tm('customer')}</span>
                   </button>
                   <button type="button" onClick={async () => { const c = await supplierAPI.generateCode('supplier'); setFormData({ ...formData, cardType: 'supplier', code: c }); }}
                     className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'supplier' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
                     <Truck className={`w-5 h-5 ${formData.cardType === 'supplier' ? 'text-orange-500' : 'text-gray-400'}`} />
-                    <span className={`text-sm font-bold ${formData.cardType === 'supplier' ? 'text-orange-700' : 'text-gray-500'}`}>Tedarikçi</span>
+                    <span className={`text-sm font-bold ${formData.cardType === 'supplier' ? 'text-orange-700' : 'text-gray-500'}`}>{tm('supplierLabel')}</span>
                   </button>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Kod"><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Otomatik" /></Field>
-                <Field label="Ünvan *"><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></Field>
+                <Field label={tm('code')}><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Otomatik" /></Field>
+                <Field label={`${tm('currentAccountTitle')} *`}><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Telefon"><input type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} /></Field>
-                <Field label="E-Posta"><input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} /></Field>
+                <Field label={tm('phoneLabel')}><input type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} /></Field>
+                <Field label={tm('emailLabel')}><input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} /></Field>
               </div>
-              <Field label="Adres"><input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} /></Field>
+              <Field label={tm('address')}><input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} /></Field>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Şehir"><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} /></Field>
-                <Field label="Vade Günü"><input type="number" value={formData.payment_terms} onChange={e => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })} /></Field>
+                <Field label={tm('city')}><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} /></Field>
+                <Field label={tm('paymentTermDays')}><input type="number" value={formData.payment_terms} onChange={e => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })} /></Field>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Kredi Limiti"><input type="number" value={formData.credit_limit} onChange={e => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })} /></Field>
-                <Field label="Vergi No"><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
+                <Field label={tm('creditLimit')}><input type="number" value={formData.credit_limit} onChange={e => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })} /></Field>
+                <Field label={tm('taxNumberLabel')}><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
               </div>
-              <Field label="Not"><textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} /></Field>
+              <Field label={tm('notesLabel')}><textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} /></Field>
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex gap-3 justify-end">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">İptal</button>
-              <button onClick={handleSave} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingSupplier ? 'Kaydet' : 'Ekle'}</button>
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">{tm('cancel')}</button>
+              <button onClick={handleSave} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingSupplier ? tm('save') : tm('add')}</button>
             </div>
           </div>
         </div>

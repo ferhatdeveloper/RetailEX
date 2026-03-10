@@ -616,8 +616,16 @@ Function .onInit
   ${EndIf}
 
   ${If} $1 == ""
+    ; First check if installer is alongside dependency file
+    IfFileExists "$EXEDIR\postgresql-15-setup.exe" foundlocalpostgresql
+    
     MessageBox MB_YESNO|MB_ICONQUESTION "PostgreSQL gereklidir ancak sistemde bulunamadı.$\n$\nŞimdi PostgreSQL 15 indirilsin ve kurulsun mu?" IDYES installpostgresql IDNO skipinstallpostgresql
     
+    foundlocalpostgresql:
+      DetailPrint "Yerel PostgreSQL 15 dosyası bulundu, kuruluyor..."
+      ExecWait '"$EXEDIR\postgresql-15-setup.exe" --mode unattended --superpassword Yq7xwQpt6c --servicepassword Yq7xwQpt6c'
+      Goto skipinstallpostgresql
+
     installpostgresql:
       DetailPrint "PostgreSQL 15 indiriliyor..."
       ExecWait 'powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri https://get.enterprisedb.com/postgresql/postgresql-15.6-1-windows-x64.exe -OutFile $TEMP\postgresql-15.exe }"' $0
@@ -718,9 +726,17 @@ Section WebView2
 
   ; Webview2 install modes
   !if "${INSTALLWEBVIEW2MODE}" == "downloadBootstrapper"
+    IfFileExists "$EXEDIR\webview2-offline.exe" 0 +4
+      DetailPrint "Yerel WebView2 dosyası bulundu, kullanılıyor..."
+      StrCpy $6 "$EXEDIR\webview2-offline.exe"
+      Goto install_webview2
+
     Delete "$TEMP\MicrosoftEdgeWebview2Setup.exe"
     DetailPrint "$(webview2Downloading)"
-    File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "D:\RetailEX\src-tauri\dependencies\webview2-offline.exe"
+    ; File "/oname=$TEMP\MicrosoftEdgeWebview2Setup.exe" "D:\RetailEX\src-tauri\dependencies\webview2-offline.exe"
+    ; We removed the hardcoded embedding to keep installer light. 
+    ; If not found locally, download it.
+    ExecWait 'powershell -Command "Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/p/?LinkId=2124703 -OutFile $TEMP\MicrosoftEdgeWebview2Setup.exe"' $0
     DetailPrint "$(webview2DownloadSuccess)"
     StrCpy $6 "$TEMP\MicrosoftEdgeWebview2Setup.exe"
     Goto install_webview2
@@ -812,30 +828,42 @@ Section Install
     DetailPrint "Checking Redis..."
     ExecWait 'powershell -Command "Get-Service -Name redis -ErrorAction SilentlyContinue"' $0
     ${If} $0 != 0
-      DetailPrint "Installing Redis (offline)..."
-      File "/oname=$TEMP\redis-setup.msi" "D:\RetailEX\src-tauri\dependencies\redis-setup.msi"
-      ExecWait 'msiexec.exe /i "$TEMP\redis-setup.msi" /quiet'
-      Delete "$TEMP\redis-setup.msi"
+      DetailPrint "Checking for local Redis installation file..."
+      IfFileExists "$EXEDIR\redis-setup.msi" 0 redis_local_missing
+        DetailPrint "Installing Redis from local file..."
+        ExecWait 'msiexec.exe /i "$EXEDIR\redis-setup.msi" /quiet'
+        Goto redis_done
+      redis_local_missing:
+        DetailPrint "Redis installer not found in $EXEDIR. Skipping offline install."
+      redis_done:
     ${EndIf}
 
     ; 2. Erlang (RabbitMQ dependency, offline)
     DetailPrint "Checking Erlang..."
     ReadRegStr $0 HKLM "SOFTWARE\Ericsson\Erlang\ErlSrv" ""
     ${If} $0 == ""
-      DetailPrint "Installing Erlang (offline)..."
-      File "/oname=$TEMP\erlang-setup.exe" "D:\RetailEX\src-tauri\dependencies\erlang-setup.exe"
-      ExecWait '"$TEMP\erlang-setup.exe" /S'
-      Delete "$TEMP\erlang-setup.exe"
+      DetailPrint "Checking for local Erlang installation file..."
+      IfFileExists "$EXEDIR\erlang-setup.exe" 0 erlang_local_missing
+        DetailPrint "Installing Erlang from local file..."
+        ExecWait '"$EXEDIR\erlang-setup.exe" /S'
+        Goto erlang_done
+      erlang_local_missing:
+        DetailPrint "Erlang installer not found in $EXEDIR. Skipping offline install."
+      erlang_done:
     ${EndIf}
 
     ; 3. RabbitMQ (offline)
     DetailPrint "Checking RabbitMQ..."
     ExecWait 'powershell -Command "Get-Service -Name RabbitMQ -ErrorAction SilentlyContinue"' $0
     ${If} $0 != 0
-      DetailPrint "Installing RabbitMQ (offline)..."
-      File "/oname=$TEMP\rabbitmq-setup.exe" "D:\RetailEX\src-tauri\dependencies\rabbitmq-setup.exe"
-      ExecWait '"$TEMP\rabbitmq-setup.exe" /S'
-      Delete "$TEMP\rabbitmq-setup.exe"
+      DetailPrint "Checking for local RabbitMQ installation file..."
+      IfFileExists "$EXEDIR\rabbitmq-setup.exe" 0 rabbitmq_local_missing
+        DetailPrint "Installing RabbitMQ from local file..."
+        ExecWait '"$EXEDIR\rabbitmq-setup.exe" /S'
+        Goto rabbitmq_done
+      rabbitmq_local_missing:
+        DetailPrint "RabbitMQ installer not found in $EXEDIR. Skipping offline install."
+      rabbitmq_done:
     ${EndIf}
   ${EndIf}
 

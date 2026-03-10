@@ -26,9 +26,6 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "certificateThumbprint": "C94EB006F97617F5480CD4DA6F719A8EDCBCA37E",
-      "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com",
       "allowDowngrades": true,
       "nsis": {
         "displayLanguageSelector": false,
@@ -62,9 +59,14 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.48",
+  "version": "0.1.51",
   "identifier": "com.retailex.app",
-  "plugins": {},
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
+  },
   "app": {
     "windows": [
       {

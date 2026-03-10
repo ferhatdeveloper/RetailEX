@@ -14,6 +14,7 @@ BEGIN
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            firm_nr VARCHAR(10) NOT NULL,
             ref_id INTEGER UNIQUE, -- Logo LOGICALREF
             code VARCHAR(50) UNIQUE,
             name VARCHAR(255) NOT NULL,
@@ -51,15 +52,15 @@ SELECT create_suppliers_table('001');
 SELECT create_suppliers_table('009');
 
 -- 3. Insert Demo Data for Firm 001
-INSERT INTO rex_001_suppliers (code, name, phone, email, city, is_active)
+INSERT INTO rex_001_suppliers (firm_nr, code, name, phone, email, city, is_active)
 VALUES 
-('TED-001', 'Örnek Tedarikçi A.Ş.', '05551112233', 'info@ornektedarik.com', 'İstanbul', true),
-('TED-002', 'Global Dağıtım Ltd.', '02123334455', 'satis@globaldagitim.com', 'Ankara', true)
+('001', 'TED-001', 'Örnek Tedarikçi A.Ş.', '05551112233', 'info@ornektedarik.com', 'İstanbul', true),
+('001', 'TED-002', 'Global Dağıtım Ltd.', '02123334455', 'satis@globaldagitim.com', 'Ankara', true)
 ON CONFLICT (code) DO NOTHING;
 
 -- 4. Insert Demo Data for Firm 009 (Common Test Firm)
-INSERT INTO rex_009_suppliers (code, name, phone, email, city, is_active)
+INSERT INTO rex_009_suppliers (firm_nr, code, name, phone, email, city, is_active)
 VALUES 
-('TED-001', 'Baghdad Trading Co.', '+964 750 111 2233', 'info@baghdadtrading.com', 'Baghdad', true),
-('TED-002', 'Erbil Wholesale Ltd.', '+964 770 222 3344', 'contact@erbilwholesale.com', 'Erbil', true)
+('009', 'TED-001', 'Baghdad Trading Co.', '+964 750 111 2233', 'info@baghdadtrading.com', 'Baghdad', true),
+('009', 'TED-002', 'Erbil Wholesale Ltd.', '+964 770 222 3344', 'contact@erbilwholesale.com', 'Erbil', true)
 ON CONFLICT (code) DO NOTHING;

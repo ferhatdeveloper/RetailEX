@@ -7,6 +7,7 @@ import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { CreateCampaignPage } from './CreateCampaignPage';
 import { ContextMenu } from '../shared/ContextMenu';
 import { toast } from 'sonner';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface CampaignManagementProps {
   campaigns: Campaign[];
@@ -15,6 +16,7 @@ interface CampaignManagementProps {
 }
 
 export function CampaignManagement({ campaigns, setCampaigns, products }: CampaignManagementProps) {
+  const { t } = useLanguage();
   const [showCreatePage, setShowCreatePage] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -340,19 +342,19 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
           items={[
             {
               id: 'edit',
-              label: 'Kampanyayı Düzenle',
+              label: t.editCampaign || 'Kampanyayı Düzenle',
               icon: Edit2,
               onClick: () => handleEdit(contextMenu.campaign)
             },
             {
               id: 'status',
-              label: contextMenu.campaign.active ? 'Pasife Al' : 'Aktife Al',
+              label: contextMenu.campaign.active ? (t.makePassive || 'Pasife Al') : (t.makeActive || 'Aktife Al'),
               icon: Calendar,
               onClick: () => handleToggleActive(contextMenu.campaign.id)
             },
             {
               id: 'delete',
-              label: 'Kampanyayı Sil',
+              label: t.deleteCampaign || 'Kampanyayı Sil',
               icon: Trash2,
               variant: 'danger',
               divider: true,

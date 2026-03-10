@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Shield, CheckCircle, AlertCircle, Check } from 'lucide-react';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
 import { Permission, PermissionAction } from '../../services/rbacService';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { logger } from '../../services/loggingService';
 
 // Module structure definition
 interface ModuleConfig {
@@ -20,13 +22,6 @@ interface ModuleGroup {
     modules: ModuleConfig[];
 }
 
-const ACTION_LABELS: Record<PermissionAction, string> = {
-    READ: 'Görüntüle',
-    CREATE: 'Oluştur',
-    UPDATE: 'Güncelle',
-    DELETE: 'Sil',
-    EXECUTE: 'İşle / Onayla'
-};
 
 const MODULE_GROUPS: ModuleGroup[] = [
     {
@@ -106,6 +101,15 @@ export function RoleForm() {
     const navigate = useNavigate();
     const { id } = useParams();
     const isEditing = Boolean(id);
+    const { tm } = useLanguage();
+
+    const ACTION_LABELS: Record<PermissionAction, string> = {
+        READ: tm('actionView'),
+        CREATE: tm('actionCreate'),
+        UPDATE: tm('actionUpdate'),
+        DELETE: tm('actionDelete'),
+        EXECUTE: tm('actionExecute')
+    };
 
     const [loading, setLoading] = useState(isEditing);
     const [saving, setSaving] = useState(false);
@@ -197,7 +201,7 @@ export function RoleForm() {
             }
             navigate(-1);
         } catch (error) {
-            console.error('Error saving role:', error);
+            logger.crudError('RoleForm', isEditing ? 'updateRole' : 'createRole', error);
             alert('Rol kaydedilirken bir hata oluştu.');
         } finally {
             setSaving(false);
@@ -273,23 +277,23 @@ export function RoleForm() {
                     <button
                         onClick={() => navigate(-1)}
                         className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
-                        title="Geri Dön"
+                        title={tm('goBack')}
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div>
                         <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                            {isEditing ? 'ROl & YETKİ GÜNCELLE' : 'YENİ ROL TANIMLA'}
+                            {isEditing ? tm('roleUpdateTitle') : tm('roleCreateTitle')}
                         </h2>
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mt-1">
-                            Gelişmiş Yetkilendirme Matrisi
+                            {tm('permissionMatrix')}
                         </p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                     <div className="text-xs font-bold text-slate-500 tracking-wide bg-slate-100 px-4 py-2 rounded-xl hidden md:block">
-                        Toplam <span className="text-blue-600 font-black">{formData.permissions.reduce((acc, p) => acc + p.actions.length, 0)}</span> yetki seçildi.
+                        {tm('totalPermSelected').replace('{n}', String(formData.permissions.reduce((acc, p) => acc + p.actions.length, 0)))}
                     </div>
                     <button
                         type="button"
@@ -302,7 +306,7 @@ export function RoleForm() {
                         ) : (
                             <CheckCircle className="h-5 w-5" />
                         )}
-                        {isEditing ? 'DEĞİŞİKLİKLERİ KAYDET' : 'ROLÜ OLUŞTUR'}
+                        {isEditing ? tm('saveChanges') : tm('createRole')}
                     </button>
                 </div>
             </div>
@@ -316,7 +320,7 @@ export function RoleForm() {
                         {/* Advanced Info */}
                         <div className="space-y-4">
                             <label className="flex items-center gap-2 text-[10px] font-black tracking-widest text-slate-400 uppercase">
-                                <Shield className="w-3.5 h-3.5" /> ROL BİLGİLERİ
+                                <Shield className="w-3.5 h-3.5" /> {tm('roleInfo')}
                             </label>
                             <div className="space-y-3">
                                 <input
@@ -324,17 +328,17 @@ export function RoleForm() {
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-bold text-slate-900 placeholder-slate-400 transition-all"
-                                    placeholder="Rol Adı (Örn: Mağaza Müdürü)"
+                                    placeholder={tm('roleNamePlaceholder')}
                                     required
                                 />
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium text-sm text-slate-700 placeholder-slate-400 transition-all min-h-[100px] resize-none"
-                                    placeholder="Bu rolün görev tanımını ve yetki kapsamını kısaca özetleyin..."
+                                    placeholder={tm('roleDescPlaceholder')}
                                 />
                                 <div className="flex items-center gap-3 bg-white px-4 py-3 border border-slate-200 rounded-xl">
-                                    <label className="text-sm font-bold text-slate-700 flex-1">Rol Renk Etiketi</label>
+                                    <label className="text-sm font-bold text-slate-700 flex-1">{tm('roleColorLabel')}</label>
                                     <div className="w-10 h-10 p-1 bg-slate-100 rounded-lg border border-slate-200 overflow-hidden cursor-pointer relative hover:shadow-md transition-shadow">
                                         <input
                                             type="color"
@@ -348,7 +352,7 @@ export function RoleForm() {
                                 {role?.is_system_role && (
                                     <div className="p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-semibold flex gap-3 leading-relaxed shadow-sm">
                                         <AlertCircle className="w-6 h-6 shrink-0 mt-0.5 text-amber-500" />
-                                        <div>Bu bir sistem rolüdür. Hassas izinlerini yapılandırırken çok dikkatli olun, hatalı ayarlar veri kaybına veya yetkisiz erişime sebep olabilir.</div>
+                                        <div>{tm('systemRoleWarning')}</div>
                                     </div>
                                 )}
                             </div>
@@ -356,7 +360,7 @@ export function RoleForm() {
 
                         {/* Module Navigation */}
                         <div className="space-y-3 pb-8">
-                            <label className="text-[10px] font-black tracking-widest text-slate-400 uppercase">YETKİ MATRİSLERİ</label>
+                            <label className="text-[10px] font-black tracking-widest text-slate-400 uppercase">{tm('permissionMatrices')}</label>
                             <ul className="space-y-1.5">
                                 {MODULE_GROUPS.map(group => {
                                     const isActive = activeCategoryTab === group.id;

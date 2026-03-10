@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Building2, Calendar, Check, X, AlertCircle, Plus, Loader2 } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
+import { logger } from '../../services/loggingService';
 
 interface FirmaDonemQuickSetupProps {
   onComplete: () => void;
@@ -75,7 +76,7 @@ export function FirmaDonemQuickSetup({ onComplete, onCancel }: FirmaDonemQuickSe
       setStep('donem');
 
     } catch (error: any) {
-      console.error('Error creating firma:', error);
+      logger.crudError('FirmaDonemQuickSetup', 'createFirma', error);
       toast.error('❌ Firma oluşturulamadı!', {
         description: error.message,
       });
@@ -138,7 +139,7 @@ export function FirmaDonemQuickSetup({ onComplete, onCancel }: FirmaDonemQuickSe
       }, 1000);
 
     } catch (error: any) {
-      console.error('Error creating donem:', error);
+      logger.crudError('FirmaDonemQuickSetup', 'createDonem', error);
       toast.error('❌ Dönem oluşturulamadı!', {
         description: error.message,
       });

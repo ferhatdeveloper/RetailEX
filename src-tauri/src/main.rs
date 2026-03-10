@@ -497,7 +497,8 @@ async fn list_supabase_projects(token: String) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
-async fn dump_supabase_to_sql(window: tauri::Window, project_ref: String, token: String, output_path: String) -> Result<String, String> {
+async fn dump_supabase_to_sql(window: tauri::Window, project_ref: String, token: String, output_path: String, tables_only: Option<bool>) -> Result<String, String> {
+    let skip_data = tables_only.unwrap_or(false);
     use std::fs::File;
     use std::io::Write;
     use std::collections::HashMap;
@@ -589,30 +590,32 @@ async fn dump_supabase_to_sql(window: tauri::Window, project_ref: String, token:
         }
         sql_dump.push_str(&col_defs.join(",\n"));
         sql_dump.push_str("\n);\n\n");
-        let sql_data = format!("SELECT * FROM {}", full_table_name);
-        if let Ok(data_rows_val) = fetch_supabase_query(&client, &url, &token, &sql_data).await {
-            if let Some(data_rows) = data_rows_val.as_array() {
-                if !data_rows.is_empty() {
-                    for row_obj in data_rows {
-                        if let Some(row_map) = row_obj.as_object() {
-                            let mut values = Vec::new();
-                            let mut valid_cols = Vec::new();
-                             for col_name in &col_names {
-                                let val_json = row_map.get(col_name).unwrap_or(&serde_json::Value::Null);
-                                let val_str = match val_json {
-                                    serde_json::Value::Null => "NULL".to_string(),
-                                    serde_json::Value::Number(n) => n.to_string(),
-                                    serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''")),
-                                    serde_json::Value::Bool(b) => b.to_string(),
-                                    _ => format!("'{}'", val_json.to_string().replace("'", "''")),
-                                };
-                                values.push(val_str);
-                                valid_cols.push(format!("\"{}\"", col_name));
+        if !skip_data {
+            let sql_data = format!("SELECT * FROM {}", full_table_name);
+            if let Ok(data_rows_val) = fetch_supabase_query(&client, &url, &token, &sql_data).await {
+                if let Some(data_rows) = data_rows_val.as_array() {
+                    if !data_rows.is_empty() {
+                        for row_obj in data_rows {
+                            if let Some(row_map) = row_obj.as_object() {
+                                let mut values = Vec::new();
+                                let mut valid_cols = Vec::new();
+                                for col_name in &col_names {
+                                    let val_json = row_map.get(col_name).unwrap_or(&serde_json::Value::Null);
+                                    let val_str = match val_json {
+                                        serde_json::Value::Null => "NULL".to_string(),
+                                        serde_json::Value::Number(n) => n.to_string(),
+                                        serde_json::Value::String(s) => format!("'{}'", s.replace("'", "''")),
+                                        serde_json::Value::Bool(b) => b.to_string(),
+                                        _ => format!("'{}'", val_json.to_string().replace("'", "''")),
+                                    };
+                                    values.push(val_str);
+                                    valid_cols.push(format!("\"{}\"", col_name));
+                                }
+                                sql_dump.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_table_name, valid_cols.join(", "), values.join(", ")));
                             }
-                            sql_dump.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n", full_table_name, valid_cols.join(", "), values.join(", ")));
                         }
+                        sql_dump.push_str("\n");
                     }
-                    sql_dump.push_str("\n");
                 }
             }
         }
@@ -627,6 +630,14 @@ async fn dump_supabase_to_sql(window: tauri::Window, project_ref: String, token:
 async fn pg_execute_file(state: tauri::State<'_, DbState>, conn_str: String, file_path: String) -> Result<String, String> {
     let sql = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
     pg_execute(state, conn_str, sql).await
+}
+
+#[tauri::command]
+async fn write_bytes(path: String, data: Vec<u8>) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, &data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -705,6 +716,9 @@ fn main() {
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_fs::init())
+    .plugin(tauri_plugin_http::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {
         let handle = app.handle();
         let _ = config::init_config_db();
@@ -757,10 +771,10 @@ fn main() {
         vpn::get_vpn_status, vpn::get_mesh_peers, vpn::generate_vpn_keys, vpn::start_vpn_mesh,
         vpn_keys::generate_device_bound_vpn_keys, vpn_keys::verify_device_and_decrypt_key,
         maintenance::compact_database, security::verify_token,
-        logger::log_from_frontend,
+        logger::log_from_frontend, logger::log_crud_error,
         config::get_app_config, config::save_app_config,
         config::get_dashboard_shortcuts, config::save_dashboard_shortcuts, config::reset_dashboard_shortcuts,
-        backup_service::perform_manual_backup, list_system_printers,
+        backup_service::perform_manual_backup, list_system_printers, write_bytes,
         mssql::test_mssql_connection, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data,
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction

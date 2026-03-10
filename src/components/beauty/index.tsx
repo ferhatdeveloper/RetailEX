@@ -4,20 +4,21 @@ import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
     UserCog, BarChart3, Bell, Search, Plus,
     ChevronLeft, ChevronRight, Box, Megaphone,
-    Sparkles, Settings2, ShoppingBag
+    Sparkles, Settings2, ShoppingBag, Globe
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
 
-import { SmartScheduler }    from './components/SmartScheduler';
-import { ClientCRM }         from './components/ClientCRM';
+import { SmartScheduler } from './components/SmartScheduler';
+import { ClientCRM } from './components/ClientCRM';
 import { PackageManagement } from './components/PackageManagement';
-import { ClinicDashboard }   from './components/ClinicDashboard';
+import { ClinicDashboard } from './components/ClinicDashboard';
 import { ServiceManagement } from './components/ServiceManagement';
-import { StaffManagement }   from './components/StaffManagement';
-import { DeviceManagement }  from './components/DeviceManagement';
-import { ReportDashboard }   from './components/ReportDashboard';
-import { LeadManagement }    from './components/LeadManagement';
-import { AppointmentPOS }    from './components/AppointmentPOS';
+import { StaffManagement } from './components/StaffManagement';
+import { DeviceManagement } from './components/DeviceManagement';
+import { ReportDashboard } from './components/ReportDashboard';
+import { LeadManagement } from './components/LeadManagement';
+import { AppointmentPOS } from './components/AppointmentPOS';
+import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import './ClinicStyles.css';
 
 const MENU_GROUPS = [
@@ -28,25 +29,25 @@ const MENU_GROUPS = [
     {
         title: 'Operasyonlar',
         items: [
-            { id: 'clients',  icon: Users,        label: 'Müşteriler' },
-            { id: 'calendar', icon: Calendar,      label: 'Randevular' },
-            { id: 'pos',      icon: ShoppingBag,   label: 'Kasa / POS'  },
+            { id: 'clients', icon: Users, label: 'Müşteriler' },
+            { id: 'calendar', icon: Calendar, label: 'Randevular' },
+            { id: 'pos', icon: ShoppingBag, label: 'Kasa / POS' },
         ],
     },
     {
         title: 'Tanımlar',
         items: [
             { id: 'services', icon: Scissors, label: 'Hizmetler' },
-            { id: 'packages', icon: Package,  label: 'Paketler'  },
-            { id: 'devices',  icon: Box,      label: 'Cihazlar'  },
+            { id: 'packages', icon: Package, label: 'Paketler' },
+            { id: 'devices', icon: Box, label: 'Cihazlar' },
         ],
     },
     {
         title: 'Yönetim',
         items: [
-            { id: 'staff',   icon: UserCog,   label: 'Personel'   },
-            { id: 'leads',   icon: Megaphone, label: 'Leads & CRM' },
-            { id: 'reports', icon: BarChart3, label: 'Raporlar'   },
+            { id: 'staff', icon: UserCog, label: 'Personel' },
+            { id: 'leads', icon: Megaphone, label: 'Leads & CRM' },
+            { id: 'reports', icon: BarChart3, label: 'Raporlar' },
         ],
     },
 ];
@@ -58,12 +59,14 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 // Sidebar constants
-const SIDEBAR_W  = 220;
+const SIDEBAR_W = 220;
 const COLLAPSED_W = 56;
 
 export default function BeautyModule() {
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [collapsed,  setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(false);
+    const [showLanguageModal, setShowLanguageModal] = useState(false);
+    const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { loadSpecialists, loadServices, loadAppointments } = useBeautyStore();
 
     React.useEffect(() => {
@@ -74,7 +77,7 @@ export default function BeautyModule() {
     }, []);
 
     return (
-        <div className="flex h-screen overflow-hidden" style={{ background: '#f7f6fb', fontFamily: 'inherit' }}>
+        <div className="flex h-full overflow-hidden" style={{ background: '#f7f6fb', fontFamily: 'inherit' }}>
 
             {/* ── SIDEBAR ─────────────────────────────────────────── */}
             <aside
@@ -128,7 +131,7 @@ export default function BeautyModule() {
                             )}
                             {group.items.map(item => {
                                 const active = activeTab === item.id;
-                                const Icon   = item.icon;
+                                const Icon = item.icon;
                                 return (
                                     <button
                                         key={item.id}
@@ -249,6 +252,17 @@ export default function BeautyModule() {
                             <span style={{ position: 'absolute', top: 6, right: 6, width: 6, height: 6, background: '#ef4444', borderRadius: '50%', border: '1.5px solid #fff' }} />
                         </button>
 
+                        {/* Language Selector */}
+                        <button
+                            onClick={() => setShowLanguageModal(true)}
+                            className="flex items-center justify-center transition-colors"
+                            style={{ width: 32, height: 32, borderRadius: 6, background: '#f9fafb', border: '1px solid #e5e7eb', color: '#6b7280', cursor: 'pointer' }}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#7c3aed')}
+                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                        >
+                            <Globe size={14} />
+                        </button>
+
                         {/* CTA */}
                         <button
                             onClick={() => setActiveTab('calendar')}
@@ -273,17 +287,25 @@ export default function BeautyModule() {
                 {/* Content */}
                 <main className="flex-1 overflow-hidden">
                     {activeTab === 'dashboard' && <ClinicDashboard />}
-                    {activeTab === 'calendar'  && <SmartScheduler />}
-                    {activeTab === 'pos'       && <AppointmentPOS />}
-                    {activeTab === 'clients'   && <ClientCRM />}
-                    {activeTab === 'packages'  && <PackageManagement />}
-                    {activeTab === 'services'  && <ServiceManagement />}
-                    {activeTab === 'staff'     && <StaffManagement />}
-                    {activeTab === 'devices'   && <DeviceManagement />}
-                    {activeTab === 'leads'     && <LeadManagement />}
-                    {activeTab === 'reports'   && <ReportDashboard />}
+                    {activeTab === 'calendar' && <SmartScheduler />}
+                    {activeTab === 'pos' && <AppointmentPOS />}
+                    {activeTab === 'clients' && <ClientCRM />}
+                    {activeTab === 'packages' && <PackageManagement />}
+                    {activeTab === 'services' && <ServiceManagement />}
+                    {activeTab === 'staff' && <StaffManagement />}
+                    {activeTab === 'devices' && <DeviceManagement />}
+                    {activeTab === 'leads' && <LeadManagement />}
+                    {activeTab === 'reports' && <ReportDashboard />}
                 </main>
             </div>
+
+            {showLanguageModal && (
+                <LanguageSelectionModal
+                    onClose={() => setShowLanguageModal(false)}
+                    rtlMode={rtlMode}
+                    setRtlMode={setRtlMode}
+                />
+            )}
         </div>
     );
 }

@@ -1,11 +1,14 @@
 ﻿import { useState, useEffect } from 'react';
-import { Users, Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, Store, Mail, Phone, Lock } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, Lock } from 'lucide-react';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 import { userAPI, roleAPI, User, Role } from '../../services/api';
+import { logger } from '../../services/loggingService';
 
 export function UserManagementModule() {
+  const { tm } = useLanguage();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,7 +88,7 @@ export function UserManagementModule() {
       setShowUserModal(false);
       await loadData();
     } catch (error) {
-      console.error('Error saving user:', error);
+      logger.crudError('UserManagement', 'saveUser', error);
       alert('Kullanıcı kaydedilirken bir hata oluştu.');
     }
   };
@@ -107,7 +110,7 @@ export function UserManagementModule() {
       await userAPI.delete(userId);
       await loadData();
     } catch (error) {
-      console.error('Error deleting user:', error);
+      logger.crudError('UserManagement', 'deleteUser', error);
     }
   };
 
@@ -116,7 +119,7 @@ export function UserManagementModule() {
       await userAPI.update(userId, { is_active: !currentStatus });
       await loadData();
     } catch (error) {
-      console.error('Error toggling user status:', error);
+      logger.crudError('UserManagement', 'toggleUserStatus', error);
     }
   };
 
@@ -124,7 +127,7 @@ export function UserManagementModule() {
 
   const columns: ColumnDef<User, any>[] = [
     columnHelper.accessor('username', {
-      header: 'KULLANICI ADI',
+      header: tm('colUsername'),
       cell: (info: any) => (
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
@@ -136,19 +139,19 @@ export function UserManagementModule() {
       size: 180
     }),
     columnHelper.accessor('full_name', {
-      header: 'TAM AD',
+      header: tm('colFullName'),
       cell: (info: any) => info.getValue(),
       size: 200
     }),
     columnHelper.accessor('email', {
-      header: 'E-POSTA',
+      header: tm('colEmail'),
       cell: (info: any) => info.getValue() || '-',
       size: 200
     }),
     columnHelper.accessor('role_name', {
-      header: 'ROL',
+      header: tm('colRole'),
       cell: (info: any) => {
-        const roleName = info.getValue() || 'Kullanıcı';
+        const roleName = info.getValue() || tm('roleUser');
         const roleColors: Record<string, string> = {
           admin: 'bg-purple-100 text-purple-700',
           manager: 'bg-blue-100 text-blue-700',
@@ -165,25 +168,25 @@ export function UserManagementModule() {
       size: 140
     }),
     columnHelper.accessor('phone', {
-      header: 'TELEFON',
+      header: tm('colPhone'),
       cell: (info: any) => info.getValue() || '-',
       size: 150
     }),
     columnHelper.accessor('is_active', {
-      header: 'DURUM',
+      header: tm('colStatus'),
       cell: (info: any) => {
         const isActive = info.getValue();
         return (
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
             }`}>
-            {isActive ? 'Aktif' : 'Pasif'}
+            {isActive ? tm('statusActive') : tm('statusPassive')}
           </span>
         );
       },
       size: 100
     }),
     columnHelper.accessor('last_login_at', {
-      header: 'SON GİRİŞ',
+      header: tm('colLastLogin'),
       cell: (info: any) => {
         const date = info.getValue();
         return date ? new Date(date).toLocaleDateString('tr-TR') : '-';
@@ -192,20 +195,20 @@ export function UserManagementModule() {
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İŞLEMLER',
+      header: tm('actions'),
       cell: ({ row }: { row: { original: User } }) => (
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleEditUser(row.original)}
             className="p-2 hover:bg-blue-50 rounded transition-colors"
-            title="Düzenle"
+            title={tm('edit')}
           >
             <Edit className="w-4 h-4 text-blue-600" />
           </button>
           <button
             onClick={() => handleToggleActive(row.original.id, row.original.is_active)}
             className="p-2 hover:bg-orange-50 rounded transition-colors"
-            title={row.original.is_active ? 'Pasif Yap' : 'Aktif Yap'}
+            title={row.original.is_active ? tm('makePassive') : tm('makeActive')}
           >
             {row.original.is_active ? (
               <UserX className="w-4 h-4 text-orange-600" />
@@ -216,7 +219,7 @@ export function UserManagementModule() {
           <button
             onClick={() => handleDeleteUser(row.original.id)}
             className="p-2 hover:bg-red-50 rounded transition-colors"
-            title="Sil"
+            title={tm('delete')}
           >
             <Trash2 className="w-4 h-4 text-red-600" />
           </button>
@@ -243,8 +246,8 @@ export function UserManagementModule() {
               <Users className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Kullanıcı Yönetimi</h1>
-              <p className="text-sm text-gray-600">Sistem kullanıcılarını yönetin</p>
+              <h1 className="text-2xl font-bold text-gray-900">{tm('userManagement')}</h1>
+              <p className="text-sm text-gray-600">{tm('userManagementDesc')}</p>
             </div>
           </div>
           <button
@@ -252,7 +255,7 @@ export function UserManagementModule() {
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Yeni Kullanıcı
+            {tm('newUser')}
           </button>
         </div>
 
@@ -261,7 +264,7 @@ export function UserManagementModule() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            placeholder="Kullanıcı ara (isim, email, rol)..."
+            placeholder={tm('searchUserPlaceholder')}
             value={searchQuery}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -274,7 +277,7 @@ export function UserManagementModule() {
         <div className="bg-blue-50 rounded-lg p-4 shadow-sm border border-blue-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-blue-600 mb-1">Toplam Kullanıcı</p>
+              <p className="text-sm text-blue-600 mb-1">{tm('totalUsers')}</p>
               <p className="text-3xl font-bold text-blue-900">{users.length}</p>
             </div>
             <Users className="w-10 h-10 text-blue-500 opacity-50" />
@@ -283,7 +286,7 @@ export function UserManagementModule() {
         <div className="bg-green-50 rounded-lg p-4 shadow-sm border border-green-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-green-600 mb-1">Aktif</p>
+              <p className="text-sm text-green-600 mb-1">{tm('statusActive')}</p>
               <p className="text-3xl font-bold text-green-900">
                 {users.filter((u: User) => u.is_active).length}
               </p>
@@ -294,7 +297,7 @@ export function UserManagementModule() {
         <div className="bg-red-50 rounded-lg p-4 shadow-sm border border-red-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-red-600 mb-1">Pasif</p>
+              <p className="text-sm text-red-600 mb-1">{tm('statusPassive')}</p>
               <p className="text-3xl font-bold text-red-900">
                 {users.filter((u: User) => !u.is_active).length}
               </p>
@@ -305,7 +308,7 @@ export function UserManagementModule() {
         <div className="bg-purple-50 rounded-lg p-4 shadow-sm border border-purple-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-purple-600 mb-1">Adminler</p>
+              <p className="text-sm text-purple-600 mb-1">{tm('admins')}</p>
               <p className="text-3xl font-bold text-purple-900">
                 {users.filter((u: User) => (u.role_name || u.role || '').toLowerCase() === 'admin').length}
               </p>
@@ -321,7 +324,7 @@ export function UserManagementModule() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-600">Kullanıcılar yükleniyor...</p>
+              <p className="text-gray-600">{tm('usersLoading')}</p>
             </div>
           </div>
         ) : (
@@ -342,12 +345,12 @@ export function UserManagementModule() {
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-2xl transform transition-all">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
-                {editingUser ? 'Kullanıcı Düzenle' : 'Yeni Kullanıcı Oluştur'}
+                {editingUser ? tm('editUser') : tm('createUser')}
               </h2>
               <button
                 onClick={() => setShowUserModal(false)}
                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                title="Kapat"
+                title={tm('close')}
               >
                 <UserX className="w-6 h-6 text-gray-400" />
               </button>
@@ -357,7 +360,7 @@ export function UserManagementModule() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Kullanıcı Adı *
+                    {tm('usernameLabel')} *
                   </label>
                   <input
                     type="text"
@@ -369,7 +372,7 @@ export function UserManagementModule() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Tam Ad *
+                    {tm('fullNameLabel')} *
                   </label>
                   <input
                     type="text"
@@ -381,7 +384,7 @@ export function UserManagementModule() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    E-posta
+                    {tm('emailLabel')}
                   </label>
                   <input
                     type="email"
@@ -396,7 +399,7 @@ export function UserManagementModule() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Rol *
+                    {tm('roleLabel')} *
                   </label>
                   <select
                     value={formData.role_id}
@@ -404,7 +407,7 @@ export function UserManagementModule() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all appearance-none bg-no-repeat bg-[right_1rem_center]"
                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundSize: '1.5em' }}
                   >
-                    <option value="">Rol Seçin</option>
+                    <option value="">{tm('selectRole')}</option>
                     {roles.map(role => (
                       <option key={role.id} value={role.id}>{role.name.toUpperCase()}</option>
                     ))}
@@ -412,7 +415,7 @@ export function UserManagementModule() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Telefon
+                    {tm('bPhone')}
                   </label>
                   <input
                     type="tel"
@@ -424,7 +427,7 @@ export function UserManagementModule() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Mağaza
+                    {tm('storeLabel')}
                   </label>
                   <select
                     value={formData.store_id}
@@ -432,7 +435,7 @@ export function UserManagementModule() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all appearance-none bg-no-repeat bg-[right_1rem_center]"
                     style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundSize: '1.5em' }}
                   >
-                    <option value="">Mağaza Seçin</option>
+                    <option value="">{tm('selectStore')}</option>
                     <option value="1">Baghdad Merkez</option>
                     <option value="2">Erbil Şubesi</option>
                     <option value="3">Basra Şubesi</option>
@@ -442,7 +445,7 @@ export function UserManagementModule() {
 
               <div className="sm:col-span-2">
                 <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  {editingUser ? 'Yeni Şifre (Boş bırakılırsa değişmez)' : 'Şifre *'}
+                  {editingUser ? tm('passwordOptional') : `${tm('passwordLabel')} *`}
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -451,7 +454,7 @@ export function UserManagementModule() {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                    placeholder="En az 8 karakter"
+                    placeholder={tm('passwordPlaceholder')}
                   />
                 </div>
               </div>
@@ -462,14 +465,14 @@ export function UserManagementModule() {
                 onClick={() => setShowUserModal(false)}
                 className="flex-1 px-6 py-3 border-2 border-gray-200 rounded-xl text-gray-600 font-semibold hover:bg-gray-50 transition-all active:scale-95"
               >
-                İptal
+                {tm('cancel')}
               </button>
               <button
                 onClick={handleSave}
                 disabled={!formData.username || !formData.full_name || !formData.role_id || (!editingUser && !formData.password)}
                 className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:scale-[1.02] disabled:opacity-50 disabled:scale-100 transition-all active:scale-95"
               >
-                {editingUser ? 'Güncelle' : 'Kullanıcıyı Kaydet'}
+                {editingUser ? tm('update') : tm('saveUser')}
               </button>
             </div>
           </div>

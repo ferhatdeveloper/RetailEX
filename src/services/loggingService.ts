@@ -98,6 +98,38 @@ class LoggingService {
         return this.createLog('SQL', module, sql, { params }, duration);
     }
 
+    /**
+     * Log a CRUD operation error in structured JSON format.
+     * @param page   - Page/component name (e.g. "BeautyPOS", "UserManagement")
+     * @param action - Operation being performed (e.g. "createSale", "deleteUser")
+     * @param error  - The caught error object
+     * @param context - Optional extra data (form values, IDs, etc.)
+     */
+    crudError(page: string, action: string, error: any, context?: Record<string, any>) {
+        const payload = {
+            timestamp: new Date().toISOString(),
+            page,
+            action,
+            error: {
+                message: error?.message || String(error),
+                code:    error?.code    || undefined,
+                detail:  error?.detail  || undefined,
+                hint:    error?.hint    || undefined,
+                stack:   error?.stack   || undefined,
+            },
+            ...(context ? { context } : {}),
+        };
+
+        // Write to C:\RetailEX\log\crud_errors.json via Tauri (fire-and-forget)
+        try {
+            import('@tauri-apps/api/core').then(({ invoke }) => {
+                invoke('log_crud_error', { payload: JSON.stringify(payload) }).catch(() => {/* silently ignore if Tauri unavailable */});
+            }).catch(() => {/* web/dev mode */});
+        } catch { /* ignore */ }
+
+        return this.createLog('ERROR', page, `[CRUD] ${action}`, payload);
+    }
+
     getLogs(): LogEntry[] {
         return [...this.logs];
     }

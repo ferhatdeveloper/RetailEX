@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Edit2, Trash2, Shield, Lock, Eye, Check, X, CheckCircle } from 'lucide-react';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
+import { logger } from '../../services/loggingService';
 import { DataTable, type Column } from '../shared/DataTable';
 import { Permission, PermissionAction } from '../../services/rbacService';
 
@@ -144,7 +145,7 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
           alert('Sistem rolleri silinemez.');
         }
       } catch (error) {
-        console.error('Error deleting role:', error);
+        logger.crudError('RoleManagement', 'deleteRole', error);
       }
     }
   };

@@ -5,12 +5,16 @@
  */
 
 import { useState, useCallback } from 'react';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
   AlertCircle, Loader2, Package, Users, Layers, Wrench,
   Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info
 } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { productAPI } from '../../services/api/products';
 import { customerAPI } from '../../services/api/customers';
 import { supplierAPI } from '../../services/api/suppliers';
@@ -243,24 +247,23 @@ function strFromExcel(val: any): string {
   return String(val ?? '').trim();
 }
 
-function downloadExcel(sheetName: string, data: any[], fileName: string) {
+async function downloadExcel(sheetName: string, data: any[], fileName: string) {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
   const maxWidth = 30;
   const cols = Object.keys(data[0] ?? {}).map(k => ({ wch: Math.min(Math.max(k.length + 2, 12), maxWidth) }));
   ws['!cols'] = cols;
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  // Blob + anchor click — XLSX.writeFile Tauri webview'da çalışmaz
-  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+  // Tauri: kayıt yeri seçtir
+  const savePath = await save({
+    defaultPath: fileName,
+    filters: [{ name: 'Excel Dosyası', extensions: ['xlsx'] }],
+  });
+  if (!savePath) return; // kullanıcı iptal etti
+
+  await writeFile(savePath, buf);
 }
 
 // ─── Dışa aktarım fonksiyonları ───────────────────────────────────────────────
@@ -287,7 +290,7 @@ async function exportProducts(): Promise<void> {
     'Açıklama': p.description || '',
     'Aktif (E/H)': p.is_active !== false ? 'E' : 'H',
   }));
-  downloadExcel('Ürünler', data, `Ürünler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Ürünler', data, `Ürünler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportCurrentAccounts(): Promise<void> {
@@ -313,7 +316,7 @@ async function exportCurrentAccounts(): Promise<void> {
     'Notlar': '',
     'Aktif (E/H)': a.aktif ? 'E' : 'H',
   }));
-  downloadExcel('Cari Hesaplar', data, `CariHesaplar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Cari Hesaplar', data, `CariHesaplar_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportVariants(): Promise<void> {
@@ -335,7 +338,7 @@ async function exportVariants(): Promise<void> {
     }
   }
   if (rows.length === 0) throw new Error('Dışa aktarılacak varyant bulunamadı.');
-  downloadExcel('Varyantlar', rows, `Varyantlar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Varyantlar', rows, `Varyantlar_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportServices(): Promise<void> {
@@ -351,7 +354,7 @@ async function exportServices(): Promise<void> {
     'Açıklama': s.description || '',
     'Aktif (E/H)': s.is_active ? 'E' : 'H',
   }));
-  downloadExcel('Hizmet Kartları', data, `HizmetKartlari_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Hizmet Kartları', data, `HizmetKartlari_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportSuppliers(): Promise<void> {
@@ -376,7 +379,7 @@ async function exportSuppliers(): Promise<void> {
     'Notlar': (s as any).notes || '',
     'Aktif (E/H)': s.is_active !== false ? 'E' : 'H',
   }));
-  downloadExcel('Tedarikçiler', data, `Tedarikciler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Tedarikçiler', data, `Tedarikciler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportCategories(): Promise<void> {
@@ -391,7 +394,7 @@ async function exportCategories(): Promise<void> {
     'Açıklama': r.description || '',
     'Aktif (E/H)': r.is_active ? 'E' : 'H',
   }));
-  downloadExcel('Kategoriler', data, `Kategoriler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await downloadExcel('Kategoriler', data, `Kategoriler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 // ─── İçe aktarım fonksiyonları ────────────────────────────────────────────────
@@ -643,7 +646,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   {
     id: 'products',
-    label: 'Ürünler',
+    label: 'productsEntities',
     icon: Package,
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
@@ -653,7 +656,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: 'current-accounts',
-    label: 'Cari Hesaplar',
+    label: 'currentAccountsEntities',
     icon: Users,
     color: 'text-emerald-600',
     bgColor: 'bg-emerald-50',
@@ -664,7 +667,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: 'variants',
-    label: 'Varyantlar',
+    label: 'variantsEntities',
     icon: Layers,
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
@@ -675,7 +678,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: 'services',
-    label: 'Hizmet Kartları',
+    label: 'serviceCardsEntities',
     icon: Wrench,
     color: 'text-orange-600',
     bgColor: 'bg-orange-50',
@@ -685,7 +688,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: 'suppliers',
-    label: 'Tedarikçiler',
+    label: 'suppliersEntities',
     icon: Truck,
     color: 'text-cyan-600',
     bgColor: 'bg-cyan-50',
@@ -695,7 +698,7 @@ const TABS: TabConfig[] = [
   },
   {
     id: 'categories',
-    label: 'Kategoriler',
+    label: 'categoriesEntities',
     icon: Tag,
     color: 'text-rose-600',
     bgColor: 'bg-rose-50',
@@ -705,9 +708,8 @@ const TABS: TabConfig[] = [
   },
 ];
 
-// ─── Ana bileşen ──────────────────────────────────────────────────────────────
-
 export function ExcelModule() {
+  const { tm } = useLanguage();
   const [activeTab, setActiveTab] = useState<EntityType>('products');
   const [notification, setNotification] = useState<Notification | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -724,14 +726,14 @@ export function ExcelModule() {
   }, []);
 
   // Şablon indir
-  const handleDownloadTemplate = useCallback(() => {
+  const handleDownloadTemplate = useCallback(async () => {
     try {
-      downloadExcel(
+      await downloadExcel(
         template.sheetName,
         template.sample,
         `Sablon_${template.sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
       );
-      showNotification({ type: 'success', message: `${template.label} şablonu indirildi.` });
+      showNotification({ type: 'success', message: `${tm(template.label as any) || template.label} şablonu indirildi.` });
     } catch (err: any) {
       showNotification({ type: 'error', message: err.message });
     }
@@ -741,10 +743,10 @@ export function ExcelModule() {
   const handleExport = useCallback(async () => {
     if (!tab.exportFn) return;
     setIsLoading(true);
-    showNotification({ type: 'loading', message: `${tab.label} dışa aktarılıyor...` }, false);
+    showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} dışa aktarılıyor...` }, false);
     try {
       await tab.exportFn();
-      showNotification({ type: 'success', message: `${tab.label} başarıyla Excel'e aktarıldı.` });
+      showNotification({ type: 'success', message: `${tm(tab.label as any) || tab.label} başarıyla Excel'e aktarıldı.` });
     } catch (err: any) {
       showNotification({ type: 'error', message: err.message });
     } finally {
@@ -759,7 +761,7 @@ export function ExcelModule() {
 
     setIsLoading(true);
     setImportResult(null);
-    showNotification({ type: 'loading', message: `${tab.label} içe aktarılıyor...` }, false);
+    showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} içe aktarılıyor...` }, false);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -807,9 +809,9 @@ export function ExcelModule() {
             <FileSpreadsheet className="w-5 h-5 text-green-600 dark:text-green-400" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Excel İçe/Dışa Aktarım</h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{tm('excelTitle')}</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Şablon indir · Veritabanından dışa aktar · Excel'den içe aktar
+              {tm('excelSubtitle')}
             </p>
           </div>
         </div>
@@ -825,14 +827,13 @@ export function ExcelModule() {
               <button
                 key={t.id}
                 onClick={() => { setActiveTab(t.id); setImportResult(null); setNotification(null); }}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
-                  isActive
-                    ? `border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400`
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${isActive
+                  ? `border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400`
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                  }`}
               >
                 <TIcon className="w-4 h-4" />
-                {t.label}
+                {tm(t.label as any) || t.label}
               </button>
             );
           })}
@@ -845,22 +846,20 @@ export function ExcelModule() {
 
           {/* Bildirim */}
           {notification && (
-            <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-              notification.type === 'success' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700' :
+            <div className={`flex items-center gap-3 p-4 rounded-lg border ${notification.type === 'success' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700' :
               notification.type === 'error' ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700' :
-              notification.type === 'loading' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-700' :
-              'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700'
-            }`}>
+                notification.type === 'loading' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-700' :
+                  'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700'
+              }`}>
               {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />}
               {notification.type === 'error' && <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />}
               {notification.type === 'loading' && <Loader2 className="w-5 h-5 text-blue-600 flex-shrink-0 animate-spin" />}
               {notification.type === 'info' && <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />}
-              <p className={`text-sm font-medium ${
-                notification.type === 'success' ? 'text-green-800 dark:text-green-200' :
+              <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800 dark:text-green-200' :
                 notification.type === 'error' ? 'text-red-800 dark:text-red-200' :
-                notification.type === 'loading' ? 'text-blue-800 dark:text-blue-200' :
-                'text-amber-800 dark:text-amber-200'
-              }`}>{notification.message}</p>
+                  notification.type === 'loading' ? 'text-blue-800 dark:text-blue-200' :
+                    'text-amber-800 dark:text-amber-200'
+                }`}>{notification.message}</p>
             </div>
           )}
 
@@ -872,29 +871,27 @@ export function ExcelModule() {
               <div className={`px-5 py-4 ${tab.bgColor} dark:bg-opacity-10 border-b ${tab.borderColor}`}>
                 <div className="flex items-center gap-2">
                   <BarChart3 className={`w-4 h-4 ${tab.color}`} />
-                  <h2 className={`text-sm font-semibold ${tab.color}`}>Şablon İndir</h2>
+                  <h2 className={`text-sm font-semibold ${tab.color}`}>{tm('downloadTemplate')}</h2>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Boş şablon dosyasını indirin
+                  {tm('downloadTemplateDesc')}
                 </p>
               </div>
               <div className="p-5 space-y-4">
                 <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>
-                    <span className="font-medium text-gray-700 dark:text-gray-300">* ile işaretli</span>{' '}
-                    sütunlar zorunludur. Diğerleri opsiyoneldir.
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{tm('requiredFieldsNote')}</span>
                   </span>
                 </div>
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Şablon sütunları:</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{tm('templateColumns')}</p>
                   <div className="flex flex-wrap gap-1">
                     {Object.keys(template.sample[0] ?? {}).map(col => (
-                      <span key={col} className={`text-xs px-1.5 py-0.5 rounded ${
-                        col.endsWith('*')
-                          ? `${tab.bgColor} ${tab.color} font-medium`
-                          : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
-                      }`}>
+                      <span key={col} className={`text-xs px-1.5 py-0.5 rounded ${col.endsWith('*')
+                        ? `${tab.bgColor} ${tab.color} font-medium`
+                        : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+                        }`}>
                         {col}
                       </span>
                     ))}
@@ -905,7 +902,7 @@ export function ExcelModule() {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 dark:bg-gray-700 hover:bg-gray-900 dark:hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  Şablonu İndir (.xlsx)
+                  {tm('downloadTemplateBtn')}
                 </button>
               </div>
             </div>
@@ -915,23 +912,22 @@ export function ExcelModule() {
               <div className="px-5 py-4 bg-blue-50 dark:bg-blue-900/10 border-b border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-2">
                   <Download className="w-4 h-4 text-blue-600" />
-                  <h2 className="text-sm font-semibold text-blue-600">Dışa Aktar</h2>
+                  <h2 className="text-sm font-semibold text-blue-600">{tm('exportData')}</h2>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Mevcut verileri Excel'e aktarın
+                  {tm('exportDataDesc')}
                 </p>
               </div>
               <div className="p-5 space-y-4">
                 <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                   <span>
-                    Veritabanındaki tüm <strong className="text-gray-700 dark:text-gray-300">{tab.label}</strong>{' '}
-                    kaydı Excel dosyasına aktarılır.
+                    {tm('exportDataDetailsPart1')} <strong className="text-gray-700 dark:text-gray-300">{tm(tab.label as any) || tab.label}</strong>{' '}
+                    {tm('exportDataDetailsPart2')}
                   </span>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-3 text-xs text-blue-700 dark:text-blue-300">
-                  Aktif + pasif tüm kayıtlar dahil edilir.
-                  Büyük veri setlerinde birkaç saniye sürebilir.
+                  {tm('exportDataWarning')}
                 </div>
                 <button
                   onClick={handleExport}
@@ -939,7 +935,7 @@ export function ExcelModule() {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {tab.label}'i Excel'e Aktar
+                  {tm(tab.label as any) || tab.label}{tm('exportBtn')}
                 </button>
               </div>
             </div>
@@ -949,10 +945,10 @@ export function ExcelModule() {
               <div className="px-5 py-4 bg-green-50 dark:bg-green-900/10 border-b border-green-200 dark:border-green-800">
                 <div className="flex items-center gap-2">
                   <Upload className="w-4 h-4 text-green-600" />
-                  <h2 className="text-sm font-semibold text-green-600">İçe Aktar</h2>
+                  <h2 className="text-sm font-semibold text-green-600">{tm('importData')}</h2>
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Excel dosyasından veritabanına yükle
+                  {tm('importDataDesc')}
                 </p>
               </div>
               <div className="p-5 space-y-4">
@@ -965,19 +961,18 @@ export function ExcelModule() {
                 {!tab.importNote && (
                   <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                    <span>Yalnızca <strong>.xlsx</strong> veya <strong>.xls</strong> dosyaları desteklenir.</span>
+                    <span>{tm('supportedFormats')}</span>
                   </div>
                 )}
                 <div className="bg-green-50 dark:bg-green-900/10 rounded-lg p-3 text-xs text-green-700 dark:text-green-300">
-                  Mevcut kayıtlar üzerine yazılmaz, yeni kayıtlar eklenir.
+                  {tm('importWarning')}
                 </div>
-                <label className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors cursor-pointer text-sm font-medium text-white ${
-                  isLoading || !tab.importFn
-                    ? 'bg-green-400 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}>
+                <label className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors cursor-pointer text-sm font-medium text-white ${isLoading || !tab.importFn
+                  ? 'bg-green-400 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700'
+                  }`}>
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  Excel Dosyası Seç
+                  {tm('selectExcelFile')}
                   <input
                     type="file"
                     accept=".xlsx,.xls"
@@ -994,22 +989,22 @@ export function ExcelModule() {
           {importResult && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-800 dark:text-white">İçe Aktarım Sonuçları</h3>
+                <h3 className="text-sm font-semibold text-gray-800 dark:text-white">{tm('summary')}</h3>
               </div>
               <div className="p-5">
                 {/* İstatistikler */}
                 <div className="grid grid-cols-3 gap-4 mb-5">
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-gray-700 dark:text-gray-200">{importResult.total}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Toplam Satır</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{tm('rowNumber')}</div>
                   </div>
                   <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-green-600 dark:text-green-400">{importResult.success}</div>
-                    <div className="text-xs text-green-600 dark:text-green-400 mt-1">Başarılı</div>
+                    <div className="text-xs text-green-600 dark:text-green-400 mt-1">{tm('successfulRecords')}</div>
                   </div>
                   <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-red-600 dark:text-red-400">{importResult.failed}</div>
-                    <div className="text-xs text-red-600 dark:text-red-400 mt-1">Başarısız</div>
+                    <div className="text-xs text-red-600 dark:text-red-400 mt-1">{tm('failedRecords')}</div>
                   </div>
                 </div>
 
@@ -1034,7 +1029,7 @@ export function ExcelModule() {
                   <div>
                     <h4 className="text-xs font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
                       <XCircle className="w-3.5 h-3.5" />
-                      Hatalar ({importResult.errors.length})
+                      {tm('errorLogs')} ({importResult.errors.length})
                     </h4>
                     <div className="max-h-48 overflow-y-auto space-y-1">
                       {importResult.errors.map((err, idx) => (
@@ -1066,15 +1061,15 @@ export function ExcelModule() {
                 <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-gray-800 dark:text-white mb-2">Kullanım Adımları</h4>
+                <h4 className="text-sm font-semibold text-gray-800 dark:text-white mb-2">{tm('usageSteps')}</h4>
                 <ol className="text-xs text-gray-600 dark:text-gray-400 space-y-1.5 list-none">
                   {[
-                    'İlgili varlık sekmesini seçin (Ürünler, Cari Hesaplar, vb.)',
-                    '"Şablonu İndir" ile örnek Excel dosyasını indirin.',
-                    'Şablondaki kolon yapısını koruyarak verilerinizi girin. * ile işaretli kolonlar zorunludur.',
-                    '"Dışa Aktar" ile mevcut veritabanı verilerini Excel\'e aktarabilirsiniz.',
-                    '"Excel Dosyası Seç" ile doldurduğunuz şablonu yükleyin.',
-                    'İçe aktarım tamamlandığında sonuç özeti ve hatalar gösterilir.',
+                    tm('step1'),
+                    tm('step2'),
+                    tm('step3'),
+                    tm('step4'),
+                    tm('step5'),
+                    tm('step6'),
                   ].map((step, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <span className="flex-shrink-0 w-4 h-4 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center mt-0.5">

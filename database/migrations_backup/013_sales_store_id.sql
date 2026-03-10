@@ -99,9 +99,9 @@ DO $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN SELECT tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sales' LOOP
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES stores(id)';
-        EXECUTE 'ALTER TABLE ' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT ''completed''';
-        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_' || r.tablename || '_store_id ON ' || quote_ident(r.tablename) || '(store_id)';
+    FOR r IN SELECT schemaname, tablename FROM pg_tables WHERE tablename LIKE 'rex_%_sales' LOOP
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS store_id UUID REFERENCES stores(id)';
+        EXECUTE 'ALTER TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT ''completed''';
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_' || r.tablename || '_store_id ON ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || '(store_id)';
     END LOOP;
 END$$;

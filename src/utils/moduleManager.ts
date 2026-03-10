@@ -831,6 +831,17 @@ class ModuleManager {
     );
   }
 
+  applyBeautyCenterProfile(): void {
+    // Enable beauty + core modules, disable unrelated ones
+    const beautyModuleIds = ['market-pos', 'quick-sale', 'barcode-scanner', 'customers', 'loyalty', 'campaigns', 'reports', 'dashboard', 'analytics', 'settings', 'user-management', 'appointments', 'cashier', 'invoicing', 'payments'];
+    this.activeModules = new Set(
+      ALL_MODULES
+        .filter(m => m.isCore || beautyModuleIds.includes(m.id))
+        .map(m => m.id)
+    );
+    this.saveActiveModules();
+  }
+
   resetToDefaults(): void {
     this.activeModules = new Set(
       ALL_MODULES

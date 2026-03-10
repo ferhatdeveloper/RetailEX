@@ -165,7 +165,9 @@ export const productAPI = {
         vatRate: 'vat_rate',
         materialType: 'material_type',
         material_type: 'material_type',
-        isActive: 'is_active'
+        isActive: 'is_active',
+        hasVariants: 'has_variants',
+        has_variants: 'has_variants'
       };
 
       Object.entries(updates).forEach(([key, value]) => {
@@ -261,6 +263,7 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     max_stock: parseFloat(dbProduct.max_stock || 0),
     unit: dbProduct.unit,
     isActive: dbProduct.is_active,
+    hasVariants: dbProduct.has_variants,
     description: dbProduct.description,
     description_tr: dbProduct.description_tr,
     description_en: dbProduct.description_en,

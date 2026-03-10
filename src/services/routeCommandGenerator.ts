@@ -58,36 +58,40 @@ const MENU_TRANSLATIONS: Record<string, { ar: string; ckb: string }> = {
 function processMenuItem(item: any, routes: RouteDefinition[]) {
     if (!item || !item.label) return;
 
-    // Generate keywords based on label and screen ID
-    const trKeywords = [item.label.toLowerCase(), item.label.toLowerCase() + ' aç', 'aç ' + item.label.toLowerCase()];
+    // Only process routes for items with a screen ID (terminal routes)
+    if (item.screen) {
+        // Generate keywords based on label and screen ID
+        const trKeywords = [item.label.toLowerCase(), item.label.toLowerCase() + ' aç', 'aç ' + item.label.toLowerCase()];
 
-    // Attempt to generate English from screen ID (e.g., "sales-invoice" -> "sales invoice")
-    const enLabel = item.screen.replace(/-/g, ' ');
-    const enKeywords = [enLabel, 'open ' + enLabel, 'show ' + enLabel];
+        // Attempt to generate English from screen ID (e.g., "sales-invoice" -> "sales invoice")
+        const enLabel = item.screen.replace(/-/g, ' ');
+        const enKeywords = [enLabel, 'open ' + enLabel, 'show ' + enLabel];
 
-    // AR/CKB Translations
-    let arKeywords = [item.label.toLowerCase()]; // Fallback
-    let ckbKeywords = [item.label.toLowerCase()]; // Fallback
+        // AR/CKB Translations
+        let arKeywords = [item.label.toLowerCase()]; // Fallback
+        let ckbKeywords = [item.label.toLowerCase()]; // Fallback
 
-    const translation = MENU_TRANSLATIONS[item.label];
-    if (translation) {
-        arKeywords = [translation.ar.toLowerCase(), 'fatah ' + translation.ar.toLowerCase()];
-        ckbKeywords = [translation.ckb.toLowerCase(), 'krdnawa ' + translation.ckb.toLowerCase()];
+        const translation = MENU_TRANSLATIONS[item.label];
+        if (translation) {
+            arKeywords = [translation.ar.toLowerCase(), 'fatah ' + translation.ar.toLowerCase()];
+            ckbKeywords = [translation.ckb.toLowerCase(), 'krdnawa ' + translation.ckb.toLowerCase()];
+        }
+
+        routes.push({
+            id: item.screen,
+            screen: item.screen,
+            label: item.label,
+            path: '/' + item.screen, // Assuming simple mapping
+            keywords: {
+                tr: trKeywords,
+                en: enKeywords,
+                ar: arKeywords,
+                ckb: ckbKeywords
+            }
+        });
     }
 
-    routes.push({
-        id: item.screen,
-        screen: item.screen,
-        label: item.label,
-        path: '/' + item.screen, // Assuming simple mapping
-        keywords: {
-            tr: trKeywords,
-            en: enKeywords,
-            ar: arKeywords,
-            ckb: ckbKeywords
-        }
-    });
-
+    // Always process children recursively if they exist
     if (item.children) {
         item.children.forEach((child: any) => processMenuItem(child, routes));
     }

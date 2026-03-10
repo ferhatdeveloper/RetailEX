@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
     TrendingDown, Plus, Search, Trash2, X, Edit2, Eye,
     Printer, RefreshCw, Filter, ChevronLeft, ChevronRight,
-    MoreHorizontal, FileText, Download, Share2, Check
+    MoreHorizontal, FileText, Download, Share2, Check,
+    FileMinus, Archive
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { stockMovementAPI, StockMovement } from '../../../services/stockMovementAPI';
+import { stockMovementAPI, StockMovement, STOCK_SLIP_TRCODES } from '../../../services/stockMovementAPI';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import {
@@ -15,7 +16,11 @@ import {
     DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 
-export function StockMovementsModule() {
+export interface StockMovementsModuleProps {
+    defaultFilter?: 'shortage' | 'surplus' | 'all';
+}
+
+export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsModuleProps) {
     const { t, tm } = useLanguage();
     const [movements, setMovements] = useState<StockMovement[]>([]);
     const [loading, setLoading] = useState(true);
@@ -26,17 +31,18 @@ export function StockMovementsModule() {
 
     // Form State
     const [formData, setFormData] = useState({
-        movement_type: 'in',
+        movement_type: defaultFilter === 'shortage' ? 'out' : (defaultFilter === 'surplus' ? 'in' : 'in'),
         warehouse_id: '',
         movement_date: new Date().toISOString().split('T')[0],
-        description: ''
+        description: '',
+        trcode: defaultFilter === 'shortage' ? STOCK_SLIP_TRCODES.SHORTAGE : (defaultFilter === 'surplus' ? STOCK_SLIP_TRCODES.SURPLUS : undefined)
     });
     const [warehouses, setWarehouses] = useState<any[]>([]);
 
     useEffect(() => {
         loadMovements();
         loadWarehouses();
-    }, []);
+    }, [defaultFilter]);
 
     const loadWarehouses = async () => {
         try {
@@ -53,7 +59,15 @@ export function StockMovementsModule() {
     const loadMovements = async () => {
         try {
             setLoading(true);
-            const data = await stockMovementAPI.getAll();
+            let data = await stockMovementAPI.getAll();
+
+            // Filter by trcode if defaultFilter is set
+            if (defaultFilter === 'shortage') {
+                data = data.filter(m => m.trcode === STOCK_SLIP_TRCODES.SHORTAGE);
+            } else if (defaultFilter === 'surplus') {
+                data = data.filter(m => m.trcode === STOCK_SLIP_TRCODES.SURPLUS);
+            }
+
             setMovements(data);
         } catch (error) {
             console.error('Error loading movements:', error);
@@ -80,10 +94,11 @@ export function StockMovementsModule() {
 
             // Reset form
             setFormData({
-                movement_type: 'in',
+                movement_type: defaultFilter === 'shortage' ? 'out' : (defaultFilter === 'surplus' ? 'in' : 'in'),
                 warehouse_id: warehouses[0]?.id || '',
                 movement_date: new Date().toISOString().split('T')[0],
-                description: ''
+                description: '',
+                trcode: defaultFilter === 'shortage' ? STOCK_SLIP_TRCODES.SHORTAGE : (defaultFilter === 'surplus' ? STOCK_SLIP_TRCODES.SURPLUS : undefined)
             });
         } catch (error) {
             console.error('Error creating movement:', error);
@@ -123,9 +138,15 @@ export function StockMovementsModule() {
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0 shadow-sm">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <TrendingDown className="w-4 h-4" />
+                        {defaultFilter === 'shortage' ? <FileMinus className="w-4 h-4" /> :
+                            defaultFilter === 'surplus' ? <Archive className="w-4 h-4" /> :
+                                <TrendingDown className="w-4 h-4" />}
                         <div className="flex items-center gap-2">
-                            <h2 className="text-sm font-medium">{tm('materialTransactionSlips')}</h2>
+                            <h2 className="text-sm font-medium">
+                                {defaultFilter === 'shortage' ? t.menu.countDeficitSlips :
+                                    defaultFilter === 'surplus' ? t.menu.countSurplusSlips :
+                                        tm('materialManagementSlips')}
+                            </h2>
                             <span className="text-blue-100 text-[10px]">• {filteredMovements.length} {tm('recordsCounter')}</span>
                         </div>
                     </div>

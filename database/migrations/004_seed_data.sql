@@ -35,33 +35,58 @@ BEGIN
             category_id UUID,
             category_code VARCHAR(50),
             group_code VARCHAR(50),
+            groupcode VARCHAR(50), -- Compatibility Alias
             sub_group_code VARCHAR(50),
+            subgroupcode VARCHAR(50), -- Compatibility Alias
             brand VARCHAR(100),
             model VARCHAR(100),
             manufacturer VARCHAR(100),
             supplier VARCHAR(100),
             origin VARCHAR(50),
             material_type VARCHAR(50),
+            materialtype VARCHAR(50), -- Compatibility Alias
             unit VARCHAR(50) DEFAULT ''Adet'',
+            unit2 VARCHAR(20),
+            unit3 VARCHAR(20),
             unit_id UUID,
             unitset_id UUID,
             vat_rate DECIMAL(5,2) DEFAULT 20,
+            tax_type VARCHAR(20),
+            withholding_rate DECIMAL(5,2),
             price DECIMAL(15,2) DEFAULT 0,
             cost DECIMAL(15,2) DEFAULT 0,
             stock DECIMAL(15,2) DEFAULT 0,
             min_stock DECIMAL(15,2) DEFAULT 0,
             max_stock DECIMAL(15,2) DEFAULT 0,
+            critical_stock DECIMAL(15,2) DEFAULT 0,
+            tracking_type VARCHAR(20) DEFAULT ''none'',
+            shelf_location VARCHAR(50),
+            warehouse_code VARCHAR(50),
+            currency VARCHAR(10) DEFAULT ''IQD'',
+            special_code_1 VARCHAR(50),
+            special_code_2 VARCHAR(50),
+            special_code_3 VARCHAR(50),
+            special_code_4 VARCHAR(50),
+            special_code_5 VARCHAR(50),
+            special_code_6 VARCHAR(50),
+            specialcode1 VARCHAR(50), -- Compatibility Alias
+            specialcode2 VARCHAR(50), -- Compatibility Alias
+            specialcode3 VARCHAR(50), -- Compatibility Alias
+            specialcode4 VARCHAR(50), -- Compatibility Alias
+            specialcode5 VARCHAR(50), -- Compatibility Alias
+            specialcode6 VARCHAR(50), -- Compatibility Alias
             price_list_1 DECIMAL(15,2) DEFAULT 0,
             price_list_2 DECIMAL(15,2) DEFAULT 0,
             price_list_3 DECIMAL(15,2) DEFAULT 0,
-            tracking_type VARCHAR(20) DEFAULT ''none'',
-            critical_stock DECIMAL(15,2) DEFAULT 0,
-            shelf_location VARCHAR(50),
-            warehouse_code VARCHAR(50),
-            categorycode VARCHAR(50),
-            groupcode VARCHAR(50),
+            price_list_4 DECIMAL(15,2) DEFAULT 0,
+            price_list_5 DECIMAL(15,2) DEFAULT 0,
+            price_list_6 DECIMAL(15,2) DEFAULT 0,
             pricelist1 DECIMAL(15,2),
             pricelist2 DECIMAL(15,2),
+            pricelist3 DECIMAL(15,2),
+            pricelist4 DECIMAL(15,2),
+            pricelist5 DECIMAL(15,2),
+            pricelist6 DECIMAL(15,2),
             purchase_price_usd DECIMAL(15,2) DEFAULT 0,
             purchase_price_eur DECIMAL(15,2) DEFAULT 0,
             sale_price_usd DECIMAL(15,2) DEFAULT 0,
@@ -143,7 +168,7 @@ BEGIN
     -- 4. Unit Sets & Variants
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL);', v_prefix || '_unitsets');
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), unitset_id UUID, item_code VARCHAR(20) NOT NULL, conv_fact1 DECIMAL(15,6) DEFAULT 1, CONSTRAINT %I UNIQUE(unitset_id, item_code));', v_prefix || '_unitsetl', v_prefix || '_unitsetl_unique');
-    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), product_id UUID, sku VARCHAR(100), attributes JSONB);', v_prefix || '_product_variants');
+    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), product_id UUID, sku VARCHAR(100) UNIQUE, attributes JSONB);', v_prefix || '_product_variants');
 
     -- 5. Campaigns
     EXECUTE format('
@@ -170,9 +195,13 @@ BEGIN
 
     -- 6. Registry & Finance
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, currency_code VARCHAR(10) DEFAULT ''IQD'', balance DECIMAL(15,2) DEFAULT 0, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_cash_registers');
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS firm_nr VARCHAR(10)', v_prefix || '_cash_registers');
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, bank_name VARCHAR(255), iban VARCHAR(50), currency_code VARCHAR(10) DEFAULT ''IQD'', balance DECIMAL(15,2) DEFAULT 0, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_bank_registers');
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS firm_nr VARCHAR(10)', v_prefix || '_bank_registers');
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_expense_cards');
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS firm_nr VARCHAR(10)', v_prefix || '_expense_cards');
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS firm_nr VARCHAR(10)', v_prefix || '_sales_reps');
 
     PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl_products);
     PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl_customers);
@@ -294,10 +323,10 @@ SELECT INIT_BEAUTY_PERIOD_TABLES('001', '01');
 -- Default Restaurant Prep Times (firm001)
 DO $$
 BEGIN
-    UPDATE rex_001_products SET preparation_time = 15 WHERE category ilike '%Ana Yemek%' OR category ilike '%Main%';
-    UPDATE rex_001_products SET preparation_time = 20 WHERE category ilike '%Izgara%' OR category ilike '%Grill%';
-    UPDATE rex_001_products SET preparation_time = 7 WHERE category ilike '%Ara Sıcak%' OR category ilike '%Starter%';
-    UPDATE rex_001_products SET preparation_time = 3 WHERE category ilike '%İçecek%' OR category ilike '%Drink%';
+    UPDATE rex_001_products p SET preparation_time = 15 FROM rex_001_categories c WHERE p.category_id = c.id AND (c.name ilike '%Ana Yemek%' OR c.name ilike '%Main%');
+    UPDATE rex_001_products p SET preparation_time = 20 FROM rex_001_categories c WHERE p.category_id = c.id AND (c.name ilike '%Izgara%' OR c.name ilike '%Grill%');
+    UPDATE rex_001_products p SET preparation_time = 7 FROM rex_001_categories c WHERE p.category_id = c.id AND (c.name ilike '%Ara Sıcak%' OR c.name ilike '%Starter%');
+    UPDATE rex_001_products p SET preparation_time = 3 FROM rex_001_categories c WHERE p.category_id = c.id AND (c.name ilike '%İçecek%' OR c.name ilike '%Drink%');
 EXCEPTION WHEN undefined_table THEN
     -- rex_001_products tablosu henüz oluşturulmamış, atlanıyor
     NULL;

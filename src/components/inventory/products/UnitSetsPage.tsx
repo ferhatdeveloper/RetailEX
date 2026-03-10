@@ -5,6 +5,7 @@ import { BaseModal } from '../../shared/BaseModal';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ContextMenu } from '../../shared/ContextMenu';
 import { toast } from 'sonner';
 
 const COMMON_UNITS = [
@@ -95,6 +96,7 @@ export default function UnitSetsPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState<UnitSet | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: UnitSet } | null>(null);
 
     // Form States
     const [formData, setFormData] = useState({
@@ -124,7 +126,7 @@ export default function UnitSetsPage() {
     const resetForm = () => {
         setFormData({ code: '', name: '', is_active: true });
         setLines([
-            { code: 'ADET', name: 'Adet', main_unit: true, conv_fact1: 1, conv_fact2: 1 }
+            { code: 'ADET', name: tm('unit'), main_unit: true, conv_fact1: 1, conv_fact2: 1 }
         ]);
         setEditingItem(null);
     };
@@ -319,11 +321,40 @@ export default function UnitSetsPage() {
                         data={filteredItems}
                         columns={gridColumns}
                         onRowDoubleClick={openEditModal}
+                        onRowContextMenu={(e, item) => {
+                            e.preventDefault();
+                            setContextMenu({ x: e.clientX, y: e.clientY, item });
+                        }}
                         pageSize={20}
                         height="100%"
                     />
                 </div>
             </div>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <ContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    onClose={() => setContextMenu(null)}
+                    items={[
+                        {
+                            id: 'edit',
+                            label: tm('edit'),
+                            icon: Edit,
+                            onClick: () => openEditModal(contextMenu.item)
+                        },
+                        {
+                            id: 'delete',
+                            label: tm('delete'),
+                            icon: Trash2,
+                            variant: 'danger',
+                            divider: true,
+                            onClick: () => handleDelete(contextMenu.item.id)
+                        }
+                    ]}
+                />
+            )}
 
             {/* Master-Detail Modal */}
             <BaseModal
@@ -342,7 +373,7 @@ export default function UnitSetsPage() {
                                 value={formData.code}
                                 onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                                 className="w-full px-3 py-1.5 border border-gray-200 rounded text-sm font-bold"
-                                placeholder="Örn: 식품_BIRIM"
+                                placeholder={tm('enterText')}
                             />
                         </div>
                         <div>
@@ -352,7 +383,7 @@ export default function UnitSetsPage() {
                                 value={formData.name}
                                 onChange={e => setFormData({ ...formData, name: e.target.value })}
                                 className="w-full px-3 py-1.5 border border-gray-200 rounded text-sm"
-                                placeholder="Örn: Gıda Birim Seti"
+                                placeholder={tm('enterText')}
                             />
                         </div>
                     </div>
@@ -403,7 +434,7 @@ export default function UnitSetsPage() {
                                                     value={line.code}
                                                     onChange={e => updateLine(idx, 'code', e.target.value)}
                                                     className="w-full bg-white border border-gray-100 rounded px-2 py-1 focus:border-blue-500 focus:ring-0 transition-all font-bold text-gray-800"
-                                                    placeholder="Kod (Örn: KOLİ)"
+                                                    placeholder={tm('code')}
                                                 />
                                             </td>
                                             <td className="px-3 py-1">
@@ -412,7 +443,7 @@ export default function UnitSetsPage() {
                                                     value={line.name}
                                                     onChange={e => updateLine(idx, 'name', e.target.value)}
                                                     className="w-full bg-white border border-gray-100 rounded px-2 py-1 focus:border-blue-500 focus:ring-0 transition-all text-gray-700"
-                                                    placeholder="Ad (Örn: Koli)"
+                                                    placeholder={tm('unit')}
                                                 />
                                             </td>
                                             <td className="px-3 py-1">

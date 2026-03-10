@@ -26,7 +26,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 label: t.menu.storeManagement,
                 screen: 'store-management-group',
                 icon: Store,
-                badge: 'YENİ',
+                badge: t.menu.newBadge,
                 children: [
                     { label: t.menu.storePanel, screen: 'store-management', icon: Store },
                     { label: t.menu.storeTransfer, screen: 'interstore-transfer', icon: ArrowRightLeft },
@@ -67,6 +67,15 @@ export const getStaticMenuSections = (t: Translations) => [
                 children: [
 
                     { label: t.menu.materialManagementSlips, screen: 'stockmovements', icon: TrendingDown }
+                ]
+            },
+            {
+                label: t.menu.inventoryCountOps,
+                icon: Calculator,
+                children: [
+                    { label: t.menu.mobileCount, screen: 'mobile-inventory-count', icon: Smartphone },
+                    { label: t.menu.countDeficitSlips, screen: 'stockmovements-deficit', icon: FileMinus },
+                    { label: t.menu.countSurplusSlips, screen: 'stockmovements-surplus', icon: Archive }
                 ]
             },
             {
@@ -174,7 +183,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileText,
                 children: [
                     { label: t.menu.currentAccounts, screen: 'suppliers', icon: Building },
-                    { label: 'Kasa Kartları', screen: 'cashbank', icon: Wallet },
+                    { label: t.menu.cashCards, screen: 'cashbank', icon: Wallet },
                     // { label: 'Banka Kartları', screen: 'banks', icon: Landmark },
                     // { label: t.menu.bankAccounts, screen: 'bank-accounts', icon: CreditCard }
                 ]
@@ -209,7 +218,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 screen: 'finance-other',
                 icon: MoreVertical,
                 children: [
-                    // { label: t.menu.accountingManagement, screen: 'accounting-mgmt', icon: DollarSign, badge: 'YENİ' },
+                    // { label: t.menu.accountingManagement, screen: 'accounting-mgmt', icon: DollarSign, badge: t.menu.newBadge },
                     // { label: t.menu.expenseManagement, screen: 'revenueexpense', icon: Receipt },
                     // { label: t.menu.checkPromissory, screen: 'checkpromissory', icon: Receipt },
                     // { label: t.menu.collectionPayment, screen: 'collectionpayment', icon: CreditCard },
@@ -227,7 +236,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 label: t.menu.priceAndCampaign,
                 screen: 'pricing'
             },
-            { label: t.menu.scaleAndWeighedSales, screen: 'cashier-scale', icon: Scale, badge: 'YENİ' }
+            { label: t.menu.scaleAndWeighedSales, screen: 'cashier-scale', icon: Scale, badge: t.menu.newBadge }
         ]
     },
     {
@@ -256,18 +265,18 @@ export const getStaticMenuSections = (t: Translations) => [
                 ]
             },
             {
-                label: 'Genel Rapor', // Updated per user request
+                label: t.menu.generalReport, // Updated per user request
                 screen: 'customreports',
                 icon: FileSpreadsheet
             },
             {
-                label: 'Dizayn Merkezi',
+                label: t.menu.designCenter,
                 screen: 'report-designer',
                 icon: Layout,
-                badge: 'YENİ'
+                badge: t.menu.newBadge
             },
             {
-                label: 'Etiket Tasarımcı',
+                label: t.menu.labelDesigner,
                 screen: 'label-designer',
                 icon: Tag
             }
@@ -412,7 +421,11 @@ export const staticMenuSections = getStaticMenuSections({
         definitionsParameters: 'Tanımlar/Parametreler',
         backupRestore: 'Yedekleme/Geri Yükleme',
         logAudit: 'Log/Denetim',
-        systemHealth: 'Sistem Sağlığı'
+        systemHealth: 'Sistem Sağlığı',
+        inventoryCountOps: 'Sayım İşlemleri',
+        mobileCount: 'Mobil Sayım / Fiş Oluştur',
+        countDeficitSlips: 'Sayım Eksiği Fişleri',
+        countSurplusSlips: 'Sayım Fazlası Fişleri'
     }
 } as any);
 

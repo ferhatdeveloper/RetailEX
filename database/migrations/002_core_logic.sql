@@ -108,23 +108,50 @@ BEGIN
             unit VARCHAR(50) DEFAULT ''Adet'',
             unit_id UUID,
             unitset_id UUID,
+            unit2 VARCHAR(20),
+            unit3 VARCHAR(20),
             vat_rate DECIMAL(5,2) DEFAULT 20,
+            tax_type VARCHAR(20),
+            withholding_rate DECIMAL(5,2),
+            currency VARCHAR(10),
             price DECIMAL(15,2) DEFAULT 0,
             cost DECIMAL(15,2) DEFAULT 0,
             stock DECIMAL(15,2) DEFAULT 0,
             min_stock DECIMAL(15,2) DEFAULT 0,
             max_stock DECIMAL(15,2) DEFAULT 0,
-            price_list_1 DECIMAL(15,2) DEFAULT 0,
-            price_list_2 DECIMAL(15,2) DEFAULT 0,
-            price_list_3 DECIMAL(15,2) DEFAULT 0,
-            tracking_type VARCHAR(20) DEFAULT ''none'',
             critical_stock DECIMAL(15,2) DEFAULT 0,
             shelf_location VARCHAR(50),
             warehouse_code VARCHAR(50),
+            price_list_1 DECIMAL(15,2) DEFAULT 0,
+            price_list_2 DECIMAL(15,2) DEFAULT 0,
+            price_list_3 DECIMAL(15,2) DEFAULT 0,
+            price_list_4 DECIMAL(15,2) DEFAULT 0,
+            price_list_5 DECIMAL(15,2) DEFAULT 0,
+            price_list_6 DECIMAL(15,2) DEFAULT 0,
+            special_code_1 VARCHAR(50),
+            special_code_2 VARCHAR(50),
+            special_code_3 VARCHAR(50),
+            special_code_4 VARCHAR(50),
+            special_code_5 VARCHAR(50),
+            special_code_6 VARCHAR(50),
+            tracking_type VARCHAR(20) DEFAULT ''none'',
+            -- CamelCase compat aliases (v5.6)
             categorycode VARCHAR(50),
             groupcode VARCHAR(50),
+            subgroupcode VARCHAR(50),
+            materialtype VARCHAR(50),
+            specialcode1 VARCHAR(50),
+            specialcode2 VARCHAR(50),
+            specialcode3 VARCHAR(50),
+            specialcode4 VARCHAR(50),
+            specialcode5 VARCHAR(50),
+            specialcode6 VARCHAR(50),
             pricelist1 DECIMAL(15,2),
             pricelist2 DECIMAL(15,2),
+            pricelist3 DECIMAL(15,2),
+            pricelist4 DECIMAL(15,2),
+            pricelist5 DECIMAL(15,2),
+            pricelist6 DECIMAL(15,2),
             purchase_price_usd DECIMAL(15,2) DEFAULT 0,
             purchase_price_eur DECIMAL(15,2) DEFAULT 0,
             sale_price_usd DECIMAL(15,2) DEFAULT 0,
@@ -205,8 +232,8 @@ BEGIN
 
     -- 4. Unit Sets & Variants
     EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL);', v_prefix || '_unitsets');
-    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), unitset_id UUID, item_code VARCHAR(20) NOT NULL, conv_fact1 DECIMAL(15,6) DEFAULT 1, CONSTRAINT %I UNIQUE(unitset_id, item_code));', v_prefix || '_unitsetl', v_prefix || '_unitsetl_unique');
-    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), product_id UUID, sku VARCHAR(100), attributes JSONB);', v_prefix || '_product_variants');
+    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), unitset_id UUID, item_code VARCHAR(20) NOT NULL, code VARCHAR(50), name VARCHAR(100), main_unit BOOLEAN DEFAULT false, conv_fact1 DECIMAL(15,6) DEFAULT 1, conv_fact2 DECIMAL(15,6) DEFAULT 1, CONSTRAINT %I UNIQUE(unitset_id, item_code));', v_prefix || '_unitsetl', v_prefix || '_unitsetl_unique');
+    EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), product_id UUID, sku VARCHAR(100) UNIQUE, attributes JSONB);', v_prefix || '_product_variants');
     
     -- 5. Campaigns (086)
     EXECUTE format('
@@ -373,6 +400,7 @@ BEGIN
             logo_sync_status VARCHAR(20) DEFAULT ''pending'',
             payment_method VARCHAR(50),
             cashier VARCHAR(100),
+            is_cancelled BOOLEAN DEFAULT false,
             notes TEXT,
             
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -416,7 +444,11 @@ BEGIN
             unit_cost DECIMAL(15,2) DEFAULT 0,
             total_cost DECIMAL(15,2) DEFAULT 0,
             gross_profit DECIMAL(15,2) DEFAULT 0,
-            unit VARCHAR(20) DEFAULT ''Adet''
+            unit VARCHAR(20) DEFAULT ''Adet'',
+            unit_multiplier DECIMAL(15,6) DEFAULT 1,
+            base_quantity DECIMAL(15,3),
+            unit_price_fc DECIMAL(15,4) DEFAULT 0,
+            currency VARCHAR(10) DEFAULT ''IQD''
         );
     ', v_tbl_sale_items, v_tbl_sales);
 

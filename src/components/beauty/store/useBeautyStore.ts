@@ -6,6 +6,7 @@ import type {
     BeautyCustomer, BeautyPackagePurchase,
 } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { logger } from '../../../services/loggingService';
 
 interface BeautyState {
     // Data
@@ -92,22 +93,37 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createAppointment: async (data) => {
-        await beautyService.createAppointment(data);
-        const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
-        await get().loadAppointments(dateStr);
+        try {
+            await beautyService.createAppointment(data);
+            const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
+            await get().loadAppointments(dateStr);
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createAppointment', e);
+            throw e;
+        }
     },
 
     updateAppointment: async (id, data) => {
-        await beautyService.updateAppointment(id, data);
-        const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
-        await get().loadAppointments(dateStr);
+        try {
+            await beautyService.updateAppointment(id, data);
+            const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
+            await get().loadAppointments(dateStr);
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateAppointment', e, { id });
+            throw e;
+        }
     },
 
     updateAppointmentStatus: async (id, status) => {
-        await beautyService.updateAppointmentStatus(id, status);
-        set((state) => ({
-            appointments: state.appointments.map(a => a.id === id ? { ...a, status } : a),
-        }));
+        try {
+            await beautyService.updateAppointmentStatus(id, status);
+            set((state) => ({
+                appointments: state.appointments.map(a => a.id === id ? { ...a, status } : a),
+            }));
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateAppointmentStatus', e, { id, status });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -126,20 +142,35 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createSpecialist: async (data) => {
-        await beautyService.createSpecialist(data);
-        await get().loadSpecialists();
+        try {
+            await beautyService.createSpecialist(data);
+            await get().loadSpecialists();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createSpecialist', e);
+            throw e;
+        }
     },
 
     updateSpecialist: async (id, data) => {
-        await beautyService.updateSpecialist(id, data);
-        await get().loadSpecialists();
+        try {
+            await beautyService.updateSpecialist(id, data);
+            await get().loadSpecialists();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateSpecialist', e, { id });
+            throw e;
+        }
     },
 
     toggleSpecialist: async (id, active) => {
-        await beautyService.toggleSpecialist(id, active);
-        set((state) => ({
-            specialists: state.specialists.map(s => s.id === id ? { ...s, is_active: active } : s),
-        }));
+        try {
+            await beautyService.toggleSpecialist(id, active);
+            set((state) => ({
+                specialists: state.specialists.map(s => s.id === id ? { ...s, is_active: active } : s),
+            }));
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'toggleSpecialist', e, { id, active });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -155,18 +186,33 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createService: async (data) => {
-        await beautyService.createService(data);
-        await get().loadServices();
+        try {
+            await beautyService.createService(data);
+            await get().loadServices();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createService', e);
+            throw e;
+        }
     },
 
     updateService: async (id, data) => {
-        await beautyService.updateService(id, data);
-        await get().loadServices();
+        try {
+            await beautyService.updateService(id, data);
+            await get().loadServices();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateService', e, { id });
+            throw e;
+        }
     },
 
     deleteService: async (id) => {
-        await beautyService.deleteService(id);
-        set((state) => ({ services: state.services.filter(s => s.id !== id) }));
+        try {
+            await beautyService.deleteService(id);
+            set((state) => ({ services: state.services.filter(s => s.id !== id) }));
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'deleteService', e, { id });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -182,18 +228,33 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createPackage: async (data) => {
-        await beautyService.createPackage(data);
-        await get().loadPackages();
+        try {
+            await beautyService.createPackage(data);
+            await get().loadPackages();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createPackage', e);
+            throw e;
+        }
     },
 
     updatePackage: async (id, data) => {
-        await beautyService.updatePackage(id, data);
-        await get().loadPackages();
+        try {
+            await beautyService.updatePackage(id, data);
+            await get().loadPackages();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updatePackage', e, { id });
+            throw e;
+        }
     },
 
     deletePackage: async (id) => {
-        await beautyService.deletePackage(id);
-        set((state) => ({ packages: state.packages.filter(p => p.id !== id) }));
+        try {
+            await beautyService.deletePackage(id);
+            set((state) => ({ packages: state.packages.filter(p => p.id !== id) }));
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'deletePackage', e, { id });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -212,13 +273,23 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createDevice: async (data) => {
-        await beautyService.createDevice(data);
-        await get().loadDevices();
+        try {
+            await beautyService.createDevice(data);
+            await get().loadDevices();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createDevice', e);
+            throw e;
+        }
     },
 
     updateDevice: async (id, data) => {
-        await beautyService.updateDevice(id, data);
-        await get().loadDevices();
+        try {
+            await beautyService.updateDevice(id, data);
+            await get().loadDevices();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateDevice', e, { id });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -237,19 +308,34 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createLead: async (data) => {
-        await beautyService.createLead(data);
-        await get().loadLeads();
+        try {
+            await beautyService.createLead(data);
+            await get().loadLeads();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createLead', e);
+            throw e;
+        }
     },
 
     updateLead: async (id, data) => {
-        await beautyService.updateLead(id, data);
-        await get().loadLeads();
+        try {
+            await beautyService.updateLead(id, data);
+            await get().loadLeads();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateLead', e, { id });
+            throw e;
+        }
     },
 
     convertLead: async (leadId) => {
-        await beautyService.convertLeadToCustomer(leadId);
-        await get().loadLeads();
-        await get().loadCustomers();
+        try {
+            await beautyService.convertLeadToCustomer(leadId);
+            await get().loadLeads();
+            await get().loadCustomers();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'convertLead', e, { leadId });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------
@@ -268,13 +354,23 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     },
 
     createCustomer: async (data) => {
-        await beautyService.createCustomer(data);
-        await get().loadCustomers();
+        try {
+            await beautyService.createCustomer(data);
+            await get().loadCustomers();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'createCustomer', e);
+            throw e;
+        }
     },
 
     updateCustomer: async (id, data) => {
-        await beautyService.updateCustomer(id, data);
-        await get().loadCustomers();
+        try {
+            await beautyService.updateCustomer(id, data);
+            await get().loadCustomers();
+        } catch (e: any) {
+            logger.crudError('BeautyStore', 'updateCustomer', e, { id });
+            throw e;
+        }
     },
 
     // -------------------------------------------------------------------------

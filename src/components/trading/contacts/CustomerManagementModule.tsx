@@ -8,6 +8,7 @@ import { ContextMenu } from '../../shared/ContextMenu';
 import { useCustomerStore } from '../../../store/useCustomerStore';
 import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface CustomerManagementModuleProps {
   customers: Customer[];
@@ -16,6 +17,7 @@ interface CustomerManagementModuleProps {
 }
 
 export function CustomerManagementModule({ customers, setCustomers, sales }: CustomerManagementModuleProps) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -398,7 +400,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
           items={[
             {
               id: 'view',
-              label: 'Detayları Gör',
+              label: t.viewDetails || 'Detayları Gör',
               icon: Eye,
               onClick: () => {
                 if (contextMenu.customer) handleViewDetails(contextMenu.customer);
@@ -407,7 +409,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             },
             {
               id: 'edit',
-              label: 'Düzenle',
+              label: t.edit || 'Düzenle',
               icon: Edit,
               onClick: () => {
                 if (contextMenu.customer) handleEditCustomer(contextMenu.customer);
@@ -416,7 +418,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             },
             {
               id: 'delete',
-              label: 'Sil',
+              label: t.deleteAction || 'Sil',
               icon: Trash2,
               onClick: () => {
                 if (contextMenu.customer) handleDeleteCustomer(contextMenu.customer.id, contextMenu.customer.name);

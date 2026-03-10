@@ -1,5090 +1,6580 @@
 export type Language = 'tr' | 'en' | 'ar' | 'ku';
 
-export interface Translations {
-  // Header
-  systemTitle: string;
-  customer: string;
-  selectCustomer: string;
-  retailCustomer: string;
-  cashier: string;
-  changeCashier: string;
-  changeLanguage: string;
-  logout: string;
-  back: string;
-  allLabel: string;
-  selected: string;
-
-  // Product Grid
-  searchProducts: string;
-  searchPlaceholder: string;
-  categories: string;
-  allCategories: string;
-
-  // Cart
-  cart: string;
-  emptyCart: string;
-  product: string;
-  quantity: string;
-  price: string;
-  total: string;
-  rowOrder: string;
-  productName: string;
-  action: string;
-  subtotal: string;
-  discount: string;
-  grandTotal: string;
-
-  // Actions
-  add: string;
-  addToCart: string;
-  remove: string;
-  clear: string;
-  save: string;
-  cancel: string;
-  complete: string;
-  payment: string;
-  search: string;
-  close: string;
-
-  // Numpad
-  amount: string;
-  piece: string;
-  delete: string;
-  enter: string;
-
-  // Quick Actions
-  campaign: string;
-  category: string;
-  productQuery: string;
-  stockQuery: string;
-  parkedReceipts: string;
-  salesHistory: string;
-  returnTransaction: string;
-  return: string;
-  recentProducts: string;
-  allProducts: string;
-  scale: string;
-  subtotalAction: string;
-  receiptNote: string;
-  barcode: string;
-  quickProductAdd: string;
-  shiftClick: string;
-  receivePayment: string;
-  sales: string;
-  parkedReceiptsButton: string;
-  parkReceipt: string;
-  cancelReceipt: string;
-  management: string;
-  closeRegister: string;
-  openRegister: string;
-  customerInfo: string;
-  cardNumber: string;
-
-  // Footer
-  receipt: string;
-  store: string;
-  cashRegister: string;
-  shift: string;
-  screenSettings: string;
-  language: string;
-
-  // WebSocket Status
-  wsConnected: string;
-  wsDisconnected: string;
-  wsConnecting: string;
-
-  // MarketPOS & Kasa Operations
-  saleSaveFailed: string;
-  unknownError: string;
-  chCollection: string;
-  chPayment: string;
-  cashIn: string;
-  cashOut: string;
-  bankDeposit: string;
-  bankWithdrawal: string;
-  cashTransfer: string;
-  expenseVoucher: string;
-  selfEmployedReceiptGiven: string;
-  selfEmployedReceiptReceived: string;
-  farmersReceipt: string;
-  openingDebit: string;
-  openingCredit: string;
-  exchangeDifferenceDebit: string;
-  exchangeDifferenceCredit: string;
-  pleaseEnterAmount: string;
-  pleaseSelectCurrentAccount: string;
-  operationSavedSuccessfully: string;
-  operationSaveFailed: string;
-  missingKasaId: string;
-  currentAccountPersonel: string;
-  searchCurrentAccountPlaceholder: string;
-  currentBalance: string;
-  targetKasa: string;
-  bankAccount: string;
-  expenseCodeDescription: string;
-  expenseCodePlaceholder: string;
-  withholdingTaxRate: string;
-  taxRateLabel: string;
-  operationAmount: string;
-  documentNo: string;
-  specialCode: string;
-  placeholderDocumentNo: string;
-  placeholderSpecialCode: string;
-  placeholderDescription: string;
-  saving: string;
-  saveOperation: string;
-  cashOperation: string;
-
-  // Store Info
-  centralStore: string;
-  dayShift: string;
-
-  // Notifications
-  productAdded: string;
-  productRemoved: string;
-  cartCleared: string;
-  stockInventory: string;
+export interface MenuTranslations {
+  accountingManagement: string;
+  accountingVouchers: string;
+  advancedReports100: string;
+  aiProductAnalytics: string;
+  backupRestore: string;
+  balanceSheet: string;
+  bankAccounts: string;
+  bankPaymentPlans: string;
+  bankReports: string;
+  bankSlips: string;
+  banks: string;
+  biDashboardAi: string;
+  brandDefinitions: string;
+  campaignDefinitions: string;
+  cards: string;
+  cashAccounts: string;
+  cashCards: string;
+  cashOperations: string;
+  cashReports: string;
+  cashSlips: string;
+  checkPromissory: string;
+  collectionPayment: string;
+  communicationAndNotifications: string;
+  consignmentSales: string;
+  cost: string;
+  creditCardPosSlips: string;
+  currentAccountReports: string;
+  currentAccountSlips: string;
+  currentAccounts: string;
+  customReports: string;
+  customerAnalysis: string;
+  dashboard: string;
+  dataBroadcast: string;
+  databaseInfrastructure: string;
+  definitions: string;
+  definitionsParameters: string;
+  demoDataManagement: string;
+  designCenter: string;
+  emailCampaigns: string;
+  exSecureGateSecurity: string;
+  excelOperations: string;
+  expenseManagement: string;
+  financeManagement: string;
+  firmPeriodDefinitions: string;
+  generalReport: string;
+  generalSettings: string;
+  graphicalAnalysis: string;
+  groupCodes: string;
+  homepage: string;
+  inOutTotals: string;
+  incomeStatement: string;
+  integrations: string;
+  inventory: string;
   inventoryManagement: string;
+  invoices: string;
+  journalAndSlips: string;
+  labelDesigner: string;
+  logAudit: string;
+  mainMenu: string;
+  masterRecords: string;
+  materialClasses: string;
+  materialExtract: string;
+  materialManagement: string;
+  materialManagementSlips: string;
+  materialValue: string;
+  materialWarehouseStatus: string;
+  materials: string;
+  menuManagement: string;
+  minMaxStock: string;
+  inventoryCountOps: string;
+  mobileCount: string;
+  countDeficitSlips: string;
+  countSurplusSlips: string;
+  movements: string;
+  multiCurrency: string;
+  multiStoreManagement: string;
+  newBadge: string;
+  notificationCenter: string;
+  offers: string;
+  orders: string;
+  other: string;
+  paymentPlans: string;
+  priceAndCampaign: string;
+  productCategories: string;
+  profitabilityAnalyticsDashboard: string;
+  purchaseInvoice: string;
+  purchaseOrders: string;
+  purchaseReturn: string;
+  purchaseWaybill: string;
+  purchasing: string;
+  receivedService: string;
+  regionalFranchiseManagement: string;
+  reports: string;
+  reportsAndAnalysis: string;
+  requestSlips: string;
+  retail: string;
+  retailSales: string;
+  roleAndAuthorization: string;
+  salesInvoice: string;
+  salesInvoices: string;
+  salesOrder: string;
+  salesReports: string;
+  salesReturn: string;
+  salesWaybill: string;
+  scaleAndWeighedSales: string;
+  serviceInvoiceIssued: string;
+  serviceInvoiceReceived: string;
+  serviceInvoices: string;
+  slipList: string;
+  smsManagement: string;
+  specialCodes: string;
+  stockInventory: string;
+  stockManagementPanel: string;
+  stockReports: string;
+  storeConfiguration: string;
+  storeManagement: string;
+  storePanel: string;
+  storeTransfer: string;
+  supplierCards: string;
+  systemHealth: string;
   systemManagement: string;
-  receiptParked: string;
-  saleCompleted: string;
-  error: string;
+  transactionBreakdown: string;
+  trialBalance: string;
+  trialBalanceReport: string;
+  unitSets: string;
+  userManagement: string;
+  variants: string;
+  warehouseTransferWaybill: string;
+  wasteWaybill: string;
+  waybills: string;
+  whatsappIntegration: string;
+  wholesaleSales: string;
+  workflowAutomation: string;
+}
 
-  // Payment Modal
-  paymentTitle: string;
-  discountOptional: string;
-  percentage: string;
-  enterDiscountPercentage: string;
-  enterDiscountAmount: string;
-  paymentSummary: string;
-  subtotalLabel: string;
+export interface SidebarTranslations {
+  clearSearch: string;
+  darkMode: string;
+  dbMenu: string;
+  languageSelection: string;
+  lightMode: string;
+  noResultsFound: string;
+  resultsFound: string;
+  searchPlaceholderFull: string;
+  searchPlaceholderShort: string;
+  staticMenu: string;
+  tryDifferentSearch: string;
+}
+
+export interface Translations {
+  locale: string;
+  transaction: string;
+  welcomeDashboard: string;
+  editQuickAccess: string;
+  weeklySales: string;
+  totalProductsDashboard: string;
+  activeCustomers: string;
+  registeredCustomers: string;
+  stockValueSales: string;
+  profitMarginDashboard: string;
+  paymentMethodsChart: string;
+  topSellingProductsInfo: string;
+  lowStockWarningsItem: string;
+  remainingQty: string;
+  localeCode: string;
+  sidebar: SidebarTranslations;
+  bankDepositDesc: string;
+  bankTransferDesc: string;
+  bankWithdrawalDesc: string;
+  baseCurrency: string;
+  baseCurrencyShort: string;
+  buyRate: string;
+  cashInDesc: string;
+  cashOutDesc: string;
+  chCollectionDesc: string;
+  chPaymentDesc: string;
+  chartsTab: string;
+  createTransaction: string;
+  currenciesTab: string;
+  currencyCode: string;
+  currencyLabel: string;
+  currencyManagement: string;
+  currencyManagementDesc: string;
+  currencyName: string;
+  currencySymbol: string;
+  dailyRatesTab: string;
+  deleteComingSoon: string;
+  editComingSoon: string;
+  enterRate: string;
+  enteredBy: string;
+  exchangeDifferenceCreditDesc: string;
+  exchangeDifferenceDebitDesc: string;
+  expenseVoucherDesc: string;
+  issuedSelfEmployedReceipt: string;
+  issuedSelfEmployedReceiptDesc: string;
+  newCurrency: string;
+  openingCreditDesc: string;
+  openingDebitDesc: string;
+  printComingSoon: string;
+  producerReceipt: string;
+  producerReceiptDesc: string;
+  rateChartsPlaceholder: string;
+  rateHistoryPlaceholder: string;
+  rateHistoryTab: string;
+  receivedSelfEmployedReceipt: string;
+  receivedSelfEmployedReceiptDesc: string;
+  reportingCurrency: string;
+  reportingCurrencyShort: string;
+  safesCode: string;
+  selectDate: string;
+  sellRate: string;
+  updateRates: string;
+  menu: MenuTranslations;
+  abcAnalysis: string;
+  accountAdded: string;
+  accountCode: string;
+  accountDeleteError: string;
+  accountDeleted: string;
+  accountName: string;
+  accountNameRequired: string;
+  accountSummary: string;
+  accountTypeSelection: string;
+  accountUpdated: string;
+  accountsPayable: string;
+  accountsReceivable: string;
+  action: string;
+  actionCenter: string;
+  actionLabel: string;
+  actions: string;
+  activeCustomer: string;
+  add: string;
+  addNewCurrentAccount: string;
+  addPaymentLabel: string;
+  addToCart: string;
+  addToCartButton: string;
+  addedPayments: string;
+  additionalDiscount: string;
+  addressLabel: string;
+  administrator: string;
+  agingAnalysis: string;
+  aiAssistant: string;
+  alertCenter: string;
+  allBtn: string;
+  allButton: string;
+  allCategories: string;
+  allLabel: string;
+  allProducts: string;
+  allSalesButton: string;
+  amount: string;
+  amountInput: string;
+  amountLabel: string;
   amountToPay: string;
-  paymentMethod: string;
-  cashPayment: string;
-  cashPaymentDescription: string;
+  anErrorOccurred: string;
+  apply: string;
+  applyDiscount: string;
+  applyRatioDiscount: string;
+  approved: string;
+  arabic: string;
+  assets: string;
+  assignToSlot: string;
+  autoGenerated: string;
+  automatic: string;
+  available: string;
+  back: string;
+  backToDashboard: string;
+  backToList: string;
+  backup: string;
+  balance: string;
+  balanceLoading: string;
+  bank: string;
+  bankAccount: string;
+  bankDeposit: string;
+  bankTransfer: string;
+  bankWithdrawal: string;
+  banknoteAndCoinCount: string;
+  banknoteCount: string;
+  barcode: string;
+  barcodeLabel: string;
+  barcodeNotFound: string;
+  barcodeNotFoundWarning: string;
+  barcodeSearchPlaceholder: string;
+  branchStockStatus: string;
+  branchStocks: string;
+  branchVariantStocks: string;
+  branchVariants: string;
+  campaign: string;
+  campaignApplied: string;
+  campaignAppliedDescription: string;
+  campaignAutoApplied: string;
+  campaignDiscountLabel: string;
+  campaignDiscountPayment: string;
+  campaignLabel: string;
+  campaignRemoved: string;
+  cancel: string;
+  cancelBtn: string;
+  cancelReasonPlaceholder: string;
+  cancelReceipt: string;
+  cancelReceiptTitle: string;
+  capacityPlanning: string;
+  card: string;
+  cardLabel: string;
+  cardNumber: string;
   cardPayment: string;
   cardPaymentDescription: string;
-  receivedAmount: string;
-  enterReceivedCashAmount: string;
-  fullAmount: string;
-  completePayment: string;
-  campaignDiscountLabel: string;
-  cashLabel: string;
-  cardLabel: string;
-  veresiyeLabel: string;
-  gatewayLabel: string;
-  addPaymentLabel: string;
-  currencyAndRates: string;
-  insufficientPayment: string;
-  processingText: string;
-  qrScanCode: string;
-  qrCustomerInstruction: string;
-  paymentAmount: string;
-  step1: string;
-  step2: string;
-  holdPhoneToQr: string;
-  confirmPaymentText: string;
-  campaignAppliedDescription: string;
-
-  // Language Modal
-  selectLanguage: string;
-  turkish: string;
-  english: string;
-  arabic: string;
-  kurdish: string;
-
-  // Additional Labels
-  campaignApplied: string;
-  campaignRemoved: string;
-  minimumAmountNotMet: string;
-  campaignAutoApplied: string;
-  scanToSearchPlaceholder: string;
-  changeVariant: string;
-  confirmItemDelete: string;
-  yesDelete: string;
-  barcodeSearchPlaceholder: string;
-
-  // New Labels
-  reporting: string;
-  reportingDesc: string;
-  aiAssistant: string;
-  dailyReport: string;
-  zReport: string;
-  periodComparison: string;
-  topSellingProducts: string;
-  categoryAnalysis: string;
-  hourlySalesAnalysis: string;
-  cashierPerformance: string;
-  customerSalesAnalysis: string;
-  salesTrendAnalysis: string;
-  targetVsActual: string;
-  profitLossReport: string;
+  cardSales: string;
+  cards: string;
+  cart: string;
+  cartCleared: string;
+  cartEmpty: string;
+  cash: string;
+  cashBalanced: string;
+  cashClosedSuccessfully: string;
+  cashClosingNotePlaceholder: string;
+  cashCountExample: string;
+  cashCountRequired: string;
+  cashDifference: string;
+  cashDifferenceConfirm: string;
   cashFlowReport: string;
-  debtAgingReport: string;
+  cashFlowStatement: string;
+  cashHandedOver: string;
+  cashHandedOverMessage: string;
+  cashHandoverAccept: string;
+  cashHandoverAvailable: string;
+  cashHandoverCountRequired: string;
+  cashIn: string;
+  cashLabel: string;
+  cashOpenedMessage: string;
+  cashOpenedSuccessfully: string;
+  cashOpeningNotePlaceholder: string;
+  cashOperation: string;
+  cashOut: string;
+  cashPayment: string;
+  cashPaymentDescription: string;
+  cashRegister: string;
+  cashRegisterNumber: string;
+  cashSales: string;
+  cashSlips: string;
+  cashStatus: string;
+  cashTransfer: string;
+  cashier: string;
+  cashier1: string;
+  cashier2: string;
+  cashier3: string;
+  cashierInfo: string;
+  cashierLabel: string;
+  cashierPerformance: string;
+  categories: string;
+  category: string;
+  categoryAnalysis: string;
+  categoryBasedStock: string;
+  categoryLabel: string;
+  centralDataManagementSubtitle: string;
+  centralDataManagementSystem: string;
+  centralStore: string;
+  chCollection: string;
+  chPayment: string;
+  changeAmount: string;
+  changeCashier: string;
+  changeLanguage: string;
+  changeSearchCriteria: string;
+  changeVariant: string;
+  chartOfAccounts: string;
+  checkLabel: string;
   checkTracking: string;
-  accountSummary: string;
-  reportsStockStatus: string; // Renamed to avoid duplicate
-  stockAging: string;
-  stockTurnover: string;
-  stockABC: string;
-  materialMovement: string;
-  expiringProducts: string;
-  paymentMethodDistribution: string;
-  discountReport: string;
-  reportsCashStatus: string; // Renamed to avoid duplicate
-  commissionReport: string;
-  totalRevenueLabel: string;
-  salesDetails: string;
-  receiptNo: string;
-  timeLabel: string;
-  amountLabel: string;
-  paymentLabel: string;
-  addNewCurrentAccount: string;
-  accountTypeSelection: string;
-  reportsCustomerLabel: string; // Renamed to avoid duplicate
-  supplierLabel: string;
-  supplierCode: string;
-  supplierName: string;
-  phoneLabel: string;
-  emailLabel: string;
-  addressLabel: string;
   cityLabel: string;
-  paymentTermDays: string;
+  clear: string;
+  clearBtn: string;
+  clearCart: string;
+  clearCurrentCartFirst: string;
+  clearList: string;
+  clickToChangePrice: string;
+  close: string;
+  closeButton: string;
+  closeCashRegister: string;
+  closeCashRegisterProcess: string;
+  closeEsc: string;
+  closeMonth: string;
+  closePeriod: string;
+  closeRegister: string;
+  closeWindow: string;
+  closedMonths: string;
+  commissionReport: string;
+  complete: string;
+  completePayment: string;
+  confirmBarcode: string;
+  confirmClearLogs: string;
+  confirmDelete: string;
+  confirmDeleteAccount: string;
+  confirmItemDelete: string;
+  confirmMove: string;
+  confirmPaymentText: string;
+  confirmReturn: string;
+  connectionSettings: string;
+  consignment: string;
+  consignmentSalesDesc: string;
+  consignmentSalesTitle: string;
+  consolidatedReports: string;
+  contact: string;
+  continue: string;
+  continueReceipt: string;
+  copied: string;
+  copy: string;
+  corporate: string;
+  corporateTax: string;
+  cost: string;
+  costAnalysis: string;
+  costOfGoodsSold: string;
+  costPrice: string;
+  costValue: string;
+  countEntry: string;
+  countReconciliation: string;
+  countedCashAmount: string;
+  countingControl: string;
+  credit: string;
+  creditCard: string;
   creditLimitLabel: string;
-  taxNumberLabel: string;
-  taxOfficeLabel: string;
-  notesLabel: string;
-  materialCodeName: string;
-  generateReport: string;
-  startDateReport: string;
-  endDateReport: string;
-  noRecordFound: string;
-  unitPriceLabel: string;
-  newSalesOrder: string;
-  orderForm: string;
-  saveOrder: string;
-  pleaseSelectCustomer: string;
-  pleaseAddAtLeastOneProduct: string;
-  orderCreatedSuccessfully: string;
-  orderCreationError: string;
-  newUnitSet: string;
-  actionCenter: string;
-  reportStructureNote: string;
+  criticalLevel: string;
+  criticalStockAlerts: string;
+  crmAutoGenerated: string;
+  crmBalance: string;
+  crmManagementConsole: string;
+  currency: string;
+  currencyAndRates: string;
+  currentAccountPersonel: string;
   currentAccountTitle: string;
   currentAccounts: string;
-  suppliers: string;
-  crmManagementConsole: string;
-  salesCustomerDesc: string;
-  purchaseSupplierDesc: string;
-  saveChanges: string;
-  errorLoadingSuppliers: string;
-  accountUpdated: string;
-  accountAdded: string;
-  saveFailed: string;
-  accountDeleted: string;
-  accountDeleteError: string;
-  totalCurrentAccounts: string;
-  crmAutoGenerated: string;
-  accountNameRequired: string;
-  confirmDeleteAccount: string;
-  contact: string;
-  crmBalance: string;
-  actions: string;
-
-  // Dashboard
-  welcomeSubtitle: string;
-  quickAccess: string;
-  editShortcuts: string;
-  dailySummary: string;
-  todaysSale: string;
-  weeklySale: string;
-  totalProduct: string;
-  activeCustomer: string;
-  registeredCustomer: string;
-  financialSummary: string;
-  stockValueCost: string;
-  stockValueSale: string;
-  potentialProfit: string;
-  dashboardProfitMargin: string;
-  last7DaysSalesTrend: string;
-  dailySalesPerformance: string;
-  paymentMethodsDashboard: string;
+  currentBalance: string;
+  currentStock: string;
+  customer: string;
+  customerChangedMind: string;
+  customerInfo: string;
+  customerLabel: string;
+  customerNotFound: string;
+  customerNotSatisfied: string;
   customerPaymentPreferences: string;
+  customerReports: string;
+  customerSalesAnalysis: string;
+  customerSearchPlaceholder: string;
+  customizeShortcuts: string;
+  dailyReport: string;
+  dailySalesPerformance: string;
+  dailySummary: string;
+  dashboard: string;
+  dashboardProfitMargin: string;
   dashboardTopSellingProducts: string;
-  rankingByRevenue: string;
-  categoryBasedStock: string;
+  dashboardTransaction: string;
+  dataBroadcast: string;
+  dataTransferLabel: string;
+  dataTypeLabel: string;
+  databaseConnection: string;
+  dateLabel: string;
+  dateRange: string;
+  dayShift: string;
+  deactivate: string;
+  debit: string;
+  debtAgingReport: string;
+  defaultCompanyName: string;
+  defaultLocation: string;
+  defaultQuantity: string;
+  definitions: string;
+  delete: string;
+  deleteAction: string;
+  deleteBtn: string;
+  deleteReceipt: string;
+  description: string;
+  designCenter: string;
+  detail: string;
+  detailButton: string;
+  diagnosticsSubtitle: string;
+  differentReceipts: string;
+  digitalProductSaleNotice: string;
+  discount: string;
+  discountAmountPlaceholder: string;
+  discountApplied: string;
+  discountAuthority: string;
+  discountLabel: string;
+  discountOptional: string;
+  discountPercentPlaceholder: string;
+  discountRatioApplied: string;
+  discountReport: string;
+  documentNo: string;
+  donem: string;
+  download: string;
+  edit: string;
+  editInfo: string;
+  editShortcuts: string;
+  emailCampaigns: string;
+  emailLabel: string;
+  emptyCart: string;
+  endDate: string;
+  endDateReport: string;
+  english: string;
+  enter: string;
+  enterAdminPassword: string;
+  enterBarcode: string;
+  enterBtn: string;
+  enterDiscountAmount: string;
+  enterDiscountPercentage: string;
+  enterNewPrice: string;
+  enterReceivedCashAmount: string;
+  enterUsernamePassword: string;
+  entryOperations: string;
+  equipmentMaintenance: string;
+  equity: string;
+  error: string;
+  errorFetchingUsers: string;
+  errorLoadingScreen: string;
+  errorLoadingSuppliers: string;
+  errorMessage: string;
+  excelOperations: string;
+  excess: string;
+  exchangeDifferenceCredit: string;
+  exchangeDifferenceDebit: string;
+  exitOperations: string;
+  expectedCash: string;
+  expenseAnalysis: string;
+  expenseCodeDescription: string;
+  expenseCodePlaceholder: string;
+  expenseVoucher: string;
+  expenses: string;
+  expiringProducts: string;
+  explainCancelReason: string;
+  explainReturnReason: string;
+  factoryResetConfirm: string;
+  farmersReceipt: string;
+  fefoReport: string;
+  financeReports: string;
+  financialStatements: string;
+  financialSummary: string;
+  firmSelection: string;
+  firmSelectionScope: string;
+  firma: string;
+  fiscalPeriod: string;
+  fiscalYear: string;
+  focusBarcodeInput: string;
+  fullAmount: string;
+  gatewayFinishInstructions: string;
+  gatewayLabel: string;
+  gatewayPageOpened: string;
+  generalLedger: string;
+  generalSale: string;
+  generateReport: string;
+  giveUp: string;
+  goBack: string;
+  goodsReceiving: string;
+  grandTotal: string;
+  grid: string;
+  gridView: string;
+  grossProfit: string;
+  grossSales: string;
+  groupCodes: string;
+  handoverAmount: string;
+  handoverFromCashier: string;
+  helpMessage: string;
+  historyMovements: string;
+  holdPhoneToQr: string;
+  homepage: string;
+  hourlySalesAnalysis: string;
+  hrReports: string;
+  hwid: string;
+  import: string;
+  inOutTotals: string;
+  incomeStatement: string;
+  incomeTax: string;
+  incomingTransfer: string;
+  incorrectPassword: string;
+  individual: string;
+  insufficientPayment: string;
+  integrations: string;
+  intercompanyEliminations: string;
+  invalidCredentials: string;
+  invalidPassword: string;
+  inventory: string;
   inventoryDistribution: string;
-  criticalStockAlerts: string;
+  inventoryManagement: string;
+  invoices: string;
+  issuedServiceInvoicesDesc: string;
+  issuedServiceInvoicesTitle: string;
+  itemsCount: string;
+  journalEntries: string;
+  journalEntry: string;
+  keyboardShortcuts: string;
+  keyboardShortcutsTitle: string;
+  kurdish: string;
+  labelDesigner: string;
+  laborTracking: string;
+  language: string;
+  languageChangeInfo: string;
+  languageSelection: string;
+  languageSelectionTitle: string;
+  last24hLabel: string;
+  last7DaysSalesTrend: string;
+  lastPurchase: string;
+  lastReceipt: string;
+  lastReceiptButton: string;
+  layoutOptimization: string;
+  liabilities: string;
+  list: string;
+  listView: string;
+  loading: string;
+  locationTransfer: string;
+  logAudit: string;
+  login: string;
+  loginButton: string;
+  loginError: string;
+  loginFailed: string;
+  logout: string;
+  lotTraceability: string;
+  lotTransfer: string;
+  lowStock: string;
   lowStockWarnings: string;
+  mainMenu: string;
+  management: string;
+  managementModule: string;
+  managementPanelAccess: string;
+  manager: string;
+  manualEntry: string;
+  masterRecords: string;
+  materialClasses: string;
+  materialCodeName: string;
+  materialExtract: string;
+  materialManagement: string;
+  materialManagementSlips: string;
+  materialMovement: string;
+  materialValue: string;
+  materialWarehouseStatus: string;
+  materials: string;
+  maxShortcutsTitle: string;
+  menuManagement: string;
+  minMaxStock: string;
+  minimumAmountNotMet: string;
+  missingBarcodes: string;
+  missingBarcodesTitle: string;
+  missingKasaId: string;
+  mixedPayment: string;
+  moduleInDevelopment: string;
+  moduleLoadError: string;
+  moduleLoadErrorMessage: string;
+  moduleLoadingError: string;
+  modulePreparing: string;
+  moduleUnderDevelopment: string;
+  moveTable: string;
+  movementReport: string;
+  movements: string;
+  multiCurrency: string;
+  multiStoreManagement: string;
+  navigation: string;
+  netIncome: string;
+  netSales: string;
+  networkError: string;
+  newBadge: string;
+  newCustomer: string;
+  newSalesOrder: string;
+  newUnitSet: string;
+  noCriticalStock: string;
+  noCustomerSale: string;
+  noCustomerSaleDescription: string;
+  noLogsYet: string;
+  noLowStock: string;
+  noMissingBarcodes: string;
+  noParkedReceipts: string;
+  noParkedReceiptsDescription: string;
+  noProductsFound: string;
+  noRecordFound: string;
+  noReturnPolicyNotice: string;
+  noSalesFound: string;
+  noSalesHistory: string;
+  noSalesRecordFound: string;
+  noteOptional: string;
+  notesLabel: string;
+  notificationCenter: string;
+  numpad: string;
+  numpadMode: string;
+  numpadModeAdd: string;
+  numpadModeReplace: string;
+  occupancyReport: string;
+  offers: string;
+  online: string;
+  onlineDevicesLabel: string;
+  openAccountWarning: string;
+  openCashRegister: string;
+  openCashRegisterProcess: string;
+  openCashRegisterToAddProduct: string;
+  openCashRegisterToSell: string;
+  openNewPeriod: string;
+  openRegister: string;
+  openingCashAmount: string;
+  openingCashDescription: string;
+  openingCashRegister: string;
+  openingCredit: string;
+  openingDebit: string;
+  operatingExpenses: string;
+  operation: string;
+  operationAmount: string;
+  operationSaveFailed: string;
+  operationSavedSuccessfully: string;
+  orderCreatedSuccessfully: string;
+  orderCreationError: string;
+  orderDiscount: string;
+  orderForm: string;
+  orderNote: string;
+  orderNoteDescription: string;
+  orderNotePlaceholder: string;
+  orderRecommended: string;
+  orders: string;
+  other: string;
+  otherReason: string;
+  outOfStock: string;
+  outgoingTransfer: string;
+  pageRange: string;
+  paidAmount: string;
+  parkReceipt: string;
+  parkedAt: string;
+  parkedBy: string;
+  parkedReceiptDeleted: string;
+  parkedReceiptRetrieved: string;
+  parkedReceipts: string;
+  parkedReceiptsButton: string;
+  parkedReceiptsTitle: string;
+  password: string;
+  payment: string;
+  paymentAmount: string;
+  paymentAmountLabel: string;
+  paymentCardPOS: string;
+  paymentCash: string;
+  paymentCredit: string;
+  paymentFailed: string;
+  paymentInfo: string;
+  paymentLabel: string;
+  paymentMethod: string;
+  paymentMethodDistribution: string;
+  paymentMethodLabel: string;
+  paymentMethods: string;
+  paymentMethodsDashboard: string;
+  paymentNotesPlaceholder: string;
+  paymentPlans: string;
+  paymentProvider: string;
+  paymentQRProvider: string;
+  paymentStartError: string;
+  paymentSummary: string;
+  paymentTermDays: string;
+  paymentTitle: string;
+  payments: string;
+  pcs: string;
+  pending: string;
+  pendingBroadcastsLabel: string;
+  percentage: string;
+  performanceDashboard: string;
+  periodClosed: string;
+  periodComparison: string;
+  periodManagement: string;
+  periodOpen: string;
+  phoneAddress: string;
+  phoneLabel: string;
+  piece: string;
+  pieces: string;
+  placeholderDescription: string;
+  placeholderDocumentNo: string;
+  placeholderSpecialCode: string;
+  planningOptimization: string;
+  pleaseAddAtLeastOneProduct: string;
+  pleaseEnterAmount: string;
+  pleaseEnterBarcode: string;
+  pleaseEnterBarcodeFirst: string;
+  pleaseEnterFirmId: string;
+  pleaseEnterQuantityFirst: string;
+  pleaseExplainCancelReason: string;
+  pleaseExplainReturnReason: string;
+  pleaseSelectCancelReason: string;
+  pleaseSelectCurrentAccount: string;
+  pleaseSelectCustomer: string;
+  pleaseSelectReceipt: string;
+  pleaseSelectReturnProducts: string;
+  pleaseSelectReturnReason: string;
+  pleaseSelectVariant: string;
+  pos: string;
+  posModule: string;
+  posPaymentDesc: string;
+  posted: string;
+  potentialProfit: string;
+  preparingModule: string;
+  price: string;
+  priceAndCampaign: string;
+  priceInfo: string;
+  priceLabel: string;
+  priceProblem: string;
+  pricingInfo: string;
+  print: string;
+  printReceipt: string;
+  printReport: string;
+  processingText: string;
+  product: string;
+  productAdded: string;
+  productAddedToCart: string;
+  productAssignedToSlot: string;
+  productBased: string;
+  productCatalog: string;
+  productCategories: string;
+  productCount: string;
+  productDefective: string;
+  productDetails: string;
+  productInfo: string;
+  productLabel: string;
+  productName: string;
+  productQuery: string;
+  productRemoved: string;
+  productRemovedFromCart: string;
+  productSearch: string;
+  productSelection: string;
+  productionIssue: string;
+  productionReceiving: string;
   productsAtCriticalLevel: string;
   productsAtLowLevel: string;
-  remaining: string;
-  urgentOrder: string;
-  orderRecommended: string;
-  noCriticalStock: string;
-  noLowStock: string;
-  customizeShortcuts: string;
-  maxShortcutsTitle: string;
-  shortcutsSelected: string;
-  selectAtLeastOneShortcut: string;
-  saveShortcutsError: string;
-  dashboardTransaction: string;
-  stockLabel: string;
-  print: string;
-  download: string;
-  currency: string;
-
-  // Payment Modal Extended
-  paymentCash: string;
-  paymentCardPOS: string;
-  paymentCredit: string;
-  paymentQRProvider: string;
-  campaignDiscountPayment: string;
-  additionalDiscount: string;
-  subtotalUppercase: string;
-  totalUppercase: string;
-  paidAmount: string;
-  remainingAmount: string;
-  changeAmount: string;
-  addedPayments: string;
-  amountInput: string;
-  paymentStartError: string;
-  posPaymentDesc: string;
-  scanQRCode: string;
+  productsCount: string;
+  productsLabel: string;
+  productsToReturn: string;
+  profitLoss: string;
+  profitLossReport: string;
+  profitMargin: string;
+  profitabilityAnalyticsDashboard: string;
+  promissoryNote: string;
+  purchase: string;
+  purchaseInvoice: string;
+  purchaseInvoicesDesc: string;
+  purchaseInvoicesTitle: string;
+  purchaseOrders: string;
+  purchaseReturn: string;
+  purchaseReturnDesc: string;
+  purchaseReturnTitle: string;
+  purchaseSupplierDesc: string;
+  purchaseWaybill: string;
+  purchases: string;
+  purchasing: string;
+  qrCustomerInstruction: string;
   qrInstructions: string;
-  paymentAmountLabel: string;
+  qrScanCode: string;
   qrStep1: string;
   qrStep1Desc: string;
   qrStep2: string;
   qrStep2Desc: string;
-  discountPercentPlaceholder: string;
-  discountAmountPlaceholder: string;
-  paymentMethodLabel: string;
-  balanceLoading: string;
-  serviceTopUp: string;
-  transactionNumberLabel: string;
-  digitalProductSaleNotice: string;
-  noReturnPolicyNotice: string;
-  smsNotificationSent: string;
-  receiptDataError: string;
-  paymentInfo: string;
-  openAccountWarning: string;
-  paymentNotesPlaceholder: string;
-  checkLabel: string;
-  promissoryNote: string;
-  tagline: string;
-  systemAdmin: string;
-  campaignLabel: string;
-  defaultLocation: string;
-  defaultCompanyName: string;
-  thanksForChoosingUs: string;
-  receiptRequiredForReturns: string;
-  bankTransfer: string;
-  mixedPayment: string;
-  rowDiscount: string;
-  paymentProvider: string;
-  numpadMode: string;
-  numpadModeAdd: string;
-  numpadModeReplace: string;
-  gatewayPageOpened: string;
-  gatewayFinishInstructions: string;
-
-  // Advanced Reports Category Names
-  salesReports: string;
-  stockReports: string;
-  financeReports: string;
-  customerReports: string;
-  hrReports: string;
-  customReports: string;
-  reportCountLabel: string;
-
-
-  // Customer Modal
-  selectCustomerTitle: string;
-  customerSearchPlaceholder: string;
-  noCustomerSale: string;
-  noCustomerSaleDescription: string;
-  customerNotFound: string;
-  newCustomer: string;
-  individual: string;
-  corporate: string;
-  totalPurchases: string;
-  lastPurchase: string;
-
-  // Staff Modal
-  selectStaffTitle: string;
-  cashier1: string;
-  cashier2: string;
-  cashier3: string;
-  manager: string;
-  discountAuthority: string;
-  errorFetchingUsers: string;
-  welcome: string;
-  invalidPassword: string;
-  loginError: string;
-  login: string;
-
-  // MarketPOS
-  phoneAddress: string;
-  totalItems: string;
-  applyDiscount: string;
-  deleteBtn: string;
-  cancelBtn: string;
-  pieces: string;
-  priceLabel: string;
-  clearBtn: string;
-  enterBtn: string;
-  productCount: string;
-  totalPieces: string;
-  pcs: string;
-  searchBtn: string;
-
-  // Login Screen (Consolidated)
-  storeSelection: string;
-  username: string;
-  usernamePlaceholder: string;
-  password: string;
-  connectionSettings: string;
-  loginButton: string;
-
-  // Campaign Modal
-  selectCampaign: string;
-  totalCampaigns: string;
-  closeEsc: string;
-
-  // Bottom Bar
-  subtotalText: string;
-  totalText: string;
-  cashierLabel: string;
-
-  // Parked Receipts Modal
-  parkedReceiptsTitle: string;
-  noParkedReceipts: string;
-  noParkedReceiptsDescription: string;
-  parkedAt: string;
-  parkedBy: string;
-  customerLabel: string;
-  itemsCount: string;
-  continueReceipt: string;
-  deleteReceipt: string;
-  confirmDelete: string;
-
-  // Stock Query Modal
-  productCatalog: string;
-  productsCount: string;
-  searchProductPlaceholder: string;
-  gridView: string;
-  listView: string;
-  noProductsFound: string;
-  changeSearchCriteria: string;
-  productDetails: string;
-  barcodeLabel: string;
-  stockStatus: string;
-  currentStock: string;
-  unitLabel: string;
-  outOfStock: string;
-  criticalLevel: string;
-  lowStock: string;
-  sufficientStock: string;
-  priceInfo: string;
-  salePrice: string;
-  costPrice: string;
-  profitMargin: string;
-  stockValue: string;
-  costValue: string;
-  saleValue: string;
-  branchVariants: string;
-  branchStocks: string;
-  totalAllBranches: string;
-  productLabel: string;
-  categoryLabel: string;
-  actionLabel: string;
-  detailButton: string;
-  addToCartButton: string;
-
-  // Stock Query Specific
-  grid: string;
-  list: string;
-  operation: string;
-  unit: string;
-  pricingInfo: string;
-  cost: string;
-  branchVariantStocks: string;
-
-  // Return Modal
-  returnCancelTitle: string;
-  searchReceiptPlaceholder: string;
-  noSalesFound: string;
-  selectReceiptForReturn: string;
-  returnProducts: string;
-  salesQuantity: string;
-  returnQuantity: string;
-  allButton: string;
-  returnReason: string;
-  returnReasonPlaceholder: string;
-  returnAmount: string;
-  confirmReturn: string;
-  productDefective: string;
-  customerNotSatisfied: string;
-  wrongProduct: string;
-  sizeColorChange: string;
-  otherReason: string;
-  generalSale: string;
-  receiptBased: string;
-  productBased: string;
-  searchProductByName: string;
-  productsToReturn: string;
-  selectedProducts: string;
-  saleQuantity: string;
-  unitPrice: string;
-  allBtn: string;
-  explainReturnReason: string;
-  selectProductForReturn: string;
-  totalSale: string;
-  differentReceipts: string;
-  pleaseSelectReceipt: string;
-  pleaseSelectReturnProducts: string;
-  pleaseSelectReturnReason: string;
-  pleaseExplainReturnReason: string;
-
-  // Sales History Modal
-  salesHistoryTitle: string;
-  allSalesButton: string;
-  todayButton: string;
-  sevenDaysButton: string;
-  thirtyDaysButton: string;
-  noSalesHistory: string;
-  salesWillAppearHere: string;
-  cashierInfo: string;
-  productsLabel: string;
-  dateLabel: string;
-  salesCount: string;
-  totalSales: string;
-  receiptNumberOrCustomerSearch: string;
-  dateRange: string;
-  startDate: string;
-  endDate: string;
-  noSalesRecordFound: string;
-  cash: string;
-  card: string;
-  other: string;
-  viewDetails: string;
-  printReceipt: string;
-  backToList: string;
-  receiptDetails: string;
-  lastReceipt: string;
-  totalSalesCount: string;
-  closeButton: string;
-
-  // Language Selection Modal
-  languageSelectionTitle: string;
-  languageChangeInfo: string;
-  textDirection: string;
-  textDirectionOptional: string;
-
-  // Keyboard Shortcuts
-  keyboardShortcuts: string;
-  pos: string;
-  quick: string;
-  navigation: string;
-  productSearch: string;
-  quickPayment: string;
-  focusBarcodeInput: string;
-  confirmBarcode: string;
-  clearCart: string;
-  openCashRegister: string;
-  closeCashRegister: string;
-
-  // Advanced Search
-  voiceSearch: string;
-  results: string;
-  searching: string;
-
-  // Accounting & Finance
-  selectFirma: string;
-  selectDonem: string;
-  periodOpen: string;
-  periodClosed: string;
-  closedMonths: string;
-  firma: string;
-  donem: string;
-  journalEntry: string;
-  journalEntries: string;
-  debit: string;
-  credit: string;
-  balance: string;
-  trialBalance: string;
-  accountCode: string;
-  accountName: string;
-  fiscalPeriod: string;
-  fiscalYear: string;
-  periodManagement: string;
-  closeMonth: string;
-  closePeriod: string;
-  openNewPeriod: string;
-  balanceSheet: string;
-  incomeStatement: string;
-  cashFlowStatement: string;
-  financialStatements: string;
-  profitLoss: string;
-  assets: string;
-  liabilities: string;
-  equity: string;
-  revenue: string;
-  expenses: string;
-  netIncome: string;
-  grossProfit: string;
-  operatingExpenses: string;
-  expenseAnalysis: string;
-  tax: string;
-  taxRate: string;
-  corporateTax: string;
-  incomeTax: string;
-  withholdingTax: string;
-  taxReport: string;
-  chartOfAccounts: string;
-  generalLedger: string;
-  subsidiary: string;
-  consolidatedReports: string;
-  intercompanyEliminations: string;
-  costOfGoodsSold: string;
-  inventory: string;
-  accountsReceivable: string;
-  accountsPayable: string;
-  bank: string;
-  purchases: string;
-  transfers: string;
-  receipts: string;
-  payments: string;
-  voucher: string;
-  voucherNo: string;
-  voucherType: string;
-  voucherDate: string;
-  description: string;
-  autoGenerated: string;
-  manualEntry: string;
-  approved: string;
-  pending: string;
-  rejected: string;
-  posted: string;
-  reversed: string;
-
-  // MarketPOS Additional
+  quantity: string;
   quantitySaved: string;
-  quantitySavedMessage: string;
-  pleaseEnterBarcode: string;
-  pleaseEnterQuantityFirst: string;
-  pleaseSelectVariant: string;
-  barcodeNotFound: string;
-  pleaseEnterBarcodeFirst: string;
-  openCashRegisterToAddProduct: string;
-  productAddedToCart: string;
-  productRemovedFromCart: string;
-  variantChanged: string;
-  receiptCancelled: string;
-  cartEmpty: string;
-  clearCurrentCartFirst: string;
-  parkedReceiptRetrieved: string;
-  parkedReceiptDeleted: string;
-  openCashRegisterToSell: string;
-  discountApplied: string;
   quantitySavedBarcodeEnter: string;
-  enterBarcode: string;
-  automatic: string;
-  discountLabel: string;
-  keyboardShortcutsTitle: string;
-  shortcuts: string;
-  returnCompleted: string;
-  productAssignedToSlot: string;
-  cashHandedOver: string;
-  cashHandedOverMessage: string;
-  cashOpenedSuccessfully: string;
-  cashOpenedMessage: string;
-  defaultQuantity: string;
-  zeroPlaceholder: string;
-  pageRange: string;
-  missingBarcodes: string;
-  missingBarcodesTitle: string;
-  clearList: string;
-  noMissingBarcodes: string;
-  barcodeNotFoundWarning: string;
-  cashRegisterNumber: string;
-  version: string;
-  versionTitle: string;
-  lastReceiptButton: string;
-  systemAdministrator: string;
-  administrator: string;
+  quantitySavedMessage: string;
+  quick: string;
+  quickAccess: string;
+  quickPayment: string;
+  quickProductAdd: string;
   quickProductPageSelect: string;
-  enterNewPrice: string;
-  clickToChangePrice: string;
-
-  // Product Detail Modal
-  productInfo: string;
-  recentMovements: string;
-  branchStockStatus: string;
-  reserved: string;
-  available: string;
-  totalStock: string;
-  incomingTransfer: string;
-  outgoingTransfer: string;
-  purchase: string;
-
-
-  // Product Catalog Modal
-  searchProductBarcodeCategory: string;
-  detail: string;
-  selectVariant: string;
-  assignToSlot: string;
-  variantAvailable: string;
-  stock: string;
-  selectVariantLabel: string;
-  productSelection: string;
   quickProductSlot: string;
-
-
-
-  // Open Cash Register Modal
-  openCashRegisterProcess: string;
-  cashHandoverAccept: string;
-  numpad: string;
-  cashHandoverAvailable: string;
-  handoverFromCashier: string;
-  handoverAmount: string;
-  sessionInformation: string;
-  banknoteCount: string;
-  openingCashAmount: string;
-  banknoteAndCoinCount: string;
-  totalLabel: string;
-  openingCashRegister: string;
-  openingCashDescription: string;
-  noteOptional: string;
-  cashOpeningNotePlaceholder: string;
-  zeroOpeningCashConfirm: string;
-
-  // Close Cash Register Modal
-  closeCashRegisterProcess: string;
-  salesSummary: string;
-  grossSales: string;
-  returnTotal: string;
-  netSales: string;
-  paymentMethods: string;
-  cashSales: string;
-  creditCard: string;
-  totalCollection: string;
-  cashStatus: string;
-  cardSales: string;
-  expectedCash: string;
-  countedCashAmount: string;
-  cashCountExample: string;
-  cashDifference: string;
-  cashBalanced: string;
-  excess: string;
-  shortage: string;
-  cashClosingNotePlaceholder: string;
-  printReport: string;
-  transferToOtherCashier: string;
-  cashCountRequired: string;
-  cashDifferenceConfirm: string;
-  cashClosedSuccessfully: string;
-  cashHandoverCountRequired: string;
-  sessionDay: string;
-  session: string;
-
-  // Cancel Receipt Modal
-  cancelReceiptTitle: string;
-  customerChangedMind: string;
-  wrongProductAdded: string;
-  priceProblem: string;
-  paymentFailed: string;
-  systemError: string;
-  explainCancelReason: string;
-  cancelReasonPlaceholder: string;
-  pleaseSelectCancelReason: string;
-  pleaseExplainCancelReason: string;
-  giveUp: string;
-  // Error Boundary
-  anErrorOccurred: string;
-  unexpectedErrorEncountered: string;
-  errorMessage: string;
-  technicalDetails: string;
-  technicalDetailsForDevelopers: string;
+  rankingByRevenue: string;
+  receipt: string;
+  receiptBased: string;
+  receiptCancelled: string;
+  receiptDataError: string;
+  receiptDetails: string;
+  receiptNo: string;
+  receiptNote: string;
+  receiptNumberOrCustomerSearch: string;
+  receiptParked: string;
+  receiptRequiredForReturns: string;
+  receipts: string;
+  receivePayment: string;
+  receivedAmount: string;
+  receivedService: string;
+  receivedServiceInvoicesDesc: string;
+  receivedServiceInvoicesTitle: string;
+  recentMovements: string;
+  recentProducts: string;
   refreshPage: string;
-  goBack: string;
-  helpMessage: string;
-
-  // Main Layout
-  posModule: string;
-  managementModule: string;
-  wmsModule: string;
-  setDateTime: string;
-  requiresAdminPassword: string;
-  enterAdminPassword: string;
-  managementPanelAccess: string;
-  incorrectPassword: string;
-
-  // Central Data Management
-  centralDataManagementSystem: string;
-  centralDataManagementSubtitle: string;
-  backup: string;
-  import: string;
-  sending: string;
-  sendNow: string;
-  totalDevicesLabel: string;
-  onlineDevicesLabel: string;
-  pendingBroadcastsLabel: string;
-  scheduledBroadcastsLabel: string;
-  successRateLabel: string;
-  last24hLabel: string;
-  dataTransferLabel: string;
-  sendDataTab: string;
-  dataTypeLabel: string;
-
-  // Login & System
-  supportCenter: string;
-  hwid: string;
-  copy: string;
-  copied: string;
-  status: string;
-  online: string;
-  waiting: string;
-  startSupport: string;
-  closeWindow: string;
-  systemLogsTitle: string;
-  diagnosticsSubtitle: string;
-  noLogsYet: string;
-  totalEntries: string;
-  enterUsernamePassword: string;
-  step01Auth: string;
-  step02Scope: string;
+  regionalFranchiseManagement: string;
+  registeredCustomer: string;
+  rejected: string;
+  remaining: string;
+  remainingAmount: string;
   rememberMe: string;
-  firmSelectionScope: string;
-  storeSelectionScope: string;
-  selectFirmPrompt: string;
-  editInfo: string;
-  verifying: string;
-  continue: string;
-  systemLogin: string;
-  invalidCredentials: string;
-  loginFailed: string;
-  networkError: string;
-  systemLogs: string;
-  factoryResetConfirm: string;
-  resetFailed: string;
-  selectSystemLanguage: string;
   remoteSupportRequestSent: string;
   remoteSupportWarning: string;
-  confirmClearLogs: string;
-  logAudit: string;
-  systemHealth: string;
-
-
-  // Menu translations
-  menu: {
-    [key: string]: string; // Allow all menu keys dynamically
-    stockInventory: string;
-    inventoryManagement: string;
-  };
-  // Restaurant Specific
-  transferAllItems: string;
-  selectTargetTable: string;
-  tableOccupied: string;
-  moveTable: string;
-  confirmMove: string;
-  orderNote: string;
-  specialRequests: string;
-  orderNoteDescription: string;
-  orderNotePlaceholder: string;
-  orderDiscount: string;
-  applyRatioDiscount: string;
-  discountRatioApplied: string;
-  apply: string;
+  remove: string;
+  reportCountLabel: string;
+  reportStructureNote: string;
+  reporting: string;
+  reportingAnalysis: string;
+  reportingDesc: string;
+  reports: string;
+  reportsAndAnalysis: string;
+  reportsCashStatus: string;
+  reportsCustomerLabel: string;
+  reportsStockStatus: string;
+  requestSlips: string;
+  requiresAdminPassword: string;
+  reserved: string;
   reset: string;
+  resetFailed: string;
+  results: string;
+  retail: string;
+  retailCustomer: string;
+  retailSales: string;
+  retailSalesDesc: string;
+  retailSalesTitle: string;
+  return: string;
+  returnAmount: string;
+  returnCancelTitle: string;
+  returnCompleted: string;
+  returnProducts: string;
+  returnQuantity: string;
+  returnReason: string;
+  returnReasonPlaceholder: string;
+  returnReceiving: string;
+  returnToDashboard: string;
+  returnTotal: string;
+  returnTransaction: string;
+  revenue: string;
+  reversed: string;
+  roleAndAuthorization: string;
+  routeOptimization: string;
+  rowDiscount: string;
+  rowOrder: string;
+  saleCompleted: string;
+  salePrice: string;
+  saleQuantity: string;
+  saleSaveFailed: string;
+  saleValue: string;
+  sales: string;
+  salesCount: string;
+  salesCustomerDesc: string;
+  salesDetails: string;
+  salesHistory: string;
+  salesHistoryTitle: string;
+  salesInvoice: string;
+  salesInvoices: string;
+  salesInvoicesDesc: string;
+  salesInvoicesTitle: string;
+  salesOrder: string;
+  salesQuantity: string;
+  salesReports: string;
+  salesReturn: string;
+  salesReturnDesc: string;
+  salesReturnTitle: string;
+  salesSummary: string;
+  salesTrendAnalysis: string;
+  salesWaybill: string;
+  salesWillAppearHere: string;
+  saveAndTestConnection: string;
+  saveChanges: string;
+  saveFailed: string;
+  saveOperation: string;
+  saveOrder: string;
+  saveShortcutsError: string;
+  saving: string;
+  scale: string;
+  scaleAndWeighedSales: string;
+  scanQRCode: string;
+  scanToSearchPlaceholder: string;
+  scheduledBroadcastsLabel: string;
+  screenSettings: string;
+  search: string;
+  searchBtn: string;
+  searchCurrentAccountPlaceholder: string;
+  searchProductBarcodeCategory: string;
+  searchProductByName: string;
+  searchProductPlaceholder: string;
+  searchProducts: string;
+  searchReceiptPlaceholder: string;
+  searching: string;
+  selectAtLeastOneShortcut: string;
+  selectCampaign: string;
+  selectCustomer: string;
+  selectCustomerTitle: string;
+  selectDonem: string;
+  selectFirmPrompt: string;
+  selectFirma: string;
+  selectLanguage: string;
+  selectProductForReturn: string;
+  selectReceiptForReturn: string;
+  selectStaffTitle: string;
+  selectSystemLanguage: string;
+  selectTargetTable: string;
+  selectVariant: string;
+  selectVariantLabel: string;
+  selected: string;
+  selectedProducts: string;
+  selfEmployedReceiptGiven: string;
+  selfEmployedReceiptReceived: string;
+  sendDataTab: string;
+  sendNow: string;
+  sending: string;
+  serviceInvoiceIssued: string;
+  serviceInvoiceReceived: string;
+  serviceInvoices: string;
+  serviceInvoicesDesc: string;
+  serviceInvoicesTitle: string;
+  serviceTopUp: string;
+  session: string;
+  sessionDay: string;
+  sessionInformation: string;
+  setDateTime: string;
+  sevenDaysButton: string;
+  shift: string;
+  shiftClick: string;
+  shipmentLoading: string;
+  shipmentPrep: string;
+  shortage: string;
+  shortcuts: string;
+  shortcutsSelected: string;
+  sizeColorChange: string;
+  slipList: string;
+  smsManagement: string;
+  smsNotificationSent: string;
+  specialCode: string;
+  specialCodes: string;
+  specialRequests: string;
+  startDate: string;
+  startDateReport: string;
+  startSupport: string;
+  step01Auth: string;
+  step02Scope: string;
+  step1: string;
+  step2: string;
+  stock: string;
+  stockABC: string;
+  stockAging: string;
+  stockCount: string;
+  stockInventory: string;
+  stockLabel: string;
+  stockQuery: string;
+  stockReports: string;
+  stockStatus: string;
+  stockStatusReport: string;
+  stockTurnover: string;
+  stockValue: string;
+  stockValueCost: string;
+  stockValueSale: string;
+  store: string;
+  storeConfiguration: string;
+  storeManagement: string;
+  storePanel: string;
+  storeSelection: string;
+  storeSelectionScope: string;
+  storeTransfer: string;
+  subsidiary: string;
+  subtotal: string;
+  subtotalAction: string;
+  subtotalLabel: string;
+  subtotalText: string;
+  subtotalUppercase: string;
+  successRateLabel: string;
+  sufficientStock: string;
+  supplierCode: string;
+  supplierLabel: string;
+  supplierName: string;
+  suppliers: string;
+  supportCenter: string;
+  systemAdmin: string;
+  systemAdministrator: string;
+  systemError: string;
+  systemHealth: string;
+  systemLogin: string;
+  systemLogs: string;
+  systemLogsTitle: string;
+  systemManagement: string;
+  systemTitle: string;
+  tableOccupied: string;
+  tagline: string;
+  targetKasa: string;
+  targetVsActual: string;
+  taskManagement: string;
+  tax: string;
+  taxNumberLabel: string;
+  taxOfficeLabel: string;
+  taxRate: string;
+  taxRateLabel: string;
+  taxReport: string;
+  technicalDetails: string;
+  technicalDetailsForDevelopers: string;
+  testPasswordHint: string;
+  textDirection: string;
+  textDirectionOptional: string;
+  thanksForChoosingUs: string;
+  thirtyDaysButton: string;
+  timeLabel: string;
+  todayButton: string;
+  todaysSale: string;
+  topSellingProducts: string;
+  total: string;
+  totalAllBranches: string;
+  totalCampaigns: string;
+  totalCollection: string;
+  totalCurrentAccounts: string;
+  totalDevicesLabel: string;
+  totalEntries: string;
+  totalItems: string;
+  totalLabel: string;
+  totalPieces: string;
+  totalProduct: string;
+  totalPurchases: string;
+  totalRevenueLabel: string;
+  totalSale: string;
+  totalSales: string;
+  totalSalesCount: string;
+  totalStock: string;
+  totalText: string;
+  transactionBreakdown: string;
+  transactionNumberLabel: string;
+  transferAllItems: string;
+  transferMovement: string;
+  transferToOtherCashier: string;
+  transfers: string;
+  trialBalance: string;
+  turkish: string;
+  unexpectedErrorEncountered: string;
+  unit: string;
+  unitLabel: string;
+  unitPrice: string;
+  unitPriceLabel: string;
+  unitSets: string;
+  unknownError: string;
+  urgentOrder: string;
+  userManagement: string;
+  username: string;
+  usernamePlaceholder: string;
+  variantAvailable: string;
+  variantChanged: string;
+  variants: string;
+  veresiyeLabel: string;
+  verifying: string;
+  version: string;
+  versionTitle: string;
+  viewDetails: string;
+  voiceSearch: string;
+  voucher: string;
+  voucherDate: string;
+  voucherNo: string;
+  voucherType: string;
+  waiting: string;
+  warehouseTransfer: string;
+  warehouseTransferWaybill: string;
+  wasteWaybill: string;
+  waybills: string;
+  weeklySale: string;
+  welcome: string;
+  welcomeSubtitle: string;
+  whatsappIntegration: string;
+  wholesaleSales: string;
+  wholesaleSalesDesc: string;
+  wholesaleSalesTitle: string;
+  withholdingTax: string;
+  withholdingTaxRate: string;
+  wmsModule: string;
+  wrongProduct: string;
+  wrongProductAdded: string;
+  wsConnected: string;
+  wsConnecting: string;
+  wsDisconnected: string;
+  yesDelete: string;
+  zReport: string;
+  zeroOpeningCashConfirm: string;
+  zeroPlaceholder: string;
+  unitAndMultiplierMgmt: string;
+  editUnitSet: string;
+  newUnitSetTitle: string;
+  unitDefinitions: string;
+  unitCodeLabel: string;
+  unitNameLabel: string;
+  multiplier1: string;
+  multiplier2: string;
+  howCalculated: string;
+  multiplierLogicDesc: string;
+  mainUnitLabel: string;
+  searchUnitSetPlaceholder: string;
+  unitSetName: string;
+  unitSetUpdated: string;
+  unitSetCreated: string;
+  unitSetDeleted: string;
+  confirmDeleteUnitSet: string;
+  codeAndNameRequired: string;
+  atLeastOneUnit: string;
+  mainUnitRequired: string;
+  mainUnitCannotDelete: string;
+  restCategory: string;
+  icon: string;
+  definitionCode: string;
+  definitionName: string;
+  definitionDescription: string;
+  brandDefDesc: string;
+  groupCodeDesc: string;
+  productCatDesc: string;
+  materialClassDesc: string;
+  warehouseDefDesc: string;
+  variantDefDesc: string;
+  specialCodeDesc: string;
+  supplierDefDesc: string;
+  barcodeDefDesc: string;
+  serialLotDefDesc: string;
+  scaleDefDesc: string;
+  activeStatus: string;
+  passiveStatus: string;
+  productManagement: string;
+  productCards: string;
+  refreshStocks: string;
+  loadingData: string;
+  searchInside: string;
+  confirmDeleteRecord: string;
+  update: string;
+  atLeastOneShortcut: string;
+  noCriticalStockInfo: string;
+  noLowStockWarning: string;
+  materialExtractReport: string;
+  materialCodeOrName: string;
+  selectMaterialPlaceholder: string;
+  prepareReport: string;
+  dateRangeLabel: string;
+  localCurrencyUnit: string;
+  ficheType: string;
+  ficheNo: string;
+  inOutQty: string;
+  runningQuantity: string;
+  noRecordsFound: string;
+  consumption: string;
+  productionEntry: string;
+  warehouseReceipt: string;
+  otherType: string;
+  materialValueReport: string;
+  totalInventoryValue: string;
+  inventoryList: string;
+  costAndProfitAnalysis: string;
+  salesRevenue: string;
+  soldQuantity: string;
+  cogs: string;
+  totalRevenue: string;
+  invoicesCount: string;
+  newInvoice: string;
+  allInvoiceTypes: string;
+  wastageWaybill: string;
+  purchaseOrder: string;
+  salesQuote: string;
+  purchaseQuote: string;
+  consignmentSale: string;
+  invoiceNo: string;
+  customerSupplier: string;
+  loadingInvoices: string;
+  confirmDeleteInvoice: string;
+  invoiceDeleteSuccess: string;
+  invoiceDeleteError: string;
+  allStatuses: string;
+  serviceGiven: string;
+  serviceReceived: string;
+  invoiceType: string;
+  loadingInvoicesCount: string;
 }
 
 export const translations: any = {
   tr: {
-    // Header
-    systemTitle: 'RestPOS ERP',
-    customer: 'Müşteri',
-    selectCustomer: 'Müşteri Seç',
-    retailCustomer: 'Perakende Müşteri',
+    chCollectionDesc: 'Cari hesaptan tahsilat',
+    chPaymentDesc: 'Cari hesaba ödeme',
+    cashInDesc: 'Kasaya nakit girişi',
+    cashOutDesc: 'Kasadan nakit çıkışı',
+    bankDepositDesc: 'Kasadan bankaya yatan',
+    bankWithdrawalDesc: 'Bankadan kasaya çekilen',
+    bankTransferDesc: 'Kasalar arası virman',
+    expenseVoucherDesc: 'Gider pusulası',
+    issuedSelfEmployedReceipt: 'Verilen Serbest Meslek Makbuzu',
+    issuedSelfEmployedReceiptDesc: 'Serbest meslek makbuzu (verilen)',
+    receivedSelfEmployedReceipt: 'Alınan Serbest Meslek Makbuzu',
+    receivedSelfEmployedReceiptDesc: 'Serbest meslek makbuzu (alınan)',
+    producerReceipt: 'Müstahsil Makbuzu',
+    producerReceiptDesc: 'Müstahsil makbuzu',
+    openingDebitDesc: 'Açılış fişi (borç)',
+    openingCreditDesc: 'Açılış fişi (alacak)',
+    exchangeDifferenceDebitDesc: 'Kur farkı fişi (borç)',
+    exchangeDifferenceCreditDesc: 'Kur farkı fişi (alacak)',
+    createTransaction: 'İşlem Oluştur',
+    abcAnalysis: 'ABC Analizi',
+    accountAdded: 'Cari hesap eklendi',
+    accountCode: 'Hesap Kodu',
+    accountDeleteError: 'Cari hesap silinemedi',
+    accountDeleted: 'Cari hesap silindi',
+    accountName: 'Hesap Adı',
+    accountNameRequired: 'Cari adı gerekli!',
+    accountSummary: 'Cari Hesap Özeti',
+    accountTypeSelection: 'Hesap Türü Seçimi',
+    accountUpdated: 'Cari hesap güncellendi',
+    accountsPayable: 'Borçlar',
+    accountsReceivable: 'Alacaklar',
+    action: 'İşlem',
+    actionCenter: 'İşlem Merkezi',
+    actionLabel: 'İşlem',
+    actions: 'İŞLEMLER',
+    activeCustomer: 'Aktif Müşteri',
+    activeCustomers: 'Aktif Müşteri',
+    activeStatus: 'AKTİF',
+    add: 'Ekle',
+    addNewCurrentAccount: 'YENİ CARİ HESAP EKLE',
+    addPaymentLabel: 'Ödeme Ekle',
+    addToCart: 'Sepete Ekle',
+    addToCartButton: 'Sepete Ekle',
+    addedPayments: 'Eklenen Ödemeler',
+    additionalDiscount: 'İlave İndirim (Opsiyonel)',
+    addressLabel: 'Adres',
+    administrator: 'Yönetici',
+    agingAnalysis: 'Yaşlandırma Analizi',
+    aiAssistant: 'AI Asistan',
+    aiProductAnalytics: 'AI Ürün Analitiği',
+    alertCenter: 'Uyarı Merkezi',
+    allBtn: 'Tümü',
+    allButton: 'Tümü',
+    allCategories: 'Tüm Kategoriler',
+    allInvoiceTypes: 'Tüm Fatura Türleri',
+    allLabel: 'TÜMÜ',
+    allProducts: 'Tüm Ürünler',
+    allSalesButton: 'Tüm Satışlar',
+    allStatuses: 'Tüm Durumlar',
+    amount: 'Tutar',
+    amountInput: 'Miktar',
+    amountLabel: 'Tutar',
+    amountToPay: 'Ödenecek Tutar',
+    anErrorOccurred: 'Bir Hata Oluştu',
+    apply: 'UYGULA',
+    applyDiscount: 'İndirim Uygula',
+    applyRatioDiscount: 'Oransal İndirim Uygula',
+    approved: 'Onaylandı',
+    arabic: 'العربية',
+    assets: 'Varlıklar',
+    assignToSlot: 'Slota Ata',
+    atLeastOneShortcut: 'En az bir kısayol seçmelisiniz',
+    atLeastOneUnit: 'En az bir birim tanımlanmalıdır',
+    autoGenerated: 'Otomatik Oluşturuldu',
+    automatic: '(Otomatik)',
+    available: 'Kullanılabilir',
+    back: 'Geri',
+    backToDashboard: 'Ana Panele Dön',
+    backToList: 'Listeye Dön',
+    backup: 'Yedekle',
+    balance: 'Bakiye',
+    balanceLoading: 'BAKİYE YÜKLEME',
+    balanceSheet: 'Bilanço (Balance Sheet)',
+    bank: 'Banka',
+    bankAccount: 'Banka Hesabı',
+    bankDeposit: 'Bankaya Yatırılan',
+    bankTransfer: 'Banka Transferi',
+    bankWithdrawal: 'Bankadan Çekilen',
+    banknoteAndCoinCount: 'Banknot ve Madeni Para Sayımı',
+    banknoteCount: 'Banknot Sayısı',
+    barcode: 'Barkod',
+    barcodeDefDesc: 'Barkod tanımlarını yönetin',
+    barcodeLabel: 'Barkod',
+    barcodeNotFound: 'Barkod bulunamadı',
+    barcodeNotFoundWarning: 'Barkod bulunamadı: {barcode}',
+    barcodeSearchPlaceholder: 'Barkod ya da Ürün Adı...',
+    biDashboardAi: 'BI Dashboard & AI',
+    branchStockStatus: 'Şube Stok Durumu',
+    branchStocks: 'Şube Stokları',
+    branchVariantStocks: 'Şube Varyant Stokları',
+    branchVariants: 'Şube Varyantları',
+    brandDefDesc: 'Marka tanımlarını yönetin',
+    brandDefinitions: 'Marka Tanımları',
+    campaign: 'Kampanya',
+    campaignApplied: 'Kampanya uygulandı',
+    campaignAppliedDescription: 'applied',
+    campaignAutoApplied: 'Kampanya otomatik uygulandı',
+    campaignDiscountLabel: 'Campaign Discount',
+    campaignDiscountPayment: 'Kampanya İndirimi',
+    campaignLabel: 'KAMPANYA',
+    campaignRemoved: 'Kampanya kaldırıldı',
+    cancel: 'İptal',
+    cancelBtn: 'İptal',
+    cancelReasonPlaceholder: 'İptal nedenini yazın...',
+    cancelReceipt: 'Fişi İptal',
+    cancelReceiptTitle: 'Fiş İptal - Neden Seçin',
+    capacityPlanning: 'Kapasite Planlama',
+    card: 'Kart',
+    cardLabel: 'Kart (POS)',
+    cardNumber: 'Kart No',
+    cardPayment: 'Kartlı Ödeme',
+    cardPaymentDescription: 'Kredi / Banka kartı ile ödeme',
+    cardSales: 'Kart Satışları',
+    cards: 'Kartlar',
+    cart: 'Sepet',
+    cartCleared: 'Sepet temizlendi',
+    cartEmpty: 'Sepet boş',
+    cash: 'Nakit',
+    cashBalanced: 'Kasa Denk',
+    cashClosedSuccessfully: 'Kasa başarıyla kapatıldı!',
+    cashClosingNotePlaceholder: 'Kasa kapanışı ile ilgili notlarınızı yazın...',
+    cashCountExample: 'Örn: 1000.00',
+    cashCountRequired: 'Lütfen sayılan nakit tutarını girin!',
+    cashDifference: 'Nakit Farkı',
+    cashDifferenceConfirm: 'Kasa farkı var. Devam etmek istiyor musunuz?',
+    cashFlowReport: 'Nakit Akış Raporu',
+    cashFlowStatement: 'Nakit Akış Tablosu',
+    cashHandedOver: 'Kasa {staff} kasiyerine devredildi',
+    cashHandedOverMessage: 'Kasa {staff} kasiyerine devredildi.\n\nDevir Tutarı: {amount}\n\n{staff} kasa açarken devri onaylamalıdır.',
+    cashHandoverAccept: 'Para Devri Kabul',
+    cashHandoverAvailable: 'Para Devri Mevcut',
+    cashHandoverCountRequired: 'Devredilecek tutarı giriniz!',
+    cashIn: 'Kasa Giriş',
+    cashLabel: 'Nakit',
+    cashOpenedMessage: 'Kasa başarıyla açıldı!\n\nAçılış Kasası: {amount}\nKasiyer: {staff}',
+    cashOpenedSuccessfully: 'Kasa başarıyla açıldı!',
+    cashOpeningNotePlaceholder: 'Kasa açılışı ile ilgili notlarınızı yazın...',
+    cashOperation: 'Kasa İşlemi',
+    cashOperations: 'Kasa İşlemleri',
+    cashOut: 'Kasa Çıkış',
+    cashPayment: 'Nakit Ödeme',
+    cashPaymentDescription: 'Nakit ile ödeme al',
+    cashRegister: 'Kasa',
+    cashRegisterNumber: 'Kasa No',
+    cashSales: 'Nakit Satışlar',
+    cashSlips: 'Kasa Fişleri',
+    cashStatus: 'Nakit Durumu',
+    cashTransfer: 'Kasa Virman',
     cashier: 'Kasiyer',
+    cashier1: 'Kasiyer 1',
+    cashier2: 'Kasiyer 2',
+    cashier3: 'Kasiyer 3',
+    cashierInfo: 'Kasiyer',
+    cashierLabel: 'Kasiyer',
+    cashierPerformance: 'Kasiyer Performansı',
+    categories: 'Kategoriler',
+    category: 'Kategori',
+    categoryAnalysis: 'Kategori Analizi',
+    categoryBasedStock: 'Kategori Bazlı Stok',
+    categoryLabel: 'Kategori',
+    invoiceCategories: 'Fatura Kategorileri',
+    invoiceTypes: 'Fatura Türleri',
+    invoiceTypeDetails: 'FATURA TÜRÜ DETAYLARI',
+    centralDataManagementSubtitle: 'Enterprise Senkronizasyon ve Broadcast Yönetimi v2.0',
+    centralDataManagementSystem: 'Merkezi Veri Yönetim Sistemi',
+    centralStore: 'Merkez Mağaza',
+    chCollection: 'Cari Hesap Tahsilat',
+    chPayment: 'Cari Hesap Ödeme',
+    changeAmount: 'Para Üstü',
     changeCashier: 'Kasiyer Değiştir',
     changeLanguage: 'Dil Değiştir',
-    logout: 'Çıkış',
-    back: 'Geri',
-    allLabel: 'TÜMÜ',
-    selected: 'SEÇİLİ',
-
-    // Product Grid
-    searchProducts: 'Ürün Ara',
-    searchPlaceholder: 'Ürün adı veya barkod...',
-    categories: 'Kategoriler',
-    allCategories: 'Tüm Kategoriler',
-
-    // Cart
-    cart: 'Sepet',
-    emptyCart: 'Sepet Boş',
-    product: 'Ürün',
-    quantity: 'Miktar',
-    price: 'Fiyat',
-    total: 'Toplam',
-    rowOrder: 'Sıra',
-    productName: 'Ürün Adı',
-    action: 'İşlem',
-    subtotal: 'Subtotal',
-    discount: 'Discount',
-    grandTotal: 'Grand Total',
-    barcodeSearchPlaceholder: 'Barkod ya da Ürün Adı...',
-    scanToSearchPlaceholder: 'Ürün aramak için tarayın...',
+    changeSearchCriteria: 'Arama kriterlerinizi değiştirin',
     changeVariant: 'Varyant Değiştir',
-    confirmItemDelete: 'Bu öğeyi silmek istediğinize emin misiniz?',
-    yesDelete: 'Evet, Sil',
-    actionLabel: 'İşlem',
-    logAudit: 'Kayıt/Denetim',
-    systemHealth: 'Sistem Sağlığı',
-
-    // Actions
-    add: 'Ekle',
-    addToCart: 'Sepete Ekle',
-    remove: 'Çıkar',
-    clear: 'Temizle',
-    save: 'Kaydet',
-    cancel: 'İptal',
-    complete: 'Tamamla',
-    payment: 'Ödeme',
-    search: 'Ara',
-    close: 'Kapat',
-
-    // Numpad
-    amount: 'Tutar',
-    piece: 'Adet',
-    delete: 'Sil',
-    enter: 'Tamam',
-
-    // Quick Actions
-    campaign: 'Kampanya',
-    category: 'Kategori',
-    productQuery: 'Ürün Sorgu',
-    stockQuery: 'Stok Sorgu',
-    parkedReceipts: 'Bekleyen Fiş',
-    salesHistory: 'Satış Geçmişi',
-    returnTransaction: 'İade İşlemi',
-    return: 'İade',
-    recentProducts: 'Son Satışlar',
-    allProducts: 'Tüm Ürünler',
-    scale: 'Terazi',
-    subtotalAction: 'Subtotal',
-    receiptNote: 'Fiş Notu',
-    barcode: 'Barkod',
-    quickProductAdd: 'Hızlı Ürün',
-    shiftClick: 'Shift + Tıklama',
-    receivePayment: 'Ödeme Al',
-    sales: 'Satışlar',
-
-    // Payment Modal
-    cashLabel: 'Nakit',
-    cardLabel: 'Kart (POS)',
-    veresiyeLabel: 'Veresiye (Cari)',
-    gatewayLabel: 'QR Ödeme Sağlayıcı',
-    addPaymentLabel: 'Ödeme Ekle',
-    currencyAndRates: 'Para Birimi & Kurlar',
-    insufficientPayment: 'Ödeme tutarı yetersiz!',
-    paymentFailed: 'Ödeme başlatılamadı:',
-    processingText: 'İŞLENİYOR...',
-    qrScanCode: 'QR Kodu Okutun',
-    qrCustomerInstruction: 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir',
-    paymentAmount: 'Ödeme Tutarı',
-    step1: 'Adım 1',
-    step2: 'Adım 2',
-    holdPhoneToQr: 'Telefonu QR koda tutun',
-    confirmPaymentText: 'Ödemeyi onaylayın',
-
-    // New Labels
-    reporting: 'Raporlama',
-    reportingDesc: 'Satış raporları ve analizler',
-    aiAssistant: 'AI Asistan',
-    dailyReport: 'Günlük Rapor',
-    zReport: 'Z Raporu',
-    periodComparison: 'Dönem Karşılaştırma',
-    topSellingProducts: 'En Çok Satan Ürünler',
-    categoryAnalysis: 'Kategori Analizi',
-    hourlySalesAnalysis: 'Saatlik Satış Analizi',
-    cashierPerformance: 'Kasiyer Performansı',
-    customerSalesAnalysis: 'Müşteri Satış Analizi',
-    salesTrendAnalysis: 'Satış Trend Analizi',
-    targetVsActual: 'Hedef vs Gerçekleşen',
-    profitLossReport: 'Kar-Zarar Raporu',
-    cashFlowReport: 'Nakit Akış Raporu',
-    debtAgingReport: 'Borç/Alacak Yaşlandırma',
+    chartOfAccounts: 'Hesap Kartı',
+    checkLabel: 'Çek',
     checkTracking: 'Çek/Senet Takibi',
-    accountSummary: 'Cari Hesap Özeti',
-    reportsStockStatus: 'Stok Durumu',
-    stockAging: 'Stok Yaşlandırma',
-    stockTurnover: 'Stok Dönüş Hızı',
-    stockABC: 'Stok ABC Analizi',
-    materialMovement: 'Mal Hareket Raporu',
-    expiringProducts: 'Son Kullanma Tarihi Yaklaşanlar',
-    paymentMethodDistribution: 'Ödeme Yöntemi Dağılımı',
-    discountReport: 'İndirim Raporu',
-    reportsCashStatus: 'Kasa Durumu',
-    commissionReport: 'Komisyon Raporu',
-    totalRevenueLabel: 'Toplam Ciro',
-    salesDetails: 'Satış Detayları',
-    receiptNo: 'Fiş No',
-    timeLabel: 'Saat',
-    amountLabel: 'Tutar',
-    paymentLabel: 'Ödeme',
-    addNewCurrentAccount: 'YENİ CARİ HESAP EKLE',
-    accountTypeSelection: 'Hesap Türü Seçimi',
-    reportsCustomerLabel: 'MÜŞTERİ',
-    supplierLabel: 'TEDARİKÇİ',
-    supplierCode: 'Tedarikçi Kodu',
-    supplierName: 'Tedarikçi Adı',
-    phoneLabel: 'Telefon',
-    emailLabel: 'E-posta',
-    addressLabel: 'Adres',
     cityLabel: 'Şehir',
-    paymentTermDays: 'Ödeme Vadesi (Gün)',
+    clear: 'Temizle',
+    clearBtn: 'Temizle',
+    clearCart: 'Sepeti Temizle',
+    clearCurrentCartFirst: 'Önce mevcut sepeti temizleyin',
+    clearList: 'Listeyi Temizle',
+    clickToChangePrice: 'Fiyatı Değiştirmek İçin Tıklayın',
+    close: 'Kapat',
+    closeButton: 'Kapat',
+    closeCashRegister: 'Kasa Kapat',
+    closeCashRegisterProcess: 'Kasa Kapatma İşlemi',
+    closeEsc: 'Kapatmak için ESC',
+    closeMonth: 'Ayı Kapat',
+    closePeriod: 'Periyodu Kapat',
+    closeRegister: 'Kasa Kapat',
+    closeWindow: 'Pencereyi Kapat',
+    closedMonths: 'Kapalı Aylar',
+    codeAndNameRequired: 'Kod ve ad alanları zorunludur',
+    cogs: 'SMM (Satılan Malın Maliyeti)',
+    commissionReport: 'Komisyon Raporu',
+    communicationAndNotifications: 'İletişim & Bildirimler',
+    complete: 'Tamamla',
+    completePayment: 'Complete Payment',
+    confirmBarcode: 'Barkod Onayla',
+    confirmClearLogs: 'Tüm kayıtlar temizlenecektir. Emin misiniz?',
+    confirmDelete: 'Silmek istediğinizden emin misiniz?',
+    confirmDeleteAccount: 'silmek istediğinize emin misiniz?',
+    confirmDeleteInvoice: '{invoiceNo} numaralı faturayı silmek istediğinize emin misiniz?',
+    confirmDeleteRecord: 'Bu kaydı silmek istediğinizden emin misiniz?',
+    confirmDeleteUnitSet: 'Bu birim setini silmek istediğinizden emin misiniz?',
+    confirmItemDelete: 'Bu öğeyi silmek istediğinize emin misiniz?',
+    confirmMove: 'TAŞIMAYI ONAYLA',
+    confirmPaymentText: 'Ödemeyi onaylayın',
+    confirmReturn: 'İadeyi Onayla',
+    connectionSettings: 'Bağlantı Ayarları',
+    consignment: 'Konsinyasyon',
+    consignmentSale: 'Konsinye Satış',
+    consignmentSales: 'Konsinye Satış',
+    consignmentSalesDesc: 'Konsinye satış işlemleri',
+    consignmentSalesTitle: 'Konsinye Satışlar',
+    consolidatedReports: 'Birleştirilmiş Raporlar',
+    consumption: 'Sarf',
+    contact: 'İLETİŞİM',
+    continue: 'Devam Et',
+    continueReceipt: 'Devam Et',
+    copied: 'Kopyalandı',
+    copy: 'Kopyala',
+    corporate: 'Kurumsal',
+    corporateTax: 'Kurumsal Vergi',
+    cost: 'Maliyet',
+    costAnalysis: 'Maliyet Analizi',
+    costAndProfitAnalysis: 'Maliyet ve Kar Analizi',
+    costOfGoodsSold: 'Satılan Ürün Maliyeti',
+    costPrice: 'Alış Fiyatı',
+    costValue: 'Alış Değeri',
+    countEntry: 'Sayım Giriş',
+    countReconciliation: 'Sayım Mutabakat',
+    countedCashAmount: 'Sayılan Nakit',
+    countingControl: 'Sayım & Kontrol',
+    credit: 'Alacak',
+    creditCard: 'Kredi Kartı',
     creditLimitLabel: 'Kredi Limiti',
-    taxNumberLabel: 'Vergi Numarası',
-    taxOfficeLabel: 'Vergi Dairesi',
-    notesLabel: 'Notlar',
-    materialCodeName: 'MALZEME KODU/ADI',
-    generateReport: 'Raporu Hazırla',
-    startDateReport: 'BAŞLANGIÇ TARİHİ',
-    endDateReport: 'BİTİŞ TARİHİ',
-    noRecordFound: 'Kayıt bulunamadı',
-    unitPriceLabel: 'Birim Fiyat',
-    newSalesOrder: 'Yeni Satış Siparişi',
-    orderForm: 'Sipariş Formu',
-    saveOrder: 'Siparişi Kaydet',
-    pleaseSelectCustomer: 'Lütfen müşteri seçin!',
-    pleaseAddAtLeastOneProduct: 'Lütfen en az bir ürün ekleyin!',
-    orderCreatedSuccessfully: '✅ Sipariş başarıyla oluşturuldu!',
-    orderCreationError: '❌ Sipariş oluşturulurken hata oluştu!',
-    newUnitSet: 'Yeni Unit Sets',
-    actionCenter: 'İşlem Merkezi',
-    reportStructureNote: 'Bu rapor yapısı Logo ERP\'nin kurumsal standartlarıyla birebir uyumlu olacak şekilde, asenkron yürüyen bakiye (running balance) motoru kullanılarak RestPOS yerel veritabanı (PostgreSQL) üzerinden anlık olarak hesaplanmaktadır.',
+    criticalLevel: 'Kritik Seviye',
+    criticalStockAlerts: 'Kritik Stok Uyarıları',
+    crmAutoGenerated: 'Otomatik Üretilir',
+    crmBalance: 'BAKİYE',
+    crmManagementConsole: 'Müşteri ve Tedarikçi Yönetim Konsolu',
+    currency: 'IQD',
+    currencyAndRates: 'Para Birimi & Kurlar',
+    currentAccountPersonel: 'Cari Hesap / Personel',
     currentAccountTitle: 'CARİ HESAP ÜNVANI',
     currentAccounts: 'Cari Hesaplar',
-    suppliers: 'Tedarikçiler',
-    crmManagementConsole: 'Müşteri ve Tedarikçi Yönetim Konsolu',
-    salesCustomerDesc: 'Satış Yapılan Cari',
-    purchaseSupplierDesc: 'Alım Yapılan Cari',
-    saveChanges: 'Değişiklikleri Kaydet',
-    errorLoadingSuppliers: 'Tedarikçiler yüklenemedi',
-    accountUpdated: 'Cari hesap güncellendi',
-    accountAdded: 'Cari hesap eklendi',
-    saveFailed: 'Kayıt başarısız oldu',
-    accountDeleted: 'Cari hesap silindi',
-    accountDeleteError: 'Cari hesap silinemedi',
-    totalCurrentAccounts: 'TOPLAM CARİ',
-    crmAutoGenerated: 'Otomatik Üretilir',
-    accountNameRequired: 'Cari adı gerekli!',
-    confirmDeleteAccount: 'silmek istediğinize emin misiniz?',
-    contact: 'İLETİŞİM',
-    crmBalance: 'BAKİYE',
-    actions: 'İŞLEMLER',
-
-    // Dashboard
-    welcomeSubtitle: 'Hoş geldiniz, işletme performansınızı takip edin',
-    quickAccess: 'Hızlı Erişim',
-    editShortcuts: 'Hızlı Erişimleri Düzenle',
-    dailySummary: 'Günlük Özet',
-    todaysSale: 'Bugünkü Satış',
-    weeklySale: 'Haftalık Satış',
-    totalProduct: 'Toplam Ürün',
-    activeCustomer: 'Aktif Müşteri',
-    registeredCustomer: 'Kayıtlı müşteri',
-    financialSummary: 'Finansal Özet',
-    stockValueCost: 'Stok Değeri (Maliyet)',
-    stockValueSale: 'Stok Değeri (Satış)',
-    potentialProfit: 'Potansiyel Kar',
-    dashboardProfitMargin: 'Kar Marjı',
-    last7DaysSalesTrend: 'Son 7 Gün Satış Trendi',
-    dailySalesPerformance: 'Günlük satış performansı',
-    paymentMethodsDashboard: 'Ödeme Yöntemleri',
+    currentBalance: 'Güncel Bakiye',
+    currentStock: 'Mevcut Stok',
+    customReports: 'Özel Raporlar',
+    customer: 'Müşteri',
+    customerChangedMind: 'Müşteri vazgeçti',
+    customerInfo: 'Müşteri Bilgisi',
+    customerLabel: 'Müşteri',
+    customerNotFound: 'Müşteri bulunamadı',
+    customerNotSatisfied: 'Müşteri Memnun Değil',
     customerPaymentPreferences: 'Müşteri ödeme tercihleri',
+    customerReports: 'Müşteri Raporları',
+    customerSalesAnalysis: 'Müşteri Satış Analizi',
+    customerSearchPlaceholder: 'Müşteri ara...',
+    customerSupplier: 'Cari (Müşteri/Tedarikçi)',
+    customizeQuickAccess: 'Hızlı Erişimleri Özelleştir',
+    customizeShortcuts: 'Hızlı Erişimleri Özelleştir',
+    dailyReport: 'Günlük Rapor',
+    dailySalesPerformance: 'Günlük satış performansı',
+    dailySummary: 'Günlük Özet',
+    dashboard: 'Dashboard',
+    dashboardProfitMargin: 'Kar Marjı',
     dashboardTopSellingProducts: 'En Çok Satan Ürünler',
-    rankingByRevenue: 'Ciro bazında sıralama',
-    categoryBasedStock: 'Kategori Bazlı Stok',
+    dashboardTransaction: 'işlem',
+    dataBroadcast: 'Bilgi Gönder/Al',
+    dataTransferLabel: 'Veri Transfer',
+    dataTypeLabel: 'Veri Tipi',
+    databaseConnection: 'Veritabanı Bağlantısı',
+    dateLabel: 'Tarih',
+    dateRange: 'Tarih Aralığı',
+    dateRangeLabel: 'Tarih Aralığı',
+    dayShift: 'Gündüz',
+    deactivate: 'Pasife Al',
+    debit: 'Borç',
+    debtAgingReport: 'Borç/Alacak Yaşlandırma',
+    defaultCompanyName: 'RestPOS',
+    defaultLocation: 'Bağdat, Irak',
+    defaultQuantity: 'VARSAYILAN ADET',
+    definitionCode: 'Tanım Kodu',
+    definitionDescription: 'Açıklama',
+    definitionName: 'Tanım Adı',
+    definitions: 'Tanımlar',
+    delete: 'Sil',
+    deleteAction: 'Sil',
+    deleteBtn: 'Sil',
+    deleteReceipt: 'Sil',
+    description: 'Açıklama',
+    designCenter: 'Dizayn Merkezi',
+    detail: 'Detay',
+    detailButton: 'Detay',
+    diagnosticsSubtitle: 'Gerçek Zamanlı Teşhis ve Denetim',
+    differentReceipts: 'farklı fiş',
+    digitalProductSaleNotice: 'Bu işlem dijital ürün satışıdır.',
+    discount: 'Discount',
+    discountAmountPlaceholder: 'İndirim Tutarı',
+    discountApplied: '%{percent} indirim uygulandı',
+    discountAuthority: 'İndirim yetkisi var',
+    discountLabel: 'İndirim:',
+    discountOptional: 'İndirim (İsteğe Bağlı)',
+    discountPercentPlaceholder: 'İndirim %',
+    discountRatioApplied: 'Girdiğiniz oran tüm sipariş toplamına uygulanacaktır.',
+    discountReport: 'İndirim Raporu',
+    documentNo: 'Fiş / Belge No',
+    donem: 'Dönem',
+    download: 'İndir',
+    edit: 'Düzenle',
+    editInfo: 'BİLGİLERİ DÜZENLE',
+    editQuickAccess: 'Düzenle',
+    editShortcuts: 'Hızlı Erişimleri Düzenle',
+    editUnitSet: 'Birim Setini Düzenle',
+    emailCampaigns: 'E-posta Kampanyaları',
+    emailLabel: 'E-posta',
+    emptyCart: 'Sepet Boş',
+    endDate: 'Bitiş:',
+    endDateReport: 'BİTİŞ TARİHİ',
+    english: 'English',
+    enter: 'Tamam',
+    enterAdminPassword: 'Yönetici şifresini girin',
+    enterBarcode: 'Barkod girin...',
+    enterBtn: 'Tamam',
+    enterDiscountAmount: 'İndirim tutarı girin',
+    enterDiscountPercentage: 'İndirim yüzdesi girin',
+    enterNewPrice: 'Yeni Fiyat Girin',
+    enterReceivedCashAmount: 'Enter received cash amount',
+    enterUsernamePassword: 'Lütfen kullanıcı adı ve şifre giriniz.',
+    entryOperations: 'Giriş İşlemleri',
+    equipmentMaintenance: 'Ekipman Bakım',
+    equity: 'Mülkiyet',
+    error: 'Hata',
+    errorFetchingUsers: 'Kullanıcı listesi alınamadı',
+    errorLoadingScreen: 'ekranı yüklenirken bir hata oluştu.',
+    errorLoadingSuppliers: 'Tedarikçiler yüklenemedi',
+    errorMessage: 'Hata Mesajı',
+    excelOperations: 'Excel İşlemleri',
+    excess: 'Fazla',
+    exchangeDifferenceCredit: 'Kur Farkı (Alacak)',
+    exchangeDifferenceDebit: 'Kur Farkı (Borç)',
+    exitOperations: 'Çıkış İşlemleri',
+    expectedCash: 'Beklenen Nakit',
+    expenseAnalysis: 'Gider Analizi',
+    expenseCodeDescription: 'Gider Kodu / Açıklama',
+    expenseCodePlaceholder: 'Gider Kodu veya Adı...',
+    expenseVoucher: 'Gider Pusulası',
+    expenses: 'Giderler',
+    expiringProducts: 'Son Kullanma Tarihi Yaklaşanlar',
+    explainCancelReason: 'İptal Nedenini Açıklayın',
+    explainReturnReason: 'İade nedenini açıklayın...',
+    factoryResetConfirm: 'Tebrikler: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Kurulum sihirbazı tekrar açılacak.\n- Veritabanı verileri korunacaktır.\n\nİşlemi onaylıyor musunuz?',
+    farmersReceipt: 'Müstahsil Makbuzu',
+    fefoReport: 'FEFO Raporu',
+    ficheNo: 'Fiş No',
+    ficheType: 'İşlem Türü',
+    financeManagement: 'Finans Yönetimi',
+    financeReports: 'Finans Raporları',
+    financialStatements: 'Mali Durum Tabloları',
+    financialSummary: 'Finansal Özet',
+    firmPeriodDefinitions: 'Firma/Dönem Tanımları',
+    firmSelection: 'Firma Seçimi',
+    firmSelectionScope: 'FİRMA SEÇİMİ',
+    firma: 'Firma',
+    first: 'İlk',
+    fiscalPeriod: 'Mali Periyot',
+    fiscalYear: 'Mali Yıl',
+    focusBarcodeInput: 'Barkod Alanına Odaklan',
+    fullAmount: 'Tam Tutar',
+    gatewayFinishInstructions: 'Ödeme işlemini tamamladıktan sonra "Tamam" butonuna tıklayın. Ödeme başarısız olduysa "İptal" diyerek geri dönün.',
+    gatewayLabel: 'QR Ödeme Sağlayıcı',
+    gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
+    generalLedger: 'Genel Defter',
+    generalReport: 'Genel Rapor',
+    generalSale: 'Genel Satış',
+    generateReport: 'Raporu Hazırla',
+    giveUp: 'Vazgeç',
+    goBack: 'Geri Dön',
+    goodsReceiving: 'Mal Kabul',
+    grandTotal: 'Grand Total',
+    grid: 'Izgara',
+    gridView: 'Grid',
+    grossProfit: 'Brüt Kar',
+    grossSales: 'Brüt Satışlar',
+    groupCodeDesc: 'Grup kodlarını yönetin',
+    groupCodes: 'Grup Kodları',
+    handoverAmount: 'Devir Tutarı:',
+    handoverFromCashier: 'Devreden Kasiyer:',
+    helpMessage: 'Bu hata devam ederse, lütfen tarayıcı konsolunu (F12) kontrol edin ve teknik destek ekibiyle iletişime geçin.',
+    historyMovements: 'Geçmiş Hareketler',
+    holdPhoneToQr: 'Telefonu QR koda tutun',
+    homepage: 'Anasayfa',
+    hourlySalesAnalysis: 'Saatlik Satış Analizi',
+    howCalculated: 'Nasıl Hesaplanır?',
+    hrReports: 'İnsan Kaynakları',
+    hwid: 'Cihaz Kimliği (HWID)',
+    icon: 'İkon',
+    import: 'İçe Aktar',
+    inOutQty: 'Giriş/Çıkış',
+    inOutTotals: 'Giriş Çıkış Toplamları',
+    incomeStatement: 'Gelir Tablosu (Income Statement)',
+    incomeTax: 'Gelir Vergisi',
+    incomingTransfer: 'Transfer Gelen',
+    incorrectPassword: 'Hatalı şifre!',
+    individual: 'Bireysel',
+    insufficientPayment: 'Ödeme tutarı yetersiz!',
+    integrations: 'Entegrasyonlar',
+    intercompanyEliminations: 'Şirketler Arası İptaller',
+    invalidCredentials: 'Invalid username or password',
+    invalidDate: 'Geçersiz Tarih',
+    invalidPassword: 'Hatalı şifre',
+    inventory: 'Envanter',
     inventoryDistribution: 'Envanter dağılımı',
-    criticalStockAlerts: 'Kritik Stok Uyarıları',
+    inventoryList: 'Envanter Listesi',
+    inventoryManagement: 'Sayım ve Stok İşlemleri',
+    invoiceDeleteError: 'Fatura silinemedi',
+    invoiceDeleteSuccess: 'Fatura başarıyla silindi',
+    invoiceNo: 'Fatura No',
+    invoiceType: 'Fatura Türü',
+    invoices: 'Faturalar',
+    invoicesCount: 'Fatura',
+    issuedServiceInvoicesDesc: 'Müşterilere verilen hizmetler',
+    issuedServiceInvoicesTitle: 'Verilen Hizmet Faturaları',
+    itemsCount: 'ürün',
+    journalEntries: 'Jurnal Girişleri',
+    journalEntry: 'Jurnal Girişi',
+    keyboardShortcuts: 'Klavye Kısayolları',
+    keyboardShortcutsTitle: 'Klavye Kısayolları (Press ?)',
+    kurdish: 'کوردی',
+    labelDesigner: 'Etiket Tasarımcı',
+    laborTracking: 'Personel Performans',
+    language: 'Dil',
+    languageChangeInfo: 'Dil değişikliği tüm ekranları etkiler ve otomatik olarak kaydedilir.',
+    languageSelection: 'Dil Seçimi',
+    languageSelectionTitle: 'Dil Seçimi',
+    last: 'Son',
+    last24hLabel: '24 Saat',
+    last7DaysSalesTrend: 'Son 7 Gün Satış Trendi',
+    lastPurchase: 'Son Alışveriş',
+    lastReceipt: 'Son Fiş',
+    lastReceiptButton: 'Son Fiş',
+    layoutOptimization: 'Yerleşim Optimizasyonu',
+    liabilities: 'Yükümlülükler',
+    list: 'Liste',
+    listView: 'Liste',
+    loading: 'Yükleniyor...',
+    loadingData: 'Veriler yükleniyor...',
+    loadingInvoices: 'Faturalar yükleniyor...',
+    loadingInvoicesCount: 'Faturalar',
+    localCurrencyUnit: 'Birim: Yerel Para Birimi (IQD)',
+    localeCode: 'tr-TR',
+    localeName: 'Türkçe',
+    locationTransfer: 'Raf Transferi',
+    logAudit: 'Log/Denetim',
+    login: 'Giriş Yap',
+    loginButton: 'Giriş Yap',
+    loginError: 'Giriş yapılırken hata oluştu',
+    loginFailed: 'Login failed.',
+    logout: 'Çıkış',
+    lotTraceability: 'Lot İzlenebilirlik',
+    lotTransfer: 'Lot/Seri Transfer',
+    lowStock: 'Düşük Stok',
     lowStockWarnings: 'Düşük Stok Uyarıları',
+    lowStockWarningsItem: 'Düşük Stok Uyarıları',
+    mainMenu: 'Ana Menü',
+    mainUnitCannotDelete: 'Ana birim silinemez',
+    mainUnitLabel: 'Ana Birim',
+    mainUnitRequired: 'Bir ana birim seçilmelidir',
+    management: 'Yönetim',
+    managementModule: 'Yönetim',
+    managementPanelAccess: 'Yönetim Paneli Erişimi',
+    manager: 'Yönetici',
+    manualEntry: 'El ile Girişi',
+    masterRecords: 'Ana Kayıtlar',
+    materialClassDesc: 'Malzeme sınıflarını yönetin',
+    materialClasses: 'Malzeme Sınıfları',
+    materialCodeName: 'MALZEME KODU/ADI',
+    materialCodeOrName: 'Malzeme Kodu/Adı',
+    materialExtract: 'Malzeme Ekstresi',
+    materialExtractReport: 'Malzeme Hareket Ekstresi',
+    materialManagement: 'Malzeme Yönetimi',
+    materialManagementSlips: 'Malzeme Yönetim Fişleri',
+    materialMovement: 'Mal Hareket Raporu',
+    materialValue: 'Malzeme Değer',
+    materialValueReport: 'Malzeme Değer Raporu',
+    materialWarehouseStatus: 'Malzeme Ambar Durum',
+    materials: 'Malzemeler',
+    max8Shortcuts: 'En fazla 8 kısayol seçebilirsiniz',
+    maxShortcutsTitle: 'En fazla 8 kısayol seçebilirsiniz',
+    menu: {
+      accountingManagement: 'Muhasebe Yönetimi',
+      accountingVouchers: 'Muhasebe Fişleri',
+      advancedReports100: '⭐ Gelişmiş Raporlar (100+)',
+      aiProductAnalytics: 'AI Ürün Analitiği',
+      backupRestore: 'Yedekleme/Geri Yükleme',
+      balanceSheet: 'Bilanço (Balance Sheet)',
+      bankAccounts: 'Banka Hesapları',
+      bankPaymentPlans: 'Banka Ödeme Planları',
+      bankReports: 'Banka Raporları',
+      bankSlips: 'Banka Fişleri',
+      banks: 'Bankalar',
+      biDashboardAi: 'BI Dashboard & AI',
+      brandDefinitions: 'Marka Tanımları',
+      campaignDefinitions: 'Kampanya Tanımları',
+      cards: 'Kartlar',
+      cashAccounts: 'Kasa Hesapları',
+      cashCards: 'Kasa Kartları',
+      cashOperations: 'Kasa İşlemleri',
+      cashReports: 'Kasa Raporları',
+      cashSlips: 'Kasa Fişleri',
+      checkPromissory: 'Çek/Senet',
+      collectionPayment: 'Tahsilat/Ödeme',
+      communicationAndNotifications: 'İletişim & Bildirimler',
+      consignmentSales: 'Konsinye Satış',
+      cost: 'Maliyet',
+      creditCardPosSlips: 'Kredi Kartı Pos Fişleri',
+      currentAccountReports: 'Cari Hesap Raporları',
+      currentAccountSlips: 'Cari Hesap Fişleri',
+      currentAccounts: 'Cari Hesaplar',
+      customReports: 'Özel Raporlar',
+      customerAnalysis: 'Müşteri Analizi',
+      dashboard: 'Dashboard',
+      dataBroadcast: 'Bilgi Gönder/Al',
+      databaseInfrastructure: 'Database Altyapısı',
+      definitions: 'Tanımlar',
+      definitionsParameters: 'Tanımlar/Parametreler',
+      demoDataManagement: 'Demo Veri Yönetimi',
+      designCenter: 'Dizayn Merkezi',
+      emailCampaigns: 'E-posta Kampanyaları',
+      exSecureGateSecurity: 'ExSecureGate (Güvenlik)',
+      excelOperations: 'Excel İşlemleri',
+      expenseManagement: 'Gider Yönetimi',
+      financeManagement: 'Finans Yönetimi',
+      firmPeriodDefinitions: 'Firma/Dönem Tanımları',
+      generalReport: 'Genel Rapor',
+      generalSettings: 'Genel Ayarlar',
+      graphicalAnalysis: 'Grafiksel Analiz',
+      groupCodes: 'Grup Kodları',
+      homepage: 'Anasayfa',
+      inOutTotals: 'Giriş Çıkış Toplamları',
+      incomeStatement: 'Gelir Tablosu (Income Statement)',
+      integrations: 'Entegrasyonlar',
+      inventory: 'Envanter',
+      inventoryManagement: 'Sayım ve Stok İşlemleri',
+      invoices: 'Faturalar',
+      journalAndSlips: 'Yevmiye Defteri & Fişler',
+      labelDesigner: 'Etiket Tasarımcı',
+      logAudit: 'Log/Denetim',
+      mainMenu: 'Ana Menü',
+      masterRecords: 'Ana Kayıtlar',
+      materialClasses: 'Malzeme Sınıfları',
+      materialExtract: 'Malzeme Ekstresi',
+      materialManagement: 'Malzeme Yönetimi',
+      materialManagementSlips: 'Malzeme Yönetim Fişleri',
+      materialValue: 'Malzeme Değer',
+      materialWarehouseStatus: 'Malzeme Ambar Durum',
+      materials: 'Malzemeler',
+      menuManagement: 'Menü Yönetimi',
+      minMaxStock: 'Minimum Maksimum Stok',
+      inventoryCountOps: 'Sayım İşlemleri',
+      mobileCount: 'Mobil Sayım / Fiş Oluştur',
+      countDeficitSlips: 'Sayım Eksiği Fişleri',
+      countSurplusSlips: 'Sayım Fazlası Fişleri',
+      movements: 'Hareketler',
+      multiCurrency: 'Çoklu Para Birimi',
+      multiStoreManagement: 'Çoklu Mağaza Yönetimi',
+      newBadge: 'YENİ',
+      notificationCenter: 'Bildirim Merkezi',
+      offers: 'Teklifler',
+      orders: 'Siparişler',
+      other: 'Diğer',
+      paymentPlans: 'Ödeme Planları',
+      priceAndCampaign: 'Fiyat & Kampanya',
+      productCategories: 'Ürün Kategorileri',
+      profitabilityAnalyticsDashboard: '💰 Karlılık Analizi Dashboard',
+      purchaseInvoice: 'Alış Faturası',
+      purchaseOrders: 'Satınalma Siparişleri',
+      purchaseReturn: 'Alış İade',
+      purchaseWaybill: 'Alış İrsaliyesi',
+      purchasing: 'Satın Alma',
+      receivedService: 'Alınan Hizmet',
+      regionalFranchiseManagement: 'Bölgesel Bayilik Yönetimi',
+      reports: 'Raporlar',
+      reportsAndAnalysis: 'Raporlar & Analiz',
+      requestSlips: 'Talep Fişleri',
+      retail: 'Retail',
+      retailSales: 'Perakende Satış',
+      roleAndAuthorization: 'Rol & Yetkilendirme',
+      salesInvoice: 'Toptan Satış Faturası',
+      salesInvoices: 'Satış Faturaları',
+      salesOrder: 'Satış Siparişi',
+      salesReports: 'Satış Raporları',
+      salesReturn: 'Satış İade',
+      salesWaybill: 'Satış İrsaliyesi',
+      scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+      serviceInvoiceIssued: 'Verilen Hizmet Faturası',
+      serviceInvoiceReceived: 'Alınan Hizmet Faturası',
+      serviceInvoices: 'Hizmet Faturaları',
+      slipList: 'Fiş Listesi',
+      smsManagement: 'SMS Yönetimi',
+      specialCodes: 'Özel Kodlar',
+      stockInventory: 'Sayım',
+      stockManagementPanel: 'Stok Yönetim Paneli',
+      stockReports: 'Stok Raporları',
+      storeConfiguration: 'Mağaza Yapılandırması',
+      storeManagement: 'Mağaza Yönetimi',
+      storePanel: 'Mağaza Paneli',
+      storeTransfer: 'Mağaza Transferi',
+      supplierCards: 'Tedarikçi Kartları',
+      systemHealth: 'Sistem Sağlığı',
+      systemManagement: 'Sistem Yönetimi',
+      transactionBreakdown: 'Hareket Dökümü',
+      trialBalance: 'Mizan (Trial Balance)',
+      trialBalanceReport: 'Mizan Raporu',
+      unitSets: 'Birim Setleri',
+      userManagement: 'Kullanıcı Yönetimi',
+      variants: 'Varyantlar',
+      warehouseTransferWaybill: 'Depo Transfer İrsaliyesi',
+      wasteWaybill: 'Fire İrsaliyesi',
+      waybills: 'İrsaliyeler',
+      whatsappIntegration: 'WhatsApp Entegrasyonu',
+      wholesaleSales: 'Toptan Satış',
+      workflowAutomation: 'Workflow Otomasyonu',
+      salesOrders: 'Satış Siparişleri',
+      currentAccountPersonel: 'Cari Hesap / Personel',
+    },
+    menuManagement: 'Menü Yönetimi',
+    min1Shortcut: 'En az 1 kısayol seçmelisiniz',
+    minMaxStock: 'Minimum Maksimum Stok',
+    minimumAmountNotMet: 'Minimum tutar karşılanmadı',
+    missingBarcodes: 'Bulunamayan Barkodlar',
+    missingBarcodesTitle: 'Bulunamayan Barkod Listesi',
+    missingKasaId: 'Kasa ID eksik! Lütfen sayfayı yenileyip tekrar deneyin.',
+    mixedPayment: 'Karışık',
+    moduleInDevelopment: 'Bu modül şu anda geliştirme aşamasındadır ve yakında EX-ROSERP ekosistemine dahil edilecektir.',
+    moduleLoadError: 'Modül Yükleme Hatası',
+    moduleLoadErrorMessage: '\"{screenName}\" ekranı yüklenirken bir hata oluştu.',
+    moduleLoadingError: 'Modül Yükleme Hatası',
+    modulePreparing: 'Modülü Hazırlanıyor',
+    moduleUnderDevelopment: 'Bu modül şu anda geliştirme aşamasındadır ve yakında EX-ROSERP ekosistemine dahil edilecektir.',
+    moveTable: 'Masa Taşı',
+    movementReport: 'Hareket Raporu',
+    movements: 'Hareketler',
+    multiCurrency: 'Çoklu Para Birimi',
+    multiStoreManagement: 'Çoklu Mağaza Yönetimi',
+    multiplier1: 'Çarpan 1',
+    multiplier2: 'Çarpan 2',
+    multiplierLogicDesc: 'Birimler arası dönüşüm: (Birim) x Çarpan 1 = (Ana Birim) x Çarpan 2',
+    navigation: 'Navigasyon',
+    netIncome: 'Net Gelir',
+    netSales: 'Net Satışlar',
+    networkError: 'Bir ağ hatası oluştu.',
+    newBadge: 'YENİ',
+    newCustomer: 'Yeni Müşteri',
+    newInvoice: 'Yeni Fatura',
+    newSalesOrder: 'Yeni Satış Siparişi',
+    newUnitSet: 'Yeni Unit Sets',
+    newUnitSetTitle: 'Yeni Birim Seti Tanımla',
+    next: 'Sonraki',
+    noCriticalStock: 'Kritik stok seviyesinde ürün yok',
+    noCriticalStockInfo: 'Kritik stok seviyesinde ürün yok',
+    noCustomer: 'Müşterisiz',
+    noCustomerSale: 'Müşterisiz Satış',
+    noCustomerSaleDescription: 'Perakende satış yap',
+    noLogsYet: 'HENÜZ KAYIT BULUNMUYOR',
+    noLowStock: 'Düşük stok seviyesinde ürün yok',
+    noLowStockInfo: 'Düşük stok seviyesinde ürün yok',
+    noLowStockWarning: 'Düşük stok seviyesinde ürün yok',
+    noMissingBarcodes: 'Henüz bulunamayan bir barkod yok.',
+    noParkedReceipts: 'Bekleyen fiş yok',
+    noParkedReceiptsDescription: 'Bekletilen fişler burada görünecek',
+    noProductsFound: 'Ürün bulunamadı',
+    noRecordFound: 'Kayıt bulunamadı',
+    noRecordsFound: 'Kayıt bulunamadı',
+    noReturnPolicyNotice: 'İade/İptal yapılamaz.',
+    noSalesFound: 'Satış bulunamadı',
+    noSalesHistory: 'Satış geçmişi yok',
+    noSalesRecordFound: 'Satış kaydı bulunamadı',
+    noteOptional: 'Not (İsteğe Bağlı)',
+    notesLabel: 'Notlar',
+    notificationCenter: 'Bildirim Merkezi',
+    numpad: 'Numpad',
+    numpadMode: 'Numpad Modu',
+    numpadModeAdd: '+ Ekle',
+    numpadModeReplace: '↻ Değiştir',
+    occupancyReport: 'Doluluk Analizi',
+    offers: 'Teklifler',
+    online: 'Çevrimiçi',
+    onlineDevicesLabel: 'Çevrimiçi',
+    openAccountWarning: 'Seçili değilse açık hesap (cari) olarak işlem görür',
+    openCashRegister: 'Kasa Aç',
+    openCashRegisterProcess: 'Kasa Açma İşlemi',
+    openCashRegisterToAddProduct: 'Ürün ekleyebilmek için önce kasayı açmalısınız!',
+    openCashRegisterToSell: 'Satış yapabilmek için önce kasayı açmalısınız!',
+    openNewPeriod: 'Yeni Periyot Aç',
+    openRegister: 'Kasa Aç',
+    openingCashAmount: 'Açılış Nakit Tutarı',
+    openingCashDescription: 'Bu tutar oturum boyunca açılış kasası olarak kullanılacaktır',
+    openingCashRegister: 'KASA AÇILIŞI:',
+    openingCredit: 'Açılış (Alacak)',
+    openingDebit: 'Açılış (Borç)',
+    operatingExpenses: 'İşletme Giderleri',
+    operation: 'İşlem',
+    operationAmount: 'İşlem Tutarı',
+    operationSaveFailed: 'İşlem kaydedilemedi',
+    operationSavedSuccessfully: 'İşlem başarıyla kaydedildi',
+    orderCreatedSuccessfully: '✅ Sipariş başarıyla oluşturuldu!',
+    orderCreationError: '❌ Sipariş oluşturulurken hata oluştu!',
+    orderDiscount: 'Sipariş İndirimi',
+    orderForm: 'Sipariş Formu',
+    orderNote: 'Sipariş Notu',
+    orderNoteDescription: 'Bu not mutfak ekranında ve adisyonda görünecektir.',
+    orderNotePlaceholder: 'Sipariş ile ilgili not ekleyin (Örn: Acısız olsun, ketçap az olsun...)',
+    orderRecommended: 'Sipariş önerilir',
+    orders: 'Siparişler',
+    other: 'Diğer',
+    otherReason: 'Diğer Nedenler',
+    otherType: 'Farklı',
+    outOfStock: 'Stokta Yok',
+    outgoingTransfer: 'Transfer Giden',
+    pageRange: 'SAYFA ARALIĞI',
+    paidAmount: 'Ödenen',
+    parkReceipt: 'Fişi Beklet',
+    parkedAt: 'Bekletilme',
+    parkedBy: 'Bekleyen',
+    parkedReceiptDeleted: 'Bekleyen fiş silindi',
+    parkedReceiptRetrieved: 'Bekleyen fiş getirildi',
+    parkedReceipts: 'Bekleyen Fiş',
+    parkedReceiptsButton: 'Bekleyen',
+    parkedReceiptsTitle: 'Bekleyen Fişler',
+    passiveStatus: 'PASİF',
+    password: 'Şifre',
+    payment: 'Ödeme',
+    paymentAmount: 'Ödeme Tutarı',
+    paymentAmountLabel: 'Ödeme Tutarı',
+    paymentCardPOS: 'Kart (POS)',
+    paymentCash: 'Nakit',
+    paymentCredit: 'Veresiye (Cari)',
+    paymentFailed: 'Ödeme başlatılamadı:',
+    paymentInfo: 'Ödeme Bilgileri',
+    paymentLabel: 'Ödeme',
+    paymentMethod: 'Ödeme Yöntemi',
+    paymentMethodDistribution: 'Ödeme Yöntemi Dağılımı',
+    paymentMethodLabel: 'Ödeme Yöntemi',
+    paymentMethods: 'Ödeme Yöntemleri',
+    paymentMethodsChart: 'Ödeme Yöntemleri',
+    paymentMethodsDashboard: 'Ödeme Yöntemleri',
+    paymentNotesPlaceholder: 'Ödeme ile ilgili notlar...',
+    paymentPlans: 'Ödeme Planları',
+    paymentProvider: 'Ödeme Sağlayıcı',
+    paymentQRProvider: 'QR Ödeme Sağlayıcı',
+    paymentStartError: 'Ödeme başlatılamadı',
+    paymentSummary: 'Ödeme Özeti',
+    paymentTermDays: 'Ödeme Vadesi (Gün)',
+    paymentTitle: 'Ödeme Al',
+    payments: 'Ödemeler',
+    pcs: 'ad',
+    pending: 'Bekliyor',
+    pendingBroadcastsLabel: 'Bekleyen',
+    percentage: 'Yüzde',
+    performanceDashboard: 'Performans Dashboard',
+    periodClosed: 'Kapalı Periyot',
+    periodComparison: 'Dönem Karşılaştırma',
+    periodManagement: 'Periyot Yönetimi',
+    periodOpen: 'Açık Periyot',
+    phoneAddress: 'Tel / Adres',
+    phoneLabel: 'Telefon',
+    piece: 'Adet',
+    pieces: 'Adet',
+    placeholderDescription: 'İşlem ile ilgili not...',
+    placeholderDocumentNo: 'Örn: 000123',
+    placeholderSpecialCode: 'Örn: PRJ001',
+    planningOptimization: 'Planlama & Optimizasyon',
+    pleaseAddAtLeastOneProduct: 'Lütfen en az bir ürün ekleyin!',
+    pleaseEnterAmount: 'Lütfen tutar girin',
+    pleaseEnterBarcode: 'Lütfen barkod girin',
+    pleaseEnterBarcodeFirst: 'Lütfen önce barkod girin',
+    pleaseEnterFirmId: 'Lütfen Firma ID giriniz',
+    pleaseEnterQuantityFirst: 'Lütfen önce adet girin, sonra * tuşuna basın',
+    pleaseExplainCancelReason: 'Lütfen iptal nedenini açıklayın!',
+    pleaseExplainReturnReason: 'Lütfen iade nedenini açıklayın!',
+    pleaseSelectCancelReason: 'Lütfen iptal nedeni seçin!',
+    pleaseSelectCurrentAccount: 'Lütfen bir cari hesap seçin',
+    pleaseSelectCustomer: 'Lütfen müşteri seçin!',
+    pleaseSelectReceipt: 'Lütfen bir fiş seçin!',
+    pleaseSelectReturnProducts: 'Lütfen iade edilecek ürünleri seçin!',
+    pleaseSelectReturnReason: 'Lütfen iade nedeni seçin!',
+    pleaseSelectVariant: 'Lütfen varyant seçin',
+    pos: 'POS İşlemleri',
+    posModule: 'Satış',
+    posPaymentDesc: 'POS Satış Ödemesi',
+    posted: 'Yayınlandı',
+    potentialProfit: 'Potansiyel Kar',
+    prepareReport: 'Raporu Hazırla',
+    preparingModule: '\"{screenName}\" Modülü Hazırlanıyor',
+    previous: 'Önceki',
+    price: 'Fiyat',
+    priceAndCampaign: 'Fiyat & Kampanya',
+    priceBulkUpdateSuccess: 'Tüm ürün fiyatları %{percent} artırıldı',
+    priceInfo: 'Fiyat Bilgisi',
+    priceLabel: 'Fiyat',
+    priceProblem: 'Fiyat problemi',
+    pricingInfo: 'Fiyatlandırma Bilgisi',
+    print: 'Yazdır',
+    printReceipt: 'Fiş Yazdır',
+    printReport: 'Rapor Yazdır',
+    processingText: 'İŞLENİYOR...',
+    product: 'Ürün',
+    productAdded: 'Ürün sepete eklendi',
+    productAddedToCart: '{productName} sepete eklendi',
+    productAssignedToSlot: '{productName} Slot #{slotNumber}\'e atandı',
+    productBased: 'Ürün Bazında',
+    productCards: 'Ürün Kartı',
+    productCatDesc: 'Ürün kategorilerini yönetin',
+    productCatalog: 'Ürün Kataloğu',
+    productCategories: 'Ürün Kategorileri',
+    productCount: 'Ürün',
+    productDefective: 'Ürün Kusurlu',
+    productDetails: 'Ürün Detayları',
+    productInfo: 'Ürün Bilgileri',
+    productLabel: 'Ürün',
+    productManagement: 'Ürün Yönetimi',
+    productName: 'Ürün Adı',
+    productQuery: 'Ürün Sorgu',
+    productRemoved: 'Ürün sepetten çıkarıldı',
+    productRemovedFromCart: 'Ürün sepetten çıkarıldı',
+    productSearch: 'Ürün Ara',
+    productSelection: 'Ürün Seçimi',
+    productionEntry: 'Üretimden Giriş',
+    productionIssue: 'Üretime Çıkış',
+    productionReceiving: 'Üretimden Giriş',
     productsAtCriticalLevel: 'ürün kritik seviyede',
     productsAtLowLevel: 'ürün düşük seviyede',
-    remaining: 'Kalan',
-    urgentOrder: 'Acil sipariş!',
-    orderRecommended: 'Sipariş önerilir',
-    noCriticalStock: 'Kritik stok seviyesinde ürün yok',
-    noLowStock: 'Düşük stok seviyesinde ürün yok',
-    customizeShortcuts: 'Hızlı Erişimleri Özelleştir',
-    maxShortcutsTitle: 'En fazla 8 kısayol seçebilirsiniz',
-    shortcutsSelected: 'kısayol seçildi',
-    selectAtLeastOneShortcut: 'En az 1 kısayol seçmelisiniz',
-    saveShortcutsError: 'Kısayollar kaydedilemedi. Lütfen tekrar deneyin.',
-    dashboardTransaction: 'işlem',
-    stockLabel: 'Stok',
-    print: 'Yazdır',
-    download: 'İndir',
-    currency: 'IQD',
-    paymentCash: 'Nakit',
-    paymentCardPOS: 'Kart (POS)',
-    paymentCredit: 'Veresiye (Cari)',
-    paymentQRProvider: 'QR Ödeme Sağlayıcı',
-    campaignDiscountPayment: 'Kampanya İndirimi',
-    additionalDiscount: 'İlave İndirim (Opsiyonel)',
-    subtotalUppercase: 'ARA TOPLAM',
-    totalUppercase: 'TOPLAM',
-    paidAmount: 'Ödenen',
-    remainingAmount: 'Kalan',
-    changeAmount: 'Para Üstü',
-    addedPayments: 'Eklenen Ödemeler',
-    amountInput: 'Miktar',
-    fullAmountBtn: 'Tam Tutar',
-    addPaymentBtn: 'Ödeme Ekle',
-    numpadPrice: 'Fiyat',
-    numpadConfirm: 'Tamam',
-    paymentProcessing: 'İŞLENİYOR...',
-    paymentStartError: 'Ödeme başlatılamadı',
-    posPaymentDesc: 'POS Satış Ödemesi',
-    scanQRCode: 'QR Kodu Okutun',
+    productsCount: 'ürün',
+    productsLabel: 'Ürün',
+    productsToReturn: 'İade Edilecek Ürünler',
+    profitLoss: 'Kar-Zarar',
+    profitLossReport: 'Kar-Zarar Raporu',
+    profitMargin: 'Kar Marjı',
+    profitMarginDashboard: 'Kar Marjı',
+    profitabilityAnalyticsDashboard: '💰 Karlılık Analizi Dashboard',
+    promissoryNote: 'Senet',
+    purchase: 'Alış',
+    purchaseInvoice: 'Alış Faturası',
+    purchaseInvoicesDesc: 'Tüm satın alma işlemleri',
+    purchaseInvoicesTitle: 'Alış Faturaları',
+    purchaseOrder: 'Alış Siparişi',
+    purchaseOrders: 'Satınalma Siparişleri',
+    purchaseQuote: 'Alış Teklifi',
+    purchaseReturn: 'Alış İade',
+    purchaseReturnDesc: 'Tedarikçilere yapılan iadeler',
+    purchaseReturnTitle: 'Alış İade',
+    purchaseSupplierDesc: 'Alım Yapılan Cari',
+    purchaseWaybill: 'Alış İrsaliyesi',
+    purchases: 'Alışlar',
+    purchasing: 'Satın Alma',
+    qrCustomerInstruction: 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir',
     qrInstructions: 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir',
-    paymentAmountLabel: 'Ödeme Tutarı',
+    ready: 'Hazır',
+    selectOrHoverInvoiceType: 'Fatura türü üzerine gelin veya seçin',
+    wholesaleDesc: 'Toptan satış işlemleri için kullanılır.',
+    retailSaleDesc: 'Perakende satış işlemleri için kullanılır.',
+    serviceGivenDesc: 'Verilen hizmetlerin faturalandırılması için kullanılır.',
+    serviceReceivedDesc: 'Alınan hizmetlerin faturalandırılması için kullanılır.',
+    salesReturnDesc: 'Müşterilerden gelen iadeler için kullanılır.',
+    waybillDesc: 'İrsaliye işlemleri için kullanılır.',
+    orderDesc: 'Sipariş işlemleri için kullanılır.',
+    quoteDesc: 'Teklif işlemleri için kullanılır.',
+    wastageWaybillDesc: 'Fire ve zayiat işlemlerinde kullanılır.',
+    warehouseTransferWaybillDesc: 'Ambar transfer işlemlerinde kullanılır.',
+    qrScanCode: 'QR Kodu Okutun',
     qrStep1: 'Adım 1',
     qrStep1Desc: 'Telefonu QR koda tutun',
     qrStep2: 'Adım 2',
     qrStep2Desc: 'Ödemeyi onaylayın',
-    discountPercentPlaceholder: 'İndirim %',
-    discountAmountPlaceholder: 'İndirim Tutarı',
-    paymentMethodLabel: 'Ödeme Yöntemi',
-    balanceLoading: 'BAKİYE YÜKLEME',
-    serviceTopUp: 'HİZMET TOP-UP',
-    transactionNumberLabel: 'İşlem Yapılan Numara/Kişi',
-    digitalProductSaleNotice: 'Bu işlem dijital ürün satışıdır.',
-    noReturnPolicyNotice: 'İade/İptal yapılamaz.',
-    smsNotificationSent: 'SMS Bildirimi Gönderildi',
-    receiptDataError: 'Fiş verileri yüklenemedi',
-    paymentInfo: 'Ödeme Bilgileri',
-    openAccountWarning: 'Seçili değilse açık hesap (cari) olarak işlem görür',
-    paymentNotesPlaceholder: 'Ödeme ile ilgili notlar...',
-    checkLabel: 'Çek',
-    promissoryNote: 'Senet',
-    tagline: 'Profesyonel Satış Yönetim Sistemi',
-    systemAdmin: 'Sistem Yöneticisi',
-    campaignLabel: 'KAMPANYA',
-    defaultLocation: 'Bağdat, Irak',
-    defaultCompanyName: 'RestPOS',
-    thanksForChoosingUs: '★★★ Bizi Tercih Ettiğiniz İçin Teşekkürler ★★★',
-    receiptRequiredForReturns: 'Bu fiş iade ve değişim işlemlerinde gereklidir.',
-    bankTransfer: 'Banka Transferi',
-    mixedPayment: 'Karışık',
-    rowDiscount: 'Satır İndirimi',
-    paymentProvider: 'Ödeme Sağlayıcı',
-    numpadMode: 'Numpad Modu',
-    numpadModeAdd: '+ Ekle',
-    numpadModeReplace: '↻ Değiştir',
-    gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
-    gatewayFinishInstructions: 'Ödeme işlemini tamamladıktan sonra "Tamam" butonuna tıklayın. Ödeme başarısız olduysa "İptal" diyerek geri dönün.',
-
-    // Advanced Reports Category Names
-    salesReports: 'Satış Raporları',
-    stockReports: 'Stok Raporları',
-    financeReports: 'Finans Raporları',
-    customerReports: 'Müşteri Raporları',
-    hrReports: 'İnsan Kaynakları',
-    customReports: 'Özel Raporlar',
-    reportCountLabel: 'rapor',
-    parkedReceiptsButton: 'Bekleyen',
-    parkReceipt: 'Fişi Beklet',
-    cancelReceipt: 'Fişi İptal',
-    management: 'Yönetim',
-    closeRegister: 'Kasa Kapat',
-    openRegister: 'Kasa Aç',
-    customerInfo: 'Müşteri Bilgisi',
-    cardNumber: 'Kart No',
-
-    // Footer
-    receipt: 'Fiş',
-    store: 'Mağaza',
-    cashRegister: 'Kasa',
-    shift: 'Vardiya',
-    screenSettings: 'Ekran Ayarları',
-    language: 'Dil',
-
-    // WebSocket Status
-    wsConnected: 'Bağlı',
-    wsDisconnected: 'Bağlantı Yok',
-    wsConnecting: 'Bağlanıyor...',
-    stockInventory: 'Sayım',
-    inventoryManagement: 'Sayım ve Stok İşlemleri',
-    systemManagement: 'Sistem Yönetimi',
-    centralStore: 'Merkez Mağaza',
-    dayShift: 'Gündüz',
-
-    // Notifications
-    productAdded: 'Ürün sepete eklendi',
-    productRemoved: 'Ürün sepetten çıkarıldı',
-    cartCleared: 'Sepet temizlendi',
-    receiptParked: 'Fiş bekletildi',
-    saleCompleted: 'Satış tamamlandı',
-    error: 'Hata',
-
-    paymentTitle: 'Ödeme Al',
-    discountOptional: 'İndirim (İsteğe Bağlı)',
-    percentage: 'Yüzde',
-    enterDiscountPercentage: 'İndirim yüzdesi girin',
-    enterDiscountAmount: 'İndirim tutarı girin',
-    paymentSummary: 'Ödeme Özeti',
-    subtotalLabel: 'Ara Toplam',
-    amountToPay: 'Ödenecek Tutar',
-    paymentMethod: 'Ödeme Yöntemi',
-    cashPayment: 'Nakit Ödeme',
-    cashPaymentDescription: 'Nakit ile ödeme al',
-    cardPayment: 'Kartlı Ödeme',
-    cardPaymentDescription: 'Kredi / Banka kartı ile ödeme',
-    receivedAmount: 'Received Amount',
-    enterReceivedCashAmount: 'Enter received cash amount',
-    fullAmount: 'Tam Tutar',
-    completePayment: 'Complete Payment',
-    campaignDiscountLabel: 'Campaign Discount',
-    campaignAppliedDescription: 'applied',
-
-    // Language Modal
-    selectLanguage: 'Dil Seçin',
-    turkish: 'Türkçe',
-    english: 'English',
-    arabic: 'العربية',
-    kurdish: 'کوردی',
-
-    // Additional Labels
-    campaignApplied: 'Kampanya uygulandı',
-    campaignRemoved: 'Kampanya kaldırıldı',
-    minimumAmountNotMet: 'Minimum tutar karşılanmadı',
-    campaignAutoApplied: 'Kampanya otomatik uygulandı',
-
-
-    // Customer Modal
-    selectCustomerTitle: 'Müşteri Seçin',
-    customerSearchPlaceholder: 'Müşteri ara...',
-    noCustomerSale: 'Müşterisiz Satış',
-    noCustomerSaleDescription: 'Perakende satış yap',
-    customerNotFound: 'Müşteri bulunamadı',
-    newCustomer: 'Yeni Müşteri',
-    individual: 'Bireysel',
-    corporate: 'Kurumsal',
-    totalPurchases: 'Toplam Alışveriş',
-    lastPurchase: 'Son Alışveriş',
-
-    // Staff Modal
-    selectStaffTitle: 'Personel Seçin',
-    cashier1: 'Kasiyer 1',
-    cashier2: 'Kasiyer 2',
-    cashier3: 'Kasiyer 3',
-    manager: 'Yönetici',
-    discountAuthority: 'İndirim yetkisi var',
-    errorFetchingUsers: 'Kullanıcı listesi alınamadı',
-    welcome: 'Hoş geldiniz',
-    invalidPassword: 'Hatalı şifre',
-    loginError: 'Giriş yapılırken hata oluştu',
-    login: 'Giriş Yap',
-
-    // MarketPOS
-    phoneAddress: 'Tel / Adres',
-    totalItems: 'Toplam Ürün',
-    applyDiscount: 'İndirim Uygula',
-    deleteBtn: 'Sil',
-    cancelBtn: 'İptal',
-    pieces: 'Adet',
-    priceLabel: 'Fiyat',
-    clearBtn: 'Temizle',
-    enterBtn: 'Tamam',
-    productCount: 'Ürün',
-    totalPieces: 'Toplam Adet',
-    pcs: 'ad',
-    searchBtn: 'Ara',
-
-    // Login Screen
-    storeSelection: 'Mağaza Seçimi',
-    username: 'Kullanıcı Adı',
-    usernamePlaceholder: 'Kullanıcı adınızı girin',
-    password: 'Şifre',
-    rememberMe: 'Beni Hatırla',
-    connectionSettings: 'Bağlantı Ayarları',
-    loginButton: 'Giriş Yap',
-    verifying: 'Doğrulanıyor...',
-    continue: 'Devam Et',
-    systemLogin: 'Sisteme Giriş',
-    editInfo: 'BİLGİLERİ DÜZENLE',
-    step01Auth: 'ADIM 01 / KİMLİK DOĞRULAMA',
-    step02Scope: 'ADIM 02 / KAPSAM BELİRLEME',
-    firmSelectionScope: 'FİRMA SEÇİMİ',
-    storeSelectionScope: 'MAĞAZA SEÇİMİ',
-    selectFirmPrompt: 'Firma Seçin',
-
-    // Campaign Modal
-    selectCampaign: 'Kampanya Seç',
-    totalCampaigns: 'Toplam Kampanya',
-    closeEsc: 'Kapatmak için ESC',
-
-    // Bottom Bar
-    subtotalText: 'ARA TOPLAM',
-    totalText: 'TOPLAM',
-    cashierLabel: 'Kasiyer',
-
-    // Parked Receipts Modal
-    parkedReceiptsTitle: 'Bekleyen Fişler',
-    noParkedReceipts: 'Bekleyen fiş yok',
-    noParkedReceiptsDescription: 'Bekletilen fişler burada görünecek',
-    parkedAt: 'Bekletilme',
-    parkedBy: 'Bekleyen',
-    customerLabel: 'Müşteri',
-    itemsCount: 'ürün',
-    continueReceipt: 'Devam Et',
-    deleteReceipt: 'Sil',
-    confirmDelete: 'Silmek istediğinizden emin misiniz?',
-
-    // Stock Query Modal
-    productCatalog: 'Ürün Kataloğu',
-    productsCount: 'ürün',
-    searchProductPlaceholder: 'Ürün ara...',
-    gridView: 'Grid',
-    listView: 'Liste',
-    noProductsFound: 'Ürün bulunamadı',
-    changeSearchCriteria: 'Arama kriterlerinizi değiştirin',
-    productDetails: 'Ürün Detayları',
-    barcodeLabel: 'Barkod',
-    stockStatus: 'Stok Durumu',
-    currentStock: 'Mevcut Stok',
-    unitLabel: 'Birim',
-    outOfStock: 'Stokta Yok',
-    criticalLevel: 'Kritik Seviye',
-    lowStock: 'Düşük Stok',
-    sufficientStock: 'Yeterli Stok',
-    priceInfo: 'Fiyat Bilgisi',
-    salePrice: 'Satış Fiyatı',
-    costPrice: 'Alış Fiyatı',
-    profitMargin: 'Kar Marjı',
-    stockValue: 'Stok Değeri',
-    costValue: 'Alış Değeri',
-    saleValue: 'Satış Değeri',
-    branchVariants: 'Şube Varyantları',
-    totalLabel: 'Toplam',
-    branchStocks: 'Şube Stokları',
-    totalAllBranches: 'Tüm Şubeler Toplam',
-    productLabel: 'Ürün',
-    categoryLabel: 'Kategori',
-    detailButton: 'Detay',
-    addToCartButton: 'Sepete Ekle',
-
-    // Stock Query Specific
-    grid: 'Izgara',
-    list: 'Liste',
-    operation: 'İşlem',
-    unit: 'Birim',
-    pricingInfo: 'Fiyatlandırma Bilgisi',
-    cost: 'Maliyet',
-    branchVariantStocks: 'Şube Varyant Stokları',
-
-    // Return Modal
-    returnCancelTitle: 'İade / İptal İşlemi',
-    searchReceiptPlaceholder: 'Fiş numarası veya barkod ara...',
-    noSalesFound: 'Satış bulunamadı',
-    selectReceiptForReturn: 'İade için fiş seçin',
-    returnProducts: 'İade Edilecek Ürünler',
-    salesQuantity: 'Satış Adedi',
-    returnQuantity: 'İade Adedi',
-    allButton: 'Tümü',
-    returnReason: 'İade Nedeni',
-    returnReasonPlaceholder: 'İade nedenini seçin...',
-    returnAmount: 'İade Tutarı',
-    confirmReturn: 'İadeyi Onayla',
-    productDefective: 'Ürün Kusurlu',
-    customerNotSatisfied: 'Müşteri Memnun Değil',
-    wrongProduct: 'Yanlış Ürün',
-    sizeColorChange: 'Beden/Renk Değişimi',
-    otherReason: 'Diğer Nedenler',
-    generalSale: 'Genel Satış',
-
-    // Sales History Modal
-    salesHistoryTitle: 'Satış Geçmişi',
-    allSalesButton: 'Tüm Satışlar',
-    todayButton: 'Bugün',
-    sevenDaysButton: '7 Gün',
-    thirtyDaysButton: '30 Gün',
-    noSalesHistory: 'Satış geçmişi yok',
-    salesCount: 'satış',
-    totalSales: 'Toplam',
-    receiptNumberOrCustomerSearch: 'Fiş no veya müşteri adı ile ara...',
-    dateRange: 'Tarih Aralığı',
-    startDate: 'Başlangıç:',
-    endDate: 'Bitiş:',
-
-    noSalesRecordFound: 'Satış kaydı bulunamadı',
-    cash: 'Nakit',
-    card: 'Kart',
-    other: 'Diğer',
-
-    viewDetails: 'Detayları Gör',
-    printReceipt: 'Fiş Yazdır',
-    backToList: 'Listeye Dön',
-    receiptDetails: 'Fiş Detayları',
-    lastReceipt: 'Son Fiş',
-    totalSalesCount: 'Toplam',
-    salesWillAppearHere: 'Tamamlanan satışlar burada görünecek',
-    cashierInfo: 'Kasiyer',
-    productsLabel: 'Ürün',
-    dateLabel: 'Tarih',
-    closeButton: 'Kapat',
-
-    // Language Selection Modal
-    languageSelectionTitle: 'Dil Seçimi',
-    languageChangeInfo: 'Dil değişikliği tüm ekranları etkiler ve otomatik olarak kaydedilir.',
-    textDirection: 'Metin Yönü',
-    textDirectionOptional: 'Metin Yönü (İsteğe Bağlı)',
-
-    // Keyboard Shortcuts
-    keyboardShortcuts: 'Klavye Kısayolları',
-    pos: 'POS İşlemleri',
-    quick: 'Hızlı Aksiyonlar',
-    navigation: 'Navigasyon',
-    productSearch: 'Ürün Ara',
-    quickPayment: 'Hızlı Ödeme',
-    focusBarcodeInput: 'Barkod Alanına Odaklan',
-    confirmBarcode: 'Barkod Onayla',
-    clearCart: 'Sepeti Temizle',
-    openCashRegister: 'Kasa Aç',
-    closeCashRegister: 'Kasa Kapat',
-
-    // Advanced Search
-    voiceSearch: 'Sesli Arama',
-    results: 'sonuç',
-    searching: 'Aranıyor...',
-
-    // Accounting & Finance
-    selectFirma: 'Firma Seçin',
-    selectDonem: 'Dönem Seçin',
-    periodOpen: 'Açık Periyot',
-    periodClosed: 'Kapalı Periyot',
-    closedMonths: 'Kapalı Aylar',
-    firma: 'Firma',
-    donem: 'Dönem',
-    journalEntry: 'Jurnal Girişi',
-    journalEntries: 'Jurnal Girişleri',
-    debit: 'Borç',
-    credit: 'Alacak',
-    balance: 'Bakiye',
-    trialBalance: 'Deneme Bakiyesi',
-    accountCode: 'Hesap Kodu',
-    accountName: 'Hesap Adı',
-    fiscalPeriod: 'Mali Periyot',
-    fiscalYear: 'Mali Yıl',
-    periodManagement: 'Periyot Yönetimi',
-    closeMonth: 'Ayı Kapat',
-    closePeriod: 'Periyodu Kapat',
-    openNewPeriod: 'Yeni Periyot Aç',
-    balanceSheet: 'Denge Tablosu',
-    incomeStatement: 'Gelir Tablosu',
-    cashFlowStatement: 'Nakit Akış Tablosu',
-    financialStatements: 'Mali Durum Tabloları',
-    profitLoss: 'Kar-Zarar',
-    assets: 'Varlıklar',
-    liabilities: 'Yükümlülükler',
-    equity: 'Mülkiyet',
-    revenue: 'Gelir',
-    expenses: 'Giderler',
-    netIncome: 'Net Gelir',
-    grossProfit: 'Brüt Kar',
-    operatingExpenses: 'İşletme Giderleri',
-    expenseAnalysis: 'Gider Analizi',
-    tax: 'Vergi',
-    taxRate: 'Vergi Oranı',
-    corporateTax: 'Kurumsal Vergi',
-    incomeTax: 'Gelir Vergisi',
-    withholdingTax: 'Tahsilat Vergisi',
-    taxReport: 'Vergi Raporu',
-    chartOfAccounts: 'Hesap Kartı',
-    generalLedger: 'Genel Defter',
-    subsidiary: 'Alt Şirket',
-    consolidatedReports: 'Birleştirilmiş Raporlar',
-    intercompanyEliminations: 'Şirketler Arası İptaller',
-    costOfGoodsSold: 'Satılan Ürün Maliyeti',
-    inventory: 'Envanter',
-    accountsReceivable: 'Alacaklar',
-    accountsPayable: 'Borçlar',
-
-    bank: 'Banka',
-    purchases: 'Alışlar',
-    transfers: 'Transferler',
-    receipts: 'Makbuzlar',
-    payments: 'Ödemeler',
-    voucher: 'Senet',
-    voucherNo: 'Senet No',
-    voucherType: 'Senet Tipi',
-    voucherDate: 'Senet Tarihi',
-    description: 'Açıklama',
-    autoGenerated: 'Otomatik Oluşturuldu',
-    manualEntry: 'El ile Girişi',
-    approved: 'Onaylandı',
-    pending: 'Bekliyor',
-    rejected: 'Reddedildi',
-    posted: 'Yayınlandı',
-    reversed: 'Ters çevrildi',
-
-    // MarketPOS Additional
+    quantity: 'Miktar',
     quantitySaved: 'Adet kaydedildi',
-    quantitySavedMessage: 'Adet kaydedildi: {quantity}. Şimdi barkod girin.',
-    pleaseEnterBarcode: 'Lütfen barkod girin',
-    pleaseEnterQuantityFirst: 'Lütfen önce adet girin, sonra * tuşuna basın',
-    pleaseSelectVariant: 'Lütfen varyant seçin',
-    barcodeNotFound: 'Barkod bulunamadı',
-    pleaseEnterBarcodeFirst: 'Lütfen önce barkod girin',
-    openCashRegisterToAddProduct: 'Ürün ekleyebilmek için önce kasayı açmalısınız!',
-    productAddedToCart: '{productName} sepete eklendi',
-    productRemovedFromCart: 'Ürün sepetten çıkarıldı',
-    variantChanged: 'Varyant değiştirildi: {variant}',
-    receiptCancelled: 'Fiş iptal edildi: {reason}',
-    cartEmpty: 'Sepet boş',
-    clearCurrentCartFirst: 'Önce mevcut sepeti temizleyin',
-    parkedReceiptRetrieved: 'Bekleyen fiş getirildi',
-    parkedReceiptDeleted: 'Bekleyen fiş silindi',
-    openCashRegisterToSell: 'Satış yapabilmek için önce kasayı açmalısınız!',
-    discountApplied: '%{percent} indirim uygulandı',
     quantitySavedBarcodeEnter: 'Adet: {quantity} - Barkod girin',
-    enterBarcode: 'Barkod girin...',
-    automatic: '(Otomatik)',
-    discountLabel: 'İndirim:',
-    keyboardShortcutsTitle: 'Klavye Kısayolları (Press ?)',
-    shortcuts: 'Kısayollar',
-    returnCompleted: 'İade işlemi tamamlandı',
-    productAssignedToSlot: '{productName} Slot #{slotNumber}\'e atandı',
-    cashHandedOver: 'Kasa {staff} kasiyerine devredildi',
-    cashHandedOverMessage: 'Kasa {staff} kasiyerine devredildi.\n\nDevir Tutarı: {amount}\n\n{staff} kasa açarken devri onaylamalıdır.',
-    cashOpenedSuccessfully: 'Kasa başarıyla açıldı!',
-    cashOpenedMessage: 'Kasa başarıyla açıldı!\n\nAçılış Kasası: {amount}\nKasiyer: {staff}',
-    defaultQuantity: 'VARSAYILAN ADET',
-    zeroPlaceholder: '0',
-    pageRange: 'SAYFA ARALIĞI',
-    missingBarcodes: 'Bulunamayan Barkodlar',
-    missingBarcodesTitle: 'Bulunamayan Barkod Listesi',
-    clearList: 'Listeyi Temizle',
-    noMissingBarcodes: 'Henüz bulunamayan bir barkod yok.',
-    barcodeNotFoundWarning: 'Barkod bulunamadı: {barcode}',
-    cashRegisterNumber: 'Kasa No',
-    version: 'v1.0',
-    versionTitle: 'Versiyon: v1.0',
-
-
-    // Open Cash Register Modal
-    openCashRegisterProcess: 'Kasa Açma İşlemi',
-    cashHandoverAccept: 'Para Devri Kabul',
-    numpad: 'Numpad',
-    cashHandoverAvailable: 'Para Devri Mevcut',
-    handoverFromCashier: 'Devreden Kasiyer:',
-    handoverAmount: 'Devir Tutarı:',
-    sessionInformation: 'Oturum Bilgileri',
-
-
-
-
-    banknoteCount: 'Banknot Sayısı',
-    openingCashAmount: 'Açılış Nakit Tutarı',
-    banknoteAndCoinCount: 'Banknot ve Madeni Para Sayımı',
-    openingCashRegister: 'KASA AÇILIŞI:',
-
-    openingCashDescription: 'Bu tutar oturum boyunca açılış kasası olarak kullanılacaktır',
-    noteOptional: 'Not (İsteğe Bağlı)',
-    cashOpeningNotePlaceholder: 'Kasa açılışı ile ilgili notlarınızı yazın...',
-    zeroOpeningCashConfirm: 'Açılış kasası 0.00 olarak girilecek. Devam etmek istiyor musunuz?',
-    administrator: 'Yönetici',
-    lastReceiptButton: 'Son Fiş',
-    systemAdministrator: 'Sistem Yöneticisi',
-
+    quantitySavedMessage: 'Adet kaydedildi: {quantity}. Şimdi barkod girin.',
+    quick: 'Hızlı Aksiyonlar',
+    quickAccess: 'Hızlı Erişim',
+    quickPayment: 'Hızlı Ödeme',
+    quickProductAdd: 'Hızlı Ürün',
     quickProductPageSelect: 'Hızlı Ürün Sayfası Seç',
-    enterNewPrice: 'Yeni Fiyat Girin',
-    clickToChangePrice: 'Fiyatı Değiştirmek İçin Tıklayın',
-
-    // Product Detail Modal
-    productInfo: 'Ürün Bilgileri',
-    recentMovements: 'Son Hareketler',
-    branchStockStatus: 'Şube Stok Durumu',
-    reserved: 'Rezerve',
-    available: 'Kullanılabilir',
-    totalStock: 'Toplam Stok',
-    incomingTransfer: 'Transfer Gelen',
-    outgoingTransfer: 'Transfer Giden',
-    purchase: 'Alış',
-
-    // Cancel Receipt Modal
-    cancelReceiptTitle: 'Fiş İptal - Neden Seçin',
-    customerChangedMind: 'Müşteri vazgeçti',
-    wrongProductAdded: 'Yanlış ürün eklendi',
-    priceProblem: 'Fiyat problemi',
-    systemError: 'Sistem hatası',
-    explainCancelReason: 'İptal Nedenini Açıklayın',
-    cancelReasonPlaceholder: 'İptal nedenini yazın...',
-    pleaseSelectCancelReason: 'Lütfen iptal nedeni seçin!',
-    pleaseExplainCancelReason: 'Lütfen iptal nedenini açıklayın!',
-    giveUp: 'Vazgeç',
-
-    // Return Modal
-    receiptBased: 'Fatura Bazında',
-    productBased: 'Ürün Bazında',
-    searchProductByName: 'Ürün adı ile ara...',
-
-    productsToReturn: 'İade Edilecek Ürünler',
-    selectedProducts: 'Seçilen Ürünler',
-    saleQuantity: 'Satış miktarı',
-    unitPrice: 'Birim fiyat',
-
-    allBtn: 'Tümü',
-
-    explainReturnReason: 'İade nedenini açıklayın...',
-
-
-
-    selectProductForReturn: 'İade için ürün seçin',
-    totalSale: 'Toplam satış',
-
-    differentReceipts: 'farklı fiş',
-    pleaseSelectReceipt: 'Lütfen bir fiş seçin!',
-    pleaseSelectReturnProducts: 'Lütfen iade edilecek ürünleri seçin!',
-    pleaseSelectReturnReason: 'Lütfen iade nedeni seçin!',
-    pleaseExplainReturnReason: 'Lütfen iade nedenini açıklayın!',
-
-
-
-
-
-    // Product Catalog Modal
-    searchProductBarcodeCategory: 'Ürün adı, barkod veya kategori ara...',
-    detail: 'Detay',
-    selectVariant: 'Varyant Seç',
-    assignToSlot: 'Slota Ata',
-    variantAvailable: 'Varyant Mevcut',
-    stock: 'Stok',
-    selectVariantLabel: 'Varyant Seçin:',
-    productSelection: 'Ürün Seçimi',
     quickProductSlot: 'Hızlı Ürün Slot',
-
-
-    // Error Boundary
-    anErrorOccurred: 'Bir Hata Oluştu',
-    unexpectedErrorEncountered: 'Beklenmeyen bir hata ile karşılaşıldı',
-    errorMessage: 'Hata Mesajı',
-    technicalDetails: 'Teknik Detaylar',
-    technicalDetailsForDevelopers: 'Teknik Detaylar (Geliştiriciler için)',
+    rankingByRevenue: 'Ciro bazında sıralama',
+    receipt: 'Fiş',
+    receiptBased: 'Fatura Bazında',
+    receiptCancelled: 'Fiş iptal edildi: {reason}',
+    receiptDataError: 'Fiş verileri yüklenemedi',
+    receiptDetails: 'Fiş Detayları',
+    receiptNo: 'Fiş No',
+    receiptNote: 'Fiş Notu',
+    receiptNumberOrCustomerSearch: 'Fiş no veya müşteri adı ile ara...',
+    receiptParked: 'Fiş bekletildi',
+    receiptRequiredForReturns: 'Bu fiş iade ve değişim işlemlerinde gereklidir.',
+    receipts: 'Makbuzlar',
+    receivePayment: 'Ödeme Al',
+    receivedAmount: 'Received Amount',
+    receivedService: 'Alınan Hizmet',
+    receivedServiceInvoicesDesc: 'Tedarikçilerden alınan hizmetler',
+    receivedServiceInvoicesTitle: 'Alınan Hizmet Faturaları',
+    recentMovements: 'Son Hareketler',
+    recentProducts: 'Son Satışlar',
+    records: 'kayıt',
+    recordsCount: 'Kayıt',
     refreshPage: 'Sayfayı Yenile',
-    goBack: 'Geri Dön',
-    helpMessage: 'Bu hata devam ederse, lütfen tarayıcı konsolunu (F12) kontrol edin ve teknik destek ekibiyle iletişime geçin.',
-
-
-
-    // Close Cash Register Modal
-    closeCashRegisterProcess: 'Kasa Kapatma İşlemi',
-    salesSummary: 'Satış Özeti',
-    grossSales: 'Brüt Satışlar',
-    returnTotal: 'İade Toplamı',
-    netSales: 'Net Satışlar',
-    paymentMethods: 'Ödeme Yöntemleri',
-    cashSales: 'Nakit Satışlar',
-    creditCard: 'Kredi Kartı',
-    totalCollection: 'Toplam Tahsilat',
-    cashStatus: 'Nakit Durumu',
-    cardSales: 'Kart Satışları',
-    expectedCash: 'Beklenen Nakit',
-    countedCashAmount: 'Sayılan Nakit',
-    cashCountExample: 'Örn: 1000.00',
-    cashDifference: 'Nakit Farkı',
-    cashBalanced: 'Kasa Denk',
-    excess: 'Fazla',
-    shortage: 'Eksik',
-    cashClosingNotePlaceholder: 'Kasa kapanışı ile ilgili notlarınızı yazın...',
-    printReport: 'Rapor Yazdır',
-    transferToOtherCashier: 'Başka Kasiyere Devret',
-    cashCountRequired: 'Lütfen sayılan nakit tutarını girin!',
-    cashDifferenceConfirm: 'Kasa farkı var. Devam etmek istiyor musunuz?',
-    cashClosedSuccessfully: 'Kasa başarıyla kapatıldı!',
-    cashHandoverCountRequired: 'Devredilecek tutarı giriniz!',
-    sessionDay: 'Gün',
-    session: 'Oturum',
-
-    menu: {
-      materialManagement: "Malzeme Yönetimi",
-      masterRecords: "Ana Kayıtlar",
-      materialClasses: "Malzeme Sınıfları",
-      materials: "Malzemeler",
-      unitSets: "Birim Setleri",
-      variants: "Varyantlar",
-      specialCodes: "Özel Kodlar",
-      brandDefinitions: "Marka Tanımları",
-      groupCodes: "Grup Kodları",
-      productCategories: "Ürün Kategorileri",
-      movements: "Hareketler",
-      stockManagementPanel: "Stok Yönetim Paneli",
-      materialManagementSlips: "Malzeme Yönetim Fişleri",
-      reports: "Raporlar",
-      materialExtract: "Malzeme Ekstresi",
-      materialValue: "Malzeme Değer",
-      inventory: "Envanter",
-      cost: "Maliyet",
-      inOutTotals: "Giriş Çıkış Toplamları",
-      materialWarehouseStatus: "Malzeme Ambar Durum",
-      transactionBreakdown: "Hareket Dökümü",
-      slipList: "Fiş Listesi",
-      minMaxStock: "Minimum Maksimum Stok",
-      mainMenu: "Ana Menü",
-      homepage: "Anasayfa",
-      dashboard: "Dashboard",
-      storeManagement: "Mağaza Yönetimi",
-      storePanel: "Mağaza Paneli",
-      storeTransfer: "Mağaza Transferi",
-      multiStoreManagement: "Çoklu Mağaza Yönetimi",
-      regionalFranchiseManagement: "Bölgesel Bayilik Yönetimi",
-      storeConfiguration: "Mağaza Yapılandırması",
-      dataBroadcast: "Bilgi Gönder/Al",
-      integrations: "Entegrasyonlar",
-      excelOperations: "Excel İşlemleri",
-      invoices: "Faturalar",
-      salesInvoices: "Satış Faturaları",
-      salesInvoice: "Toptan Satış Faturası",
-      retailSales: "Perakende Satış",
-      wholesaleSales: "Toptan Satış",
-      consignmentSales: "Konsinye Satış",
-      salesReturn: "Satış İade",
-      purchasing: "Satın Alma",
-      requestSlips: "Talep Fişleri",
-      purchaseOrders: "Satınalma Siparişleri",
-      purchaseInvoice: "Alış Faturası",
-      purchaseReturn: "Alış İade",
-      receivedService: "Alınan Hizmet",
-      serviceInvoices: "Hizmet Faturaları",
-      supplierCards: "Tedarikçi Kartları",
-      serviceInvoiceIssued: "Verilen Hizmet Faturası",
-      serviceInvoiceReceived: "Alınan Hizmet Faturası",
-      waybills: "İrsaliyeler",
-      salesWaybill: "Satış İrsaliyesi",
-      purchaseWaybill: "Alış İrsaliyesi",
-      warehouseTransferWaybill: "Depo Transfer İrsaliyesi",
-      wasteWaybill: "Fire İrsaliyesi",
-      orders: "Siparişler",
-      salesOrder: "Satış Siparişi",
-      offers: "Teklifler",
-      financeManagement: "Finans Yönetimi",
-      definitions: "Tanımlar",
-      paymentPlans: "Ödeme Planları",
-      bankPaymentPlans: "Banka Ödeme Planları",
-      campaignDefinitions: "Kampanya Tanımları",
-      cards: "Kartlar",
-      currentAccounts: "Cari Hesaplar",
-      cashAccounts: "Kasa Hesapları",
-      banks: "Bankalar",
-      bankAccounts: "Banka Hesapları",
-      currentAccountSlips: "Cari Hesap Fişleri",
-      cashOperations: "Kasa İşlemleri",
-      cashSlips: "Kasa Fişleri",
-      bankSlips: "Banka Fişleri",
-      creditCardPosSlips: "Kredi Kartı Pos Fişleri",
-      journalAndSlips: "Yevmiye Defteri & Fişler",
-      currentAccountReports: "Cari Hesap Raporları",
-      cashReports: "Kasa Raporları",
-      bankReports: "Banka Raporları",
-      trialBalanceReport: "Mizan Raporu",
-      other: "Diğer",
-      accountingManagement: "Muhasebe Yönetimi",
-      expenseManagement: "Gider Yönetimi",
-      checkPromissory: "Çek/Senet",
-      collectionPayment: "Tahsilat/Ödeme",
-      multiCurrency: "Çoklu Para Birimi",
-      accountingVouchers: "Muhasebe Fişleri",
-      retail: "Retail",
-      priceAndCampaign: "Fiyat & Kampanya",
-      scaleAndWeighedSales: "Terazi & Tartılı Satış",
-      communicationAndNotifications: "İletişim & Bildirimler",
-      whatsappIntegration: "WhatsApp Entegrasyonu",
-      notificationCenter: "Bildirim Merkezi",
-      smsManagement: "SMS Yönetimi",
-      emailCampaigns: "E-posta Kampanyaları",
-      reportsAndAnalysis: "Raporlar & Analiz",
-      aiProductAnalytics: "AI Ürün Analitiği",
-      advancedReports100: "⭐ Gelişmiş Raporlar (100+)",
-      profitabilityAnalyticsDashboard: "💰 Karlılık Analizi Dashboard",
-      salesReports: "Satış Raporları",
-      stockReports: "Stok Raporları",
-      trialBalance: "Mizan (Trial Balance)",
-      incomeStatement: "Gelir Tablosu (Income Statement)",
-      customerAnalysis: "Müşteri Analizi",
-      balanceSheet: "Bilanço (Balance Sheet)",
-      graphicalAnalysis: "Grafiksel Analiz",
-      customReports: "Özel Raporlar",
-      biDashboardAi: "BI Dashboard & AI",
-      systemManagement: "Sistem Yönetimi",
-      firmPeriodDefinitions: "Firma/Dönem Tanımları",
-      workflowAutomation: "Workflow Otomasyonu",
-      demoDataManagement: "Demo Veri Yönetimi",
-      databaseInfrastructure: "Database Altyapısı",
-      exSecureGateSecurity: "ExSecureGate (Güvenlik)",
-      generalSettings: "Genel Ayarlar",
-      userManagement: "Kullanıcı Yönetimi",
-      roleAndAuthorization: "Rol & Yetkilendirme",
-      menuManagement: "Menü Yönetimi",
-      definitionsParameters: "Tanımlar/Parametreler",
-      backupRestore: "Yedekleme/Geri Yükleme",
-      logAudit: 'Log/Denetim',
-      systemHealth: 'Sistem Sağlığı',
-      stockInventory: 'Sayım',
-      inventoryManagement: 'Sayım ve Stok İşlemleri'
-    },
-    // Main Layout (Lines 500-509)
-    posModule: 'Satış',
-    managementModule: 'Yönetim',
-    wmsModule: 'WMS',
-    setDateTime: 'Tarih ve Saat Ayarla',
-    requiresAdminPassword: 'Bu işlem yönetici yetkisi gerektirir. Tarih değişikliği satış kayıtlarını etkileyebilir.',
-    enterAdminPassword: 'Yönetici şifresini girin',
-    managementPanelAccess: 'Yönetim Paneli Erişimi',
-    incorrectPassword: 'Hatalı şifre!',
-
-    // Central Data Management (Lines 511-526)
-    centralDataManagementSystem: 'Merkezi Veri Yönetim Sistemi',
-    centralDataManagementSubtitle: 'Enterprise Senkronizasyon ve Broadcast Yönetimi v2.0',
-    backup: 'Yedekle',
-    import: 'İçe Aktar',
-    sending: 'Gönderiliyor...',
-    sendNow: 'Şimdi Gönder',
-    totalDevicesLabel: 'Toplam Cihaz',
-    onlineDevicesLabel: 'Çevrimiçi',
-    pendingBroadcastsLabel: 'Bekleyen',
-    scheduledBroadcastsLabel: 'Zamanlanmış',
-    successRateLabel: 'Başarı Oranı',
-    last24hLabel: '24 Saat',
-    dataTransferLabel: 'Veri Transfer',
-    sendDataTab: 'Veri Gönder',
-    dataTypeLabel: 'Veri Tipi',
-
-    // Login & System (Lines 528-556)
-    supportCenter: 'Destek Merkezi',
-    hwid: 'Cihaz Kimliği (HWID)',
-    copy: 'Kopyala',
-    copied: 'Kopyalandı',
-    status: 'Durum',
-    online: 'Çevrimiçi',
-    waiting: 'Bekleniyor',
-    startSupport: 'Destek Başlat',
-    closeWindow: 'Pencereyi Kapat',
-    systemLogsTitle: 'SİSTEM GÜNLÜKLERİ',
-    diagnosticsSubtitle: 'Gerçek Zamanlı Teşhis ve Denetim',
-    noLogsYet: 'HENÜZ KAYIT BULUNMUYOR',
-    totalEntries: 'Toplam Kayıt',
-    enterUsernamePassword: 'Lütfen kullanıcı adı ve şifre giriniz.',
-    networkError: 'Bir ağ hatası oluştu.',
-    factoryResetConfirm: 'Tebrikler: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Kurulum sihirbazı tekrar açılacak.\n- Veritabanı verileri korunacaktır.\n\nİşlemi onaylıyor musunuz?',
-    resetFailed: 'Sıfırlama başarısız:',
-    selectSystemLanguage: 'Sistem Dilini Seçin',
+    refreshStocks: 'Stokları Yenile',
+    regionalFranchiseManagement: 'Bölgesel Bayilik Yönetimi',
+    registeredCustomer: 'Kayıtlı müşteri',
+    registeredCustomers: 'Kayıtlı Müşteri',
+    rejected: 'Reddedildi',
+    remaining: 'Kalan',
+    remainingAmount: 'Kalan',
+    remainingQty: 'Kalan:',
+    rememberMe: 'Beni Hatırla',
     remoteSupportRequestSent: 'Hızlı destek talebi merkeze iletildi.',
     remoteSupportWarning: 'Uyarı: Uzaktan destek başlatıldığında, teknik ekibe sınırlı erişim yetkisi vermiş olursunuz.',
-    confirmClearLogs: 'Tüm kayıtlar temizlenecektir. Emin misiniz?',
-
-    // Restaurant Specific
-    transferAllItems: 'Masa {number} içerisindeki tüm ürünler seçilen masaya aktarılacaktır.',
-    selectTargetTable: 'Hedef masayı seçin',
-    tableOccupied: 'DOLU',
-    moveTable: 'Masa Taşı',
-    confirmMove: 'TAŞIMAYI ONAYLA',
-    orderNote: 'Sipariş Notu',
-    specialRequests: 'Özel İstek ve Detaylar',
-    orderNoteDescription: 'Bu not mutfak ekranında ve adisyonda görünecektir.',
-    orderNotePlaceholder: 'Sipariş ile ilgili not ekleyin (Örn: Acısız olsun, ketçap az olsun...)',
-    orderDiscount: 'Sipariş İndirimi',
-    applyRatioDiscount: 'Oransal İndirim Uygula',
-    discountRatioApplied: 'Girdiğiniz oran tüm sipariş toplamına uygulanacaktır.',
-    apply: 'UYGULA',
+    remove: 'Çıkar',
+    reportCountLabel: 'rapor',
+    reportStructureNote: 'Bu rapor yapısı Logo ERP\'nin kurumsal standartlarıyla birebir uyumlu olacak şekilde, asenkron yürüyen bakiye(running balance) motoru kullanılarak RestPOS yerel veritabanı(PostgreSQL) üzerinden anlık olarak hesaplanmaktadır.',
+    reporting: 'Raporlama',
+    reportingAnalysis: 'Raporlama & Analiz',
+    reportingDesc: 'Satış raporları ve analizler',
+    reports: 'Raporlar',
+    reportsAndAnalysis: 'Raporlar & Analiz',
+    reportsCashStatus: 'Kasa Durumu',
+    reportsCustomerLabel: 'MÜŞTERİ',
+    reportsStockStatus: 'Stok Durumu',
+    requestSlips: 'Talep Fişleri',
+    requiresAdminPassword: 'Bu işlem yönetici yetkisi gerektirir. Tarih değişikliği satış kayıtlarını etkileyebilir.',
+    reserved: 'Rezerve',
     reset: 'Sıfırla',
-
-
-
-    // MarketPOS & Kasa Operations
+    resetFailed: 'Sıfırlama başarısız:',
+    restCategory: 'Rest. Kategori',
+    results: 'sonuç',
+    retail: 'Retail',
+    retailCustomer: 'Perakende Müşteri',
+    retailSales: 'Perakende Satış',
+    retailSalesDesc: 'Perakende satış işlemleri',
+    retailSalesTitle: 'Perakende Satışlar',
+    return: 'İade',
+    returnAmount: 'İade Tutarı',
+    returnCancelTitle: 'İade / İptal İşlemi',
+    returnCompleted: 'İade işlemi tamamlandı',
+    returnProducts: 'İade Edilecek Ürünler',
+    returnQuantity: 'İade Adedi',
+    returnReason: 'İade Nedeni',
+    returnReasonPlaceholder: 'İade nedenini seçin...',
+    returnReceiving: 'İade Kabul',
+    returnToDashboard: 'Ana Panele Dön',
+    returnTotal: 'İade Toplamı',
+    returnTransaction: 'İade İşlemi',
+    revenue: 'Gelir',
+    reversed: 'Ters çevrildi',
+    roleAndAuthorization: 'Rol & Yetkilendirme',
+    routeOptimization: 'Rota Optimizasyonu',
+    rowDiscount: 'Satır İndirimi',
+    rowOrder: 'Sıra',
+    runningQuantity: 'Kalan Miktar',
+    saleCompleted: 'Satış tamamlandı',
+    salePrice: 'Satış Fiyatı',
+    saleQuantity: 'Satış miktarı',
     saleSaveFailed: 'Satış kaydedilemedi',
-    unknownError: 'Bilinmeyen hata',
-    chCollection: 'Cari Hesap Tahsilat',
-    chPayment: 'Cari Hesap Ödeme',
-    cashIn: 'Kasa Giriş',
-    cashOut: 'Kasa Çıkış',
-    bankDeposit: 'Bankaya Yatırılan',
-    bankWithdrawal: 'Bankadan Çekilen',
-    cashTransfer: 'Kasa Virman',
-    expenseVoucher: 'Gider Pusulası',
+    saleValue: 'Satış Değeri',
+    sales: 'Satışlar',
+    salesCount: 'satış',
+    salesCustomerDesc: 'Satış Yapılan Cari',
+    salesDetails: 'Satış Detayları',
+    salesHistory: 'Satış Geçmişi',
+    salesHistoryTitle: 'Satış Geçmişi',
+    salesInvoice: 'Toptan Satış Faturası',
+    salesInvoices: 'Satış Faturaları',
+    salesInvoicesDesc: 'Tüm satış işlemleri ve POS satışları',
+    salesInvoicesTitle: 'Satış Faturaları',
+    salesOrder: 'Satış Siparişi',
+    salesQuantity: 'Satış Adedi',
+    salesQuote: 'Satış Teklifi',
+    salesReports: 'Satış Raporları',
+    salesReturn: 'Satış İade',
+    salesReturnTitle: 'Satış İadeleri',
+    salesTrendAnalysis: 'Satış Trend Analizi',
+    salesWaybill: 'Satış İrsaliyesi',
+    salesWillAppearHere: 'Tamamlanan satışlar burada görünecek',
+    saveAndTestConnection: 'Bağlantıyı Kaydet & Test Et',
+    saveChanges: 'Değişiklikleri Kaydet',
+    saveFailed: 'Kayıt başarısız oldu',
+    saveOperation: 'İşlemi Kaydet',
+    saveOrder: 'Siparişi Kaydet',
+    saveShortcutsError: 'Kısayollar kaydedilemedi. Lütfen tekrar deneyin.',
+    saving: 'Kaydediliyor...',
+    scale: 'Terazi',
+    scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+    scaleDefDesc: 'Terazi tanımlarını yönetin',
+    scanQRCode: 'QR Kodu Okutun',
+    scanToSearchPlaceholder: 'Ürün aramak için tarayın...',
+    scheduledBroadcastsLabel: 'Zamanlanmış',
+    screenSettings: 'Ekran Ayarları',
+    search: 'Ara',
+    searchBtn: 'Ara',
+    searchCurrentAccountPlaceholder: 'Cari hesap veya personel arayın...',
+    searchInside: 'içinde ara...',
+    searchPlaceholder: 'Ürün adı veya barkod...',
+    searchProductBarcodeCategory: 'Ürün adı, barkod veya kategori ara...',
+    searchProductByName: 'Ürün adı ile ara...',
+    searchProductPlaceholder: 'Ürün ara...',
+    searchProducts: 'Ürün Ara',
+    searchReceiptPlaceholder: 'Fiş numarası veya barkod ara...',
+    searchUnitSetPlaceholder: 'Birim seti kodu veya adı ile ara...',
+    searching: 'Aranıyor...',
+    selectAtLeastOneShortcut: 'En az 1 kısayol seçmelisiniz',
+    selectCampaign: 'Kampanya Seç',
+    selectCustomer: 'Müşteri Seç',
+    selectCustomerTitle: 'Müşteri Seçin',
+    selectDonem: 'Dönem Seçin',
+    selectFirmPrompt: 'Firma Seçin',
+    selectFirma: 'Firma Seçin',
+    selectLanguage: 'Dil Seçin',
+    selectMaterialPlaceholder: 'Malzeme seçiniz...',
+    selectProductForReturn: 'İade için ürün seçin',
+    selectReceiptForReturn: 'İade için fiş seçin',
+    selectStaffTitle: 'Personel Seçin',
+    selectSystemLanguage: 'Sistem Dilini Seçin',
+    selectTargetTable: 'Hedef masayı seçin',
+    selectVariant: 'Varyant Seç',
+    selectVariantLabel: 'Varyant Seçin:',
+    selected: 'SEÇİLİ',
+    selectedProducts: 'Seçilen Ürünler',
     selfEmployedReceiptGiven: 'Verilen Serbest Meslek Makbuzu',
     selfEmployedReceiptReceived: 'Alınan Serbest Meslek Makbuzu',
-    farmersReceipt: 'Müstahsil Makbuzu',
-    openingDebit: 'Açılış (Borç)',
-    openingCredit: 'Açılış (Alacak)',
-    exchangeDifferenceDebit: 'Kur Farkı (Borç)',
-    exchangeDifferenceCredit: 'Kur Farkı (Alacak)',
-    pleaseEnterAmount: 'Lütfen tutar girin',
-    pleaseSelectCurrentAccount: 'Lütfen bir cari hesap seçin',
-    operationSavedSuccessfully: 'İşlem başarıyla kaydedildi',
-    operationSaveFailed: 'İşlem kaydedilemedi',
-    missingKasaId: 'Kasa ID eksik! Lütfen sayfayı yenileyip tekrar deneyin.',
-    currentAccountPersonel: 'Cari Hesap / Personel',
-    searchCurrentAccountPlaceholder: 'Cari hesap veya personel arayın...',
-    currentBalance: 'Güncel Bakiye',
-    targetKasa: 'Hedef Kasa',
-    bankAccount: 'Banka Hesabı',
-    expenseCodeDescription: 'Gider Kodu / Açıklama',
-    expenseCodePlaceholder: 'Gider Kodu veya Adı...',
-    withholdingTaxRate: 'Stopaj Oranı (%)',
-    taxRateLabel: 'KDV / Vergi Oranı (%)',
-    operationAmount: 'İşlem Tutarı',
-    documentNo: 'Fiş / Belge No',
+    sendDataTab: 'Veri Gönder',
+    sendNow: 'Şimdi Gönder',
+    sending: 'Gönderiliyor...',
+    serialLotDefDesc: 'Seri/Lot tanımlarını yönetin',
+    serviceGiven: 'Verilen Hizmet Faturası',
+    serviceInvoiceIssued: 'Verilen Hizmet Faturası',
+    serviceInvoiceReceived: 'Alınan Hizmet Faturası',
+    serviceInvoices: 'Hizmet Faturaları',
+    serviceInvoicesDesc: 'Tüm hizmet alım ve satım işlemleri',
+    serviceInvoicesTitle: 'Hizmet Faturaları',
+    serviceReceived: 'Alınan Hizmet Faturası',
+    serviceTopUp: 'HİZMET TOP-UP',
+    session: 'Oturum',
+    sessionDay: 'Gün',
+    sessionInformation: 'Oturum Bilgileri',
+    setDateTime: 'Tarih ve Saat Ayarla',
+    sevenDaysButton: '7 Gün',
+    shift: 'Vardiya',
+    shiftClick: 'Shift + Tıklama',
+    shipmentLoading: 'Sevkiyat/Yükleme',
+    shipmentPrep: 'Sevkiyat Hazırlık',
+    shortage: 'Eksik',
+    shortcuts: 'Kısayollar',
+    shortcutsSaveError: 'Kısayollar kaydedilirken hata oluştu',
+    shortcutsSelected: 'kısayol seçildi',
+    sidebar: {
+      activeCustomers: 'Aktif Müşteriler',
+      activeStatus: 'نشط',
+      allInvoiceTypes: 'جميع أنواع الفواتير',
+      allStatuses: 'جميع الحالات',
+      amount: 'المبلغ',
+      atLeastOneShortcut: 'يجب اختيار اختصار واحد على الأقل',
+      atLeastOneUnit: 'يجب تعريف وحدة واحدة على الأقل',
+      barcodeDefDesc: 'إدارة تعريفات الباركود',
+      brandDefDesc: 'إدارة تعريفات الماركات',
+      categoryBasedStock: 'Kategori Bazlı Stok',
+      clearSearch: 'Temizle (ESC)',
+      codeAndNameRequired: 'حقلي الرمز والاسم مطلوبان',
+      cogs: 'تكلفة البضاعة المباعة',
+      confirmDeleteInvoice: 'هل أنت متأكد من حذف الفاتورة رقم {invoiceNo}؟',
+      confirmDeleteRecord: 'هل أنت متأكد أنك تريد حذف هذا السجل؟',
+      confirmDeleteUnitSet: 'هل أنت متأكد أنك تريد حذف مجموعة الوحدات هذه؟',
+      consignmentSale: 'بيع بالأمانة',
+      consumption: 'استهلاك',
+      costAndProfitAnalysis: 'تحليل التكلفة والربح',
+      criticalStockAlerts: 'Kritik Stok Uyarıları',
+      currentStock: 'المخزون الحالي',
+      customerPaymentPreferences: 'Müşteri Ödeme Tercihleri',
+      customerSupplier: 'الحساب (عميل/مورد)',
+      customizeQuickAccess: 'تخصيص الوصول السريع',
+      dailySalesPerformance: 'Günlük Satış Performansı',
+      dailySummary: 'Günlük Özet',
+      darkMode: 'Koyu Tema',
+      dashboard: 'Dashboard',
+      dateRangeLabel: 'نطاق التاريخ',
+      dbMenu: '📊 DB Menü',
+      definitionCode: 'رمز التعريف',
+      definitionDescription: 'الوصف',
+      definitionName: 'اسم التعريف',
+      description: 'الوصف',
+      editQuickAccess: 'Düzenle',
+      editUnitSet: 'تعديل مجموعة الوحدات',
+      endDate: 'تاريخ الانتهاء',
+      ficheNo: 'رقم السند',
+      ficheType: 'نوع العملية',
+      financialSummary: 'Finansal Özet',
+      first: 'الأول',
+      grossProfit: 'إجمالي الربح',
+      groupCodeDesc: 'إدارة رموز المجموعات',
+      howCalculated: 'كيف يتم الحساب؟',
+      icon: 'أيقونة',
+      inOutQty: 'وارد/صادر',
+      invalidDate: 'تاريخ غير صالح',
+      inventoryDistribution: 'Envanter Dağılımı',
+      inventoryList: 'قائمة المخزون',
+      invoiceDeleteError: 'تعذر حذف الفاتورة',
+      invoiceDeleteSuccess: 'تم حذف الفاتورة بنجاح',
+      invoiceNo: 'رقم الفاتورة',
+      invoiceType: 'نوع الفاتورة',
+      invoicesCount: 'فاتورة',
+      languageSelection: 'Dil Seçimi',
+      last: 'الأخير',
+      last7DaysSalesTrend: 'Son 7 Günlük Satış Trendi',
+      lightMode: 'Açık Tema',
+      loadingData: 'جاري تحميل البيانات...',
+      loadingInvoices: 'جارٍ تحميل الفواتير...',
+      loadingInvoicesCount: 'الفواتير',
+      localCurrencyUnit: 'الوحدة: العملة المحلية (IQD)',
+      localeCode: 'ar-SA',
+      localeName: 'العربية',
+      lowStockWarningsItem: 'Düşük Stok Uyarıları',
+      mainUnitCannotDelete: 'لا يمكن حذف الوحدة الرئيسية',
+      mainUnitLabel: 'الوحدة الرئيسية',
+      mainUnitRequired: 'يجب اختيار وحدة رئيسية',
+      materialClassDesc: 'إدارة فئات المواد',
+      materialCodeOrName: 'رمز/اسم المادة',
+      materialExtractReport: 'كشف حركة المواد',
+      materialValueReport: 'تقرير قيمة المواد',
+      max8Shortcuts: 'يمكنك اختيار ما يصل إلى 8 اختصارات',
+      min1Shortcut: 'يجب اختيار اختصار واحد على الأقل',
+      multiplier1: 'المضاعف 1',
+      multiplier2: 'المضاعف 2',
+      multiplierLogicDesc: 'تحويل الوحدات: (الوحدة) × المضاعف 1 = (الوحدة الرئيسية) × المضاعف 2',
+      newInvoice: 'فاتورة جديدة',
+      newUnitSetTitle: 'تعريف مجموعة وحدات جديدة',
+      next: 'التالي',
+      noCriticalStock: 'Kritik seviyede ürün bulunmamaktadır',
+      noCriticalStockInfo: 'لا توجد منتجات في مستوى مخزون حرج',
+      noCustomer: 'بدون عميل',
+      noLowStockInfo: 'Düşük seviyede ürün bulunmamaktadır',
+      noLowStockWarning: 'لا توجد منتجات في مستوى مخزون منخفض',
+      noRecordsFound: 'لم يتم العثور على سجلات',
+      noResultsFound: 'Sonuç bulunamadı',
+      orderRecommended: 'يوصى بالطلب',
+      otherType: 'آخرى',
+      page: 'صفحة',
+      passiveStatus: 'غير نشط',
+      paymentMethodsChart: 'Ödeme Yöntemleri',
+      potentialProfit: 'Potansiyel Kâr',
+      prepareReport: 'إعداد التقرير',
+      previous: 'السابق',
+      priceBulkUpdateSuccess: 'تمت زيادة جميع أسعار المنتجات بنسبة %{percent}',
+      productCards: 'بطاقات المنتجات',
+      productCatDesc: 'إدارة فئات المنتجات',
+      productManagement: 'إدارة المنتجات',
+      productionEntry: 'إدخال إنتاج',
+      productsAtCriticalLevel: 'Kritik Seviyedeki Ürünler',
+      productsAtLowLevel: 'Düşük Seviyedeki Ürünler',
+      profitMargin: 'هامش الربح',
+      profitMarginDashboard: 'Kâr Marjı',
+      purchaseOrder: 'طلب مشتريات',
+      purchaseQuote: 'عرض سعر مشتريات',
+      purchaseWaybill: 'إرسالية مشتريات',
+      quickAccess: 'Hızlı Erişim',
+      rankingByRevenue: 'Gelire Göre Sıralama',
+      records: 'Kayıt',
+      recordsCount: 'سجلات',
+      refreshStocks: 'تحديث المخزون',
+      registeredCustomers: 'Kayıtlı Müşteriler',
+      remainingAmount: 'الكمية المتبقية',
+      remainingQty: 'Kalan Miktar:',
+      restCategory: 'فئة المطعم',
+      resultsFound: 'sonuç bulundu',
+      retailSales: 'مبيعات التجزئة',
+      runningQuantity: 'الكمية المتبقية',
+      salesOrder: 'طلب مبيعات',
+      salesQuote: 'عرض سعر مبيعات',
+      salesRevenue: 'إيرادات المبيعات',
+      salesWaybill: 'إرسالية مبيعات',
+      scaleDefDesc: 'إدارة تعريفات الموازين',
+      searchInside: 'بحث في الداخل...',
+      searchPlaceholderFull: 'Menüde hızlı ara... (Ctrl+K)',
+      searchPlaceholderShort: 'Ara...',
+      searchUnitSetPlaceholder: 'البحث عن طريق رمز أو اسم مجموعة الوحدات...',
+      selectMaterialPlaceholder: 'اختر المادة...',
+      serialLotDefDesc: 'إدارة تعريفات الأرقام التسلسلية/الحصص',
+      serviceGiven: 'فاتورة خدمة مقدمة',
+      serviceReceived: 'فاتورة خدمة مستلمة',
+      shortcutsSaveError: 'خطأ في حفظ الاختصارات',
+      shortcutsSelected: 'اختصارات مختارة',
+      soldQuantity: 'الكمية المباعة',
+      specialCodeDesc: 'إدارة الأكواد الخاصة',
+      startDate: 'تاريخ البدء',
+      staticMenu: '📋 Statik Menü',
+      stockValueCost: 'Stok Değeri (Maliyet)',
+      stockValueSales: 'Stok Değeri (Satış)',
+      supplierDefDesc: 'إدارة تعريفات الموردين',
+      todaysSales: 'Bugünkü Satışlar',
+      topSellingProductsInfo: 'En Çok Satan Ürünler',
+      totalInventoryValue: 'إجمالي قيمة المخزون',
+      totalProductsDashboard: 'Toplam Ürün',
+      totalRevenue: 'إجمالي الإيرادات',
+      totalUppercase: 'TOPLAM',
+      tryDifferentSearch: 'Farklı bir arama terimi deneyin',
+      unitAndMultiplierMgmt: 'إدارة الوحدات والمضاعفات',
+      unitCodeLabel: 'رمز الوحدة',
+      unitDefinitions: 'تعريفات الوحدات',
+      unitNameLabel: 'اسم الوحدة',
+      unitPrice: 'سعر الوحدة',
+      unitSetCreated: 'تم إنشاء مجموعة الوحدات',
+      unitSetDeleted: 'تم حذف مجموعة الوحدات',
+      unitSetName: 'اسم مجموعة الوحدات',
+      unitSetUpdated: 'تم تحديث مجموعة الوحدات',
+      update: 'تحديث',
+      urgentOrder: 'Acil Sipariş',
+      variantDefDesc: 'إدارة تعريفات المتغيرات',
+      warehouseDefDesc: 'إدارة تعريفات المستودعات',
+      warehouseReceipt: 'سند مستودع',
+      warehouseTransferWaybill: 'إرسالية تحويل مستودعي',
+      wastageWaybill: 'إرسالية تالف',
+      weeklySales: 'Haftalık Satışlar',
+      welcomeDashboard: 'Sisteme Hoş Geldiniz',
+    },
+    sizeColorChange: 'Beden/Renk Değişimi',
+    slipList: 'Fiş Listesi',
+    smsManagement: 'SMS Yönetimi',
+    smsNotificationSent: 'SMS Bildirimi Gönderildi',
+    soldQuantity: 'Satılan Miktar',
     specialCode: 'Özel Kod',
-    placeholderDocumentNo: 'Örn: 000123',
-    placeholderSpecialCode: 'Örn: PRJ001',
-    placeholderDescription: 'İşlem ile ilgili not...',
-    saving: 'Kaydediliyor...',
-    saveOperation: 'İşlemi Kaydet',
-    cashOperation: 'Kasa İşlemi',
+    specialCodeDesc: 'Özel kodları yönetin',
+    specialCodes: 'Özel Kodlar',
+    specialRequests: 'Özel İstek ve Detaylar',
+    startDate: 'Başlangıç:',
+    startDateReport: 'BAŞLANGIÇ TARİHİ',
+    startSupport: 'Destek Başlat',
+    status: 'Durum',
+    step01Auth: 'ADIM 01 / KİMLİK DOĞRULAMA',
+    step02Scope: 'ADIM 02 / KAPSAM BELİRLEME',
+    step1: 'Adım 1',
+    step2: 'Adım 2',
+    stock: 'Stok',
+    stockABC: 'Stok ABC Analizi',
+    stockAging: 'Stok Yaşlandırma',
+    stockCount: 'Sayım Emirleri',
+    stockInventory: 'Sayım',
+    stockLabel: 'Stok',
+    stockQuery: 'Stok Sorgu',
+    stockReports: 'Stok Raporları',
+    stockStatus: 'Stok Durumu',
+    stockStatusReport: 'Stok Durum Raporu',
+    stockTurnover: 'Stok Dönüş Hızı',
+    stockValue: 'Stok Değeri',
+    stockValueCost: 'Stok Değeri (Maliyet)',
+    stockValueSale: 'Stok Değeri (Satış)',
+    stockValueSales: 'Stok Değeri (Satış)',
+    store: 'Mağaza',
+    storeConfiguration: 'Mağaza Yapılandırması',
+    storeManagement: 'Mağaza Yönetimi',
+    storePanel: 'Mağaza Paneli',
+    storeSelection: 'Mağaza Seçimi',
+    storeSelectionScope: 'MAĞAZA SEÇİMİ',
+    storeTransfer: 'Mağaza Transferi',
+    subsidiary: 'Alt Şirket',
+    subtotal: 'Subtotal',
+    subtotalAction: 'Subtotal',
+    subtotalLabel: 'Ara Toplam',
+    subtotalText: 'ARA TOPLAM',
+    subtotalUppercase: 'ARA TOPLAM',
+    successRateLabel: 'Başarı Oranı',
+    sufficientStock: 'Yeterli Stok',
+    supplierCode: 'Tedarikçi Kodu',
+    supplierDefDesc: 'Tedarikçi tanımlarını yönetin',
+    supplierLabel: 'TEDARİKÇİ',
+    supplierName: 'Tedarikçi Adı',
+    suppliers: 'Tedarikçiler',
+    supportCenter: 'Destek Merkezi',
+    systemAdmin: 'Sistem Yöneticisi',
+    systemAdministrator: 'Sistem Yöneticisi',
+    systemError: 'Sistem hatası',
+    systemHealth: 'Sistem Sağlığı',
+    systemLogin: 'Sisteme Giriş',
+    systemLogs: 'System Logs',
+    systemLogsTitle: 'SİSTEM GÜNLÜKLERİ',
+    systemManagement: 'Sistem Yönetimi',
+    systemTitle: 'RestPOS ERP',
+    tableOccupied: 'DOLU',
+    tagline: 'Profesyonel Satış Yönetim Sistemi',
+    targetKasa: 'Hedef Kasa',
+    targetVsActual: 'Hedef vs Gerçekleşen',
+    taskManagement: 'İş Emri Yönetimi',
+    tax: 'Vergi',
+    taxNumberLabel: 'Vergi Numarası',
+    taxOfficeLabel: 'Vergi Dairesi',
+    taxRate: 'Vergi Oranı',
+    taxRateLabel: 'KDV / Vergi Oranı (%)',
+    taxReport: 'Vergi Raporu',
+    technicalDetails: 'Teknik Detaylar',
+    technicalDetailsForDevelopers: 'Teknik Detaylar (Geliştiriciler için)',
+    testPasswordHint: 'Test için şifre: 1234',
+    textDirection: 'Metin Yönü',
+    textDirectionOptional: 'Metin Yönü (İsteğe Bağlı)',
+    thanksForChoosingUs: '★★★ Bizi Tercih Ettiğiniz İçin Teşekkürler ★★★',
+    thirtyDaysButton: '30 Gün',
+    timeLabel: 'Saat',
+    todayButton: 'Bugün',
+    todaysSale: 'Bugünkü Satış',
+    todaysSales: 'Bugünkü Satış',
+    topSellingProducts: 'En Çok Satan Ürünler',
+    topSellingProductsInfo: 'En Çok Satan Ürünler',
+    total: 'Toplam',
+    totalAllBranches: 'Tüm Şubeler Toplam',
+    totalCampaigns: 'Toplam Kampanya',
+    totalCollection: 'Toplam Tahsilat',
+    totalCurrentAccounts: 'TOPLAM CARİ',
+    totalDevicesLabel: 'Toplam Cihaz',
+    totalEntries: 'Toplam Kayıt',
+    totalInventoryValue: 'Toplam Envanter Değeri',
+    totalItems: 'Toplam Ürün',
+    totalLabel: 'Toplam',
+    totalPieces: 'Toplam Adet',
+    totalProduct: 'Toplam Ürün',
+    totalProductsDashboard: 'Toplam Ürün',
+    totalPurchases: 'Toplam Alışveriş',
+    totalRevenue: 'Toplam Ciro',
+    totalRevenueLabel: 'Toplam Ciro',
+    totalSale: 'Toplam satış',
+    totalSales: 'Toplam',
+    totalSalesCount: 'Toplam',
+    totalStock: 'Toplam Stok',
+    totalText: 'TOPLAM',
+    totalUppercase: 'TOPLAM',
+    transactionBreakdown: 'Hareket Dökümü',
+    transactionNumberLabel: 'İşlem Yapılan Numara/Kişi',
+    transferAllItems: 'Masa {number} içerisindeki tüm ürünler seçilen masaya aktarılacaktır.',
+    transferMovement: 'Transfer & Hareket',
+    transferToOtherCashier: 'Başka Kasiyere Devret',
+    transfers: 'Transferler',
+    trialBalance: 'Mizan (Trial Balance)',
+    turkish: 'Türkçe',
+    unexpectedErrorEncountered: 'Beklenmeyen bir hata ile karşılaşıldı',
+    unit: 'Birim',
+    unitAndMultiplierMgmt: 'Birim ve Çarpan Yönetimi',
+    unitCodeLabel: 'Birim Kodu',
+    unitDefinitions: 'Birim Tanımları',
+    unitLabel: 'Birim',
+    unitNameLabel: 'Birim Adı',
+    unitPrice: 'Birim fiyat',
+    unitPriceLabel: 'Birim Fiyat',
+    unitSetCreated: 'Birim seti oluşturuldu',
+    unitSetDeleted: 'Birim seti silindi',
+    unitSetName: 'Birim Seti Adı',
+    unitSetUpdated: 'Birim seti güncellendi',
+    unitSets: 'Birim Setleri',
+    unknownError: 'Bilinmeyen hata',
+    update: 'Güncelle',
+    urgentOrder: 'Acil sipariş!',
+    userManagement: 'Kullanıcı Yönetimi',
+    username: 'Kullanıcı Adı',
+    usernamePlaceholder: 'Kullanıcı adınızı girin',
+    variantAvailable: 'Varyant Mevcut',
+    variantChanged: 'Varyant değiştirildi: {variant}',
+    variantDefDesc: 'Varyant tanımlarını yönetin',
+    variants: 'Varyantlar',
+    veresiyeLabel: 'Veresiye (Cari)',
+    verifying: 'Doğrulanıyor...',
+    version: 'v1.0',
+    versionTitle: 'Versiyon: v1.0',
+    viewDetails: 'Detayları Gör',
+    voiceSearch: 'Sesli Arama',
+    voucher: 'Senet',
+    voucherDate: 'Senet Tarihi',
+    voucherNo: 'Senet No',
+    voucherType: 'Senet Tipi',
+    waiting: 'Bekleniyor',
+    warehouseDefDesc: 'Depo tanımlarını yönetin',
+    warehouseReceipt: 'Ambar Fişi',
+    warehouseTransfer: 'Depo Transferi',
+    warehouseTransferWaybill: 'Depo Transfer İrsaliyesi',
+    wastageWaybill: 'Fire İrsaliyesi',
+    wasteWaybill: 'Fire İrsaliyesi',
+    waybills: 'İrsaliyeler',
+    weeklySale: 'Haftalık Satış',
+    weeklySales: 'Haftalık Satış',
+    welcome: 'Hoş geldiniz',
+    welcomeDashboard: 'Sisteme Hoşgeldiniz',
+    welcomeSubtitle: 'Hoş geldiniz, işletme performansınızı takip edin',
+    whatsappIntegration: 'WhatsApp Entegrasyonu',
+    wholesaleSales: 'Toptan Satış',
+    wholesaleSalesDesc: 'Toptan satış işlemleri',
+    wholesaleSalesTitle: 'Toptan Satışlar',
+    withholdingTax: 'Tahsilat Vergisi',
+    withholdingTaxRate: 'Stopaj Oranı (%)',
+    wmsModule: 'WMS',
+    wrongProduct: 'Yanlış Ürün',
+    wrongProductAdded: 'Yanlış ürün eklendi',
+    wsConnected: 'Bağlı',
+    wsConnecting: 'Bağlanıyor...',
+    wsDisconnected: 'Bağlantı Yok',
+    yesDelete: 'Evet, Sil',
+    zReport: 'Z Raporu',
+    zeroOpeningCashConfirm: 'Açılış kasası 0.00 olarak girilecek. Devam etmek istiyor musunuz?',
+    zeroPlaceholder: '0',
   },
   en: {
-    // Header
-    systemTitle: 'RetailEX ERP',
-    customer: 'Customer',
-    selectCustomer: 'Select Customer',
-    retailCustomer: 'Retail Customer',
-    cashier: 'Cashier',
-    changeCashier: 'Change Cashier',
-    changeLanguage: 'Change Language',
-    logout: 'Logout',
-    back: 'Back',
-    allLabel: 'ALL',
-    selected: 'SELECTED',
-
-    // Product Grid
-    searchProducts: 'Search Products',
-    searchPlaceholder: 'Product name or barcode...',
-    categories: 'Categories',
-    allCategories: 'All Categories',
-
-    // Cart
-    cart: 'Cart',
-    emptyCart: 'Cart Empty',
-    product: 'Product',
-    quantity: 'Quantity',
-    price: 'Price',
-    total: 'Total',
-    rowOrder: 'Order',
-    productName: 'Product Name',
+    abcAnalysis: 'ABC Analizi',
+    accountAdded: 'Current account added',
+    accountCode: 'Account Code',
+    accountDeleteError: 'Could not delete current account',
+    accountDeleted: 'Current account deleted',
+    accountName: 'Account Name',
+    accountNameRequired: 'Account name is required!',
+    accountSummary: 'Account Summary',
+    accountTypeSelection: 'Account Type Selection',
+    accountUpdated: 'Current account updated',
+    accountsPayable: 'Accounts Payable',
+    accountsReceivable: 'Accounts Receivable',
     action: 'Action',
-    subtotal: 'Subtotal',
-    discount: 'Discount',
-    grandTotal: 'Grand Total',
-
-    // Actions
+    actionCenter: 'Action Center',
+    actionLabel: 'Action',
+    actions: 'ACTIONS',
+    activeCustomer: 'Active Customer',
+    activeCustomers: 'Active Customers',
+    activeStatus: 'ACTIVE',
     add: 'Add',
+    addNewCurrentAccount: 'ADD NEW CURRENT ACCOUNT',
+    addPaymentLabel: 'Add Payment',
     addToCart: 'Add to Cart',
-    remove: 'Remove',
-    clear: 'Clear',
-    save: 'Save',
-    cancel: 'Cancel',
-    complete: 'Complete',
-    payment: 'Payment',
-    search: 'Search',
-    close: 'Close',
-
-    // Numpad
-    amount: 'Amount',
-    piece: 'Piece',
-    delete: 'Delete',
-    enter: 'OK',
-
-    // Quick Actions
-    campaign: 'Campaign',
-    category: 'Category',
-    productQuery: 'Product Query',
-    stockQuery: 'Stock Query',
-    parkedReceipts: 'Parked Receipt',
-    salesHistory: 'Sales History',
-    returnTransaction: 'Return',
-    return: 'Return',
-    recentProducts: 'Recent Sales',
+    addToCartButton: 'Add to Cart',
+    addedPayments: 'Added Payments',
+    additionalDiscount: 'Additional Discount (Optional)',
+    addressLabel: 'Address',
+    administrator: 'Administrator',
+    agingAnalysis: 'Yaşlandırma Analizi',
+    aiAssistant: 'AI Assistant',
+    aiProductAnalytics: 'AI Product Analytics',
+    alertCenter: 'Uyarı Merkezi',
+    allBtn: 'All',
+    allButton: 'All',
+    allCategories: 'All Categories',
+    allInvoiceTypes: 'All Invoice Types',
+    allLabel: 'ALL',
     allProducts: 'All Products',
-    scale: 'Scale',
-    subtotalAction: 'Subtotal',
-    receiptNote: 'Receipt Note',
-    barcode: 'Barcode',
-    quickProductAdd: 'Quick Product',
-    shiftClick: 'Shift + Click',
-    receivePayment: 'Receive Payment',
-    sales: 'Sales',
-    parkedReceiptsButton: 'Parked',
-    parkReceipt: 'Park Receipt',
-    cancelReceipt: 'Cancel Receipt',
-    management: 'Management',
-    closeRegister: 'Close Register',
-    openRegister: 'Open Register',
-    customerInfo: 'Customer Info',
-    cardNumber: 'Card No',
-
-    // Footer
-    receipt: 'Receipt',
-    store: 'Store',
-    cashRegister: 'Register',
-    shift: 'Shift',
-    screenSettings: 'Screen Settings',
-    language: 'Language',
-
-    // WebSocket Status
-    wsConnected: 'Connected',
-    wsDisconnected: 'Disconnected',
-    wsConnecting: 'Connecting...',
-    stockInventory: 'Inventory Count',
-    inventoryManagement: 'Inventory & Stock Operations',
-    systemManagement: 'System Management',
-    centralStore: 'Central Store',
-    dayShift: 'Day',
-
-    // Notifications
-    productAdded: 'Product added to cart',
-    productRemoved: 'Product removed from cart',
-    cartCleared: 'Cart cleared',
-    receiptParked: 'Receipt parked',
-    saleCompleted: 'Sale completed',
-    error: 'Error',
-
-    // Payment Modal
-    paymentTitle: 'Payment',
-    discountOptional: 'Discount (Optional)',
-    percentage: 'Percentage',
-    enterDiscountPercentage: 'Enter discount percentage',
-    enterDiscountAmount: 'Enter discount amount',
-    paymentSummary: 'Payment Summary',
-    subtotalLabel: 'Subtotal',
+    allSalesButton: 'All Sales',
+    allStatuses: 'All Statuses',
+    amount: 'Amount',
+    amountInput: 'Amount',
+    amountLabel: 'Amount',
     amountToPay: 'Amount to Pay',
-    paymentMethod: 'Payment Method',
-    cashPayment: 'Cash Payment',
-    cashPaymentDescription: 'Pay with cash',
+    anErrorOccurred: 'An Error Occurred',
+    apply: 'APPLY',
+    applyDiscount: 'Apply Discount',
+    applyRatioDiscount: 'Apply Percentage Discount',
+    approved: 'Approved',
+    arabic: 'Arabic',
+    assets: 'Assets',
+    assignToSlot: 'Assign to Slot',
+    atLeastOneShortcut: 'You must select at least one shortcut',
+    atLeastOneUnit: 'At least one unit must be defined',
+    autoGenerated: 'Auto Generated',
+    automatic: '(Automatic)',
+    available: 'Available',
+    back: 'Back',
+    backToDashboard: 'Back to Dashboard',
+    backToList: 'Back to List',
+    backup: 'Backup',
+    balance: 'Balance',
+    balanceLoading: 'BALANCE LOADING',
+    balanceSheet: 'Balance Sheet',
+    bank: 'Bank',
+    bankAccount: 'Bank Account',
+    bankDeposit: 'Bank Deposit',
+    bankTransfer: 'Bank Transfer',
+    bankWithdrawal: 'Bank Withdrawal',
+    banknoteAndCoinCount: 'Banknote and Coin Count',
+    banknoteCount: 'Banknote Count',
+    barcode: 'Barcode',
+    barcodeDefDesc: 'Manage barcode definitions',
+    barcodeLabel: 'Barcode',
+    barcodeNotFound: 'Barcode not found',
+    barcodeNotFoundWarning: 'Barcode not found: {barcode}',
+    barcodeSearchPlaceholder: 'Scan barcode or product name',
+    biDashboardAi: 'BI Dashboard & AI',
+    branchStockStatus: 'Branch Stock Status',
+    branchStocks: 'Branch Stocks',
+    branchVariantStocks: 'Branch Variant Stocks',
+    branchVariants: 'Branch Variants',
+    brandDefDesc: 'Manage brand definitions',
+    brandDefinitions: 'Brand Definitions',
+    campaign: 'Campaign',
+    campaignApplied: 'Campaign applied',
+    campaignAppliedDescription: 'applied',
+    campaignAutoApplied: 'Campaign auto applied',
+    campaignDiscountLabel: 'Campaign Discount',
+    campaignDiscountPayment: 'Campaign Discount',
+    campaignLabel: 'CAMPAIGN',
+    campaignRemoved: 'Campaign removed',
+    cancel: 'Cancel',
+    cancelBtn: 'Cancel',
+    cancelReasonPlaceholder: 'Write the cancel reason...',
+    cancelReceipt: 'Cancel Receipt',
+    cancelReceiptTitle: 'Cancel Receipt - Select Reason',
+    capacityPlanning: 'Kapasite Planlama',
+    card: 'Card',
+    cardLabel: 'Card (POS)',
+    cardNumber: 'Card No',
     cardPayment: 'Card Payment',
     cardPaymentDescription: 'Pay with credit/debit card',
-    receivedAmount: 'Received Amount',
-    enterReceivedCashAmount: 'Enter received cash amount',
-    fullAmount: 'Full Amount',
-    completePayment: 'Complete Payment',
-    campaignDiscountLabel: 'Campaign Discount',
+    cardSales: 'Card Sales',
+    cards: 'Cards',
+    cart: 'Cart',
+    cartCleared: 'Cart cleared',
+    cartEmpty: 'Cart is empty',
+    cash: 'Cash',
+    cashBalanced: 'Cash Balanced',
+    cashClosedSuccessfully: 'Cash register closed successfully!',
+    cashClosingNotePlaceholder: 'Write your notes regarding cash closing...',
+    cashCountExample: 'Ex: 1000.00',
+    cashCountRequired: 'Please enter counted cash amount!',
+    cashDifference: 'Cash Difference',
+    cashDifferenceConfirm: 'There is a cash difference. Do you want to continue?',
+    cashFlowReport: 'Cash Flow Report',
+    cashFlowStatement: 'Cash Flow Statement',
+    cashHandedOver: 'Cash handed over to {staff}',
+    cashHandedOverMessage: 'Cash handed over to {staff}.\n\nHandover Amount: {amount}\n\n{staff} must confirm the handover when opening the cash register.',
+    cashHandoverAccept: 'Cash Handover Accept',
+    cashHandoverAvailable: 'Cash Handover Available',
+    cashHandoverCountRequired: 'Please enter handover amount!',
+    cashIn: 'Cash In',
     cashLabel: 'Cash',
-    cardLabel: 'Card (POS)',
-    veresiyeLabel: 'Credit',
-    gatewayLabel: 'QR Payment Provider',
-    addPaymentLabel: 'Add Payment',
-    currencyAndRates: 'Currency & Rates',
-    insufficientPayment: 'Insufficient payment amount!',
-    paymentFailed: 'Payment could not be initiated:',
-    processingText: 'PROCESSING...',
-    qrScanCode: 'Scan QR Code',
-    qrCustomerInstruction: 'Customer can complete payment by scanning QR code with their phone',
-    paymentAmount: 'Payment Amount',
-    step1: 'Step 1',
-    step2: 'Step 2',
-    holdPhoneToQr: 'Hold phone to QR code',
-    confirmPaymentText: 'Confirm payment',
-    campaignAppliedDescription: 'applied',
-
-    // Main Layout (Lines 500-509)
-    posModule: 'Sales',
-    managementModule: 'Management',
-    wmsModule: 'WMS',
-    setDateTime: 'Set Date and Time',
-    requiresAdminPassword: 'This action requires admin privileges. Date changes may affect sales records.',
-    enterAdminPassword: 'Enter admin password',
-    managementPanelAccess: 'Management Panel Access',
-    incorrectPassword: 'Incorrect password!',
-    rememberMe: 'Remember Me',
-
-    // Central Data Management (Lines 511-526)
-    centralDataManagementSystem: 'Central Data Management System',
-    centralDataManagementSubtitle: 'Enterprise Sync and Broadcast Management v2.0',
-    backup: 'Backup',
-    import: 'Import',
-    sending: 'Sending...',
-    sendNow: 'Send Now',
-    totalDevicesLabel: 'Total Devices',
-    onlineDevicesLabel: 'Online',
-    pendingBroadcastsLabel: 'Pending',
-    scheduledBroadcastsLabel: 'Scheduled',
-    successRateLabel: 'Success Rate',
-    last24hLabel: '24 Hours',
-    dataTransferLabel: 'Data Transfer',
-    sendDataTab: 'Send Data',
-    dataTypeLabel: 'Data Type',
-
-    // Login & System (Lines 528-556)
-    supportCenter: 'Support Center',
-    hwid: 'Hardware ID (HWID)',
-    copy: 'Copy',
-    copied: 'Copied',
-    status: 'Status',
-    online: 'Online',
-    waiting: 'Waiting',
-    startSupport: 'Start Support',
-    closeWindow: 'Close Window',
-    systemLogsTitle: 'SYSTEM LOGS',
-    diagnosticsSubtitle: 'Real-time Diagnostics & Audit',
-    noLogsYet: 'NO RECORDS FOUND YET',
-    totalEntries: 'Total Entries',
-    enterUsernamePassword: 'Please enter username and password.',
-    step01Auth: 'Step 01 / Auth',
-    step02Scope: 'Step 02 / Scope',
-    firmSelectionScope: 'Firm Selection / FIRM',
-    storeSelectionScope: 'Store Selection / STORE',
-    selectFirmPrompt: 'Select Firm',
-    editInfo: 'EDIT INFORMATION',
-    verifying: 'VERIFYING...',
-    continue: 'CONTINUE',
-    systemLogin: 'LOGIN TO SYSTEM',
-    invalidCredentials: 'Invalid username or password',
-    loginFailed: 'Login failed.',
-    networkError: 'A network error occurred.',
-    systemLogs: 'System Logs',
-    factoryResetConfirm: 'CAUTION: The application will be reset to factory settings!\n\n- All local settings will be deleted.\n- Setup Wizard will open again.\n- Database data will be PRESERVED.\n\nDo you confirm?',
-    resetFailed: 'Reset failed:',
-    selectSystemLanguage: 'Select System Language',
-    remoteSupportRequestSent: 'Quick support request sent to center.',
-    remoteSupportWarning: 'Notice: By starting remote support, you grant the technical team limited access.',
-    confirmClearLogs: 'All logs will be cleared. Are you sure?',
-    logAudit: 'Log/Audit',
-    systemHealth: 'System Health',
-    scanToSearchPlaceholder: 'Scan barcode to search',
-    changeVariant: 'Change Variant',
-    confirmItemDelete: 'Are you sure you want to delete this item?',
-    yesDelete: 'Yes, Delete',
-    barcodeSearchPlaceholder: 'Scan barcode or product name',
-    actionLabel: 'Action',
-
-
-    // Language Modal
-    selectLanguage: 'Select Language',
-    turkish: 'Turkish',
-    english: 'English',
-    arabic: 'Arabic',
-    kurdish: 'Kurdish',
-
-    // Additional Labels
-    campaignApplied: 'Campaign applied',
-    campaignRemoved: 'Campaign removed',
-    minimumAmountNotMet: 'Minimum amount not met',
-    campaignAutoApplied: 'Campaign auto applied',
-
-
-    // Customer Modal
-    selectCustomerTitle: 'Select Customer',
-    customerSearchPlaceholder: 'Search customer...',
-    noCustomerSale: 'No Customer Sale',
-    noCustomerSaleDescription: 'Retail sale',
-    customerNotFound: 'Customer not found',
-    newCustomer: 'New Customer',
-    individual: 'Individual',
-    corporate: 'Corporate',
-    totalPurchases: 'Total Purchases',
-    lastPurchase: 'Last Purchase',
-
-    // Staff Modal
-    selectStaffTitle: 'Select Staff',
+    cashOpenedMessage: 'Cash register opened successfully!\n\nOpening Cash: {amount}\nCashier: {staff}',
+    cashOpenedSuccessfully: 'Cash register opened successfully!',
+    cashOpeningNotePlaceholder: 'Write your notes regarding the cash register opening...',
+    cashOperation: 'Cash Operation',
+    cashOperations: 'Cash Operations',
+    cashOut: 'Cash Out',
+    cashPayment: 'Cash Payment',
+    cashPaymentDescription: 'Pay with cash',
+    cashRegister: 'Register',
+    cashRegisterNumber: 'REG-91',
+    cashSales: 'Cash Sales',
+    cashSlips: 'Cash Slips',
+    cashStatus: 'Cash Status',
+    cashTransfer: 'Cash Transfer',
+    cashier: 'Cashier',
     cashier1: 'Cashier 1',
     cashier2: 'Cashier 2',
     cashier3: 'Cashier 3',
-    manager: 'Manager',
-    discountAuthority: 'Has discount authority',
-    errorFetchingUsers: 'Failed to fetch user list',
-    welcome: 'Welcome',
-    invalidPassword: 'Invalid password',
-    loginError: 'Error logging in',
-    login: 'Login',
-
-    // MarketPOS
-    phoneAddress: 'Phone / Address',
-    totalItems: 'Total Items',
-    applyDiscount: 'Apply Discount',
-    deleteBtn: 'Delete',
-    cancelBtn: 'Cancel',
-    pieces: 'Pieces',
-    priceLabel: 'Price',
-    clearBtn: 'Clear',
-    enterBtn: 'OK',
-    productCount: 'Product',
-    totalPieces: 'Total Pieces',
-    pcs: 'pcs',
-    searchBtn: 'Search',
-
-    // Login Screen
-    storeSelection: 'Store Selection',
-    username: 'Username',
-    usernamePlaceholder: 'Enter your username',
-    password: 'Password',
-    connectionSettings: 'Connection Settings',
-    loginButton: 'Login',
-
-    // Campaign Modal
-    selectCampaign: 'Select Campaign',
-    totalCampaigns: 'Total Campaigns',
-    closeEsc: 'Press ESC to close',
-
-    // Bottom Bar
-    subtotalText: 'SUBTOTAL',
-    totalText: 'TOTAL',
-    cashierLabel: 'Cashier',
-
-    // Parked Receipts Modal
-    parkedReceiptsTitle: 'Parked Receipts',
-    noParkedReceipts: 'No parked receipts',
-    noParkedReceiptsDescription: 'Parked receipts will appear here',
-    parkedAt: 'Parked At',
-    parkedBy: 'Parked By',
-    customerLabel: 'Customer',
-    itemsCount: 'items',
-    continueReceipt: 'Continue',
-    deleteReceipt: 'Delete',
-    confirmDelete: 'Are you sure you want to delete?',
-
-    // Stock Query Modal
-    productCatalog: 'Product Catalog',
-    productsCount: 'products',
-    searchProductPlaceholder: 'Search product...',
-    gridView: 'Grid',
-    listView: 'List',
-    noProductsFound: 'No products found',
-    changeSearchCriteria: 'Change your search criteria',
-    productDetails: 'Product Details',
-    barcodeLabel: 'Barcode',
-    stockStatus: 'Stock Status',
-    currentStock: 'Current Stock',
-    unitLabel: 'Unit',
-    outOfStock: 'Out of Stock',
-    criticalLevel: 'Critical Level',
-    lowStock: 'Low Stock',
-    sufficientStock: 'Sufficient Stock',
-    priceInfo: 'Price Info',
-    salePrice: 'Sale Price',
-    costPrice: 'Cost Price',
-    profitMargin: 'Profit Margin',
-    stockValue: 'Stock Value',
-    costValue: 'Cost Value',
-    saleValue: 'Sale Value',
-    branchVariants: 'Branch Variants',
-    totalLabel: 'Total',
-    branchStocks: 'Branch Stocks',
-    totalAllBranches: 'All Branches Total',
-    productLabel: 'Product',
-    categoryLabel: 'Category',
-    detailButton: 'Detail',
-    addToCartButton: 'Add to Cart',
-
-    // Stock Query Specific
-    grid: 'Grid',
-    list: 'List',
-    operation: 'Operation',
-    unit: 'Unit',
-    pricingInfo: 'Pricing Information',
-    cost: 'Cost',
-    branchVariantStocks: 'Branch Variant Stocks',
-
-    // Return Modal
-    returnCancelTitle: 'Return / Cancel',
-    searchReceiptPlaceholder: 'Search receipt number or barcode...',
-    noSalesFound: 'No sales found',
-    selectReceiptForReturn: 'Select receipt for return',
-    returnProducts: 'Products to Return',
-    salesQuantity: 'Sales Qty',
-    saleQuantity: 'Sales Qty',
-
-    returnQuantity: 'Return Qty',
-    allButton: 'All',
-    returnReason: 'Return Reason',
-    returnReasonPlaceholder: 'Select return reason...',
-    returnAmount: 'Return Amount',
-    confirmReturn: 'Confirm Return',
-    productDefective: 'Product Defective',
-    customerNotSatisfied: 'Customer Not Satisfied',
-    wrongProduct: 'Wrong Product',
-    sizeColorChange: 'Size/Color Change',
-    otherReason: 'Other Reasons',
-    generalSale: 'General Sale',
-
-    // Sales History Modal
-    salesHistoryTitle: 'Sales History',
-    allSalesButton: 'All Sales',
-    todayButton: 'Today',
-    sevenDaysButton: '7 Days',
-    thirtyDaysButton: '30 Days',
-    noSalesHistory: 'No sales history',
-    salesCount: 'sales',
-    totalSales: 'Total',
-    receiptNumberOrCustomerSearch: 'Search by receipt number or customer name...',
-    dateRange: 'Date Range',
-    startDate: 'Start:',
-    endDate: 'End:',
-
-    noSalesRecordFound: 'No sales record found',
-    cash: 'Cash',
-    card: 'Card',
-    other: 'Other',
-
-    viewDetails: 'View Details',
-    printReceipt: 'Print Receipt',
-    backToList: 'Back to List',
-    receiptDetails: 'Receipt Details',
-    lastReceipt: 'Last Receipt',
-    totalSalesCount: 'Total',
-    salesWillAppearHere: 'Completed sales will appear here',
     cashierInfo: 'Cashier',
-    productsLabel: 'Product',
-    dateLabel: 'Date',
-    closeButton: 'Close',
-
-    // Language Selection Modal
-    languageSelectionTitle: 'Language Selection',
-    languageChangeInfo: 'Language changes affect all screens and are automatically saved.',
-    textDirection: 'Text Direction',
-    textDirectionOptional: 'Text Direction (Optional)',
-
-    // Keyboard Shortcuts
-    keyboardShortcuts: 'Keyboard Shortcuts',
-    pos: 'POS Operations',
-    quick: 'Quick Actions',
-    navigation: 'Navigation',
-    productSearch: 'Product Search',
-    quickPayment: 'Quick Payment',
-    focusBarcodeInput: 'Focus Barcode Field',
-    confirmBarcode: 'Confirm Barcode',
+    cashierLabel: 'Cashier',
+    cashierPerformance: 'Cashier Performance',
+    categories: 'Categories',
+    category: 'Category',
+    categoryAnalysis: 'Category Analysis',
+    categoryBasedStock: 'Category Based Stock',
+    categoryLabel: 'Category',
+    centralDataManagementSubtitle: 'Enterprise Sync and Broadcast Management v2.0',
+    centralDataManagementSystem: 'Central Data Management System',
+    centralStore: 'Central Store',
+    chCollection: 'Current Account Collection',
+    chPayment: 'Current Account Payment',
+    changeAmount: 'Change',
+    changeCashier: 'Change Cashier',
+    changeLanguage: 'Change Language',
+    changeSearchCriteria: 'Change your search criteria',
+    changeVariant: 'Change Variant',
+    chartOfAccounts: 'Chart of Accounts',
+    checkLabel: 'Check',
+    checkTracking: 'Check Tracking',
+    cityLabel: 'City',
+    clear: 'Clear',
+    clearBtn: 'Clear',
     clearCart: 'Clear Cart',
-    openCashRegister: 'Open Cash Register',
+    clearCurrentCartFirst: 'Clear current cart first',
+    clearList: 'Clear List',
+    clickToChangePrice: 'Click to Change Price',
+    close: 'Close',
+    closeButton: 'Close',
     closeCashRegister: 'Close Cash Register',
-
-    // Advanced Search
-    voiceSearch: 'Voice Search',
-    results: 'results',
-    searching: 'Searching...',
-
-    // Accounting & Finance
-    selectFirma: 'Select Company',
-    selectDonem: 'Select Period',
-    periodOpen: 'Open Period',
-    periodClosed: 'Closed Period',
-    closedMonths: 'Closed Months',
-    firma: 'Company',
-    donem: 'Period',
-    journalEntry: 'Journal Entry',
-    journalEntries: 'Journal Entries',
-    debit: 'Debit',
-    credit: 'Credit',
-    balance: 'Balance',
-    trialBalance: 'Trial Balance',
-    accountCode: 'Account Code',
-    accountName: 'Account Name',
-    fiscalPeriod: 'Fiscal Period',
-    fiscalYear: 'Fiscal Year',
-    periodManagement: 'Period Management',
+    closeCashRegisterProcess: 'Close Cash Register Process',
+    closeEsc: 'Press ESC to close',
     closeMonth: 'Close Month',
     closePeriod: 'Close Period',
-    openNewPeriod: 'Open New Period',
-    balanceSheet: 'Balance Sheet',
-    incomeStatement: 'Income Statement',
-    cashFlowStatement: 'Cash Flow Statement',
-    financialStatements: 'Financial Statements',
-    profitLoss: 'Profit and Loss',
-    assets: 'Assets',
-    liabilities: 'Liabilities',
-    equity: 'Equity',
-    revenue: 'Revenue',
-    expenses: 'Expenses',
-    netIncome: 'Net Income',
-    grossProfit: 'Gross Profit',
-    operatingExpenses: 'Operating Expenses',
-    expenseAnalysis: 'Expense Analysis',
-    tax: 'Tax',
-    taxRate: 'Tax Rate',
-    corporateTax: 'Corporate Tax',
-    incomeTax: 'Income Tax',
-    withholdingTax: 'Withholding Tax',
-    taxReport: 'Tax Report',
-    chartOfAccounts: 'Chart of Accounts',
-    generalLedger: 'General Ledger',
-    subsidiary: 'Subsidiary',
-    consolidatedReports: 'Consolidated Reports',
-    intercompanyEliminations: 'Intercompany Eliminations',
-    costOfGoodsSold: 'Cost of Goods Sold',
-    inventory: 'Inventory',
-    accountsReceivable: 'Accounts Receivable',
-    accountsPayable: 'Accounts Payable',
-
-    bank: 'Bank',
-    purchases: 'Purchases',
-    transfers: 'Transfers',
-    receipts: 'Receipts',
-    payments: 'Payments',
-    voucher: 'Voucher',
-    voucherNo: 'Voucher No',
-    voucherType: 'Voucher Type',
-    voucherDate: 'Voucher Date',
-    description: 'Description',
-    autoGenerated: 'Auto Generated',
-    manualEntry: 'Manual Entry',
-    approved: 'Approved',
-    pending: 'Pending',
-    rejected: 'Rejected',
-    posted: 'Posted',
-    reversed: 'Reversed',
-
-    // MarketPOS Additional
-    quantitySaved: 'Quantity saved',
-    quantitySavedMessage: 'Quantity saved: {quantity}. Now enter barcode.',
-    pleaseEnterBarcode: 'Please enter barcode',
-    pleaseEnterQuantityFirst: 'Please enter quantity first, then press *',
-    pleaseSelectVariant: 'Please select variant',
-    barcodeNotFound: 'Barcode not found',
-    pleaseEnterBarcodeFirst: 'Please enter barcode first',
-    openCashRegisterToAddProduct: 'You must open the cash register first to add products!',
-    productAddedToCart: '{productName} added to cart',
-    productRemovedFromCart: 'Product removed from cart',
-    variantChanged: 'Variant changed: {variant}',
-    receiptCancelled: 'Receipt cancelled: {reason}',
-    cartEmpty: 'Cart is empty',
-    clearCurrentCartFirst: 'Clear current cart first',
-    parkedReceiptRetrieved: 'Parked receipt retrieved',
-    parkedReceiptDeleted: 'Parked receipt deleted',
-    openCashRegisterToSell: 'You must open the cash register first to make a sale!',
-    discountApplied: '{percent}% discount applied',
-    quantitySavedBarcodeEnter: 'Quantity: {quantity} - Enter barcode',
-    enterBarcode: 'Enter barcode...',
-    automatic: '(Automatic)',
-    discountLabel: 'Discount:',
-    keyboardShortcutsTitle: 'Keyboard Shortcuts (Press ?)',
-    shortcuts: 'Shortcuts',
-    returnCompleted: 'Return completed',
-    productAssignedToSlot: '{productName} assigned to Slot #{slotNumber}',
-    cashHandedOver: 'Cash handed over to {staff}',
-    cashHandedOverMessage: 'Cash handed over to {staff}.\n\nHandover Amount: {amount}\n\n{staff} must confirm the handover when opening the cash register.',
-    cashOpenedSuccessfully: 'Cash register opened successfully!',
-    cashOpenedMessage: 'Cash register opened successfully!\n\nOpening Cash: {amount}\nCashier: {staff}',
-    defaultQuantity: '1x',
-    zeroPlaceholder: '0',
-    pageRange: '{start}-{end}',
-    cashRegisterNumber: 'REG-91',
-    version: 'v1.0',
-    versionTitle: 'Version: v1.0',
-    missingBarcodes: 'Missing Barcodes',
-    missingBarcodesTitle: 'Missing Barcode List',
-    clearList: 'Clear List',
-    noMissingBarcodes: 'No missing barcodes yet.',
-    barcodeNotFoundWarning: 'Barcode not found: {barcode}',
-
-    lastReceiptButton: 'Last Receipt',
-    systemAdministrator: 'System Administrator',
-
-    // New Labels
-    reporting: 'Reporting',
-    reportingDesc: 'Sales reports and analytics',
-    aiAssistant: 'AI Assistant',
-    dailyReport: 'Daily Report',
-    zReport: 'Z Report',
-    periodComparison: 'Period Comparison',
-    topSellingProducts: 'Top Selling Products',
-    categoryAnalysis: 'Category Analysis',
-    hourlySalesAnalysis: 'Hourly Sales Analysis',
-    cashierPerformance: 'Cashier Performance',
-    customerSalesAnalysis: 'Customer Sales Analysis',
-    salesTrendAnalysis: 'Sales Trend Analysis',
-    targetVsActual: 'Target vs Actual',
-    profitLossReport: 'Profit & Loss Report',
-    cashFlowReport: 'Cash Flow Report',
-    debtAgingReport: 'Debt Aging Report',
-    checkTracking: 'Check Tracking',
-    accountSummary: 'Account Summary',
-    reportsStockStatus: 'Stock Status',
-    stockAging: 'Stock Aging',
-    stockTurnover: 'Stock Turnover',
-    stockABC: 'Stock ABC Analysis',
-    materialMovement: 'Material Movement Report',
-    expiringProducts: 'Expiring Soon',
-    paymentMethodDistribution: 'Payment Method Distribution',
-    discountReport: 'Discount Report',
-    reportsCashStatus: 'Cash Status',
+    closeRegister: 'Close Register',
+    closeWindow: 'Close Window',
+    closedMonths: 'Closed Months',
+    codeAndNameRequired: 'Code and name fields are required',
+    cogs: 'COGS',
     commissionReport: 'Commission Report',
-    totalRevenueLabel: 'Total Revenue',
-    salesDetails: 'Sales Details',
-    receiptNo: 'Receipt No',
-    timeLabel: 'Time',
-    amountLabel: 'Amount',
-    paymentLabel: 'Payment',
-    addNewCurrentAccount: 'ADD NEW CURRENT ACCOUNT',
-    accountTypeSelection: 'Account Type Selection',
-    reportsCustomerLabel: 'CUSTOMER',
-    supplierLabel: 'SUPPLIER',
-    supplierCode: 'Supplier Code',
-    supplierName: 'Supplier Name',
-    phoneLabel: 'Phone',
-    emailLabel: 'E-mail',
-    addressLabel: 'Address',
-    cityLabel: 'City',
-    paymentTermDays: 'Payment Term (Days)',
+    communicationAndNotifications: 'Communication & Notifications',
+    complete: 'Complete',
+    completePayment: 'Complete Payment',
+    confirmBarcode: 'Confirm Barcode',
+    confirmClearLogs: 'All logs will be cleared. Are you sure?',
+    confirmDelete: 'Are you sure you want to delete?',
+    confirmDeleteAccount: 'Are you sure you want to delete this account?',
+    confirmDeleteInvoice: 'Are you sure you want to delete invoice {invoiceNo}?',
+    confirmDeleteRecord: 'Are you sure you want to delete this record?',
+    confirmDeleteUnitSet: 'Are you sure you want to delete this unit set?',
+    confirmItemDelete: 'Are you sure you want to delete this item?',
+    confirmMove: 'CONFIRM MOVE',
+    confirmPaymentText: 'Confirm payment',
+    confirmReturn: 'Confirm Return',
+    connectionSettings: 'Connection Settings',
+    consignment: 'Konsinyasyon',
+    consignmentSale: 'Consignment Sale',
+    consignmentSales: 'Consignment Sales',
+    consignmentSalesDesc: 'Consignment sales transactions',
+    consignmentSalesTitle: 'Consignment Sales',
+    consolidatedReports: 'Consolidated Reports',
+    consumption: 'Consumption',
+    contact: 'CONTACT',
+    continue: 'CONTINUE',
+    continueReceipt: 'Continue',
+    copied: 'Copied',
+    copy: 'Copy',
+    corporate: 'Corporate',
+    corporateTax: 'Corporate Tax',
+    cost: 'Cost',
+    costAnalysis: 'Maliyet Analizi',
+    costAndProfitAnalysis: 'Cost and Profit Analysis',
+    costOfGoodsSold: 'Cost of Goods Sold',
+    costPrice: 'Cost Price',
+    costValue: 'Cost Value',
+    countEntry: 'Sayım Giriş',
+    countReconciliation: 'Sayım Mutabakat',
+    countedCashAmount: 'Counted Cash Amount',
+    countingControl: 'Sayım & Kontrol',
+    credit: 'Credit',
+    creditCard: 'Credit Card',
     creditLimitLabel: 'Credit Limit',
-    taxNumberLabel: 'Tax Number',
-    taxOfficeLabel: 'Tax Office',
-    notesLabel: 'Notes',
-    materialCodeName: 'MATERIAL CODE/NAME',
-    generateReport: 'Generate Report',
-    startDateReport: 'START DATE',
-    endDateReport: 'END DATE',
-    noRecordFound: 'No record found',
-    unitPriceLabel: 'Unit Price',
-    newSalesOrder: 'New Sales Order',
-    orderForm: 'Order Form',
-    saveOrder: 'Save Order',
-    pleaseSelectCustomer: 'Please select a customer!',
-    pleaseAddAtLeastOneProduct: 'Please add at least one product!',
-    orderCreatedSuccessfully: '✅ Order created successfully!',
-    orderCreationError: '❌ Error creating order!',
-    newUnitSet: 'New Unit Set',
-    actionCenter: 'Action Center',
-    reportStructureNote: 'This report structure is calculated instantaneously via the local RetailEX database (PostgreSQL) using the asynchronous running balance engine, and is fully compatible with Logo ERP corporate standards.',
+    criticalLevel: 'Critical Level',
+    criticalStockAlerts: 'Critical Stock Alerts',
+    crmAutoGenerated: 'Auto Generated',
+    crmBalance: 'BALANCE',
+    crmManagementConsole: 'Customer and Supplier Management Console',
+    currency: 'IQD',
+    currencyAndRates: 'Currency & Rates',
+    currentAccountPersonel: 'Current Account / Personnel',
     currentAccountTitle: 'CURRENT ACCOUNT TITLE',
     currentAccounts: 'Current Accounts',
-    suppliers: 'Suppliers',
-    crmManagementConsole: 'Customer and Supplier Management Console',
-    salesCustomerDesc: 'Sales Customer Account',
-    purchaseSupplierDesc: 'Purchase Supplier Account',
-    saveChanges: 'Save Changes',
-    errorLoadingSuppliers: 'Could not load suppliers',
-    accountUpdated: 'Current account updated',
-    accountAdded: 'Current account added',
-    saveFailed: 'Save failed',
-    accountDeleted: 'Current account deleted',
-    accountDeleteError: 'Could not delete current account',
-    totalCurrentAccounts: 'TOTAL ACCOUNTS',
-    crmAutoGenerated: 'Auto Generated',
-    accountNameRequired: 'Account name is required!',
-    confirmDeleteAccount: 'Are you sure you want to delete this account?',
-    contact: 'CONTACT',
-    crmBalance: 'BALANCE',
-    actions: 'ACTIONS',
-
-    // Dashboard
-    welcomeSubtitle: 'Welcome, track your business performance',
-    quickAccess: 'Quick Access',
-    editShortcuts: 'Edit Shortcuts',
-    dailySummary: 'Daily Summary',
-    todaysSale: 'Today\'s Sale',
-    weeklySale: 'Weekly Sale',
-    totalProduct: 'Total Product',
-    activeCustomer: 'Active Customer',
-    registeredCustomer: 'Registered customer',
-    financialSummary: 'Financial Summary',
-    stockValueCost: 'Stock Value (Cost)',
-    stockValueSale: 'Stock Value (Sale)',
-    potentialProfit: 'Potential Profit',
-    dashboardProfitMargin: 'Profit Margin',
-    last7DaysSalesTrend: 'Last 7 Days Sales Trend',
-    dailySalesPerformance: 'Daily sales performance',
-    paymentMethodsDashboard: 'Payment Methods',
+    currentBalance: 'Current Balance',
+    currentStock: 'Current Stock',
+    customReports: 'Custom Reports',
+    customer: 'Customer',
+    customerChangedMind: 'Customer changed mind',
+    customerInfo: 'Customer Info',
+    customerLabel: 'Customer',
+    customerNotFound: 'Customer not found',
+    customerNotSatisfied: 'Customer Not Satisfied',
     customerPaymentPreferences: 'Customer payment preferences',
-    dashboardTopSellingProducts: 'Top Selling Products',
-    rankingByRevenue: 'Ranking by revenue',
-    categoryBasedStock: 'Category Based Stock',
-    inventoryDistribution: 'Inventory distribution',
-    criticalStockAlerts: 'Critical Stock Alerts',
-    lowStockWarnings: 'Low Stock Warnings',
-    productsAtCriticalLevel: 'products at critical level',
-    productsAtLowLevel: 'products at low level',
-    remaining: 'Remaining',
-    urgentOrder: 'Urgent order!',
-    orderRecommended: 'Order recommended',
-    noCriticalStock: 'No products at critical stock level',
-    noLowStock: 'No products at low stock level',
+    customerReports: 'Customer Reports',
+    customerSalesAnalysis: 'Customer Sales Analysis',
+    customerSearchPlaceholder: 'Search customer...',
+    customerSupplier: 'Contact (Customer/Supplier)',
+    customizeQuickAccess: 'Customize Quick Access',
     customizeShortcuts: 'Customize Quick Access',
-    maxShortcutsTitle: 'You can select up to 8 shortcuts',
-    shortcutsSelected: 'shortcuts selected',
-    selectAtLeastOneShortcut: 'You must select at least 1 shortcut',
-    saveShortcutsError: 'Could not save shortcuts. Please try again.',
+    dailyReport: 'Daily Report',
+    dailySalesPerformance: 'Daily sales performance',
+    dailySummary: 'Daily Summary',
+    dashboard: 'Dashboard',
+    dashboardProfitMargin: 'Profit Margin',
+    dashboardTopSellingProducts: 'Top Selling Products',
     dashboardTransaction: 'transactions',
-    stockLabel: 'Stock',
-    print: 'Print',
-    download: 'Download',
-    currency: 'IQD',
-    paymentCash: 'Cash',
-    paymentCardPOS: 'Card (POS)',
-    paymentCredit: 'On Credit (Current)',
-    paymentQRProvider: 'QR Payment Provider',
-    campaignDiscountPayment: 'Campaign Discount',
-    additionalDiscount: 'Additional Discount (Optional)',
-    subtotalUppercase: 'SUBTOTAL',
-    totalUppercase: 'TOTAL',
-    paidAmount: 'Paid',
-    remainingAmount: 'Remaining',
-    changeAmount: 'Change',
-    addedPayments: 'Added Payments',
-    amountInput: 'Amount',
-    fullAmountBtn: 'Full Amount',
-    addPaymentBtn: 'Add Payment',
-    numpadPrice: 'Price',
-    numpadConfirm: 'Confirm',
-    paymentProcessing: 'PROCESSING...',
-    paymentStartError: 'Payment could not be started',
-    posPaymentDesc: 'POS Sales Payment',
-    scanQRCode: 'Scan QR Code',
-    qrInstructions: 'Customer can complete payment by scanning the QR code with their phone',
-    paymentAmountLabel: 'Payment Amount',
-    qrStep1: 'Step 1',
-    qrStep1Desc: 'Point phone at QR code',
-    qrStep2: 'Step 2',
-    qrStep2Desc: 'Confirm payment',
-    discountPercentPlaceholder: 'Discount %',
-    discountAmountPlaceholder: 'Discount Amount',
-    paymentMethodLabel: 'Payment Method',
-    balanceLoading: 'BALANCE LOADING',
-    serviceTopUp: 'SERVICE TOP-UP',
-    transactionNumberLabel: 'Transaction Number/Person',
-    digitalProductSaleNotice: 'This transaction is a digital product sale.',
-    noReturnPolicyNotice: 'No returns or cancellations allowed.',
-    smsNotificationSent: 'SMS Notification Sent',
-    receiptDataError: 'Receipt data could not be loaded',
-    paymentInfo: 'Payment Information',
-    openAccountWarning: 'If not selected, it will be processed as an open account (current)',
-    paymentNotesPlaceholder: 'Notes about the payment...',
-    checkLabel: 'Check',
-    promissoryNote: 'Promissory Note',
-    tagline: 'Professional Sales Management System',
-    systemAdmin: 'System Administrator',
-    campaignLabel: 'CAMPAIGN',
-    defaultLocation: 'Baghdad, Iraq',
+    dataBroadcast: 'Data Broadcast',
+    dataTransferLabel: 'Data Transfer',
+    dataTypeLabel: 'Data Type',
+    databaseConnection: 'Veritabanı Bağlantısı',
+    dateLabel: 'Date',
+    dateRange: 'Date Range',
+    dateRangeLabel: 'Date Range',
+    dayShift: 'Day',
+    deactivate: 'Deactivate',
+    debit: 'Debit',
+    debtAgingReport: 'Debt Aging Report',
     defaultCompanyName: 'RetailEX',
-    thanksForChoosingUs: '★★★ Thank You For Choosing Us ★★★',
-    receiptRequiredForReturns: 'This receipt is required for returns and exchanges.',
-    bankTransfer: 'Bank Transfer',
+    defaultLocation: 'Baghdad, Iraq',
+    defaultQuantity: '1x',
+    definitionCode: 'Definition Code',
+    definitionDescription: 'Description',
+    definitionName: 'Definition Name',
+    definitions: 'Definitions',
+    delete: 'Delete',
+    deleteAction: 'Delete',
+    deleteBtn: 'Delete',
+    deleteReceipt: 'Delete',
+    description: 'Description',
+    designCenter: 'Design Center',
+    detail: 'Detail',
+    detailButton: 'Detail',
+    diagnosticsSubtitle: 'Real-time Diagnostics & Audit',
+    differentReceipts: 'different receipts',
+    digitalProductSaleNotice: 'This transaction is a digital product sale.',
+    discount: 'Discount',
+    discountAmountPlaceholder: 'Discount Amount',
+    discountApplied: '{percent}% discount applied',
+    discountAuthority: 'Has discount authority',
+    discountLabel: 'Discount:',
+    discountOptional: 'Discount (Optional)',
+    discountPercentPlaceholder: 'Discount %',
+    discountRatioApplied: 'The entered percentage will be applied to the order total.',
+    discountReport: 'Discount Report',
+    documentNo: 'Receipt / Document No',
+    donem: 'Period',
+    download: 'Download',
+    edit: 'Edit',
+    editInfo: 'EDIT INFORMATION',
+    editQuickAccess: 'Edit',
+    editShortcuts: 'Edit Shortcuts',
+    editUnitSet: 'Edit Unit Set',
+    emailCampaigns: 'Email Campaigns',
+    emailLabel: 'E-mail',
+    emptyCart: 'Cart Empty',
+    endDate: 'End:',
+    endDateReport: 'END DATE',
+    english: 'English',
+    enter: 'OK',
+    enterAdminPassword: 'Enter admin password',
+    enterBarcode: 'Enter barcode...',
+    enterBtn: 'OK',
+    enterDiscountAmount: 'Enter discount amount',
+    enterDiscountPercentage: 'Enter discount percentage',
+    enterNewPrice: 'Enter New Price',
+    enterReceivedCashAmount: 'Enter received cash amount',
+    enterUsernamePassword: 'Please enter username and password.',
+    entryOperations: 'Giriş İşlemleri',
+    equipmentMaintenance: 'Ekipman Bakım',
+    equity: 'Equity',
+    error: 'Error',
+    errorFetchingUsers: 'Failed to fetch user list',
+    errorLoadingScreen: 'An error occurred while loading the screen.',
+    errorLoadingSuppliers: 'Could not load suppliers',
+    errorMessage: 'Error Message',
+    excelOperations: 'Excel Operations',
+    excess: 'Excess',
+    exchangeDifferenceCredit: 'Exchange Difference (Credit)',
+    exchangeDifferenceDebit: 'Exchange Difference (Debit)',
+    exitOperations: 'Çıkış İşlemleri',
+    expectedCash: 'Expected Cash',
+    expenseAnalysis: 'Expense Analysis',
+    expenseCodeDescription: 'Expense Code / Description',
+    expenseCodePlaceholder: 'Expense Code or Name...',
+    expenseVoucher: 'Expense Voucher',
+    expenses: 'Expenses',
+    expiringProducts: 'Expiring Soon',
+    explainCancelReason: 'Explain Cancel Reason',
+    explainReturnReason: 'Explain return reason...',
+    factoryResetConfirm: 'CAUTION: The application will be reset to factory settings!\n\n- All local settings will be deleted.\n- Setup Wizard will open again.\n- Database data will be PRESERVED.\n\nDo you confirm?',
+    farmersReceipt: 'Farmers Receipt',
+    fefoReport: 'FEFO Raporu',
+    ficheNo: 'Fiche No',
+    ficheType: 'Transaction Type',
+    financeManagement: 'Finance Management',
+    financeReports: 'Finance Reports',
+    financialStatements: 'Financial Statements',
+    financialSummary: 'Financial Summary',
+    firmPeriodDefinitions: 'Firm/Period Definitions',
+    firmSelection: 'Firma Seçimi',
+    firmSelectionScope: 'Firm Selection / FIRM',
+    firma: 'Company',
+    first: 'First',
+    fiscalPeriod: 'Fiscal Period',
+    fiscalYear: 'Fiscal Year',
+    focusBarcodeInput: 'Focus Barcode Field',
+    fullAmount: 'Full Amount',
+    gatewayFinishInstructions: 'Click "OK" after completing the payment. Click "Cancel" if the payment failed.',
+    gatewayLabel: 'QR Payment Provider',
+    gatewayPageOpened: 'payment page opened in new tab.',
+    generalLedger: 'General Ledger',
+    generalReport: 'General Report',
+    generalSale: 'General Sale',
+    generateReport: 'Generate Report',
+    giveUp: 'Give Up',
+    goBack: 'Go Back',
+    goodsReceiving: 'Mal Kabul',
+    grandTotal: 'Grand Total',
+    grid: 'Grid',
+    gridView: 'Grid',
+    grossProfit: 'Gross Profit',
+    grossSales: 'Gross Sales',
+    groupCodeDesc: 'Manage group codes',
+    groupCodes: 'Group Codes',
+    handoverAmount: 'Handover Amount:',
+    handoverFromCashier: 'Handover From Cashier:',
+    helpMessage: 'If this error persists, please check the browser console (F12) and contact the technical support team.',
+    historyMovements: 'History Movements',
+    holdPhoneToQr: 'Hold phone to QR code',
+    homepage: 'Homepage',
+    hourlySalesAnalysis: 'Hourly Sales Analysis',
+    howCalculated: 'How is it calculated?',
+    hrReports: 'Human Resources',
+    hwid: 'Hardware ID (HWID)',
+    icon: 'Icon',
+    import: 'Import',
+    inOutQty: 'In/Out',
+    inOutTotals: 'Entry/Exit Totals',
+    incomeStatement: 'Income Statement',
+    incomeTax: 'Income Tax',
+    incomingTransfer: 'Incoming Transfer',
+    incorrectPassword: 'Incorrect password!',
+    individual: 'Individual',
+    insufficientPayment: 'Insufficient payment amount!',
+    integrations: 'Integrations',
+    intercompanyEliminations: 'Intercompany Eliminations',
+    invalidCredentials: 'Invalid username or password',
+    invalidDate: 'Invalid Date',
+    invalidPassword: 'Invalid password',
+    inventory: 'Inventory',
+    inventoryDistribution: 'Inventory distribution',
+    inventoryList: 'Inventory List',
+    inventoryManagement: 'Inventory & Stock Operations',
+    invoiceDeleteError: 'Could not delete invoice',
+    invoiceDeleteSuccess: 'Invoice deleted successfully',
+    invoiceNo: 'Invoice No',
+    invoiceType: 'Invoice Type',
+    invoices: 'Invoices',
+    invoicesCount: 'Invoices',
+    issuedServiceInvoicesDesc: 'Services issued to customers',
+    issuedServiceInvoicesTitle: 'Issued Service Invoices',
+    itemsCount: 'items',
+    journalEntries: 'Journal Entries',
+    journalEntry: 'Journal Entry',
+    keyboardShortcuts: 'Keyboard Shortcuts',
+    keyboardShortcutsTitle: 'Keyboard Shortcuts (Press ?)',
+    kurdish: 'Kurdish',
+    labelDesigner: 'Label Designer',
+    laborTracking: 'Personel Performans',
+    language: 'Language',
+    languageChangeInfo: 'Language changes affect all screens and are automatically saved.',
+    languageSelection: 'Dil Seçimi',
+    languageSelectionTitle: 'Language Selection',
+    ready: 'Ready',
+    selectOrHoverInvoiceType: 'Select or hover over an invoice type',
+    wholesaleDesc: 'Used for wholesale transactions.',
+    retailSaleDesc: 'Used for retail sales transactions.',
+    serviceGivenDesc: 'Used for invoicing services provided.',
+    serviceReceivedDesc: 'Used for invoicing services received.',
+    waybillDesc: 'Used for waybill transactions.',
+    orderDesc: 'Used for order transactions.',
+    quoteDesc: 'Used for quote transactions.',
+    wastageWaybillDesc: 'Used for wastage and loss transactions.',
+    warehouseTransferWaybillDesc: 'Used for warehouse transfer transactions.',
+    last: 'Last',
+    last24hLabel: '24 Hours',
+    last7DaysSalesTrend: 'Last 7 Days Sales Trend',
+    lastPurchase: 'Last Purchase',
+    lastReceipt: 'Last Receipt',
+    lastReceiptButton: 'Last Receipt',
+    layoutOptimization: 'Yerleşim Optimizasyonu',
+    liabilities: 'Liabilities',
+    list: 'List',
+    listView: 'List',
+    loading: 'Loading...',
+    loadingData: 'Loading data...',
+    localCurrencyUnit: 'Unit: Local Currency (IQD)',
+    localeCode: 'en-US',
+    localeName: 'English',
+    locationTransfer: 'Raf Transferi',
+    logAudit: 'Log/Audit',
+    login: 'Login',
+    loginButton: 'Login',
+    loginError: 'Error logging in',
+    loginFailed: 'Login failed.',
+    logout: 'Logout',
+    lotTraceability: 'Lot İzlenebilirlik',
+    lotTransfer: 'Lot/Seri Transfer',
+    lowStock: 'Low Stock',
+    lowStockWarnings: 'Low Stock Warnings',
+    lowStockWarningsItem: 'Low Stock Warnings',
+    mainMenu: 'Main Menu',
+    mainUnitCannotDelete: 'Main unit cannot be deleted',
+    mainUnitLabel: 'Main Unit',
+    mainUnitRequired: 'A main unit must be selected',
+    management: 'Management',
+    managementModule: 'Management',
+    managementPanelAccess: 'Management Panel Access',
+    manager: 'Manager',
+    manualEntry: 'Manual Entry',
+    masterRecords: 'Master Records',
+    materialClassDesc: 'Manage material classes',
+    materialClasses: 'Material Classes',
+    materialCodeName: 'MATERIAL CODE/NAME',
+    materialCodeOrName: 'Material Code/Name',
+    materialExtract: 'Material Extract',
+    materialExtractReport: 'Material Transaction Extract',
+    materialManagement: 'Material Management',
+    materialManagementSlips: 'Material Management Slips',
+    materialMovement: 'Material Movement Report',
+    materialValue: 'Material Value',
+    materialValueReport: 'Material Value Report',
+    materialWarehouseStatus: 'Material Warehouse Status',
+    materials: 'Materials',
+    max8Shortcuts: 'You can select up to 8 shortcuts',
+    maxShortcutsTitle: 'You can select up to 8 shortcuts',
+    menu: {
+      accountingManagement: 'Accounting Management',
+      accountingVouchers: 'Accounting Slips',
+      advancedReports100: '⭐ Advanced Reports (100+)',
+      aiProductAnalytics: 'AI Product Analytics',
+      backupRestore: 'Backup/Restore',
+      balanceSheet: 'Balance Sheet',
+      bankAccounts: 'Bank Accounts',
+      bankPaymentPlans: 'Bank Payment Plans',
+      bankReports: 'Bank Reports',
+      bankSlips: 'Bank Slips',
+      banks: 'Banks',
+      biDashboardAi: 'BI Dashboard & AI',
+      brandDefinitions: 'Brand Definitions',
+      campaignDefinitions: 'Campaign Definitions',
+      cards: 'Cards',
+      cashAccounts: 'Cash Accounts',
+      cashCards: 'Cash Cards',
+      cashOperations: 'Cash Operations',
+      cashReports: 'Cash Reports',
+      cashSlips: 'Cash Slips',
+      checkPromissory: 'Check/Promissory Note',
+      collectionPayment: 'Collection/Payment',
+      communicationAndNotifications: 'Communication & Notifications',
+      consignmentSales: 'Consignment Sales',
+      cost: 'Cost',
+      creditCardPosSlips: 'Credit Card POS Slips',
+      currentAccountReports: 'Current Account Reports',
+      currentAccountSlips: 'Current Account Slips',
+      currentAccounts: 'Current Accounts',
+      customReports: 'Custom Reports',
+      customerAnalysis: 'Customer Analysis',
+      dashboard: 'Dashboard',
+      dataBroadcast: 'Data Broadcast',
+      databaseInfrastructure: 'Database Infrastructure',
+      definitions: 'Definitions',
+      definitionsParameters: 'Definitions/Parameters',
+      demoDataManagement: 'Demo Data Management',
+      designCenter: 'Design Center',
+      emailCampaigns: 'Email Campaigns',
+      exSecureGateSecurity: 'ExSecureGate (Security)',
+      excelOperations: 'Excel Operations',
+      expenseManagement: 'Expense Management',
+      financeManagement: 'Finance Management',
+      firmPeriodDefinitions: 'Firm/Period Definitions',
+      generalReport: 'General Report',
+      generalSettings: 'General Settings',
+      graphicalAnalysis: 'Graphical Analysis',
+      groupCodes: 'Group Codes',
+      homepage: 'Homepage',
+      inOutTotals: 'Entry/Exit Totals',
+      incomeStatement: 'Income Statement',
+      integrations: 'Integrations',
+      inventory: 'Inventory',
+      inventoryManagement: 'Inventory & Stock Operations',
+      invoices: 'Invoices',
+      journalAndSlips: 'Journal Book & Slips',
+      labelDesigner: 'Label Designer',
+      logAudit: 'Log/Audit',
+      mainMenu: 'Main Menu',
+      masterRecords: 'Master Records',
+      materialClasses: 'Material Classes',
+      materialExtract: 'Material Extract',
+      materialManagement: 'Material Management',
+      materialManagementSlips: 'Material Management Slips',
+      materialValue: 'Material Value',
+      materialWarehouseStatus: 'Material Warehouse Status',
+      materials: 'Materials',
+      inventoryCountOps: 'Inventory Counting Operations',
+      mobileCount: 'Mobile Count / Create Slip',
+      countDeficitSlips: 'Count Shortage Slips',
+      countSurplusSlips: 'Count Surplus Slips',
+      bankDepositDesc: 'Cash deposit to bank',
+      bankTransferDesc: 'Transfer between banks or registers',
+      bankWithdrawalDesc: 'Cash withdrawal from bank',
+      baseCurrency: 'Base Currency',
+      baseCurrencyShort: 'BASE',
+      buyRate: 'Buy Rate',
+      cashInDesc: 'Cash inflow to register',
+      cashOutDesc: 'Cash outflow from register',
+      chCollectionDesc: 'Collection from current account',
+      chPaymentDesc: 'Payment to current account',
+      chartsTab: 'Charts',
+      createTransaction: 'Create Transaction',
+      currenciesTab: 'Currencies',
+      currencyCode: 'Currency Code',
+      currencyLabel: 'Currency',
+      currencyManagement: 'Currency Management',
+      currencyManagementDesc: 'Manage currencies and exchange rates',
+      currencyName: 'Currency Name',
+      currencySymbol: 'Symbol',
+      dailyRatesTab: 'Daily Rates',
+      deleteComingSoon: 'Deletion coming soon',
+      editComingSoon: 'Editing coming soon',
+      enterRate: 'Enter Rate',
+      enteredBy: 'Entered By',
+      exchangeDifferenceCreditDesc: 'Exchange difference credit entry',
+      exchangeDifferenceDebitDesc: 'Exchange difference debit entry',
+      expenseVoucherDesc: 'Payment via expense voucher',
+      issuedSelfEmployedReceipt: 'Issued Self-Employed Receipt',
+      issuedSelfEmployedReceiptDesc: 'Issued self-employed receipt',
+      newCurrency: 'New Currency',
+      openingCreditDesc: 'Opening slip credit entry',
+      openingDebitDesc: 'Opening slip debit entry',
+      printComingSoon: 'Printing coming soon',
+      producerReceipt: 'Producer Receipt',
+      producerReceiptDesc: 'Payment via producer receipt',
+      rateChartsPlaceholder: 'Rate charts will appear here',
+      rateHistoryPlaceholder: 'Rate history will appear here',
+      rateHistoryTab: 'Rate History',
+      receivedSelfEmployedReceipt: 'Received Self-Employed Receipt',
+      receivedSelfEmployedReceiptDesc: 'Received self-employed receipt',
+      reportingCurrency: 'Reporting Currency',
+      reportingCurrencyShort: 'REP',
+      safesCode: 'Cash Registers',
+      selectDate: 'Select Date',
+      sellRate: 'Sell Rate',
+      updateRates: 'Update Rates',
+      menuManagement: 'Menu Management',
+      movements: 'Movements',
+      multiStoreManagement: 'Multi-Store Management',
+      newBadge: 'NEW',
+      notificationCenter: 'Notification Center',
+      offers: 'Offers',
+      orders: 'Orders',
+      other: 'Other',
+      paymentPlans: 'Payment Plans',
+      priceAndCampaign: 'Price & Campaign',
+      productCategories: 'Product Categories',
+      profitabilityAnalyticsDashboard: '💰 Profitability Analysis Dashboard',
+      purchaseInvoice: 'Purchase Invoice',
+      purchaseOrders: 'Purchase Orders',
+      purchaseReturn: 'Purchase Return',
+      purchaseWaybill: 'Purchase Waybill',
+      purchasing: 'Purchasing',
+      receivedService: 'Received Service',
+      regionalFranchiseManagement: 'Regional Dealership Management',
+      reports: 'Reports',
+      reportsAndAnalysis: 'Reports & Analysis',
+      requestSlips: 'Request Slips',
+      retail: 'Retail',
+      retailSales: 'Retail Sales',
+      roleAndAuthorization: 'Role & Authorization',
+      salesInvoice: 'Sales Invoice',
+      salesInvoices: 'Sales Invoices',
+      salesOrder: 'Sales Order',
+      salesReports: 'Sales Reports',
+      salesReturn: 'Sales Return',
+      salesWaybill: 'Sales Waybill',
+      scaleAndWeighedSales: 'Scale & Weighed Sales',
+      serviceInvoiceIssued: 'Service Invoice Issued',
+      serviceInvoiceReceived: 'Service Invoice Received',
+      serviceInvoices: 'Service Invoices',
+      slipList: 'Slip List',
+      smsManagement: 'SMS Management',
+      specialCodes: 'Special Codes',
+      stockInventory: 'Inventory Counts',
+      stockManagementPanel: 'Stock Management Panel',
+      stockReports: 'Stock Reports',
+      storeConfiguration: 'Store Configuration',
+      storeManagement: 'Store Management',
+      storePanel: 'Store Panel',
+      storeTransfer: 'Store Transfer',
+      supplierCards: 'Supplier Cards',
+      systemHealth: 'System Health',
+      systemManagement: 'System Management',
+      transactionBreakdown: 'Transaction Breakdown',
+      trialBalance: 'Trial Balance',
+      trialBalanceReport: 'Trial Balance Report',
+      unitSets: 'Unit Sets',
+      userManagement: 'User Management',
+      variants: 'Variants',
+      warehouseTransferWaybill: 'Warehouse Transfer Waybill',
+      wasteWaybill: 'Waste Waybill',
+      waybills: 'Waybills',
+      whatsappIntegration: 'WhatsApp Integration',
+      wholesaleSales: 'Wholesale Sales',
+      workflowAutomation: 'Workflow Automation',
+      minMaxStock: 'Min/Max Stock',
+      multiCurrency: 'Multi-Currency',
+      salesOrders: 'Sales Orders',
+      currentAccountPersonel: 'Current Account / Personnel',
+    },
+    menuManagement: 'Menu Management',
+    min1Shortcut: 'You must select at least 1 shortcut',
+    minMaxStock: 'Min/Max Stock',
+    minimumAmountNotMet: 'Minimum amount not met',
+    missingBarcodes: 'Missing Barcodes',
+    missingBarcodesTitle: 'Missing Barcode List',
+    missingKasaId: 'Safe ID missing! Please refresh and try again.',
     mixedPayment: 'Mixed',
-    rowDiscount: 'Row Discount',
-    paymentProvider: 'Payment Provider',
+    moduleInDevelopment: 'This module is currently under development and will soon be included in the EX-ROSERP ecosystem.',
+    moduleLoadError: 'Module Loading Error',
+    moduleLoadErrorMessage: 'An error occurred while loading \"{screenName}\" screen.',
+    moduleLoadingError: 'Module Loading Error',
+    modulePreparing: 'Preparing Module',
+    moduleUnderDevelopment: 'This module is currently under development and will be included in the EX-ROSERP ecosystem soon.',
+    moveTable: 'Move Table',
+    movementReport: 'Hareket Raporu',
+    movements: 'Movements',
+    multiCurrency: 'Multi-Currency',
+    multiStoreManagement: 'Multi-Store Management',
+    multiplier1: 'Multiplier 1',
+    multiplier2: 'Multiplier 2',
+    multiplierLogicDesc: 'Unit conversion: (Unit) x Multiplier 1 = (Main Unit) x Multiplier 2',
+    navigation: 'Navigation',
+    netIncome: 'Net Income',
+    netSales: 'Net Sales',
+    networkError: 'A network error occurred.',
+    newBadge: 'NEW',
+    newCustomer: 'New Customer',
+    newInvoice: 'New Invoice',
+    newSalesOrder: 'New Sales Order',
+    newUnitSet: 'New Unit Set',
+    newUnitSetTitle: 'Define New Unit Set',
+    next: 'Next',
+    noCriticalStock: 'No products at critical stock level',
+    noCriticalStockInfo: 'No products at critical stock level',
+    noCustomer: 'No Customer',
+    noCustomerSale: 'No Customer Sale',
+    noCustomerSaleDescription: 'Retail sale',
+    noLogsYet: 'NO RECORDS FOUND YET',
+    noLowStock: 'No products at low stock level',
+    noLowStockInfo: 'No products at low stock level',
+    noLowStockWarning: 'No products at low stock level',
+    noMissingBarcodes: 'No missing barcodes yet.',
+    noParkedReceipts: 'No parked receipts',
+    noParkedReceiptsDescription: 'Parked receipts will appear here',
+    noProductsFound: 'No products found',
+    noRecordFound: 'No record found',
+    noRecordsFound: 'No records found',
+    noReturnPolicyNotice: 'No returns or cancellations allowed.',
+    noSalesFound: 'No sales found',
+    noSalesHistory: 'No sales history',
+    noSalesRecordFound: 'No sales record found',
+    noteOptional: 'Note (Optional)',
+    notesLabel: 'Notes',
+    notificationCenter: 'Notification Center',
+    numpad: 'Numpad',
     numpadMode: 'Numpad Mode',
     numpadModeAdd: '+ Add',
     numpadModeReplace: '↻ Replace',
-    gatewayPageOpened: 'payment page opened in new tab.',
-    gatewayFinishInstructions: 'Click "OK" after completing the payment. Click "Cancel" if the payment failed.',
-
-    // Advanced Reports Category Names
-    salesReports: 'Sales Reports',
-    stockReports: 'Stock Reports',
-    financeReports: 'Finance Reports',
-    customerReports: 'Customer Reports',
-    hrReports: 'Human Resources',
-    customReports: 'Custom Reports',
-    reportCountLabel: 'report',
-    administrator: 'Administrator',
-    quickProductPageSelect: 'Quick Product Page Select',
-    enterNewPrice: 'Enter New Price',
-    clickToChangePrice: 'Click to Change Price',
-
-    // Product Detail Modal
-    productInfo: 'Product Information',
-    recentMovements: 'Recent Movements',
-    branchStockStatus: 'Branch Stock Status',
-    reserved: 'Reserved',
-    available: 'Available',
-    totalStock: 'Total Stock',
-    incomingTransfer: 'Incoming Transfer',
-    outgoingTransfer: 'Outgoing Transfer',
-    purchase: 'Purchase',
-
-    // Open Cash Register Modal
+    occupancyReport: 'Doluluk Analizi',
+    offers: 'Offers',
+    online: 'Online',
+    onlineDevicesLabel: 'Online',
+    openAccountWarning: 'If not selected, it will be processed as an open account (current)',
+    openCashRegister: 'Open Cash Register',
     openCashRegisterProcess: 'Cash Register Opening Process',
-    cashHandoverAccept: 'Cash Handover Accept',
-    numpad: 'Numpad',
-    cashHandoverAvailable: 'Cash Handover Available',
-    handoverFromCashier: 'Handover From Cashier:',
-    handoverAmount: 'Handover Amount:',
-    sessionInformation: 'Session Information',
-
-    banknoteCount: 'Banknote Count',
+    openCashRegisterToAddProduct: 'You must open the cash register first to add products!',
+    openCashRegisterToSell: 'You must open the cash register first to make a sale!',
+    openNewPeriod: 'Open New Period',
+    openRegister: 'Open Register',
     openingCashAmount: 'Opening Cash Amount',
-    banknoteAndCoinCount: 'Banknote and Coin Count',
-
-    openingCashRegister: 'OPENING CASH REGISTER:',
     openingCashDescription: 'This amount will be used as the opening cash register throughout the session',
-    noteOptional: 'Note (Optional)',
-    cashOpeningNotePlaceholder: 'Write your notes regarding the cash register opening...',
-
-    zeroOpeningCashConfirm: 'Opening cash will be entered as 0.00. Do you want to continue?',
-
-    // Cancel Receipt Modal
-    cancelReceiptTitle: 'Cancel Receipt - Select Reason',
-    customerChangedMind: 'Customer changed mind',
-    wrongProductAdded: 'Wrong product added',
-    priceProblem: 'Price problem',
-    systemError: 'System error',
-    explainCancelReason: 'Explain Cancel Reason',
-    cancelReasonPlaceholder: 'Write the cancel reason...',
-    pleaseSelectCancelReason: 'Please select a cancel reason!',
+    openingCashRegister: 'OPENING CASH REGISTER:',
+    openingCredit: 'Opening (Credit)',
+    openingDebit: 'Opening (Debit)',
+    operatingExpenses: 'Operating Expenses',
+    operation: 'Operation',
+    operationAmount: 'Operation Amount',
+    operationSaveFailed: 'Operation save failed',
+    operationSavedSuccessfully: 'Operation saved successfully',
+    orderCreatedSuccessfully: '✅ Order created successfully!',
+    orderCreationError: '❌ Error creating order!',
+    orderDiscount: 'Order Discount',
+    orderForm: 'Order Form',
+    orderNote: 'Order Note',
+    orderNoteDescription: 'This note will appear on the kitchen display and receipt.',
+    orderNotePlaceholder: 'Add a note about the order (e.g., No spice, less ketchup...)',
+    orderRecommended: 'Order recommended',
+    orders: 'Orders',
+    other: 'Other',
+    otherReason: 'Other Reasons',
+    otherType: 'Other',
+    outOfStock: 'Out of Stock',
+    outgoingTransfer: 'Outgoing Transfer',
+    pageRange: '{start}-{end}',
+    paidAmount: 'Paid',
+    parkReceipt: 'Park Receipt',
+    parkedAt: 'Parked At',
+    parkedBy: 'Parked By',
+    parkedReceiptDeleted: 'Parked receipt deleted',
+    parkedReceiptRetrieved: 'Parked receipt retrieved',
+    parkedReceipts: 'Parked Receipt',
+    parkedReceiptsButton: 'Parked',
+    parkedReceiptsTitle: 'Parked Receipts',
+    passiveStatus: 'PASSIVE',
+    password: 'Password',
+    payment: 'Payment',
+    paymentAmount: 'Payment Amount',
+    paymentAmountLabel: 'Payment Amount',
+    paymentCardPOS: 'Card (POS)',
+    paymentCash: 'Cash',
+    paymentCredit: 'On Credit (Current)',
+    paymentFailed: 'Payment could not be initiated:',
+    paymentInfo: 'Payment Information',
+    paymentLabel: 'Payment',
+    paymentMethod: 'Payment Method',
+    paymentMethodDistribution: 'Payment Method Distribution',
+    paymentMethodLabel: 'Payment Method',
+    paymentMethods: 'Payment Methods',
+    paymentMethodsChart: 'Payment Methods',
+    paymentMethodsDashboard: 'Payment Methods',
+    paymentNotesPlaceholder: 'Notes about the payment...',
+    paymentPlans: 'Payment Plans',
+    paymentProvider: 'Payment Provider',
+    paymentQRProvider: 'QR Payment Provider',
+    paymentStartError: 'Payment could not be started',
+    paymentSummary: 'Payment Summary',
+    paymentTermDays: 'Payment Term (Days)',
+    paymentTitle: 'Payment',
+    payments: 'Payments',
+    pcs: 'pcs',
+    pending: 'Pending',
+    pendingBroadcastsLabel: 'Pending',
+    percentage: 'Percentage',
+    performanceDashboard: 'Performans Dashboard',
+    periodClosed: 'Closed Period',
+    periodComparison: 'Period Comparison',
+    periodManagement: 'Period Management',
+    periodOpen: 'Open Period',
+    phoneAddress: 'Phone / Address',
+    phoneLabel: 'Phone',
+    piece: 'Piece',
+    pieces: 'Pieces',
+    placeholderDescription: 'Note regarding operation...',
+    placeholderDocumentNo: 'e.g., 000123',
+    placeholderSpecialCode: 'e.g., PRJ001',
+    planningOptimization: 'Planlama & Optimizasyon',
+    pleaseAddAtLeastOneProduct: 'Please add at least one product!',
+    pleaseEnterAmount: 'Please enter amount',
+    pleaseEnterBarcode: 'Please enter barcode',
+    pleaseEnterBarcodeFirst: 'Please enter barcode first',
+    pleaseEnterFirmId: 'Please enter Firm ID',
+    pleaseEnterQuantityFirst: 'Please enter quantity first, then press *',
     pleaseExplainCancelReason: 'Please explain the cancel reason!',
-    giveUp: 'Give Up',
-
-    // Return Modal
-    receiptBased: 'Receipt Based',
-    productBased: 'Product Based',
-    searchProductByName: 'Search by product name...',
-
-    productsToReturn: 'Products to Return',
-    selectedProducts: 'Selected Products',
-
-    unitPrice: 'Unit price',
-
-    allBtn: 'All',
-
-    explainReturnReason: 'Explain return reason...',
-
-
-
-    selectProductForReturn: 'Select products for return',
-    totalSale: 'Total sale',
-
-    differentReceipts: 'different receipts',
+    pleaseExplainReturnReason: 'Please explain return reason!',
+    pleaseSelectCancelReason: 'Please select a cancel reason!',
+    pleaseSelectCurrentAccount: 'Please select a current account',
+    pleaseSelectCustomer: 'Please select a customer!',
     pleaseSelectReceipt: 'Please select a receipt!',
     pleaseSelectReturnProducts: 'Please select products to return!',
     pleaseSelectReturnReason: 'Please select return reason!',
-    pleaseExplainReturnReason: 'Please explain return reason!',
-
-
-
-
-
-    // Product Catalog Modal
-    // Product Catalog Modal
-    searchProductBarcodeCategory: 'Search product name, barcode or category...',
-    detail: 'Detail',
-    selectVariant: 'Select Variant',
-    assignToSlot: 'Assign to Slot',
-    variantAvailable: 'Variant Available',
-    stock: 'Stock',
-    selectVariantLabel: 'Select Variant:',
-    productSelection: 'Product Selection',
-    quickProductSlot: 'Quick Product Slot',
-
-
-    // Error Boundary
-    anErrorOccurred: 'An Error Occurred',
-    unexpectedErrorEncountered: 'An unexpected error was encountered',
-    errorMessage: 'Error Message',
-    technicalDetails: 'Technical Details',
-    technicalDetailsForDevelopers: 'Technical Details (for Developers)',
-    refreshPage: 'Refresh Page',
-    goBack: 'Go Back',
-    helpMessage: 'If this error persists, please check the browser console (F12) and contact the technical support team.',
-
-    // Close Cash Register Modal
-    closeCashRegisterProcess: 'Close Cash Register Process',
-    salesSummary: 'Sales Summary',
-    grossSales: 'Gross Sales',
-    returnTotal: 'Return Total',
-    netSales: 'Net Sales',
-    paymentMethods: 'Payment Methods',
-    cashSales: 'Cash Sales',
-    creditCard: 'Credit Card',
-    totalCollection: 'Total Collection',
-    cashStatus: 'Cash Status',
-    cardSales: 'Card Sales',
-    expectedCash: 'Expected Cash',
-    countedCashAmount: 'Counted Cash Amount',
-    cashCountExample: 'Ex: 1000.00',
-    cashDifference: 'Cash Difference',
-    cashBalanced: 'Cash Balanced',
-    excess: 'Excess',
-    shortage: 'Shortage',
-    cashClosingNotePlaceholder: 'Write your notes regarding cash closing...',
+    pleaseSelectVariant: 'Please select variant',
+    pos: 'POS Operations',
+    posModule: 'Sales',
+    posPaymentDesc: 'POS Sales Payment',
+    posted: 'Posted',
+    potentialProfit: 'Potential Profit',
+    prepareReport: 'Prepare Report',
+    preparingModule: '\"{screenName}\" Module is Being Prepared',
+    previous: 'Previous',
+    price: 'Price',
+    priceAndCampaign: 'Price & Campaign',
+    priceBulkUpdateSuccess: 'All product prices increased by %{percent}',
+    priceInfo: 'Price Info',
+    priceLabel: 'Price',
+    priceProblem: 'Price problem',
+    pricingInfo: 'Pricing Information',
+    print: 'Print',
+    printReceipt: 'Print Receipt',
     printReport: 'Print Report',
-    transferToOtherCashier: 'Transfer to Other Cashier',
-    cashCountRequired: 'Please enter counted cash amount!',
-    cashDifferenceConfirm: 'There is a cash difference. Do you want to continue?',
-    cashClosedSuccessfully: 'Cash register closed successfully!',
-    cashHandoverCountRequired: 'Please enter handover amount!',
-    sessionDay: 'Day',
-    session: 'Session',
-
-    menu: {
-      materialManagement: "Material Management",
-      masterRecords: "Master Records",
-      materialClasses: "Material Classes",
-      materials: "Materials",
-      unitSets: "Unit Sets",
-      variants: "Variants",
-      specialCodes: "Special Codes",
-      brandDefinitions: "Brand Definitions",
-      groupCodes: "Group Codes",
-      productCategories: "Product Categories",
-      movements: "Movements",
-      stockManagementPanel: "Stock Management Panel",
-      materialManagementSlips: "Material Management Slips",
-      reports: "Reports",
-      materialExtract: "Material Extract",
-      materialValue: "Material Value",
-      inventory: "Inventory",
-      cost: "Cost",
-      inOutTotals: "Entry/Exit Totals",
-      materialWarehouseStatus: "Material Warehouse Status",
-      transactionBreakdown: "Transaction Breakdown",
-      slipList: "Slip List",
-      minMaxStock: "Min/Max Stock",
-      mainMenu: "Main Menu",
-      homepage: "Homepage",
-      dashboard: "Dashboard",
-      storeManagement: "Store Management",
-      storePanel: "Store Panel",
-      storeTransfer: "Store Transfer",
-      multiStoreManagement: "Multi-Store Management",
-      regionalFranchiseManagement: "Regional Dealership Management",
-      storeConfiguration: "Store Configuration",
-      dataBroadcast: "Data Broadcast",
-      integrations: "Integrations",
-      excelOperations: "Excel Operations",
-      invoices: "Invoices",
-      salesInvoices: "Sales Invoices",
-      salesInvoice: "Sales Invoice",
-      retailSales: "Retail Sales",
-      wholesaleSales: "Wholesale Sales",
-      consignmentSales: "Consignment Sales",
-      salesReturn: "Sales Return",
-      purchasing: "Purchasing",
-      requestSlips: "Request Slips",
-      purchaseOrders: "Purchase Orders",
-      purchaseInvoice: "Purchase Invoice",
-      purchaseReturn: "Purchase Return",
-      receivedService: "Received Service",
-      serviceInvoices: "Service Invoices",
-      supplierCards: "Supplier Cards",
-      serviceInvoiceIssued: "Service Invoice Issued",
-      serviceInvoiceReceived: "Service Invoice Received",
-      waybills: "Waybills",
-      salesWaybill: "Sales Waybill",
-      purchaseWaybill: "Purchase Waybill",
-      warehouseTransferWaybill: "Warehouse Transfer Waybill",
-      wasteWaybill: "Waste Waybill",
-      orders: "Orders",
-      salesOrder: "Sales Order",
-      offers: "Offers",
-      financeManagement: "Finance Management",
-      definitions: "Definitions",
-      paymentPlans: "Payment Plans",
-      bankPaymentPlans: "Bank Payment Plans",
-      campaignDefinitions: "Campaign Definitions",
-      cards: "Cards",
-      currentAccounts: "Current Accounts",
-      cashAccounts: "Cash Accounts",
-      banks: "Banks",
-      bankAccounts: "Bank Accounts",
-      currentAccountSlips: "Current Account Slips",
-      cashOperations: "Cash Operations",
-      cashSlips: "Cash Slips",
-      bankSlips: "Bank Slips",
-      creditCardPosSlips: "Credit Card POS Slips",
-      journalAndSlips: "Journal Book & Slips",
-      currentAccountReports: "Current Account Reports",
-      cashReports: "Cash Reports",
-      bankReports: "Bank Reports",
-      trialBalanceReport: "Trial Balance Report",
-      other: "Other",
-      accountingManagement: "Accounting Management",
-      expenseManagement: "Expense Management",
-      checkPromissory: "Check/Promissory Note",
-      collectionPayment: "Collection/Payment",
-      multiCurrency: "Multi-Currency",
-      accountingVouchers: "Accounting Slips",
-      retail: "Retail",
-      priceAndCampaign: "Price & Campaign",
-      scaleAndWeighedSales: "Scale & Weighed Sales",
-      communicationAndNotifications: "Communication & Notifications",
-      whatsappIntegration: "WhatsApp Integration",
-      notificationCenter: "Notification Center",
-      smsManagement: "SMS Management",
-      emailCampaigns: "Email Campaigns",
-      reportsAndAnalysis: "Reports & Analysis",
-      aiProductAnalytics: "AI Product Analytics",
-      advancedReports100: "⭐ Advanced Reports (100+)",
-      profitabilityAnalyticsDashboard: "💰 Profitability Analysis Dashboard",
-      salesReports: "Sales Reports",
-      stockReports: "Stock Reports",
-      trialBalance: "Trial Balance",
-      incomeStatement: "Income Statement",
-      customerAnalysis: "Customer Analysis",
-      balanceSheet: "Balance Sheet",
-      graphicalAnalysis: "Graphical Analysis",
-      customReports: "Custom Reports",
-      biDashboardAi: "BI Dashboard & AI",
-      systemManagement: "System Management",
-      firmPeriodDefinitions: "Firm/Period Definitions",
-      workflowAutomation: "Workflow Automation",
-      demoDataManagement: "Demo Data Management",
-      databaseInfrastructure: "Database Infrastructure",
-      exSecureGateSecurity: "ExSecureGate (Security)",
-      generalSettings: "General Settings",
-      userManagement: "User Management",
-      roleAndAuthorization: "Role & Authorization",
-      menuManagement: "Menu Management",
-      definitionsParameters: "Definitions/Parameters",
-      backupRestore: "Backup/Restore",
-      logAudit: "Log/Audit",
-      systemHealth: "System Health",
-      stockInventory: "Inventory Counts",
-      inventoryManagement: 'Inventory & Stock Operations',
-    },
-
-    // Restaurant Specific
-    transferAllItems: 'All items in Table {number} will be transferred to the selected table.',
-    selectTargetTable: 'Select target table',
-    tableOccupied: 'OCCUPIED',
-    moveTable: 'Move Table',
-    confirmMove: 'CONFIRM MOVE',
-    orderNote: 'Order Note',
-    specialRequests: 'Special Requests & Details',
-    orderNoteDescription: 'This note will appear on the kitchen display and receipt.',
-    orderNotePlaceholder: 'Add a note about the order (e.g., No spice, less ketchup...)',
-    orderDiscount: 'Order Discount',
-    applyRatioDiscount: 'Apply Percentage Discount',
-    discountRatioApplied: 'The entered percentage will be applied to the order total.',
-    apply: 'APPLY',
+    processingText: 'PROCESSING...',
+    product: 'Product',
+    productAdded: 'Product added to cart',
+    productAddedToCart: '{productName} added to cart',
+    productAssignedToSlot: '{productName} assigned to Slot #{slotNumber}',
+    productBased: 'Product Based',
+    productCards: 'Product Cards',
+    productCatDesc: 'Manage product categories',
+    productCatalog: 'Product Catalog',
+    productCategories: 'Product Categories',
+    productCount: 'Product',
+    productDefective: 'Product Defective',
+    productDetails: 'Product Details',
+    productInfo: 'Product Information',
+    productLabel: 'Product',
+    productManagement: 'Product Management',
+    productName: 'Product Name',
+    productQuery: 'Product Query',
+    productRemoved: 'Product removed from cart',
+    productRemovedFromCart: 'Product removed from cart',
+    productSearch: 'Product Search',
+    productSelection: 'Product Selection',
+    productionEntry: 'Production Entry',
+    productionIssue: 'Üretime Çıkış',
+    productionReceiving: 'Üretimden Giriş',
+    productsAtCriticalLevel: 'products at critical level',
+    productsAtLowLevel: 'products at low level',
+    productsCount: 'products',
+    productsLabel: 'Product',
+    productsToReturn: 'Products to Return',
+    profitLoss: 'Profit and Loss',
+    profitLossReport: 'Profit & Loss Report',
+    profitMargin: 'Profit Margin',
+    profitMarginDashboard: 'Profit Margin',
+    profitabilityAnalyticsDashboard: '💰 Profitability Analysis Dashboard',
+    promissoryNote: 'Promissory Note',
+    purchase: 'Purchase',
+    purchaseInvoice: 'Purchase Invoice',
+    purchaseInvoicesDesc: 'All purchasing transactions',
+    purchaseInvoicesTitle: 'Purchase Invoices',
+    purchaseOrder: 'Purchase Order',
+    purchaseOrders: 'Purchase Orders',
+    purchaseQuote: 'Purchase Quote',
+    purchaseReturn: 'Purchase Return',
+    purchaseReturnDesc: 'Returns to suppliers',
+    purchaseReturnTitle: 'Purchase Return',
+    purchaseSupplierDesc: 'Purchase Supplier Account',
+    purchaseWaybill: 'Purchase Waybill',
+    purchases: 'Purchases',
+    purchasing: 'Purchasing',
+    qrCustomerInstruction: 'Customer can complete payment by scanning QR code with their phone',
+    qrInstructions: 'Customer can complete payment by scanning QR code with their phone',
+    qrScanCode: 'Scan QR Code',
+    qrStep1: 'Step 1',
+    qrStep1Desc: 'Point phone to QR code',
+    qrStep2: 'Step 2',
+    qrStep2Desc: 'Confirm payment',
+    quantity: 'Quantity',
+    quantitySaved: 'Quantity saved',
+    quantitySavedBarcodeEnter: 'Quantity: {quantity} - Enter barcode',
+    quantitySavedMessage: 'Quantity saved: {quantity}. Now enter barcode.',
+    quick: 'Quick Actions',
+    quickAccess: 'Quick Access',
+    quickPayment: 'Quick Payment',
+    quickProductAdd: 'Quick Product',
+    quickProductPageSelect: 'Quick Product Page Select',
+    quickProductSlot: 'Quick Product Slot',
+    rankingByRevenue: 'Ranking by revenue',
+    receipt: 'Receipt',
+    receiptBased: 'Receipt Based',
+    receiptCancelled: 'Receipt cancelled: {reason}',
+    receiptDataError: 'Receipt data could not be loaded',
+    receiptDetails: 'Receipt Details',
+    receiptNo: 'Receipt No',
+    receiptNote: 'Receipt Note',
+    receiptNumberOrCustomerSearch: 'Search by receipt number or customer name...',
+    receiptParked: 'Receipt parked',
+    receiptRequiredForReturns: 'This receipt is required for returns and exchanges.',
+    receipts: 'Receipts',
+    receivePayment: 'Receive Payment',
+    receivedAmount: 'Received Amount',
+    receivedService: 'Received Service',
+    receivedServiceInvoicesDesc: 'Services received from suppliers',
+    receivedServiceInvoicesTitle: 'Received Service Invoices',
+    recentMovements: 'Recent Movements',
+    recentProducts: 'Recent Sales',
+    records: 'records',
+    recordsCount: 'Records',
+    refreshPage: 'Refresh Page',
+    refreshStocks: 'Refresh Stocks',
+    regionalFranchiseManagement: 'Regional Dealership Management',
+    registeredCustomer: 'Registered customer',
+    registeredCustomers: 'Registered Customers',
+    rejected: 'Rejected',
+    remaining: 'Remaining',
+    remainingAmount: 'Remaining',
+    remainingQty: 'Remaining:',
+    rememberMe: 'Remember Me',
+    remoteSupportRequestSent: 'Quick support request sent to center.',
+    remoteSupportWarning: 'Notice: By starting remote support, you grant the technical team limited access.',
+    remove: 'Remove',
+    reportCountLabel: 'report',
+    reportStructureNote: 'This report structure is calculated instantaneously via the local RetailEX database (PostgreSQL) using the asynchronous running balance engine, and is fully compatible with Logo ERP corporate standards.',
+    reporting: 'Reporting',
+    reportingAnalysis: 'Raporlama & Analiz',
+    reportingDesc: 'Sales reports and analytics',
+    reports: 'Reports',
+    reportsAndAnalysis: 'Reports & Analysis',
+    reportsCashStatus: 'Cash Status',
+    reportsCustomerLabel: 'CUSTOMER',
+    reportsStockStatus: 'Stock Status',
+    requestSlips: 'Request Slips',
+    requiresAdminPassword: 'This action requires admin privileges. Date changes may affect sales records.',
+    reserved: 'Reserved',
     reset: 'Reset',
-
-
-
-    // MarketPOS & Kasa Operations
+    resetFailed: 'Reset failed:',
+    restCategory: 'Rest. Category',
+    results: 'results',
+    retail: 'Retail',
+    retailCustomer: 'Retail Customer',
+    retailSales: 'Retail Sales',
+    retailSalesDesc: 'Retail sales transactions',
+    retailSalesTitle: 'Retail Sales',
+    return: 'Return',
+    returnAmount: 'Return Amount',
+    returnCancelTitle: 'Return / Cancel',
+    returnCompleted: 'Return completed',
+    returnProducts: 'Products to Return',
+    returnQuantity: 'Return Qty',
+    returnReason: 'Return Reason',
+    returnReasonPlaceholder: 'Select return reason...',
+    returnReceiving: 'İade Kabul',
+    returnToDashboard: 'Return to Dashboard',
+    returnTotal: 'Return Total',
+    returnTransaction: 'Return',
+    revenue: 'Revenue',
+    reversed: 'Reversed',
+    roleAndAuthorization: 'Role & Authorization',
+    routeOptimization: 'Rota Optimizasyonu',
+    rowDiscount: 'Row Discount',
+    rowOrder: 'Order',
+    runningQuantity: 'Running Qty',
+    saleCompleted: 'Sale completed',
+    salePrice: 'Sale Price',
+    saleQuantity: 'Sales Qty',
     saleSaveFailed: 'Sale save failed',
-    unknownError: 'Unknown error',
-    chCollection: 'Current Account Collection',
-    chPayment: 'Current Account Payment',
-    cashIn: 'Cash In',
-    cashOut: 'Cash Out',
-    bankDeposit: 'Bank Deposit',
-    bankWithdrawal: 'Bank Withdrawal',
-    cashTransfer: 'Cash Transfer',
-    expenseVoucher: 'Expense Voucher',
+    saleValue: 'Sale Value',
+    sales: 'Sales',
+    salesCount: 'sales',
+    salesCustomerDesc: 'Sales Customer Account',
+    salesDetails: 'Sales Details',
+    salesHistory: 'Sales History',
+    salesHistoryTitle: 'Sales History',
+    salesInvoice: 'Sales Invoice',
+    salesInvoices: 'Sales Invoices',
+    salesInvoicesDesc: 'All sales transactions and POS sales',
+    salesInvoicesTitle: 'Sales Invoices',
+    salesOrder: 'Sales Order',
+    salesQuantity: 'Sales Qty',
+    salesQuote: 'Sales Quote',
+    salesReports: 'Sales Reports',
+    salesReturn: 'Sales Return',
+    salesReturnTitle: 'Sales Returns',
+    salesSummary: 'Sales Summary',
+    salesTrendAnalysis: 'Sales Trend Analysis',
+    salesWaybill: 'Sales Waybill',
+    salesWillAppearHere: 'Completed sales will appear here',
+    save: 'Save',
+    saveAndTestConnection: 'Bağlantıyı Kaydet & Test Et',
+    saveChanges: 'Save Changes',
+    saveFailed: 'Save failed',
+    saveOperation: 'Save Operation',
+    saveOrder: 'Save Order',
+    saveShortcutsError: 'Could not save shortcuts. Please try again.',
+    saving: 'Saving...',
+    scale: 'Scale',
+    scaleAndWeighedSales: 'Scale & Weighed Sales',
+    scaleDefDesc: 'Manage scale definitions',
+    scanQRCode: 'Scan QR Code',
+    scanToSearchPlaceholder: 'Scan barcode to search',
+    scheduledBroadcastsLabel: 'Scheduled',
+    screenSettings: 'Screen Settings',
+    search: 'Search',
+    searchBtn: 'Search',
+    searchCurrentAccountPlaceholder: 'Search current account or personnel...',
+    searchInside: 'search inside...',
+    searchPlaceholder: 'Product name or barcode...',
+    searchPlaceholderFull: 'Quick search in menu... (Ctrl+K)',
+    searchPlaceholderShort: 'Search...',
+    searchProductBarcodeCategory: 'Search product name, barcode or category...',
+    searchProductByName: 'Search by product name...',
+    searchProductPlaceholder: 'Search product...',
+    searchProducts: 'Search Products',
+    searchReceiptPlaceholder: 'Search receipt number or barcode...',
+    searchUnitSetPlaceholder: 'Search by unit set code or name...',
+    searching: 'Searching...',
+    selectAtLeastOneShortcut: 'You must select at least 1 shortcut',
+    selectCampaign: 'Select Campaign',
+    selectCustomer: 'Select Customer',
+    selectCustomerTitle: 'Select Customer',
+    selectDonem: 'Select Period',
+    selectFirmPrompt: 'Select Firm',
+    selectFirma: 'Select Company',
+    selectLanguage: 'Select Language',
+    selectMaterialPlaceholder: 'Select material...',
+    selectProductForReturn: 'Select products for return',
+    selectReceiptForReturn: 'Select receipt for return',
+    selectStaffTitle: 'Select Staff',
+    selectSystemLanguage: 'Select System Language',
+    selectTargetTable: 'Select target table',
+    selectVariant: 'Select Variant',
+    selectVariantLabel: 'Select Variant:',
+    selected: 'SELECTED',
+    selectedProducts: 'Selected Products',
     selfEmployedReceiptGiven: 'Self-Employed Receipt (Given)',
     selfEmployedReceiptReceived: 'Self-Employed Receipt (Received)',
-    farmersReceipt: 'Farmers Receipt',
-    openingDebit: 'Opening (Debit)',
-    openingCredit: 'Opening (Credit)',
-    exchangeDifferenceDebit: 'Exchange Difference (Debit)',
-    exchangeDifferenceCredit: 'Exchange Difference (Credit)',
-    pleaseEnterAmount: 'Please enter amount',
-    pleaseSelectCurrentAccount: 'Please select a current account',
-    operationSavedSuccessfully: 'Operation saved successfully',
-    operationSaveFailed: 'Operation save failed',
-    missingKasaId: 'Safe ID missing! Please refresh and try again.',
-    currentAccountPersonel: 'Current Account / Personnel',
-    searchCurrentAccountPlaceholder: 'Search current account or personnel...',
-    currentBalance: 'Current Balance',
-    targetKasa: 'Target Safe',
-    bankAccount: 'Bank Account',
-    expenseCodeDescription: 'Expense Code / Description',
-    expenseCodePlaceholder: 'Expense Code or Name...',
-    withholdingTaxRate: 'Withholding Tax Rate (%)',
-    taxRateLabel: 'VAT / Tax Rate (%)',
-    operationAmount: 'Operation Amount',
-    documentNo: 'Receipt / Document No',
+    sendDataTab: 'Send Data',
+    sendNow: 'Send Now',
+    sending: 'Sending...',
+    serialLotDefDesc: 'Manage serial/lot definitions',
+    serviceGiven: 'Service Given Invoice',
+    serviceInvoiceIssued: 'Service Invoice Issued',
+    serviceInvoiceReceived: 'Service Invoice Received',
+    serviceInvoices: 'Service Invoices',
+    serviceInvoicesDesc: 'All service purchase and sales transactions',
+    serviceInvoicesTitle: 'Service Invoices',
+    serviceReceived: 'Service Received Invoice',
+    serviceTopUp: 'SERVICE TOP-UP',
+    session: 'Session',
+    sessionDay: 'Day',
+    sessionInformation: 'Session Information',
+    setDateTime: 'Set Date and Time',
+    sevenDaysButton: '7 Days',
+    shift: 'Shift',
+    shiftClick: 'Shift + Click',
+    shipmentLoading: 'Sevkiyat/Yükleme',
+    shipmentPrep: 'Sevkiyat Hazırlık',
+    shortage: 'Shortage',
+    shortcuts: 'Shortcuts',
+    shortcutsSaveError: 'Error saving shortcuts',
+    shortcutsSelected: 'shortcuts selected',
+    sidebar: {
+      clearSearch: 'Clear (ESC)',
+      darkMode: 'Dark Mode',
+      dbMenu: '📊 DB Menu',
+      languageSelection: 'Language Selection',
+      lightMode: 'Light Mode',
+      noResultsFound: 'No results found',
+      resultsFound: 'results found',
+      searchPlaceholderFull: 'Quick search in menu... (Ctrl+K)',
+      searchPlaceholderShort: 'Search...',
+      staticMenu: '📋 Static Menu',
+      tryDifferentSearch: 'Try a different search term',
+    },
+    sizeColorChange: 'Size/Color Change',
+    slipList: 'Slip List',
+    smsManagement: 'SMS Management',
+    smsNotificationSent: 'SMS Notification Sent',
+    soldQuantity: 'Sold Quantity',
     specialCode: 'Special Code',
-    placeholderDocumentNo: 'e.g., 000123',
-    placeholderSpecialCode: 'e.g., PRJ001',
-    placeholderDescription: 'Note regarding operation...',
-    saving: 'Saving...',
-    saveOperation: 'Save Operation',
-    cashOperation: 'Cash Operation',
+    specialCodeDesc: 'Manage special codes',
+    specialCodes: 'Special Codes',
+    specialRequests: 'Special Requests & Details',
+    startDate: 'Start:',
+    startDateReport: 'START DATE',
+    startSupport: 'Start Support',
+    status: 'Status',
+    step01Auth: 'Step 01 / Auth',
+    step02Scope: 'Step 02 / Scope',
+    step1: 'Step 1',
+    step2: 'Step 2',
+    stock: 'Stock',
+    stockABC: 'Stock ABC Analysis',
+    stockAging: 'Stock Aging',
+    stockCount: 'Sayım Emirleri',
+    stockInventory: 'Inventory Counts',
+    stockLabel: 'Stock',
+    stockQuery: 'Stock Query',
+    stockReports: 'Stock Reports',
+    stockStatus: 'Stock Status',
+    stockStatusReport: 'Stok Durum Raporu',
+    stockTurnover: 'Stock Turnover',
+    stockValue: 'Stock Value',
+    stockValueCost: 'Stock Value (Cost)',
+    stockValueSale: 'Stock Value (Sale)',
+    stockValueSales: 'Stock Value (Sales)',
+    store: 'Store',
+    storeConfiguration: 'Store Configuration',
+    storeManagement: 'Store Management',
+    storePanel: 'Store Panel',
+    storeSelection: 'Store Selection',
+    storeSelectionScope: 'Store Selection / STORE',
+    storeTransfer: 'Store Transfer',
+    subsidiary: 'Subsidiary',
+    subtotal: 'Subtotal',
+    subtotalAction: 'Subtotal',
+    subtotalLabel: 'Subtotal',
+    subtotalText: 'SUBTOTAL',
+    subtotalUppercase: 'SUBTOTAL',
+    successRateLabel: 'Success Rate',
+    sufficientStock: 'Sufficient Stock',
+    supplierCode: 'Supplier Code',
+    supplierDefDesc: 'Manage supplier definitions',
+    supplierLabel: 'SUPPLIER',
+    supplierName: 'Supplier Name',
+    suppliers: 'Suppliers',
+    supportCenter: 'Support Center',
+    systemAdmin: 'System Administrator',
+    systemAdministrator: 'System Administrator',
+    systemError: 'System error',
+    systemHealth: 'System Health',
+    systemLogin: 'LOGIN TO SYSTEM',
+    systemLogs: 'System Logs',
+    systemLogsTitle: 'SYSTEM LOGS',
+    systemManagement: 'System Management',
+    systemTitle: 'RetailEX ERP',
+    tableOccupied: 'OCCUPIED',
+    tagline: 'Professional Sales Management System',
+    targetKasa: 'Target Safe',
+    targetVsActual: 'Target vs Actual',
+    taskManagement: 'İş Emri Yönetimi',
+    tax: 'Tax',
+    taxNumberLabel: 'Tax Number',
+    taxOfficeLabel: 'Tax Office',
+    taxRate: 'Tax Rate',
+    taxRateLabel: 'VAT / Tax Rate (%)',
+    taxReport: 'Tax Report',
+    technicalDetails: 'Technical Details',
+    technicalDetailsForDevelopers: 'Technical Details (for Developers)',
+    testPasswordHint: 'Test password: 1234',
+    textDirection: 'Text Direction',
+    textDirectionOptional: 'Text Direction (Optional)',
+    thanksForChoosingUs: '★★★ Thank You For Choosing Us ★★★',
+    thirtyDaysButton: '30 Days',
+    timeLabel: 'Time',
+    todayButton: 'Today',
+    todaysSale: 'Today\'s Sale',
+    todaysSales: 'Today\'s Sales',
+    topSellingProducts: 'Top Selling Products',
+    topSellingProductsInfo: 'Top Selling Products',
+    total: 'Total',
+    totalAllBranches: 'All Branches Total',
+    totalCampaigns: 'Total Campaigns',
+    totalCollection: 'Total Collection',
+    totalCurrentAccounts: 'TOTAL ACCOUNTS',
+    totalDevicesLabel: 'Total Devices',
+    totalEntries: 'Total Entries',
+    totalInventoryValue: 'Total Inventory Value',
+    totalItems: 'Total Items',
+    totalLabel: 'Total',
+    totalPieces: 'Total Pieces',
+    totalProduct: 'Total Product',
+    totalProductsDashboard: 'Total Products',
+    totalPurchases: 'Total Purchases',
+    totalRevenue: 'Total Revenue',
+    totalRevenueLabel: 'Total Revenue',
+    totalSale: 'Total sale',
+    totalSales: 'Total',
+    totalSalesCount: 'Total',
+    totalStock: 'Total Stock',
+    totalText: 'TOTAL',
+    totalUppercase: 'TOTAL',
+    transactionBreakdown: 'Transaction Breakdown',
+    transactionNumberLabel: 'Transaction Number/Person',
+    transferAllItems: 'All items in Table {number} will be transferred to the selected table.',
+    transferMovement: 'Transfer & Hareket',
+    transferToOtherCashier: 'Transfer to Other Cashier',
+    transfers: 'Transfers',
+    trialBalance: 'Trial Balance',
+    turkish: 'Turkish',
+    unexpectedErrorEncountered: 'An unexpected error was encountered',
+    unit: 'Unit',
+    unitAndMultiplierMgmt: 'Unit and Multiplier Management',
+    unitCodeLabel: 'Unit Code',
+    unitDefinitions: 'Unit Definitions',
+    unitLabel: 'Unit',
+    unitNameLabel: 'Unit Name',
+    unitPrice: 'Unit price',
+    unitPriceLabel: 'Unit Price',
+    unitSetCreated: 'Unit set created',
+    unitSetDeleted: 'Unit set deleted',
+    unitSetName: 'Unit Set Name',
+    unitSetUpdated: 'Unit set updated',
+    unitSets: 'Unit Sets',
+    unknownError: 'Unknown error',
+    update: 'Update',
+    urgentOrder: 'Urgent order!',
+    userManagement: 'User Management',
+    username: 'Username',
+    usernamePlaceholder: 'Enter your username',
+    variantAvailable: 'Variant Available',
+    variantChanged: 'Variant changed: {variant}',
+    variantDefDesc: 'Manage variant definitions',
+    variants: 'Variants',
+    veresiyeLabel: 'Credit',
+    verifying: 'VERIFYING...',
+    version: 'v1.0',
+    versionTitle: 'Version: v1.0',
+    viewDetails: 'View Details',
+    voiceSearch: 'Voice Search',
+    voucher: 'Voucher',
+    voucherDate: 'Voucher Date',
+    voucherNo: 'Voucher No',
+    voucherType: 'Voucher Type',
+    waiting: 'Waiting',
+    warehouseDefDesc: 'Manage warehouse definitions',
+    warehouseReceipt: 'Warehouse Receipt',
+    warehouseTransfer: 'Depo Transferi',
+    warehouseTransferWaybill: 'Warehouse Transfer Waybill',
+    wastageWaybill: 'Wastage Waybill',
+    wasteWaybill: 'Waste Waybill',
+    waybills: 'Waybills',
+    weeklySale: 'Weekly Sale',
+    weeklySales: 'Weekly Sales',
+    welcome: 'Welcome',
+    welcomeDashboard: 'Welcome to the System',
+    welcomeSubtitle: 'Welcome, track your business performance',
+    whatsappIntegration: 'WhatsApp Integration',
+    wholesaleSales: 'Wholesale Sales',
+    wholesaleSalesDesc: 'Wholesale sales transactions',
+    wholesaleSalesTitle: 'Wholesale Sales',
+    withholdingTax: 'Withholding Tax',
+    withholdingTaxRate: 'Withholding Tax Rate (%)',
+    wmsModule: 'WMS',
+    wrongProduct: 'Wrong Product',
+    wrongProductAdded: 'Wrong product added',
+    wsConnected: 'Connected',
+    wsConnecting: 'Connecting...',
+    wsDisconnected: 'Disconnected',
+    yesDelete: 'Yes, Delete',
+    zReport: 'Z Report',
+    zeroOpeningCashConfirm: 'Opening cash will be entered as 0.00. Do you want to continue?',
+    zeroPlaceholder: '0',
   },
   ar: {
-    // Restaurant Specific
-    transferAllItems: 'سيتم نقل جميع العناصر في الطاولة رقم {number} إلى الطاولة المحددة.',
-    selectTargetTable: 'اختر الطاولة المستهدفة',
-    tableOccupied: 'مشغولة',
-    moveTable: 'نقل الطاولة',
-    confirmMove: 'تأكيد النقل',
-    orderNote: 'ملاحظة الطلب',
-    specialRequests: 'طلبات وتفاصيل خاصة',
-    orderNoteDescription: 'ستظهر هذه الملاحظة على شاشة المطبخ والإيصال.',
-    orderNotePlaceholder: 'أضف ملاحظة حول الطلب (مثال: بدون بهارات، كاتشب أقل...)',
-    orderDiscount: 'خصم الطلب',
-    applyRatioDiscount: 'تطبيق خصم النسبة المئوية',
-    discountRatioApplied: 'سيتم تطبيق النسبة المئوية المدخلة على إجمالي الطلب.',
-    apply: 'تطبيق',
-    reset: 'إعادة تعيين',
-
-    // Header
-    systemTitle: 'RetailEX ERP',
-    customer: 'العميل',
-    selectCustomer: 'اختر العميل',
-    retailCustomer: 'عميل التجزئة',
-    cashier: 'الصراف',
-    changeCashier: 'تغيير الصراف',
-    changeLanguage: 'تغيير اللغة',
-    logout: 'تسجيل الخروج',
-    back: 'عودة',
-    allLabel: 'الكل',
-    selected: 'محدد',
-    logAudit: 'السجلات والتدقيق',
-    systemHealth: 'حالة النظام',
-    scanToSearchPlaceholder: 'امسح للبحث عن المنتج...',
-    changeVariant: 'تغيير النوع',
-    confirmItemDelete: 'هل أنت متأكد من حذف هذا العنصر؟',
-    yesDelete: 'نعم، حذف',
-    barcodeSearchPlaceholder: 'الباركود أو اسم المنتج...',
-    actionLabel: 'العملية',
-
-    // Product Grid
-    searchProducts: 'بحث عن المنتجات',
-    searchPlaceholder: 'اسم المنتج أو الباركود...',
-    categories: 'الفئات',
-    allCategories: 'جميع الفئات',
-
-    // Cart
-    cart: 'السلة',
-    emptyCart: 'السلة فارغة',
-    product: 'المنتج',
-    quantity: 'الكمية',
-    price: 'السعر',
-    total: 'المجموع',
-    subtotal: 'المجموع الفرعي',
-    discount: 'الخصم',
-    grandTotal: 'المجموع الكلي',
-    rowOrder: 'سلسلة',
-    productName: 'اسم المنتج',
+    abcAnalysis: 'ABC Analizi',
+    accountAdded: 'تم إضافة الحساب الجاري',
+    accountCode: 'رمز الحساب',
+    accountDeleteError: 'تعذر حذف الحساب الجاري',
+    accountDeleted: 'تم حذف الحساب الجاري',
+    accountName: 'اسم الحساب',
+    accountNameRequired: 'اسم الحساب مطلوب!',
+    accountSummary: 'ملخص الحساب الجاري',
+    accountTypeSelection: 'اختيار نوع الحساب',
+    accountUpdated: 'تم تحديث الحساب الجاري',
+    accountsPayable: 'الحسابات المدفوعة',
+    accountsReceivable: 'الحسابات المستحقة',
     action: 'عملية',
-
-    // Actions
+    actionCenter: 'مركز العمليات',
+    actionLabel: 'العملية',
+    actions: 'إجراءات',
+    activeCustomer: 'العملاء النشطون',
+    activeCustomers: 'Aktif Müşteri',
+    activeStatus: 'AKTİF',
     add: 'إضافة',
+    addNewCurrentAccount: 'إضافة حساب جاري جديد',
+    addPaymentLabel: 'إضافة دفعة',
     addToCart: 'أضف إلى السلة',
-    remove: 'إزالة',
-    clear: 'مسح',
-    save: 'حفظ',
-    cancel: 'إلغاء',
-    complete: 'إتمام',
-    payment: 'الدفع',
-    search: 'بحث',
-    close: 'إغلاق',
-
-    // Numpad
-    amount: 'المبلغ',
-    piece: 'قطعة',
-    'delete': 'حذف',
-    enter: 'موافق',
-
-    // Quick Actions
-    campaign: 'الحملة',
-    category: 'الفئة',
-    productQuery: 'استعلام المنتج',
-    stockQuery: 'استعلام المخزون',
-    parkedReceipts: 'الإيصال المعلق',
-    salesHistory: 'تاريخ المبيعات',
-    returnTransaction: 'إرجاع',
-    return: 'إرجاع',
-    recentProducts: 'المبيعات الأخيرة',
+    addToCartButton: 'أضف إلى السلة',
+    addedPayments: 'المدفوعات المضافة',
+    additionalDiscount: 'خصم إضافي (اختياري)',
+    addressLabel: 'العنوان',
+    administrator: 'مدير',
+    agingAnalysis: 'Yaşlandırma Analizi',
+    aiAssistant: 'مساعد الذكاء الاصطناعي',
+    aiProductAnalytics: 'تحليلات المنتجات بالذكاء الاصطناعي',
+    alertCenter: 'Uyarı Merkezi',
+    allBtn: 'الكل',
+    allButton: 'الكل',
+    allCategories: 'جميع الفئات',
+    allInvoiceTypes: 'Tüm Fatura Türleri',
+    allLabel: 'الكل',
     allProducts: 'جميع المنتجات',
-    scale: 'الميزان',
-    subtotalAction: 'المجموع الفرعي',
-    receiptNote: 'ملاحظة الإيصال',
-    barcode: 'الباركود',
-    quickProductAdd: 'منتج سريع',
-    shiftClick: 'Shift + نقرة',
-    receivePayment: 'استلام الدفع',
-    sales: 'المبيعات',
-    parkedReceiptsButton: 'معلق',
-    parkReceipt: 'تعليق الإيصال',
-    cancelReceipt: 'إلغاء الإيصال',
-    management: 'الإدارة',
-    closeRegister: 'إغلاق الصندوق',
-    openRegister: 'فتح الصندوق',
-    customerInfo: 'معلومات العميل',
-    cardNumber: 'رقم البطاقة',
-
-    // Footer
-    receipt: 'الإيصال',
-    store: 'المتجر',
-    cashRegister: 'الصندوق',
-    shift: 'الوردية',
-    screenSettings: 'إعدادات الشاشة',
-    language: 'اللغة',
-
-    // WebSocket Status
-    wsConnected: 'متصل',
-    wsDisconnected: 'غير متصل',
-    wsConnecting: 'جاري الاتصال...',
-    stockInventory: 'جرد المخزون',
-    inventoryManagement: 'عمليات الجرد والمخزون',
-    systemManagement: 'إدارة النظام',
-    centralStore: 'المتجر المركزي',
-    dayShift: 'النهار',
-
-    // Notifications
-    productAdded: 'تمت إضافة المنتج إلى السلة',
-    productRemoved: 'تمت إزالة المنتج من السلة',
-    cartCleared: 'تم مسح السلة',
-    receiptParked: 'تم تعليق الإيصال',
-    saleCompleted: 'تم إتمام البيع',
-    error: 'خطأ',
-
-    // Payment Modal
-    paymentTitle: 'الدفع',
-    discountOptional: 'الخصم (اختياري)',
-    percentage: 'النسبة المئوية',
-    enterDiscountPercentage: 'أدخل نسبة الخصم',
-    enterDiscountAmount: 'أدخل مبلغ الخصم',
-    paymentSummary: 'ملخص الدفع',
-    subtotalLabel: 'المجموع الفرعي',
+    allSalesButton: 'جميع المبيعات',
+    allStatuses: 'Tüm Durumlar',
+    amount: 'المبلغ',
+    amountInput: 'المبلغ',
+    amountLabel: 'المبلغ',
     amountToPay: 'المبلغ المطلوب دفعه',
-    paymentMethod: 'طريقة الدفع',
-    cashPayment: 'الدفع نقدًا',
-    cashPaymentDescription: 'الدفع بالنقد',
+    anErrorOccurred: 'حدث خطأ',
+    apply: 'تطبيق',
+    applyDiscount: 'تطبيق الخصم',
+    applyRatioDiscount: 'تطبيق خصم النسبة المئوية',
+    approved: 'معتمد',
+    arabic: 'العربية',
+    assets: 'الأصول',
+    assignToSlot: 'تعيين إلى الفتحة',
+    atLeastOneShortcut: 'En az bir kısayol seçmelisiniz',
+    atLeastOneUnit: 'En az bir birim tanımlanmalıdır',
+    autoGenerated: 'تم إنشاؤه تلقائيًا',
+    automatic: '(تلقائي)',
+    available: 'متاح',
+    back: 'عودة',
+    backToDashboard: 'العودة إلى لوحة القيادة',
+    backToList: 'العودة إلى القائمة',
+    backup: 'نسخ احتياطي',
+    balance: 'رصيد',
+    balanceLoading: 'تعبئة رصيد',
+    balanceSheet: 'الخاتمة المالية',
+    bank: 'بنك',
+    bankAccount: 'حساب بنكي',
+    bankDeposit: 'إيداع بنكي',
+    bankTransfer: 'تحويل بنكي',
+    bankWithdrawal: 'سحب بنكي',
+    banknoteAndCoinCount: 'عد الأوراق النقدية والعملات المعدنية',
+    banknoteCount: 'عد الأوراق النقدية',
+    barcode: 'الباركود',
+    barcodeDefDesc: 'Barkod tanımlarını yönetin',
+    barcodeLabel: 'الباركود',
+    barcodeNotFound: 'لم يتم العثور على الباركود',
+    barcodeNotFoundWarning: 'لم يتم العثور على الباركود: {barcode}',
+    barcodeSearchPlaceholder: 'الباركود أو اسم المنتج...',
+    biDashboardAi: 'لوحة BI والذكاء الاصطناعي',
+    branchStockStatus: 'حالة مخزون الفرع',
+    branchStocks: 'مخزون الفروع',
+    branchVariantStocks: 'مخزون متغيرات الفرع',
+    branchVariants: 'أشكال الفروع',
+    brandDefDesc: 'Marka tanımlarını yönetin',
+    brandDefinitions: 'تعريفات العلامات التجارية',
+    campaign: 'الحملة',
+    campaignApplied: 'تم تطبيق الحملة',
+    campaignAppliedDescription: 'مطبق',
+    campaignAutoApplied: 'تم تطبيق الحملة تلقائيًا',
+    campaignDiscountLabel: 'خصم الحملة',
+    campaignDiscountPayment: 'خصم الحملة',
+    campaignLabel: 'الحملة',
+    campaignRemoved: 'تمت إزالة الحملة',
+    cancel: 'إلغاء',
+    cancelBtn: 'إلغاء',
+    cancelReasonPlaceholder: 'اكتب سبب الإلغاء...',
+    cancelReceipt: 'إلغاء الإيصال',
+    cancelReceiptTitle: 'إلغاء الإيصال - اختر السبب',
+    capacityPlanning: 'Kapasite Planlama',
+    card: 'بطاقة',
+    cardLabel: 'بطاقة (POS)',
+    cardNumber: 'رقم البطاقة',
     cardPayment: 'الدفع بالبطاقة',
     cardPaymentDescription: 'الدفع ببطاقة الائتمان/الخصم',
-    receivedAmount: 'المبلغ المستلم',
-    enterReceivedCashAmount: 'أدخل المبلغ النقدي المستلم',
-    fullAmount: 'المبلغ الكامل',
-    completePayment: 'إتمام الدفع',
-    campaignDiscountLabel: 'خصم الحملة',
+    cardSales: 'مبيعات البطاقة',
+    cards: 'البطاقات',
+    cart: 'السلة',
+    cartCleared: 'تم مسح السلة',
+    cartEmpty: 'السلة فارغة',
+    cash: 'نقد',
+    cashBalanced: 'متوازن',
+    cashClosedSuccessfully: 'تم إغلاق الصندوق بنجاح!',
+    cashClosingNotePlaceholder: 'اكتب ملاحظاتك بخصوص إغلاق الصندوق...',
+    cashCountExample: 'مثال: 1000.00',
+    cashCountRequired: 'يرجى إدخال المبلغ النقدي المعدود!',
+    cashDifference: 'فرق النقد',
+    cashDifferenceConfirm: 'يوجد فرق في النقد. هل تريد المتابعة؟',
+    cashFlowReport: 'تقرير التدفق النقدي',
+    cashFlowStatement: 'بيانات تدفق النقديات',
+    cashHandedOver: 'تم تسليم النقد إلى {staff}',
+    cashHandedOverMessage: 'تم تسليم النقد إلى {staff}.\n\nمبلغ التسليم: {amount}\n\nيجب على {staff} تأكيد التسليم عند فتح الصندوق.',
+    cashHandoverAccept: 'قبول تسليم النقد',
+    cashHandoverAvailable: 'تسليم نقدي متاح',
+    cashHandoverCountRequired: 'يرجى إدخال مبلغ التسليم!',
+    cashIn: 'وارد صندوق',
     cashLabel: 'نقد',
-    cardLabel: 'بطاقة (POS)',
-    veresiyeLabel: 'دفع آجل',
-    gatewayLabel: 'دفع عبر QR',
-    addPaymentLabel: 'إضافة دفعة',
-    currencyAndRates: 'العملة وأسعار الصرف',
-    insufficientPayment: 'قيمة الدفع غير كافية!',
-    paymentFailed: 'تعذر بدء الدفع:',
-    processingText: 'جار المعالجة...',
-    qrScanCode: 'امسح رمز الاستجابة السريعة',
-    qrCustomerInstruction: 'يمكن للعميل إكمال الدفع عن طريق مسح رمز الاستجابة السريعة بهاتفه',
-    paymentAmount: 'مبلغ الدفع',
-    step1: 'الخطوة 1',
-    step2: 'الخطوة 2',
-    holdPhoneToQr: 'وجه الهاتف نحو رمز الاستجابة السريعة',
-    confirmPaymentText: 'تأكيد الدفع',
-    campaignAppliedDescription: 'مطبق',
-
-    // Language Modal
-    selectLanguage: 'اختر اللغة',
-    turkish: 'التركية',
-    english: 'الإنجليزية',
-    arabic: 'العربية',
-    kurdish: 'الكردية',
-
-    // Additional Labels
-    campaignApplied: 'تم تطبيق الحملة',
-    campaignRemoved: 'تمت إزالة الحملة',
-    minimumAmountNotMet: 'لم يتم استيفاء الحد الأدنى للمبلغ',
-    campaignAutoApplied: 'تم تطبيق الحملة تلقائيًا',
-
-
-    // Customer Modal
-    selectCustomerTitle: 'اختر العميل',
-    customerSearchPlaceholder: 'بحث عن العميل...',
-    noCustomerSale: 'بيع بدون عميل',
-    noCustomerSaleDescription: 'بيع بالتجزئة',
-    customerNotFound: 'لم يتم العثور على العميل',
-    newCustomer: 'عميل جديد',
-    individual: 'فردي',
-    corporate: 'شركة',
-    totalPurchases: 'إجمالي المشتريات',
-    lastPurchase: 'آخر شراء',
-
-    // Staff Modal
-    selectStaffTitle: 'اختر الموظف',
+    cashOpenedMessage: 'تم فتح الصندوق بنجاح!\n\nالنقد الافتتاحي: {amount}\nالصراف: {staff}',
+    cashOpenedSuccessfully: 'تم فتح الصندوق بنجاح!',
+    cashOpeningNotePlaceholder: 'اكتب ملاحظاتك المتعلقة بفتح الصندوق...',
+    cashOperation: 'عملية صندوق',
+    cashOperations: 'عمليات الصندوق',
+    cashOut: 'صادر صندوق',
+    cashPayment: 'الدفع نقدًا',
+    cashPaymentDescription: 'الدفع بالنقد',
+    cashRegister: 'الصندوق',
+    cashRegisterNumber: 'الصندوق-91',
+    cashSales: 'مبيعات نقدية',
+    cashSlips: 'سندات الصندوق',
+    cashStatus: 'حالة النقد',
+    cashTransfer: 'تحويل بين الصناديق',
+    cashier: 'الصراف',
     cashier1: 'صراف 1',
     cashier2: 'صراف 2',
     cashier3: 'صراف 3',
-    manager: 'المدير',
-    discountAuthority: 'لديه صلاحية الخصم',
-    errorFetchingUsers: 'فشل في جلب قائمة المستخدمين',
-    welcome: 'أهلاً بك',
-    invalidPassword: 'كلمة المرور غير صحيحة',
-    loginError: 'خطأ في تسجيل الدخول',
-    login: 'تسجيل الدخول',
-
-    // MarketPOS
-    phoneAddress: 'الهاتف / العنوان',
-    totalItems: 'إجمالي العناصر',
-    applyDiscount: 'تطبيق الخصم',
-    deleteBtn: 'حذف',
-    cancelBtn: 'إلغاء',
-    pieces: 'قطع',
-    priceLabel: 'السعر',
-    clearBtn: 'مسح',
-    enterBtn: 'موافق',
-    productCount: 'المنتج',
-    totalPieces: 'إجمالي القطع',
-    pcs: 'قطعة',
-    searchBtn: 'بحث',
-
-    // Login Screen
-    storeSelection: 'اختيار المتجر',
-    username: 'اسم المستخدم',
-    usernamePlaceholder: 'أدخل اسم المستخدم',
-    password: 'كلمة المرور',
-    rememberMe: 'تذكرني',
-    connectionSettings: 'إعدادات الاتصال',
-    loginButton: 'تسجيل الدخول',
-
-    // Campaign Modal
-    selectCampaign: 'اختر الحملة',
-    totalCampaigns: 'إجمالي الحملات',
-    closeEsc: 'اضغط ESC للإغلاق',
-
-    // Bottom Bar
-    subtotalText: 'المجموع الفرعي',
-    totalText: 'المجموع',
-    cashierLabel: 'الصراف',
-
-    // Parked Receipts Modal
-    parkedReceiptsTitle: 'الإيصالات المعلقة',
-    noParkedReceipts: 'لا توجد إيصالات معلقة',
-    noParkedReceiptsDescription: 'ستظهر الإيصالات المعلقة هنا',
-    parkedAt: 'تم التعليق في',
-    parkedBy: 'تم التعليق بواسطة',
-    customerLabel: 'العميل',
-    itemsCount: 'عناصر',
-    continueReceipt: 'متابعة',
-    deleteReceipt: 'حذف',
-    confirmDelete: 'هل أنت متأكد من الحذف؟',
-
-    // Stock Query Modal
-    productCatalog: 'كتالوج المنتجات',
-    productsCount: 'منتجات',
-    searchProductPlaceholder: 'بحث عن المنتج...',
-    gridView: 'شبكة',
-    listView: 'قائمة',
-    noProductsFound: 'لم يتم العثور على منتجات',
-    changeSearchCriteria: 'غير معايير البحث',
-    productDetails: 'تفاصيل المنتج',
-    barcodeLabel: 'الباركود',
-    stockStatus: 'حالة المخزون',
-    currentStock: 'المخزون الحالي',
-    unitLabel: 'الوحدة',
-    outOfStock: 'نفد من المخزون',
-    criticalLevel: 'مستوى حرج',
-    lowStock: 'مخزون منخفض',
-    sufficientStock: 'مخزون كافٍ',
-    priceInfo: 'معلومات السعر',
-    salePrice: 'سعر البيع',
-    costPrice: 'سعر التكلفة',
-    profitMargin: 'هامش الربح',
-    stockValue: 'قيمة المخزون',
-    costValue: 'قيمة التكلفة',
-    saleValue: 'قيمة البيع',
-    branchVariants: 'أشكال الفروع',
-    totalLabel: 'المجموع',
-    branchStocks: 'مخزون الفروع',
-    totalAllBranches: 'إجمالي جميع الفروع',
-    productLabel: 'المنتج',
-    categoryLabel: 'الفئة',
-    detailButton: 'تفاصيل',
-    addToCartButton: 'أضف إلى السلة',
-
-    // Stock Query Specific
-    grid: 'شبكة',
-    list: 'قائمة',
-    operation: 'عملية',
-    unit: 'وحدة',
-    pricingInfo: 'معلومات التسعير',
-    cost: 'التكلفة',
-    branchVariantStocks: 'مخزون متغيرات الفرع',
-
-    // Return Modal
-    returnCancelTitle: 'إرجاع / إلغاء',
-    searchReceiptPlaceholder: 'بحث عن رقم الإيصال أو الباركود...',
-    noSalesFound: 'لم يتم العثور على مبيعات',
-    selectReceiptForReturn: 'اختر الإيصال للإرجاع',
-    returnProducts: 'المنتجات المراد إرجاعها',
-    salesQuantity: 'كمية البيع',
-    returnQuantity: 'كمية الإرجاع',
-    allButton: 'الكل',
-    returnReason: 'سبب الإرجاع',
-    returnReasonPlaceholder: 'اختر سبب الإرجاع...',
-    returnAmount: 'مبلغ الإرجاع',
-    confirmReturn: 'تأكيد الإرجاع',
-    productDefective: 'المنتج معيب',
-    customerNotSatisfied: 'العميل غير راضٍ',
-    wrongProduct: 'منتج خاطئ',
-    sizeColorChange: 'تغيير الحجم/اللون',
-    otherReason: 'أسباب أخرى',
-    generalSale: 'بيع عام',
-
-    // Sales History Modal
-    salesHistoryTitle: 'تاريخ المبيعات',
-    allSalesButton: 'جميع المبيعات',
-    todayButton: 'اليوم',
-    sevenDaysButton: '7 أيام',
-    thirtyDaysButton: '30 يومًا',
-    noSalesHistory: 'لا يوجد تاريخ مبيعات',
-    salesCount: 'مبيعات',
-    totalSales: 'المجموع',
-    receiptNumberOrCustomerSearch: 'ابحث برقم الإيصال أو اسم العميل...',
-    dateRange: 'نطاق التاريخ',
-    startDate: 'البداية:',
-    endDate: 'النهاية:',
-
-    noSalesRecordFound: 'لم يتم العثور على سجل مبيعات',
-    cash: 'نقد',
-    card: 'بطاقة',
-    other: 'أخرى',
-
-    viewDetails: 'عرض التفاصيل',
-    printReceipt: 'طباعة الإيصال',
-    backToList: 'العودة إلى القائمة',
-    receiptDetails: 'تفاصيل الإيصال',
-    lastReceipt: 'آخر إيصال',
-    totalSalesCount: 'المجموع',
-    salesWillAppearHere: 'ستظهر المبيعات المكتملة هنا',
     cashierInfo: 'الصراف',
-    productsLabel: 'المنتج',
-    dateLabel: 'التاريخ',
-    closeButton: 'إغلاق',
-
-
-    menu: {
-      materialManagement: "إدارة المواد",
-      masterRecords: "السجلات الرئيسية",
-      materialClasses: "فئات المواد",
-      materials: "المواد",
-      unitSets: "مجموعات الوحدات",
-      variants: "الأشكال والمتغيرات",
-      specialCodes: "الأكواد الخاصة",
-      brandDefinitions: "تعريفات العلامات التجارية",
-      groupCodes: "أكواد المجموعات",
-      productCategories: "فئات المنتجات",
-      movements: "الحركات",
-      stockManagementPanel: "لوحة إدارة المخزون",
-      materialManagementSlips: "سندات إدارة المواد",
-      reports: "التقارير",
-      materialExtract: "كشف المواد",
-      materialValue: "قيمة المواد",
-      inventory: "الجرد",
-      cost: "التكلفة",
-      inOutTotals: "إجمالي الداخل/الخارج",
-      materialWarehouseStatus: "حالة مخزن المواد",
-      transactionBreakdown: "تحليل المعاملات",
-      slipList: "قائمة السندات",
-      minMaxStock: "الحد الأدنى/الأقصى للمخزون",
-      mainMenu: "القائمة الرئيسية",
-      homepage: "الصفحة الرئيسية",
-      dashboard: "لوحة التحكم",
-      storeManagement: "إدارة المتجر",
-      storePanel: "لوحة المتجر",
-      storeTransfer: "تحويل بين المتاجر",
-      multiStoreManagement: "إدارة المتاجر المتعددة",
-      regionalFranchiseManagement: "إدارة الموزعين الإقليميين",
-      storeConfiguration: "تكوين المتجر",
-      dataBroadcast: "بث البيانات",
-      integrations: "التكاملات",
-      excelOperations: "عمليات إكسل",
-      invoices: "الفواتير",
-      salesInvoices: "فواتير المبيعات",
-      salesInvoice: "فاتورة مبيعات",
-      retailSales: "مبيعات التجزئة",
-      wholesaleSales: "مبيعات الجملة",
-      consignmentSales: "مبيعات الأمانة",
-      salesReturn: "مرتجع مبيعات",
-      purchasing: "المشتريات",
-      requestSlips: "طلبات الشراء",
-      purchaseOrders: "أوامر الشراء",
-      purchaseInvoice: "فاتورة مشتريات",
-      purchaseReturn: "مرتجع مشتريات",
-      receivedService: "الخدمات المستلمة",
-      serviceInvoices: "فواتير الخدمات",
-      supplierCards: "بطاقات الموردين",
-      serviceInvoiceIssued: "فاتورة خدمة صادرة",
-      serviceInvoiceReceived: "فاتورة خدمة واردة",
-      waybills: "سندات الشحن (Waybills)",
-      salesWaybill: "سند شحن مبيعات",
-      purchaseWaybill: "سند شحن مشتريات",
-      warehouseTransferWaybill: "سند تحويل مخزني",
-      wasteWaybill: "سند هالك",
-      orders: "الأوامr",
-      salesOrder: "أمر مبيعات",
-      offers: "العروض",
-      financeManagement: "إدارة المالية",
-      definitions: "التعريفات",
-      paymentPlans: "خطط الدفع",
-      bankPaymentPlans: "خطط الدفع البنكية",
-      campaignDefinitions: "تعريفات الحملات",
-      cards: "البطاقات",
-      currentAccounts: "الحسابات الجارية",
-      cashAccounts: "حسابات الصندوق",
-      banks: "البنوك",
-      bankAccounts: "الحسابات البنكية",
-      currentAccountSlips: "سندات الحسابات الجارية",
-      cashOperations: "عمليات الصندوق",
-      cashSlips: "سندات الصندوق",
-      bankSlips: "سندات البنوك",
-      creditCardPosSlips: "سندات نقاط البيع (POS)",
-      journalAndSlips: "دفتر اليومية والسندات",
-      currentAccountReports: "تقارير الحسابات الجارية",
-      cashReports: "تقارير الصندوق",
-      bankReports: "تقارير البنوك",
-      trialBalanceReport: "تقرير ميزان المراجعة",
-      other: "أخرى",
-      accountingManagement: "إدارة المحاسبة",
-      expenseManagement: "إدارة المصروفات",
-      checkPromissory: "شيكات/كمبيالات",
-      collectionPayment: "تحصيل/دفع",
-      multiCurrency: "متعدد العملات",
-      accountingVouchers: "سندات محاسبية",
-      retail: "التجزئة",
-      priceAndCampaign: "الأسعار والحملات",
-      scaleAndWeighedSales: "مبيعات الميزان",
-      communicationAndNotifications: "الاتصالات والتنبيهات",
-      whatsappIntegration: "تكامل واتساب",
-      notificationCenter: "مركز التنبيهات",
-      smsManagement: "إدارة SMS",
-      emailCampaigns: "حملات البريد الإلكتروني",
-      reportsAndAnalysis: "التقارير والتحليل",
-      aiProductAnalytics: "تحليلات المنتجات بالذكاء الاصطناعي",
-      advancedReports100: "⭐ التقارير المتقدمة (+100)",
-      profitabilityAnalyticsDashboard: "💰 لوحة تحليل الربحية",
-      salesReports: "تقارير المبيعات",
-      stockReports: "تقارير المخزون",
-      trialBalance: "ميزان المراجعة",
-      incomeStatement: "بيان الدخل",
-      customerAnalysis: "تحليل العملاء",
-      balanceSheet: "الميزانية العمومية",
-      graphicalAnalysis: "التحليل الرسومي",
-      customReports: "تقارير مخصصة",
-      biDashboardAi: "لوحة BI والذكاء الاصطناعي",
-      systemManagement: "إدارة النظام",
-      firmPeriodDefinitions: "تعريفات الشركة/الفترة",
-      workflowAutomation: "أتمتة سير العمل",
-      demoDataManagement: "إدارة البيانات التجريبية",
-      databaseInfrastructure: "بنية قاعدة البيانات",
-      exSecureGateSecurity: "ExSecureGate (الأمن)",
-      generalSettings: "الإعدادات العامة",
-      userManagement: "إدارة المستخدمين",
-      roleAndAuthorization: "الأدوار والصلاحيات",
-      menuManagement: "إدارة القوائم",
-      definitionsParameters: "التعريفات/المعاملات",
-      backupRestore: "النسخ الاحتياطي/الاستعادة",
-      logAudit: "السجلات والتدقيق",
-      systemHealth: "صحة النظام",
-      stockInventory: 'جرد المخزون',
-      inventoryManagement: 'عمليات الجرد والمخزون'
-    },
-
-    // Language Selection Modal
-    languageSelectionTitle: 'اختيار اللغة',
-    languageChangeInfo: 'تؤثر تغييرات اللغة على جميع الشاشات ويتم حفظها تلقائيًا.',
-    textDirection: 'اتجاه النص',
-    textDirectionOptional: 'اتجاه النص (اختياري)',
-    enterNewPrice: 'أدخل السعر الجديد',
-    clickToChangePrice: 'انقر لتغيير السعر',
-
-    // Product Detail Modal
-    productInfo: 'معلومات المنتج',
-    recentMovements: 'الحركات الأخيرة',
-    branchStockStatus: 'حالة مخزون الفرع',
-    reserved: 'محجوز',
-    available: 'متاح',
-    totalStock: 'إجمالي المخزون',
-    incomingTransfer: 'تحويل وارد',
-    outgoingTransfer: 'تحويل صادر',
-    purchase: 'شراء',
-
-    // Keyboard Shortcuts
-    keyboardShortcuts: 'اختصارات لوحة المفاتيح',
-    pos: 'عمليات نقاط البيع',
-    quick: 'إجراءات سريعة',
-    navigation: 'التنقل',
-    productSearch: 'بحث المنتج',
-    quickPayment: 'دفع سريع',
-    focusBarcodeInput: 'التركيز على حقل الباركود',
-    confirmBarcode: 'تأكيد الباركود',
+    cashierLabel: 'الصراف',
+    cashierPerformance: 'أداء أمين الصندوق',
+    categories: 'الفئات',
+    category: 'الفئة',
+    categoryAnalysis: 'تحليل الفئات',
+    categoryBasedStock: 'المخزون حسب الفئة',
+    categoryLabel: 'الفئة',
+    centralDataManagementSubtitle: 'إدارة المزامنة والبث للمؤسسات v2.0',
+    centralDataManagementSystem: 'نظام إدارة البيانات المركزي',
+    centralStore: 'المتجر المركزي',
+    chCollection: 'تحصيل حساب جاري',
+    chPayment: 'دفع حساب جاري',
+    changeAmount: 'الباقي (الفكة)',
+    changeCashier: 'تغيير الصراف',
+    changeLanguage: 'تغيير اللغة',
+    changeSearchCriteria: 'غير معايير البحث',
+    changeVariant: 'تغيير النوع',
+    chartOfAccounts: 'دليل الحسابات',
+    checkLabel: 'شيك',
+    checkTracking: 'تتبع الشيكات',
+    cityLabel: 'المدينة',
+    clear: 'مسح',
+    clearBtn: 'مسح',
     clearCart: 'مسح السلة',
-    openCashRegister: 'فتح السجل النقدي',
+    clearCurrentCartFirst: 'امسح السلة الحالية أولاً',
+    clearList: 'مسح القائمة',
+    clearSearch: 'Temizle (ESC)',
+    clickToChangePrice: 'انقر لتغيير السعر',
+    close: 'إغلاق',
+    closeButton: 'إغلاق',
     closeCashRegister: 'إغلاق السجل النقدي',
-
-    // Advanced Search
-    voiceSearch: 'البحث الصوتي',
-    results: 'نتائج',
-    searching: 'جارٍ البحث...',
-
-    // Accounting & Finance
-    selectFirma: 'اختر الشركة',
-    selectDonem: 'اختر الفترة',
-    periodOpen: 'فترة مفتوحة',
-    periodClosed: 'فترة مغلقة',
-    closedMonths: 'أشهر مغلقة',
-    firma: 'شركة',
-    donem: 'فترة',
-    journalEntry: 'قيد يومي',
-    journalEntries: 'القيود اليومية',
-    debit: 'مدين',
-    credit: 'دائن',
-    balance: 'رصيد',
-    trialBalance: 'ميزان مراجعة',
-    accountCode: 'رمز الحساب',
-    accountName: 'اسم الحساب',
-    fiscalPeriod: 'فترة مالية',
-    fiscalYear: 'سنة مالية',
-    periodManagement: 'إدارة الفترات',
+    closeCashRegisterProcess: 'عملية إغلاق الصندوق',
+    closeEsc: 'اضغط ESC للإغلاق',
     closeMonth: 'إغلاق الشهر',
     closePeriod: 'إغلاق الفترة',
-    openNewPeriod: 'فتح فترة جديدة',
-    balanceSheet: 'الخاتمة المالية',
-    incomeStatement: 'الجملة الدخلية',
-    cashFlowStatement: 'بيانات تدفق النقديات',
-    financialStatements: 'القوائم المالية',
-    profitLoss: 'الربح والخسارة',
-    assets: 'الأصول',
-    liabilities: 'الالتزامات',
-    equity: 'الأسهم',
-    revenue: 'الإيرادات',
-    expenses: 'المصروفات',
-    netIncome: 'الدخل الصافي',
-    grossProfit: 'الربح الإجمالي',
-    operatingExpenses: 'المصروفات التشغيلية',
-    expenseAnalysis: 'تحليل المصروفات',
-    tax: 'الضريبة',
-    taxRate: 'نسبة الضريبة',
-    corporateTax: 'ضريبة الشركات',
-    incomeTax: 'ضريبة الدخل',
-    withholdingTax: 'ضريبة الاستقطاع',
-    taxReport: 'تقرير الضريبة',
-    chartOfAccounts: 'دليل الحسابات',
-    generalLedger: 'دفتر الأستاذ العام',
-    subsidiary: 'شركة فرعية',
-    consolidatedReports: 'التقارير المجمعة',
-    intercompanyEliminations: 'الإلغاءات بين الشركات',
-    costOfGoodsSold: 'تكلفة البضائع المباعة',
-    inventory: 'المخزون',
-    accountsReceivable: 'الحسابات المستحقة',
-    accountsPayable: 'الحسابات المدفوعة',
-
-    bank: 'بنك',
-    purchases: 'المشتريات',
-    transfers: 'التحويلات',
-    receipts: 'المقبوضات',
-    payments: 'المدفوعات',
-    voucher: 'سند قبض',
-    voucherNo: 'رقم السند',
-    voucherType: 'نوع السند',
-    voucherDate: 'تاريخ السند',
-    description: 'الوصف',
-    autoGenerated: 'تم إنشاؤه تلقائيًا',
-    manualEntry: 'إدخال يدوي',
-    approved: 'معتمد',
-    pending: 'في انتظار الموافقة',
-    rejected: 'مرفوض',
-    posted: 'منشور',
-    reversed: 'مقلوب',
-
-    // MarketPOS Additional
-    quantitySaved: 'تم حفظ الكمية',
-    quantitySavedMessage: 'تم حفظ الكمية: {quantity}. أدخل الباركود الآن.',
-    pleaseEnterBarcode: 'يرجى إدخال الباركود',
-    pleaseEnterQuantityFirst: 'يرجى إدخال الكمية أولاً، ثم اضغط *',
-    pleaseSelectVariant: 'يرجى اختيار المتغير',
-    barcodeNotFound: 'لم يتم العثور على الباركود',
-    pleaseEnterBarcodeFirst: 'يرجى إدخال الباركود أولاً',
-    openCashRegisterToAddProduct: 'يجب فتح الصندوق أولاً لإضافة المنتجات!',
-    productAddedToCart: 'تمت إضافة {productName} إلى السلة',
-    productRemovedFromCart: 'تمت إزالة المنتج من السلة',
-    variantChanged: 'تم تغيير المتغير: {variant}',
-    receiptCancelled: 'تم إلغاء الإيصال: {reason}',
-    cartEmpty: 'السلة فارغة',
-    clearCurrentCartFirst: 'امسح السلة الحالية أولاً',
-    parkedReceiptRetrieved: 'تم استرجاع الإيصال المعلق',
-    parkedReceiptDeleted: 'تم حذف الإيصال المعلق',
-    openCashRegisterToSell: 'يجب فتح الصندوق أولاً لإتمام البيع!',
-    discountApplied: 'تم تطبيق خصم {percent}%',
-    quantitySavedBarcodeEnter: 'الكمية: {quantity} - أدخل الباركود',
-    enterBarcode: 'أدخل الباركود...',
-    automatic: '(تلقائي)',
-    discountLabel: 'الخصم:',
-    keyboardShortcutsTitle: 'اختصارات لوحة المفاتيح (اضغط ?)',
-    shortcuts: 'الاختصارات',
-    returnCompleted: 'تم إتمام الإرجاع',
-    productAssignedToSlot: 'تم تعيين {productName} إلى الفتحة #{slotNumber}',
-    cashHandedOver: 'تم تسليم النقد إلى {staff}',
-    cashHandedOverMessage: 'تم تسليم النقد إلى {staff}.\n\nمبلغ التسليم: {amount}\n\nيجب على {staff} تأكيد التسليم عند فتح الصندوق.',
-    cashOpenedSuccessfully: 'تم فتح الصندوق بنجاح!',
-    cashOpenedMessage: 'تم فتح الصندوق بنجاح!\n\nالنقد الافتتاحي: {amount}\nالصراف: {staff}',
-    defaultQuantity: '1x',
-    zeroPlaceholder: '0',
-    pageRange: '{start}-{end}',
-    cashRegisterNumber: 'الصندوق-91',
-    version: 'v1.0',
-    versionTitle: 'الإصدار: v1.0',
-    missingBarcodes: 'الباركودات المفقودة',
-    missingBarcodesTitle: 'قائمة الباركودات المفقودة',
-    clearList: 'مسح القائمة',
-    noMissingBarcodes: 'لا توجد باركودات مفقودة بعد.',
-    barcodeNotFoundWarning: 'لم يتم العثور على الباركود: {barcode}',
-
-    lastReceiptButton: 'آخر إيصال',
-    systemAdministrator: 'مدير النظام',
-
-    // New Labels
-    reporting: 'التقارير',
-    reportingDesc: 'تقارير المبيعات والتحليلات',
-    aiAssistant: 'مساعد الذكاء الاصطناعي',
-    dailyReport: 'التقرير اليومي',
-    zReport: 'تقرير Z',
-    periodComparison: 'مقارنة الفترات',
-    topSellingProducts: 'المنتجات الأكثر مبيعاً',
-    categoryAnalysis: 'تحليل الفئات',
-    hourlySalesAnalysis: 'تحليل المبيعات للساعة',
-    cashierPerformance: 'أداء أمين الصندوق',
-    customerSalesAnalysis: 'تحليل مبيعات العملاء',
-    salesTrendAnalysis: 'تحليل اتجاه المبيعات',
-    targetVsActual: 'الهدف مقابل الفعلي',
-    profitLossReport: 'تقرير الربح والخسارة',
-    cashFlowReport: 'تقرير التدفق النقدي',
-    debtAgingReport: 'أعمار الديون',
-    checkTracking: 'تتبع الشيكات',
-    accountSummary: 'ملخص الحساب الجاري',
-    reportsStockStatus: 'حالة المخزون',
-    stockAging: 'أعمار المخزون',
-    stockTurnover: 'سرعة دوران المخزون',
-    stockABC: 'تحليل ABC للمخزون',
-    materialMovement: 'تقرير حركة المواد',
-    expiringProducts: 'منتجات قريبة من الانتهاء',
-    paymentMethodDistribution: 'توزيع طرق الدفع',
-    discountReport: 'تقرير الخصومات',
-    reportsCashStatus: 'حالة الصندوق',
+    closeRegister: 'إغلاق الصندوق',
+    closeWindow: 'إغلاق النافذة',
+    closedMonths: 'أشهر مغلقة',
+    codeAndNameRequired: 'Kod ve ad alanları zorunludur',
+    cogs: 'SMM (Satılan Malın Malieti)',
     commissionReport: 'تقرير العمولات',
-    totalRevenueLabel: 'إجمالي الإيرادات',
-    salesDetails: 'تفاصيل المبيعات',
-    receiptNo: 'رقم الإيصال',
-    timeLabel: 'الوقت',
-    amountLabel: 'المبلغ',
-    paymentLabel: 'الدفع',
-    addNewCurrentAccount: 'إضافة حساب جاري جديد',
-    accountTypeSelection: 'اختيار نوع الحساب',
-    reportsCustomerLabel: 'عميل',
-    supplierLabel: 'مورد',
-    supplierCode: 'كود المورد',
-    supplierName: 'اسم المورد',
-    phoneLabel: 'الهاتف',
-    emailLabel: 'البريد الإلكتروني',
-    addressLabel: 'العنوان',
-    cityLabel: 'المدينة',
-    paymentTermDays: 'مدة الدفع (يوم)',
+    communicationAndNotifications: 'الاتصالات والتنبيهات',
+    complete: 'إتمام',
+    completePayment: 'إتمام الدفع',
+    confirmBarcode: 'تأكيد الباركود',
+    confirmClearLogs: 'سیتم مسح جميع السجلات. هل أنت متأكد؟',
+    confirmDelete: 'هل أنت متأكد من الحذف؟',
+    confirmDeleteAccount: 'هل أنت متأكد أنك تريد حذف هذا الحساب؟',
+    confirmDeleteInvoice: '{invoiceNo} numaralı faturayı silmek istediğinize emin misiniz?',
+    confirmDeleteRecord: 'Bu kaydı silmek istediğinizden emin misiniz?',
+    confirmDeleteUnitSet: 'Bu birim setini silmek istediğinizden emin misiniz?',
+    confirmItemDelete: 'هل أنت متأكد من حذف هذا العنصر؟',
+    confirmMove: 'تأكيد النقل',
+    confirmPaymentText: 'تأكيد الدفع',
+    confirmReturn: 'تأكيد الإرجاع',
+    connectionSettings: 'إعدادات الاتصال',
+    consignment: 'Konsinyasyon',
+    consignmentSale: 'Konsinye Satış',
+    consignmentSales: 'مبيعات الأمانة',
+    consignmentSalesDesc: 'عمليات مبيعات الأمانة',
+    consignmentSalesTitle: 'مبيعات الأمانة',
+    consolidatedReports: 'التقارير المجمعة',
+    consumption: 'Sarf',
+    contact: 'اتصال',
+    continue: 'استمرار',
+    continueReceipt: 'متابعة',
+    copied: 'تم النسخ',
+    copy: 'نسخ',
+    corporate: 'شركة',
+    corporateTax: 'ضريبة الشركات',
+    cost: 'التكلفة',
+    costAnalysis: 'Maliyet Analizi',
+    costAndProfitAnalysis: 'Maliyet ve Kar Analizi',
+    costOfGoodsSold: 'تكلفة البضائع المباعة',
+    costPrice: 'سعر التكلفة',
+    costValue: 'قيمة التكلفة',
+    countEntry: 'Sayım Giriş',
+    countReconciliation: 'Sayım Mutabakat',
+    countedCashAmount: 'النقد المعدود',
+    countingControl: 'Sayım & Kontrol',
+    credit: 'دائن',
+    creditCard: 'بطاقة ائتمان',
     creditLimitLabel: 'الحد الائتماني',
-    taxNumberLabel: 'الرقم الضريبي',
-    taxOfficeLabel: 'المكتب الضريبي',
-    notesLabel: 'ملاحظات',
-    materialCodeName: 'كود/اسم المادة',
-    generateReport: 'إعداد التقرير',
-    startDateReport: 'تاريخ البدء',
-    endDateReport: 'تاريخ الانتهاء',
-    noRecordFound: 'لم يتم العثور على سجلات',
-    unitPriceLabel: 'سعر الوحدة',
-    newSalesOrder: 'طلب مبيعات جديد',
-    orderForm: 'نموذج الطلب',
-    saveOrder: 'حفظ الطلب',
-    pleaseSelectCustomer: 'يرجى اختيار عميل!',
-    pleaseAddAtLeastOneProduct: 'يرجى إضافة منتج واحد على الأقل!',
-    orderCreatedSuccessfully: '✅ تم إنشاء الطلب بنجاح!',
-    orderCreationError: '❌ خطأ في إنشاء الطلب!',
-    newUnitSet: 'مجموعة وحدات جديدة',
-    actionCenter: 'مركز العمليات',
-    reportStructureNote: 'يتم احتساب هيكل التقرير هذا بشكل فوري عبر قاعدة بيانات RetailEX المحلية (PostgreSQL) باستخدام محرك الرصيد المتحرك غير المتزامن، وهو متوافق تمامًا مع معايير Logo ERP المؤسسية.',
+    criticalLevel: 'مستوى حرج',
+    criticalStockAlerts: 'تنبيهات المخزون الحرجة',
+    crmAutoGenerated: 'توليد تلقائي',
+    crmBalance: 'رصيد',
+    crmManagementConsole: 'وحدة إدارة العملاء والموردين',
+    currency: 'دينار',
+    currencyAndRates: 'العملة وأسعار الصرف',
+    currentAccountPersonel: 'الحساب الجاري / الموظفين',
     currentAccountTitle: 'عنوان الحساب الجاري',
     currentAccounts: 'الحسابات الجارية',
-    suppliers: 'الموردين',
-    crmManagementConsole: 'وحدة إدارة العملاء والموردين',
-    salesCustomerDesc: 'حساب مبيعات العملاء',
-    purchaseSupplierDesc: 'حساب شراء الموردين',
-    saveChanges: 'حفظ التغييرات',
-    errorLoadingSuppliers: 'تعذر تحميل الموردين',
-    accountUpdated: 'تم تحديث الحساب الجاري',
-    accountAdded: 'تم إضافة الحساب الجاري',
-    saveFailed: 'فشل الحفظ',
-    accountDeleted: 'تم حذف الحساب الجاري',
-    accountDeleteError: 'تعذر حذف الحساب الجاري',
-    totalCurrentAccounts: 'إجمالي الحسابات',
-    crmAutoGenerated: 'توليد تلقائي',
-    accountNameRequired: 'اسم الحساب مطلوب!',
-    confirmDeleteAccount: 'هل أنت متأكد أنك تريد حذف هذا الحساب؟',
-    contact: 'اتصال',
-    crmBalance: 'رصيد',
-    actions: 'إجراءات',
-
-    // Dashboard
-    welcomeSubtitle: 'أهلاً بك، تتبع أداء عملك',
-    quickAccess: 'الوصول السريع',
-    editShortcuts: 'تعديل الاختصارات',
-    dailySummary: 'الملخص اليومي',
-    todaysSale: 'مبيعات اليوم',
-    weeklySale: 'مبيعات الأسبوع',
-    totalProduct: 'إجمالي المنتجات',
-    activeCustomer: 'العملاء النشطون',
-    registeredCustomer: 'عملاء مسجلون',
-    financialSummary: 'الملخص المالي',
-    stockValueCost: 'قيمة المخزون (التكلفة)',
-    stockValueSale: 'قيمة المخزون (البيع)',
-    potentialProfit: 'الربح المحتمل',
-    dashboardProfitMargin: 'هامش الربح',
-    last7DaysSalesTrend: 'اتجاه المبيعات في آخر 7 أيام',
-    dailySalesPerformance: 'أداء المبيعات اليومي',
-    paymentMethodsDashboard: 'طرق الدفع',
+    currentBalance: 'الرصيد الحالي',
+    currentStock: 'المخزون الحالي',
+    customReports: 'تقارير مخصصة',
+    customer: 'العميل',
+    customerChangedMind: 'العميل تراجع',
+    customerInfo: 'معلومات العميل',
+    customerLabel: 'العميل',
+    customerNotFound: 'لم يتم العثور على العميل',
+    customerNotSatisfied: 'العميل غير راضٍ',
     customerPaymentPreferences: 'تفضيلات الدفع للعملاء',
+    customerReports: 'تقارير العملاء',
+    customerSalesAnalysis: 'تحليل مبيعات العملاء',
+    customerSearchPlaceholder: 'بحث عن العميل...',
+    customerSupplier: 'Cari (Müşteri/Tedarikçi)',
+    customizeQuickAccess: 'Hızlı Erişimleri Özelleştir',
+    customizeShortcuts: 'تخصيص الوصول السريع',
+    dailyReport: 'التقرير اليومي',
+    dailySalesPerformance: 'أداء المبيعات اليومي',
+    dailySummary: 'الملخص اليومي',
+    darkMode: 'Koyu Tema',
+    dashboard: 'لوحة التحكم',
+    dashboardProfitMargin: 'هامش الربح',
     dashboardTopSellingProducts: 'المنتجات الأكثر مبيعاً',
-    rankingByRevenue: 'الترتيب حسب الإيرادات',
-    categoryBasedStock: 'المخزون حسب الفئة',
+    dashboardTransaction: 'معاملات',
+    dataBroadcast: 'بث البيانات',
+    dataTransferLabel: 'نقل البيانات',
+    dataTypeLabel: 'نوع البيانات',
+    databaseConnection: 'Veritabanı Bağ bağlantısı',
+    dateLabel: 'التاريخ',
+    dateRange: 'نطاق التاريخ',
+    dateRangeLabel: 'Tarih Aralığı',
+    dayShift: 'النهار',
+    dbMenu: '📊 DB Menü',
+    deactivate: 'إلغاء التنشيط',
+    debit: 'مدين',
+    debtAgingReport: 'أعمار الديون',
+    defaultCompanyName: 'RetailEX',
+    defaultLocation: 'بغداد، العراق',
+    defaultQuantity: '1x',
+    definitionCode: 'Tanım Kodu',
+    definitionDescription: 'Açıklama',
+    definitionName: 'Tanım Adı',
+    definitions: 'التعريفات',
+    delete: 'Sil',
+    deleteAction: 'حذف',
+    deleteBtn: 'حذف',
+    deleteReceipt: 'حذف',
+    description: 'الوصف',
+    designCenter: 'مركز التصميم',
+    detail: 'التفاصيل',
+    detailButton: 'تفاصيل',
+    diagnosticsSubtitle: 'التشخيص والتدقيق في الوقت الفعلي',
+    differentReceipts: 'إيصالات مختلفة',
+    digitalProductSaleNotice: 'هذه المعاملة هي بيع منتج رقمي.',
+    discount: 'الخصم',
+    discountAmountPlaceholder: 'مبلغ الخصم',
+    discountApplied: 'تم تطبيق خصم {percent}%',
+    discountAuthority: 'لديه صلاحية الخصم',
+    discountLabel: 'الخصم:',
+    discountOptional: 'الخصم (اختياري)',
+    discountPercentPlaceholder: 'نسبة الخصم %',
+    discountRatioApplied: 'سيتم تطبيق النسبة المئوية المدخلة على إجمالي الطلب.',
+    discountReport: 'تقرير الخصومات',
+    documentNo: 'رقم الإيصال / المستند',
+    donem: 'فترة',
+    download: 'تحميل',
+    edit: 'تعديل',
+    editInfo: 'تعديل المعلومات',
+    editQuickAccess: 'Düzenle',
+    editShortcuts: 'تعديل الاختصارات',
+    editUnitSet: 'Birim Setini Düzenle',
+    emailCampaigns: 'حملات البريد الإلكتروني',
+    emailLabel: 'البريد الإلكتروني',
+    emptyCart: 'السلة فارغة',
+    endDate: 'النهاية:',
+    endDateReport: 'تاريخ الانتهاء',
+    english: 'الإنجليزية',
+    enter: 'موافق',
+    enterAdminPassword: 'أدخل كلمة مرور المسؤول',
+    enterBarcode: 'أدخل الباركود...',
+    enterBtn: 'موافق',
+    enterDiscountAmount: 'أدخل مبلغ الخصم',
+    enterDiscountPercentage: 'أدخل نسبة الخصم',
+    enterNewPrice: 'أدخل السعر الجديد',
+    enterReceivedCashAmount: 'أدخل المبلغ النقدي المستلم',
+    enterUsernamePassword: 'الرجاء إدخال اسم المستخدم وكلمة المرور.',
+    entryOperations: 'Giriş İşlemleri',
+    equipmentMaintenance: 'Ekipman Bakım',
+    equity: 'الأسهم',
+    error: 'خطأ',
+    errorFetchingUsers: 'فشل في جلب قائمة المستخدمين',
+    errorLoadingScreen: 'حدث خطأ أثناء تحميل الشاشة.',
+    errorLoadingSuppliers: 'تعذر تحميل الموردين',
+    errorMessage: 'رسالة الخطأ',
+    excelOperations: 'عمليات إكسل',
+    excess: 'زيادة',
+    exchangeDifferenceCredit: 'فروق عملة (دائن)',
+    exchangeDifferenceDebit: 'فروق عملة (مدين)',
+    exitOperations: 'Çıkış İşlemleri',
+    expectedCash: 'النقد المتوقع',
+    expenseAnalysis: 'تحليل المصروفات',
+    expenseCodeDescription: 'كود المصرف / الوصف',
+    expenseCodePlaceholder: 'كود أو اسم المصرف...',
+    expenseVoucher: 'قسيمة ميعاد مصرف',
+    expenses: 'المصروفات',
+    expiringProducts: 'منتجات قريبة من الانتهاء',
+    explainCancelReason: 'اشرح سبب الإلغاء',
+    explainReturnReason: 'اشرح سبب الإرجاع...',
+    factoryResetConfirm: 'تنبيه: سيتم إرجاع التطبيق إلى إعدادات المصنع!\n\n- سيتم حذف جميع الإعدادات المحلية.\n- سيفتح معالج الإعداد مرة أخرى.\n- سيتم الحفاظ على بيانات قاعدة البيانات.\n\nهل تؤكد الإجراء؟',
+    farmersReceipt: 'إيصال مزارع',
+    fefoReport: 'FEFO Raporu',
+    ficheNo: 'Fiş No',
+    ficheType: 'İşlem Türü',
+    financeManagement: 'إدارة المالية',
+    financeReports: 'التقارير المالية',
+    financialStatements: 'القوائم المالية',
+    financialSummary: 'الملخص المالي',
+    firmPeriodDefinitions: 'تعريفات الشركة/الفترة',
+    firmSelection: 'Firma Seçimi',
+    firmSelectionScope: 'اختيار الشركة / FIRM',
+    firma: 'شركة',
+    first: 'İlk',
+    fiscalPeriod: 'فترة مالية',
+    fiscalYear: 'سنة مالية',
+    focusBarcodeInput: 'التركيز على حقل الباركود',
+    fullAmount: 'المبلغ الكامل',
+    gatewayFinishInstructions: 'انقر على "موافق" بعد إتمام الدفع. انقر على "إلغاء" إذا فشل الدفع.',
+    gatewayLabel: 'دفع عبر QR',
+    gatewayPageOpened: 'فتحت صفحة الدفع في تبويب جديد.',
+    generalLedger: 'دفتر الأستاذ العام',
+    generalReport: 'التقرير العام',
+    generalSale: 'بيع عام',
+    generateReport: 'إعداد التقرير',
+    giveUp: 'تراجع',
+    goBack: 'رجوع',
+    goodsReceiving: 'Mal Kabul',
+    grandTotal: 'المجموع الكلي',
+    grid: 'شبكة',
+    gridView: 'شبكة',
+    grossProfit: 'الربح الإجمالي',
+    grossSales: 'إجمالي المبيعات',
+    groupCodeDesc: 'Grup kodlarını yönetin',
+    groupCodes: 'أكواد المجموعات',
+    handoverAmount: 'مبلغ التسليم:',
+    handoverFromCashier: 'الصراف المسلم:',
+    helpMessage: 'إذا استمر هذا الخطأ، يرجى التحقق من وحدة تحكم المتصفح (F12) والاتصال بفريق الدعم الفني.',
+    historyMovements: 'حركات السجل',
+    holdPhoneToQr: 'وجه الهاتف نحو رمز الاستجابة السريعة',
+    homepage: 'الصفحة الرئيسية',
+    hourlySalesAnalysis: 'تحليل المبيعات للساعة',
+    howCalculated: 'Nasıl Hesaplanır?',
+    hrReports: 'الموارد البشرية',
+    hwid: 'معرف الجهاز (HWID)',
+    icon: 'İkon',
+    import: 'استيراد',
+    inOutQty: 'Giriş/Çıkış',
+    inOutTotals: 'إجمالي الداخل/الخارج',
+    incomeStatement: 'الجملة الدخلية',
+    incomeTax: 'ضريبة الدخل',
+    incomingTransfer: 'تحويل وارد',
+    incorrectPassword: 'كلمة مرور خاطئة!',
+    individual: 'فردي',
+    insufficientPayment: 'قيمة الدفع غير كافية!',
+    integrations: 'التكاملات',
+    intercompanyEliminations: 'الإلغاءات بين الشركات',
+    invalidCredentials: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+    invalidDate: 'Geçersiz Tarih',
+    invalidPassword: 'كلمة المرور غير صحيحة',
+    inventory: 'المخزون',
     inventoryDistribution: 'توزيع المخزون',
-    criticalStockAlerts: 'تنبيهات المخزون الحرجة',
+    inventoryList: 'Envanter Listesi',
+    inventoryManagement: 'عمليات الجرد والمخزون',
+    invoiceDeleteError: 'تعذر حذف الفاتورة',
+    invoiceDeleteSuccess: 'تم حذف الفاتورة بنجاح',
+    invoiceNo: 'رقم الفاتورة',
+    invoiceType: 'نوع الفاتورة',
+    invoices: 'الفواتير',
+    invoicesCount: 'فاتورة',
+    issuedServiceInvoicesDesc: 'الخدمات المقدمة للعملاء',
+    issuedServiceInvoicesTitle: 'فواتير الخدمات الصادرة',
+    itemsCount: 'عناصر',
+    journalEntries: 'القيود اليومية',
+    journalEntry: 'قيد يومي',
+    keyboardShortcuts: 'اختصارات لوحة المفاتيح',
+    keyboardShortcutsTitle: 'اختصارات لوحة المفاتيح (اضغط ?)',
+    kurdish: 'الكردية',
+    labelDesigner: 'مصمم الملصقات',
+    laborTracking: 'Personel Performans',
+    language: 'اللغة',
+    languageChangeInfo: 'تؤثر تغييرات اللغة على جميع الشاشات ويتم حفظها تلقائيًا.',
+    languageSelection: 'Dil Seçimi',
+    languageSelectionTitle: 'اختيار اللغة',
+    last: 'Son',
+    last24hLabel: '24 ساعة',
+    last7DaysSalesTrend: 'اتجاه المبيعات في آخر 7 أيام',
+    lastPurchase: 'آخر شراء',
+    lastReceipt: 'آخر إيصال',
+    lastReceiptButton: 'آخر إيصال',
+    layoutOptimization: 'Yerleşim Optimizasyonu',
+    liabilities: 'الالتزامات',
+    lightMode: 'Açık Tema',
+    list: 'قائمة',
+    listView: 'قائمة',
+    loading: 'جاري التحميل...',
+    loadingData: 'Veriler yükleniyor...',
+    loadingInvoices: 'جارٍ تحميل الفواتير...',
+    loadingInvoicesCount: 'الفواتير',
+    localCurrencyUnit: 'Birim: Yerel Para Birimi (IQD)',
+    localeCode: 'ar-SA',
+    localeName: 'العربية',
+    locationTransfer: 'Raf Transferi',
+    logAudit: 'السجلات والتدقيق',
+    login: 'تسجيل الدخول',
+    loginButton: 'تسجيل الدخول',
+    loginError: 'خطأ في تسجيل الدخول',
+    loginFailed: 'فشل تسجيل الدخول.',
+    logout: 'تسجيل الخروج',
+    lotTraceability: 'Lot İzlenebilirlik',
+    lotTransfer: 'Lot/Seri Transfer',
+    lowStock: 'مخزون منخفض',
     lowStockWarnings: 'تحذيرات انخفاض المخزون',
+    lowStockWarningsItem: 'Düşük Stok Uyarıları',
+    mainMenu: 'القائمة الرئيسية',
+    mainUnitCannotDelete: 'Ana birim silinemez',
+    mainUnitLabel: 'Ana Birim',
+    mainUnitRequired: 'Bir ana birim seçilmelidir',
+    management: 'الإدارة',
+    managementModule: 'الإدارة',
+    managementPanelAccess: 'الوصول إلى لوحة الإدارة',
+    manager: 'المدير',
+    manualEntry: 'إدخال يدوي',
+    masterRecords: 'السجلات الرئيسية',
+    materialClassDesc: 'Malzeme sınıflarını yönetin',
+    materialClasses: 'فئات المواد',
+    materialCodeName: 'كود/اسم المادة',
+    materialCodeOrName: 'Malzeme Kodu/Adı',
+    materialExtract: 'كشف المواد',
+    materialExtractReport: 'Malzeme Hareket Ekstresi',
+    materialManagement: 'إدارة المواد',
+    materialManagementSlips: 'سندات إدارة المواد',
+    materialMovement: 'تقرير حركة المواد',
+    materialValue: 'قيمة المواد',
+    materialValueReport: 'Malzeme Değer Raporu',
+    materialWarehouseStatus: 'حالة مخزن المواد',
+    materials: 'المواد',
+    max8Shortcuts: 'En fazla 8 kısayol seçebilirsiniz',
+    maxShortcutsTitle: 'يمكنك اختيار ما يصل إلى 8 اختصارات',
+    menu: {
+      accountingManagement: 'إدارة المحاسبة',
+      accountingVouchers: 'سندات محاسبية',
+      advancedReports100: '⭐ التقارير المتقدمة (+100)',
+      aiProductAnalytics: 'تحليلات المنتجات بالذكاء الاصطناعي',
+      backupRestore: 'النسخ الاحتياطي/الاستعادة',
+      balanceSheet: 'الميزانية العمومية',
+      bankAccounts: 'الحسابات البنكية',
+      bankPaymentPlans: 'خطط الدفع البنكية',
+      bankReports: 'تقارير البنوك',
+      bankSlips: 'سندات البنوك',
+      banks: 'البنوك',
+      biDashboardAi: 'لوحة BI والذكاء الاصطناعي',
+      brandDefinitions: 'تعريفات العلامات التجارية',
+      campaignDefinitions: 'تعريفات الحملات',
+      cards: 'البطاقات',
+      cashAccounts: 'حسابات الصندوق',
+      cashCards: 'بطاقات الخزينة',
+      cashOperations: 'عمليات الصندوق',
+      cashReports: 'تقارير الصندوق',
+      cashSlips: 'سندات الصندوق',
+      checkPromissory: 'شيكات/كمبيالات',
+      collectionPayment: 'تحصيل/دفع',
+      communicationAndNotifications: 'الاتصالات والتنبيهات',
+      consignmentSales: 'مبيعات الأمانة',
+      cost: 'التكلفة',
+      creditCardPosSlips: 'سندات نقاط البيع (POS)',
+      currentAccountReports: 'تقارير الحسابات الجارية',
+      currentAccountSlips: 'سندات الحسابات الجارية',
+      currentAccounts: 'الحسابات الجارية',
+      customReports: 'تقارير مخصصة',
+      customerAnalysis: 'تحليل العملاء',
+      dashboard: 'لوحة التحكم',
+      dataBroadcast: 'بث البيانات',
+      databaseInfrastructure: 'بنية قاعدة البيانات',
+      definitions: 'التعريفات',
+      definitionsParameters: 'التعريفات/المعاملات',
+      demoDataManagement: 'إدارة البيانات التجريبية',
+      designCenter: 'مركز التصميم',
+      emailCampaigns: 'حملات البريد الإلكتروني',
+      exSecureGateSecurity: 'ExSecureGate (الأمن)',
+      excelOperations: 'عمليات إكسل',
+      expenseManagement: 'إدارة المصروفات',
+      financeManagement: 'إدارة المالية',
+      firmPeriodDefinitions: 'تعريفات الشركة/الفترة',
+      generalReport: 'تقرير عام',
+      generalSettings: 'الإعدادات العامة',
+      graphicalAnalysis: 'التحليل الرسومي',
+      groupCodes: 'أكواد المجموعات',
+      homepage: 'الصفحة الرئيسية',
+      inOutTotals: 'إجمالي الداخل/الخارج',
+      incomeStatement: 'بيان الدخل',
+      integrations: 'التكاملات',
+      inventory: 'الجرد',
+      inventoryManagement: 'عمليات الجرد والمخزون',
+      inventoryCountOps: 'عمليات جرد المخزون',
+      mobileCount: 'الجرد المتنقل / إنشاء قسيمة',
+      countDeficitSlips: 'قسائم نقص الجرد',
+      countSurplusSlips: 'قسائم فائض الجرد',
+      invoices: 'الفواتير',
+      journalAndSlips: 'دفتر اليومية والسندات',
+      labelDesigner: 'مصمم الملصقات',
+      logAudit: 'السجلات والتدقيق',
+      mainMenu: 'القائمة الرئيسية',
+      masterRecords: 'السجلات الرئيسية',
+      materialClasses: 'فئات المواد',
+      materialExtract: 'كشف المواد',
+      materialManagement: 'إدارة المواد',
+      materialManagementSlips: 'سندات إدارة المواد',
+      materialValue: 'قيمة المواد',
+      materialWarehouseStatus: 'حالة مخزن المواد',
+      materials: 'المواد',
+      bankDepositDesc: 'إيداع نقدي في البنك',
+      bankTransferDesc: 'تحويل بين البنوك أو الخزائن',
+      bankWithdrawalDesc: 'سحب نقدي من البنك',
+      baseCurrency: 'العملة الأساسية',
+      baseCurrencyShort: 'أساس',
+      buyRate: 'سعر الشراء',
+      cashInDesc: 'دخول نقد إلى الصندوق',
+      cashOutDesc: 'خروج نقد من الصندوق',
+      chCollectionDesc: 'تحصيل من الحساب الجاري',
+      chPaymentDesc: 'دفع للحساب الجاري',
+      chartsTab: 'رسوم بيانية',
+      createTransaction: 'إنشاء معاملة',
+      currenciesTab: 'العملات',
+      currencyCode: 'رمز العملة',
+      currencyLabel: 'العملة',
+      currencyManagement: 'إدارة العملات',
+      currencyManagementDesc: 'إدارة العملات وأسعار الصرف',
+      currencyName: 'اسم العملة',
+      currencySymbol: 'رمز',
+      dailyRatesTab: 'أسعار يومية',
+      deleteComingSoon: 'الحذف قريبا',
+      editComingSoon: 'التعديل قريبا',
+      enterRate: 'إدخال السعر',
+      enteredBy: 'أدخلت بواسطة',
+      exchangeDifferenceCreditDesc: 'قيد دائن لفرق العملة',
+      exchangeDifferenceDebitDesc: 'قيد مدين لفرق العملة',
+      expenseVoucherDesc: 'دفع عبر قسيمة نفقات',
+      issuedSelfEmployedReceipt: 'إيصال عمل حر صادر',
+      issuedSelfEmployedReceiptDesc: 'إيصال عمل حر صادر',
+      newCurrency: 'عملة جديدة',
+      openingCreditDesc: 'قيد دائن للافتتاح',
+      openingDebitDesc: 'قيد مدين للافتتاح',
+      printComingSoon: 'الطباعة قريبا',
+      producerReceipt: 'إيصال منتج',
+      producerReceiptDesc: 'دفع عبر إيصال منتج',
+      rateChartsPlaceholder: 'رسوم العملات هنا',
+      rateHistoryPlaceholder: 'تاريخ الأسعار هنا',
+      rateHistoryTab: 'تاريخ الأسعار',
+      receivedSelfEmployedReceipt: 'إيصال عمل حر مستلم',
+      receivedSelfEmployedReceiptDesc: 'إيصال عمل حر مستلم',
+      reportingCurrency: 'عملة التقارير',
+      reportingCurrencyShort: 'تقرير',
+      safesCode: 'الخزائن',
+      selectDate: 'اختر التاريخ',
+      sellRate: 'سعر البيع',
+      updateRates: 'تحديث الأسعار',
+      menuManagement: 'إدارة القوائم',
+      minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
+      movements: 'الحركات',
+      multiCurrency: 'متعدد العملات',
+      multiStoreManagement: 'إدارة المتاجر المتعددة',
+      newBadge: 'جديد',
+      notificationCenter: 'مركز التنبيهات',
+      offers: 'العروض',
+      orders: 'الأوامr',
+      other: 'أخرى',
+      paymentPlans: 'خطط الدفع',
+      priceAndCampaign: 'الأسعار والحملات',
+      productCategories: 'فئات المنتجات',
+      profitabilityAnalyticsDashboard: '💰 لوحة تحليل الربحية',
+      purchaseInvoice: 'فاتورة مشتريات',
+      purchaseOrders: 'أوامر الشراء',
+      purchaseReturn: 'مرتجع مشتريات',
+      purchaseWaybill: 'سند شحن مشتريات',
+      purchasing: 'المشتريات',
+      receivedService: 'الخدمات المستلمة',
+      regionalFranchiseManagement: 'إدارة الموزعين الإقليميين',
+      reports: 'التقارير',
+      reportsAndAnalysis: 'التقارير والتحليل',
+      requestSlips: 'طلبات الشراء',
+      retail: 'التجزئة',
+      retailSales: 'مبيعات التجزئة',
+      roleAndAuthorization: 'الأدوار والصلاحيات',
+      salesInvoice: 'فاتورة مبيعات',
+      salesInvoices: 'فواتير المبيعات',
+      salesOrder: 'أمر مبيعات',
+      salesReports: 'تقارير المبيعات',
+      salesReturn: 'مرتجع مبيعات',
+      salesWaybill: 'سند شحن مبيعات',
+      scaleAndWeighedSales: 'مبيعات الميزان',
+      serviceInvoiceIssued: 'فاتورة خدمة صادرة',
+      serviceInvoiceReceived: 'فاتورة خدمة واردة',
+      serviceInvoices: 'فواتير الخدمات',
+      slipList: 'قائمة السندات',
+      smsManagement: 'إدارة SMS',
+      specialCodes: 'الأكواد الخاصة',
+      stockInventory: 'جرد المخزون',
+      stockManagementPanel: 'لوحة إدارة المخزون',
+      stockReports: 'تقارير المخزون',
+      storeConfiguration: 'تكوين المتجر',
+      storeManagement: 'إدارة المتجر',
+      storePanel: 'لوحة المتجر',
+      storeTransfer: 'تحويل بين المتاجر',
+      supplierCards: 'بطاقات الموردين',
+      systemHealth: 'صحة النظام',
+      systemManagement: 'إدارة النظام',
+      transactionBreakdown: 'تحليل المعاملات',
+      trialBalance: 'ميزان المراجعة',
+      trialBalanceReport: 'تقرير ميزان المراجعة',
+      unitSets: 'مجموعات الوحدات',
+      userManagement: 'إدارة المستخدمين',
+      variants: 'الأشكال والمتغيرات',
+      warehouseTransferWaybill: 'سند تحويل مخزني',
+      wasteWaybill: 'سند هالك',
+      waybills: 'سندات الشحن (Waybills)',
+      whatsappIntegration: 'تكامل واتساب',
+      wholesaleSales: 'مبيعات الجملة',
+      workflowAutomation: 'أتمتة سير العمل',
+    },
+    menuManagement: 'إدارة القوائم',
+    min1Shortcut: 'En az 1 kısayol seçmelisiniz',
+    minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
+    minimumAmountNotMet: 'لم يتم استيفاء الحد الأدنى للمبلغ',
+    missingBarcodes: 'الباركودات المفقودة',
+    missingBarcodesTitle: 'قائمة الباركودات المفقودة',
+    missingKasaId: 'معرف الصندوق مفقود! يرجى التنشيط والمحاولة مرة أخرى.',
+    mixedPayment: 'مختلط',
+    moduleInDevelopment: 'هذه الوحدة قيد التطوير حالياً وستتم إضافتها قريباً إلى نظام EX-ROSERP.',
+    moduleLoadError: 'خطأ في تحميل الوحدة',
+    moduleLoadErrorMessage: 'حدث خطأ أثناء تحميل شاشة \"{screenName}\". Primetime',
+    moduleLoadingError: 'خطأ في تحميل الوحدة',
+    modulePreparing: 'جاري تحضير الوحدة',
+    moduleUnderDevelopment: 'هذه الوحدة قيد التطوير حاليًا وستدرج في نظام EX-ROSERP قريبًا.',
+    moveTable: 'نقل الطاولة',
+    movementReport: 'Hareket Raporu',
+    movements: 'الحركات',
+    multiCurrency: 'متعدد العملات',
+    multiStoreManagement: 'إدارة المتاجر المتعددة',
+    multiplier1: 'Çarpan 1',
+    multiplier2: 'Çarpan 2',
+    multiplierLogicDesc: 'Birimler arası dönüşüm: (Birim) x Çarpan 1 = (Ana Birim) x Çarpan 2',
+    navigation: 'التنقل',
+    netIncome: 'الدخل الصافي',
+    netSales: 'صافي المبيعات',
+    networkError: 'حدث خطأ في الشبكة.',
+    newBadge: 'جديد',
+    newCustomer: 'عميل جديد',
+    newInvoice: 'Yeni Fatura',
+    newSalesOrder: 'طلب مبيعات جديد',
+    newUnitSet: 'مجموعة وحدات جديدة',
+    newUnitSetTitle: 'Yeni Birim Seti Tanımla',
+    next: 'Sonraki',
+    noCriticalStock: 'لا توجد منتجات في مستوى مخزون حرج',
+    noCriticalStockInfo: 'Kritik stok seviyesinde ürün yok',
+    noCustomer: 'Müşterisiz',
+    noCustomerSale: 'بيع بدون عميل',
+    noCustomerSaleDescription: 'بيع بالتجزئة',
+    noLogsYet: 'لا توجد سجلات بعد',
+    noLowStock: 'لا توجد منتجات في مستوى مخزون منخفض',
+    noLowStockInfo: 'Düşük stok seviyesinde ürün yok',
+    noLowStockWarning: 'Düşük stok seviyesinde ürün yok',
+    noMissingBarcodes: 'لا توجد باركودات مفقودة بعد.',
+    noParkedReceipts: 'لا توجد إيصالات معلقة',
+    noParkedReceiptsDescription: 'ستظهر الإيصالات المعلقة هنا',
+    noProductsFound: 'لم يتم العثور على منتجات',
+    noRecordFound: 'لم يتم العثور على سجلات',
+    noRecordsFound: 'Kayıt bulunamadı',
+    noResultsFound: 'Sonuç bulunamadı',
+    noReturnPolicyNotice: 'لا يسمح بالإرجاع أو الإلغاء.',
+    noSalesFound: 'لم يتم العثور على مبيعات',
+    noSalesHistory: 'لا يوجد تاريخ مبيعات',
+    noSalesRecordFound: 'لا يتم العثور على سجل مبيعات',
+    noteOptional: 'ملاحظة (اختياري)',
+    notesLabel: 'ملاحظات',
+    notificationCenter: 'مركز التنبيهات',
+    numpad: 'لوحة الأرقام',
+    numpadMode: 'وضع لوحة الأرقام',
+    numpadModeAdd: '+ إضافة',
+    numpadModeReplace: '↻ استبدال',
+    occupancyReport: 'Doluluk Analizi',
+    offers: 'العروض',
+    online: 'متصل',
+    onlineDevicesLabel: 'متصل',
+    openAccountWarning: 'إذا لم يتم الاختيار، فسيتم التعامل معه كحساب مفتوح (آجل)',
+    openCashRegister: 'فتح السجل النقدي',
+    openCashRegisterProcess: 'عملية فتح الصندوق',
+    openCashRegisterToAddProduct: 'يجب فتح الصندوق أولاً لإضافة المنتجات!',
+    openCashRegisterToSell: 'يجب فتح الصندوق أولاً لإتمام البيع!',
+    openNewPeriod: 'فتح فترة جديدة',
+    openRegister: 'فتح الصندوق',
+    openingCashAmount: 'مبلغ فتح الصندوق',
+    openingCashDescription: 'سيتم استخدام هذا المبلغ كصندوق افتتاحي طوال الجلسة',
+    openingCashRegister: 'صندوق الافتتاح:',
+    openingCredit: 'افتتاح (دائن)',
+    openingDebit: 'افتتاح (مدين)',
+    operatingExpenses: 'المصروفات التشغيلية',
+    operation: 'عملية',
+    operationAmount: 'مبلغ العملية',
+    operationSaveFailed: 'فشل حفظ العملية',
+    operationSavedSuccessfully: 'تم حفظ العملية بنجاح',
+    orderCreatedSuccessfully: '✅ تم إنشاء الطلب بنجاح!',
+    orderCreationError: '❌ خطأ في إنشاء الطلب!',
+    orderDiscount: 'خصم الطلب',
+    orderForm: 'نموذج الطلب',
+    orderNote: 'ملاحظة الطلب',
+    orderNoteDescription: 'ستظهر هذه الملاحظة على شاشة المطبخ والإيصال.',
+    orderNotePlaceholder: 'أضف ملاحظة حول الطلب (مثال: بدون بهارات، كاتشب أقل...)',
+    orderRecommended: 'يوصى بالطلب',
+    orders: 'الأوامr',
+    other: 'أخرى',
+    otherReason: 'أسباب أخرى',
+    otherType: 'Farklı',
+    outOfStock: 'نفد من المخزون',
+    outgoingTransfer: 'تحويل صادر',
+    page: 'صفحة',
+    pageRange: '{start}-{end}',
+    paidAmount: 'المدفوع',
+    parkReceipt: 'تعليق الإيصال',
+    parkedAt: 'تم التعليق في',
+    parkedBy: 'تم التعليق بواسطة',
+    parkedReceiptDeleted: 'تم حذف الإيصال المعلق',
+    parkedReceiptRetrieved: 'تم استرجاع الإيصال المعلق',
+    parkedReceipts: 'الإيصال المعلق',
+    parkedReceiptsButton: 'معلق',
+    parkedReceiptsTitle: 'الإيصالات المعلقة',
+    passiveStatus: 'PASİF',
+    password: 'كلمة المرور',
+    payment: 'الدفع',
+    paymentAmount: 'مبلغ الدفع',
+    paymentAmountLabel: 'مبلغ الدفع',
+    paymentCardPOS: 'بطاقة (POS)',
+    paymentCash: 'نقدي',
+    paymentCredit: 'على الحساب (آجل)',
+    paymentFailed: 'تعذر بدء الدفع:',
+    paymentInfo: 'معلومات الدفع',
+    paymentLabel: 'الدفع',
+    paymentMethod: 'طريقة الدفع',
+    paymentMethodDistribution: 'توزيع طرق الدفع',
+    paymentMethodLabel: 'طريقة الدفع',
+    paymentMethods: 'طرق الدفع',
+    paymentMethodsChart: 'Ödeme Yöntemleri',
+    paymentMethodsDashboard: 'طرق الدفع',
+    paymentNotesPlaceholder: 'ملاحظات حول الدفع...',
+    paymentPlans: 'خطط الدفع',
+    paymentProvider: 'مزود الدفع',
+    paymentQRProvider: 'مزود دفع QR',
+    paymentStartError: 'تعذر بدء الدفع',
+    paymentSummary: 'ملخص الدفع',
+    paymentTermDays: 'مدة الدفع (يوم)',
+    paymentTitle: 'الدفع',
+    payments: 'المدفوعات',
+    pcs: 'قطعة',
+    pending: 'في انتظار الموافقة',
+    pendingBroadcastsLabel: 'معلق',
+    percentage: 'النسبة المئوية',
+    performanceDashboard: 'Performans Dashboard',
+    periodClosed: 'فترة مغلقة',
+    periodComparison: 'مقارنة الفترات',
+    periodManagement: 'إدارة الفترات',
+    periodOpen: 'فترة مفتوحة',
+    phoneAddress: 'الهاتف / العنوان',
+    phoneLabel: 'الهاتف',
+    piece: 'قطعة',
+    pieces: 'قطع',
+    placeholderDescription: 'ملاحظة حول العملية...',
+    placeholderDocumentNo: 'مثال: 000123',
+    placeholderSpecialCode: 'مثال: PRJ001',
+    planningOptimization: 'Planlama & Optimizasyon',
+    pleaseAddAtLeastOneProduct: 'يرجى إضافة منتج واحد على الأقل!',
+    pleaseEnterAmount: 'يرجى إدخال المبلغ',
+    pleaseEnterBarcode: 'يرجى إدخال الباركود',
+    pleaseEnterBarcodeFirst: 'يرجى إدخال الباركود أولاً',
+    pleaseEnterFirmId: 'يرجى إدخال معرف الشركة',
+    pleaseEnterQuantityFirst: 'يرجى إدخال الكمية أولاً، ثم اضغط *',
+    pleaseExplainCancelReason: 'الرجاء شرح سبب الإلغاء!',
+    pleaseExplainReturnReason: 'الرجاء شرح سبب الإرجاع!',
+    pleaseSelectCancelReason: 'الرجاء اختيار سبب الإلغاء!',
+    pleaseSelectCurrentAccount: 'يرجى اختيار حساب جاري',
+    pleaseSelectCustomer: 'يرجى اختيار عميل!',
+    pleaseSelectReceipt: 'الرجاء اختيار إيصال!',
+    pleaseSelectReturnProducts: 'الرجاء اختيار المنتجات المراد إرجاعها!',
+    pleaseSelectReturnReason: 'الرجاء اختيار سبب الإرجاع!',
+    pleaseSelectVariant: 'يرجى اختيار المتغير',
+    pos: 'عمليات نقاط البيع',
+    posModule: 'المبيعات',
+    posPaymentDesc: 'دفع مبيعات POS',
+    posted: 'منشور',
+    potentialProfit: 'الربح المحتمل',
+    prepareReport: 'Raporu Hazırla',
+    preparingModule: 'وحدة \"{screenName}\" قيد التحضير',
+    previous: 'Önceki',
+    price: 'السعر',
+    priceAndCampaign: 'الأسعار والحملات',
+    priceBulkUpdateSuccess: 'Tüm ürün fiyatları %{percent} artırıldı',
+    priceInfo: 'معلومات السعر',
+    priceLabel: 'السعر',
+    priceProblem: 'مشكلة السعر',
+    pricingInfo: 'معلومات التسعير',
+    print: 'طباعة',
+    printReceipt: 'طباعة الإيصال',
+    printReport: 'طباعة التقرير',
+    processingText: 'جار المعالجة...',
+    product: 'المنتج',
+    productAdded: 'تمت إضافة المنتج إلى السلة',
+    productAddedToCart: 'تمت إضافة {productName} إلى السلة',
+    productAssignedToSlot: 'تم تعيين {productName} إلى الفتحة #{slotNumber}',
+    productBased: 'حسب المنتج',
+    productCards: 'Ürün Kartı',
+    productCatDesc: 'Ürün kategorilerini yönetin',
+    productCatalog: 'كتالوج المنتجات',
+    productCategories: 'فئات المنتجات',
+    productCount: 'المنتج',
+    productDefective: 'المنتج معيب',
+    productDetails: 'تفاصيل المنتج',
+    productInfo: 'معلومات المنتج',
+    productLabel: 'المنتج',
+    productManagement: 'Ürün Yönetimi',
+    productName: 'اسم المنتج',
+    productQuery: 'استعلام المنتج',
+    productRemoved: 'تمت إزالة المنتج من السلة',
+    productRemovedFromCart: 'تمت إزالة المنتج من السلة',
+    productSearch: 'بحث المنتج',
+    productSelection: 'اختيار المنتج',
+    productionEntry: 'Üretimden Giriş',
+    productionIssue: 'Üretime Çıkış',
+    productionReceiving: 'Üretimden Giriş',
     productsAtCriticalLevel: 'منتجات في المستوى الحرج',
     productsAtLowLevel: 'منتجات في مستوى منخفض',
-    remaining: 'المتبقي',
-    urgentOrder: 'طلب عاجل!',
-    orderRecommended: 'يوصى بالطلب',
-    noCriticalStock: 'لا توجد منتجات في مستوى مخزون حرج',
-    noLowStock: 'لا توجد منتجات في مستوى مخزون منخفض',
-    customizeShortcuts: 'تخصيص الوصول السريع',
-    maxShortcutsTitle: 'يمكنك اختيار ما يصل إلى 8 اختصارات',
-    shortcutsSelected: 'اختصارات محددة',
-    selectAtLeastOneShortcut: 'يجب عليك اختيار اختصار واحد على الأقل',
-    saveShortcutsError: 'تعذر حفظ الاختصارات. يرجى المحاولة مرة أخرى.',
-    dashboardTransaction: 'معاملات',
-    stockLabel: 'المخزون',
-    print: 'طباعة',
-    download: 'تحميل',
-    currency: 'دينار',
-    paymentCash: 'نقدي',
-    paymentCardPOS: 'بطاقة (POS)',
-    paymentCredit: 'على الحساب (آجل)',
-    paymentQRProvider: 'مزود دفع QR',
-    campaignDiscountPayment: 'خصم الحملة',
-    additionalDiscount: 'خصم إضافي (اختياري)',
-    subtotalUppercase: 'المجموع الفرعي',
-    totalUppercase: 'الإجمالي',
-    paidAmount: 'المدفوع',
-    remainingAmount: 'المتبقي',
-    changeAmount: 'الباقي (الفكة)',
-    addedPayments: 'المدفوعات المضافة',
-    amountInput: 'المبلغ',
-    fullAmountBtn: 'المبلغ الكامل',
-    addPaymentBtn: 'إضافة دفع',
-    numpadPrice: 'السعر',
-    numpadConfirm: 'تأكيد',
-    paymentProcessing: 'جاري المعالجة...',
-    paymentStartError: 'تعذر بدء الدفع',
-    posPaymentDesc: 'دفع مبيعات POS',
-    scanQRCode: 'امسح رمز QR',
+    productsCount: 'منتجات',
+    productsLabel: 'المنتج',
+    productsToReturn: 'المنتجات المراد إرجاعها',
+    profitLoss: 'الربح والخسارة',
+    profitLossReport: 'تقرير الربح والخسارة',
+    profitMargin: 'هامش الربح',
+    profitMarginDashboard: 'Kar Marjı',
+    profitabilityAnalyticsDashboard: '💰 لوحة تحليل الربحية',
+    promissoryNote: 'سند لأمر',
+    purchase: 'شراء',
+    purchaseInvoice: 'فاتورة مشتريات',
+    purchaseInvoicesDesc: 'جميع عمليات المشتريات',
+    purchaseInvoicesTitle: 'فواتير المشتريات',
+    purchaseOrder: 'Alış Siparişi',
+    purchaseOrders: 'أوامر الشراء',
+    purchaseQuote: 'Alış Teklifi',
+    purchaseReturn: 'مرتجع مشتريات',
+    purchaseReturnDesc: 'المرتجع للموردين',
+    purchaseReturnTitle: 'مرتجع المشتريات',
+    purchaseSupplierDesc: 'حساب شراء الموردين',
+    purchaseWaybill: 'سند شحن مشتريات',
+    purchases: 'المشتريات',
+    purchasing: 'المشتريات',
+    qrCustomerInstruction: 'يمكن للعميل إكمال الدفع عن طريق مسح رمز الاستجابة السريعة بهاتفه',
     qrInstructions: 'يمكن للعميل إكمال الدفع عن طريق مسح رمز QR بهاتفه',
-    paymentAmountLabel: 'مبلغ الدفع',
+    qrScanCode: 'امسح رمز الاستجابة السريعة',
     qrStep1: 'الخطوة 1',
     qrStep1Desc: 'وجه الهاتف نحو رمز QR',
     qrStep2: 'الخطوة 2',
     qrStep2Desc: 'تأكيد الدفع',
-    discountPercentPlaceholder: 'نسبة الخصم %',
-    discountAmountPlaceholder: 'مبلغ الخصم',
-    paymentMethodLabel: 'طريقة الدفع',
-    balanceLoading: 'تعبئة رصيد',
-    serviceTopUp: 'شحن الخدمة',
-    transactionNumberLabel: 'رقم المعاملة/الشخص',
-    digitalProductSaleNotice: 'هذه المعاملة هي بيع منتج رقمي.',
-    noReturnPolicyNotice: 'لا يسمح بالإرجاع أو الإلغاء.',
-    smsNotificationSent: 'تم إرسال إشعار SMS',
-    receiptDataError: 'تعذر تحميل بيانات الإيصال',
-    paymentInfo: 'معلومات الدفع',
-    openAccountWarning: 'إذا لم يتم الاختيار، فسيتم التعامل معه كحساب مفتوح (آجل)',
-    paymentNotesPlaceholder: 'ملاحظات حول الدفع...',
-    checkLabel: 'شيك',
-    promissoryNote: 'سند لأمر',
-    tagline: 'نظام إدارة المبيعات الاحترافي',
-    systemAdmin: 'مسؤول النظام',
-    campaignLabel: 'الحملة',
-    defaultLocation: 'بغداد، العراق',
-    defaultCompanyName: 'RetailEX',
-    thanksForChoosingUs: '★★★ شكراً لاختياركم لنا ★★★',
-    receiptRequiredForReturns: 'هذا الإيصال مطلوب لعمليات الإرجاع والاستبدال.',
-    bankTransfer: 'تحويل بنكي',
-    mixedPayment: 'مختلط',
-    rowDiscount: 'خصم السطر',
-    paymentProvider: 'مزود الدفع',
-    numpadMode: 'وضع لوحة الأرقام',
-    numpadModeAdd: '+ إضافة',
-    numpadModeReplace: '↻ استبدال',
-    gatewayPageOpened: 'فتحت صفحة الدفع في تبويب جديد.',
-    gatewayFinishInstructions: 'انقر على "موافق" بعد إتمام الدفع. انقر على "إلغاء" إذا فشل الدفع.',
-
-    // Advanced Reports Category Names
-    salesReports: 'تقارير المبيعات',
-    stockReports: 'تقارير المخزون',
-    financeReports: 'التقارير المالية',
-    customerReports: 'تقارير العملاء',
-    hrReports: 'الموارد البشرية',
-    customReports: 'تقارير مخصصة',
-    reportCountLabel: 'تقرير',
-
-    // Open Cash Register Modal
-    openCashRegisterProcess: 'عملية فتح الصندوق',
-    cashHandoverAccept: 'قبول تسليم النقد',
-    numpad: 'لوحة الأرقام',
-    cashHandoverAvailable: 'تسليم نقدي متاح',
-    handoverFromCashier: 'الصراف المسلم:',
-    handoverAmount: 'مبلغ التسليم:',
-    sessionInformation: 'معلومات الجلسة',
-
-    banknoteCount: 'عد الأوراق النقدية',
-    openingCashAmount: 'مبلغ فتح الصندوق',
-    banknoteAndCoinCount: 'عد الأوراق النقدية والعملات المعدنية',
-
-    openingCashRegister: 'صندوق الافتتاح:',
-    openingCashDescription: 'سيتم استخدام هذا المبلغ كصندوق افتتاحي طوال الجلسة',
-    noteOptional: 'ملاحظة (اختياري)',
-    cashOpeningNotePlaceholder: 'اكتب ملاحظاتك المتعلقة بفتح الصندوق...',
-
-    zeroOpeningCashConfirm: 'سيتم إدخال صندوق الافتتاح كـ 0.00. هل تريد المتابعة؟',
-    administrator: 'مدير',
-
+    quantity: 'الكمية',
+    quantitySaved: 'تم حفظ الكمية',
+    quantitySavedBarcodeEnter: 'الكمية: {quantity} - أدخل الباركود',
+    quantitySavedMessage: 'تم حفظ الكمية: {quantity}. أدخل الباركود الآن.',
+    quick: 'إجراءات سريعة',
+    quickAccess: 'الوصول السريع',
+    quickPayment: 'دفع سريع',
+    quickProductAdd: 'منتج سريع',
     quickProductPageSelect: 'اختر صفحة المنتج السريع',
-
-    // Cancel Receipt Modal
-    cancelReceiptTitle: 'إلغاء الإيصال - اختر السبب',
-    customerChangedMind: 'العميل تراجع',
-    wrongProductAdded: 'تمت إضافة منتج خاطئ',
-    priceProblem: 'مشكلة السعر',
-    systemError: 'خطأ في النظام',
-    explainCancelReason: 'اشرح سبب الإلغاء',
-    cancelReasonPlaceholder: 'اكتب سبب الإلغاء...',
-    pleaseSelectCancelReason: 'الرجاء اختيار سبب الإلغاء!',
-    pleaseExplainCancelReason: 'الرجاء شرح سبب الإلغاء!',
-    giveUp: 'تراجع',
-
-    // Return Modal
-    receiptBased: 'حسب الفاتورة',
-    productBased: 'حسب المنتج',
-    searchProductByName: 'ابحث باسم المنتج...',
-
-
-
-    productsToReturn: 'المنتجات المراد إرجاعها',
-    selectedProducts: 'المنتجات المحددة',
-    saleQuantity: 'كمية البيع',
-    unitPrice: 'سعر الوحدة',
-
-
-    allBtn: 'الكل',
-
-
-    explainReturnReason: 'اشرح سبب الإرجاع...',
-
-
-
-
-
-
-
-    selectProductForReturn: 'اختر المنتجات للإرجاع',
-    totalSale: 'إجمالي البيع',
-
-    differentReceipts: 'إيصالات مختلفة',
-    pleaseSelectReceipt: 'الرجاء اختيار إيصال!',
-    pleaseSelectReturnProducts: 'الرجاء اختيار المنتجات المراد إرجاعها!',
-    pleaseSelectReturnReason: 'الرجاء اختيار سبب الإرجاع!',
-    pleaseExplainReturnReason: 'الرجاء شرح سبب الإرجاع!',
-
-
-
-
-
-
-    // Product Catalog Modal
-    searchProductBarcodeCategory: 'ابحث عن اسم المنتج أو الباركود أو الفئة...',
-
-    detail: 'التفاصيل',
-    selectVariant: 'اختر المتغير',
-    assignToSlot: 'تعيين إلى الفتحة',
-
-    variantAvailable: 'متغير متاح',
-    stock: 'المخزون',
-
-    selectVariantLabel: 'اختر المتغير:',
-    productSelection: 'اختيار المنتج',
     quickProductSlot: 'فتحة منتج سريع',
-
-    // Stock Query Modal keys cleaned up (Duplicates removed)
-    // productCatalog: 'كتالوج المنتجات',
-    // stockStatus: 'حالة المخزون',
-    // currentStock: 'المخزون الحالي',
-    // unit: 'الوحدة',
-    // pricingInfo: 'معلومات التسعير',
-    // salePrice: 'سعر البيع',
-    // cost: 'التكلفة',
-    // profitMargin: 'هامش الربح',
-    // stockValue: 'قيمة المخزون',
-    // costValue: 'قيمة التكلفة',
-    // saleValue: 'قيمة البيع',
-    // branchVariantStocks: 'مخزونات المتغيرات حسب الفرع',
-    // branchStocks: 'مخزونات الفروع',
-    // totalAllBranches: 'إجمالي جميع الفروع',
-    // noProductsFound: 'لم يتم العثور على منتجات',
-    // changeSearchCriteria: 'حاول تغيير معايير البحث',
-    // grid: 'شبكة',
-    // list: 'قائمة',
-
-
-    // Error Boundary
-    anErrorOccurred: 'حدث خطأ',
-    unexpectedErrorEncountered: 'تم مواجهة خطأ غير متوقع',
-    errorMessage: 'رسالة الخطأ',
-    technicalDetails: 'التفاصيل التقنية',
-    technicalDetailsForDevelopers: 'التفاصيل التقنية (للمطورين)',
+    rankingByRevenue: 'الترتيب حسب الإيرادات',
+    receipt: 'الإيصال',
+    receiptBased: 'حسب الفاتورة',
+    receiptCancelled: 'تم إلغاء الإيصال: {reason}',
+    receiptDataError: 'تعذر تحميل بيانات الإيصال',
+    receiptDetails: 'تفاصيل الإيصال',
+    receiptNo: 'رقم الإيصال',
+    receiptNote: 'ملاحظة الإيصال',
+    receiptNumberOrCustomerSearch: 'ابحث برقم الإيصال أو اسم العميل...',
+    receiptParked: 'تم تعليق الإيصال',
+    receiptRequiredForReturns: 'هذا الإيصال مطلوب لعمليات الإرجاع والاستبدال.',
+    receipts: 'المقبوضات',
+    receivePayment: 'استلام الدفع',
+    receivedAmount: 'المبلغ المستلم',
+    receivedService: 'الخدمات المستلمة',
+    receivedServiceInvoicesDesc: 'الخدمات المستلمة من الموردين',
+    receivedServiceInvoicesTitle: 'فواتير الخدمات المستلمة',
+    recentMovements: 'الحركات الأخيرة',
+    recentProducts: 'المبيعات الأخيرة',
+    records: 'kayıt',
+    recordsCount: 'Kayıt',
     refreshPage: 'تحديث الصفحة',
-    goBack: 'رجوع',
-    helpMessage: 'إذا استمر هذا الخطأ، يرجى التحقق من وحدة تحكم المتصفح (F12) والاتصال بفريق الدعم الفني.',
-
-    // Close Cash Register Modal
-    closeCashRegisterProcess: 'عملية إغلاق الصندوق',
-    salesSummary: 'ملخص المبيعات',
-    grossSales: 'إجمالي المبيعات',
-    returnTotal: 'إجمالي المرتجعات',
-    netSales: 'صافي المبيعات',
-    paymentMethods: 'طرق الدفع',
-    cashSales: 'مبيعات نقدية',
-    creditCard: 'بطاقة ائتمان',
-    totalCollection: 'إجمالي التحصيل',
-    cashStatus: 'حالة النقد',
-    cardSales: 'مبيعات البطاقة',
-    expectedCash: 'النقد المتوقع',
-    countedCashAmount: 'النقد المعدود',
-    cashCountExample: 'مثال: 1000.00',
-    cashDifference: 'فرق النقد',
-    cashBalanced: 'متوازن',
-    excess: 'زيادة',
-    shortage: 'نقص',
-    cashClosingNotePlaceholder: 'اكتب ملاحظاتك بخصوص إغلاق الصندوق...',
-    printReport: 'طباعة التقرير',
-    transferToOtherCashier: 'تحويل لصراف آخر',
-    cashCountRequired: 'يرجى إدخال المبلغ النقدي المعدود!',
-    cashDifferenceConfirm: 'يوجد فرق في النقد. هل تريد المتابعة؟',
-    cashClosedSuccessfully: 'تم إغلاق الصندوق بنجاح!',
-    cashHandoverCountRequired: 'يرجى إدخال مبلغ التسليم!',
-    sessionDay: 'يوم',
-    session: 'جلسة',
-
-
-    // Main Layout (Lines 500-509)
-    posModule: 'المبيعات',
-    managementModule: 'الإدارة',
-    wmsModule: 'نظام إدارة المستودعات',
-    setDateTime: 'ضبط التاريخ والوقت',
-    requiresAdminPassword: 'يتطلب هذا الإجراء امتيازات المسؤول. قد تؤثر تغييرات التاريخ على سجلات المبيعات.',
-    enterAdminPassword: 'أدخل كلمة مرور المسؤول',
-    managementPanelAccess: 'الوصول إلى لوحة الإدارة',
-    incorrectPassword: 'كلمة مرور خاطئة!',
-
-    // Central Data Management (Lines 511-526)
-    centralDataManagementSystem: 'نظام إدارة البيانات المركزي',
-    centralDataManagementSubtitle: 'إدارة المزامنة والبث للمؤسسات v2.0',
-    backup: 'نسخ احتياطي',
-    import: 'استيراد',
-    sending: 'جاري الإرسال...',
-    sendNow: 'إرسال الآن',
-    totalDevicesLabel: 'إجمالي الأجهزة',
-    onlineDevicesLabel: 'متصل',
-    pendingBroadcastsLabel: 'معلق',
-    scheduledBroadcastsLabel: 'مجدول',
-    successRateLabel: 'نسبة النجاح',
-    last24hLabel: '24 ساعة',
-    dataTransferLabel: 'نقل البيانات',
-    sendDataTab: 'إرسال البيانات',
-    dataTypeLabel: 'نوع البيانات',
-
-    // Login & System (Lines 528-556)
-    supportCenter: 'مركز الدعم',
-    hwid: 'معرف الجهاز (HWID)',
-    copy: 'نسخ',
-    copied: 'تم النسخ',
-    status: 'الحالة',
-    online: 'متصل',
-    waiting: 'قيد الانتظار',
-    startSupport: 'بدء الدعم',
-    closeWindow: 'إغلاق النافذة',
-    systemLogsTitle: 'سجلات النظام',
-    diagnosticsSubtitle: 'التشخيص والتدقيق في الوقت الفعلي',
-    noLogsYet: 'لا توجد سجلات بعد',
-    totalEntries: 'إجمالي السجلات',
-    enterUsernamePassword: 'الرجاء إدخال اسم المستخدم وكلمة المرور.',
-    step01Auth: 'الخطوة 01 / المصادقة',
-    step02Scope: 'الخطوة 02 / النطاق',
-    verifying: 'جاري التحقق...',
-    firmSelectionScope: 'اختيار الشركة / FIRM',
-    storeSelectionScope: 'اختيار الفرع / STORE',
-    selectFirmPrompt: 'اختر الشركة',
-    editInfo: 'تعديل المعلومات',
-
-    continue: 'استمرار',
-    systemLogin: 'تسجيل الدخول للنظام',
-    invalidCredentials: 'اسم المستخدم أو كلمة المرور غير صحيحة',
-    loginFailed: 'فشل تسجيل الدخول.',
-    networkError: 'حدث خطأ في الشبكة.',
-    systemLogs: 'سجلات النظام',
-    factoryResetConfirm: 'تنبيه: سيتم إرجاع التطبيق إلى إعدادات المصنع!\n\n- سيتم حذف جميع الإعدادات المحلية.\n- سيفتح معالج الإعداد مرة أخرى.\n- سيتم الحفاظ على بيانات قاعدة البيانات.\n\nهل تؤكد الإجراء؟',
-    resetFailed: 'فشل إعادة الضبط:',
-    selectSystemLanguage: 'اختر لغة النظام',
+    refreshStocks: 'Stokları Yenile',
+    regionalFranchiseManagement: 'إدارة الموزعين الإقليميين',
+    registeredCustomer: 'عملاء مسجلون',
+    registeredCustomers: 'Kayıtlı Müşteri',
+    rejected: 'مرفوض',
+    remaining: 'المتبقي',
+    remainingAmount: 'المتبقي',
+    remainingQty: 'Kalan:',
+    rememberMe: 'تذكرني',
     remoteSupportRequestSent: 'تم إرسال طلب الدعم السريع إلى المركز.',
     remoteSupportWarning: 'تنبيه: عند بدء الدعم عن بعد، فإنك تمنح الفريق الفني صلاحية وصول محدودة.',
-    confirmClearLogs: 'سیتم مسح جميع السجلات. هل أنت متأكد؟',
-
-
-
-    // MarketPOS & Kasa Operations
+    remove: 'إزالة',
+    reportCountLabel: 'تقرير',
+    reportStructureNote: 'يتم احتساب هيكل التقرير هذا بشكل فوري عبر قاعدة بيانات RetailEX المحلية (PostgreSQL) باستخدام محرك الرصيد المتحرك غير المتزامن، وهو متوافق تمامًا مع معايير Logo ERP المؤسسية.',
+    reporting: 'التقارير',
+    reportingAnalysis: 'Raporlama & Analiz',
+    reportingDesc: 'تقارير المبيعات والتحليلات',
+    reports: 'التقارير',
+    reportsAndAnalysis: 'التقارير والتحليل',
+    reportsCashStatus: 'حالة الصندوق',
+    reportsCustomerLabel: 'عميل',
+    reportsStockStatus: 'حالة المخزون',
+    requestSlips: 'طلبات الشراء',
+    requiresAdminPassword: 'يتطلب هذا الإجراء امتيازات المسؤول. قد تؤثر تغييرات التاريخ على سجلات المبيعات.',
+    reserved: 'محجوز',
+    reset: 'إعادة تعيين',
+    resetFailed: 'فشل إعادة الضبط:',
+    restCategory: 'Rest. Kategori',
+    results: 'نتائج',
+    resultsFound: 'sonuç bulundu',
+    retail: 'التجزئة',
+    retailCustomer: 'عميل التجزئة',
+    retailSales: 'مبيعات التجزئة',
+    retailSalesDesc: 'عمليات مبيعات التجزئة',
+    retailSalesTitle: 'مبيعات التجزئة',
+    return: 'إرجاع',
+    returnAmount: 'مبلغ الإرجاع',
+    returnCancelTitle: 'إرجاع / إلغاء',
+    returnCompleted: 'تم إتمام الإرجاع',
+    returnProducts: 'المنتجات المراد إرجاعها',
+    returnQuantity: 'كمية الإرجاع',
+    returnReason: 'سبب الإرجاع',
+    returnReasonPlaceholder: 'اختر سبب الإرجاع...',
+    returnReceiving: 'İade Kabul',
+    returnToDashboard: 'العودة إلى لوحة التحكم',
+    returnTotal: 'إجمالي المرتجعات',
+    returnTransaction: 'إرجاع',
+    revenue: 'الإيرادات',
+    reversed: 'مقلوب',
+    roleAndAuthorization: 'الأدوار والصلاحيات',
+    routeOptimization: 'Rota Optimizasyonu',
+    rowDiscount: 'خصم السطر',
+    rowOrder: 'سلسلة',
+    runningQuantity: 'Kalan Miktar',
+    saleCompleted: 'تم إتمام البيع',
+    salePrice: 'سعر البيع',
+    saleQuantity: 'كمية البيع',
     saleSaveFailed: 'فشل حفظ عملية البيع',
-    unknownError: 'خطأ غير معروف',
-    chCollection: 'تحصيل حساب جاري',
-    chPayment: 'دفع حساب جاري',
-    cashIn: 'وارد صندوق',
-    cashOut: 'صادر صندوق',
-    bankDeposit: 'إيداع بنكي',
-    bankWithdrawal: 'سحب بنكي',
-    cashTransfer: 'تحويل بين الصناديق',
-    expenseVoucher: 'قسيمة ميعاد مصرف',
+    saleValue: 'قيمة البيع',
+    sales: 'المبيعات',
+    salesCount: 'مبيعات',
+    salesCustomerDesc: 'حساب مبيعات العملاء',
+    salesDetails: 'تفاصيل المبيعات',
+    salesHistory: 'تاريخ المبيعات',
+    salesHistoryTitle: 'تاريخ المبيعات',
+    salesInvoice: 'فاتورة مبيعات',
+    salesInvoices: 'فواتير المبيعات',
+    salesInvoicesDesc: 'جميع العمليات البيعية ومبيعات POS',
+    salesInvoicesTitle: 'فواتير المبيعات',
+    salesOrder: 'أمر مبيعات',
+    salesQuantity: 'كمية البيع',
+    salesQuote: 'Satış Teklifi',
+    salesReports: 'تقارير المبيعات',
+    salesReturn: 'مرتجع مبيعات',
+    salesReturnDesc: 'المرتجع من العملاء',
+    salesReturnTitle: 'مرتجع المبيعات',
+    salesTrendAnalysis: 'تحليل اتجاه المبيعات',
+    salesWaybill: 'سند شحن مبيعات',
+    salesWillAppearHere: 'ستظهر المبيعات المكتملة هنا',
+    save: 'حفظ',
+    saveAndTestConnection: 'Bağlantıyı Kaydet & Test Et',
+    saveChanges: 'حفظ التغييرات',
+    saveFailed: 'فشل الحفظ',
+    saveOperation: 'حفظ العملية',
+    saveOrder: 'حفظ الطلب',
+    saveShortcutsError: 'تعذر حفظ الاختصارات. يرجى المحاولة مرة أخرى.',
+    saving: 'جاري الحفظ...',
+    scale: 'الميزان',
+    scaleAndWeighedSales: 'مبيعات الميزان',
+    scaleDefDesc: 'Terazi tanımlarını yönetin',
+    scanQRCode: 'امسح رمز QR',
+    scanToSearchPlaceholder: 'امسح للبحث عن المنتج...',
+    scheduledBroadcastsLabel: 'مجدول',
+    screenSettings: 'إعدادات الشاشة',
+    search: 'بحث',
+    searchBtn: 'بحث',
+    searchCurrentAccountPlaceholder: 'البحث عن حساب جاري أو موظف...',
+    searchInside: 'içinde ara...',
+    searchPlaceholder: 'اسم المنتج أو الباركود...',
+    searchPlaceholderFull: 'Menüde hızlı ara... (Ctrl+K)',
+    searchPlaceholderShort: 'Ara...',
+    searchProductBarcodeCategory: 'ابحث عن اسم المنتج أو الباركود أو الفئة...',
+    searchProductByName: 'ابحث باسم المنتج...',
+    searchProductPlaceholder: 'بحث عن المنتج...',
+    searchProducts: 'بحث عن المنتجات',
+    searchReceiptPlaceholder: 'بحث عن رقم الإيصال أو الباركود...',
+    searchUnitSetPlaceholder: 'Birim seti kodu veya adı ile ara...',
+    searching: 'جارٍ البحث...',
+    selectAtLeastOneShortcut: 'يجب عليك اختيار اختصار واحد على الأقل',
+    selectCampaign: 'اختر الحملة',
+    selectCustomer: 'اختر العميل',
+    selectCustomerTitle: 'اختر العميل',
+    selectDonem: 'اختر الفترة',
+    selectFirmPrompt: 'اختر الشركة',
+    selectFirma: 'اختر الشركة',
+    selectLanguage: 'اختر اللغة',
+    selectMaterialPlaceholder: 'Malzeme seçiniz...',
+    selectProductForReturn: 'اختر المنتجات للإرجاع',
+    selectReceiptForReturn: 'اختر الإيصال للإرجاع',
+    selectStaffTitle: 'اختر الموظف',
+    selectSystemLanguage: 'اختر لغة النظام',
+    selectTargetTable: 'اختر الطاولة المستهدفة',
+    selectVariant: 'اختر المتغير',
+    selectVariantLabel: 'اختر المتغير:',
+    selected: 'محدد',
+    selectedProducts: 'المنتجات المحددة',
     selfEmployedReceiptGiven: 'إيصال عمل حر (صادر)',
     selfEmployedReceiptReceived: 'إيصال عمل حر (وارد)',
-    farmersReceipt: 'إيصال مزارع',
-    openingDebit: 'افتتاح (مدين)',
-    openingCredit: 'افتتاح (دائن)',
-    exchangeDifferenceDebit: 'فروق عملة (مدين)',
-    exchangeDifferenceCredit: 'فروق عملة (دائن)',
-    pleaseEnterAmount: 'يرجى إدخال المبلغ',
-    pleaseSelectCurrentAccount: 'يرجى اختيار حساب جاري',
-    operationSavedSuccessfully: 'تم حفظ العملية بنجاح',
-    operationSaveFailed: 'فشل حفظ العملية',
-    missingKasaId: 'معرف الصندوق مفقود! يرجى التنشيط والمحاولة مرة أخرى.',
-    currentAccountPersonel: 'الحساب الجاري / الموظفين',
-    searchCurrentAccountPlaceholder: 'البحث عن حساب جاري أو موظف...',
-    currentBalance: 'الرصيد الحالي',
-    targetKasa: 'الصندوق المستهدف',
-    bankAccount: 'حساب بنكي',
-    expenseCodeDescription: 'كود المصرف / الوصف',
-    expenseCodePlaceholder: 'كود أو اسم المصرف...',
-    withholdingTaxRate: 'نسبة الاستقطاع الضريبي (%)',
-    taxRateLabel: 'نسبة الضريبة / القيمة المضافة (%)',
-    operationAmount: 'مبلغ العملية',
-    documentNo: 'رقم الإيصال / المستند',
+    sendDataTab: 'إرسال البيانات',
+    sendNow: 'إرسال الآن',
+    sending: 'جاري الإرسال...',
+    serialLotDefDesc: 'Seri/Lot tanımlarını yönetin',
+    serviceGiven: 'Verilen Hizmet Faturası',
+    serviceInvoiceIssued: 'فاتورة خدمة صادرة',
+    serviceInvoiceReceived: 'فاتورة خدمة واردة',
+    serviceInvoices: 'فواتير الخدمات',
+    serviceInvoicesDesc: 'جميع عمليات شراء وبيع الخدمات',
+    serviceInvoicesTitle: 'فواتير الخدمات',
+    serviceReceived: 'Alınan Hizmet Faturası',
+    serviceTopUp: 'شحن الخدمة',
+    session: 'جلسة',
+    sessionDay: 'يوم',
+    sessionInformation: 'معلومات الجلسة',
+    setDateTime: 'ضبط التاريخ والوقت',
+    sevenDaysButton: '7 أيام',
+    shift: 'الوردية',
+    shiftClick: 'Shift + نقرة',
+    shipmentLoading: 'Sevkiyat/Yükleme',
+    shipmentPrep: 'Sevkiyat Hazırlık',
+    shortage: 'نقص',
+    shortcuts: 'الاختصارات',
+    shortcutsSaveError: 'Kısayollar kaydedilirken hata oluştu',
+    shortcutsSelected: 'اختصارات محددة',
+    sidebar: {
+      clearSearch: 'مسح (ESC)',
+      darkMode: 'الوضع الداكن',
+      dbMenu: '📊 قائمة قاعدة البيانات',
+      languageSelection: 'اختيار اللغة',
+      lightMode: 'الوضع الفاتح',
+      noResultsFound: 'لم يتم العثور على نتائج',
+      resultsFound: 'نتائج وجدت',
+      searchPlaceholderFull: 'بحث سريع في القائمة... (Ctrl+K)',
+      searchPlaceholderShort: 'بحث...',
+      staticMenu: '📋 قائمة ثابتة',
+      tryDifferentSearch: 'جرب مصطلح بحث مختلف',
+    },
+    sizeColorChange: 'تغيير الحجم/اللون',
+    slipList: 'قائمة السندات',
+    smsManagement: 'إدارة SMS',
+    smsNotificationSent: 'تم إرسال إشعار SMS',
+    soldQuantity: 'Satılan Miktar',
     specialCode: 'كود خاص',
-    placeholderDocumentNo: 'مثال: 000123',
-    placeholderSpecialCode: 'مثال: PRJ001',
-    placeholderDescription: 'ملاحظة حول العملية...',
-    saving: 'جاري الحفظ...',
-    saveOperation: 'حفظ العملية',
-    cashOperation: 'عملية صندوق',
-
+    specialCodeDesc: 'Özel kodları yönetin',
+    specialCodes: 'الأكواد الخاصة',
+    specialRequests: 'طلبات وتفاصيل خاصة',
+    startDate: 'البداية:',
+    startDateReport: 'تاريخ البدء',
+    startSupport: 'بدء الدعم',
+    staticMenu: '📋 Statik Menü',
+    status: 'الحالة',
+    step01Auth: 'الخطوة 01 / المصادقة',
+    step02Scope: 'الخطوة 02 / النطاق',
+    step1: 'الخطوة 1',
+    step2: 'الخطوة 2',
+    stock: 'المخزون',
+    stockABC: 'تحليل ABC للمخزون',
+    stockAging: 'أعمار المخزون',
+    stockCount: 'Sayım Emirleri',
+    stockInventory: 'جرد المخزون',
+    stockLabel: 'المخزون',
+    stockQuery: 'استعلام المخزون',
+    stockReports: 'تقارير المخزون',
+    stockStatus: 'حالة المخزون',
+    stockStatusReport: 'Stok Durum Raporu',
+    stockTurnover: 'سرعة دوران المخزون',
+    stockValue: 'قيمة المخزون',
+    stockValueCost: 'قيمة المخزون (التكلفة)',
+    stockValueSale: 'قيمة المخزون (البيع)',
+    stockValueSales: 'Stok Değeri (Satış)',
+    store: 'المتجر',
+    storeConfiguration: 'تكوين المتجر',
+    storeManagement: 'إدارة المتجر',
+    storePanel: 'لوحة المتجر',
+    storeSelection: 'اختيار المتجر',
+    storeSelectionScope: 'اختيار الفرع / STORE',
+    storeTransfer: 'تحويل بين المتاجر',
+    subsidiary: 'شركة فرعية',
+    subtotal: 'المجموع الفرعي',
+    subtotalAction: 'المجموع الفرعي',
+    subtotalLabel: 'المجموع الفرعي',
+    subtotalText: 'المجموع الفرعي',
+    subtotalUppercase: 'المجموع الفرعي',
+    successRateLabel: 'نسبة النجاح',
+    sufficientStock: 'مخزون كافٍ',
+    supplierCode: 'كود المورد',
+    supplierDefDesc: 'Tedarikçi tanımlarını yönetin',
+    supplierLabel: 'مورد',
+    supplierName: 'اسم المورد',
+    suppliers: 'الموردين',
+    supportCenter: 'مركز الدعم',
+    systemAdmin: 'مسؤول النظام',
+    systemAdministrator: 'مدير النظام',
+    systemError: 'خطأ في النظام',
+    systemHealth: 'صحة النظام',
+    systemLogin: 'تسجيل الدخول للنظام',
+    systemLogs: 'سجلات النظام',
+    systemLogsTitle: 'سجلات النظام',
+    systemManagement: 'إدارة النظام',
+    systemTitle: 'RetailEX ERP',
+    tableOccupied: 'مشغولة',
+    tagline: 'نظام إدارة المبيعات الاحترافي',
+    targetKasa: 'الصندوق المستهدف',
+    targetVsActual: 'الهدف مقابل الفعلي',
+    taskManagement: 'İş Emri Yönetimi',
+    tax: 'الضريبة',
+    taxNumberLabel: 'الرقم الضريبي',
+    taxOfficeLabel: 'المكتب الضريبي',
+    taxRate: 'نسبة الضريبة',
+    taxRateLabel: 'نسبة الضريبة / القيمة المضافة (%)',
+    taxReport: 'تقرير الضريبة',
+    technicalDetails: 'التفاصيل التقنية',
+    technicalDetailsForDevelopers: 'التفاصيل التقنية (للمطورين)',
+    testPasswordHint: 'كلمة مرور الاختبار: 1234',
+    textDirection: 'اتجاه النص',
+    textDirectionOptional: 'اتجاه النص (اختياري)',
+    thanksForChoosingUs: '★★★ شكراً لاختياركم لنا ★★★',
+    thirtyDaysButton: '30 يومًا',
+    timeLabel: 'الوقت',
+    todayButton: 'اليوم',
+    todaysSale: 'مبيعات اليوم',
+    todaysSales: 'Bugünkü Satış',
+    topSellingProducts: 'المنتجات الأكثر مبيعاً',
+    topSellingProductsInfo: 'En Çok Satan Ürünler',
+    total: 'المجموع',
+    totalAllBranches: 'إجمالي جميع الفروع',
+    totalCampaigns: 'إجمالي الحملات',
+    totalCollection: 'إجمالي التحصيل',
+    totalCurrentAccounts: 'إجمالي الحسابات',
+    totalDevicesLabel: 'إجمالي الأجهزة',
+    totalEntries: 'إجمالي السجلات',
+    totalInventoryValue: 'Toplam Envanter Değeri',
+    totalItems: 'إجمالي العناصر',
+    totalLabel: 'المجموع',
+    totalPieces: 'إجمالي القطع',
+    totalProduct: 'إجمالي المنتجات',
+    totalProductsDashboard: 'Toplam Ürün',
+    totalPurchases: 'إجمالي المشتريات',
+    totalRevenue: 'Toplam Ciro',
+    totalRevenueLabel: 'إجمالي الإيرادات',
+    totalSale: 'إجمالي البيع',
+    totalSales: 'المجموع',
+    totalSalesCount: 'المجموع',
+    totalStock: 'إجمالي المخزون',
+    totalText: 'المجموع',
+    totalUppercase: 'الإجمالي',
+    transactionBreakdown: 'تحليل المعاملات',
+    transactionNumberLabel: 'رقم المعاملة/الشخص',
+    transferAllItems: 'سيتم نقل جميع العناصر في الطاولة رقم {number} إلى الطاولة المحددة.',
+    transferMovement: 'Transfer & Hareket',
+    transferToOtherCashier: 'تحويل لصراف آخر',
+    transfers: 'التحويلات',
+    trialBalance: 'ميزان مراجعة',
+    tryDifferentSearch: 'Farklı bir arama terimi deneyin',
+    turkish: 'التركية',
+    unexpectedErrorEncountered: 'تم مواجهة خطأ غير متوقع',
+    unit: 'وحدة',
+    unitAndMultiplierMgmt: 'Birim ve Çarpan Yönetimi',
+    unitCodeLabel: 'Birim Kodu',
+    unitDefinitions: 'Birim Tanımları',
+    unitLabel: 'الوحدة',
+    unitNameLabel: 'Birim Adı',
+    unitPrice: 'سعر الوحدة',
+    unitPriceLabel: 'سعر الوحدة',
+    unitSetCreated: 'Birim seti oluşturuldu',
+    unitSetDeleted: 'Birim seti silindi',
+    unitSetName: 'Birim Seti Adı',
+    unitSetUpdated: 'Birim seti güncellendi',
+    unitSets: 'مجموعات الوحدات',
+    unknownError: 'خطأ غير معروف',
+    update: 'Güncelle',
+    urgentOrder: 'طلب عاجل!',
+    userManagement: 'إدارة المستخدمين',
+    username: 'اسم المستخدم',
+    usernamePlaceholder: 'أدخل اسم المستخدم',
+    variantAvailable: 'متغير متاح',
+    variantChanged: 'تم تغيير المتغير: {variant}',
+    variantDefDesc: 'Varyant tanımlarını yönetin',
+    variants: 'الأشكال والمتغيرات',
+    veresiyeLabel: 'دفع آجل',
+    verifying: 'جاري التحقق...',
+    version: 'v1.0',
+    versionTitle: 'الإصدار: v1.0',
+    viewDetails: 'عرض التفاصيل',
+    voiceSearch: 'البحث الصوتي',
+    voucher: 'سند قبض',
+    voucherDate: 'تاريخ السند',
+    voucherNo: 'رقم السند',
+    voucherType: 'نوع السند',
+    waiting: 'قيد الانتظار',
+    warehouseDefDesc: 'Depo tanımlarını yönetin',
+    warehouseReceipt: 'Ambar Fişi',
+    warehouseTransfer: 'Depo Transferi',
+    warehouseTransferWaybill: 'سند تحويل مخزني',
+    wastageWaybill: 'Fire İrsaliyesi',
+    wasteWaybill: 'سند هالك',
+    waybills: 'سندات الشحن (Waybills)',
+    weeklySale: 'مبيعات الأسبوع',
+    weeklySales: 'Haftalık Satış',
+    welcome: 'أهلاً بك',
+    welcomeDashboard: 'Sisteme Hoşgeldiniz',
+    welcomeSubtitle: 'أهلاً بك، تتبع أداء عملك',
+    whatsappIntegration: 'تكامل واتساب',
+    wholesaleSales: 'مبيعات الجملة',
+    wholesaleSalesDesc: 'عمليات مبيعات الجملة',
+    wholesaleSalesTitle: 'مبيعات الجملة',
+    withholdingTax: 'ضريبة الاستقطاع',
+    withholdingTaxRate: 'نسبة الاستقطاع الضريبي (%)',
+    wmsModule: 'نظام إدارة المستودعات',
+    wrongProduct: 'منتج خاطئ',
+    wrongProductAdded: 'تمت إضافة منتج خاطئ',
+    wsConnected: 'متصل',
+    wsConnecting: 'جاري الاتصال...',
+    wsDisconnected: 'غير متصل',
+    yesDelete: 'نعم، حذف',
+    zReport: 'تقرير Z',
+    zeroOpeningCashConfirm: 'سيتم إدخال صندوق الافتتاح كـ 0.00. هل تريد المتابعة؟',
+    zeroPlaceholder: '0',
   },
   ku: {
-    // Header
-    systemTitle: 'RetailEX ERP',
-    customer: 'کڕیار',
-    selectCustomer: 'کڕیار هەڵبژێرە',
-    retailCustomer: 'کڕیاری تاک',
-    cashier: 'سندوقدار',
-    changeCashier: 'گۆڕینی سندوقدار',
-    changeLanguage: 'گۆڕینی زمان',
-    logout: 'دەرچوون',
-    back: 'گەڕانەوە',
-    allLabel: 'ھەموو',
-    selected: 'دیاریکراو',
-
-    // Product Grid
-    searchProducts: 'گەڕان بەدوای بەرهەمدا',
-    searchPlaceholder: 'ناوی بەرهەم یان بارکۆد...',
-    categories: 'هاوپۆلەکان',
-    allCategories: 'هەموو هاوپۆلەکان',
-
-    // Cart
-    cart: 'سەبەتە',
-    emptyCart: 'سەبەتە بەتاڵە',
-    product: 'بەرهەم',
-    quantity: 'بڕ',
-    price: 'نرخ',
-    total: 'کۆ',
-    subtotal: 'کۆی لاوەکی',
-    discount: 'داشکاندن',
-    grandTotal: 'کۆی گشتی',
-    rowOrder: 'ڕیز',
-    productName: 'ناوی بەرهەم',
-    action: 'کردار',
-    scanToSearchPlaceholder: 'بۆ گەڕان سکان بکە...',
-    changeVariant: 'گۆڕینی جۆر',
-    confirmItemDelete: 'ئایا دڵنیایت لە سڕینەوە؟',
-    yesDelete: 'بەڵێ، بسڕەوە',
-    barcodeSearchPlaceholder: 'بارکۆد یان ناوی بەرهەم...',
-    actionLabel: 'کردار',
-    systemHealth: 'تەندروستی سیستەم',
-    enterNewPrice: 'نرخی نوێ بنووسە',
-    clickToChangePrice: 'کلیک بکە بۆ گۆڕینی نرخ',
-    trialBalance: 'میزانی پێداچوونەوە',
-    balanceSheet: 'بەیانی دارایی',
-    incomeStatement: 'بەیانی داهات',
-    inventory: 'سەرژمێری',
-    periodOpen: 'ماوەی کراوە',
-    periodClosed: 'ماوەی داخراو',
-    closedMonths: 'مانگە داخراوەکان',
-    firma: 'کۆمپانیا',
-    donem: 'ماوە',
-    journalEntry: 'تۆماری ڕۆژنامە',
-    journalEntries: 'تۆمارەکانی ڕۆژنامە',
-    debit: 'قەرزدار',
-    credit: 'قەرزدەر',
-    balance: 'باڵانس',
+    abcAnalysis: 'ABC Analizi',
+    accountAdded: 'Cari hesap eklendi',
     accountCode: 'کۆدی حساب',
+    accountDeleteError: 'Cari hesap silinemedi',
+    accountDeleted: 'Cari hesap silindi',
     accountName: 'ناوی حساب',
-    fiscalPeriod: 'ماوەی دارایی',
-    fiscalYear: 'ساڵی دارایی',
-    periodManagement: 'بەڕێوەبردنی ماوە',
-    closeMonth: 'داخستنی مانگ',
-    closePeriod: 'داخستنی ماوە',
-    openNewPeriod: 'کردنەوەی ماوەی نوێ',
-    cashFlowStatement: 'بەیانی جەریانی نەقد',
-    financialStatements: 'القوائم المالية',
-    profitLoss: 'قازانج و زەرەر',
-    assets: 'سامانەکان',
-    liabilities: 'قەرزەکان',
-    equity: 'مافی خاوەندارێتی',
-    revenue: 'داهat',
-    expenses: 'خەرجییەکان',
-    netIncome: 'داهاتی خاوێن',
-    grossProfit: 'قازانجی گشتی',
-    operatingExpenses: 'خەرجییەکانی کارپێکردن',
-    tax: 'باج',
-    taxRate: 'ڕێژەی باج',
-    corporateTax: 'باجی کۆمپانیا',
-    incomeTax: 'باجی داهات',
-    withholdingTax: 'باجی بڕین',
-    taxReport: 'ڕاپۆرتی باج',
-    chartOfAccounts: 'نەخشەی حسابەکان',
-    generalLedger: 'دەفتەری گشتی',
-    subsidiary: 'کۆمپانیای پاشکۆ',
-    consolidatedReports: 'ڕاپۆرتە یەکگرتووەکان',
-    intercompanyEliminations: 'سڕینەوەی نێوان کۆمپانیاکان',
-    costOfGoodsSold: 'تێچووی کاڵای فرۆشراو',
-    accountsReceivable: 'حسابە وەرگیراوەکان',
+    accountNameRequired: 'Cari adı gerekli!',
+    accountSummary: 'Cari Hesap Özeti',
+    accountTypeSelection: 'Hesap Türü Seçimi',
+    accountUpdated: 'Cari hesap güncellendi',
     accountsPayable: 'حسابە ددراوەکان',
-    bank: 'بانک',
-    purchases: 'کڕینەکان',
-    transfers: 'گواستنەوەکان',
-    receipts: 'پسوڵەکان',
-    payments: 'پارەدانەکان',
-    voucher: 'سند',
-    voucherNo: 'ژمارەی سند',
-    voucherType: 'جۆری سند',
-    voucherDate: 'بەرواری سند',
-    description: 'وەسف',
-    autoGenerated: 'بە شێوەی خۆکار دروستکراوە',
-    manualEntry: 'داخڵکردنی دەستی',
-    approved: 'پەسندکراو',
-    pending: 'چاوەڕوان',
-    rejected: 'ڕەتکراوە',
-    posted: 'تۆمارکراو',
-    reversed: 'پێچەوانەکراو',
-    selectFirma: 'کۆمپانیا هەڵبژێرە',
-    selectDonem: 'ماوە هەڵبژێرە',
-
-    // Actions
+    accountsReceivable: 'حسابە وەرگیراوەکان',
+    action: 'کردار',
+    actionCenter: 'İşlem Merkezi',
+    actionLabel: 'کردار',
+    actions: 'İŞLEMLER',
+    activeCustomer: 'Aktif Müşteri',
+    activeCustomers: 'کڕیارە چالاکەکان',
+    activeStatus: 'چالاک',
     add: 'زیادکردن',
+    addNewCurrentAccount: 'YENİ CARİ HESAP EKLE',
+    addPaymentLabel: 'زیادکردنی پارەدان',
     addToCart: 'زیادکردن بۆ سەبەتە',
-    remove: 'لابردن',
-    clear: 'پاککردنەوە',
-    save: 'پاشەکەوتکردن',
-    cancel: 'پاشگەزبوونەوە',
-    complete: 'تەواوکردن',
-    payment: 'پارەدان',
-    search: 'گەڕان',
-    close: 'داخستن',
-
-    // Numpad
-    amount: 'بڕ',
-    piece: 'دانە',
-    delete: 'سڕینەوە',
-    enter: 'باشە',
-
-    // Quick Actions
-    campaign: 'کەمپەین',
-    category: 'هاوپۆل',
-    productQuery: 'پرسیاری بەرهەم',
-    stockQuery: 'پرسیاری کۆگا',
-    parkedReceipts: 'پسوڵە هەڵواسراوەکان',
-    salesHistory: 'مێژووی فرۆشتن',
-    returnTransaction: 'گەڕاندنەوە',
-    return: 'گەڕاندنەوە',
-    recentProducts: 'فرۆشتنەکانی دوایی',
+    addToCartButton: 'Sepete Ekle',
+    addedPayments: 'Eklenen Ödemeler',
+    additionalDiscount: 'İlave İndirim (Opsiyonel)',
+    addressLabel: 'Adres',
+    administrator: 'Yönetici',
+    agingAnalysis: 'Yaşlandırma Analizi',
+    aiAssistant: 'AI Asistan',
+    aiProductAnalytics: 'شیکاری بەرهەم بە ژیری دەستکرد',
+    alertCenter: 'Uyarı Merkezi',
+    allBtn: 'Tümü',
+    allButton: 'Tümü',
+    allCategories: 'هەموو هاوپۆلەکان',
+    allInvoiceTypes: 'هەموو جۆرەکانی وەسڵ',
+    allLabel: 'ھەموو',
     allProducts: 'هەموو بەرهەمەکان',
-    scale: 'تەرازوو',
-    subtotalAction: 'کۆی لاوەکی',
-    receiptNote: 'تێبینی پسوڵە',
-    barcode: 'بارکۆد',
-    quickProductAdd: 'بەرهەمی خێرا',
-    shiftClick: 'Shift + کرتە',
-    receivePayment: 'وەرگرتنی پارە',
-    sales: 'فرۆشتنەکان',
-    parkedReceiptsButton: 'هەڵواسراو',
-    parkReceipt: 'هەڵواسینی پسوڵە',
-    cancelReceipt: 'هەڵوەشاندنەوەی پسوڵە',
-    management: 'بەڕێوەبردن',
-    closeRegister: 'داخستنی سندوق',
-    openRegister: 'کردنەوەی سندوق',
-    customerInfo: 'زانیاری کڕیار',
-    cardNumber: 'ژمارەی کارت',
-
-    // Footer
-    receipt: 'پسوڵە',
-    store: 'فرۆشگا',
-    cashRegister: 'سندوق',
-    shift: 'شیفت',
-    screenSettings: 'ڕێکخستنی شاشە',
-    language: 'زمان',
-
-    // WebSocket Status
-    wsConnected: 'پەیوەستە',
-    wsDisconnected: 'پەیوەست نییە',
-    wsConnecting: 'خەریکی پەیوەندیکردنە...',
-    stockInventory: 'ژماردنی کۆگا',
-    inventoryManagement: 'کارەکانی ژماردن و کۆگا',
-    systemManagement: 'بەڕێوەبردنی سیستەم',
-    categoryAnalysis: 'شیکاری جۆرەکان',
-    centralStore: 'فرۆشگای ناوەندی',
-    dayShift: 'ڕۆژ',
-
-    // Notifications
-    productAdded: 'بەرهەم زیادکرا بۆ سەبەتە',
-    productRemoved: 'بەرهەم لابرا لە سەبەتە',
-    cartCleared: 'سەبەتە پاککرایەوە',
-    receiptParked: 'پسوڵە هەڵواسرا',
-    saleCompleted: 'فرۆشتن تەواو بوو',
-    error: 'هەڵە',
-
-    // Payment Modal
-    paymentTitle: 'پارەدان',
-    discountOptional: 'داشکاندن (دڵخواز)',
-    percentage: 'ڕێژە',
-    enterDiscountPercentage: 'ڕێژەی داشکاندن بنووسە',
-    enterDiscountAmount: 'بڕی داشکاندن بنووسە',
-    paymentSummary: 'پوختەی پارەدان',
-    subtotalLabel: 'کۆی لاوەکی',
+    allSalesButton: 'Tüm Satışlar',
+    allStatuses: 'هەموو بارودۆخەکان',
+    amount: 'بڕ',
+    amountInput: 'Miktar',
+    amountLabel: 'Tutar',
     amountToPay: 'بڕی پارەی پێویست',
-    paymentMethod: 'شێوازی پارەدان',
-    cashPayment: 'پارەدان بە نەقد',
-    cashPaymentDescription: 'پارەدان بە پارەی کاش',
+    anErrorOccurred: 'Bir Hata Oluştu',
+    apply: 'جێبەجێکردن',
+    applyDiscount: 'جێبەجێکردنی داشکاندن',
+    applyRatioDiscount: 'جێبەجێکردنی داشکاندنی ڕێژەیی',
+    approved: 'پەسندکراو',
+    arabic: 'عەرەبی',
+    assets: 'سامانەکان',
+    assignToSlot: 'Slota Ata',
+    atLeastOneShortcut: 'دەبێت لایەنی کەم کورتەبڕێک هەڵبژێریت',
+    atLeastOneUnit: 'دەبێت لایەنی کەم یەک یەکە پێناسە بکرێت',
+    autoGenerated: 'بە شێوەی خۆکار دروستکراوە',
+    automatic: '(Otomatik)',
+    available: 'Kullanılabilir',
+    back: 'گەڕانەوە',
+    backToDashboard: 'بگەڕێرەوە بۆ داشبورد',
+    backToList: 'Listeye Dön',
+    backup: 'Yedekle',
+    balance: 'باڵانس',
+    balanceLoading: 'BAKİYE YÜKLEME',
+    balanceSheet: 'بەیانی دارایی',
+    bank: 'بانک',
+    bankAccount: 'هەژماری بانکی',
+    bankDeposit: 'دانانی بانکی',
+    bankTransfer: 'Banka Transferi',
+    bankWithdrawal: 'ڕاکێشانی بانکی',
+    banknoteAndCoinCount: 'Banknot ve Madeni Para Sayımı',
+    banknoteCount: 'Banknot Sayısı',
+    barcode: 'بارکۆد',
+    barcodeDefDesc: 'بەڕێوەبردنی پێناسەی بارکۆدەکان',
+    barcodeLabel: 'Barkod',
+    barcodeNotFound: 'Barkod bulunamadı',
+    barcodeNotFoundWarning: 'Barkod bulunamadı: {barcode}',
+    barcodeSearchPlaceholder: 'بارکۆد یان ناوی بەرهەم...',
+    biDashboardAi: 'BI Dashboard & AI',
+    branchStockStatus: 'Şube Stok Durumu',
+    branchStocks: 'Şube Stokları',
+    branchVariantStocks: 'Şube Varyant Stokları',
+    branchVariants: 'أشكال الفروع',
+    brandDefDesc: 'بەڕێوەبردنی پێناسەی براندەکان',
+    brandDefinitions: 'پێناسەی براندەکان',
+    campaign: 'کەمپەین',
+    campaignApplied: 'کەمپەین جێبەجێکرا',
+    campaignAppliedDescription: 'جێبەجێکرا',
+    campaignAutoApplied: 'کەمپەین بە خۆکاری جێبەجێکرا',
+    campaignDiscountLabel: 'داشکاندنی کەمپەین',
+    campaignDiscountPayment: 'Kampanya İndirimi',
+    campaignLabel: 'KAMPANYA',
+    campaignRemoved: 'کەمپەین لابرا',
+    cancel: 'پاشگەزبوونەوە',
+    cancelBtn: 'پاشگەزبوونەوە',
+    cancelReasonPlaceholder: 'İptal nedenini yazın...',
+    cancelReceipt: 'هەڵوەشاندنەوەی پسوڵە',
+    cancelReceiptTitle: 'Fiş İptal - Neden Seçin',
+    capacityPlanning: 'Kapasite Planlama',
+    card: 'Kart',
+    cardLabel: 'کارت (POS)',
+    cardNumber: 'ژمارەی کارت',
     cardPayment: 'پارەدان بە کارت',
     cardPaymentDescription: 'پارەدان بە کارتی بانکی',
-    receivedAmount: 'بڕی وەرگیراو',
-    enterReceivedCashAmount: 'بڕی نەقدی وەرگیراو بنووسە',
-    fullAmount: 'بڕی تەواو',
-    completePayment: 'تەواوکردنی پارەدان',
-    campaignDiscountLabel: 'داشکاندنی کەمپەین',
+    cardSales: 'Kart Satışları',
+    cards: 'کارتەکان',
+    cart: 'سەبەتە',
+    cartCleared: 'سەبەتە پاککرایەوە',
+    cartEmpty: 'Sepet boş',
+    cash: 'Nakit',
+    cashBalanced: 'Kasa Denk',
+    cashClosedSuccessfully: 'Kasa başarıyla kapatıldı!',
+    cashClosingNotePlaceholder: 'Kasa kapanışı ile ilgili notlarınızı yazın...',
+    cashCountExample: 'Örn: 1000.00',
+    cashCountRequired: 'Lütfen sayılan nakit tutarını girin!',
+    cashDifference: 'Nakit Farkı',
+    cashDifferenceConfirm: 'Kasa farkı var. Devam etmek istiyor musunuz?',
+    cashFlowReport: 'Nakit Akış Raporu',
+    cashFlowStatement: 'بەیانی جەریانی نەقد',
+    cashHandedOver: 'Kasa {staff} kasiyerine devredildi',
+    cashHandedOverMessage: 'Kasa {staff} kasiyerine devredildi.\n\nDevir Tutarı: {amount}\n\n{staff} kasa açarken devri onaylamalıdır.',
+    cashHandoverAccept: 'Para Devri Kabul',
+    cashHandoverAvailable: 'Para Devri Mevcut',
+    cashHandoverCountRequired: 'Devredilecek tutarı giriniz!',
+    cashIn: 'هاتنی کاش',
     cashLabel: 'نەختینە',
-    cardLabel: 'کارت (POS)',
-    veresiyeLabel: 'قەرز (نەختینە)',
-    gatewayLabel: 'دابینکەری پارەدانی QR',
-    addPaymentLabel: 'زیادکردنی پارەدان',
-    currencyAndRates: 'دراو و نرخەکان',
-    insufficientPayment: 'بڕی پارەدان کەمە!',
-    paymentFailed: 'پارەدان دەستی پێ نەکرا:',
-    processingText: 'لە پرۆسەدایە...',
-    qrScanCode: 'سکانکردنی کۆدی QR',
-    qrCustomerInstruction: 'کڕیار دەتوانێت پارەدان تەواو بکات بە سکانکردنی کۆدی QR بە مۆبایلەکەی',
-    paymentAmount: 'بڕی پارەدان',
-    step1: 'هەنگاوی 1',
-    step2: 'هەنگاوی 2',
-    holdPhoneToQr: 'مۆبایلەکە بەرەو کۆدی QR بگرە',
-    confirmPaymentText: 'پشتڕاستکردنەوەی پارەدان',
-    campaignAppliedDescription: 'جێبەجێکرا',
-
-    // Language Modal
-    selectLanguage: 'زمان هەڵبژێرە',
-    turkish: 'تورکی',
-    english: 'ئینگلیزی',
-    arabic: 'عەرەبی',
-    kurdish: 'کوردی',
-
-    // Additional Labels
-    campaignApplied: 'کەمپەین جێبەجێکرا',
-    campaignRemoved: 'کەمپەین لابرا',
-    minimumAmountNotMet: 'کەمترین بڕ بەردەست نییە',
-    campaignAutoApplied: 'کەمپەین بە خۆکاری جێبەجێکرا',
-
-
-    // Customer Modal
-    selectCustomerTitle: 'کڕیار هەڵبژێرە',
-    customerSearchPlaceholder: 'گەڕان بەدوای کڕیاردا...',
-    noCustomerSale: 'فرۆشتن بەبێ کڕیار',
-    noCustomerSaleDescription: 'فرۆشتنی تاک',
-    customerNotFound: 'کڕیار نەدۆزرایەوە',
-    newCustomer: 'کڕیاری نوێ',
-    individual: 'تاکی',
-    corporate: 'کۆمپانیا',
-    totalPurchases: 'کۆی کڕینەکان',
-    lastPurchase: 'دوایین کڕین',
-
-    // Staff Modal
-    selectStaffTitle: 'کارمەند هەڵبژێرە',
+    cashOpenedMessage: 'Kasa başarıyla açıldı!\n\nAçılış Kasası: {amount}\nKasiyer: {staff}',
+    cashOpenedSuccessfully: 'Kasa başarıyla açıldı!',
+    cashOpeningNotePlaceholder: 'Kasa açılışı ile ilgili notlarınızı yazın...',
+    cashOperation: 'کرداری کاش',
+    cashOperations: 'کردارەکانی نەقد',
+    cashOut: 'چوونی کاش',
+    cashPayment: 'پارەدان بە نەقد',
+    cashPaymentDescription: 'پارەدان بە پارەی کاش',
+    cashRegister: 'سندوق',
+    cashRegisterNumber: 'Kasa No',
+    cashSales: 'Nakit Satışlar',
+    cashSlips: 'پسوڵەکانی نەقد',
+    cashStatus: 'Nakit Durumu',
+    cashTransfer: 'گواستنەوەی کاش',
+    cashier: 'سندوقدار',
     cashier1: 'سندوقدار ١',
     cashier2: 'سندوقدار ٢',
     cashier3: 'سندوقدار ٣',
-    manager: 'بەڕێوەبەر',
-    discountAuthority: 'مافی داشکاندنی هەیە',
-    errorFetchingUsers: 'Lîsteya bikarhêneran nehat girtin',
-    welcome: 'Bi xêr hatî',
-    invalidPassword: 'Şîfre şaş e',
-    loginError: 'Di têketinê de çewtî derket',
-    login: 'Têkeve',
-
-    // MarketPOS (Additional)
-    phoneAddress: 'تەلەفۆن / ناونیشان',
-    totalItems: 'کۆی بەرهەمەکان',
-    applyDiscount: 'جێبەجێکردنی داشکاندن',
-    deleteBtn: 'سڕینەوە',
-    cancelBtn: 'پاشگەزبوونەوە',
-    pieces: 'دانەكان',
-    priceLabel: 'نرخ',
-    clearBtn: 'پاككردنەوە',
-    enterBtn: 'باشە',
-    productCount: 'ژمارەی بەرهەم',
-    totalPieces: 'کۆی دانەکان',
-    pcs: 'دانە',
-    searchBtn: 'گەڕان',
-
-    // Login Screen
-    storeSelection: 'هەڵبژاردنی فرۆشگا',
-    username: 'ناوی بەکارهێنەر',
-    usernamePlaceholder: 'ناوی بەکارهێنەرت بنووسە',
-    password: 'وشەی نهێنی',
-    rememberMe: 'لەبیرم بێت',
-    connectionSettings: 'ڕێکخستنی پەیوەندی',
-    loginButton: 'چوونە ژوورەوە',
-
-    // Campaign Modal
-    selectCampaign: 'کەمپەین هەڵبژێرە',
-    totalCampaigns: 'کۆی کەمپەینەکان',
-    closeEsc: 'ESC دابگرە بۆ داخستن',
-
-    // Bottom Bar
-    subtotalText: 'کۆی لاوەکی',
-    totalText: 'کۆ',
-
-    // Parked Receipts Modal
-    parkedReceiptsTitle: 'پسوڵە هەڵواسراوەکان',
-    noParkedReceipts: 'هیچ پسوڵەیەکی هەڵواسراو نییە',
-    noParkedReceiptsDescription: 'پسوڵە هەڵواسراوەکان لێرە دەردەکەون',
-    parkedAt: 'هەڵواسرا لە',
-    parkedBy: 'هەڵواسرا لەلایەن',
-    customerLabel: 'کڕیار',
-    itemsCount: 'بەرهەم',
-    continueReceipt: 'بەردەوامبوون',
-    deleteReceipt: 'سڕینەوە',
-    confirmDelete: 'دڵنیایت لە سڕینەوە؟',
-
-    // Stock Query Modal
-    productCatalog: 'کاتالۆگی بەرهەمەکان',
-    productsCount: 'بەرهەم',
-    searchProductPlaceholder: 'گەڕان بەدوای بەرهەمدا...',
-    gridView: 'تۆڕ',
-    listView: 'لیست',
-    noProductsFound: 'هیچ بەرهەمێک نەدۆزرایەوە',
-    changeSearchCriteria: 'پێوەرەکانی گەڕانت بگۆڕە',
-    productDetails: 'وردەکاریی بەرهەم',
-    anErrorOccurred: 'هەڵەیەک ڕوویدا',
-    unexpectedErrorEncountered: 'هەڵەیەکی چاوەڕواننەکراو ڕوویدا',
-    errorMessage: 'پەیامی هەڵە',
-    technicalDetails: 'وردەکارییە تەکنیکییەکان',
-    technicalDetailsForDevelopers: 'وردەکارییە تەکنیکییەکان (بۆ گەشەپێدەران)',
-    refreshPage: 'لاپەڕە نوێ بکەوە',
-    goBack: 'گەڕانەوە',
-    searchProductBarcodeCategory: 'گەڕان بەدوای بەرهەم/بارکۆد/هاوپۆل...',
-    detail: 'وردەکاری',
-    selectVariant: 'جۆر هەڵبژێرە',
-    assignToSlot: 'دیاریکردن بۆ شوێن',
-    variantAvailable: 'جۆر بەردەستە',
-    stock: 'کۆگا',
-    selectVariantLabel: 'جۆر هەڵبژێرە',
-    productSelection: 'هەڵبژاردنی بەرهەم',
-    quickProductSlot: 'شوێنی بەرهەمی خێرا',
-
-    // Inventory & Stock
-    barcodeLabel: 'بارکۆد',
-    stockStatus: 'دۆخی کۆگا',
-    currentStock: 'کۆگای ئێستا',
-    unitLabel: 'یەکە',
-    outOfStock: 'لە کۆگا نییە',
-    criticalLevel: 'ئاستی مەترسیدار',
-    lowStock: 'کۆگای کەم',
-    sufficientStock: 'کۆگای بەس',
-    priceInfo: 'زانیاری نرخ',
-    salePrice: 'نرخی فرۆشتن',
-    costPrice: 'نرخی کڕین',
-    profitMargin: 'ڕێژەی قازانج',
-    stockValue: 'بەهای کۆگا',
-    costValue: 'بەهای کڕین',
-    saleValue: 'بەهای فرۆشتن',
-    branchVariants: 'جۆرەکانی لق',
-    totalLabel: 'کۆ',
-    branchStocks: 'کۆگای لقەکان',
-    totalAllBranches: 'کۆی هەموو لقەکان',
-    productLabel: 'بەرهەم',
-    categoryLabel: 'هاوپۆل',
-
-    detailButton: 'وردەکاری',
-    addToCartButton: 'زیادکردن بۆ سەبەتە',
-
-    // Stock Query Specific
-    grid: 'تۆڕ',
-    list: 'لیست',
-    operation: 'کردار',
-    unit: 'یەکە',
-    pricingInfo: 'زانیاری نرخ',
-    cost: 'تێچوو',
-    branchVariantStocks: 'کۆگای جۆرەکانی لق',
-
-    // Return Modal
-    returnCancelTitle: 'گەڕاندنەوە / هەڵوەشاندنەوە',
-    receiptBased: 'لەسەر بنەمای پسوڵە',
-    productBased: 'لەسەر بنەمای بەرهەم',
-    searchProductByName: 'گەڕان بە ناوی بەرهەم...',
-    productsToReturn: 'بەرهەمەکان بۆ گەڕاندنەوە',
-    selectedProducts: 'بەرهەمە هەڵبژێردراوەکان',
-    saleQuantity: 'بڕی فرۆشراو',
-    unitPrice: 'نرخی یەکە',
-    allBtn: 'ھەموو',
-    explainReturnReason: 'هۆکاری گەڕاندنەوە ڕوون بکەرەوە...',
-    selectProductForReturn: 'بەرهەمەکان هەڵبژێرە بۆ گەڕاندنەوە',
-    totalSale: 'کۆی فرۆشتن',
-    differentReceipts: 'پسوڵەی جیاواز',
-    pleaseSelectReceipt: 'تکایە پسوڵەیەک هەڵبژێرە!',
-    pleaseSelectReturnProducts: 'تکایە بەرهەمەکان هەڵبژێرە بۆ گەڕاندنەوە!',
-    pleaseSelectReturnReason: 'تکایە هۆکاری گەڕاندنەوە هەڵبژێرە!',
-    pleaseExplainReturnReason: 'تکایە هۆکاری گەڕاندنەوە ڕوون بکەرەوە!',
-    searchReceiptPlaceholder: 'گەڕان بە ژمارەی پسوڵە یان بارکۆد...',
-    noSalesFound: 'هیچ فرۆشتنێک نەدۆزرایەوە',
-    selectReceiptForReturn: 'پسوڵە هەڵبژێرە بۆ گەڕاندنەوە',
-    returnProducts: 'بەرهەمەکانی گەڕاندنەوە',
-    salesQuantity: 'بڕی فرۆشتن',
-    returnQuantity: 'بڕی گەڕاندنەوە',
-    allButton: 'هەموو',
-    returnReason: 'هۆکاری گەڕاندنەوە',
-    returnReasonPlaceholder: 'هۆکاری گەڕاندنەوە هەڵبژێرە...',
-    returnAmount: 'بڕی گەڕاندنەوە',
-    confirmReturn: 'پشتڕاستکردنەوەی گەڕاندنەوە',
-    productDefective: 'بەرهەم کێشەی هەیە',
-    customerNotSatisfied: 'کڕیار ڕازی نییە',
-    wrongProduct: 'بەرهەمی هەڵە',
-    sizeColorChange: 'گۆڕینی قەبارە/ڕەنگ',
-    otherReason: 'هۆکارەکانی تر',
-    generalSale: 'فرۆشتنی گشتی',
-
-    // Sales History Modal
-    salesHistoryTitle: 'مێژووی فرۆشتن',
-    allSalesButton: 'هەموو فرۆشتنەکان',
-    todayButton: 'ئەمڕۆ',
-    sevenDaysButton: '٧ ڕۆژ',
-    thirtyDaysButton: '٣٠ ڕۆژ',
-    noSalesHistory: 'مێژووی فرۆشتن بەردەست نییە',
-    salesCount: 'ژمارەی فرۆشتن',
-    totalSales: 'کۆی فرۆشتن',
-    receiptNumberOrCustomerSearch: 'گەڕان بە ژمارەی پسوڵە یان ناوی کڕیار...',
-    dateRange: 'مەودای بەروار',
-    startDate: 'بەرواری دەستپێکردن:',
-    endDate: 'بەرواری کۆتایی:',
-    noSalesRecordFound: 'هیچ تۆمارێکی فرۆشتن نەدۆزرایەوە',
-    cash: 'نەقد',
-    card: 'کارت',
-    other: 'ئەوی تر',
-    viewDetails: 'بینینی وردەکاری',
-    printReceipt: 'چاپکردنی پسوڵە',
-    backToList: 'گەڕانەوە بۆ لیست',
-    receiptDetails: 'وردەکاریی پسوڵە',
-    lastReceipt: 'دوایین پسوڵە',
-    totalSalesCount: 'کۆی گشتی',
-    salesWillAppearHere: 'فرۆشتنە تەواوبووەکان لێرە دەردەکەون',
-    cashierInfo: 'سندوقدار',
-    productsLabel: 'بەرهەمەکان',
-    dateLabel: 'بەروار',
-    closeButton: 'داخستن',
-
-    // Language Selection Modal
-    languageSelectionTitle: 'زمان هەڵبژێرە',
-    languageChangeInfo: 'گۆڕینی زمان کاریگەری لەسەر هەموو شاشەکان دەبێت و بە شێوەیەکی خۆکار پاشەکەوت دەکرێت.',
-    textDirection: 'ئاراستەی دەق',
-    textDirectionOptional: 'ئاراستەی دەق (دڵخواز)',
-
-    // Keyboard Shortcuts
-    keyboardShortcuts: 'کورتەڕێگەی تەختەکلیل',
-    pos: 'کردارەکانی پۆس',
-    quick: 'کردارە خێراکان',
-    navigation: 'گەڕان',
-    productSearch: 'گەڕانی بەرهەم',
-    quickPayment: 'پارەدانی خێرا',
-    focusBarcodeInput: 'سەرنج خستنە سەر خانەی بارکۆد',
-    confirmBarcode: 'پشتڕاستکردنەوەی بارکۆد',
-    clearCart: 'پاککردنەوەی سەبەتە',
-    openCashRegister: 'کردنەوەی سندوقی نەقد',
-    closeCashRegister: 'داخستنی سندوقی نەقد',
-
-    // Voice & Advanced Search
-    voiceSearch: 'گەڕانی دەنگی',
-    results: 'ئەنجامەکان',
-    searching: 'گەڕان...',
-
-    // POS Interactive
-    quantitySaved: 'بڕ پاشەکەوتکرا',
-    quantitySavedMessage: 'بڕ پاشەکەوتکرا: {quantity}. ئێستا بارکۆد داخڵ بکە.',
-    pleaseEnterBarcode: 'تکایە بارکۆد داخڵ بکە',
-    pleaseEnterQuantityFirst: 'تکایە سەرەتا بڕ داخڵ بکە، پاشان * دابگرە',
-    pleaseSelectVariant: 'تکایە جۆرێک هەڵبژێرە',
-    barcodeNotFound: 'بارکۆد نەدۆزرایەوە',
-    pleaseEnterBarcodeFirst: 'تکایە سەرەتا بارکۆد بنووسە',
-    openCashRegisterToAddProduct: 'بۆ زیادکردنی بەرهەم سەرەتا سندوق بکەرەوە!',
-    productAddedToCart: '{productName} زیادکرا بۆ سەبەتە',
-    productRemovedFromCart: 'بەرهەم لە سەبەتە لابرا',
-    variantChanged: 'جۆر گۆڕدرا بۆ: {variant}',
-    receiptCancelled: 'پسوڵە هەڵوەشێنرایەوە: {reason}',
-    cartEmpty: 'سەبەتە بەتاڵە',
-    clearCurrentCartFirst: 'سەرەتا سەبەتەی ئێستا پاک بکەرەوە',
-    parkedReceiptRetrieved: 'پسوڵەی هەڵواسراو گەڕێندرایەوە',
-    parkedReceiptDeleted: 'پسوڵەی هەڵواسراو سڕایەوە',
-    openCashRegisterToSell: 'بۆ فرۆشتن سەرەتا سندوق بکەرەوە!',
-    discountApplied: '{percent}% داشکاندن جێبەجێکرا',
-    quantitySavedBarcodeEnter: 'بڕ: {quantity} - بارکۆد داخڵ بکە',
-    enterBarcode: 'بارکۆد داخڵ بکە...',
-    automatic: '(خۆکار)',
-    discountLabel: 'داشکاندن:',
-    keyboardShortcutsTitle: 'کورتەڕێگەی تەختەکلیل (? دابگرە)',
-    shortcuts: 'الاختصارات',
-    returnCompleted: 'گەڕاندنەوە تەواو بوو',
-    productAssignedToSlot: '{productName} دانرا بۆ شوێنی #{slotNumber}',
-    cashHandedOver: 'نەقد گواسترایەوە بۆ {staff}',
-    cashHandedOverMessage: 'نەقد گواسترایەوە بۆ {staff}.\n\nبڕ: {amount}\n\n{staff} دەبێت ئەمە پشتڕاست بکاتەوە لە کاتی کردنەوەی سندوق.',
-    cashOpenedSuccessfully: 'سندوق بە سەرکەوتوویی کرایەوە!',
-    cashOpenedMessage: 'سندوق بە سەرکەوتوویی کرایەوە!\n\nنەقدی سەرەتا: {amount}\nسندوقدار: {staff}',
-    defaultQuantity: '1x',
-    zeroPlaceholder: '0',
-    pageRange: '{start}-{end}',
-    cashRegisterNumber: 'سندوق-٩١',
-    version: 'v1.0',
-    versionTitle: 'وەشان: v1.0',
-    missingBarcodes: 'بارکۆدە نەدۆزراوەکان',
-    missingBarcodesTitle: 'لیستی بارکۆدە نەدۆزراوەکان',
-    clearList: 'پاککردنەوەی لیست',
-    noMissingBarcodes: 'هیچ بارکۆدێکی نەدۆزراوە نییە.',
-    barcodeNotFoundWarning: 'بارکۆد نەدۆزرایەوە: {barcode}',
-    lastReceiptButton: 'دوایین پسوڵە',
-    systemAdministrator: 'بەڕێوەبەری سیستەم',
-
-    // New Labels
-    reporting: 'ڕاپۆرتکردن',
-    reportingDesc: 'ڕاپۆرتەکانی فرۆشتن و شیکارییەکان',
-    aiAssistant: 'یارمەتیدەری AI',
-    dailyReport: 'ڕاپۆرتی ڕۆژانە',
-    zReport: 'ڕاپۆرتی Z',
-    periodComparison: 'بەراوردکردنی ماوەکان',
-    topSellingProducts: 'بەرهەمە هەرە فرۆشراوەکان',
-    expenseAnalysis: 'شیکاری خەرجییەکان',
-    hourlySalesAnalysis: 'شیکاری فرۆشتنی کاتژمێری',
-    cashierPerformance: 'ئەدای کاشێر',
-    customerSalesAnalysis: 'شیکاری فرۆشتنی کڕیار',
-    salesTrendAnalysis: 'شیکاری ئاڕاستەی فرۆشتن',
-    targetVsActual: 'ئامانج بەرامبەر واقیع',
-    profitLossReport: 'ڕاپۆرتی قازانج و زیان',
-    cashFlowReport: 'ڕاپۆرتی لێشاوی نەختینە',
-    debtAgingReport: 'تەمەنی قەرزەکان',
-    checkTracking: 'بەدواداچوونی چەک',
-    accountSummary: 'کورتەی حسابی جاری',
-    reportsStockStatus: 'دۆخی کۆگا',
-    stockAging: 'تەمەنی کاڵاکان',
-    stockTurnover: 'خێرایی سوڕانەوەی کۆگا',
-    stockABC: 'شیکاری ABC کۆگا',
-    materialMovement: 'ڕاپۆرتی جوڵەی ماددە',
-    expiringProducts: 'کاڵاکانی نزیک لە بەسەرچوون',
-    paymentMethodDistribution: 'دابەشبوونی ڕێگاکانی پارەدان',
-    discountReport: 'ڕاپۆرتی داشکاندن',
-    reportsCashStatus: 'دۆخی سندوق',
-    commissionReport: 'ڕاپۆرتی کۆمسیۆن',
-    totalRevenueLabel: 'کۆی داهات',
-    salesDetails: 'وردەکارییەکانی فرۆشتن',
-    receiptNo: 'ژمارەی پسوڵە',
-    timeLabel: 'کات',
-    amountLabel: 'بڕی پارە',
-    paymentLabel: 'پارەدان',
-    addNewCurrentAccount: 'زیادکردنی حسابی جاری نوێ',
-    accountTypeSelection: 'هەڵبژاردنی جۆری حساب',
-    reportsCustomerLabel: 'کڕیار',
-    supplierLabel: 'دابینکەر',
-    supplierCode: 'کۆدی دابینکەر',
-    supplierName: 'ناوی دابینکەر',
-    phoneLabel: 'تەلەفۆن',
-    emailLabel: 'ئیمەیڵ',
-    addressLabel: 'ناونیشان',
-    cityLabel: 'شار',
-    paymentTermDays: 'ماوەی پارەدان (ڕۆژ)',
-    creditLimitLabel: 'سنووری قەرز',
-    taxNumberLabel: 'ژمارەی باج',
-    taxOfficeLabel: 'فەرمانگەی باج',
-    notesLabel: 'تێبینییەکان',
-    materialCodeName: 'کۆد/ناوی ماددە',
-    generateReport: 'ئامادەکردنی ڕاپۆرت',
-    startDateReport: 'بەرواری دەستپێکردن',
-    endDateReport: 'بەرواری کۆتایی',
-    noRecordFound: 'هیچ تۆمارێک نەدۆزرایەوە',
-    unitPriceLabel: 'نرخی یەکە',
-    newSalesOrder: 'داواکاری نوێی فرۆشتن',
-    orderForm: 'فۆرمی داواکاری',
-    saveOrder: 'پاشەکەوتکردنی داواکاری',
-    pleaseSelectCustomer: 'تکایە کڕیارێک هەڵبژێرە!',
-    pleaseAddAtLeastOneProduct: 'تکایە لانی کەم یەک بەرهەم زیاد بکە!',
-    orderCreatedSuccessfully: '✅ داواکاری بە سەرکەوتوویی دروستکرا!',
-    orderCreationError: '❌ هەڵە لە دروستکردنی داواکاری!',
-    newUnitSet: 'سێتی یەکەی نوێ',
-    actionCenter: 'سەنتەری کارەکان',
-    reportStructureNote: 'ئەم پێکهاتەی ڕاپۆرتە بە شێوەیەکی کاتی لە ڕێگەی بنکەدراوەی لۆکاڵی RetailEX (PostgreSQL) بە بەکارهێنانی بزوێنەری باڵانسی بەردەوام ئەژمار دەکرێت، کە بە تەواوی لەگەڵ ستانداردە دامەزراوەییەکانی Logo ERP دەگونجێت.',
-    currentAccountTitle: 'ناونیشانی حسابی جاری',
-    currentAccounts: 'حسابە جارییەکان',
-    suppliers: 'دابینکەران',
-    crmManagementConsole: 'کۆنسۆڵی بەڕێوەبردنی کڕیar و دابینکەر',
-    salesCustomerDesc: 'حسابی فرۆشتنی کڕیار',
-    purchaseSupplierDesc: 'حسابی کڕینی دابینکەر',
-    saveChanges: 'پاشەکەوتکردنی گۆڕانکارییەکان',
-    errorLoadingSuppliers: 'دابینکەران بارنەکران',
-    accountUpdated: 'حسابی جاری نوێکرایەوە',
-    accountAdded: 'حسابی جاری زیادکرا',
-    saveFailed: 'پاشەکەوتکردن سەرکەوتوو نەبوو',
-    accountDeleted: 'حسابی جاری سڕایەوە',
-    accountDeleteError: 'حسابی جاری نەسڕایەوە',
-    totalCurrentAccounts: 'کۆی حسابەکان',
-    crmAutoGenerated: 'خۆکار دروست دەبێت',
-    accountNameRequired: 'ناوی حساب پێویستە!',
-    confirmDeleteAccount: 'ئایا دڵنیای لە سڕینەوەی ئەم حسابە؟',
-    contact: 'پەیوەندی',
-    crmBalance: 'باڵانس',
-    actions: 'کردارەکان',
-
-    // Dashboard
-    welcomeSubtitle: 'بەخێربێیت، بەدواداچوون بۆ ئەدای کارەکەت بکە',
-    quickAccess: 'دەستپێڕاگەیشتنی خێرا',
-    editShortcuts: 'دەستکاری کورتەڕێگەکان',
-    dailySummary: 'پوختەی ڕۆژانە',
-    todaysSale: 'فرۆشی ئەمڕۆ',
-    weeklySale: 'فرۆشی هەفتانە',
-    totalProduct: 'کۆی بەرهەمەکان',
-    activeCustomer: 'کڕیاری چالاک',
-    registeredCustomer: 'کڕیاری تۆمارکراو',
-    financialSummary: 'پوختەی دارایی',
-    stockValueCost: 'بەهای کۆگا (تێچوو)',
-    stockValueSale: 'بەهای کۆگا (فرۆشتن)',
-    potentialProfit: 'قازانجی گونجاو',
-    dashboardProfitMargin: 'ڕێژەی قازانج',
-    last7DaysSalesTrend: 'ئاڕاستەی فرۆشتن لە ٧ ڕۆژی ڕابردوو',
-    dailySalesPerformance: 'ئەدای فرۆشتنی ڕۆژانە',
-    paymentMethodsDashboard: 'ڕێگاکانی پارەدان',
-    customerPaymentPreferences: 'پەسەندکردنی پارەدانی کڕیار',
-    dashboardTopSellingProducts: 'بەرهەمە هەرە فرۆشراوەکان',
-    rankingByRevenue: 'ڕیزبەندی بەپێی داهات',
-    categoryBasedStock: 'کۆگا لەسەر بنەمای جۆر',
-    inventoryDistribution: 'دابەشبوونی کاڵاکان',
-    criticalStockAlerts: 'ئاگادارکردنەوەی کۆگای مەترسیدار',
-    lowStockWarnings: 'ئاگادارکردنەوەی کۆگای کەم',
-    productsAtCriticalLevel: 'بەرهەم لە ئاستی مەترسیداردایە',
-    productsAtLowLevel: 'بەرهەم لە ئاستی کەمدایە',
-    remaining: 'ماوە',
-    urgentOrder: 'داواکاری بەپەلە!',
-    orderRecommended: 'داواکاری پێشنیار دەکرێت',
-    noCriticalStock: 'هیچ بەرهەمێک لە ئاستی مەترسیدار نییە',
-    noLowStock: 'هیچ بەرهەمێک لە ئاستی کەم نییە',
-    customizeShortcuts: 'تایبەتمەندکردنی دەستپێڕاگەیشتنی خێرا',
-    maxShortcutsTitle: 'دەتوانیت تا ٨ کورتەڕێگە هەڵبژێریت',
-    shortcutsSelected: 'کورتەڕێگە هەڵبژێردرا',
-    selectAtLeastOneShortcut: 'دەبێت لانی کەم ١ کورتەڕێگە هەڵبژێریت',
-    saveShortcutsError: 'کورتەڕێگەکان پاشەکەوت نەکرا. تکایە دووبارە هەوڵ بدەرەوە.',
-    dashboardTransaction: 'مامەڵەکان',
-    stockLabel: 'کۆگا',
-    print: 'چاپکردن',
-    download: 'داگرتن',
-    currency: 'دینار',
-    paymentCash: 'کاش',
-    paymentCardPOS: 'کارت (POS)',
-    paymentCredit: 'قەرز (نەختینەیی)',
-    paymentQRProvider: 'دابینکەری پارەدانی QR',
-    campaignDiscountPayment: 'داشکاندنی کەمپەین',
-    additionalDiscount: 'داشکاندنی زیادە (ئارەزوومەندانە)',
-    subtotalUppercase: 'کۆی گشتی لاوەکی',
-    totalUppercase: 'کۆی گشتی',
-    paidAmount: 'دراو',
-    remainingAmount: 'ماوە',
-    changeAmount: 'ماوەی پارە',
-    addedPayments: 'پارەدانە زیادکراوەکان',
-    amountInput: 'بڕ',
-    fullAmountBtn: 'تەواوی بڕەکە',
-    addPaymentBtn: 'پارەدان زیاد بکە',
-    numpadPrice: 'نرخ',
-    numpadConfirm: 'پەسەند بکە',
-    paymentProcessing: 'خەریکی کارکردنە...',
-    paymentStartError: 'پارەدان دەستی پێنەکرد',
-    posPaymentDesc: 'پارەدانی فرۆشتنی POS',
-    scanQRCode: 'کۆدی QR سکان بکە',
-    qrInstructions: 'کڕیار دەتوانێت پارەدان تەواو بکات بە سکانکردنی کۆدی QR بە مۆبایلەکەی',
-    paymentAmountLabel: 'بڕی پارەدان',
-    qrStep1: 'هەنگاوی ١',
-    qrStep1Desc: 'مۆبایلەکە ڕوو لە کۆدی QR بکە',
-    qrStep2: 'هەنگاوی ٢',
-    qrStep2Desc: 'پارەدانەکە پشتڕاست بکەرەوە',
-    discountPercentPlaceholder: 'ڕێژەی داشکاندن %',
-    discountAmountPlaceholder: 'بڕی داشکاندن',
-    paymentMethodLabel: 'شێوازی پارەدان',
-    balanceLoading: 'بارکردنی باڵانس',
-    serviceTopUp: 'شەحنکردنی خزمەتگوزاری',
-    transactionNumberLabel: 'ژمارەی مامەڵە/کەس',
-    digitalProductSaleNotice: 'ئەم مامەڵەیە فرۆشتنی بەرهەمی دیجیتاڵییە.',
-    noReturnPolicyNotice: 'گەڕانەوە یان هەڵوەشاندنەوە ڕێگەپێنەدراوە.',
-    smsNotificationSent: 'ئاگاداری SMS نێردرا',
-    receiptDataError: 'داتای پسوڵە بارنەکرا',
-    paymentInfo: 'زانیاری پارەدان',
-    openAccountWarning: 'ئەگەر هەڵنەبژێردرێت، وەک ئەژماری کراوە (قەرز) مامەڵەی لەگەڵ دەکرێت',
-    paymentNotesPlaceholder: 'تێبینییەکان دەربارەی پارەدان...',
-    checkLabel: 'چەک',
-    promissoryNote: 'سەنەد',
-    tagline: 'سیستەمی بەڕێوەبردنی فرۆشتنی پرۆفیشناڵ',
-    systemAdmin: 'سەرپەرشتیاری سیستم',
-    campaignLabel: 'کەمپەین',
-    defaultLocation: 'بەغدا، عێراق',
-    defaultCompanyName: 'RetailEX',
-    thanksForChoosingUs: '★★★ سوپاس بۆ هەڵبژاردنی ئێمە ★★★',
-    receiptRequiredForReturns: 'ئەم پسوڵەیە پێویستە بۆ کردارەکانی گەڕاندنەوە و گۆڕین.',
-    bankTransfer: 'گواستنەوەی بانکی',
-    mixedPayment: 'تێکەڵ',
-    rowDiscount: 'داشکاندنی ڕیز',
-    paymentProvider: 'دابینکەری پارەدان',
-    numpadMode: 'دۆخی تەختەی ژمارەکان',
-    numpadModeAdd: '+ زیادکردن',
-    numpadModeReplace: '↻ گۆڕین',
-    gatewayPageOpened: 'لاپەڕەی پارەدان لە تابێکی نوێدا کرایەوە.',
-    gatewayFinishInstructions: 'کرتە لە "باشە" بکە دوای تەواوکردنی پارەدانەکە. ئەگەر پارەدانەکە سەرکەوتوو نەبوو کرتە لە "پاشگەزبوونەوە" بکە.',
-
-    // Advanced Reports Category Names
-    salesReports: 'ڕاپۆرتەکانی فرۆشتن',
-    stockReports: 'ڕاپۆرتەکانی کۆگا',
-    financeReports: 'ڕاپۆرتە داراییەکان',
-    customerReports: 'ڕاپۆرتەکانی کڕیاران',
-    hrReports: 'سەرچاوە مرۆییەکان',
-    customReports: 'ڕاپۆرتە تایبەتەکان',
-    reportCountLabel: 'ڕاپۆرت',
-
-    // Cash Register Process
-    openCashRegisterProcess: 'کرداری کردنەوەی سندوق',
-    cashHandoverAccept: 'قبوڵکردنی گواستنەوەی نەقد',
-    numpad: 'تەختەکلیل',
-    cashHandoverAvailable: 'گواستنەوەی نەقد بەردەستە',
-    handoverFromCashier: 'سندوقداری گواستنەوە:',
-    handoverAmount: 'بڕی گواستنەوە:',
-    sessionInformation: 'زانیاری دانیشتن',
-    cashierLabel: 'سندوقدار:',
-    banknoteCount: 'ژماردنی بانکنۆت',
-    openingCashAmount: 'بڕی نەقدی کردنەوە',
-    banknoteAndCoinCount: 'ژماردنی بانکنۆت و دراو',
-    openingCashRegister: 'کردنەوەی سندوق',
-    openingCashDescription: 'بڕی نەقدی سەرەتایی سندوق بنووسە',
-    noteOptional: 'تێبینی (ئارەزوومەندانە)',
-    cashOpeningNotePlaceholder: 'تێبینییەکانت لێرە بنووسە...',
-    zeroOpeningCashConfirm: 'دڵنیایت لە کردنەوەی سندوق بە 0؟',
-    helpMessage: 'ئەگەر ئەم هەڵەیە بەردەوام بوو، تکایە پەیوەندی بە تیمی پشتگیری تەکنیکییەوە بکە.',
-    closeCashRegisterProcess: 'کرداری داخستنی سندوق',
-    salesSummary: 'پوختەی فرۆشتن',
-    grossSales: 'کۆی فرۆشتنی گشتی',
-    returnTotal: 'کۆی گەڕاندنەوە',
-    netSales: 'فرۆشتنی خاوێن',
-    paymentMethods: 'شێوازەکانی پارەدان',
-    cashSales: 'فرۆشتنی نەقد',
-    creditCard: 'کارتی بانکی',
-    totalCollection: 'کۆی کۆکراوە',
-    cashStatus: 'دۆخی نەقد',
-    cardSales: 'فرۆشتن بە کارت',
-    expectedCash: 'نەقدی چاوەڕوانکراو',
-    countedCashAmount: 'نەقدی ژمێردراو',
-    cashCountExample: 'نموونە: ١٠٠٠.٠٠',
-    cashDifference: 'جیاوازی نەقد',
-    cashBalanced: 'هاوسەنگ',
-    excess: 'زیادە',
-    shortage: 'کەم',
-    cashClosingNotePlaceholder: 'تێبینییەکانت لێرە بنووسە...',
-    printReport: 'ڕاپۆرت چاپ بکە',
-    transferToOtherCashier: 'گواستنەوە بۆ سندوقدارێکی تر',
-    cashCountRequired: 'تکایە بڕی نەقدی ژمێردراو داخڵ بکە!',
-    cashDifferenceConfirm: 'جیاوازی نەقد هەیە. دەتەوێت بەردەوام بیت؟',
-    cashClosedSuccessfully: 'سندوق بە سەرکەوتوویی داخرا!',
-    cashHandoverCountRequired: 'تکایە بڕی گواستنەوە داخڵ بکە!',
-    sessionDay: 'ڕۆژ',
-    session: 'دانیشتن',
-
-    // Diagnostic & System
-    firmSelectionScope: 'هەڵبژاردنی کۆمپانیا / FIRM',
-    step01Auth: 'هەنگاوی 01 / ڕێپێدان',
-    step02Scope: 'هەنگاوی 02 / مەودا',
-    selectFirmPrompt: 'کۆمپانیا هەڵبژێرە',
-    storeSelectionScope: 'هەڵبژاردنی لق / STORE',
-    editInfo: 'دەستکاری زانیاری',
-    verifying: 'پشکنین دەکرێت...',
-    systemLogin: 'چوونە ژوورەوە بۆ سیستەم',
-    continue: 'بەردەوامبە',
-    enterUsernamePassword: 'تکایە ناوی بەکارهێنەر و وشەی نهێنی بنووسە.',
-    invalidCredentials: 'ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە',
-    loginFailed: 'چوونە ژوورەوە سەرکەوتوو نەبوو.',
-    networkError: 'هەڵەیەکی تۆڕ ڕوویدا.',
-    systemLogs: 'تۆمارەکانی سیستەم',
-    supportCenter: 'سەنتەری پشتگیری',
-    hwid: 'ناسنامەی ئامێر (HWID)',
-    copy: 'کۆپی',
-    copied: 'کۆپی کرا',
-    status: 'بارودۆخ',
-    online: 'پەیوەستە',
-    waiting: 'چاوەڕوانە',
-    startSupport: 'دەستپێکردنی پشتگیری',
-    closeWindow: 'داخستنی پەنجەرە',
-    systemLogsTitle: 'تۆمارەکانی سیستەم',
-    diagnosticsSubtitle: 'پشکنین و وردبینی کاتی ڕاستەقینە',
-    noLogsYet: 'هیچ تۆمارێک نییە',
-    totalEntries: 'کۆی تۆمارەکان',
-
-    // Main Layout
-    posModule: 'فرۆشتن',
-    managementModule: 'بەڕێوەبردن',
-    wmsModule: 'کۆگا (WMS)',
-    setDateTime: 'ڕێکخستنی کات و بەروار',
-    requiresAdminPassword: 'ئەم کارە پێویستی بە دەسەڵاتی بەڕێوەبەر هەیە. گۆڕینی بەروار ڕەنگە کار بکاتە سەر تۆمارەکانی فرۆشتن.',
-    enterAdminPassword: 'وشەی نهێنی بەڕێوەبەر بنووسە',
-    managementPanelAccess: 'دەستگەیشتن بە پانێڵی بەڕێوەبردن',
-    incorrectPassword: 'وشەی نهێنی هەڵەیە!',
-
-    // Central Data Management
-    centralDataManagementSystem: 'سیستەمی بەڕێوەبردنی داتای ناوەندی',
-    centralDataManagementSubtitle: 'بەڕێوەبردنی هاوکاتکردن و پەخشی دامەزراوەکان v2.0',
-    backup: 'پاڵپشتی',
-    import: 'هێنان',
-    sending: 'ناردن دەکرێت...',
-    sendNow: 'ئێستا بنێرە',
-    totalDevicesLabel: 'کۆی ئامێرەکان',
-    onlineDevicesLabel: 'پەیوەستە',
-    pendingBroadcastsLabel: 'چاوەڕوانە',
-    scheduledBroadcastsLabel: 'کاتی بۆ دانراوە',
-    successRateLabel: 'ڕێژەی سەرکەوتن',
-    last24hLabel: '٢٤ کاتژمێر',
-    dataTransferLabel: 'گواستنەوەی داتا',
-    sendDataTab: 'ناردنی داتا',
-    dataTypeLabel: 'جۆری داتا',
-    administrator: 'بەڕێوەبەر',
-    quickProductPageSelect: 'هەڵبژاردنی پەڕەی بەرهەمی خێرا',
-
-    // Product Detail Modal
-    productInfo: 'زانیاری بەرهەم',
-    recentMovements: 'جوڵەکانی دوایی',
-    branchStockStatus: 'دۆخی کۆگای لق',
-    reserved: 'پارێزراو',
-    available: 'بەردەست',
-    totalStock: 'کۆی کۆگا',
-    incomingTransfer: 'گواستنەوەی هاتوو',
-    outgoingTransfer: 'گواستنەوەی ڕۆیشتوو',
-    purchase: 'کڕین',
-    cancelReceiptTitle: 'هەڵوەشاندنەوەی پسوڵە',
-    customerChangedMind: 'کڕیار پەشیمان بووەوە',
-    wrongProductAdded: 'بەرهەمی هەڵە زیادکراوە',
-    priceProblem: 'کێشەی نرخ',
-    systemError: 'هەڵەی سیستەم',
-    explainCancelReason: 'هۆکاری هەڵوەشاندنەوە ڕوون بکەرەوە...',
-    cancelReasonPlaceholder: 'هۆکاری هەڵوەشاندنەوە هەڵبژێرە...',
-    pleaseSelectCancelReason: 'تکایە هۆکاری هەڵوەشاندنەوە هەڵبژێرە!',
-    pleaseExplainCancelReason: 'تکایە هۆکاری هەڵوەشاندنەوە ڕوون بکەرەوە!',
-    giveUp: 'وازهێنان',
-    factoryResetConfirm: 'هەموو داتا و ڕێکخستنەکان دەسڕێنەوە. دڵنیایت؟',
-    resetFailed: 'هەڵە لە گەڕاندنەوە بۆ باری کارگە:',
-    selectSystemLanguage: 'زمانی سیستەم هەڵبژێرە',
-    remoteSupportRequestSent: 'داواکاری پشتگیری نێردرا.',
-    remoteSupportWarning: 'تێبینی: پشتگیری دوورەدەست دەستپێدەکات.',
-    confirmClearLogs: 'هەموو تۆمارەکان دەسڕێنەوە. دڵنیایت؟',
-    logAudit: 'تۆمار/پشکنین',
-
-    menu: {
-      materialManagement: "بەڕێوەبردنی ماددەکان",
-      masterRecords: "تۆمارە سەرەکییەکان",
-      materialClasses: "پۆلەکانی ماددە",
-      materials: "ماددەکان",
-      unitSets: "کۆمەڵە یەکەکان",
-      variants: "جۆرەکان",
-      specialCodes: "کۆدە تایبەتەکان",
-      brandDefinitions: "پێناسەی براندەکان",
-      groupCodes: "کۆدی گروپەکان",
-      productCategories: "ھاوبۆلەکانی بەرهەم",
-      movements: "جوڵەکان",
-      stockManagementPanel: "پانێڵی بەڕێوەبردنی کۆگا",
-      materialManagementSlips: "پسوڵەکانی بەڕێوەبردنی ماددە",
-      reports: "ڕاپۆرتەکان",
-      materialExtract: "کورتەی ماددە",
-      materialValue: "بەهای ماددە",
-      inventory: "سەرژمێری",
-      cost: "تێچوو",
-      inOutTotals: "کۆی هاتوو و چوو",
-      materialWarehouseStatus: "باری کۆگای ماددەکان",
-      transactionBreakdown: "وردەکاری جوڵەکان",
-      slipList: "لیستی پسوڵەکان",
-      minMaxStock: "کەمترین و زۆرترین کۆگا",
-      mainMenu: "مێنوی سەرەکی",
-      homepage: "پەڕەی سەرەکی",
-      dashboard: "داشبۆرد",
-      storeManagement: "بەڕێوەبردنی فرۆشگا",
-      storePanel: "پانێڵی فرۆشگا",
-      storeTransfer: "گواستنەوەی فرۆشگا",
-      multiStoreManagement: "بەڕێوەبردنی چەند فرۆشگا",
-      regionalFranchiseManagement: "بەڕێوەبردنی بریکارە هەرێمییەکان",
-      storeConfiguration: "ڕێکخستنی فرۆشگا",
-      dataBroadcast: "ناردن/وەرگرتنی زانیاری",
-      integrations: "بەستنەوەکان",
-      excelOperations: "کردارەکانی ئێکسڵ",
-      invoices: "پسوڵەکان",
-      salesInvoices: "پسوڵەکانی فرۆشتن",
-      salesInvoice: "پسوڵەی فرۆشتن",
-      retailSales: "فرۆشتنی تاک",
-      wholesaleSales: "فرۆشتنی کۆ",
-      consignmentSales: "فرۆشتنی ئەمانەت",
-      salesReturn: "گەڕانەوەی فرۆشتن",
-      purchasing: "کڕین",
-      requestSlips: "پسوڵەکانی داواکاری",
-      purchaseOrders: "داواکاری کڕین",
-      purchaseInvoice: "پسوڵەی کڕین",
-      purchaseReturn: "گەڕانەوەی کڕین",
-      receivedService: "خزمەتگوزاری وەرگیراو",
-      serviceInvoices: "پسوڵەکانی خزمەتگوزاری",
-      supplierCards: "کارتی دابینکەران",
-      serviceInvoiceIssued: "پسوڵەی خزمەتگوزاری دراو",
-      serviceInvoiceReceived: "پسوڵەی خزمەتگوزاری وەرگیراو",
-      waybills: "پسوڵەکانی گواستنەوە",
-      salesWaybill: "گواستنەوەی فرۆشتن",
-      purchaseWaybill: "گواستنەوەی کڕین",
-      warehouseTransferWaybill: "پسوڵەی گواستنەوەی کۆگا",
-      wasteWaybill: "پسوڵەی بەفیڕۆچوون",
-      orders: "داواکارییەکان",
-      salesOrder: "داواکاری فرۆشتن",
-      offers: "پێشنیارەکان",
-      financeManagement: "بەڕێوەبردنی دارایی",
-      definitions: "پێناسەکان",
-      paymentPlans: "پلانی پارەدان",
-      bankPaymentPlans: "پلانی پارەدانی بانکی",
-      campaignDefinitions: "پێناسەی کەمپەینەکان",
-      cards: "کارتەکان",
-      currentAccounts: "حیسابە جارییەکان",
-      cashAccounts: "حیسابەکانی نەقد",
-      banks: "بانکەکان",
-      bankAccounts: "حیسابە بانکییەکان",
-      currentAccountSlips: "پسوڵەکانی حیسابی جاری",
-      cashOperations: "کردارەکانی نەقد",
-      cashSlips: "پسوڵەکانی نەقد",
-      bankSlips: "پسوڵەکانی بانک",
-      creditCardPosSlips: "پسوڵەکانی پۆس",
-      journalAndSlips: "دەفتەری ڕۆژانە و پسوڵەکان",
-      currentAccountReports: "ڕاپۆرتەکانی حیسابی جاری",
-      cashReports: "ڕاپۆرتەکانی نەقد",
-      bankReports: "ڕاپۆرتەکانی بانک",
-      trialBalanceReport: "ڕاپۆرتی میزان",
-      other: "هیتر",
-      accountingManagement: "بەڕێوەبردنی ژمێریاری",
-      expenseManagement: "بەڕێوەبردنی خەرجییەکان",
-      checkPromissory: "چەک/بەڵێننامە",
-      collectionPayment: "وەرگرتن/پارەدان",
-      multiCurrency: "چەند دراوێک",
-      accountingVouchers: "پسوڵە ژمێریارییەکان",
-      retail: "تاک",
-      priceAndCampaign: "نرخ و کەمپەین",
-      scaleAndWeighedSales: "تەرازوو و فرۆشتنی کێشراو",
-      communicationAndNotifications: "پەیوەندی و ئاگادارکردنەوەکان",
-      whatsappIntegration: "بەستنەوەی واتسئەپ",
-      notificationCenter: "سەنتەری ئاگادارکردنەوە",
-      smsManagement: "بەڕێوەبردنی کورتەنامە",
-      emailCampaigns: "کەمپەینەکانی ئیمەیڵ",
-      reportsAndAnalysis: "ڕاپۆرت و شیکاری",
-      aiProductAnalytics: "شیکاری بەرهەم بە ژیری دەستکرد",
-      advancedReports100: "⭐ ڕاپۆرتە پێشکەوتووەکان (100+)",
-      profitabilityAnalyticsDashboard: "💰 داشبۆردی شیکاری قازانج",
-      salesReports: "ڕاپۆرتەکانی فرۆشتن",
-      stockReports: "ڕاپۆرتەکانی کۆگا",
-      trialBalance: "میزانی پێداچوونەوە",
-      incomeStatement: "بەیانی داهات",
-      customerAnalysis: "شیکاری کڕیار",
-      balanceSheet: "بەیانی دارایی",
-      graphicalAnalysis: "شیکاری گرافیکی",
-      customReports: "ڕاپۆرتە تایبەتەکان",
-      biDashboardAi: "BI Dashboard & AI",
-      stockInventory: 'ژماردنی کۆگا',
-      inventoryManagement: 'کارەکانی ژماردن و کۆگا',
-      systemManagement: "بەڕێوەبردنی سیستەم",
-      firmPeriodDefinitions: "پێناسەی کۆمپانیا/ماوە",
-      workflowAutomation: "خۆکارکردنی کارەکان",
-      demoDataManagement: "بەڕێوەبردنی داتای تاقیکاری",
-      databaseInfrastructure: "بنیاتنانی بنکەدراوە",
-      exSecureGateSecurity: "ExSecureGate (ئاسایش)",
-      generalSettings: "ڕێکخستنە گشتییەکان",
-      userManagement: "بەڕێوەبردنی بەکارهێنەران",
-      roleAndAuthorization: "ڕۆڵ و دەسەڵاتەکان",
-      menuManagement: "بەڕێوەبردنی مێنۆ",
-      definitionsParameters: "پێناسە/پارامێتەرەکان",
-      backupRestore: "پاڵپشتی و گەڕاندنەوە",
-      logAudit: "تۆمار/پشکنین",
-      systemHealth: "تەندروستی سیستەم"
-    },
-
-    // Restaurant Specific
-    transferAllItems: 'هەموو بابەتەکانی ناو مێزی {number} دەگوازرێنەوە بۆ مێزی هەڵبژێردراو.',
-    selectTargetTable: 'مێزی مەبەست هەڵبژێرە',
-    tableOccupied: 'پڕ',
-    moveTable: 'گوستنەوەی مێز',
-    confirmMove: 'پشتڕاستکردنەوەی گواستنەوە',
-    orderNote: 'تێبینی داواکاری',
-    specialRequests: 'داواکاری تایبەت و وردەکارییەکان',
-    orderNoteDescription: 'ئەم تێبینییە لە شاشەی چێشتخانە و پسوڵەدا دەردەکەوێت.',
-    orderNotePlaceholder: 'تێبینییەک لەسەر داواکارییەکە زیاد بکە (بۆ نموونە: بێ بیبەر، کەتچەپی کەم...)',
-    orderDiscount: 'داشکاندنی داواکاری',
-    applyRatioDiscount: 'جێبەجێکردنی داشکاندنی ڕێژەیی',
-    discountRatioApplied: 'ڕێژەی داخڵکراو لەسەر کۆی گشتی داواکارییەکە جێبەجێ دەکرێت.',
-    apply: 'جێبەجێکردن',
-    reset: 'سفرکردنەوە',
-
-
-
-    // MarketPOS & Kasa Operations
-    saleSaveFailed: 'فڕۆشتن پاشەکەوت نەکرا',
-    unknownError: 'هەڵەیەکی نەزانراو',
+    cashierInfo: 'Kasiyer',
+    cashierLabel: 'Kasiyer',
+    cashierPerformance: 'Kasiyer Performansı',
+    categories: 'هاوپۆلەکان',
+    category: 'هاوپۆل',
+    categoryAnalysis: 'شیکاری جۆرەکان',
+    categoryBasedStock: 'Kategori Bazlı Stok',
+    categoryLabel: 'Kategori',
+    centralDataManagementSubtitle: 'Enterprise Senkronizasyon ve Broadcast Yönetimi v2.0',
+    centralDataManagementSystem: 'Merkezi Veri Yönetim Sistemi',
+    centralStore: 'فرۆشگای ناوەندی',
     chCollection: 'وەرگرتنی هەژماری جاری',
     chPayment: 'تەختی هەژماری جاری',
-    cashIn: 'هاتنی کاش',
-    cashOut: 'چوونی کاش',
-    bankDeposit: 'دانانی بانکی',
-    bankWithdrawal: 'ڕاکێشانی بانکی',
-    cashTransfer: 'گواستنەوەی کاش',
-    expenseVoucher: 'پسووڵەی خەرجی',
-    selfEmployedReceiptGiven: 'پسووڵەی کاری سەربەخۆ (دراو)',
-    selfEmployedReceiptReceived: 'پسووڵەی کاری سەربەخۆ (وەرگیراو)',
-    farmersReceipt: 'پسووڵەی جووتیار',
-    openingDebit: 'کردنەوە (قەرزار)',
-    openingCredit: 'کردنەوە (داواکار)',
-    exchangeDifferenceDebit: 'جیاوازی دراو (قەرزار)',
-    exchangeDifferenceCredit: 'جیاوازی دراو (داواکار)',
-    pleaseEnterAmount: 'تکایە بڕەکە بنووسە',
-    pleaseSelectCurrentAccount: 'تکایە هەژمارێکی جاری هەڵبژێرە',
-    operationSavedSuccessfully: 'کردارەکە بە سەرکەوتوویی پاشەکەوت کرا',
-    operationSaveFailed: 'کردارەکە پاشەکەوت نەکرا',
-    missingKasaId: 'ناسنامەی کاش دەست نەکەوت! تکایە لاپەڕەکە نوێ بکەرەوە.',
+    changeAmount: 'Para Üstü',
+    changeCashier: 'گۆڕینی سندوقدار',
+    changeLanguage: 'گۆڕینی زمان',
+    changeSearchCriteria: 'پێوەرەکانی گەڕانت بگۆڕە',
+    changeVariant: 'گۆڕینی جۆر',
+    chartOfAccounts: 'نەخشەی حسابەکان',
+    checkLabel: 'Çek',
+    checkTracking: 'Çek/Senet Takibi',
+    cityLabel: 'Şehir',
+    clear: 'پاککردنەوە',
+    clearBtn: 'پاككردنەوە',
+    clearCart: 'Sepeti Temizle',
+    clearCurrentCartFirst: 'Önce mevcut sepeti temizleyin',
+    clearList: 'Listeyi Temizle',
+    clickToChangePrice: 'کلیک بکە بۆ گۆڕینی نرخ',
+    close: 'داخستن',
+    closeButton: 'Kapat',
+    closeCashRegister: 'Kasa Kapat',
+    closeCashRegisterProcess: 'Kasa Kapatma İşlemi',
+    closeEsc: 'ESC دابگرە بۆ داخستن',
+    closeMonth: 'داخستنی مانگ',
+    closePeriod: 'داخستنی ماوە',
+    closeRegister: 'داخستنی سندوق',
+    closeWindow: 'Pencereyi Kapat',
+    closedMonths: 'مانگە داخراوەکان',
+    codeAndNameRequired: 'کێڵگەگانی کۆد و ناو پێویستن',
+    cogs: 'تێچووی کاڵای فرۆشراو',
+    commissionReport: 'Komisyon Raporu',
+    communicationAndNotifications: 'پەیوەندی و ئاگادارکردنەوەکان',
+    complete: 'تەواوکردن',
+    completePayment: 'تەواوکردنی پارەدان',
+    confirmBarcode: 'Barkod Onayla',
+    confirmClearLogs: 'Tüm kayıtlar temizlenecektir. Emin misiniz?',
+    confirmDelete: 'دڵنیایت لە سڕینەوە؟',
+    confirmDeleteAccount: 'silmek istediğinize emin misiniz?',
+    confirmDeleteInvoice: 'ئایا دڵنیایت لە سڕینەوەی وەسڵی ژمارە {invoiceNo}؟',
+    confirmDeleteRecord: 'ئایا دڵنیایت لە سڕینەوەی ئەم تۆمارە؟',
+    confirmDeleteUnitSet: 'ئایا دڵنیایت لە سڕینەوەی ئەم سێتە یەکە؟',
+    confirmItemDelete: 'ئایا دڵنیایت لە سڕینەوە؟',
+    confirmMove: 'پشتڕاستکردنەوەی گواستنەوە',
+    confirmPaymentText: 'پشتڕاستکردنەوەی پارەدان',
+    confirmReturn: 'İadeyi Onayla',
+    connectionSettings: 'ڕێکخستنی پەیوەندی',
+    consignment: 'Konsinyasyon',
+    consignmentSale: 'فرۆشتنی ئەمانەت',
+    consignmentSales: 'فرۆشتنی ئەمانەت',
+    consignmentSalesDesc: 'کردارەکانی فرۆشتنی ئەمانەت',
+    consignmentSalesTitle: 'فرۆشتنی ئەمانەت',
+    consolidatedReports: 'ڕاپۆرتە یەکگرتووەکان',
+    consumption: 'بەکارهێنان',
+    contact: 'İLETİŞİM',
+    continue: 'Devam Et',
+    continueReceipt: 'بەردەوامبوون',
+    copied: 'Kopyalandı',
+    copy: 'Kopyala',
+    corporate: 'کۆمپانیا',
+    corporateTax: 'باجی کۆمپانیا',
+    cost: 'تێچوو',
+    costAnalysis: 'Maliyet Analizi',
+    costAndProfitAnalysis: 'شیکردنەوەی تێچوو و قازانج',
+    costOfGoodsSold: 'تێچووی کاڵای فرۆشراو',
+    costPrice: 'Alış Fiyatı',
+    costValue: 'Alış Değeri',
+    countEntry: 'Sayım Giriş',
+    countReconciliation: 'Sayım Mutabakat',
+    countedCashAmount: 'Sayılan Nakit',
+    countingControl: 'Sayım & Kontrol',
+    credit: 'قەرزدەر',
+    creditCard: 'Kredi Kartı',
+    creditLimitLabel: 'Kredi Limiti',
+    criticalLevel: 'Kritik Seviye',
+    criticalStockAlerts: 'Kritik Stok Uyarıları',
+    crmAutoGenerated: 'Otomatik Üretilir',
+    crmBalance: 'BAKİYE',
+    crmManagementConsole: 'وحدة إدارة العملاء والموردين',
+    currency: 'دينار',
+    currencyAndRates: 'دراو و نرخەکان',
     currentAccountPersonel: 'هەژماری جاری / کارمەندان',
-    searchCurrentAccountPlaceholder: 'بۆ هەژماری جاری یان کارمەند بگەڕێ...',
+    currentAccountTitle: 'CARİ HESAP ÜNVANI',
+    currentAccounts: 'حیسابە جارییەکان',
     currentBalance: 'باڵانسی ئێستا',
-    targetKasa: 'کاشی مەبەست',
-    bankAccount: 'هەژماری بانکی',
+    currentStock: 'Mevcut Stok',
+    customReports: 'ڕاپۆرتە تایبەتەکان',
+    customer: 'کڕیار',
+    customerChangedMind: 'Müşteri vazgeçti',
+    customerInfo: 'زانیاری کڕیار',
+    customerLabel: 'کڕیار',
+    customerNotFound: 'کڕیار نەدۆزرایەوە',
+    customerNotSatisfied: 'Müşteri Memnun Değil',
+    customerPaymentPreferences: 'Müşteri ödeme tercihleri',
+    customerReports: 'Müşteri Raporları',
+    customerSalesAnalysis: 'Müşteri Satış Analizi',
+    customerSearchPlaceholder: 'گەڕان بەدوای کڕیاردا...',
+    customerSupplier: 'هەژمار (کڕیار/دابینکەر)',
+    customizeQuickAccess: 'تایبەتمەندکردنی گەیشتنی خێرا',
+    customizeShortcuts: 'Hızlı Erişimleri Düzenle',
+    dailyReport: 'Günlük Rapor',
+    dailySalesPerformance: 'Günlük satış performansı',
+    dailySummary: 'Günlük Özet',
+    dashboard: 'داشبۆرد',
+    dashboardProfitMargin: 'Kar Marjı',
+    dashboardTopSellingProducts: 'En Çok Satan Ürünler',
+    dashboardTransaction: 'işlem',
+    dataBroadcast: 'ناردن/وەرگرتنی زانیاری',
+    dataTransferLabel: 'Veri Transfer',
+    dataTypeLabel: 'Veri Tipi',
+    databaseConnection: 'Veritabanı Bağlantısı',
+    dateLabel: 'Tarih',
+    dateRange: 'Tarih Aralığı',
+    dateRangeLabel: 'مەودای بەروار',
+    dayShift: 'ڕۆژ',
+    dbMenu: '📊 DB Menü',
+    deactivate: 'ناچالاککردن',
+    debit: 'قەرزدار',
+    debtAgingReport: 'Borç/Alacak Yaşlandırma',
+    defaultCompanyName: 'RestPOS',
+    defaultLocation: 'Bağdat, Irak',
+    defaultQuantity: 'VARSAYILAN ADET',
+    definitionCode: 'کۆدی پێناسه',
+    definitionDescription: 'وێناکردن',
+    definitionName: 'ناوی پێناسه',
+    definitions: 'پێناسەکان',
+    delete: 'سڕینەوە',
+    deleteAction: 'سڕینەوە',
+    deleteBtn: 'سڕینەوە',
+    deleteReceipt: 'سڕینەوە',
+    description: 'وەسف',
+    designCenter: 'سەنتەری دیزاین',
+    detail: 'Detay',
+    detailButton: 'Detay',
+    diagnosticsSubtitle: 'Gerçek Zamanlı Teşhis ve Denetim',
+    differentReceipts: 'farklı fiş',
+    digitalProductSaleNotice: 'Bu işlem dijital ürün satışıdır.',
+    discount: 'داشکاندن',
+    discountAmountPlaceholder: 'İndirim Tutarı',
+    discountApplied: '%{percent} indirim uygulandı',
+    discountAuthority: 'مافی داشکاندنی هەیە',
+    discountLabel: 'İndirim:',
+    discountOptional: 'داشکاندن (دڵخواز)',
+    discountPercentPlaceholder: 'İndirim %',
+    discountRatioApplied: 'ڕێژەی داخڵکراو لەسەر کۆی گشتی داواکارییەکە جێبەجێ دەکرێت.',
+    discountReport: 'İndirim Raporu',
+    documentNo: 'ژمارەی پسووڵە / بەڵگەنامە',
+    donem: 'ماوە',
+    download: 'İndir',
+    edit: 'دەستکاری',
+    editInfo: 'BİLGİLERİ DÜZENLE',
+    editQuickAccess: 'دەستکاری',
+    editShortcuts: 'Hızlı Erişimleri Düzenle',
+    editUnitSet: 'دەستکاریکردنی سێتی یەکە',
+    emailCampaigns: 'کەمپەینەکانی ئیمەیڵ',
+    emailLabel: 'E-posta',
+    emptyCart: 'سەبەتە بەتاڵە',
+    endDate: 'Bitiş:',
+    endDateReport: 'BİTİŞ TARİHİ',
+    english: 'ئینگلیزی',
+    enter: 'باشە',
+    enterAdminPassword: 'Yönetici şifresini girin',
+    enterBarcode: 'Barkod girin...',
+    enterBtn: 'باشە',
+    enterDiscountAmount: 'بڕی داشکاندن بنووسە',
+    enterDiscountPercentage: 'ڕێژەی داشکاندن بنووسە',
+    enterNewPrice: 'نرخی نوێ بنووسە',
+    enterReceivedCashAmount: 'بڕی نەقدی وەرگیراو بنووسە',
+    enterUsernamePassword: 'Lütfen kullanıcı adı ve şifre giriniz.',
+    entryOperations: 'Giriş İşlemleri',
+    equipmentMaintenance: 'Ekipman Bakım',
+    equity: 'مافی خاوەندارێتی',
+    error: 'هەڵە',
+    errorFetchingUsers: 'Lîsteya bikarhêneran nehat girtin',
+    errorLoadingScreen: 'هەڵەیەک ڕوویدا لە کاتی بارکردنی شاشەکەدا.',
+    errorLoadingSuppliers: 'Tedarikçiler yüklenemedi',
+    errorMessage: 'Hata Mesajı',
+    excelOperations: 'کردارەکانی ئێکسڵ',
+    excess: 'Fazla',
+    exchangeDifferenceCredit: 'جیاوازی دراو (داواکار)',
+    exchangeDifferenceDebit: 'جیاوازی دراو (قەرزار)',
+    exitOperations: 'Çıkış İşlemleri',
+    expectedCash: 'Beklenen Nakit',
+    expenseAnalysis: 'Gider Analizi',
     expenseCodeDescription: 'کۆدی خەرجی / وەسف',
     expenseCodePlaceholder: 'کۆد یان ناوی خەرجی...',
-    withholdingTaxRate: 'ڕێژەی باج (٪)',
-    taxRateLabel: 'ڕێژەی باجی بەها / باج (٪)',
+    expenseVoucher: 'پسووڵەی خەرجی',
+    expenses: 'خەرجییەکان',
+    expiringProducts: 'Son Kullanma Tarihi Yaklaşanlar',
+    explainCancelReason: 'İptal Nedenini Açıklayın',
+    explainReturnReason: 'İade nedenini açıklayın...',
+    factoryResetConfirm: 'Tebrikler: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Kurulum sihirbazı tekrar açılacak.\n- Veritabanı verileri korunacaktır.\n\nİşlemi onaylıyor musunuz?',
+    farmersReceipt: 'پسووڵەی جووتیار',
+    fefoReport: 'FEFO Raporu',
+    ficheNo: 'ژمارەی وەسڵ',
+    ficheType: 'جۆری کردار',
+    financeManagement: 'بەڕێوەبردنی دارایی',
+    financeReports: 'Finans Raporları',
+    financialStatements: 'القوائم المالية',
+    financialSummary: 'Finansal Özet',
+    firmPeriodDefinitions: 'پێناسەی کۆمپانیا/ماوە',
+    firmSelection: 'Firma Seçimi',
+    firmSelectionScope: 'FİRMA SEÇİMİ',
+    firma: 'کۆمپانیا',
+    first: 'یەکەم',
+    fiscalPeriod: 'ماوەی دارایی',
+    fiscalYear: 'ساڵی دارایی',
+    focusBarcodeInput: 'Barkod Alanına Odaklan',
+    fullAmount: 'بڕی تەواو',
+    gatewayFinishInstructions: 'Ödeme işlemini tamamladıktan sonra "Tamam" butonuna tıklayın. Ödeme başarısız olduysa "İptal" diyerek geri dönün.',
+    gatewayLabel: 'دابینکەری پارەدانی QR',
+    gatewayPageOpened: 'ödeme sayfası yeni sekmede açıldı.',
+    generalLedger: 'دەفتەری گشتی',
+    generalReport: 'ڕاپۆرتە گشتییەکان',
+    generalSale: 'Genel Satış',
+    generateReport: 'Raporu Hazırla',
+    giveUp: 'Vazgeç',
+    goBack: 'Geri Dön',
+    goodsReceiving: 'Mal Kabul',
+    grandTotal: 'کۆی گشتی',
+    grid: 'Izgara',
+    gridView: 'تۆڕ',
+    grossProfit: 'قازانجی گشتی',
+    grossSales: 'Brüt Satışlar',
+    groupCodeDesc: 'بەڕێوەبردنی کۆدی گروپەکان',
+    groupCodes: 'کۆدی گروپەکان',
+    handoverAmount: 'Devir Tutarı:',
+    handoverFromCashier: 'Devreden Kasiyer:',
+    helpMessage: 'Bu hata devam ederse, lütfen tarayıcı konsolunu (F12) kontrol edin ve teknik destek ekibiyle iletişime geçin.',
+    historyMovements: 'مێژووی جوڵەکان',
+    holdPhoneToQr: 'مۆبایلەکە بەرەو کۆدی QR بگرە',
+    homepage: 'الصفحة الرئيسية',
+    hourlySalesAnalysis: 'Saatlik Satış Analizi',
+    howCalculated: 'چۆن هەژمار دەکرێت؟',
+    hrReports: 'İnsan Kaynakları',
+    hwid: 'Cihaz Kimliği (HWID)',
+    icon: 'ئایکۆن',
+    import: 'İçe Aktar',
+    inOutQty: 'هاتوو/چوو',
+    inOutTotals: 'کۆی هاتوو و چوو',
+    incomeStatement: 'بەیانی داهات',
+    incomeTax: 'باجی داهات',
+    incomingTransfer: 'Transfer Gelen',
+    incorrectPassword: 'Hatalı şifre!',
+    individual: 'تاکی',
+    insufficientPayment: 'بڕی پارەدان کەمە!',
+    integrations: 'بەستنەوەکان',
+    intercompanyEliminations: 'سڕینەوەی نێوان کۆمپانیاکان',
+    invalidCredentials: 'Invalid username or password',
+    invalidDate: 'تاریکی نادروست',
+    invalidPassword: 'Şîfre şaş e',
+    inventory: 'سەرژمێری',
+    inventoryDistribution: 'Envanter dağılımı',
+    inventoryList: 'لیستی کۆگا',
+    inventoryManagement: 'کارەکانی ژماردن و کۆگا',
+    invoiceDeleteError: 'پسوڵەکە نەسڕایەوە',
+    invoiceDeleteSuccess: 'پسوڵەکە بە سەرکەوتوویی سڕایەوە',
+    invoiceNo: 'ژمارەی پسوڵە',
+    invoiceType: 'جۆری پسوڵە',
+    invoiceCategories: 'ھاوبۆلەکانی پسوڵە',
+    invoiceTypes: 'جۆرەکانی پسوڵە',
+    invoiceTypeDetails: 'وردەکاری جۆری پسوڵە',
+    invoices: 'پسوڵەکان',
+    invoicesCount: 'پسوڵە',
+    issuedServiceInvoicesDesc: 'خزمەتگوزارییە دراوەکان بە کڕیاران',
+    issuedServiceInvoicesTitle: 'پسوڵەی خزمەتگوزاری دراو',
+    itemsCount: 'بەرهەم',
+    journalEntries: 'تۆمارەکانی ڕۆژنامە',
+    journalEntry: 'تۆماری ڕۆژنامە',
+    keyboardShortcuts: 'Klavye Kısayolları',
+    keyboardShortcutsTitle: 'Klavye Kısayolları (Press ?)',
+    kurdish: 'کوردی',
+    labelDesigner: 'دیزاینەری لایبڵ',
+    laborTracking: 'Personel Performans',
+    language: 'زمان',
+    languageChangeInfo: 'Dil değişikliği tüm ekranları etkiler ve otomatik olarak kaydedilir.',
+    languageSelection: 'Dil Seçimi',
+    languageSelectionTitle: 'Dil Seçimi',
+    last: 'کۆتا',
+    last24hLabel: '24 Saat',
+    last7DaysSalesTrend: 'Son 7 Gün Satış Trendi',
+    lastPurchase: 'دوایین کڕین',
+    lastReceipt: 'Son Fiş',
+    lastReceiptButton: 'Son Fiş',
+    layoutOptimization: 'Yerleşim Optimizasyonu',
+    liabilities: 'قەرزەکان',
+    list: 'Liste',
+    listView: 'لیست',
+    loading: 'خەریکی بارکردنە...',
+    loadingData: 'داتا باردەکرێت...',
+    loadingInvoices: 'وەسڵەکان باردەکرێن...',
+    loadingInvoicesCount: 'وەسڵەکان',
+    localCurrencyUnit: 'یەکە: دراوی ناوخۆیی (IQD)',
+    localeCode: 'ku-IQ',
+    localeName: 'کوردی',
+    locationTransfer: 'Raf Transferi',
+    logAudit: 'تۆمار/پشکنین',
+    login: 'Têkeve',
+    loginButton: 'چوونە ژوورەوە',
+    loginError: 'Di têketinê de çewtî derket',
+    loginFailed: 'Login failed.',
+    logout: 'دەرچوون',
+    lotTraceability: 'Lot İzlenebilirlik',
+    lotTransfer: 'Lot/Seri Transfer',
+    lowStock: 'Düşük Stok',
+    lowStockWarnings: 'Düşük Stok Uyarıları',
+    lowStockWarningsItem: 'ئاگادارکردنەوەکانی کەمی کۆگا',
+    mainMenu: 'مێنوی سەرەکی',
+    mainUnitCannotDelete: 'یەکەی سەرەکی ناسڕرێتەوە',
+    mainUnitLabel: 'یەکەی سەرەکی',
+    mainUnitRequired: 'دەبێت یەکەی سەرەکی هەڵبژێردرێت',
+    management: 'بەڕێوەبردن',
+    managementModule: 'Yönetim',
+    managementPanelAccess: 'Yönetim Paneli Erişimi',
+    manager: 'بەڕێوەبەر',
+    manualEntry: 'داخڵکردنی دەستی',
+    masterRecords: 'تۆمارە سەرەکییەکان',
+    materialClassDesc: 'بەڕێوەبردنی جۆری ماددەکان',
+    materialClasses: 'پۆلەکانی ماددە',
+    materialCodeName: 'MALZEME KODU/ADI',
+    materialCodeOrName: 'کۆد/ناوی ماددە',
+    materialExtract: 'کورتەی ماددە',
+    materialExtractReport: 'کورتەی جوڵەی ماددەکان',
+    materialManagement: 'بەڕێوەبردنی ماددەکان',
+    materialManagementSlips: 'پسوڵەکانی بەڕێوەبردنی ماددە',
+    materialMovement: 'Mal Hareket Raporu',
+    materialValue: 'بەهای ماددە',
+    materialValueReport: 'ڕاپۆرتی بەهای ماددەکان',
+    materialWarehouseStatus: 'باری کۆگای ماددەکان',
+    materials: 'ماددەکان',
+    max8Shortcuts: 'دەتوانیت تا ٨ کورتەبڕ هەڵبژێریت',
+    maxShortcutsTitle: 'En fazla 8 kısayol seçebilirsiniz',
+    menu: {
+      accountingManagement: 'بەڕێوەبردنی ژمێریاری',
+      accountingVouchers: 'پسوڵە ژمێریارییەکان',
+      advancedReports100: '⭐ ڕاپۆرتە پێشکەوتووەکان (100+)',
+      aiProductAnalytics: 'شیکاری بەرهەم بە ژیری دەستکرد',
+      backupRestore: 'پاڵپشتی و گەڕاندنەوە',
+      balanceSheet: 'بەیانی دارایی',
+      bankAccounts: 'حیسابە بانکییەکان',
+      bankPaymentPlans: 'پلانی پارەدانی بانکی',
+      bankReports: 'ڕاپۆرتەکانی بانک',
+      bankSlips: 'پسوڵەکانی بانک',
+      banks: 'بانکەکان',
+      biDashboardAi: 'BI Dashboard & AI',
+      brandDefinitions: 'پێناسەی براندەکان',
+      campaignDefinitions: 'پێناسەی کەمپەینەکان',
+      cards: 'کارتەکان',
+      cashAccounts: 'حیسابەکانی نەقد',
+      cashCards: 'کارتەکانی کۆگا',
+      cashOperations: 'کردارەکانی نەقد',
+      cashReports: 'ڕاپۆرتەکانی نەقد',
+      cashSlips: 'پسوڵەکانی نەقد',
+      checkPromissory: 'چەک/بەڵێننامە',
+      collectionPayment: 'وەرگرتن/پارەدان',
+      communicationAndNotifications: 'پەیوەندی و ئاگادارکردنەوەکان',
+      consignmentSales: 'فرۆشتنی ئەمانەت',
+      cost: 'تێچوو',
+      creditCardPosSlips: 'پسوڵەکانی پۆس',
+      currentAccountReports: 'ڕاپۆرتەکانی حیسابی جاری',
+      currentAccountSlips: 'پسوڵەکانی حیسابی جاری',
+      currentAccounts: 'حیسابە جارییەکان',
+      customReports: 'ڕاپۆرتە تایبەتەکان',
+      customerAnalysis: 'شیکاری کڕیار',
+      dashboard: 'داشبۆرد',
+      dataBroadcast: 'ناردن/وەرگرتنی زانیاری',
+      databaseInfrastructure: 'بنیاتنانی بنکەدراوە',
+      definitions: 'پێناسەکان',
+      definitionsParameters: 'پێناسە/پارامێتەرەکان',
+      demoDataManagement: 'بەڕێوەبردنی داتای تاقikari',
+      designCenter: 'سەنتەري ديزاين',
+      emailCampaigns: 'کەمپەینەکانی ئیمەیڵ',
+      exSecureGateSecurity: 'ExSecureGate (ئاسایش)',
+      excelOperations: 'کردارەکانی ئێکسڵ',
+      expenseManagement: 'بەڕێوەبردنی خەرجییەکان',
+      financeManagement: 'بەڕێوەبردنی دارایی',
+      firmPeriodDefinitions: 'پێناسەی کۆمپانیا/ماوە',
+      generalReport: 'ڕاپۆرتی گشتی',
+      generalSettings: 'ڕێکخستنە گشتییەکان',
+      graphicalAnalysis: 'شیکاری گرافیکی',
+      groupCodes: 'کۆدی گروپەکان',
+      homepage: 'الصفحة الرئيسية',
+      inOutTotals: 'کۆی هاتوو و چوو',
+      incomeStatement: 'بەیانی داهات',
+      integrations: 'بەستنەوەکان',
+      inventory: 'الجرد',
+      inventoryManagement: 'کارەکانی ژماردن و کۆگا',
+      inventoryCountOps: 'کردارەکانی ژماردنی کۆگا',
+      mobileCount: 'ژماردنی مۆبایل / دروستکردنی پسوڵە',
+      countDeficitSlips: 'پسوڵەکانی کەمی ژماردن',
+      countSurplusSlips: 'پسوڵەکانی زیادەی ژماردن',
+      invoices: 'پسوڵەکان',
+      journalAndSlips: 'دەفتەری ڕۆژانە و پسوڵەکان',
+      labelDesigner: 'مصمم الملصقات',
+      logAudit: 'تۆمار/پشکنین',
+      mainMenu: 'القائمة الرئيسية',
+      masterRecords: 'السجلات الرئيسية',
+      materialClasses: 'پۆلەکانی ماددە',
+      materialExtract: 'کورتەی ماددە',
+      materialManagement: 'بەڕێوەبردنی ماددەکان',
+      materialManagementSlips: 'پسوڵەکانی بەڕێوەبردنی ماددە',
+      materialValue: 'قيمة المواد',
+      materialWarehouseStatus: 'باری کۆگای ماددەکان',
+      materials: 'ماددەکان',
+      bankDepositDesc: 'پاره دانان لە بانک',
+      bankTransferDesc: 'گواستنەوە لە نێوان بانکەکان',
+      bankWithdrawalDesc: 'پاره کێشانەوە لە بانک',
+      baseCurrency: 'دراوی سەرەکی',
+      baseCurrencyShort: 'سەرەکی',
+      buyRate: 'نرخی کڕین',
+      cashInDesc: 'هاتنە ناوەوەی نەختینە بۆ سندوق',
+      cashOutDesc: 'چوونە دەرەوەی نەختینە لە سندوق',
+      chCollectionDesc: 'وەرگرتن لە هەژماری هەنووکەیی',
+      chPaymentDesc: 'پارەدان بۆ هەژماری هەنووکەیی',
+      chartsTab: 'چارته‌کان',
+      createTransaction: 'دروستکردنی کردار',
+      currenciesTab: 'دراوەکان',
+      currencyCode: 'کۆدی دراو',
+      currencyLabel: 'دراو',
+      currencyManagement: 'بەڕێوەبردنی دراوەکان',
+      currencyManagementDesc: 'بەڕێوەبردنی دراوەکان و نرخی گۆڕینەوە',
+      currencyName: 'ناوی دراو',
+      currencySymbol: 'هێما',
+      dailyRatesTab: 'نرخە ڕۆژانەکان',
+      deleteComingSoon: 'سڕینەوە بەم زووانە',
+      editComingSoon: 'دەستکاریکردن بەم زووانە',
+      enterRate: 'نرخ داخل بکە',
+      enteredBy: 'تۆمارکراوە لەلایەن',
+      exchangeDifferenceCreditDesc: 'تۆماری قیستی جیاوازی دراو',
+      exchangeDifferenceDebitDesc: 'تۆماری قەرزی جیاوازی دراو',
+      expenseVoucherDesc: 'پارەدان لە ڕێگەی پسوڵەی خەرجی',
+      issuedSelfEmployedReceipt: 'پسوڵەی کاری سەربەخۆ دراو',
+      issuedSelfEmployedReceiptDesc: 'پسوڵەی کاری سەربەخۆ دراوە',
+      newCurrency: 'دراوی نوێ',
+      openingCreditDesc: 'تۆماری قیستی پسوڵەی کردنەوە',
+      openingDebitDesc: 'تۆماری قەرزی پسوڵەی کردنەوە',
+      printComingSoon: 'چاپکردن بەم زووانە',
+      producerReceipt: 'پسوڵەی بەرهەمهێنەر',
+      producerReceiptDesc: 'پارەدان لە ڕێگەی پسوڵەی بەرهەمهێنەر',
+      rateChartsPlaceholder: 'چارتەکانی دراو لێرە',
+      rateHistoryPlaceholder: 'مێژووی نرخەکان لێرە',
+      rateHistoryTab: 'مێژووی نرخەکان',
+      receivedSelfEmployedReceipt: 'پسوڵەی کاری سەربەخۆ وەرگیراو',
+      receivedSelfEmployedReceiptDesc: 'پسوڵەی کاری سەربەخۆ وەرگیراو',
+      reportingCurrency: 'دراوی ڕاپۆرت',
+      reportingCurrencyShort: 'ڕاپۆرت',
+      safesCode: 'سندوقەکان',
+      selectDate: 'بەروار هەڵبژێرە',
+      sellRate: 'نرخی فرۆشتن',
+      updateRates: 'نوێکردنەوەی نرخەکان',
+      menuManagement: 'بەڕێوەبردنی مێنۆ',
+      minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
+      movements: 'الحركات',
+      multiCurrency: 'متعدد العملات',
+      multiStoreManagement: 'إدارة المتاجر المتعددة',
+      newBadge: 'جديد',
+      notificationCenter: 'مركز التنبيهات',
+      offers: 'العروض',
+      orders: 'الأوامr',
+      other: 'Diğer',
+      paymentPlans: 'خطط الدفع',
+      priceAndCampaign: 'الأسعار والحملات',
+      productCategories: 'فئات المنتجات',
+      profitabilityAnalyticsDashboard: '💰 لوحة تحليل الربحية',
+      purchaseInvoice: 'فاتورة مشتريات',
+      purchaseOrders: 'أوامر الشراء',
+      purchaseReturn: 'مرتجع مشتريات',
+      purchaseWaybill: 'سند شحن مشتريات',
+      purchasing: 'المشتريات',
+      receivedService: 'الخدمات المستلمة',
+      regionalFranchiseManagement: 'إدارة الموزعين الإقليميين',
+      reports: 'التقارير',
+      reportsAndAnalysis: 'التقارير والتحليل',
+      requestSlips: 'طلبات الشراء',
+      retail: 'التجزئة',
+      retailSales: 'مبيعات التجزئة',
+      roleAndAuthorization: 'الأدوار والصلاحيات',
+      salesInvoice: 'فاتورة مبيعات',
+      salesInvoices: 'فواتير المبيعات',
+      salesOrder: 'أمر مبيعات',
+      salesReports: 'تقارير المبيعات',
+      salesReturn: 'مرتجع مبيعات',
+      salesWaybill: 'سند شحن مبيعات',
+      scaleAndWeighedSales: 'مبيعات الميزان',
+      serviceInvoiceIssued: 'فاتورة خدمة صادرة',
+      serviceInvoiceReceived: 'فاتورة خدمة واردة',
+      serviceInvoices: 'فواتير الخدمات',
+      slipList: 'قائمة السندات',
+      smsManagement: 'إدارة SMS',
+      specialCodes: 'الأكواد الخاصة',
+      stockInventory: 'جرد المخزون',
+      stockManagementPanel: 'لوحة إدارة المخزون',
+      stockReports: 'تقارير المخزون',
+      storeConfiguration: 'تكوين المتجر',
+      storeManagement: 'إدارة المتجر',
+      storePanel: 'لوحة المتجر',
+      storeTransfer: 'تحويل بين المتاجر',
+      supplierCards: 'بطاقات الموردين',
+      systemHealth: 'صحة النظام',
+      systemManagement: 'إدارة النظام',
+      transactionBreakdown: 'تحليل المعاملات',
+      trialBalance: 'ميزان المراجعة',
+      trialBalanceReport: 'تقرير ميزان المراجعة',
+      unitSets: 'مجموعات الوحدات',
+      userManagement: 'إدارة المستخدمين',
+      variants: 'الأشكال والمتغيرات',
+      warehouseTransferWaybill: 'سند تحويل مخزني',
+      wasteWaybill: 'سند هالك',
+      waybills: 'سندات الشحن (Waybills)',
+      whatsappIntegration: 'تكامل واتساب',
+      wholesaleSales: 'مبيعات الجملة',
+      workflowAutomation: 'أتمتة سير العمل',
+      salesOrders: 'داواکاری فرۆشتن',
+      currentAccountPersonel: 'هەژماری جاری / کارمەند',
+    },
+    menuManagement: 'إدارة القوائم',
+    min1Shortcut: 'En az 1 kısayol seçmelisiniz',
+    minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
+    minimumAmountNotMet: 'لم يتم استيفاء الحد الأدنى للمبلغ',
+    missingBarcodes: 'Bulunamayan Barkodlar',
+    missingBarcodesTitle: 'Bulunamayan Barkod Listesi',
+    missingKasaId: 'ناسنامەی کاش دەست نەکەوت! تکایە لاپەڕەکە نوێ بکەرەوە.',
+    mixedPayment: 'Karışık',
+    moduleInDevelopment: 'ئەم مۆدیوڵە ئێستا لە قۆناغی گەشەپێداندایە و و بەم زووانە دەخرێتە ناو سیستەمی EX-ROSERP.',
+    moduleLoadError: 'هەڵەی بارکردنی مۆدیۆل',
+    moduleLoadErrorMessage: 'هەڵەیەک ڕوویدا لە کاتی بارکردنی شاشەی \"{screenName}\". ',
+    moduleLoadingError: 'هەڵە لە بارکردنی مۆدیوڵ',
+    modulePreparing: 'ئامادەکردنی مۆدیوڵ',
+    moduleUnderDevelopment: 'ئەم مۆدیۆلە ئێستا لە ژێر گەشەپێداندایە و بەم زووانە دەخرێتە ناو کۆمەڵەی EX-ROSERP.',
+    moveTable: 'گوستنەوەی مێز',
+    movementReport: 'Hareket Raporu',
+    movements: 'جوڵەکان',
+    multiCurrency: 'چەند دراوێک',
+    multiStoreManagement: 'بەڕێوەبردنی چەند فرۆشگا',
+    multiplier1: 'جاران ١',
+    multiplier2: 'جاران ٢',
+    multiplierLogicDesc: 'گۆڕینی یەکەکان: (یەکە) x جاران ١ = (یەکەی سەرەکی) x جاران ٢',
+    navigation: 'Navigasyon',
+    netIncome: 'داهاتی خاوێن',
+    netSales: 'Net Satışlar',
+    networkError: 'Bir ağ hatası oluştu.',
+    newBadge: 'YENİ',
+    newCustomer: 'کڕیاری نوێ',
+    newInvoice: 'وەسڵی نوێ',
+    newSalesOrder: 'Yeni Satış Siparişi',
+    newUnitSet: 'Yeni Unit Sets',
+    newUnitSetTitle: 'پێناسەکردنی سێتی یەکەی نوێ',
+    next: 'Sonraki',
+    noCriticalStock: 'Kritik stok seviyesinde ürün yok',
+    noCriticalStockInfo: 'هیچ بەرهەمێک لە ئاستی مەترسیدارنییە',
+    noCustomer: 'بێ کڕیار',
+    noCustomerSale: 'فرۆشتن بەبێ کڕیار',
+    noCustomerSaleDescription: 'فرۆشتنی تاک',
+    noLogsYet: 'HENÜZ KAYIT BULUNMUYOR',
+    noLowStock: 'Düşük stok seviyesinde ürün yok',
+    noLowStockInfo: 'هیچ بەرهەمێک لە ئاستی کەم نییە',
+    noLowStockWarning: 'هیچ بەرهەمێک لە ئاستی کەم نییە',
+    noMissingBarcodes: 'Henüz bulunamayan bir barkod yok.',
+    noParkedReceipts: 'هیچ پسوڵەیەکی هەڵواسراو نییە',
+    noParkedReceiptsDescription: 'پسوڵە هەڵواسراوەکان لێرە دەردەکەون',
+    noProductsFound: 'هیچ بەرهەمێک نەدۆزرایەوە',
+    noRecordFound: 'Kayıt bulunamadı',
+    noRecordsFound: 'هیچ تۆمارێک نەدۆزرایەوە',
+    noReturnPolicyNotice: 'İade/İptal yapılamaz.',
+    noSalesFound: 'Satış bulunamadı',
+    noSalesHistory: 'Satış geçmişi yok',
+    noSalesRecordFound: 'Satış kaydı bulunamadı',
+    noteOptional: 'Not (İsteğe Bağlı)',
+    notesLabel: 'Notlar',
+    notificationCenter: 'سەنتەری ئاگادارکردنەوە',
+    numpad: 'Numpad',
+    numpadMode: 'Numpad Modu',
+    numpadModeAdd: '+ Ekle',
+    numpadModeReplace: '↻ Değiştir',
+    occupancyReport: 'Doluluk Analizi',
+    offers: 'پێشنیارەکان',
+    online: 'Çevrimiçi',
+    onlineDevicesLabel: 'Çevrimiçi',
+    openAccountWarning: 'Seçili değilse açık hesap (cari) olarak işlem görür',
+    openCashRegister: 'Kasa Aç',
+    openCashRegisterProcess: 'Kasa Açma İşlemi',
+    openCashRegisterToAddProduct: 'Ürün ekleyebilmek için önce kasayı açmalısınız!',
+    openCashRegisterToSell: 'Satış yapabilmek için önce kasayı açmalısınız!',
+    openNewPeriod: 'کردنەوەی ماوەی نوێ',
+    openRegister: 'کردنەوەی سندوق',
+    openingCashAmount: 'Açılış Nakit Tutarı',
+    openingCashDescription: 'Bu tutar oturum boyunca açılış kasası olarak kullanılacaktır',
+    openingCashRegister: 'KASA AÇILIŞI:',
+    openingCredit: 'کردنەوە (داواکار)',
+    openingDebit: 'کردنەوە (قەرزار)',
+    operatingExpenses: 'خەرجییەکانی کارپێکردن',
+    operation: 'İşlem',
     operationAmount: 'بڕی کردارەکە',
-    documentNo: 'ژمارەی پسووڵە / بەڵگەنامە',
-    specialCode: 'کۆدی تایبەت',
+    operationSaveFailed: 'کردارەکە پاشەکەوت نەکرا',
+    operationSavedSuccessfully: 'کردارەکە بە سەرکەوتوویی پاشەکەوت کرا',
+    orderCreatedSuccessfully: '✅ Sipariş başarıyla oluşturuldu!',
+    orderCreationError: '❌ Sipariş oluşturulurken hata oluştu!',
+    orderDiscount: 'داشکاندنی داواکاری',
+    orderForm: 'Sipariş Formu',
+    orderNote: 'تێبینی داواکاری',
+    orderNoteDescription: 'ئەم تێبینییە لە شاشەی چێشتخانە و پسوڵەدا دەردەکەوێت.',
+    orderNotePlaceholder: 'تێبینییەک لەسەر داواکارییەکە زیاد بکە (بۆ نموونە: بێ بیبەر، کەتچەپی کەم...)',
+    orderRecommended: 'Sipariş önerilir',
+    orders: 'داواکارییەکان',
+    other: 'Diğer',
+    otherReason: 'Diğer Nedenler',
+    otherType: 'جیاواز',
+    outOfStock: 'Stokta Yok',
+    outgoingTransfer: 'Transfer Giden',
+    pageRange: 'SAYFA ARALIĞI',
+    paidAmount: 'Ödenen',
+    parkReceipt: 'هەڵواسینی پسوڵە',
+    parkedAt: 'هەڵواسرا لە',
+    parkedBy: 'هەڵواسرا لەلایەن',
+    parkedReceiptDeleted: 'Bekleyen fiş silindi',
+    parkedReceiptRetrieved: 'Bekleyen fiş getirildi',
+    parkedReceipts: 'پسوڵە هەڵواسراوەکان',
+    parkedReceiptsButton: 'هەڵواسراو',
+    parkedReceiptsTitle: 'پسوڵە هەڵواسراوەکان',
+    passiveStatus: 'ناچالاک',
+    password: 'وشەی نهێنی',
+    payment: 'پارەدان',
+    paymentAmount: 'بڕی پارەدان',
+    paymentAmountLabel: 'Ödeme Tutarı',
+    paymentCardPOS: 'Kart (POS)',
+    paymentCash: 'Nakit',
+    paymentCredit: 'Veresiye (Cari)',
+    paymentFailed: 'پارەدان دەستی پێ نەکرا:',
+    paymentInfo: 'Ödeme Bilgileri',
+    paymentLabel: 'Ödeme',
+    paymentMethod: 'شێوازی پارەدان',
+    paymentMethodDistribution: 'Ödeme Yöntemi Dağılımı',
+    paymentMethodLabel: 'Ödeme Yöntemi',
+    paymentMethods: 'Ödeme Yöntemleri',
+    paymentMethodsChart: 'شێوازەکانی پارەدان',
+    paymentMethodsDashboard: 'Ödeme Yöntemleri',
+    paymentNotesPlaceholder: 'Ödeme ile ilgili notlar...',
+    paymentPlans: 'پلانی پارەدان',
+    paymentProvider: 'Ödeme Sağlayıcı',
+    paymentQRProvider: 'QR Ödeme Sağlayıcı',
+    paymentStartError: 'Ödeme başlatılamadı',
+    paymentSummary: 'پوختەی پارەدان',
+    paymentTermDays: 'Ödeme Vadesi (Gün)',
+    paymentTitle: 'پارەدان',
+    payments: 'پارەدانەکان',
+    pcs: 'دانە',
+    pending: 'چاوەڕوان',
+    pendingBroadcastsLabel: 'Bekleyen',
+    percentage: 'ڕێژە',
+    performanceDashboard: 'Performans Dashboard',
+    periodClosed: 'ماوەی داخراو',
+    periodComparison: 'Dönem Karşılaştırma',
+    periodManagement: 'بەڕێوەبردنی ماوە',
+    periodOpen: 'ماوەی کراوە',
+    phoneAddress: 'تەلەفۆن / ناونیشان',
+    phoneLabel: 'Telefon',
+    piece: 'دانە',
+    pieces: 'دانەكان',
+    placeholderDescription: 'تێبینی دەربارەی کردارەکە...',
     placeholderDocumentNo: 'بۆ نموونە: 000123',
     placeholderSpecialCode: 'بۆ نموونە: PRJ001',
-    placeholderDescription: 'تێبینی دەربارەی کردارەکە...',
-    saving: 'پاشەکەوت دەکرێت...',
+    planningOptimization: 'Planlama & Optimizasyon',
+    pleaseAddAtLeastOneProduct: 'Lütfen en az bir ürün ekleyin!',
+    pleaseEnterAmount: 'تکایە بڕەکە بنووسە',
+    pleaseEnterBarcode: 'Lütfen barkod girin',
+    pleaseEnterBarcodeFirst: 'Lütfen önce barkod girin',
+    pleaseEnterFirmId: 'تکایە ناسنامەی کۆمپانیا داخڵ بکە',
+    pleaseEnterQuantityFirst: 'Lütfen önce adet girin, sonra * tuşuna basın',
+    pleaseExplainCancelReason: 'Lütfen iptal nedenini açıklayın!',
+    pleaseExplainReturnReason: 'Lütfen iade nedenini açıklayın!',
+    pleaseSelectCancelReason: 'Lütfen iptal nedeni seçin!',
+    pleaseSelectCurrentAccount: 'تکایە هەژمارێکی جاری هەڵبژێرە',
+    pleaseSelectCustomer: 'Lütfen müşteri seçin!',
+    pleaseSelectReceipt: 'Lütfen bir fiş seçin!',
+    pleaseSelectReturnProducts: 'Lütfen iade edilecek ürünleri seçin!',
+    pleaseSelectReturnReason: 'Lütfen iade nedeni seçin!',
+    pleaseSelectVariant: 'Lütfen varyant seçin',
+    pos: 'POS İşlemleri',
+    posModule: 'Satış',
+    posPaymentDesc: 'POS Satış Ödemesi',
+    posted: 'تۆمارکراو',
+    potentialProfit: 'Potansiyel Kar',
+    prepareReport: 'ئامادەکردنی ڕاپۆرت',
+    preparingModule: 'مۆدیۆلی \"{screenName}\" لە ئامادەکردندایە',
+    previous: 'پێشوو',
+    price: 'نرخ',
+    priceAndCampaign: 'نرخ و کەمپەین',
+    priceBulkUpdateSuccess: 'هەموو نرخەکانی بەرهەم بە ڕێژەی %{percent} زیادکرا',
+    priceInfo: 'Fiyat Bilgisi',
+    priceLabel: 'نرخ',
+    priceProblem: 'Fiyat problemi',
+    pricingInfo: 'Fiyatlandırma Bilgisi',
+    print: 'Yazdır',
+    printReceipt: 'Fiş Yazdır',
+    printReport: 'Rapor Yazdır',
+    processingText: 'لە پرۆسەدایە...',
+    product: 'بەرهەم',
+    productAdded: 'بەرهەم زیادکرا بۆ سەبەتە',
+    productAddedToCart: '{productName} sepete eklendi',
+    productAssignedToSlot: '{productName} Slot #{slotNumber}\'e atandı',
+    productBased: 'Ürün Bazında',
+    productCards: 'کارتی بەرهەمەکان',
+    productCatDesc: 'بەڕێوەبردنی هاوپۆلی بەرهەمەکان',
+    productCatalog: 'کاتالۆگی بەرهەمەکان',
+    productCategories: 'ھاوبۆلەکانی بەرهەم',
+    productCount: 'ژمارەی بەرهەم',
+    productDefective: 'Ürün Kusurlu',
+    productDetails: 'وردەکاریی بەرهەم',
+    productInfo: 'Ürün Bilgileri',
+    productLabel: 'Ürün',
+    productManagement: 'بەڕێوەبردنی بەرهەمەکان',
+    productName: 'ناوی بەرهەم',
+    productQuery: 'پرسیاری بەرهەم',
+    productRemoved: 'بەرهەم لابرا لە سەبەتە',
+    productRemovedFromCart: 'Ürün sepetten çıkarıldı',
+    productSearch: 'Ürün Ara',
+    productSelection: 'Ürün Seçimi',
+    productionEntry: 'هاتوو لە بەرهەمهێنان',
+    productionIssue: 'Üretime Çıkış',
+    productionReceiving: 'Üretimden Giriş',
+    productsAtCriticalLevel: 'ürün kritik seviyede',
+    productsAtLowLevel: 'ürün düşük seviyede',
+    productsCount: 'بەرهەم',
+    productsLabel: 'Ürün',
+    productsToReturn: 'İade Edilecek Ürünler',
+    profitLoss: 'قازانج و زەرەر',
+    profitLossReport: 'Kar-Zarar Raporu',
+    profitMargin: 'Kar Marjı',
+    profitMarginDashboard: 'ڕێژەی قازانج',
+    profitabilityAnalyticsDashboard: '💰 داشبۆردی شیکاری قازانج',
+    promissoryNote: 'Senet',
+    purchase: 'Alış',
+    purchaseInvoice: 'پسوڵەی کڕین',
+    purchaseInvoicesDesc: 'هەموو کردارەکانی کڕین',
+    purchaseInvoicesTitle: 'پسوڵەکانی کڕین',
+    purchaseOrder: 'داواکاری کڕین',
+    purchaseOrders: 'داواکاری کڕین',
+    purchaseQuote: 'پێشنیاری کڕین',
+    purchaseReturn: 'گەڕانەوەی کڕین',
+    purchaseReturnDesc: 'گەڕانەوە بۆ دابینکەران',
+    purchaseReturnTitle: 'گەڕانەوەی کڕین',
+    purchaseSupplierDesc: 'Alım Yapılan Cari',
+    purchaseWaybill: 'گواستنەوەی کڕین',
+    purchases: 'کڕینەکان',
+    purchasing: 'کڕین',
+    qrCustomerInstruction: 'کڕیار دەتوانێت پارەدان تەواو بکات بە سکانکردنی کۆدی QR بە مۆبایلەکەی',
+    qrInstructions: 'Müşteri telefonu ile QR kodu okutarak ödemeyi tamamlayabilir',
+    qrScanCode: 'سکانکردنی کۆدی QR',
+    qrStep1: 'Adım 1',
+    qrStep1Desc: 'Telefonu QR koda tutun',
+    qrStep2: 'Adım 2',
+    qrStep2Desc: 'Ödemeyi onaylayın',
+    quantity: 'بڕ',
+    quantitySaved: 'Adet kaydedildi',
+    quantitySavedBarcodeEnter: 'Adet: {quantity} - Barkod girin',
+    quantitySavedMessage: 'Adet kaydedildi: {quantity}. Şimdi barkod girin.',
+    quick: 'Hızlı Aksiyonlar',
+    quickAccess: 'Hızlı Erişim',
+    quickPayment: 'Hızlı Ödeme',
+    quickProductAdd: 'بەرهەمی خێرا',
+    quickProductPageSelect: 'Hızlı Ürün Sayfası Seç',
+    quickProductSlot: 'Hızlı Ürün Slot',
+    rankingByRevenue: 'Ciro bazında sıralama',
+    receipt: 'پسوڵە',
+    receiptBased: 'Fatura Bazında',
+    receiptCancelled: 'Fiş iptal edildi: {reason}',
+    receiptDataError: 'Fiş verileri yüklenemedi',
+    receiptDetails: 'Fiş Detayları',
+    receiptNo: 'Fiş No',
+    receiptNote: 'تێبینی پسوڵە',
+    receiptNumberOrCustomerSearch: 'Fiş no veya müşteri adı ile ara...',
+    receiptParked: 'پسوڵە هەڵواسرا',
+    receiptRequiredForReturns: 'Bu fiş iade ve değişim işlemlerinde gereklidir.',
+    receipts: 'پسوڵەکان',
+    receivePayment: 'وەرگرتنی پارە',
+    receivedAmount: 'بڕی وەرگیراو',
+    receivedService: 'خزمەتگوزاری وەرگیراو',
+    receivedServiceInvoicesDesc: 'خزمەتگوزارییە وەرگیراوەکان لە دابینکەرانەوە',
+    receivedServiceInvoicesTitle: 'پسوڵەی خزمەتگوزاری وەرگیراو',
+    recentMovements: 'Son Hareketler',
+    recentProducts: 'فرۆشتنەکانی دوایی',
+    records: 'تۆمار',
+    recordsCount: 'تۆمارەکان',
+    refreshPage: 'Sayfayı Yenile',
+    refreshStocks: 'نوێکردنەوەی کۆگا',
+    regionalFranchiseManagement: 'بەڕێوەبردنی بریکارە هەرێمییەکان',
+    registeredCustomer: 'Kayıtlı müşteri',
+    registeredCustomers: 'کڕیارە تۆمارکراوەکان',
+    rejected: 'ڕەتکراوە',
+    remaining: 'Kalan',
+    remainingAmount: 'Kalan',
+    remainingQty: 'ماوە:',
+    rememberMe: 'لەبیرم بێت',
+    remoteSupportRequestSent: 'Hızlı destek talebi merkeze iletildi.',
+    remoteSupportWarning: 'Uyarı: Uzaktan destek başlatıldığında, teknik ekibe sınırlı erişim yetkisi vermiş olursunuz.',
+    remove: 'لابردن',
+    reportCountLabel: 'rapor',
+    reportStructureNote: 'Bu rapor yapısı Logo ERP\'nin kurumsal standartlarıyla birebir uyumlu olacak şekilde, asenkron yürüyen bakiye(running balance) motoru kullanılarak RestPOS yerel veritabanı(PostgreSQL) üzerinden anlık olarak hesaplanmaktadır.',
+    reporting: 'Raporlama',
+    reportingAnalysis: 'Raporlama & Analiz',
+    reportingDesc: 'Satış raporları ve analizler',
+    reports: 'ڕاپۆرتەکان',
+    reportsAndAnalysis: 'ڕاپۆرت و شیکاری',
+    reportsCashStatus: 'Kasa Durumu',
+    reportsCustomerLabel: 'MÜŞTERİ',
+    reportsStockStatus: 'Stok Durumu',
+    requestSlips: 'پسوڵەکانی داواکاری',
+    requiresAdminPassword: 'Bu işlem yönetici yetkisi gerektirir. Tarih değişikliği satış kayıtlarını etkileyebilir.',
+    reserved: 'Rezerve',
+    reset: 'سفرکردنەوە',
+    resetFailed: 'Sıfırlama başarısız:',
+    restCategory: 'هاوپۆلی چێشتخانە',
+    results: 'sonuç',
+    retail: 'تاک',
+    retailCustomer: 'کڕیاری تاک',
+    retailSales: 'فرۆشتنی تاک',
+    retailSalesDesc: 'کردارەکانی فرۆشتنی تاک',
+    retailSalesTitle: 'فرۆشتنی تاک',
+    return: 'گەڕاندنەوە',
+    returnAmount: 'İade Tutarı',
+    returnCancelTitle: 'İade / İptal İşlemi',
+    returnCompleted: 'İade işlemi tamamlandı',
+    returnProducts: 'İade Edilecek Ürünler',
+    returnQuantity: 'İade Adedi',
+    returnReason: 'İade Nedeni',
+    returnReasonPlaceholder: 'İade nedenini seçin...',
+    returnReceiving: 'İade Kabul',
+    returnToDashboard: 'گەڕانەوە بۆ داشبۆرد',
+    returnTotal: 'İade Toplamı',
+    returnTransaction: 'گەڕاندنەوە',
+    revenue: 'داهat',
+    reversed: 'پێچەوانەکراو',
+    roleAndAuthorization: 'ڕۆڵ و دەسەڵاتەکان',
+    routeOptimization: 'Rota Optimizasyonu',
+    rowDiscount: 'Satır İndirimi',
+    rowOrder: 'ڕیز',
+    runningQuantity: 'بڕی ماوە',
+    saleCompleted: 'فرۆشتن تەواو بوو',
+    salePrice: 'Satış Fiyatı',
+    saleQuantity: 'Satış miktarı',
+    saleSaveFailed: 'فڕۆشتن پاشەکەوت نەکرا',
+    saleValue: 'Satış Değeri',
+    sales: 'فرۆشتنەکان',
+    salesCount: 'satış',
+    salesCustomerDesc: 'Satış Yapılan Cari',
+    salesDetails: 'Satış Detayları',
+    salesHistory: 'مێژووی فرۆشتن',
+    salesHistoryTitle: 'Satış Geçmişi',
+    salesInvoice: 'پسوڵەی فرۆشتن',
+    salesInvoices: 'پسوڵەکانی فرۆشتن',
+    salesInvoicesDesc: 'هەموو کردارەکانی فرۆشتن و POS',
+    salesInvoicesTitle: 'پسوڵەکانی فرۆشتن',
+    salesOrder: 'داواکاری فرۆشتن',
+    salesQuantity: 'Satış Adedi',
+    salesQuote: 'پێشنیاری فرۆشتن',
+    salesReports: 'ڕاپۆرتەکانی فرۆشتن',
+    salesReturn: 'گەڕانەوەی فرۆشتن',
+    salesReturnDesc: 'گەڕانەوە لە کڕیارانەوە',
+    salesReturnTitle: 'گەڕانەوەی فرۆشتن',
+    salesTrendAnalysis: 'Satış Trend Analizi',
+    salesWaybill: 'گواستنەوەی فرۆشتن',
+    salesWillAppearHere: 'Tamamlanan satışlar burada görünecek',
+    save: 'پاشەکەوتکردن',
+    saveAndTestConnection: 'Bağlantıyı Kaydet & Test Et',
+    saveChanges: 'Değişiklikleri Kaydet',
+    saveFailed: 'Kayıt başarısız oldu',
     saveOperation: 'پاشەکەوتکردنی کردارەکە',
-    cashOperation: 'کرداری کاش',
-  }
+    saveOrder: 'Siparişi Kaydet',
+    saveShortcutsError: 'Kısayollar kaydedilemedi. Lütfen tekrar deneyin.',
+    saving: 'پاشەکەوت دەکرێت...',
+    scale: 'تەرازوو',
+    scaleAndWeighedSales: 'تەرازوو و فرۆشتنی کێشراو',
+    scaleDefDesc: 'بەڕێوەبردنی پێناسەی تەرازوو',
+    scanQRCode: 'QR Kodu Okutun',
+    scanToSearchPlaceholder: 'بۆ گەڕان سکان بکە...',
+    scheduledBroadcastsLabel: 'Zamanlanmış',
+    screenSettings: 'ڕێکخستنی شاشە',
+    search: 'گەڕان',
+    searchBtn: 'گەڕان',
+    searchCurrentAccountPlaceholder: 'بۆ هەژماری جاری یان کارمەند بگەڕێ...',
+    searchInside: 'گەڕان لە ناوەوە...',
+    searchPlaceholder: 'ناوی بەرهەم یان بارکۆد...',
+    searchPlaceholderFull: 'گەڕانی خێرا لە لیستەکە... (Ctrl+K)',
+    searchPlaceholderShort: 'گەڕان...',
+    searchProductBarcodeCategory: 'Ürün adı, barkod veya kategori ara...',
+    searchProductByName: 'Ürün adı ile ara...',
+    searchProductPlaceholder: 'گەڕان بەدوای بەرهەمدا...',
+    searchProducts: 'گەڕان بەدوای بەرهەمدا',
+    searchReceiptPlaceholder: 'Fiş numarası veya barkod ara...',
+    searchUnitSetPlaceholder: 'بە کۆد یان ناوی سێتی یەکە بگەڕێ...',
+    searching: 'Aranıyor...',
+    selectAtLeastOneShortcut: 'En az 1 kısayol seçmelisiniz',
+    selectCampaign: 'کەمپەین هەڵبژێرە',
+    selectCustomer: 'کڕیار هەڵبژێرە',
+    selectCustomerTitle: 'کڕیار هەڵبژێرە',
+    selectDonem: 'ماوە هەڵبژێرە',
+    selectFirmPrompt: 'Firma Seçin',
+    selectFirma: 'کۆمپانیا هەڵبژێرە',
+    selectLanguage: 'زمان هەڵبژێرە',
+    selectMaterialPlaceholder: 'ماددە هەڵبژێرە...',
+    selectProductForReturn: 'İade için ürün seçin',
+    selectReceiptForReturn: 'İade için fiş seçin',
+    selectStaffTitle: 'کارمەند هەڵبژێرە',
+    selectSystemLanguage: 'Sistem Dilini Seçin',
+    selectTargetTable: 'مێزی مەبەست هەڵبژێرە',
+    selectVariant: 'Varyant Seç',
+    selectVariantLabel: 'Varyant Seçin:',
+    selected: 'دیاریکراو',
+    selectedProducts: 'Seçilen Ürünler',
+    selfEmployedReceiptGiven: 'پسووڵەی کاری سەربەخۆ (دراو)',
+    selfEmployedReceiptReceived: 'پسووڵەی کاری سەربەخۆ (وەرگیراو)',
+    sendDataTab: 'Veri Gönder',
+    sendNow: 'Şimdi Gönder',
+    sending: 'Gönderiliyor...',
+    serialLotDefDesc: 'بەڕێوەبردنی پێناسەی زنجیرە/لۆت',
+    serviceGiven: 'وەسڵی خزمەتگوزاری دراو',
+    serviceInvoiceIssued: 'پسوڵەی خزمەتگوزاری دراو',
+    serviceInvoiceReceived: 'پسوڵەی خزمەتگوزاری وەرگیراو',
+    serviceInvoices: 'پسوڵەکانی خزمەتگوزاری',
+    serviceInvoicesDesc: 'هەموو کردارەکانی کڕین و فرۆشتنی خزمەتگوزاری',
+    serviceInvoicesTitle: 'پسوڵەکانی خزمەتگوزاری',
+    serviceReceived: 'وەسڵی خزمەتگوزاری وەرگیراو',
+    serviceTopUp: 'HİZMET TOP-UP',
+    session: 'Oturum',
+    sessionDay: 'Gün',
+    sessionInformation: 'Oturum Bilgileri',
+    setDateTime: 'Tarih ve Saat Ayarla',
+    sevenDaysButton: '7 Gün',
+    shift: 'شیفت',
+    shiftClick: 'Shift + کرتە',
+    shipmentLoading: 'Sevkiyat/Yükleme',
+    shipmentPrep: 'Sevkiyat Hazırlık',
+    shortage: 'Eksik',
+    shortcuts: 'Kısayollar',
+    shortcutsSaveError: 'هەڵە لە پاشکەوتکردنی کورتەبڕەکان',
+    shortcutsSelected: 'kısayol seçildi',
+    sidebar: {
+      clearSearch: 'پاککردنەوە (ESC)',
+      darkMode: 'دۆخی تاریک',
+      dbMenu: '📊 لیستی داتابەیس',
+      languageSelection: 'هەڵبژاردنی زمان',
+      lightMode: 'دۆخی ڕووناک',
+      noResultsFound: 'هیچ ئەنجامێک نەدۆزرایەوە',
+      resultsFound: 'ئەنجام دۆزرایەوە',
+      searchPlaceholderFull: 'گەڕانی خێرا لە لیستەکە... (Ctrl+K)',
+      searchPlaceholderShort: 'گەڕان...',
+      staticMenu: '📋 لیستی جێگیر',
+      tryDifferentSearch: 'زاراوەیەکی تری گەڕان تاقیبکەرەوە',
+      lastRate: 'دوایین نرخ',
+      change: 'گۆڕانکاری',
+      baseCurrency: 'دراوی سەرەکی',
+      reportingCurrency: 'دراوی ڕاپۆرت',
+      dailyRates: 'نرخە ڕۆژانەکان',
+      rateHistory: 'مێژووی نرخ',
+      charts: 'نەخشەکان',
+      buyRate: 'کڕین',
+      sellRate: 'فرۆشتن',
+      averageRate: 'ناوەند',
+      updateRates: 'نوێکردنەوەی نرخەکان',
+      enterRate: 'داخلکردنی نرخ',
+      addCurrency: 'زیادکردنی دراو',
+      currencyCode: 'کۆدی دراو',
+      currencyName: 'ناوی دراو',
+      symbol: 'نیشانە',
+      debtor: 'قەرزار',
+      creditor: 'خاوەن قەرز',
+      supplierModuleTitle: 'هەژمارە جارییەکان / دابینکەران',
+      newSupplier: 'هەژمارێکی جاری نوێ',
+      accountStatement: 'کەشف حساب',
+      totalAccount: 'کۆی هەژمار',
+      net: 'نێت',
+      print: 'چاپکردن',
+      get: 'بێنە',
+      kasaAccount: 'هەژماری سندوق',
+      cashOperations: 'کارەکانی سندوق',
+      cashReports: 'ڕاپۆرتەکانی سندوق',
+      cashSlips: 'پسوڵەکانی سندوق',
+      chCollection: 'وەرگرتنی هەژماری جاری',
+      chPayment: 'دانی هەژماری جاری',
+      bankDeposit: 'دانان لە بانک',
+      bankWithdrawal: 'ڕاکێشان لە بانک',
+      expenseVoucher: 'پسوڵەی خەرجی',
+      openingDebit: 'کاردانەوە (قەرزار)',
+      openingCredit: 'کاردانەوە (خاوەن قەرز)',
+      exchangeDifferenceDebit: 'جیاوازی نرخ (قەرزار)',
+      exchangeDifferenceAlacak: 'جیاوازی نرخ (خاوەن قەرز)',
+      mustahsilMakbuzu: 'پسوڵەی بەرهەمهێنەر',
+      serbestMeslekMakbuzu: 'پسوڵەی پیشەیی (دراو)',
+      serbestMeslekMakbuzuReceived: 'پسوڵەی پیشەیی (وەرگیراو)',
+      kasaGiris: 'هاتنی نەختینە',
+      kasaCikis: 'چوونی نەختینە',
+      kasaVirman: 'گواستنەوەی نێوان سندوقەکان',
+      active: 'چالاک',
+      passive: 'ناچالاک',
+      refresh: 'نوێکردنەوە',
+      add: 'زیادکردن',
+      loading: 'باردەکرێت...',
+      searchPlaceholder: 'گەڕان بە کۆد، ناو، تەلەفۆن یان ئیمەیڵ...',
+      type: 'جۆر',
+      balance: 'باڵانس',
+      actions: 'کردارەکان',
+    },
+    sizeColorChange: 'Beden/Renk Değişimi',
+    slipList: 'لیستی پسوڵەکان',
+    smsManagement: 'بەڕێوەبردنی کورتەنامە',
+    smsNotificationSent: 'SMS Bildirimi Gönderildi',
+    soldQuantity: 'بڕی فرۆشراو',
+    specialCode: 'کۆدی تایبەت',
+    specialCodeDesc: 'بەڕێوەبردنی کۆدە تایبەتەکان',
+    specialCodes: 'کۆدە تایبەتەکان',
+    specialRequests: 'داواکاری تایبەت و وردەکارییەکان',
+    startDate: 'Başlangıç:',
+    startDateReport: 'BAŞLANGIÇ TARİHİ',
+    startSupport: 'Destek Başlat',
+    status: 'Durum',
+    step01Auth: 'ADIM 01 / KİMLİK DOĞRULAMA',
+    step02Scope: 'ADIM 02 / KAPSAM BELİRLEME',
+    step1: 'هەنگاوی 1',
+    step2: 'هەنگاوی 2',
+    stock: 'Stok',
+    stockABC: 'Stok ABC Analizi',
+    stockAging: 'Stok Yaşlandırma',
+    stockCount: 'Sayım Emirleri',
+    stockInventory: 'ژماردنی کۆگا',
+    stockLabel: 'Stok',
+    stockQuery: 'پرسیاری کۆگا',
+    stockReports: 'ڕاپۆرتەکانی کۆگا',
+    stockStatus: 'Stok Durumu',
+    stockStatusReport: 'Stok Durum Raporu',
+    stockTurnover: 'Stok Dönüş Hızı',
+    stockValue: 'Stok Değeri',
+    stockValueCost: 'Stok Değeri (Maliyet)',
+    stockValueSale: 'Stok Değeri (Satış)',
+    stockValueSales: 'بەهای کۆگا (فرۆشتن)',
+    store: 'فرۆشگا',
+    storeConfiguration: 'ڕێکخستنی فرۆشگا',
+    storeManagement: 'بەڕێوەبردنی فرۆشگا',
+    storePanel: 'پانێڵی فرۆشگا',
+    storeSelection: 'هەڵبژاردنی فرۆشگا',
+    storeSelectionScope: 'MAĞAZA SEÇİMİ',
+    storeTransfer: 'گواستنەوەی فرۆشگا',
+    subsidiary: 'کۆمپانیای پاشکۆ',
+    subtotal: 'کۆی لاوەکی',
+    subtotalAction: 'کۆی لاوەکی',
+    subtotalLabel: 'کۆی لاوەکی',
+    subtotalText: 'کۆی لاوەکی',
+    subtotalUppercase: 'ARA TOPLAM',
+    successRateLabel: 'Başarı Oranı',
+    sufficientStock: 'Yeterli Stok',
+    supplierCode: 'Tedarikçi Kodu',
+    supplierDefDesc: 'بەڕێوەبردنی پێناسەی دابینکەران',
+    supplierLabel: 'TEDARİKÇİ',
+    supplierName: 'Tedarikçi Adı',
+    suppliers: 'Tedarikçiler',
+    supportCenter: 'Destek Merkezi',
+    systemAdmin: 'Sistem Yöneticisi',
+    systemAdministrator: 'Sistem Yöneticisi',
+    systemError: 'Sistem hatası',
+    systemHealth: 'تەندروستی سیستەم',
+    systemLogin: 'Sisteme Giriş',
+    systemLogs: 'System Logs',
+    systemLogsTitle: 'SİSTEM GÜNLÜKLERİ',
+    systemManagement: 'بەڕێوەبردنی سیستەم',
+    systemTitle: 'RetailEX ERP',
+    tableOccupied: 'پڕ',
+    tagline: 'Profesyonel Satış Yönetim Sistemi',
+    targetKasa: 'کاشی مەبەست',
+    targetVsActual: 'Hedef vs Gerçekleşen',
+    taskManagement: 'İş Emri Yönetimi',
+    tax: 'باج',
+    taxNumberLabel: 'Vergi Numarası',
+    taxOfficeLabel: 'Vergi Dairesi',
+    taxRate: 'ڕێژەی باج',
+    taxRateLabel: 'ڕێژەی باجی بەها / باج (٪)',
+    taxReport: 'ڕاپۆرتی باج',
+    technicalDetails: 'Teknik Detaylar',
+    technicalDetailsForDevelopers: 'Teknik Detaylar (Geliştiriciler için)',
+    testPasswordHint: 'تێبینی وشەی نهێنی تاقیکاری: 1234',
+    textDirection: 'Metin Yönü',
+    textDirectionOptional: 'Metin Yönü (İsteğe Bağlı)',
+    thanksForChoosingUs: '★★★ Bizi Tercih Ettiğiniz İçin Teşekkürler ★★★',
+    thirtyDaysButton: '30 Gün',
+    timeLabel: 'Saat',
+    todayButton: 'Bugün',
+    todaysSale: 'Bugünkü Satış',
+    todaysSales: 'فرۆشتنی ئەمڕۆ',
+    topSellingProducts: 'En Çok Satan Ürünler',
+    topSellingProductsInfo: 'پڕفرۆشترین بەرهەمەکان',
+    total: 'کۆ',
+    totalAllBranches: 'Tüm Şubeler Toplam',
+    totalCampaigns: 'کۆی کەمپەینەکان',
+    totalCollection: 'Toplam Tahsilat',
+    totalCurrentAccounts: 'TOPLAM CARİ',
+    totalDevicesLabel: 'Toplam Cihaz',
+    totalEntries: 'Toplam Kayıt',
+    totalInventoryValue: 'کۆی بەهای کۆگا',
+    totalItems: 'کۆی بەرهەمەکان',
+    totalLabel: 'Toplam',
+    totalPieces: 'کۆی دانەکان',
+    totalProduct: 'Toplam Ürün',
+    totalProductsDashboard: 'کۆی بەرهەمەکان',
+    totalPurchases: 'کۆی کڕینەکان',
+    totalRevenue: 'کۆی داهات',
+    totalRevenueLabel: 'Toplam Ciro',
+    totalSale: 'Toplam satış',
+    totalSales: 'Toplam',
+    totalSalesCount: 'Toplam',
+    totalStock: 'Toplam Stok',
+    totalText: 'کۆ',
+    totalUppercase: 'TOPLAM',
+    transactionBreakdown: 'وردەکاری جوڵەکان',
+    transactionNumberLabel: 'İşlem Yapılan Numara/Kişi',
+    transferAllItems: 'هەموو بابەتەکانی ناو مێزی {number} دەگوازرێنەوە بۆ مێزی هەڵبژێردراو.',
+    transferMovement: 'Transfer & Hareket',
+    transferToOtherCashier: 'Başka Kasiyere Devret',
+    transfers: 'گواستنەوەکان',
+    trialBalance: 'میزانی پێداچوونەوە',
+    turkish: 'تورکی',
+    unexpectedErrorEncountered: 'Beklenmeyen bir hata ile karşılaşıldı',
+    unit: 'Birim',
+    unitAndMultiplierMgmt: 'بەڕێوەبردنی یەکە و جاران',
+    unitCodeLabel: 'کۆدی یەکە',
+    unitDefinitions: 'پێناسە کردنی یەکەکان',
+    unitLabel: 'Birim',
+    unitNameLabel: 'ناوی یەکە',
+    unitPrice: 'Birim fiyat',
+    unitPriceLabel: 'Birim Fiyat',
+    unitSetCreated: 'سێتی یەکە دروستکرا',
+    unitSetDeleted: 'سێتی یەکە سڕایەوە',
+    unitSetName: 'ناوی سێتی یەکە',
+    unitSetUpdated: 'سێتی یەکە نوێکرایەوە',
+    unitSets: 'کۆمەڵە یەکەکان',
+    unknownError: 'هەڵەیەکی نەزانراو',
+    update: 'نوێکردنەوە',
+    urgentOrder: 'Acil sipariş!',
+    userManagement: 'بەڕێوەبردنی بەکارهێنەران',
+    username: 'ناوی بەکارهێنەر',
+    usernamePlaceholder: 'ناوی بەکارهێنەرت بنووسە',
+    variantAvailable: 'Varyant Mevcut',
+    variantChanged: 'Varyant değiştirildi: {variant}',
+    variantDefDesc: 'بەڕێوەبردنی پێناسەی جۆرەکان',
+    variants: 'جۆرەکان',
+    veresiyeLabel: 'قەرز (نەختینە)',
+    verifying: 'Doğrulanıyor...',
+    version: 'v1.0',
+    versionTitle: 'Versiyon: v1.0',
+    viewDetails: 'Detayları Gör',
+    voiceSearch: 'Sesli Arama',
+    voucher: 'سند',
+    voucherDate: 'بەرواری سند',
+    voucherNo: 'ژمارەی سند',
+    voucherType: 'جۆری سند',
+    waiting: 'Bekleniyor',
+    warehouseDefDesc: 'بەڕێوەبردنی پێناسەی کۆگاکان',
+    warehouseReceipt: 'وەسڵی کۆگا',
+    warehouseTransfer: 'Depo Transferi',
+    warehouseTransferWaybill: 'پسوڵەی گواستنەوەی کۆگا',
+    wastageWaybill: 'ناردنی بەفیڕۆچوون',
+    wasteWaybill: 'پسوڵەی بەفیڕۆچوون',
+    waybills: 'پسوڵەکانی گواستنەوە',
+    weeklySale: 'Haftalık Satış',
+    weeklySales: 'فرۆشتنی هەفتانە',
+    welcome: 'Bi xêr hatî',
+    welcomeDashboard: 'بۆ سیستم بەخێر بێن',
+    welcomeSubtitle: 'Hoş geldiniz, işletme performansınızı takip edin',
+    whatsappIntegration: 'بەستنەوەی واتسئەپ',
+    wholesaleSales: 'فرۆشتنی کۆ',
+    wholesaleSalesDesc: 'کردارەکانی فرۆشتنی کۆ',
+    wholesaleSalesTitle: 'فرۆشتنی کۆ',
+    withholdingTax: 'باجی بڕین',
+    withholdingTaxRate: 'ڕێژەی باج (٪)',
+    wmsModule: 'WMS',
+    wrongProduct: 'Yanlış Ürün',
+    wrongProductAdded: 'Yanlış ürün eklendi',
+    wsConnected: 'پەیوەستە',
+    wsConnecting: 'باردەکرێت...',
+    wsDisconnected: 'پەیوەست نییە',
+    yesDelete: 'بەڵێ، بسڕەوە',
+    zReport: 'Z Raporu',
+    zeroOpeningCashConfirm: 'Açılış kasası 0.00 olarak girilecek. Devam etmek istiyor musunuz?',
+    zeroPlaceholder: '0',
+  },
 };
-
-

@@ -7,8 +7,10 @@ import { dynamicReportEngine, MaterialExtractRow } from '../../../services/repor
 import { formatNumber } from '../../../utils/formatNumber';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function MaterialExtractReport() {
+    const { t, tm } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<MaterialExtractRow[]>([]);
     const [productId, setProductId] = useState('1'); // Demo ID
@@ -36,11 +38,11 @@ export function MaterialExtractReport() {
             {/* Logo-Style Filter Bar */}
             <div className="bg-gray-100 border-b p-4 flex flex-wrap gap-4 items-end">
                 <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Malzeme Kodu/Adı</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{tm('materialCodeOrName')}</label>
                     <div className="flex gap-2">
                         <input
                             className="px-3 py-1.5 border rounded text-sm w-64 focus:ring-2 focus:ring-indigo-500"
-                            placeholder="Malzeme seçiniz..."
+                            placeholder={tm('selectMaterialPlaceholder')}
                             defaultValue="LAPTOP-001 - Gaming Laptop"
                         />
                         <button className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
@@ -50,7 +52,7 @@ export function MaterialExtractReport() {
                 </div>
 
                 <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Başlangıç Tarihi</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{tm('startDate')}</label>
                     <input
                         type="date"
                         className="px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-indigo-500"
@@ -60,7 +62,7 @@ export function MaterialExtractReport() {
                 </div>
 
                 <div>
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Bitiş Tarihi</label>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">{tm('endDate')}</label>
                     <input
                         type="date"
                         className="px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-indigo-500"
@@ -73,7 +75,7 @@ export function MaterialExtractReport() {
                     onClick={loadReport}
                     className="px-6 py-2 bg-gray-800 text-white rounded font-bold text-sm hover:bg-black transition-all"
                 >
-                    Raporu Hazırla
+                    {tm('prepareReport')}
                 </button>
 
                 <div className="flex-1 flex justify-end gap-2">
@@ -84,11 +86,11 @@ export function MaterialExtractReport() {
 
             {/* Report Header (Logo Style) */}
             <div className="p-8 pb-4 text-center">
-                <h1 className="text-xl font-bold uppercase tracking-widest text-gray-800">Malzeme Hareket Ekstresi</h1>
+                <h1 className="text-xl font-bold uppercase tracking-widest text-gray-800">{tm('materialExtractReport')}</h1>
                 <div className="mt-2 flex justify-center gap-4 text-xs text-gray-500">
-                    <span>Tarih Aralığı: {dateRange.start} - {dateRange.end}</span>
+                    <span>{tm('dateRangeLabel')}: {dateRange.start} - {dateRange.end}</span>
                     <span>•</span>
-                    <span>Birim: Yerel Para Birimi (IQD)</span>
+                    <span>{tm('localCurrencyUnit')}</span>
                 </div>
             </div>
 
@@ -97,27 +99,27 @@ export function MaterialExtractReport() {
                 <table className="w-full border-collapse border border-gray-300">
                     <thead className="bg-gray-50 text-[10px] font-bold uppercase text-gray-700">
                         <tr>
-                            <th className="border border-gray-300 px-3 py-2 text-left">Tarih</th>
-                            <th className="border border-gray-300 px-3 py-2 text-left">İşlem Türü</th>
-                            <th className="border border-gray-300 px-3 py-2 text-left">Fiş No</th>
-                            <th className="border border-gray-300 px-3 py-2 text-left">Açıklama</th>
-                            <th className="border border-gray-300 px-3 py-2 text-right">Giriş/Çıkış</th>
-                            <th className="border border-gray-300 px-3 py-2 text-right">Birim Fiyat</th>
-                            <th className="border border-gray-300 px-3 py-2 text-right">Tutar</th>
-                            <th className="border border-gray-300 px-3 py-2 text-right bg-blue-50">Kalan Miktar</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left">{tm('date').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left">{tm('ficheType').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left">{tm('ficheNo').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left">{tm('description').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-right">{tm('inOutQty').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-right">{tm('unitPrice').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-right">{tm('amount').toUpperCase()}</th>
+                            <th className="border border-gray-300 px-3 py-2 text-right bg-blue-50">{tm('runningQuantity').toUpperCase()}</th>
                         </tr>
                     </thead>
                     <tbody className="text-[11px] text-gray-700">
                         {data.length === 0 ? (
                             <tr>
-                                <td colSpan={8} className="text-center py-10 text-gray-400 italic">Kayıt bulunamadı</td>
+                                <td colSpan={8} className="text-center py-10 text-gray-400 italic">{tm('noRecordsFound')}</td>
                             </tr>
                         ) : (
                             data.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50">
                                     <td className="border border-gray-200 px-3 py-1.5">{format(new Date(row.date), 'dd.MM.yyyy')}</td>
                                     <td className="border border-gray-200 px-3 py-1.5 font-bold">
-                                        {row.trcode === 1 ? 'Sarf' : row.trcode === 2 ? 'Üretimden Giriş' : row.trcode === 5 ? 'Ambar Fişi' : `Farklı (${row.trcode})`}
+                                        {row.trcode === 1 ? tm('consumption') : row.trcode === 2 ? tm('productionEntry') : row.trcode === 5 ? tm('warehouseReceipt') : `${tm('otherType')} (${row.trcode})`}
                                     </td>
                                     <td className="border border-gray-200 px-3 py-1.5 font-mono">{row.fiche_no}</td>
                                     <td className="border border-gray-200 px-3 py-1.5 italic">{row.description || '-'}</td>
@@ -136,7 +138,7 @@ export function MaterialExtractReport() {
                     {data.length > 0 && (
                         <tfoot className="bg-gray-100 font-bold text-xs">
                             <tr>
-                                <td colSpan={4} className="border border-gray-300 px-3 py-2 text-right">TOPLAM</td>
+                                <td colSpan={4} className="border border-gray-300 px-3 py-2 text-right">{tm('totalUppercase')}</td>
                                 <td className="border border-gray-300 px-3 py-2 text-right">
                                     {formatNumber(data.reduce((s, r) => s + (r.movement_type === 'in' ? r.quantity : -r.quantity), 0), 0, false)}
                                 </td>

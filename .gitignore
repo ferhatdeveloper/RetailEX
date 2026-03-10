@@ -19,6 +19,7 @@ out/
 .vercel
 .env*.local
 .env
+.env.signing
 
 # Debug
 npm-debug.log*

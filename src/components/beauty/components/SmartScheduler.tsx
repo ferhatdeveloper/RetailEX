@@ -8,21 +8,14 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyAppointment, AppointmentStatus } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { logger } from '../../../services/loggingService';
 import { WeekView, MonthView } from './WeekMonthViews';
 import { StaffTimelineView } from './StaffTimelineView';
 import { AppointmentPOS } from './AppointmentPOS';
 import '../ClinicStyles.css';
 
 type ViewType = 'day' | 'week' | 'month' | 'timeline' | 'device' | 'list';
-
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-    scheduled:   { label: 'Planlandı',    color: '#6366f1', bg: '#eef2ff' },
-    confirmed:   { label: 'Onaylandı',    color: '#0284c7', bg: '#e0f2fe' },
-    in_progress: { label: 'Devam Ediyor', color: '#d97706', bg: '#fef3c7' },
-    completed:   { label: 'Tamamlandı',   color: '#059669', bg: '#d1fae5' },
-    cancelled:   { label: 'İptal',         color: '#dc2626', bg: '#fee2e2' },
-    no_show:     { label: 'Gelmedi',       color: '#9ca3af', bg: '#f3f4f6' },
-};
 
 const EMPTY_FORM = {
     customer_id: '', service_id: '', staff_id: '', device_id: '',
@@ -44,9 +37,19 @@ function NewAppointmentPage({
     onSaved: () => void;
 }) {
     const { specialists, services, customers, devices, createAppointment } = useBeautyStore();
+    const { tm } = useLanguage();
     const [form, setForm] = useState({ ...EMPTY_FORM, date: prefillDate, time: prefillTime });
     const [saving, setSaving] = useState(false);
     const [done, setDone] = useState(false);
+
+    const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+        scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
+        confirmed:   { label: tm('bAppointmentConfirmed'), color: '#0284c7', bg: '#e0f2fe' },
+        in_progress: { label: tm('bAppointmentStarted'),   color: '#d97706', bg: '#fef3c7' },
+        completed:   { label: tm('bAppointmentCompleted'), color: '#059669', bg: '#d1fae5' },
+        cancelled:   { label: tm('bAppointmentCancelled'), color: '#dc2626', bg: '#fee2e2' },
+        no_show:     { label: tm('bAppointmentNoShow'),    color: '#9ca3af', bg: '#f3f4f6' },
+    };
 
     const selectedService  = services.find(s => s.id === form.service_id);
     const selectedCustomer = customers.find(c => c.id === form.customer_id);
@@ -83,7 +86,7 @@ function NewAppointmentPage({
     if (done) return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#f7f6fb' }}>
             <CheckCircle2 size={56} style={{ color: '#059669' }} />
-            <p style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>Randevu Oluşturuldu!</p>
+            <p style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>{tm('bAppointmentCreated')}</p>
         </div>
     );
 
@@ -96,12 +99,12 @@ function NewAppointmentPage({
                     onClick={onBack}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                 >
-                    <ArrowLeft size={14} /> Takvime Dön
+                    <ArrowLeft size={14} /> {tm('bBackToCalendar')}
                 </button>
                 <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
                 <div>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', lineHeight: 1 }}>Yeni Randevu</p>
-                    <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', marginTop: 2 }}>Randevu bilgilerini doldurun</p>
+                    <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', lineHeight: 1 }}>{tm('bNewAppointment')}</p>
+                    <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', marginTop: 2 }}>{tm('bFillAppointmentInfo')}</p>
                 </div>
             </div>
 
@@ -114,20 +117,20 @@ function NewAppointmentPage({
                     {/* Section: Kişi */}
                     <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
                         <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <User size={13} /> Müşteri & Uzman
+                            <User size={13} /> {tm('bCustomerAndStaff')}
                         </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Müşteri <span style={{ color: '#ef4444' }}>*</span></label>
+                                <label style={labelStyle}>{tm('bCustomerLabel')} <span style={{ color: '#ef4444' }}>*</span></label>
                                 <select value={form.customer_id} onChange={e => setForm(p => ({ ...p, customer_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">Seçiniz...</option>
+                                    <option value="">{tm('bSelect')}</option>
                                     {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ''}</option>)}
                                 </select>
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Uzman</label>
+                                <label style={labelStyle}>{tm('bSpecialistLabel')}</label>
                                 <select value={form.staff_id} onChange={e => setForm(p => ({ ...p, staff_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">Uzman seçin...</option>
+                                    <option value="">{tm('bSelect')}</option>
                                     {specialists.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}{s.specialty ? ` (${s.specialty})` : ''}</option>)}
                                 </select>
                             </div>
@@ -137,20 +140,20 @@ function NewAppointmentPage({
                     {/* Section: Hizmet */}
                     <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
                         <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Sparkles size={13} /> Hizmet & Cihaz
+                            <Sparkles size={13} /> {tm('bServiceAndDevice')}
                         </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Hizmet <span style={{ color: '#ef4444' }}>*</span></label>
+                                <label style={labelStyle}>{tm('bServiceLabel')} <span style={{ color: '#ef4444' }}>*</span></label>
                                 <select value={form.service_id} onChange={e => onServiceChange(e.target.value)} style={selectStyle}>
-                                    <option value="">Hizmet seçin...</option>
+                                    <option value="">{tm('bSelect')}</option>
                                     {services.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — ₺{s.price}</option>)}
                                 </select>
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Cihaz (Opsiyonel)</label>
+                                <label style={labelStyle}>{tm('bDeviceOptional')}</label>
                                 <select value={form.device_id} onChange={e => setForm(p => ({ ...p, device_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">Cihaz seçin...</option>
+                                    <option value="">{tm('bSelect')}</option>
                                     {devices.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
                             </div>
@@ -160,23 +163,23 @@ function NewAppointmentPage({
                     {/* Section: Tarih & Zaman */}
                     <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
                         <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <CalendarDays size={13} /> Tarih & Saat
+                            <CalendarDays size={13} /> {tm('bDateAndTime')}
                         </p>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Tarih</label>
+                                <label style={labelStyle}>{tm('bDate')}</label>
                                 <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} style={inputStyle} />
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Saat</label>
+                                <label style={labelStyle}>{tm('bTime')}</label>
                                 <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={inputStyle} />
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Süre (dk)</label>
+                                <label style={labelStyle}>{tm('bDurationMin')}</label>
                                 <input type="number" min={5} step={5} value={form.duration} onChange={e => setForm(p => ({ ...p, duration: Number(e.target.value) }))} style={inputStyle} />
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Ücret (₺)</label>
+                                <label style={labelStyle}>{tm('bPriceLira')}</label>
                                 <input type="number" min={0} value={form.total_price} onChange={e => setForm(p => ({ ...p, total_price: Number(e.target.value) }))} style={inputStyle} />
                             </div>
                         </div>
@@ -186,7 +189,7 @@ function NewAppointmentPage({
                     <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 14 }}>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Durum</label>
+                                <label style={labelStyle}>{tm('bStatus')}</label>
                                 <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as AppointmentStatus }))} style={selectStyle}>
                                     {Object.entries(STATUS_CFG).map(([v, cfg]) => (
                                         <option key={v} value={v}>{cfg.label}</option>
@@ -194,11 +197,11 @@ function NewAppointmentPage({
                                 </select>
                             </div>
                             <div style={fieldStyle}>
-                                <label style={labelStyle}>Notlar</label>
+                                <label style={labelStyle}>{tm('bNotes')}</label>
                                 <textarea
                                     value={form.notes}
                                     onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
-                                    placeholder="Randevu notları, özel istekler..."
+                                    placeholder={tm('bFillAppointmentInfo')}
                                     rows={2}
                                     style={{ ...inputStyle, height: 'auto', padding: '8px 12px', resize: 'none', lineHeight: 1.5 }}
                                 />
@@ -213,19 +216,19 @@ function NewAppointmentPage({
                     {/* Preview card */}
                     <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
                         <div style={{ background: selectedService?.color ?? '#7c3aed', padding: '14px 16px' }}>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Randevu Özeti</p>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{tm('bAppointmentSummary')}</p>
                             <p style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 4 }}>
-                                {selectedService?.name ?? 'Hizmet seçilmedi'}
+                                {selectedService?.name ?? tm('bServiceNotSelected')}
                             </p>
                         </div>
                         <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                             {[
-                                { label: 'Müşteri',  value: selectedCustomer?.name ?? '—' },
-                                { label: 'Uzman',    value: selectedStaff?.name ?? '—' },
-                                { label: 'Tarih',    value: form.date ? new Date(form.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
-                                { label: 'Saat',     value: form.time },
-                                { label: 'Süre',     value: `${form.duration} dakika` },
-                                { label: 'Ücret',    value: form.total_price > 0 ? `₺${form.total_price.toLocaleString('tr-TR')}` : '—' },
+                                { label: tm('bCustomerLabel'),    value: selectedCustomer?.name ?? '—' },
+                                { label: tm('bSpecialistLabel'),  value: selectedStaff?.name ?? '—' },
+                                { label: tm('bDate'),             value: form.date ? new Date(form.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
+                                { label: tm('bTime'),             value: form.time },
+                                { label: tm('bDuration'),         value: `${form.duration} ${tm('bMinutes')}` },
+                                { label: tm('bPriceHeader'),      value: form.total_price > 0 ? `₺${form.total_price.toLocaleString('tr-TR')}` : '—' },
                             ].map(({ label, value }) => (
                                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                                     <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
@@ -262,14 +265,14 @@ function NewAppointmentPage({
                         onMouseLeave={e => { if (form.customer_id && form.service_id) e.currentTarget.style.background = '#7c3aed'; }}
                     >
                         <CalendarDays size={15} />
-                        {saving ? 'Kaydediliyor...' : 'Randevu Oluştur'}
+                        {saving ? tm('bSaving') : tm('bAppointmentCreate')}
                     </button>
 
                     <button
                         onClick={onBack}
                         style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                     >
-                        İptal
+                        {tm('cancel')}
                     </button>
                 </div>
             </div>
@@ -284,6 +287,16 @@ export function SmartScheduler() {
         specialists, services, customers, devices,
         loadSpecialists, loadServices, loadCustomers, loadDevices,
     } = useBeautyStore();
+    const { tm } = useLanguage();
+
+    const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
+        scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
+        confirmed:   { label: tm('bAppointmentConfirmed'), color: '#0284c7', bg: '#e0f2fe' },
+        in_progress: { label: tm('bAppointmentStarted'),   color: '#d97706', bg: '#fef3c7' },
+        completed:   { label: tm('bAppointmentCompleted'), color: '#059669', bg: '#d1fae5' },
+        cancelled:   { label: tm('bAppointmentCancelled'), color: '#dc2626', bg: '#fee2e2' },
+        no_show:     { label: tm('bAppointmentNoShow'),    color: '#9ca3af', bg: '#f3f4f6' },
+    };
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view,        setView]        = useState<ViewType>('day');
@@ -356,7 +369,7 @@ export function SmartScheduler() {
                 comment:            feedbackComment || null,
                 would_recommend:    feedbackRatings.overall >= 4,
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { logger.crudError('SmartScheduler', 'saveFeedback', e); }
         finally {
             setFeedbackSaving(false);
             setFeedbackApt(null);
@@ -432,19 +445,19 @@ export function SmartScheduler() {
                         onClick={() => setCurrentDate(new Date())}
                         style={{ padding: '4px 10px', border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', fontSize: 11, fontWeight: 700, color: '#7c3aed', cursor: 'pointer' }}
                     >
-                        Bugün
+                        {tm('bToday')}
                     </button>
                 </div>
 
                 {/* View tabs */}
                 <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2 }}>
                     {([
-                        { id: 'day',      label: 'Gün'      },
-                        { id: 'week',     label: 'Hafta'    },
-                        { id: 'month',    label: 'Ay'       },
-                        { id: 'timeline', label: 'Personel' },
-                        { id: 'device',   label: 'Cihaz'    },
-                        { id: 'list',     label: 'Liste'    },
+                        { id: 'day',      label: tm('bDay')       },
+                        { id: 'week',     label: tm('bWeek')      },
+                        { id: 'month',    label: tm('bMonth')     },
+                        { id: 'timeline', label: tm('bStaffView') },
+                        { id: 'device',   label: tm('bDeviceView')},
+                        { id: 'list',     label: tm('bListView')  },
                     ] as { id: ViewType; label: string }[]).map(({ id: v, label }) => (
                         <button
                             key={v}
@@ -467,7 +480,7 @@ export function SmartScheduler() {
                         <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                         <input
                             value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Ara..."
+                            placeholder={tm('bSearch')}
                             style={{ height: 30, paddingLeft: 26, paddingRight: 10, border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: '#f9fafb', outline: 'none', width: 150 }}
                         />
                     </div>
@@ -483,7 +496,7 @@ export function SmartScheduler() {
                         onMouseEnter={e => (e.currentTarget.style.background = '#6d28d9')}
                         onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
                     >
-                        <Plus size={14} /> Yeni Randevu
+                        <Plus size={14} /> {tm('bNewAppointment')}
                     </button>
                 </div>
             </div>
@@ -492,7 +505,7 @@ export function SmartScheduler() {
             <div style={{ flex: 1, overflow: 'auto', padding: 16 }} className="custom-scrollbar">
                 {isLoading ? (
                     <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af' }}>Yükleniyor...</p>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af' }}>{tm('bLoading')}</p>
                     </div>
                 ) : (
                     <>
@@ -535,7 +548,7 @@ export function SmartScheduler() {
                                 {devices.length === 0 ? (
                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#d1d5db', gap: 8 }}>
                                         <Cpu size={36} />
-                                        <p style={{ fontSize: 12, fontWeight: 600 }}>Cihaz tanımlanmamış</p>
+                                        <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoDevicesDefined')}</p>
                                     </div>
                                 ) : devices.map(device => {
                                     const devApts = appointments.filter(a => a.device_id === device.id);
@@ -547,7 +560,7 @@ export function SmartScheduler() {
                                                 </div>
                                                 <div>
                                                     <p style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{device.name}</p>
-                                                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{devApts.length} randevu</p>
+                                                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{devApts.length} {tm('bAppointmentWord')}</p>
                                                 </div>
                                             </div>
                                             <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
@@ -586,14 +599,14 @@ export function SmartScheduler() {
                             <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
                                 {/* Header */}
                                 <div style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                                    {['Saat', '', 'Müşteri / Hizmet', 'Uzman', 'Süre', 'Durum', 'Ücret'].map((h, i) => (
+                                    {[tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')].map((h, i) => (
                                         <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
                                     ))}
                                 </div>
                                 {appointments.length === 0 ? (
                                     <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#d1d5db', gap: 8 }}>
                                         <List size={32} />
-                                        <p style={{ fontSize: 12, fontWeight: 600 }}>Randevu yok</p>
+                                        <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointments')}</p>
                                     </div>
                                 ) : [...appointments]
                                     .sort((a, b) => (a.appointment_time ?? '').localeCompare(b.appointment_time ?? ''))
@@ -616,7 +629,7 @@ export function SmartScheduler() {
                                                 </div>
                                                 <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{apt.specialist_name ?? '—'}</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#9ca3af' }}>
-                                                    <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}dk</span>
+                                                    <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}{tm('bDkSuffix')}</span>
                                                 </div>
                                                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
                                                 <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right' }}>{(apt.total_price ?? 0) > 0 ? `₺${apt.total_price.toLocaleString('tr-TR')}` : '—'}</span>
@@ -649,10 +662,10 @@ export function SmartScheduler() {
                         <div style={{ padding: 20, flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
                                 {[
-                                    { label: 'Uzman',  value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
-                                    { label: 'Süre',   value: `${selectedApt.duration ?? 30}dk` },
-                                    { label: 'Cihaz',  value: selectedApt.device_name ?? '—' },
-                                    { label: 'Ücret',  value: (selectedApt.total_price ?? 0) > 0 ? `₺${selectedApt.total_price!.toLocaleString('tr-TR')}` : '—' },
+                                    { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
+                                    { label: tm('bDuration'),      value: `${selectedApt.duration ?? 30}${tm('bDkSuffix')}` },
+                                    { label: tm('bDeviceView'),    value: selectedApt.device_name ?? '—' },
+                                    { label: tm('bPriceHeader'),   value: (selectedApt.total_price ?? 0) > 0 ? `₺${selectedApt.total_price!.toLocaleString('tr-TR')}` : '—' },
                                 ].map(({ label, value }) => (
                                     <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
                                         <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
@@ -662,19 +675,19 @@ export function SmartScheduler() {
                             </div>
                             {selectedApt.notes && (
                                 <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
-                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Notlar</p>
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{tm('bNotes')}</p>
                                     <p style={{ fontSize: 12, color: '#374151' }}>{selectedApt.notes}</p>
                                 </div>
                             )}
                             <div style={{ marginBottom: 14 }}>
-                                <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Durum Güncelle</p>
+                                <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bUpdateStatus')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {([
-                                        { status: AppointmentStatus.CONFIRMED,   label: 'Onayla',       color: '#0284c7', bg: '#e0f2fe' },
-                                        { status: AppointmentStatus.IN_PROGRESS, label: 'Başladı',       color: '#d97706', bg: '#fef3c7' },
-                                        { status: AppointmentStatus.COMPLETED,   label: '✓ Tamamlandı', color: '#059669', bg: '#d1fae5' },
-                                        { status: AppointmentStatus.CANCELLED,   label: 'İptal Et',      color: '#dc2626', bg: '#fee2e2' },
-                                        { status: AppointmentStatus.NO_SHOW,     label: 'Gelmedi',       color: '#9ca3af', bg: '#f3f4f6' },
+                                        { status: AppointmentStatus.CONFIRMED,   label: tm('bStatusConfirm'),                color: '#0284c7', bg: '#e0f2fe' },
+                                        { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'),                color: '#d97706', bg: '#fef3c7' },
+                                        { status: AppointmentStatus.COMPLETED,   label: `✓ ${tm('bAppointmentCompleted')}`, color: '#059669', bg: '#d1fae5' },
+                                        { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),                 color: '#dc2626', bg: '#fee2e2' },
+                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),                 color: '#9ca3af', bg: '#f3f4f6' },
                                     ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
                                         const isCurrent = selectedApt.status === opt.status;
                                         return (
@@ -692,7 +705,7 @@ export function SmartScheduler() {
                                                     transition: 'all 0.1s',
                                                 }}
                                             >
-                                                {isCurrent ? `● ${opt.label} (Mevcut)` : opt.label}
+                                                {isCurrent ? `● ${opt.label} (${tm('bCurrentLabel')})` : opt.label}
                                             </button>
                                         );
                                     })}
@@ -710,16 +723,16 @@ export function SmartScheduler() {
                         <div style={{ padding: '16px 20px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 10 }}>
                             <CheckCircle2 size={20} color="#059669" />
                             <div>
-                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>Randevu Tamamlandı!</p>
+                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{tm('bAppointmentCompletedTitle')}</p>
                                 <p style={{ fontSize: 11, color: '#6b7280' }}>{feedbackApt.customer_name} — {feedbackApt.service_name}</p>
                             </div>
                         </div>
                         <div style={{ padding: 20 }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>Müşteri geri bildirimi (opsiyonel)</p>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>{tm('bFeedbackOptional')}</p>
                             {([
-                                { key: 'service' as const, label: 'Hizmet Kalitesi'       },
-                                { key: 'staff'   as const, label: 'Uzman Memnuniyeti'     },
-                                { key: 'overall' as const, label: 'Genel Değerlendirme'   },
+                                { key: 'service' as const, label: tm('bFeedbackService')    },
+                                { key: 'staff'   as const, label: tm('bFeedbackSpecialist') },
+                                { key: 'overall' as const, label: tm('bFeedbackGeneral')    },
                             ]).map(({ key, label }) => (
                                 <div key={key} style={{ marginBottom: 12 }}>
                                     <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
@@ -742,17 +755,17 @@ export function SmartScheduler() {
                             <textarea
                                 value={feedbackComment}
                                 onChange={e => setFeedbackComment(e.target.value)}
-                                placeholder="Yorum ekleyin..."
+                                placeholder={tm('bFeedbackComment')}
                                 rows={2}
                                 style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', marginTop: 8 }}
                             />
                         </div>
                         <div style={{ padding: '0 20px 20px', display: 'flex', gap: 10 }}>
                             <button onClick={() => setFeedbackApt(null)} style={{ flex: 1, height: 38, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                                Geç
+                                {tm('bFeedbackSkip')}
                             </button>
                             <button onClick={handleFeedbackSubmit} disabled={feedbackSaving} style={{ flex: 2, height: 38, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
-                                {feedbackSaving ? 'Kaydediliyor...' : 'Geri Bildirimi Kaydet'}
+                                {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
                             </button>
                         </div>
                     </div>

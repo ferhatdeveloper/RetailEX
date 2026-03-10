@@ -4,6 +4,7 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { SalesOrderCreatePage } from './SalesOrderCreatePage';
 import type { Customer, Product } from '../../../App';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface SalesOrderModuleProps {
   customers: Customer[];
@@ -11,6 +12,7 @@ interface SalesOrderModuleProps {
 }
 
 export function SalesOrderModule({ customers, products }: SalesOrderModuleProps) {
+  const { t, tm } = useLanguage();
   const [showNewOrderPage, setShowNewOrderPage] = useState(false);
 
   const salesOrders = [
@@ -54,7 +56,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" />
-            <h2 className="text-sm">Satış Siparişleri</h2>
+            <h2 className="text-sm font-semibold">{t.menu?.salesOrders || tm('salesOrders') || 'Satış Siparişleri'}</h2>
             <span className="text-blue-100 text-[10px] ml-2">• {salesOrders.length} sipariş</span>
           </div>
           <button

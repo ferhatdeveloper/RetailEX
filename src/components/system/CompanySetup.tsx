@@ -19,6 +19,7 @@ import {
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, createCurrentAccount, Store as StoreType, Warehouse as WarehouseType, Period as PeriodType } from '../../services/api';
+import { logger } from '../../services/loggingService';
 
 // ===== TYPES =====
 interface Company {
@@ -196,7 +197,7 @@ export function CompanySetup() {
           }
           toast.success('Cari hesaplar kopyalandı');
         } catch (e) {
-          console.error(e);
+          logger.crudError('CompanySetup', 'copyAccounts', e);
           toast.error('Cari hesaplar kopyalanırken hata oluştu');
         }
       }
@@ -206,7 +207,7 @@ export function CompanySetup() {
       loadAllData();
 
     } catch (e: any) {
-      console.error(e);
+      logger.crudError('CompanySetup', 'copyFirm', e);
       toast.error('Kopyalama hatası: ' + e.message);
     } finally {
       setLoading(false);
@@ -397,7 +398,7 @@ export function CompanySetup() {
       setMode('view');
       loadAllData();
     } catch (error: any) {
-      console.error(error);
+      logger.crudError('CompanySetup', 'save', error);
       toast.error('İşlem başarısız: ' + error.message);
     } finally {
       setLoading(false);
@@ -427,6 +428,7 @@ export function CompanySetup() {
       loadAllData();
       setSelectedNode(null);
     } catch (e) {
+      logger.crudError('CompanySetup', 'delete', e);
       toast.error('Silme hatası');
     }
   };

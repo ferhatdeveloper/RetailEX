@@ -1,5 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { Edit, Trash2, History, LucideIcon, ChevronRight } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export interface ContextMenuItem {
     id: string;
@@ -24,6 +25,7 @@ interface ContextMenuProps {
 
 export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
+    const { t } = useLanguage();
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -72,9 +74,9 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
         }));
     } else {
         // Fallback to legacy props
-        if (onEdit) finalItems.push({ id: 'edit', label: 'Düzenle', icon: Edit, onClick: onEdit, color: 'text-blue-600' });
-        if (onHistory) finalItems.push({ id: 'history', label: 'Geçmiş Hareketler', icon: History, onClick: onHistory, color: 'text-purple-600' });
-        if (onDelete) finalItems.push({ id: 'delete', label: 'Sil', icon: Trash2, onClick: onDelete, color: 'text-red-600' });
+        if (onEdit) finalItems.push({ id: 'edit', label: t.edit, icon: Edit, onClick: onEdit, color: 'text-blue-600' });
+        if (onHistory) finalItems.push({ id: 'history', label: t.historyMovements, icon: History, onClick: onHistory, color: 'text-purple-600' });
+        if (onDelete) finalItems.push({ id: 'delete', label: t.deleteAction, icon: Trash2, onClick: onDelete, color: 'text-red-600' });
     }
 
     // Recursive component for menu items
@@ -91,8 +93,10 @@ export function ContextMenu({ x, y, onClose, items, onEdit, onDelete, onHistory 
                         onMouseLeave={() => setActiveSubMenu(null)}
                     >
                         <button
-                            onClick={(e) => {
+                            onMouseDown={(e) => {
+                                if (e.button !== 0) return; // Sadece sol tıklama
                                 e.stopPropagation();
+                                e.preventDefault(); // Focus kaybını önle
                                 if (item.items && item.items.length > 0) {
                                     // Mobile/Touch: Toggle submenu
                                     setActiveSubMenu(activeSubMenu === item.id ? null : item.id);

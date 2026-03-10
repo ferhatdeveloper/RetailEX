@@ -15,13 +15,11 @@ import { ContextMenu } from '../../shared/ContextMenu';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
-interface InvoiceListModuleProps {
-  customers?: any[];
-  products?: any[];
+export interface InvoiceListModuleProps {
+  onInvoiceSelect?: (invoice: Invoice) => void;
+  title?: string;
   defaultInvoiceTypeFilter?: string;
   defaultCategory?: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
-  title?: string;
-  description?: string;
 }
 
 interface InvoiceType {
@@ -32,24 +30,6 @@ interface InvoiceType {
   icon: 'FileText' | 'FileCheck' | 'FileMinus' | 'Truck' | 'ShoppingBag' | 'FileSignature';
   translationKey: string;
 }
-
-const INVOICE_TYPES: InvoiceType[] = [
-  { code: 8, name: 'Toptan Satış', category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
-  { code: 7, name: 'Perakende Satış', category: 'Satis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'FileText', translationKey: 'retailSale' },
-  { code: 3, name: 'Satış İade', category: 'Iade', color: 'bg-red-100 text-red-700 border-red-300', icon: 'FileMinus', translationKey: 'salesReturn' },
-  { code: 1, name: 'Alış Faturası', category: 'Alis', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileCheck', translationKey: 'purchaseInvoices' },
-  { code: 6, name: 'Alış İade', category: 'Iade', color: 'bg-pink-100 text-pink-700 border-pink-300', icon: 'FileMinus', translationKey: 'purchaseReturn' },
-  { code: 9, name: 'Verilen Hizmet Faturası', category: 'Hizmet', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', icon: 'FileText', translationKey: 'serviceGiven' },
-  { code: 4, name: 'Alınan Hizmet Faturası', category: 'Hizmet', color: 'bg-violet-100 text-violet-700 border-violet-300', icon: 'FileCheck', translationKey: 'serviceReceived' },
-  { code: 10, name: 'Satış İrsaliyesi', category: 'Irsaliye', color: 'bg-teal-100 text-teal-700 border-teal-300', icon: 'Truck', translationKey: 'salesWaybill' },
-  { code: 11, name: 'Alış İrsaliyesi', category: 'Irsaliye', color: 'bg-sky-100 text-sky-700 border-sky-300', icon: 'Truck', translationKey: 'purchaseWaybill' },
-  { code: 12, name: 'Depo Transfer İrsaliyesi', category: 'Irsaliye', color: 'bg-orange-100 text-orange-700 border-orange-300', icon: 'Truck', translationKey: 'warehouseTransferWaybill' },
-  { code: 13, name: 'Fire İrsaliyesi', category: 'Irsaliye', color: 'bg-red-100 text-red-700 border-red-300', icon: 'Truck', translationKey: 'wastageWaybill' },
-  { code: 20, name: 'Satış Siparişi', category: 'Siparis', color: 'bg-green-100 text-green-700 border-green-300', icon: 'ShoppingBag', translationKey: 'salesOrder' },
-  { code: 21, name: 'Alış Siparişi', category: 'Siparis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'ShoppingBag', translationKey: 'purchaseOrder' },
-  { code: 30, name: 'Satış Teklifi', category: 'Teklif', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileSignature', translationKey: 'salesQuote' },
-  { code: 31, name: 'Alış Teklifi', category: 'Teklif', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileSignature', translationKey: 'purchaseQuote' },
-];
 
 const getIcon = (iconName: string) => {
   switch (iconName) {
@@ -96,6 +76,24 @@ interface Invoice {
 
 export function InvoiceListModule({ customers = [], products = [], defaultInvoiceTypeFilter, defaultCategory, title, description }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
+
+  const INVOICE_TYPES: InvoiceType[] = [
+    { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
+    { code: 7, name: tm('retailSale'), category: 'Satis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'FileText', translationKey: 'retailSale' },
+    { code: 3, name: tm('salesReturn'), category: 'Iade', color: 'bg-red-100 text-red-700 border-red-300', icon: 'FileMinus', translationKey: 'salesReturn' },
+    { code: 1, name: tm('purchaseInvoices'), category: 'Alis', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileCheck', translationKey: 'purchaseInvoices' },
+    { code: 6, name: tm('purchaseReturn'), category: 'Iade', color: 'bg-pink-100 text-pink-700 border-pink-300', icon: 'FileMinus', translationKey: 'purchaseReturn' },
+    { code: 9, name: tm('serviceGiven'), category: 'Hizmet', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', icon: 'FileText', translationKey: 'serviceGiven' },
+    { code: 4, name: tm('serviceReceived'), category: 'Hizmet', color: 'bg-violet-100 text-violet-700 border-violet-300', icon: 'FileCheck', translationKey: 'serviceReceived' },
+    { code: 10, name: tm('salesWaybill'), category: 'Irsaliye', color: 'bg-teal-100 text-teal-700 border-teal-300', icon: 'Truck', translationKey: 'salesWaybill' },
+    { code: 11, name: tm('purchaseWaybill'), category: 'Irsaliye', color: 'bg-sky-100 text-sky-700 border-sky-300', icon: 'Truck', translationKey: 'purchaseWaybill' },
+    { code: 12, name: tm('warehouseTransferWaybill'), category: 'Irsaliye', color: 'bg-orange-100 text-orange-700 border-orange-300', icon: 'Truck', translationKey: 'warehouseTransferWaybill' },
+    { code: 13, name: tm('wastageWaybill'), category: 'Irsaliye', color: 'bg-red-100 text-red-700 border-red-300', icon: 'Truck', translationKey: 'wastageWaybill' },
+    { code: 20, name: tm('salesOrder'), category: 'Siparis', color: 'bg-green-100 text-green-700 border-green-300', icon: 'ShoppingBag', translationKey: 'salesOrder' },
+    { code: 21, name: tm('purchaseOrder'), category: 'Siparis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'ShoppingBag', translationKey: 'purchaseOrder' },
+    { code: 30, name: tm('salesQuote'), category: 'Teklif', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileSignature', translationKey: 'salesQuote' },
+    { code: 31, name: tm('purchaseQuote'), category: 'Teklif', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileSignature', translationKey: 'purchaseQuote' },
+  ];
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -104,25 +102,25 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   } | null>(null);
 
   const handleDeleteInvoice = async (id: string, invoiceNo: string) => {
-    if (!confirm(`${invoiceNo} numaralı faturayı silmek istediğinize emin misiniz?`)) {
+    if (!confirm(tm('confirmDeleteInvoice').replace('{invoiceNo}', invoiceNo))) {
       return;
     }
 
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
       await invoicesAPI.delete(id);
-      toast.success('Fatura başarıyla silindi');
+      toast.success(tm('invoiceDeleteSuccess'));
       loadInvoices();
     } catch (error: any) {
       console.error('Fatura silinirken hata:', error);
-      toast.error('Fatura silinemedi: ' + (error.message || 'Bilinmeyen hata'));
+      toast.error(tm('invoiceDeleteError') + ': ' + (error.message || 'Bilinmeyen hata'));
     }
   };
 
   // Helper for printing
   const handlePrintInvoice = async (invoice: Invoice) => {
     // Determine label based on invoice type
-    const typeLabel = INVOICE_TYPES.find(t => t.code === (invoice.invoice_type || invoice.trcode))?.name?.toUpperCase() || 'FATURA';
+    const typeLabel = INVOICE_TYPES.find(t => t.code === (invoice.invoice_type || invoice.trcode))?.name?.toUpperCase() || tm('invoice').toUpperCase();
     await printInvoice(invoice, typeLabel);
   };
 
@@ -389,7 +387,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       header: tm('customerSupplier'),
       cell: info => {
         const value = info.getValue();
-        return <span>{value || 'Müşterisiz'}</span>;
+        return <span>{value || tm('noCustomer')}</span>;
       }
     }),
     columnHelper.accessor('invoice_date', {
@@ -399,8 +397,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         if (!dateValue) return <span className="text-gray-400">-</span>;
         try {
           const date = new Date(dateValue);
-          if (isNaN(date.getTime())) return <span className="text-gray-400">Geçersiz Tarih</span>;
-          return date.toLocaleDateString('tr-TR', {
+          if (isNaN(date.getTime())) return <span className="text-gray-400">{tm('invalidDate')}</span>;
+          return date.toLocaleDateString(tm('localeCode'), {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric'
@@ -473,20 +471,15 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       header: tm('status'),
       cell: info => {
         const status = info.getValue();
-        const statusText = status === 'completed' ? 'Tamamlandı' :
-          status === 'pending' ? 'Beklemede' :
-            status === 'refunded' ? 'İade Edildi' : status;
         const colors: Record<string, string> = {
           'completed': 'bg-green-100 text-green-700',
-          'Tamamlandı': 'bg-green-100 text-green-700',
           'pending': 'bg-yellow-100 text-yellow-700',
-          'Beklemede': 'bg-yellow-100 text-yellow-700',
           'refunded': 'bg-red-100 text-red-700',
-          'İade Edildi': 'bg-red-100 text-red-700',
-          'Onaylandı': 'bg-blue-100 text-blue-700',
+          'cancelled': 'bg-gray-100 text-gray-700',
         };
-        const colorClass = colors[status] || colors[statusText] || 'bg-gray-100 text-gray-700';
-        return <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>{statusText}</span>;
+        const colorClass = colors[status] || 'bg-gray-100 text-gray-700';
+        const localizedStatus = tm(status) || status;
+        return <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>{localizedStatus}</span>;
       }
     }),
     columnHelper.accessor('cashier', {
@@ -546,7 +539,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             <FileText className="w-4 h-4" />
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium">{title || tm('invoices')}</h2>
-              <span className="text-blue-100 text-[10px]">• {totalCount.toLocaleString('tr-TR')} {tm('invoicesCount')}</span>
+              <span className="text-blue-100 text-[10px]">• {totalCount.toLocaleString(tm('localeCode'))} {tm('invoicesCount')}</span>
               <span className="text-blue-100 text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {tm('currencyCode')}</span>
             </div>
           </div>
@@ -684,7 +677,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-600">
-              Toplam {totalCount} kayıt
+              {tm('totalUppercase')} {totalCount} {tm('records')}
             </span>
             <select
               value={pageSize}
@@ -707,31 +700,31 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               disabled={currentPage === 1}
               className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
             >
-              İlk
+              {tm('first')}
             </button>
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
             >
-              Önceki
+              {tm('previous')}
             </button>
             <span className="px-4 py-1.5 text-sm text-gray-700">
-              Sayfa {currentPage} / {totalPages || 1}
+              {tm('page')} {currentPage} / {totalPages || 1}
             </span>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages || 1, p + 1))}
               disabled={currentPage >= totalPages}
               className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
             >
-              Sonraki
+              {tm('next')}
             </button>
             <button
               onClick={() => setCurrentPage(totalPages || 1)}
               disabled={currentPage >= totalPages}
               className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
             >
-              Son
+              {tm('last')}
             </button>
           </div>
         </div>
@@ -746,7 +739,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
           items={[
             {
               id: 'detail',
-              label: 'Detay Görüntüle',
+              label: tm('viewDetails'),
               icon: Eye,
               onClick: () => {
                 if (contextMenu.invoice) handleViewDetail(contextMenu.invoice);
@@ -754,7 +747,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             },
             {
               id: 'edit',
-              label: 'Düzenle',
+              label: tm('edit'),
               icon: Edit,
               onClick: () => {
                 if (contextMenu.invoice) handleEditInvoice(contextMenu.invoice);
@@ -762,7 +755,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             },
             {
               id: 'print',
-              label: 'Yazdır',
+              label: tm('print'),
               icon: Printer,
               onClick: () => {
                 if (contextMenu.invoice) {
@@ -772,7 +765,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             },
             {
               id: 'design',
-              label: 'Tasarla',
+              label: tm('design'),
               icon: Palette,
               onClick: () => {
                 setShowDesigner(true);
@@ -782,7 +775,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             },
             {
               id: 'delete',
-              label: 'Sil',
+              label: tm('deleteAction'),
               icon: Trash2,
               onClick: () => {
                 if (contextMenu.invoice) handleDeleteInvoice(contextMenu.invoice.id, contextMenu.invoice.invoice_no);
@@ -800,7 +793,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-semibold">Fatura Detayı</h3>
+                <h3 className="text-xl font-semibold">{tm('invoiceDetails')}</h3>
                 <p className="text-blue-100 text-sm">{selectedInvoice.invoice_no}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -809,7 +802,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                   className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
                 >
                   <Printer className="w-4 h-4" />
-                  Yazdır
+                  {tm('print')}
                 </button>
                 <button
                   onClick={() => setShowDetailModal(false)}
@@ -836,16 +829,16 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                 >
                   {/* Modern Invoice Header */}
                   <div className="border-b-4 border-blue-600 pb-6 mb-8">
-                    <h1 className="text-4xl font-bold text-blue-600 mb-6">FATURA</h1>
+                    <h1 className="text-4xl font-bold text-blue-600 mb-6">{tm('invoice').toUpperCase()}</h1>
                     <div className="grid grid-cols-3 gap-6">
                       <div>
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Fatura No</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('invoiceNo')}</div>
                         <div className="text-lg font-semibold text-gray-900">{selectedInvoice.invoice_no}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tarih</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('date')}</div>
                         <div className="text-lg font-semibold text-gray-900">
-                          {new Date(selectedInvoice.invoice_date || selectedInvoice.date || '').toLocaleDateString('tr-TR', {
+                          {new Date(selectedInvoice.invoice_date || selectedInvoice.date || '').toLocaleDateString(tm('localeCode'), {
                             day: '2-digit',
                             month: '2-digit',
                             year: 'numeric',
@@ -855,31 +848,31 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Durum</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('status')}</div>
                         <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${selectedInvoice.status === 'completed'
                           ? 'bg-green-100 text-green-700'
                           : selectedInvoice.status === 'pending'
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700'
                           }`}>
-                          {selectedInvoice.status === 'completed' ? 'Tamamlandı' :
-                            selectedInvoice.status === 'pending' ? 'Beklemede' :
-                              selectedInvoice.status === 'refunded' ? 'İade Edildi' : selectedInvoice.status}
+                          {selectedInvoice.status === 'completed' ? tm('completed') :
+                            selectedInvoice.status === 'pending' ? tm('pending') :
+                              selectedInvoice.status === 'refunded' ? tm('refunded') : selectedInvoice.status}
                         </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-6 mt-6">
                       <div>
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Müşteri</div>
-                        <div className="text-base font-semibold text-gray-900">{selectedInvoice.customer_name || 'Müşterisiz'}</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('customer')}</div>
+                        <div className="text-lg font-semibold text-gray-900">{selectedInvoice.customer_name || tm('noCustomer')}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Ödeme Yöntemi</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('paymentMethod')}</div>
                         <div className="text-base font-semibold text-gray-900">{selectedInvoice.payment_method || '-'}</div>
                       </div>
                       {selectedInvoice.cashier && (
                         <div>
-                          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Kasiyer</div>
+                          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('cashier')}</div>
                           <div className="text-base font-semibold text-gray-900">{selectedInvoice.cashier}</div>
                         </div>
                       )}
@@ -891,18 +884,18 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                     <div className="bg-orange-50 border-l-4 border-orange-400 rounded-lg p-4 mb-6">
                       <h4 className="font-semibold mb-3 text-orange-800 flex items-center gap-2 text-sm">
                         <Tag className="w-4 h-4" />
-                        Kampanya Bilgileri
+                        {tm('campaignInfo')}
                       </h4>
                       <div className="space-y-1 text-sm">
                         {selectedInvoice.campaign_name && (
                           <div>
-                            <span className="text-gray-600">Kampanya:</span>
+                            <span className="text-gray-600">{tm('campaign')}:</span>
                             <span className="font-medium ml-2 text-orange-700">{selectedInvoice.campaign_name}</span>
                           </div>
                         )}
                         {selectedInvoice.campaign_discount && selectedInvoice.campaign_discount > 0 && (
                           <div>
-                            <span className="text-gray-600">Kampanya İndirimi:</span>
+                            <span className="text-gray-600">{tm('campaignDiscountLabel')}:</span>
                             <span className="font-medium text-orange-600 ml-2">
                               {formatNumber(selectedInvoice.campaign_discount, 2, true)} IQD
                             </span>
@@ -915,16 +908,16 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                   {/* Ürünler Tablosu */}
                   {selectedInvoice.items && selectedInvoice.items.length > 0 && (
                     <div className="mb-8">
-                      <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wide">Ürünler</h3>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wide">{tm('productsLabel')}</h3>
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
                         <table className="w-full">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Ürün</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Miktar</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Birim Fiyat</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">İndirim</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Toplam</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">{tm('product')}</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">{tm('quantity')}</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">{tm('unitPrice')}</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">{tm('discount')}</th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">{tm('total')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -951,23 +944,23 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                   <div className="border-t-2 border-gray-300 pt-6 mt-8">
                     <div className="space-y-3 max-w-md ml-auto">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Ara Toplam:</span>
+                        <span className="text-gray-600">{tm('subtotal')}:</span>
                         <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.subtotal || 0, 2, true)} IQD</span>
                       </div>
                       {selectedInvoice.discount > 0 && (
                         <div className="flex justify-between text-sm text-red-600">
-                          <span>İndirim:</span>
+                          <span>{tm('discount')}:</span>
                           <span className="font-semibold">-{formatNumber(selectedInvoice.discount, 2, true)} IQD</span>
                         </div>
                       )}
                       {selectedInvoice.tax > 0 && (
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">TAX:</span>
+                          <span className="text-gray-600">{tm('tax')}:</span>
                           <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.tax, 2, true)} IQD</span>
                         </div>
                       )}
                       <div className="flex justify-between text-2xl font-bold border-t-2 border-blue-600 pt-4 mt-4">
-                        <span className="text-gray-900">Genel Toplam:</span>
+                        <span className="text-gray-900">{tm('grandTotal')}:</span>
                         <span className="text-blue-600">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} IQD</span>
                       </div>
                     </div>
@@ -982,7 +975,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                 onClick={() => setShowDetailModal(false)}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                Kapat
+                {tm('close')}
               </button>
             </div>
           </div>
@@ -997,7 +990,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
             <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <FileText className="w-6 h-6 text-white" />
-                <h3 className="text-xl font-semibold text-white">Fatura Türü Seçin</h3>
+                <h3 className="text-xl font-semibold text-white">{tm('selectInvoiceType')}</h3>
               </div>
               <button
                 onClick={() => setShowInvoiceTypeModal(false)}
@@ -1016,7 +1009,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                   <div className="border border-gray-300 bg-blue-50 p-3 rounded-lg">
                     <h4 className="text-sm text-blue-800 mb-2 flex items-center gap-2">
                       <FileText className="w-4 h-4" />
-                      Fatura Kategorileri
+                      {tm('invoiceCategories')}
                     </h4>
                     <div className="flex flex-wrap gap-2">
                       {categories.map((cat) => (
@@ -1036,7 +1029,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
                   {/* Fatura Türleri Listesi */}
                   <div className="border border-gray-300 bg-white p-3 rounded-lg">
-                    <h4 className="text-sm text-gray-700 mb-3 font-medium">Fatura Türleri</h4>
+                    <h4 className="text-sm text-gray-700 mb-3 font-medium">{tm('invoiceTypes')}</h4>
                     <div className="space-y-2 max-h-[400px] overflow-auto">
                       {filteredTypes.map((type) => {
                         const Icon = getIcon(type.icon);
@@ -1076,7 +1069,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                       {/* Seçilen Tür Özeti */}
                       <div className="border-2 border-blue-300 bg-gradient-to-br from-blue-50 to-blue-100 p-5 shadow-sm rounded-lg">
                         <h4 className="text-xs uppercase tracking-wide mb-3 text-gray-600 font-medium">
-                          FATURA TÜRÜ DETAYLARI
+                          {tm('invoiceTypeDetails').toUpperCase()}
                         </h4>
                         <div className="space-y-3">
                           <div className="flex items-center gap-3 mb-3">
@@ -1092,12 +1085,12 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
                           <div className="border-t border-gray-300 pt-3">
                             <div className="flex justify-between mb-2">
-                              <span className="text-sm text-gray-600">Kategori:</span>
+                              <span className="text-sm text-gray-600">{tm('categoryLabel')}:</span>
                               <span className="text-sm font-medium text-gray-900">{hoveredInvoiceType.category}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-sm text-gray-600">Durum:</span>
-                              <span className="text-sm font-medium text-green-600">Hazır</span>
+                              <span className="text-sm text-gray-600">{tm('status')}:</span>
+                              <span className="text-sm font-medium text-green-600">{tm('ready')}</span>
                             </div>
                           </div>
                         </div>
@@ -1105,7 +1098,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
                       {/* Bilgilendirme */}
                       <div className="border border-gray-300 bg-white p-4 rounded-lg">
-                        <h4 className="text-sm text-gray-700 mb-2 font-medium">Açıklama</h4>
+                        <h4 className="text-sm text-gray-700 mb-2 font-medium">{tm('description')}</h4>
                         <div className="text-xs text-gray-600">
                           {hoveredInvoiceType.code === 0 && (
                             <p>Standart satış işlemlerinizi kayıt altına almak için kullanılır. Müşterilere mal/hizmet satışı yapıldığında bu fatura türü ile fatura kesilir.</p>
@@ -1125,7 +1118,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                   ) : (
                     <div className="border border-gray-300 bg-gray-50 p-8 rounded-lg text-center">
                       <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <p className="text-gray-500 text-sm">Fatura türü üzerine gelin veya seçin</p>
+                      <p className="text-gray-500 text-sm">{tm('selectOrHoverInvoiceType')}</p>
                     </div>
                   )}
                 </div>
@@ -1140,7 +1133,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         <div className="fixed inset-0 z-[12000] bg-white">
           <div className="h-full flex flex-col">
             <div className="p-2 border-b flex justify-end bg-gray-50">
-              <button onClick={() => setShowDesigner(false)} className="px-3 py-1 bg-red-500 text-white rounded text-xs font-bold">KAPAT</button>
+              <button onClick={() => setShowDesigner(false)} className="px-3 py-1 bg-red-500 text-white rounded text-xs font-bold">{tm('close').toUpperCase()}</button>
             </div>
             <div className="flex-1">
               <ReportDesignerModule />

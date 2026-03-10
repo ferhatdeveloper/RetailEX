@@ -191,6 +191,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'materials' | 'MYFisleri' |
+  'stockmovements-deficit' | 'stockmovements-surplus' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
   'restaurant' | 'beauty';
@@ -258,7 +259,13 @@ export function ManagementModule({
   const { darkMode } = useTheme();
   const { language: currentLanguage, setLanguage, t } = useLanguage(); // Use global language context
   const [selectedKasaId, setSelectedKasaId] = useState<string | null>(null);
-  const [expandedSections, setExpandedSections] = useState<string[]>(['Ana Menü']);
+  const [expandedSections, setExpandedSections] = useState<string[]>([]);
+  // Initialize expanded sections with translated mainMenu
+  useEffect(() => {
+    if (expandedSections.length === 0 && t.menu.mainMenu) {
+      setExpandedSections([t.menu.mainMenu]);
+    }
+  }, [t.menu.mainMenu]);
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [menuSearchQuery, setMenuSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -880,6 +887,12 @@ export function ManagementModule({
         case 'hareketler': // JSON ID - Main menu but if clicked
           return <StockMovementsModule />;
 
+        case 'stockmovements-deficit':
+          return <StockMovementsModule defaultFilter="shortage" />;
+
+        case 'stockmovements-surplus':
+          return <StockMovementsModule defaultFilter="surplus" />;
+
         // Material Management - Counting
         case 'stockcount':
         case 'mobile-inventory-count':
@@ -1037,29 +1050,29 @@ export function ManagementModule({
           return <LogisticsModule />;
         case 'salesinvoice':
         case 'sales-invoice-view': // Generic view
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" title="Satış Faturaları" description="Tüm satış işlemleri ve POS satışları" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-standard':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title="Satış Faturaları" description="Standart toptan ve perakende satış faturaları" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-retail':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="7" title="Perakende Satışlar" description="Perakende satış işlemleri" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="7" title={t.retailSalesTitle} description={t.retailSalesDesc} />;
         case 'sales-invoice-wholesale':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title="Toptan Satışlar" description="Toptan satış işlemleri" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.wholesaleSales} description={t.wholesaleDesc} />;
         case 'sales-invoice-consignment':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title="Konsinye Satışlar" description="Konsinye satış işlemleri" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-return':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title="Satış İadeleri" description="Müşteriden gelen iadeler" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title={t.salesReturnTitle} description={t.salesReturnDesc} />;
         case 'purchaseinvoice':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" title="Alış Faturaları" description="Tüm satın alma işlemleri" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
         case 'purchase-invoice-standard':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" defaultInvoiceTypeFilter="1" title="Alış Faturaları" description="Tedarikçilerden gelen faturalar" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" defaultInvoiceTypeFilter="1" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
         case 'purchase-invoice-return':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title="Alış İadeleri" description="Tedarikçilere yapılan iadeler" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title={t.purchaseReturnTitle} description={t.purchaseReturnDesc} />;
         case 'serviceinvoice':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" title="Hizmet Faturaları" description="Tüm hizmet alım ve satım işlemleri" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" title={t.serviceInvoices} description={t.serviceInvoices} />;
         case 'serviceinvoice-received':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="4" title="Alınan Hizmet Faturaları" description="Tedarikçilerden alınan hizmetler" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="4" title={t.receivedServiceInvoicesTitle} description={t.receivedServiceInvoicesDesc} />;
         case 'serviceinvoice-given':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="9" title="Verilen Hizmet Faturaları" description="Müşterilere verilen hizmetler" />;
+          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="9" title={t.issuedServiceInvoicesTitle} description={t.issuedServiceInvoicesDesc} />;
         case 'proforma':
           return <UnifiedInvoiceModule customers={customers} products={products} />;
         case 'waybill-sales':
@@ -1232,15 +1245,15 @@ export function ManagementModule({
               }`}>
               <X className="w-8 h-8 text-red-600" />
             </div>
-            <h3 className={`text-lg mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Modül Yükleme Hatası</h3>
+            <h3 className={`text-lg mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t.moduleLoadError}</h3>
             <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              "{currentScreen}" ekranı yüklenirken bir hata oluştu.
+              {t.moduleLoadErrorMessage.replace('{screenName}', currentScreen)}
             </p>
             <button
               onClick={() => setCurrentScreen('dashboard')}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              Ana Panele Dön
+              {t.backToDashboard}
             </button>
           </div>
         </div>
@@ -1283,6 +1296,7 @@ export function ManagementModule({
             setShowLanguageMenu={setShowLanguageMenu}
             languages={languages}
             APP_VERSION={APP_VERSION}
+            t={t}
             menuSource={'static'}
           />
         </div>
@@ -1296,7 +1310,7 @@ export function ManagementModule({
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>Yükleniyor...</p>
+              <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{t.loading}</p>
             </div>
           </div>
         }>
@@ -1322,15 +1336,17 @@ function PlaceholderModule({ screenName, onBack }: { screenName: string; onBack:
       <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
         <Layers className="w-10 h-10 text-blue-600" />
       </div>
-      <h2 className="text-2xl font-bold text-slate-800 mb-2">"{screenName}" Modülü Hazırlanıyor</h2>
+      <h2 className="text-2xl font-bold text-slate-800 mb-2">
+        {t.preparingModule.replace('{screenName}', screenName)}
+      </h2>
       <p className="text-slate-500 text-center max-w-md mb-8">
-        Bu modül şu anda geliştirme aşamasındadır ve yakında EX-ROSERP ekosistemine dahil edilecektir.
+        {t.moduleUnderDevelopment}
       </p>
       <button
         onClick={onBack}
         className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
       >
-        Dashboard'a Dön
+        {t.backToDashboard}
       </button>
     </div>
   );

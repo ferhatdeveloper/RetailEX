@@ -5,6 +5,7 @@ import {
   RefreshCw, Eye, EyeOff, Download
 } from 'lucide-react';
 import { supabase } from '../../utils/supabase/client';
+import { logger } from '../../services/loggingService';
 
 interface MenuItem {
   id: number;
@@ -199,7 +200,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         throw new Error('Backend JSON döndürmedi. Backend çalışıyor mu?');
       }
     } catch (error: any) {
-      console.error('Seed hatası:', error);
+      logger.crudError('MenuManagement', 'seedMenu', error);
       const errorMessage = error.message || 'Bilinmeyen hata';
       alert(`Menü yapısı aktarılırken hata oluştu:\n\n${errorMessage}\n\nBackend'i başlatmak için:\n\nWindows: BASLAT_BACKEND.bat dosyasını çalıştırın\nLinux/Mac: ./BASLAT_BACKEND.sh komutunu çalıştırın\n\nBackend çalıştıktan sonra tekrar deneyin.`);
     } finally {
@@ -404,7 +405,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       // Menü güncellendiğini bildir - force reload ile
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error: any) {
-      console.error('Faturalar menüsü restore hatası:', error);
+      logger.crudError('MenuManagement', 'restoreFaturalarMenu', error);
       alert(`❌ Faturalar menüsü eklenirken hata oluştu:\n\n${error.message}`);
     } finally {
       setSaving(false);
@@ -665,7 +666,7 @@ export default staticMenuSections;
           setHiddenModules(newHiddenModules);
           alert('Statik menü görünürlük ayarları yerel veritabanına kaydedildi!');
         } catch (e) {
-          console.error('Tauri save hatası:', e);
+          logger.crudError('MenuManagement', 'saveStaticConfig', e);
           alert('Yerel konfigürasyon kaydedilemedi.');
         }
       } else {
@@ -698,7 +699,7 @@ export default staticMenuSections;
       await new Promise(resolve => setTimeout(resolve, 500));
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
-      console.error('Kaydetme hatası:', error);
+      logger.crudError('MenuManagement', 'saveMenu', error);
       alert('Menü kaydedilirken hata oluştu!');
     } finally {
       setSaving(false);
@@ -727,7 +728,7 @@ export default staticMenuSections;
       // Menü güncellendiğini bildir - force reload ile
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
-      console.error('Silme hatası:', error);
+      logger.crudError('MenuManagement', 'deleteMenuItem', error);
       alert('Menü öğesi silinirken hata oluştu!');
     }
   };
@@ -776,7 +777,7 @@ export default staticMenuSections;
       await new Promise(resolve => setTimeout(resolve, 300));
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
-      console.error('Güncelleme hatası:', error);
+      logger.crudError('MenuManagement', 'updateMenuItem', error);
       alert('Menü öğesi güncellenirken hata oluştu!');
     }
   };
@@ -822,7 +823,7 @@ export default staticMenuSections;
       // Menü güncellendiğini bildir - force reload ile
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
-      console.error('Ekleme hatası:', error);
+      logger.crudError('MenuManagement', 'addMenuItem', error);
       alert('Menü öğesi eklenirken hata oluştu!');
     }
   };

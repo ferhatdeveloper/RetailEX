@@ -63,8 +63,8 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
                     tableName: 'categories',
                     columns: [
                         ...commonColumns,
-                        { key: 'is_restaurant', header: 'REST. KATEGORİ', type: 'boolean' },
-                        { key: 'icon', header: 'İKON', type: 'icon' }
+                        { key: 'is_restaurant', header: tm('restCategory'), type: 'boolean' },
+                        { key: 'icon', header: tm('icon').toUpperCase(), type: 'icon' }
                     ],
                     icon: FileText
                 };
