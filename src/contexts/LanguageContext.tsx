@@ -7,6 +7,7 @@ interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: Translations;
+  translations: Record<Language, Translations>;
   tm: (key: string) => string; // Module translations
 }
 
@@ -41,6 +42,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         language,
         setLanguage,
         t: translations[language],
+        translations, // Export full translations object
         tm: translateModule, // Module translation function
       }}
     >

@@ -6,10 +6,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-    ArrowLeft, Plus, Scan, Package, CheckCircle, AlertCircle,
-    Minus, Check, X, ClipboardList, MapPin, User, RefreshCw,
+    ArrowLeft, Plus, Scan, Package,
+    Minus, ClipboardList, MapPin, User, RefreshCw,
     Warehouse, Calendar, Loader2, Trash2, Eye,
-    CheckCircle2, XCircle, FileText, Camera
+    CheckCircle2, XCircle, FileText, Camera, BarChart3, AlertTriangle
 } from 'lucide-react';
 import { wmsStockCount, CountingSlip, CountingLine } from '../../../services/wmsStockCount';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -217,6 +217,110 @@ function CreateSlipView({ darkMode, onBack, onCreated }: {
     );
 }
 
+// ─── New Product Modal ────────────────────────────────────────────────────────
+
+function NewProductModal({ darkMode, barcode, lineId, onCreated, onClose }: {
+    darkMode: boolean;
+    barcode: string;
+    lineId: string;
+    onCreated: () => void;
+    onClose: () => void;
+}) {
+    const [name, setName] = useState('');
+    const [code, setCode] = useState('');
+    const [unit, setUnit] = useState('Adet');
+    const [purchasePrice, setPurchasePrice] = useState('');
+    const [salePrice, setSalePrice] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSave = async () => {
+        if (!name.trim()) { setError('Ürün adı zorunlu'); return; }
+        setSaving(true);
+        try {
+            const productId = await wmsStockCount.createProductFromBarcode({
+                name: name.trim(),
+                code: code.trim() || barcode,
+                barcode,
+                unit,
+                purchase_price: parseFloat(purchasePrice) || 0,
+                sale_price: parseFloat(salePrice) || 0,
+            });
+            if (!productId) throw new Error('Ürün oluşturulamadı');
+            await wmsStockCount.updateLineProduct(lineId, productId, name.trim());
+            onCreated();
+        } catch (err: any) {
+            setError(err?.message || String(err));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const bg = darkMode ? 'bg-gray-900' : 'bg-white';
+    const inp = darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900';
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
+            <div className={`${bg} w-full rounded-t-2xl shadow-2xl`}>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div>
+                        <p className="text-xs text-gray-400 font-mono">{barcode}</p>
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white">Malzeme Kartı Oluştur</h3>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <Package className="w-5 h-5 text-gray-400" />
+                    </button>
+                </div>
+                <div className="p-4 space-y-3">
+                    <div>
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ürün Adı *</label>
+                        <input autoFocus value={name} onChange={e => setName(e.target.value)}
+                            className={`mt-1 w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 ${inp}`}
+                            placeholder="Ürün adını girin" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ürün Kodu</label>
+                            <input value={code} onChange={e => setCode(e.target.value)}
+                                className={`mt-1 w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 ${inp}`}
+                                placeholder={barcode} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Birim</label>
+                            <select value={unit} onChange={e => setUnit(e.target.value)}
+                                className={`mt-1 w-full px-3 py-2 border rounded-lg text-sm focus:outline-none ${inp}`}>
+                                {['Adet', 'Kg', 'Lt', 'g', 'm', 'm²', 'm³', 'Koli', 'Palet', 'Paket'].map(u => (
+                                    <option key={u} value={u}>{u}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Alış Fiyatı</label>
+                            <input type="number" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
+                                className={`mt-1 w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 ${inp}`}
+                                placeholder="0.00" />
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Satış Fiyatı</label>
+                            <input type="number" value={salePrice} onChange={e => setSalePrice(e.target.value)}
+                                className={`mt-1 w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-blue-500 ${inp}`}
+                                placeholder="0.00" />
+                        </div>
+                    </div>
+                    {error && <p className="text-xs text-red-500">{error}</p>}
+                    <button onClick={handleSave} disabled={saving}
+                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 disabled:opacity-70">
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                        {saving ? 'Kaydediliyor...' : 'Malzeme Kartı Oluştur'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Count Entry View ─────────────────────────────────────────────────────────
 
 function CountEntryView({ darkMode, slip, onBack, onDone }: {
@@ -228,15 +332,17 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
     const { tm } = useLanguage();
     const [lines, setLines] = useState<CountingLine[]>([]);
     const [scannedBarcode, setScannedBarcode] = useState('');
-    const [currentItem, setCurrentItem] = useState<any>(null);
-    const [quantity, setQuantity] = useState(0);
+    const [scanQty, setScanQty] = useState('1');
+    const [editingLine, setEditingLine] = useState<{ id: string; qty: number } | null>(null);
+    const [flashLineId, setFlashLineId] = useState<string | null>(null);
     const [countedBy, setCountedBy] = useState(() => localStorage.getItem('wms_counter_name') || '');
     const [locationCode, setLocationCode] = useState(slip.location_code || '');
     const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [showSuccess, setShowSuccess] = useState(false);
-    const [activeSection, setActiveSection] = useState<'scan' | 'list'>('scan');
+    const [scanError, setScanError] = useState<string | null>(null);
+    const [activeSection, setActiveSection] = useState<'scan' | 'list' | 'unknown'>('scan');
     const [showCamera, setShowCamera] = useState(false);
+    const [prices, setPrices] = useState<Record<string, { purchase: number; sale: number }>>({});
+    const [newProductLine, setNewProductLine] = useState<CountingLine | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -251,14 +357,21 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
         if (inputRef.current && activeSection === 'scan') {
             inputRef.current.focus();
         }
-    }, [activeSection, currentItem]);
+    }, [activeSection]);
 
     const loadLines = async () => {
         try {
             const { lines: l } = await wmsStockCount.getSlipWithLines(slip.id);
+            console.log('[loadLines] fetched', l.length, 'lines for slip', slip.id);
             setLines(l);
+            // Fetch prices for known products
+            const knownIds = [...new Set(l.filter(x => x.product_id).map(x => x.product_id!))];
+            if (knownIds.length > 0) {
+                const p = await wmsStockCount.getLinesPrices(knownIds);
+                setPrices(p);
+            }
         } catch (err) {
-            console.error(err);
+            console.error('[loadLines] ERROR:', err);
         }
     };
 
@@ -278,70 +391,104 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
         } catch { }
     };
 
-    const handleBarcodeScanned = useCallback(async (barcode: string) => {
+    const handleBarcodeScanned = async (barcode: string, overrideQty?: number) => {
         if (!barcode.trim()) return;
+        const qty = overrideQty ?? Math.max(1, parseInt(scanQty) || 1);
+        console.log('[SCAN] start barcode=', barcode, 'qty=', qty, 'slip=', slip.id);
         setLoading(true);
         try {
-            const product = await wmsStockCount.lookupProductByBarcode(barcode.trim());
-            if (product) {
-                const stock = await wmsStockCount.getProductStock(product.id);
-                setCurrentItem({
-                    product_id: product.id,
-                    barcode: product.barcode || barcode,
-                    product_name: product.name,
-                    system_qty: stock,
-                    location: locationCode || 'Genel',
+            const existing = await wmsStockCount.getLineByBarcode(slip.id, barcode.trim());
+            console.log('[SCAN] existing:', existing);
+
+            if (existing) {
+                // If line exists but has no product (was previously unknown), try lookup again
+                let productId = existing.product_id;
+                let productName = existing.product_name;
+                let unit = existing.unit || 'Adet';
+                let unitMultiplier = existing.unit_multiplier || 1;
+
+                if (!productId) {
+                    const found = await wmsStockCount.lookupProductByBarcode(barcode.trim());
+                    console.log('[SCAN] re-lookup for existing unknown line:', found);
+                    if (found) {
+                        productId = found.id;
+                        productName = found.name;
+                        unit = found.unit || 'Adet';
+                        unitMultiplier = found.unit_multiplier || 1;
+                    }
+                }
+
+                const newQty = (existing.counted_qty || 0) + qty;
+                await wmsStockCount.upsertLine(slip.id, {
+                    product_id: productId,
+                    barcode: existing.barcode,
+                    product_name: productName,
+                    location_code: locationCode || undefined,
+                    expected_qty: existing.expected_qty,
+                    counted_qty: newQty,
+                    counted_by: countedBy || 'Sayıcı',
+                    unit,
+                    unit_multiplier: unitMultiplier,
+                    base_counted_qty: newQty * unitMultiplier,
                 });
-                setQuantity(0);
+                setFlashLineId(existing.id);
+                setTimeout(() => setFlashLineId(null), 700);
                 beep(true);
-                if (navigator.vibrate) navigator.vibrate(100);
             } else {
-                // Unknown barcode - still allow manual count
-                setCurrentItem({
-                    product_id: null,
-                    barcode: barcode.trim(),
-                    product_name: `${tm('unknownBarcode')}: ${barcode}`,
-                    system_qty: 0,
-                    location: locationCode || 'Genel',
+                const product = await wmsStockCount.lookupProductByBarcode(barcode.trim());
+                console.log('[SCAN] product=', product);
+                const stock = product ? await wmsStockCount.getProductStock(product.id) : 0;
+                const unitMultiplier = product?.unit_multiplier || 1;
+                const result = await wmsStockCount.upsertLine(slip.id, {
+                    product_id: product?.id || null,
+                    barcode: product?.barcode || barcode.trim(),
+                    product_name: product?.name || `? ${barcode}`,
+                    location_code: locationCode || undefined,
+                    expected_qty: stock,
+                    counted_qty: qty,
+                    counted_by: countedBy || 'Sayıcı',
+                    unit: product?.unit || 'Adet',
+                    unit_multiplier: unitMultiplier,
+                    base_counted_qty: qty * unitMultiplier,
                 });
-                setQuantity(0);
-                beep(false);
+                console.log('[SCAN] inserted:', result);
+                beep(true);
             }
-        } catch (err) {
-            console.error(err);
+            if (countedBy) localStorage.setItem('wms_counter_name', countedBy);
+            await loadLines();
+            if (navigator.vibrate) navigator.vibrate(50);
+            // Reset qty to 1 after scan
+            setScanQty('1');
+        } catch (err: any) {
+            const msg = err?.message || String(err);
+            console.error('[SCAN] ERROR:', msg, err);
+            setScanError(msg);
+            setTimeout(() => setScanError(null), 8000);
             beep(false);
         } finally {
             setLoading(false);
+            setTimeout(() => inputRef.current?.focus(), 50);
         }
-    }, [locationCode]);
+    };
 
-    const handleSaveLine = async () => {
-        if (!currentItem) return;
-        setSaving(true);
+    const updateLineQty = async (line: CountingLine, newQty: number) => {
+        if (newQty < 0) return;
         try {
             await wmsStockCount.upsertLine(slip.id, {
-                product_id: currentItem.product_id,
-                barcode: currentItem.barcode,
-                product_name: currentItem.product_name,
-                location_code: locationCode || undefined,
-                expected_qty: currentItem.system_qty,
-                counted_qty: quantity,
-                counted_by: countedBy || tm('counter'),
+                product_id: line.product_id,
+                barcode: line.barcode,
+                product_name: line.product_name,
+                location_code: line.location_code || undefined,
+                expected_qty: line.expected_qty,
+                counted_qty: newQty,
+                counted_by: line.counted_by || countedBy || tm('counter'),
+                unit: line.unit || 'Adet',
+                unit_multiplier: line.unit_multiplier || 1,
+                base_counted_qty: newQty * (line.unit_multiplier || 1),
             });
-            if (countedBy) localStorage.setItem('wms_counter_name', countedBy);
             await loadLines();
-            setCurrentItem(null);
-            setScannedBarcode('');
-            setQuantity(0);
-            setShowSuccess(true);
-            beep(true);
-            if (navigator.vibrate) navigator.vibrate([50, 50, 100]);
-            setTimeout(() => setShowSuccess(false), 1800);
         } catch (err) {
             console.error(err);
-            alert(tm('lineSaveFailed'));
-        } finally {
-            setSaving(false);
         }
     };
 
@@ -358,97 +505,98 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
     };
 
     const bgClass = darkMode ? 'bg-gray-900' : 'bg-gray-50';
-    const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
     const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
-    const variance = currentItem ? quantity - currentItem.system_qty : 0;
+    const rowBg = darkMode ? 'bg-gray-800' : 'bg-white';
+    const dividerClass = darkMode ? 'divide-gray-700' : 'divide-gray-100';
+    const borderClass = darkMode ? 'border-gray-700' : 'border-gray-200';
+
+    // Split known vs unknown
+    const knownLines = lines.filter(l => l.product_id);
+    const unknownLines = lines.filter(l => !l.product_id);
+    // Newest first for scan tab
+    const sortedLines = [...knownLines].reverse();
+
+    // Footer totals
+    const totalAdet = lines.reduce((s, l) => s + (l.base_counted_qty ?? l.counted_qty ?? 0), 0);
+    const totalAlisValue = lines.reduce((s, l) => {
+        const p = l.product_id ? prices[l.product_id] : undefined;
+        return s + (l.base_counted_qty ?? l.counted_qty ?? 0) * (p?.purchase || 0);
+    }, 0);
+    const totalSatisValue = lines.reduce((s, l) => {
+        const p = l.product_id ? prices[l.product_id] : undefined;
+        return s + (l.base_counted_qty ?? l.counted_qty ?? 0) * (p?.sale || 0);
+    }, 0);
+    const totalKar = totalSatisValue - totalAlisValue;
+    const eksikAdet = lines.reduce((s, l) => {
+        const vr = l.variance || 0;
+        return s + (vr < 0 ? Math.abs(vr) : 0);
+    }, 0);
+    const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     return (
-        <div className={`min-h-screen ${bgClass} flex flex-col`}>
+        <div className={`h-full ${bgClass} flex flex-col overflow-hidden`}>
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-10 shadow-lg">
-                <div className="flex items-center gap-3">
-                    <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg">
+            <div className="bg-blue-600 text-white px-4 pt-4 pb-2 sticky top-0 z-10">
+                <div className="flex items-center gap-2">
+                    <button onClick={onBack} className="p-1.5 hover:bg-white/10 rounded-lg">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <div className="flex-1">
-                        <h1 className="text-lg font-bold">{tm('countEntryTitle')}</h1>
-                        <p className="text-xs text-blue-100">{slip.fiche_no} — <CountTypeLabel type={slip.count_type} /></p>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-base font-bold leading-tight">{tm('countEntryTitle')}</h1>
+                        <p className="text-xs text-blue-200 truncate">{slip.fiche_no} — <CountTypeLabel type={slip.count_type} /></p>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="bg-white/20 px-3 py-1 rounded-full text-sm font-bold">{lines.length} {tm('itemsUnit')}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="bg-white/20 px-2.5 py-1 rounded-full text-xs font-bold">{lines.length} {tm('itemsUnit')}</span>
                         {lines.length > 0 && (
                             <button
                                 onClick={handleFinishCounting}
-                                className="bg-green-500 hover:bg-green-400 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"
+                                className="bg-green-500 hover:bg-green-400 active:scale-95 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1"
                             >
-                                <CheckCircle2 className="w-4 h-4" /> {tm('finishBtn')}
+                                <CheckCircle2 className="w-3.5 h-3.5" /> {tm('finishBtn')}
                             </button>
                         )}
                     </div>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex gap-1 mt-3">
+                <div className="flex gap-0 mt-2 border-t border-white/10">
                     {[
-                        { id: 'scan', labelKey: 'barcodeInput', icon: <Scan className="w-4 h-4" /> },
-                        { id: 'list', labelKey: 'listView', icon: <ClipboardList className="w-4 h-4" /> },
+                        { id: 'scan', label: 'Barkod Okut', icon: <Scan className="w-3.5 h-3.5" />, count: null },
+                        { id: 'list', label: 'Sayım', icon: <ClipboardList className="w-3.5 h-3.5" />, count: lines.length },
+                        { id: 'unknown', label: 'Bilinmeyen', icon: <Package className="w-3.5 h-3.5" />, count: unknownLines.length },
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveSection(tab.id as any)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all ${activeSection === tab.id
-                                ? 'bg-white text-blue-700'
-                                : 'text-white/70 hover:text-white hover:bg-white/10'
+                            className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-semibold transition-all border-b-2 ${activeSection === tab.id
+                                ? 'border-white text-white'
+                                : 'border-transparent text-white/50 hover:text-white/80'
                                 }`}
                         >
-                            {tab.icon} {tab.id === 'list' ? `${tm(tab.labelKey)} (${lines.length})` : tm(tab.labelKey)}
+                            {tab.icon}
+                            {tab.label}
+                            {tab.count !== null && tab.count > 0 && (
+                                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${tab.id === 'unknown' ? 'bg-orange-500 text-white' : 'bg-white/20 text-white'}`}>
+                                    {tab.count}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>
             </div>
 
             {activeSection === 'scan' ? (
-                <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-                    {/* Counter Info */}
-                    {!currentItem && (
-                        <div className={`${cardClass} border rounded-xl p-4 flex items-center gap-3`}>
-                            <User className="w-5 h-5 text-gray-400" />
-                            <input
-                                type="text"
-                                value={countedBy}
-                                onChange={e => setCountedBy(e.target.value)}
-                                placeholder={tm('counterPlaceholder')}
-                                className={`flex-1 bg-transparent focus:outline-none text-sm ${textClass}`}
-                            />
-                        </div>
-                    )}
-
-                    {/* Location (for location count type) */}
-                    {slip.count_type === 'location' && !currentItem && (
-                        <div className={`${cardClass} border rounded-xl p-4 flex items-center gap-3`}>
-                            <MapPin className="w-5 h-5 text-purple-500" />
-                            <input
-                                type="text"
-                                value={locationCode}
-                                onChange={e => setLocationCode(e.target.value.toUpperCase())}
-                                placeholder={tm('locationPlaceholder')}
-                                className={`flex-1 bg-transparent focus:outline-none text-sm font-mono uppercase ${textClass}`}
-                            />
-                        </div>
-                    )}
-
-                    {/* Scan Area */}
-                    {!currentItem ? (
-                        <div className={`${cardClass} border-2 border-dashed border-blue-300 rounded-2xl p-8 text-center`}>
-                            <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* FLAT barcode bar — edge to edge, no radius */}
+                    <div className={`border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                        {/* Main scan row */}
+                        <div className={`flex items-stretch border-b ${borderClass}`}>
+                            {/* Barcode input */}
+                            <div className="relative flex-1">
                                 {loading
-                                    ? <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-                                    : <Scan className="w-10 h-10 text-blue-600" />
+                                    ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 animate-spin pointer-events-none" />
+                                    : <Scan className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                                 }
-                            </div>
-                            <h3 className={`text-lg font-bold ${textClass} mb-2`}>{tm('scanProductBarcode')}</h3>
-                            <p className="text-sm text-gray-500 mb-4">{tm('manualEntry')}</p>
-                            <div className="flex gap-2 mb-3">
                                 <input
                                     ref={inputRef}
                                     type="text"
@@ -456,217 +604,280 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                                     onChange={e => setScannedBarcode(e.target.value)}
                                     onKeyDown={e => {
                                         if (e.key === 'Enter' && scannedBarcode.trim()) {
-                                            handleBarcodeScanned(scannedBarcode);
+                                            handleBarcodeScanned(scannedBarcode.trim());
                                             setScannedBarcode('');
                                         }
                                     }}
-                                    placeholder={tm('scannerPlaceholder')}
-                                    className={`flex-1 px-4 py-3 border-2 rounded-xl text-center font-mono text-lg focus:outline-none focus:border-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
-                                        }`}
+                                    placeholder="Barkod okutun veya yazın..."
+                                    className={`w-full pl-9 pr-3 py-3 text-sm font-mono focus:outline-none ${darkMode ? 'bg-gray-800 text-white placeholder-gray-500' : 'bg-white text-gray-900 placeholder-gray-400'}`}
                                     autoFocus
                                 />
-                                <button
-                                    onClick={() => setShowCamera(true)}
-                                    className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-95 transition-all shadow-md flex items-center justify-center group"
-                                    title={tm('cameraScan')}
-                                >
-                                    <Camera className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                                </button>
                             </div>
+                            {/* Qty separator + input */}
+                            <div className={`flex items-center border-l ${borderClass} shrink-0`}>
+                                <span className={`px-2 text-xs font-semibold ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Adet</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={scanQty}
+                                    onChange={e => setScanQty(e.target.value)}
+                                    onFocus={e => e.target.select()}
+                                    className={`w-14 py-3 text-center text-sm font-bold focus:outline-none ${darkMode ? 'bg-gray-800 text-blue-400' : 'bg-white text-blue-600'}`}
+                                />
+                            </div>
+                            {/* Camera button */}
                             <button
-                                onClick={() => {
-                                    const bc = prompt(`${tm('barcodeInput')}:`);
-                                    if (bc) handleBarcodeScanned(bc);
-                                }}
-                                className="w-full py-2 border-2 border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+                                onClick={() => setShowCamera(true)}
+                                className={`px-3 border-l ${borderClass} flex items-center justify-center ${darkMode ? 'bg-blue-900/40 text-blue-400 hover:bg-blue-900/60' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'} transition-colors`}
                             >
-                                {tm('manualEntry')}
+                                <Camera className="w-4 h-4" />
                             </button>
                         </div>
-                    ) : (
-                        /* Product Count Card */
-                        <div className={`${cardClass} border rounded-2xl p-5 shadow-lg`}>
-                            {/* Product Info */}
-                            <div className="text-center mb-5">
-                                <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                                    <Package className="w-7 h-7 text-blue-600" />
-                                </div>
-                                <h3 className={`text-lg font-bold ${textClass} leading-tight`}>{currentItem.product_name}</h3>
-                                <p className="text-sm text-gray-500 font-mono mt-1">{currentItem.barcode}</p>
-                                {locationCode && (
-                                    <p className="text-xs text-gray-500 flex items-center justify-center gap-1 mt-1">
-                                        <MapPin className="w-3 h-3" />{locationCode}
-                                    </p>
-                                )}
+                        {/* Sub-row: sayıcı + konum */}
+                        <div className={`flex items-center gap-0 text-xs ${darkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
+                            <div className={`flex items-center gap-1.5 flex-1 px-3 py-1.5 border-r ${borderClass}`}>
+                                <User className="w-3 h-3 text-gray-400 shrink-0" />
+                                <input type="text" value={countedBy} onChange={e => setCountedBy(e.target.value)}
+                                    placeholder="Personel adı"
+                                    className="flex-1 bg-transparent focus:outline-none text-xs text-gray-500 placeholder-gray-400" />
                             </div>
-
-                            {/* System vs Counted */}
-                            <div className="grid grid-cols-2 gap-3 mb-5">
-                                <div className="p-3 bg-blue-50 rounded-xl text-center">
-                                    <div className="text-xs text-gray-500 mb-1">{tm('systemStock')}</div>
-                                    <div className="text-2xl font-bold text-blue-600">{currentItem.system_qty}</div>
+                            {slip.count_type === 'location' ? (
+                                <div className="flex items-center gap-1.5 flex-1 px-3 py-1.5">
+                                    <MapPin className="w-3 h-3 text-purple-400 shrink-0" />
+                                    <input type="text" value={locationCode} onChange={e => setLocationCode(e.target.value.toUpperCase())}
+                                        placeholder="Konum"
+                                        className="flex-1 bg-transparent focus:outline-none text-xs font-mono uppercase text-gray-500 placeholder-gray-400" />
                                 </div>
-                                <div className="p-3 bg-purple-50 rounded-xl text-center">
-                                    <div className="text-xs text-gray-500 mb-1">{tm('countedQty')}</div>
-                                    <div className="text-2xl font-bold text-purple-600">{quantity}</div>
-                                </div>
-                            </div>
-
-                            {/* Variance Warning */}
-                            {quantity > 0 && variance !== 0 && (
-                                <div className={`p-3 rounded-xl mb-4 flex items-center justify-center gap-2 ${Math.abs(variance) > 5
-                                    ? 'bg-red-50 border border-red-200'
-                                    : 'bg-yellow-50 border border-yellow-200'
-                                    }`}>
-                                    <AlertCircle className={`w-4 h-4 ${Math.abs(variance) > 5 ? 'text-red-600' : 'text-yellow-600'}`} />
-                                    <span className={`font-bold ${Math.abs(variance) > 5 ? 'text-red-700' : 'text-yellow-700'}`}>
-                                        {tm('varianceLabel')}: {variance > 0 ? '+' : ''}{variance}
-                                    </span>
+                            ) : (
+                                <div className="px-3 py-1.5 text-gray-400">
+                                    {lines.length > 0 ? `${lines.length} kalem` : 'Barkod okutun'}
                                 </div>
                             )}
-                            {quantity > 0 && variance === 0 && (
-                                <div className="p-3 rounded-xl mb-4 bg-green-50 border border-green-200 flex items-center justify-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                                    <span className="font-bold text-green-700">{tm('matchesSystem')}</span>
-                                </div>
-                            )}
+                        </div>
+                    </div>
 
-                            {/* Quantity Controls */}
-                            <div className="mb-5">
-                                <label className={`block text-sm font-medium mb-2 ${textClass}`}>{tm('countedQuantity')}</label>
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={() => setQuantity(Math.max(0, quantity - 1))}
-                                        className="w-14 h-14 bg-red-500 text-white rounded-xl flex items-center justify-center hover:bg-red-600 active:scale-95 transition-all"
-                                    >
-                                        <Minus className="w-6 h-6" />
-                                    </button>
-                                    <input
-                                        type="number"
-                                        value={quantity}
-                                        onChange={e => setQuantity(Math.max(0, parseInt(e.target.value) || 0))}
-                                        className={`flex-1 py-3 text-3xl font-bold border-2 rounded-xl text-center focus:outline-none focus:border-blue-500 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'
-                                            }`}
-                                    />
-                                    <button
-                                        onClick={() => setQuantity(quantity + 1)}
-                                        className="w-14 h-14 bg-green-500 text-white rounded-xl flex items-center justify-center hover:bg-green-600 active:scale-95 transition-all"
-                                    >
-                                        <Plus className="w-6 h-6" />
-                                    </button>
-                                </div>
-
-                                {/* Quick set */}
-                                <div className="grid grid-cols-5 gap-2 mt-3">
-                                    {[0, 10, 25, 50, 100].map(q => (
-                                        <button
-                                            key={q}
-                                            onClick={() => setQuantity(q)}
-                                            className={`py-2 rounded-lg text-sm font-medium transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                                                }`}
-                                        >
-                                            {q}
-                                        </button>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={() => setQuantity(currentItem.system_qty)}
-                                    className="w-full mt-2 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
-                                >
-                                    {tm('useSystemStock')} ({currentItem.system_qty})
-                                </button>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => { setCurrentItem(null); setScannedBarcode(''); setQuantity(0); }}
-                                    className={`flex-1 py-3 border-2 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50'
-                                        }`}
-                                >
-                                    <X className="w-5 h-5" /> {tm('cancelBtn')}
-                                </button>
-                                <button
-                                    onClick={handleSaveLine}
-                                    disabled={saving}
-                                    className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-70"
-                                >
-                                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                                    {saving ? tm('savingLabel') : tm('saveLabel')}
-                                </button>
-                            </div>
+                    {/* Error banner */}
+                    {scanError && (
+                        <div className="px-3 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700 font-mono flex items-start gap-2">
+                            <span className="shrink-0">⚠</span>
+                            <span>{scanError}</span>
                         </div>
                     )}
 
-                    {/* Recent items mini-list */}
-                    {lines.length > 0 && !currentItem && (
-                        <div className={`${cardClass} border rounded-xl overflow-hidden`}>
-                            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                                <h4 className={`text-sm font-bold ${textClass}`}>{tm('recentCounted')}</h4>
+                    {/* Scanned items list */}
+                    <div className={`flex-1 overflow-y-auto divide-y ${dividerClass}`}>
+                        {sortedLines.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                                <Scan className={`w-10 h-10 mb-3 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                                <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Ürün barkodunu okutun</p>
                             </div>
-                            <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                                {lines.slice(0, 5).map(line => (
-                                    <div key={line.id} className={`px-4 py-3 flex items-center gap-3 border-l-4 ${line.variance === 0 ? 'border-green-500' : Math.abs(line.variance || 0) > 5 ? 'border-red-500' : 'border-yellow-500'}`}>
+                        ) : (
+                            sortedLines.map(line => {
+                                const vr = line.variance || 0;
+                                const isFlash = flashLineId === line.id;
+                                const isEditing = editingLine?.id === line.id;
+                                const linePrice = line.product_id ? prices[line.product_id] : undefined;
+                                const baseQty = line.base_counted_qty ?? line.counted_qty ?? 0;
+                                const alisVal = baseQty * (linePrice?.purchase || 0);
+                                const satisVal = baseQty * (linePrice?.sale || 0);
+                                return (
+                                    <div
+                                        key={line.id}
+                                        className={`flex items-center gap-2 px-3 py-2 transition-colors ${rowBg} ${isFlash ? (darkMode ? '!bg-blue-900/40' : '!bg-blue-50') : ''}`}
+                                    >
+                                        {/* variance stripe */}
+                                        <div className={`w-0.5 self-stretch rounded-full shrink-0 ${vr === 0 ? 'bg-green-400' : vr < 0 ? 'bg-red-400' : 'bg-yellow-400'}`} />
+
+                                        {/* product info */}
                                         <div className="flex-1 min-w-0">
-                                            <div className={`text-sm font-medium truncate ${textClass}`}>{line.product_name || line.barcode}</div>
-                                            <div className="text-xs text-gray-500 font-mono">{line.barcode}</div>
+                                            <div className={`text-sm font-medium truncate leading-tight ${textClass}`}>
+                                                {line.product_name || line.barcode}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                                <span className="text-[11px] text-gray-400 font-mono">{line.barcode}</span>
+                                                {line.unit && line.unit !== 'Adet' && (
+                                                    <span className="text-[11px] text-purple-500 font-semibold">{line.unit}</span>
+                                                )}
+                                                {alisVal > 0 && (
+                                                    <span className="text-[11px] text-gray-400">
+                                                        A:{fmt(alisVal)} / S:{fmt(satisVal)}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="text-right">
-                                            <div className="text-lg font-bold text-blue-600">{line.counted_qty}</div>
-                                            {line.variance !== 0 && (
-                                                <div className={`text-xs font-bold ${Math.abs(line.variance || 0) > 5 ? 'text-red-600' : 'text-yellow-600'}`}>
-                                                    {(line.variance || 0) > 0 ? '+' : ''}{line.variance}
-                                                </div>
+
+                                        {/* qty controls */}
+                                        <div className="flex items-center gap-0.5 shrink-0">
+                                            <button onClick={() => updateLineQty(line, (line.counted_qty || 0) - 1)}
+                                                className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
+                                                <Minus className="w-3 h-3" />
+                                            </button>
+                                            {isEditing ? (
+                                                <input type="number" value={editingLine.qty}
+                                                    onChange={e => setEditingLine({ id: line.id, qty: parseInt(e.target.value) || 0 })}
+                                                    onBlur={() => { updateLineQty(line, editingLine.qty); setEditingLine(null); }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') { updateLineQty(line, editingLine.qty); setEditingLine(null); }
+                                                        if (e.key === 'Escape') setEditingLine(null);
+                                                    }}
+                                                    className={`w-12 text-center text-sm font-bold border-b-2 border-blue-500 focus:outline-none ${darkMode ? 'bg-gray-700 text-white' : 'bg-white'}`}
+                                                    autoFocus />
+                                            ) : (
+                                                <button onClick={() => setEditingLine({ id: line.id, qty: line.counted_qty || 0 })}
+                                                    className={`w-12 text-center text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                                    {line.counted_qty}
+                                                </button>
                                             )}
+                                            <button onClick={() => updateLineQty(line, (line.counted_qty || 0) + 1)}
+                                                className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
+                                                <Plus className="w-3 h-3" />
+                                            </button>
                                         </div>
+                                        <button onClick={() => handleDeleteLine(line.id)}
+                                            className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors shrink-0">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
                                     </div>
-                                ))}
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* ── STICKY FOOTER TOTALS ── */}
+                    {lines.length > 0 && (
+                        <div className={`shrink-0 border-t ${borderClass} ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                            {/* Row 1: counts */}
+                            <div className={`grid grid-cols-3 divide-x ${dividerClass} border-b ${borderClass}`}>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Kalem</div>
+                                    <div className={`text-base font-black ${textClass}`}>{lines.length}</div>
+                                </div>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Toplam Adet</div>
+                                    <div className={`text-base font-black ${textClass}`}>{totalAdet}</div>
+                                </div>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Sayım Eksiği</div>
+                                    <div className={`text-base font-black ${eksikAdet > 0 ? 'text-red-500' : 'text-green-500'}`}>{eksikAdet > 0 ? `-${eksikAdet}` : '—'}</div>
+                                </div>
+                            </div>
+                            {/* Row 2: values */}
+                            <div className={`grid grid-cols-3 divide-x ${dividerClass}`}>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Alış Değeri</div>
+                                    <div className={`text-sm font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{fmt(totalAlisValue)} ₺</div>
+                                </div>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Satış Değeri</div>
+                                    <div className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{fmt(totalSatisValue)} ₺</div>
+                                </div>
+                                <div className="py-2 text-center">
+                                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Kar</div>
+                                    <div className={`text-sm font-bold ${totalKar >= 0 ? (darkMode ? 'text-green-400' : 'text-green-600') : 'text-red-500'}`}>
+                                        {totalKar >= 0 ? '+' : ''}{fmt(totalKar)} ₺
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
                 </div>
-            ) : (
-                /* Full List View */
-                <div className="flex-1 overflow-y-auto">
+            ) : activeSection === 'list' ? (
+                /* Sayım Listesi tab — all items with prices */
+                <div className={`flex-1 overflow-y-auto divide-y ${dividerClass}`}>
                     {lines.length === 0 ? (
                         <div className="p-12 text-center">
-                            <Scan className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500">{tm('noCountYet')}</p>
+                            <Scan className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                            <p className="text-gray-400 text-sm">{tm('noCountYet')}</p>
                         </div>
                     ) : (
-                        <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                            {lines.map(line => (
-                                <div key={line.id} className={`px-4 py-4 flex items-center gap-3 border-l-4 ${line.variance === 0 ? 'border-green-500' : Math.abs(line.variance || 0) > 5 ? 'border-red-500' : 'border-yellow-500'} ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
-                                    <div className="flex-1 min-w-0">
-                                        <div className={`text-sm font-semibold truncate ${textClass}`}>{line.product_name || line.barcode}</div>
-                                        <div className="text-xs text-gray-500 font-mono mt-0.5">{line.barcode}</div>
-                                        {line.location_code && (
-                                            <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                                <MapPin className="w-3 h-3" />{line.location_code}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-xs text-gray-400 mb-0.5">Sys / {tm('countedQty')}</div>
-                                        <div className="text-sm">
-                                            <span className="text-gray-500">{line.expected_qty}</span>
-                                            <span className="text-gray-400"> / </span>
-                                            <span className="font-bold text-blue-600">{line.counted_qty}</span>
+                        lines.map(line => {
+                            const vr = line.variance || 0;
+                            const linePrice = line.product_id ? prices[line.product_id] : undefined;
+                            const baseQty = line.base_counted_qty ?? line.counted_qty ?? 0;
+                            const alisVal = baseQty * (linePrice?.purchase || 0);
+                            const satisVal = baseQty * (linePrice?.sale || 0);
+                            return (
+                                <div key={line.id} className={`px-4 py-3 ${rowBg}`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className={`w-1 mt-1 self-stretch rounded-full shrink-0 ${vr === 0 ? 'bg-green-400' : vr < 0 ? 'bg-red-400' : 'bg-yellow-400'}`} />
+                                        <div className="flex-1 min-w-0">
+                                            <div className={`text-sm font-semibold truncate ${textClass}`}>{line.product_name || line.barcode}</div>
+                                            <div className="text-xs text-gray-400 font-mono">{line.barcode}</div>
+                                            {line.location_code && (
+                                                <div className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                                                    <MapPin className="w-3 h-3" />{line.location_code}
+                                                </div>
+                                            )}
                                         </div>
-                                        {line.variance !== 0 && (
-                                            <div className={`text-xs font-bold mt-0.5 ${Math.abs(line.variance || 0) > 5 ? 'text-red-600' : 'text-yellow-600'}`}>
-                                                {(line.variance || 0) > 0 ? '+' : ''}{line.variance}
+                                        <div className="text-right shrink-0">
+                                            <div className="text-xs text-gray-400">Beklenen: {line.expected_qty}</div>
+                                            <div className={`text-base font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                                {line.counted_qty}
+                                                {line.unit && <span className="text-xs text-gray-400 ml-0.5">{line.unit}</span>}
                                             </div>
-                                        )}
+                                            {vr !== 0 && (
+                                                <div className={`text-xs font-bold ${vr < 0 ? 'text-red-500' : 'text-yellow-500'}`}>{vr > 0 ? '+' : ''}{vr}</div>
+                                            )}
+                                        </div>
+                                        <button onClick={() => handleDeleteLine(line.id)}
+                                            className="p-1 text-gray-300 hover:text-red-500 mt-1 transition-colors">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => handleDeleteLine(line.id)}
-                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    {/* Price row */}
+                                    {linePrice && (alisVal > 0 || satisVal > 0) && (
+                                        <div className={`mt-1.5 ml-4 flex items-center gap-3 text-xs border-t pt-1.5 ${borderClass}`}>
+                                            <span className={darkMode ? 'text-orange-400' : 'text-orange-600'}>
+                                                Alış: {fmt(alisVal)} ₺
+                                            </span>
+                                            <span className={darkMode ? 'text-blue-400' : 'text-blue-600'}>
+                                                Satış: {fmt(satisVal)} ₺
+                                            </span>
+                                            <span className={satisVal - alisVal >= 0 ? (darkMode ? 'text-green-400' : 'text-green-600') : 'text-red-500'}>
+                                                Kar: {fmt(satisVal - alisVal)} ₺
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
-                            ))}
+                            );
+                        })
+                    )}
+                </div>
+            ) : (
+                /* Bilinmeyen tab */
+                <div className={`flex-1 overflow-y-auto`}>
+                    {unknownLines.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                            <CheckCircle2 className="w-12 h-12 text-green-400 mb-3" />
+                            <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Tüm barkodlar tanımlı</p>
+                            <p className="text-xs text-gray-400 mt-1">Sistemde kayıtsız ürün yok</p>
+                        </div>
+                    ) : (
+                        <div>
+                            <div className={`px-4 py-2 border-b ${borderClass} ${darkMode ? 'bg-orange-900/20' : 'bg-orange-50'}`}>
+                                <p className="text-xs text-orange-600 font-semibold">{unknownLines.length} adet sistemde kayıtlı olmayan barkod. Malzeme kartı oluşturarak sisteme ekleyebilirsiniz.</p>
+                            </div>
+                            <div className={`divide-y ${dividerClass}`}>
+                                {unknownLines.map(line => (
+                                    <div key={line.id} className={`flex items-center gap-3 px-4 py-3 ${rowBg}`}>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs text-orange-500 font-bold uppercase tracking-wide">Tanımsız Barkod</div>
+                                            <div className={`text-base font-mono font-bold mt-0.5 ${textClass}`}>{line.barcode}</div>
+                                            <div className="text-xs text-gray-400 mt-0.5">
+                                                Sayılan: <span className="font-bold text-gray-600 dark:text-gray-300">{line.counted_qty} {line.unit || 'Adet'}</span>
+                                                {line.counted_by && ` · ${line.counted_by}`}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setNewProductLine(line)}
+                                            className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                            Kart Oluştur
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -684,12 +895,18 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                 />
             )}
 
-            {/* Success Toast */}
-            {showSuccess && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-green-600 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2 z-50 animate-bounce">
-                    <CheckCircle className="w-5 h-5" />
-                    <span className="font-medium">{tm('countSaved')}</span>
-                </div>
+            {/* New Product Modal */}
+            {newProductLine && (
+                <NewProductModal
+                    darkMode={darkMode}
+                    barcode={newProductLine.barcode || ''}
+                    lineId={newProductLine.id}
+                    onCreated={async () => {
+                        setNewProductLine(null);
+                        await loadLines();
+                    }}
+                    onClose={() => setNewProductLine(null)}
+                />
             )}
         </div>
     );
@@ -732,8 +949,14 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
         if (!confirm(tm('confirmCompleteCount'))) return;
         setCompleting(true);
         try {
-            await wmsStockCount.completeReconciliation(slip.id);
+            const result = await wmsStockCount.applyStockCount(slip.id);
+            const parts: string[] = [`${result.processed} ürün işlendi`];
+            if (result.surplus > 0) parts.push(`${result.surplus} fazla`);
+            if (result.shortage > 0) parts.push(`${result.shortage} eksik`);
+            alert(`Sayım tamamlandı. ${parts.join(', ')}.`);
             onComplete();
+        } catch (err: any) {
+            alert(`Sayım işleme hatası: ${err?.message || String(err)}`);
         } finally {
             setCompleting(false);
         }
@@ -779,7 +1002,7 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                     </div>
                 ) : (
                     <>
-                        {/* Summary Cards */}
+                        {/* Summary Cards — adet */}
                         <div className="grid grid-cols-2 gap-3">
                             <div className={`${cardClass} border rounded-xl p-4 text-center`}>
                                 <div className="text-xs text-gray-500 mb-1">{tm('totalProducts')}</div>
@@ -797,9 +1020,40 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                             </div>
                             <div className={`${cardClass} border rounded-xl p-4 text-center`}>
                                 <div className="text-xs text-gray-500 mb-1">{tm('absVariance')}</div>
-                                <div className="text-2xl font-bold text-red-600">{summary.total_variance.toFixed(1)}</div>
+                                <div className="text-sm font-bold">
+                                    <span className="text-red-600">-{(summary.shortage_qty || 0).toFixed(0)}</span>
+                                    <span className="text-gray-400 mx-1">/</span>
+                                    <span className="text-green-600">+{(summary.surplus_qty || 0).toFixed(0)}</span>
+                                </div>
                             </div>
                         </div>
+
+                        {/* Finansal Özet */}
+                        {(summary.shortage_purchase_value > 0 || summary.surplus_purchase_value > 0) && (
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className={`${cardClass} border rounded-xl p-3 text-center border-l-4 border-l-red-500`}>
+                                    <div className="text-[10px] text-gray-500 mb-1">Eksik Maliyet</div>
+                                    <div className="text-sm font-bold text-red-600">
+                                        -{(summary.shortage_purchase_value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400">Alış × Eksik</div>
+                                </div>
+                                <div className={`${cardClass} border rounded-xl p-3 text-center border-l-4 border-l-green-500`}>
+                                    <div className="text-[10px] text-gray-500 mb-1">Fazla Maliyet</div>
+                                    <div className="text-sm font-bold text-green-600">
+                                        +{(summary.surplus_purchase_value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400">Alış × Fazla</div>
+                                </div>
+                                <div className={`${cardClass} border rounded-xl p-3 text-center border-l-4 ${(summary.net_profit_impact || 0) >= 0 ? 'border-l-green-500' : 'border-l-red-500'}`}>
+                                    <div className="text-[10px] text-gray-500 mb-1">Net Etki</div>
+                                    <div className={`text-sm font-bold ${(summary.net_profit_impact || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {(summary.net_profit_impact || 0) >= 0 ? '+' : ''}{(summary.net_profit_impact || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400">Fark (Maliyet)</div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Accuracy Bar */}
                         <div className={`${cardClass} border rounded-xl p-4`}>
@@ -868,11 +1122,25 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                                                         <span className="text-gray-400 mx-1">→</span>
                                                         <span className={`font-bold ${hasVariance ? Math.abs(v) > 5 ? 'text-red-600' : 'text-yellow-600' : 'text-green-600'}`}>
                                                             {line.counted_qty ?? '—'}
+                                                            {line.unit && line.unit !== 'Adet' && <span className="text-xs ml-0.5">{line.unit}</span>}
                                                         </span>
                                                     </div>
                                                     {hasVariance && (
-                                                        <div className={`text-xs font-bold mt-0.5 ${Math.abs(v) > 5 ? 'text-red-600' : 'text-yellow-600'}`}>
+                                                        <div className={`text-xs font-bold ${Math.abs(v) > 5 ? 'text-red-600' : 'text-yellow-600'}`}>
                                                             {v > 0 ? '+' : ''}{v}
+                                                        </div>
+                                                    )}
+                                                    {/* Alış / Satış fiyatı */}
+                                                    {(line.sale_price || 0) > 0 && (
+                                                        <div className="text-[10px] text-gray-400 mt-0.5 space-y-0.5">
+                                                            <div>Alış: {(line.purchase_price || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</div>
+                                                            <div>Satış: {(line.sale_price || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</div>
+                                                        </div>
+                                                    )}
+                                                    {/* Finansal etki */}
+                                                    {hasVariance && (line.sale_price || 0) > 0 && (
+                                                        <div className={`text-[10px] font-semibold mt-1 px-1.5 py-0.5 rounded ${v < 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                                            {v < 0 ? 'Kayıp' : 'Kazanç'}: {Math.abs(v * (line.purchase_price || line.sale_price || 0)).toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
                                                         </div>
                                                     )}
                                                 </div>

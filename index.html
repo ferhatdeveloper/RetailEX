@@ -178,10 +178,12 @@
 
     // Remove loader when app is mounted
     window.removeLoader = function () {
+      console.log('[Splash] removeLoader called');
       clearInterval(msgInterval);
       const loader = document.getElementById('app-loader');
       if (loader) {
         loader.style.opacity = '0';
+        loader.style.pointerEvents = 'none'; // Ensure it doesn't block clicks
         setTimeout(() => {
           loader.remove();
         }, 300);
@@ -189,10 +191,12 @@
     };
     // Safety net: instead of auto-removing, we just keep the logo until React is ready.
     setTimeout(function () {
-      if (document.getElementById('app-loader')) {
-        console.warn('[Splash] Still waiting for React to mount...');
+      const loader = document.getElementById('app-loader');
+      if (loader) {
+        console.warn('[Splash] Auto-removing loader after 10s safety timeout');
+        window.removeLoader();
       }
-    }, 8000);
+    }, 10000);
   </script>
 </body>
 

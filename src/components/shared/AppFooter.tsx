@@ -114,51 +114,51 @@ export const AppFooter: React.FC<AppFooterProps> = ({
     }, []);
 
     return (
-        <div className="h-10 bg-[#0a0b0d]/95 backdrop-blur-sm border-t border-white/[0.05] flex items-center justify-between px-6 text-[10px] select-none relative z-50">
-            {/* Left Section: Navigation or Status */}
-            {showNavigation && onPrev ? (
-                <button
-                    onClick={onPrev}
-                    disabled={prevDisabled}
-                    className={`flex items-center gap-2 px-4 py-1.5 rounded-lg border transition-all ${prevDisabled
-                        ? 'border-white/5 text-slate-700 cursor-not-allowed opacity-50'
-                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white hover:bg-white/5'
-                        }`}
-                >
-                    <ArrowLeft className="w-3 h-3" />
-                    <span className="font-semibold text-[9px] uppercase tracking-wider">{prevLabel}</span>
-                </button>
-            ) : (
-                <div className="flex items-center gap-4">
-                    {/* Online/Offline Status */}
-                    <div className="flex items-center gap-1.5">
-                        {isOnline ? (
-                            <Wifi className="w-3 h-3 text-emerald-500" />
-                        ) : (
-                            <WifiOff className="w-3 h-3 text-rose-500" />
-                        )}
-                        <span className={`font-medium ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {isOnline ? 'Online' : 'Offline'}
-                        </span>
-                    </div>
+        <div className="h-10 bg-[#0a0b0d]/95 backdrop-blur-sm border-t border-white/[0.05] flex items-center justify-between px-6 text-[10px] select-none relative z-10">
+            {/* Left Section: Navigation + Status */}
+            <div className="flex items-center gap-4">
+                {showNavigation && onPrev && (
+                    <button
+                        onClick={onPrev}
+                        disabled={prevDisabled}
+                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg border transition-all ${prevDisabled
+                            ? 'border-white/5 text-slate-700 cursor-not-allowed opacity-50'
+                            : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-white hover:bg-white/5'
+                            }`}
+                    >
+                        <ArrowLeft className="w-3 h-3" />
+                        <span className="font-semibold text-[9px] uppercase tracking-wider">{prevLabel}</span>
+                    </button>
+                )}
 
-                    {/* Database Status */}
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/[0.02] border border-white/5">
-                        <Database className={`w-3 h-3 ${dbConnected ? 'text-blue-500' : 'text-rose-500'}`} />
-                        <span className={`font-medium text-[9px] ${dbConnected ? 'text-slate-400' : 'text-rose-400'}`}>
-                            DB {dbConnected ? 'Connected' : 'Disconnected'}
-                        </span>
-                    </div>
-
-                    {/* VPN Status */}
-                    {vpnStatus.is_running && (
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                            <Globe className="w-3 h-3 text-emerald-500" />
-                            <span className="font-medium text-emerald-400 text-[9px]">{vpnStatus.virtual_ip}</span>
-                        </div>
+                {/* Online/Offline Status */}
+                <div className="flex items-center gap-1.5">
+                    {isOnline ? (
+                        <Wifi className="w-3 h-3 text-emerald-500" />
+                    ) : (
+                        <WifiOff className="w-3 h-3 text-rose-500" />
                     )}
+                    <span className={`font-medium ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {isOnline ? 'Online' : 'Offline'}
+                    </span>
                 </div>
-            )}
+
+                {/* Database Status */}
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-white/[0.02] border border-white/5">
+                    <Database className={`w-3 h-3 ${dbConnected ? 'text-blue-500' : 'text-rose-500'}`} />
+                    <span className={`font-medium text-[9px] ${dbConnected ? 'text-slate-400' : 'text-rose-400'}`}>
+                        DB {dbConnected ? 'Connected' : 'Disconnected'}
+                    </span>
+                </div>
+
+                {/* VPN Status */}
+                {vpnStatus.is_running && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                        <Globe className="w-3 h-3 text-emerald-500" />
+                        <span className="font-medium text-emerald-400 text-[9px]">{vpnStatus.virtual_ip}</span>
+                    </div>
+                )}
+            </div>
 
             {/* Center Section: Navigation Button */}
             {showNavigation && onNext && (

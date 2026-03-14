@@ -56,7 +56,18 @@ export function InventoryReport() {
             header: tm('brand'),
             cell: info => info.getValue() || '-',
         }),
-    ], []);
+        columnHelper.accessor('cost', {
+            header: 'ALIŞ FİYATI',
+            cell: info => info.getValue() ? info.getValue().toLocaleString() : '0',
+            size: 120
+        }),
+        columnHelper.accessor(row => (row.cost || 0) * (row.stock || 0), {
+            id: 'total_cost',
+            header: 'TOPLAM DEĞER',
+            cell: info => info.getValue() ? info.getValue().toLocaleString() : '0',
+            size: 140
+        }),
+    ], [tm]);
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
@@ -71,7 +82,7 @@ export function InventoryReport() {
                 </button>
             </div>
 
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden p-4 pb-0">
                 {loading ? (
                     <div className="h-full flex items-center justify-center">
                         <div className="text-center">
@@ -84,9 +95,35 @@ export function InventoryReport() {
                         data={products}
                         columns={columns}
                         pageSize={50}
+                        height="100%"
                     />
                 )}
             </div>
+
+            {/* Özet Bar — her zaman görünür, kesilmez */}
+            {!loading && (
+                <div className="flex-shrink-0 mx-4 mb-4 mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg flex justify-between items-center shadow-inner">
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Toplam Çeşit</span>
+                            <span className="text-lg font-black text-blue-900">{products.length}</span>
+                        </div>
+                        <div className="w-px h-8 bg-blue-200"></div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Toplam Stok Adet</span>
+                            <span className="text-lg font-black text-blue-900">
+                                {products.reduce((acc, p) => acc + (p.stock || 0), 0).toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="bg-white px-6 py-2 rounded-xl border border-blue-200 shadow-sm flex flex-col items-end">
+                        <span className="text-xs text-blue-500 font-bold uppercase">Envanter Toplam Alış Değeri</span>
+                        <span className="text-2xl font-black text-blue-700">
+                            {products.reduce((acc, p) => acc + ((p.cost || 0) * (p.stock || 0)), 0).toLocaleString()} <span className="text-sm font-bold opacity-70">IQD</span>
+                        </span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

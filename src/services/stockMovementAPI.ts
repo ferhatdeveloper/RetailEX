@@ -1,4 +1,4 @@
-﻿import { postgres, ERP_SETTINGS } from './postgres';
+import { postgres, ERP_SETTINGS } from './postgres';
 
 export interface StockMovement {
     id: string;
@@ -8,6 +8,7 @@ export interface StockMovement {
     warehouse_id?: string;
     target_warehouse_id?: string; // For transfers
     movement_date: string;
+    exchange_rate?: number;
     description?: string;
     status: string;
     created_by?: string;
@@ -24,6 +25,10 @@ export interface StockMovementItem {
     product_code?: string;
     quantity: number;
     unit_price?: number;
+    cost_price?: number;
+    exchange_rate?: number;
+    unit_name?: string;
+    convert_factor?: number;
     notes?: string;
 }
 
@@ -103,19 +108,52 @@ class StockMovementAPI {
         try {
             const { rows } = await postgres.query(
                 `SELECT 
-                    i.*, 
+                    i.id, i.movement_id, i.product_id, i.quantity, i.unit_price, i.created_at,
                     m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
-                    s.name as warehouse_name
+                    s.name as warehouse_name,
+                    'slip' as source_type,
+                    COALESCE(m.exchange_rate, 1.0) as currency_rate,
+                    'IQD' as currency,
+                    0 as gross_profit
                  FROM stock_movement_items i
                  JOIN stock_movements m ON i.movement_id = m.id
                  LEFT JOIN stores s ON m.warehouse_id = s.id
-                 WHERE i.product_id = $1
-                 ORDER BY i.created_at DESC`,
+                 WHERE (i.product_id::text = $1 OR i.product_id IN (SELECT id::text FROM products WHERE code = $1))
+
+                 UNION ALL
+
+                 SELECT
+                    si.id, si.invoice_id as movement_id, si.item_code as product_id, si.quantity, si.unit_price, si.created_at,
+                    sl.fiche_no as document_no,
+                    CASE 
+                        WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
+                        WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3 THEN 'in'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6) THEN 'out'
+                        ELSE 'out'
+                    END as movement_type,
+                    sl.date as movement_date,
+                    sl.status,
+                    sl.trcode,
+                    COALESCE(st.name, 'Merkez Ambar') as warehouse_name,
+                    'invoice' as source_type,
+                    COALESCE(sl.currency_rate, 1.0) as currency_rate,
+                    COALESCE(sl.currency, 'IQD') as currency,
+                    COALESCE(si.gross_profit, 0) as gross_profit
+                 FROM sale_items si
+                 JOIN sales sl ON si.invoice_id = sl.id
+                 LEFT JOIN stores st ON sl.store_id = st.id
+                 WHERE (si.item_code = $1 OR si.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1))
+                 
+                 ORDER BY movement_date DESC, created_at DESC`,
                 [productId]
             );
 
             return rows.map(r => ({
                 ...r,
+                currency: r.currency,
+                currency_rate: parseFloat(r.currency_rate || 1),
+                gross_profit: parseFloat(r.gross_profit || 0),
                 movement: {
                     document_no: r.document_no,
                     movement_type: r.movement_type,
@@ -145,15 +183,17 @@ class StockMovementAPI {
             // Header
             const { rows } = await postgres.query(
                 `INSERT INTO stock_movements (
-                    document_no, movement_type, trcode, warehouse_id, movement_date, description, status, created_by
-                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+                    document_no, movement_type, trcode, warehouse_id, target_warehouse_id, movement_date, exchange_rate, description, status, created_by
+                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
                  RETURNING *`,
                 [
                     movement.document_no || `ST-${Date.now()}`,
                     movement.movement_type || 'out',
                     trcode,
                     movement.warehouse_id,
+                    movement.target_warehouse_id,
                     movement.movement_date || new Date().toISOString(),
+                    movement.exchange_rate || 1,
                     movement.description,
                     movement.status || 'completed',
                     movement.created_by
@@ -164,9 +204,20 @@ class StockMovementAPI {
             // Items
             for (const item of items) {
                 await postgres.query(
-                    `INSERT INTO stock_movement_items (movement_id, product_id, quantity, unit_price, notes)
-                     VALUES ($1, $2, $3, $4, $5)`,
-                    [newMovement.id, item.product_id, item.quantity, item.unit_price || 0, item.notes]
+                    `INSERT INTO stock_movement_items (
+                        movement_id, product_id, quantity, unit_price, cost_price, exchange_rate, unit_name, convert_factor, notes
+                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                    [
+                        newMovement.id, 
+                        item.product_id, 
+                        item.quantity, 
+                        item.unit_price || 0,
+                        item.cost_price || 0,
+                        item.exchange_rate || movement.exchange_rate || 1,
+                        item.unit_name,
+                        item.convert_factor || 1,
+                        item.notes
+                    ]
                 );
 
                 // Update stock in products table

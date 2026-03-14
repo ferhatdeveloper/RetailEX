@@ -1,11 +1,13 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useProductStore } from '../../../store';
 import { productVariantAPI, invoicesAPI } from '../../../services/api/index';
+import { productUnitsAPI } from '../../../services/api/productUnitsAPI';
+import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
 import {
   Share2, Trash2, Plus, X, Search, Database, LayoutGrid, Save, MoreVertical,
   Barcode as BarcodeIcon, Tag, Calculator, Check, Download,
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
-  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload
+  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, DollarSign
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/api/masterData';
@@ -121,6 +123,7 @@ interface Barcode {
   id: string;
   code: string;
   unit: string; // Hangi birime ait (Adet, Koli, Paket vb.)
+  price?: number;
   isPrimary: boolean; // Ana barkod mu?
 }
 
@@ -153,49 +156,126 @@ type TabType = 'genel' | 'fiyat' | 'stok' | 'birim-barkod' | 'varyant' | 'muhase
 
 // HAZIR VARYANT PAKETLERİ
 const PRESET_ATTRIBUTES = {
+  // ── Tekstil / Giyim ───────────────────────────────────────────────
   bedenTextile: {
-    name: 'Beden Sizeleri (Tekstil)',
+    name: '👕 Beden (Tekstil — XS→4XL)',
     attributes: [
       { name: 'Beden', values: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'] }
     ]
   },
+  sizeColor: {
+    name: '👕 Beden + Renk (Standart)',
+    attributes: [
+      { name: 'Beden', values: ['S', 'M', 'L', 'XL', 'XXL'] },
+      { name: 'Renk', values: ['Beyaz', 'Siyah', 'Lacivert', 'Kırmızı', 'Gri'] }
+    ]
+  },
+  sizeColorFull: {
+    name: '👕 Beden + Renk (Tam Set)',
+    attributes: [
+      { name: 'Beden', values: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL'] },
+      { name: 'Renk', values: ['Beyaz', 'Siyah', 'Lacivert', 'Kırmızı', 'Mavi', 'Yeşil', 'Gri', 'Kahverengi', 'Pembe', 'Mor'] }
+    ]
+  },
   bedenShoes: {
-    name: 'Ayakkabı Bedenleri',
+    name: '👟 Ayakkabı Bedenleri',
     attributes: [
       { name: 'Beden', values: ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45'] }
     ]
   },
-  bedenKids: {
-    name: 'Çocuk Bedenleri',
+  shoeColorSize: {
+    name: '👟 Ayakkabı Beden + Renk',
     attributes: [
-      { name: 'Yaş', values: ['0-3 Ay', '3-6 Ay', '6-9 Ay', '9-12 Ay', '1-2 Yaş', '2-3 Yaş', '3-4 Yaş', '4-5 Yaş', '5-6 Yaş'] }
+      { name: 'Beden', values: ['37', '38', '39', '40', '41', '42', '43', '44'] },
+      { name: 'Renk', values: ['Siyah', 'Beyaz', 'Kahverengi', 'Lacivert'] }
     ]
   },
+  bedenKids: {
+    name: '🧒 Çocuk Bedenleri (Yaş)',
+    attributes: [
+      { name: 'Yaş', values: ['0-3 Ay', '3-6 Ay', '6-9 Ay', '9-12 Ay', '1-2 Yaş', '2-3 Yaş', '3-4 Yaş', '4-5 Yaş', '5-6 Yaş', '6-7 Yaş', '7-8 Yaş'] }
+    ]
+  },
+  kidsSizeColor: {
+    name: '🧒 Çocuk Beden + Renk',
+    attributes: [
+      { name: 'Beden', values: ['2-3 Yaş', '3-4 Yaş', '4-5 Yaş', '5-6 Yaş', '6-7 Yaş', '7-8 Yaş', '8-9 Yaş', '9-10 Yaş'] },
+      { name: 'Renk', values: ['Beyaz', 'Siyah', 'Mavi', 'Kırmızı', 'Sarı'] }
+    ]
+  },
+  // ── Elektronik ────────────────────────────────────────────────────
+  electronics: {
+    name: '💻 Depolama (Elektronik)',
+    attributes: [
+      { name: 'Depolama', values: ['64GB', '128GB', '256GB', '512GB', '1TB', '2TB'] }
+    ]
+  },
+  phoneColorStorage: {
+    name: '📱 Telefon — Renk + Depolama',
+    attributes: [
+      { name: 'Renk', values: ['Siyah', 'Beyaz', 'Gümüş', 'Mavi', 'Mor'] },
+      { name: 'Depolama', values: ['128GB', '256GB', '512GB', '1TB'] }
+    ]
+  },
+  laptopRamStorage: {
+    name: '💻 Laptop — RAM + Depolama',
+    attributes: [
+      { name: 'RAM', values: ['8GB', '16GB', '32GB', '64GB'] },
+      { name: 'Depolama', values: ['256GB SSD', '512GB SSD', '1TB SSD', '2TB SSD'] }
+    ]
+  },
+  // ── Gıda & İçecek ─────────────────────────────────────────────────
+  beverageSize: {
+    name: '🥤 İçecek Hacim',
+    attributes: [
+      { name: 'Hacim', values: ['200ml', '250ml', '330ml', '500ml', '750ml', '1L', '1.5L', '2L'] }
+    ]
+  },
+  foodWeight: {
+    name: '🍽 Gıda Gramaj',
+    attributes: [
+      { name: 'Ağırlık', values: ['50gr', '100gr', '150gr', '200gr', '250gr', '500gr', '1kg'] }
+    ]
+  },
+  // ── Güzellik & Kozmetik ───────────────────────────────────────────
+  beautyVolume: {
+    name: '💄 Güzellik Ürün Hacmi',
+    attributes: [
+      { name: 'Hacim', values: ['30ml', '50ml', '75ml', '100ml', '150ml', '200ml', '250ml', '400ml'] }
+    ]
+  },
+  perfumeSize: {
+    name: '🌸 Parfüm Boyutu',
+    attributes: [
+      { name: 'Boyut', values: ['30ml', '50ml', '75ml', '100ml', '150ml', '200ml'] }
+    ]
+  },
+  // ── Genel ─────────────────────────────────────────────────────────
   colors: {
-    name: 'Standart Renkler',
+    name: '🎨 Sadece Renkler',
     attributes: [
       { name: 'Renk', values: ['Beyaz', 'Siyah', 'Kırmızı', 'Mavi', 'Yeşil', 'Sarı', 'Turuncu', 'Mor', 'Pembe', 'Gri', 'Kahverengi', 'Lacivert'] }
     ]
   },
-  sizeColor: {
-    name: 'Beden + Renk',
-    attributes: [
-      { name: 'Beden', values: ['S', 'M', 'L', 'XL', 'XXL'] },
-      { name: 'Renk', values: ['Beyaz', 'Siyah', 'Kırmızı', 'Mavi', 'Yeşil'] }
-    ]
-  },
   capacity: {
-    name: 'Kapasite',
+    name: '📦 Kapasite / Hacim',
     attributes: [
       { name: 'Kapasite', values: ['250ml', '500ml', '750ml', '1L', '1.5L', '2L', '3L', '5L'] }
     ]
   },
   weight: {
-    name: 'Ağırlık',
+    name: '⚖️ Ağırlık',
     attributes: [
-      { name: 'Ağırlık', values: ['100gr', '250gr', '500gr', '1kg', '2kg', '5kg', '10kg'] }
+      { name: 'Ağırlık', values: ['100gr', '250gr', '500gr', '1kg', '2kg', '5kg', '10kg', '25kg'] }
     ]
-  }
+  },
+  matSizeColor: {
+    name: '🪑 Mobilya Renk + Malzeme',
+    attributes: [
+      { name: 'Renk', values: ['Beyaz', 'Siyah', 'Ceviz', 'Meşe', 'Gri', 'Bej'] },
+      { name: 'Malzeme', values: ['MDF', 'Masif', 'Metal', 'Kumaş', 'Deri'] }
+    ]
+  },
 };
 
 export const ProductFormPage = React.memo(({ productId, onClose, onSave }: ProductFormPageProps) => {
@@ -339,15 +419,17 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     isPurchase: true,
     isProduction: false,
     isService: false,
+    autoCalculateUSD: false,
+    customExchangeRate: 0,
   });
 
+  const [usdExchangeRate, setUsdExchangeRate] = useState<number>(1316); // Default 1316 as seen in screenshot
+
   const [barcodes, setBarcodes] = useState<Barcode[]>([
-    { id: '1', code: '', unit: 'Adet', isPrimary: true }
+    { id: '1', code: '', unit: '', price: 0, isPrimary: true }
   ]);
 
-  const [unitConversions, setUnitConversions] = useState<UnitConversion[]>([
-    { id: '1', fromUnit: 'Koli', toUnit: 'Adet', factor: 12 }
-  ]);
+  const [unitConversions, setUnitConversions] = useState<UnitConversion[]>([]);
 
   const [hasVariants, setHasVariants] = useState(false);
   const [variantAttributes, setVariantAttributes] = useState<VariantAttribute[]>([]);
@@ -366,6 +448,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const [brands, setBrands] = useState<Brand[]>([]);
   const [productGroups, setProductGroups] = useState<ProductGroup[]>([]);
   const [units, setUnits] = useState<MasterDataItem[]>([]);
+  const [unitSets, setUnitSets] = useState<UnitSet[]>([]);
+  const [showUnitSetPicker, setShowUnitSetPicker] = useState(false);
+  const [selectedUnitSetId, setSelectedUnitSetId] = useState<string>('');
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [suppliers, setSuppliers] = useState<MasterDataItem[]>([]);
   const [allSpecialCodes, setAllSpecialCodes] = useState<SpecialCode[]>([]);
@@ -392,7 +477,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [currRes, catRes, brandRes, groupRes, unitRes, taxRes, suppRes, specRes] = await Promise.all([
+        const [currRes, catRes, brandRes, groupRes, unitRes, taxRes, suppRes, specRes, unitSetRes] = await Promise.all([
           currencyAPI.getAll(),
           categoryAPI.getAll(),
           brandAPI.getAll(),
@@ -401,12 +486,25 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           taxRateAPI.getAll(),
           definitionAPI.getAll('suppliers'),
           specialCodeAPI.getAll(),
+          unitSetAPI.getAll(),
         ]);
+        setUnitSets(unitSetRes);
         setCurrencies(currRes);
         setCategories(catRes);
         setBrands(brandRes);
         setProductGroups(groupRes);
         setUnits(unitRes);
+        if (unitRes.length > 0) {
+          const firstName = unitRes[0].name;
+          setFormData(prev => ({
+            ...prev,
+            unit: unitRes.some((u: any) => u.name === prev.unit) ? prev.unit : firstName,
+          }));
+          setBarcodes(prev => prev.map(b => ({
+            ...b,
+            unit: b.unit && unitRes.some((u: any) => u.name === b.unit) ? b.unit : firstName,
+          })));
+        }
         setTaxRates(taxRes);
         setSuppliers(suppRes);
         setAllSpecialCodes(specRes);
@@ -607,60 +705,95 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           priceList4: product.priceList4 || 0,
           priceList5: product.priceList5 || 0,
           priceList6: product.priceList6 || 0,
+          salePriceUSD: product.salePriceUSD || 0,
+          purchasePriceUSD: product.purchasePriceUSD || 0,
+          customExchangeRate: product.customExchangeRate || usdExchangeRate || 0,
+          autoCalculateUSD: product.autoCalculateUSD || false,
         }));
 
-        if (product.barcode) {
-          setBarcodes([{ id: '1', code: product.barcode || '', unit: 'Adet', isPrimary: true }]);
-        }
+        // Restore unitset selection
+        setSelectedUnitSetId((product as any).unitsetId || '');
 
-        // VARYANTLARI YÜKLE
-        if (product.variants && product.variants.length > 0) {
-          setHasVariants(true);
+        // Load barcodes from product_barcodes table; fall back to single barcode field
+        productUnitsAPI.getBarcodesByProductId(product.id).then(dbBarcodes => {
+          if (dbBarcodes.length > 0) {
+            setBarcodes(dbBarcodes.map(b => ({
+              id: b.id,
+              code: b.barcode_code,
+              unit: b.unit || product.unit || '',
+              isPrimary: b.is_primary,
+            })));
+          } else if (product.barcode) {
+            setBarcodes([{ id: '1', code: product.barcode, unit: product.unit || '', isPrimary: true }]);
+          }
+        });
 
-          // Varyant özelliklerini çıkar (örn: Beden, Renk)
-          const attributeMap = new Map<string, Set<string>>();
-          product.variants.forEach((v: ProductVariant) => {
-            if (v.size) {
-              if (!attributeMap.has('Beden')) attributeMap.set('Beden', new Set());
-              attributeMap.get('Beden')!.add(v.size);
-            }
-            if (v.color) {
-              if (!attributeMap.has('Renk')) attributeMap.set('Renk', new Set());
-              attributeMap.get('Renk')!.add(v.color);
-            }
-          });
+        // Load unit conversions from product_unit_conversions table
+        productUnitsAPI.getUnitConversionsByProductId(product.id).then(dbConversions => {
+          if (dbConversions.length > 0) {
+            setUnitConversions(dbConversions.map(c => ({
+              id: c.id,
+              fromUnit: c.from_unit,
+              toUnit: c.to_unit,
+              factor: Number(c.factor),
+            })));
+          }
+        });
 
-          // Attribute state'ini oluştur
-          const loadedAttributes: VariantAttribute[] = [];
-          attributeMap.forEach((values, name) => {
-            loadedAttributes.push({
-              id: Date.now().toString() + Math.random(),
-              name,
-              values: Array.from(values)
+        // VARYANTLARI YÜKLE - Doğrudan DB'den çek (product store variants içermez!)
+        setHasVariants(product.hasVariants || false);
+        productVariantAPI.getByProductId(product.id).then(dbVariants => {
+          if (dbVariants && dbVariants.length > 0) {
+            setHasVariants(true);
+
+            // Varyant özelliklerini tüm attribute alanlarından çıkar
+            const attributeMap = new Map<string, Set<string>>();
+            dbVariants.forEach((v: ProductVariant & { is_active?: boolean }) => {
+              if (v.size) {
+                if (!attributeMap.has('Beden')) attributeMap.set('Beden', new Set());
+                attributeMap.get('Beden')!.add(v.size);
+              }
+              if (v.color) {
+                if (!attributeMap.has('Renk')) attributeMap.set('Renk', new Set());
+                attributeMap.get('Renk')!.add(v.color);
+              }
             });
-          });
-          setVariantAttributes(loadedAttributes);
 
-          // Varyant listesini oluştur
-          const loadedVariants: FormVariant[] = product.variants.map((v: ProductVariant) => ({
-            id: v.id,
-            attributes: {
-              ...(v.size ? { 'Beden': v.size } : {}),
-              ...(v.color ? { 'Renk': v.color } : {})
-            },
-            barcode: v.barcode || '',
-            code: v.code || '',
-            stock: v.stock || 0,
-            purchasePrice: v.cost || product.cost || 0,
-            salePrice: v.price || product.price || 0,
-            enabled: true
-          }));
-          setVariants(loadedVariants);
-        } else {
-          setHasVariants(product.hasVariants || false);
+            // Attribute state'ini oluştur
+            const loadedAttributes: VariantAttribute[] = [];
+            attributeMap.forEach((values, name) => {
+              loadedAttributes.push({
+                id: Date.now().toString() + Math.random(),
+                name,
+                values: Array.from(values)
+              });
+            });
+            setVariantAttributes(loadedAttributes);
+
+            // Varyant listesini oluştur
+            const loadedVariants: FormVariant[] = dbVariants.map((v: ProductVariant) => ({
+              id: v.id,
+              attributes: {
+                ...(v.size ? { 'Beden': v.size } : {}),
+                ...(v.color ? { 'Renk': v.color } : {})
+              },
+              barcode: v.barcode || '',
+              code: v.code || '',
+              stock: v.stock || 0,
+              purchasePrice: v.cost || product.cost || 0,
+              salePrice: v.price || product.price || 0,
+              enabled: true
+            }));
+            setVariants(loadedVariants);
+          } else {
+            setVariants([]);
+            setVariantAttributes([]);
+          }
+        }).catch(err => {
+          console.error('[ProductFormPage] Variant load error:', err);
           setVariants([]);
           setVariantAttributes([]);
-        }
+        });
 
         // Mark as loaded
         lastLoadedIdRef.current = productId;
@@ -679,6 +812,21 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       try {
         const currenciesData = await currencyAPI.getAll();
         setCurrencies(currenciesData);
+
+        // Fetch latest USD exchange rate
+        const { exchangeRateAPI } = await import('../../../services/api/masterData');
+        const latestRates = await exchangeRateAPI.getLatestRates();
+        const usdRate = latestRates.find(r => r.currency_code === 'USD');
+        if (usdRate) {
+          console.log('[ProductFormPage] USD Exchange Rate loaded:', usdRate.sell_rate);
+          setUsdExchangeRate(usdRate.sell_rate);
+          
+          // Also update formData if customExchangeRate is 0
+          setFormData(prev => ({
+            ...prev,
+            customExchangeRate: prev.customExchangeRate > 0 ? prev.customExchangeRate : usdRate.sell_rate
+          }));
+        }
       } catch (error) {
         console.error('[ProductFormPage] Failed to load master data:', error);
       }
@@ -741,7 +889,47 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const handleInputChange = (field: string, value: any) => {
     // Ensure text inputs always have a string value (prevent undefined)
     const safeValue = value === undefined || value === null ? '' : value;
-    setFormData((prev: any) => ({ ...prev, [field]: safeValue }));
+    
+    setFormData((prev: any) => {
+      const newData = { ...prev, [field]: safeValue };
+
+      // Auto calculation logic
+      let effectiveRate = newData.customExchangeRate > 0 ? newData.customExchangeRate : usdExchangeRate;
+      
+      // IQD Scaling Logic: If currency is IQD and rate is small (e.g., 1.54), scale by 1000
+      if (newData.currency === 'IQD' && effectiveRate > 0 && effectiveRate < 10) {
+        effectiveRate = effectiveRate * 1000;
+      }
+      
+      if (newData.autoCalculateUSD && effectiveRate > 0) {
+        if (field === 'salePriceUSD') {
+          newData.salePrice = Math.round(Number(safeValue) * effectiveRate);
+        } else if (field === 'purchasePriceUSD') {
+          newData.purchasePrice = Math.round(Number(safeValue) * effectiveRate);
+        } else if (field === 'customExchangeRate') {
+          // If custom rate changed, recalculate both prices based on existing USD values
+          // Use effectiveRate which already has scaling applied (e.g. 1.54 -> 1540)
+          if (newData.salePriceUSD > 0) newData.salePrice = Math.round(newData.salePriceUSD * effectiveRate);
+          if (newData.purchasePriceUSD > 0) newData.purchasePrice = Math.round(newData.purchasePriceUSD * effectiveRate);
+        } else if (field === 'autoCalculateUSD' && safeValue === true) {
+          // If toggle just turned ON, calculate prices immediately
+          if (newData.salePriceUSD > 0) newData.salePrice = Math.round(newData.salePriceUSD * effectiveRate);
+          if (newData.purchasePriceUSD > 0) newData.purchasePrice = Math.round(newData.purchasePriceUSD * effectiveRate);
+        }
+      }
+
+      return newData;
+    });
+
+    // Sync salePrice with primary barcode
+    if (field === 'salePrice') {
+      setTimeout(() => {
+        setBarcodes((prev: Barcode[]) => {
+          const price = Number(safeValue);
+          return prev.map((b: Barcode) => b.isPrimary ? { ...b, price } : b);
+        });
+      }, 0);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -766,7 +954,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
   // Barcode Operations
   const addBarcode = () => {
-    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit: formData.unit, isPrimary: false }]);
+    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit: formData.unit, price: formData.salePrice, isPrimary: false }]);
   };
 
   const removeBarcode = (id: string) => {
@@ -776,18 +964,28 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   };
 
   const addBarcodeWithUnit = (unit: string) => {
-    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit, isPrimary: false }]);
+    const conversion = unitConversions.find(c => c.fromUnit === unit);
+    const multiplier = conversion ? conversion.factor : 1;
+    const initialPrice = formData.salePrice * multiplier;
+    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit, price: initialPrice, isPrimary: false }]);
   };
 
   const updateBarcode = (id: string, field: string, value: any) => {
     setBarcodes((prev: Barcode[]) => {
       const updated = prev.map((b: Barcode) => b.id === id ? { ...b, [field]: value } : b);
+      const barcode = updated.find(b => b.id === id);
+
       if (field === 'unit') {
-        const barcode = updated.find(b => b.id === id);
         if (barcode?.isPrimary) {
           handleInputChange('unit', value);
         }
       }
+
+      // If price of primary barcode changes, update global salePrice
+      if (field === 'price' && barcode?.isPrimary) {
+        setFormData((f: any) => ({ ...f, salePrice: Number(value) }));
+      }
+
       return updated;
     });
   };
@@ -812,15 +1010,47 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   };
 
   const removeUnitConversion = (id: string) => {
-    if (unitConversions.length > 1) {
-      setUnitConversions((prev: UnitConversion[]) => prev.filter((u: UnitConversion) => u.id !== id));
-    }
+    setUnitConversions((prev: UnitConversion[]) => prev.filter((u: UnitConversion) => u.id !== id));
   };
 
   const updateUnitConversion = (id: string, field: string, value: any) => {
-    setUnitConversions((prev: UnitConversion[]) => prev.map((u: UnitConversion) =>
-      u.id === id ? { ...u, [field]: value } : u
-    ));
+    setUnitConversions((prev: UnitConversion[]) => {
+      const updated = prev.map((u: UnitConversion) =>
+        u.id === id ? { ...u, [field]: value } : u
+      );
+
+      // If multiplier (factor) changes, we might want to update prices of barcodes using this unit
+      // However, the UI already calculates it via (formData.salePrice * conv.factor)
+      // if b.price is undefined/0. So we don't strictly need to force an update here
+      // unless we want to overwrite existing custom prices.
+      
+      return updated;
+    });
+  };
+
+  // Apply a UnitSet as a ready package
+  const applyUnitSet = (unitSet: UnitSet) => {
+    if (!unitSet.lines || unitSet.lines.length === 0) return;
+    const mainLine = unitSet.lines.find(l => l.main_unit);
+    if (!mainLine) return;
+    const mainUnitName = mainLine.name;
+
+    // Update primary unit
+    handleInputChange('unit', mainUnitName);
+    setBarcodes(prev => prev.map(b => b.isPrimary ? { ...b, unit: mainUnitName } : b));
+
+    // Build unit conversions from non-main lines
+    const newConversions: UnitConversion[] = unitSet.lines
+      .filter(l => !l.main_unit)
+      .map(l => ({
+        id: Date.now().toString() + Math.random(),
+        fromUnit: l.name,
+        toUnit: mainUnitName,
+        factor: l.conv_fact1,
+      }));
+    setUnitConversions(newConversions);
+    setSelectedUnitSetId(unitSet.id);
+    setShowUnitSetPicker(false);
   };
 
   // Variant Operations
@@ -1063,7 +1293,16 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
 
     try {
-      // Invoice items oluştur
+      // ─── ADIM 1: Ürünü önce kaydet (varyantlarla birlikte) ────────────────
+      toast.info('Ürün kaydediliyor...', { duration: 1500 });
+      await handleSave(false); // Formu kapatma, fatura oluşturma devam edecek
+
+      // ─── ADIM 2: Gerçek ürün kodunu kullanarak fatura oluştur ─────────────
+      // NOT: handleSave içinde onClose çağrılabilir, bu yüzden toast'ı burada göster
+      const productCode = formData.code;
+      const productName = formData.description_tr;
+
+      // Invoice items oluştur - gerçek ürün kodu ile
       const invoiceItems = variantsWithPurchaseQty.map(variant => {
         const variantName = Object.entries(variant.attributes)
           .map(([key, val]) => `${key}: ${val}`)
@@ -1074,11 +1313,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         const total = quantity * unitPrice;
 
         return {
-          code: variant.id,
-          productId: variant.id,
-          product_code: formData.code, // Ürün kodu ekle
-          description: `${formData.description_tr} - ${variantName}`,
-          productName: `${formData.description_tr} - ${variantName}`,
+          code: productCode,              // Gerçek ürün kodu
+          productId: productCode,         // Stok güncelleme için
+          product_code: productCode,
+          description: `${productName} - ${variantName}`,
+          productName: `${productName} - ${variantName}`,
           barcode: variant.barcode || '',
           quantity: quantity,
           unitPrice: unitPrice,
@@ -1087,7 +1326,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           discountPercent: 0,
           tax: 0,
           netAmount: total,
-          total: total
+          total: total,
+          unit: formData.unit || 'Adet',
+          // Varyant bilgisi notlar üzerinden
+          notes: variantName,
         };
       });
 
@@ -1115,19 +1357,16 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         firma_name: 'Ana Firma',
         donem_id: '1',
         donem_name: new Date().getFullYear().toString(),
-        status: 'pending', // Bekleyen statüsü
-        notes: `Ürün: ${formData.code} - ${formData.description_tr}`,
+        status: 'pending',
+        notes: `Varyantlı Alış | Ürün: ${productCode} - ${productName}`,
         source: 'invoice' as const
       };
 
-      // Veritabanına kaydet
-      // Veritabanına kaydet
-      // invoicesAPI imported statically import { invoicesAPI } from '../../../services/api';
       await invoicesAPI.create(invoice);
 
       toast.success(
-        `${variantsWithPurchaseQty.length} varyant (${totalItems} adet) bekleyen alış faturası oluşturuldu. Toplam: ${subtotal.toFixed(2)}`,
-        { duration: 4000 }
+        `✅ ${variantsWithPurchaseQty.length} varyant (${totalItems} adet) alış faturası oluşturuldu. Toplam: ${subtotal.toLocaleString('tr-TR')}`,
+        { duration: 5000 }
       );
 
       // Trigger invoice list refresh
@@ -1143,7 +1382,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (closeAfter = true) => {
     if (!formData.code || !formData.description_tr) {
       toast.error('Ürün kodu ve Türkçe açıklama zorunludur');
       return;
@@ -1191,7 +1430,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       priceList4: formData.priceList4,
       priceList5: formData.priceList5,
       priceList6: formData.priceList6,
-    };
+      salePriceUSD: formData.salePriceUSD,
+      purchasePriceUSD: formData.purchasePriceUSD,
+      customExchangeRate: formData.customExchangeRate,
+      autoCalculateUSD: formData.autoCalculateUSD,
+      unitsetId: selectedUnitSetId || undefined,
+    } as any;
 
     try {
       // Save product first
@@ -1207,6 +1451,21 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       }
 
       const dbProductId = savedProduct.id;
+
+      // Save barcodes
+      await productUnitsAPI.syncBarcodes(dbProductId, barcodes.map(b => ({
+        barcode_code: b.code,
+        unit: b.unit,
+        sale_price: b.price || (b.isPrimary ? formData.salePrice : 0),
+        is_primary: b.isPrimary,
+      })));
+
+      // Save unit conversions
+      await productUnitsAPI.syncUnitConversions(dbProductId, unitConversions.map(c => ({
+        from_unit: c.fromUnit,
+        to_unit: c.toUnit,
+        factor: c.factor,
+      })));
 
       // Then save variants if product has variants
       if (hasVariants && variants.length > 0) {
@@ -1231,12 +1490,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
       toast.success(productId ? tm('materialCardUpdated') : tm('materialCardCreated'));
 
-      if (onSave && savedProduct) {
-        onSave(savedProduct);
-      }
-
-      if (onClose) {
-        onClose();
+      if (closeAfter) {
+        if (onSave && savedProduct) {
+          onSave(savedProduct);
+        }
+        if (onClose) {
+          onClose();
+        }
       }
     } catch (error) {
       console.error('[ProductFormPage] Save error:', error);
@@ -1771,14 +2031,20 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 font-bold">{tm('purchasePrice')}</label>
                   </div>
-                  <div className="col-span-3 bg-white px-2 py-1.5">
+                  <div className="col-span-3 bg-white px-2 py-1.5 relative">
                     <input
                       type="number"
                       step="0.01"
                       value={formData.purchasePrice || 0}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePrice', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      readOnly={formData.autoCalculateUSD}
+                      className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50 cursor-not-allowed text-blue-700' : ''}`}
                     />
+                    {formData.autoCalculateUSD && (
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
+                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                      </span>
+                    )}
                   </div>
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 italic">TAX %</label>
@@ -1796,14 +2062,20 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 font-bold">{tm('salePrice')}</label>
                   </div>
-                  <div className="col-span-3 bg-green-50 px-2 py-1.5">
+                  <div className="col-span-3 bg-green-50 px-2 py-1.5 relative">
                     <input
                       type="number"
                       step="0.01"
                       value={formData.salePrice || 0}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('salePrice', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-green-300 text-xs text-right bg-green-50 font-bold focus:outline-none focus:ring-1 focus:ring-green-500"
+                      readOnly={formData.autoCalculateUSD}
+                      className={`w-full px-2 py-1 border border-green-300 text-xs text-right bg-green-50 font-bold focus:outline-none focus:ring-1 focus:ring-green-500 ${formData.autoCalculateUSD ? 'text-blue-700' : ''}`}
                     />
+                    {formData.autoCalculateUSD && (
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded border border-blue-200">
+                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                      </span>
+                    )}
                   </div>
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('withholdingTax')}</label>
@@ -1844,8 +2116,15 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <span className="text-xs text-gray-700">{tm('foreignCurrencyPrices')}</span>
                 </div>
                 <div className="grid grid-cols-12 gap-px bg-gray-300">
-                  <div className="col-span-3 bg-gray-100 px-2 py-1.5">
+                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
                     <label className="text-xs text-gray-700">{tm('purchasePrice')} (USD)</label>
+                    <button
+                      onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
+                      className={`p-1 rounded transition-colors ${formData.autoCalculateUSD ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-gray-500'}`}
+                      title="Otomatik Kur Hesapla"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                   <div className="col-span-3 bg-white px-2 py-1.5">
                     <input
@@ -1853,11 +2132,21 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       step="0.01"
                       value={formData.purchasePriceUSD || 0}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePriceUSD', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50' : ''}`}
                     />
                   </div>
-                  <div className="col-span-3 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
                     <label className="text-xs text-gray-700">{tm('salePrice')} (USD)</label>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400">Rate: {usdExchangeRate}</span>
+                      <button
+                        onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
+                        className={`p-1 rounded transition-colors ${formData.autoCalculateUSD ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-gray-500'}`}
+                        title="Otomatik Kur Hesapla"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="col-span-3 bg-white px-2 py-1.5">
                     <input
@@ -1865,8 +2154,26 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       step="0.01"
                       value={formData.salePriceUSD || 0}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('salePriceUSD', Number(e.target.value))}
+                      className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50' : ''}`}
+                    />
+                  </div>
+
+                  {/* Row 2: Özel Kur */}
+                  <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                    <label className="text-xs text-gray-700">{tm('customExchangeRate')}</label>
+                  </div>
+                  <div className="col-span-3 bg-white px-2 py-1.5">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.customExchangeRate || 0}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('customExchangeRate', Number(e.target.value))}
+                      placeholder="0.00"
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
+                  </div>
+                  <div className="col-span-6 bg-gray-50 px-2 py-1.5 flex items-center">
+                    <span className="text-[10px] text-gray-400 italic">Boş veya 0 ise sistem kuru ({usdExchangeRate}) baz alınır. MarketPOS ve Faturalarda dinamik hesaplanır.</span>
                   </div>
 
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5">
@@ -2179,6 +2486,42 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1 bg-gray-100 border-b border-gray-300 flex items-center justify-between">
                   <span className="text-[11px] text-gray-700 font-bold">{tm('unitsAndBarcodeList')}</span>
                   <div className="flex gap-2">
+                    {/* Hazır Paket */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowUnitSetPicker(v => !v)}
+                        className="flex items-center gap-1 px-3 py-0.5 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                      >
+                        <Package className="w-3 h-3" />
+                        {tm('applyUnitSet') || 'Hazır Paket'}
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {showUnitSetPicker && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowUnitSetPicker(false)} />
+                          <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded shadow-lg min-w-[180px] max-h-60 overflow-y-auto">
+                          {unitSets.length === 0 ? (
+                            <div className="px-3 py-2 text-[11px] text-gray-400">Henüz birim seti yok</div>
+                          ) : (
+                            unitSets.map(us => (
+                              <button
+                                key={us.id}
+                                onClick={() => applyUnitSet(us)}
+                                className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-purple-50 hover:text-purple-700 border-b border-gray-100 last:border-0"
+                              >
+                                <div className="font-medium">{us.name}</div>
+                                {us.lines && us.lines.length > 0 && (
+                                  <div className="text-gray-400 mt-0.5">
+                                    {us.lines.map(l => `${l.name}${!l.main_unit ? ` (×${l.conv_fact1})` : ''}`).join(' · ')}
+                                  </div>
+                                )}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                        </>
+                      )}
+                    </div>
                     <button
                       onClick={addBarcode}
                       className="flex items-center gap-1 px-3 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -2306,6 +2649,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                   + {tm('addBarcode')}
                                 </button>
                               </td>
+                              <td className="px-2 py-1 border-r border-gray-200">
+                                <div className="text-right text-gray-400 text-[11px]">
+                                  {(formData.salePrice * conv.factor).toFixed(2)}
+                                </div>
+                              </td>
                               <td className="px-2 py-1 text-center">
                                 <button onClick={() => removeUnitConversion(conv.id)} className="text-red-500">
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -2411,6 +2759,15 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                               />
                             </div>
                           </td>
+                          <td className="px-2 py-1 border-r border-gray-200">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={b.price || 0}
+                              onChange={(e) => updateBarcode(b.id, 'price', Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-right font-bold text-orange-800 text-[11px] focus:bg-white focus:ring-1 focus:ring-blue-400"
+                            />
+                          </td>
                           <td className="px-2 py-1 text-center">
                             <button onClick={() => removeBarcode(b.id)} className="text-red-500">
                               <Trash2 className="w-3.5 h-3.5" />
@@ -2428,6 +2785,23 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           {/* VARYANT SEKME - DAHA ÖNCE YAPILMIŞTI */}
           {activeTab === 'varyant' && (
             <div className="space-y-3">
+              {/* Kaydet Uyarısı */}
+              <div className="bg-amber-50 border border-amber-300 px-3 py-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Save className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs text-amber-800 font-medium">
+                    Varyantları kaybetmemek için kaydedin
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleSave()}
+                  className="flex items-center gap-1 px-4 py-1.5 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 transition-colors shadow"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  Kaydet (Varyantlarla)
+                </button>
+              </div>
+
               <div className="bg-white border border-gray-300 p-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -2726,7 +3100,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                           <tr>
                                             <th className="px-2 py-1.5 text-center text-gray-600">✓</th>
                                             <th className="px-2 py-1.5 text-left text-gray-600">{tm('variantCode')}</th>
-                                            <th className="px-2 py-1.5 text-left text-gray-600">{tm('attributes')}</th>
+                                            <th className="px-2 py-1.5 text-left text-gray-600">{tm('variantAttributes')}</th>
                                             <th className="px-2 py-1.5 text-left text-gray-600">{tm('barcode')} *</th>
                                             <th className="px-2 py-1.5 text-right text-gray-600">{tm('purchasePrice')}</th>
 

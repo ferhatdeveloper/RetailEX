@@ -27,7 +27,8 @@ export function POSProductCatalogModal({
   const { t } = useLanguage();
   const { darkMode } = useTheme();
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
-  const [selectedCategory, setSelectedCategory] = useState(t.all);
+  const ALL_CAT = t.allBtn || 'Tümü';
+  const [selectedCategory, setSelectedCategory] = useState(ALL_CAT);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -50,7 +51,7 @@ export function POSProductCatalogModal({
     });
 
     const categories = [
-      { name: t.all, count: products.length },
+      { name: ALL_CAT, count: products.length },
       ...Array.from(categoryMap.entries()).map(([name, count]) => ({ name, count }))
     ];
 
@@ -61,7 +62,7 @@ export function POSProductCatalogModal({
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       // Category filter
-      if (selectedCategory !== t.all) {
+      if (selectedCategory !== ALL_CAT) {
         const productCategories = Array.isArray(product.category) ? product.category : [product.category];
         if (!productCategories.includes(selectedCategory)) {
           return false;
@@ -186,14 +187,6 @@ export function POSProductCatalogModal({
                           if (product.variants && product.variants.length > 0) {
                             setSelectedProduct(product);
                             setSelectedVariant(null);
-                          }
-                        }
-                      }}
-                      onDoubleClick={() => {
-                        if (mode === 'add-to-cart') {
-                          if (product.variants && product.variants.length > 0) {
-                            setSelectedProduct(product);
-                            setSelectedVariant(null);
                           } else if (onAddToCart) {
                             onAddToCart(product);
                           }
@@ -240,23 +233,15 @@ export function POSProductCatalogModal({
                     <div
                       key={product.id}
                       onClick={() => {
-                        if (mode === 'add-to-cart' && product.variants && product.variants.length > 0) {
-                          setSelectedProduct(product);
-                          setSelectedVariant(null);
-                        } else if (mode === 'assign-to-slot' && onSelect) {
+                        if (mode === 'assign-to-slot' && onSelect) {
                           onSelect(product);
-                        }
-                      }}
-                      onDoubleClick={() => {
-                        if (mode === 'add-to-cart') {
+                        } else if (mode === 'add-to-cart') {
                           if (product.variants && product.variants.length > 0) {
                             setSelectedProduct(product);
                             setSelectedVariant(null);
                           } else if (onAddToCart) {
                             onAddToCart(product);
                           }
-                        } else if (mode === 'assign-to-slot' && onSelect) {
-                          onSelect(product);
                         }
                       }}
                       className="w-full bg-white border border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden"

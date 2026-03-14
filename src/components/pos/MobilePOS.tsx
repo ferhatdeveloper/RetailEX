@@ -1,10 +1,13 @@
-﻿import { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Minus, X, Trash2, User, CreditCard, Banknote, Smartphone, ShoppingBag, Grid3x3, ArrowLeft, Tag, RefreshCw, FileText, Truck, Send, FileCheck, Menu, Camera, Database } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Search, Plus, Minus, X, Trash2, User, CreditCard, Banknote, Smartphone, ShoppingBag, Grid3x3, ArrowLeft, Tag, RefreshCw, FileText, Truck, Send, FileCheck, Menu, Camera, Database, Globe } from 'lucide-react';
 import type { Product, Customer, Sale, SaleItem, Campaign } from '../../App';
 import { BarcodeScanner, type BarcodeScanResult } from '../inventory/stock/BarcodeScanner';
 import { formatNumber } from '../../utils/formatNumber';
 import { useTheme } from '../../contexts/ThemeContext';
 import { APP_VERSION } from '../../core/version';
+import { productAPI } from '../../services/api/products';
+import { printThermalReceipt } from '../../utils/thermalPrinter';
+import { postgres } from '../../services/postgres';
 
 interface MobilePOSProps {
   products: Product[];
@@ -29,6 +32,72 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const [appliedCampaign, setAppliedCampaign] = useState<Campaign | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const barcodeRef = useRef<HTMLInputElement>(null);
+
+  // Printing options
+  const [autoPrint, setAutoPrint] = useState(false);
+  const [receiptLanguage, setReceiptLanguage] = useState<'tr' | 'en' | 'ar' | 'ku'>('tr');
+
+  useEffect(() => {
+    const savedPrinter = localStorage.getItem('retailos-printer-settings');
+    if (savedPrinter) {
+      try {
+        const config = JSON.parse(savedPrinter);
+        if (config.autoPrint !== undefined) setAutoPrint(config.autoPrint);
+        if (config.defaultLanguage) setReceiptLanguage(config.defaultLanguage);
+      } catch (err) {
+        console.error('Failed to parse printer settings:', err);
+      }
+    }
+  }, []);
+
+  // Exchange rate state
+  const [exchangeRate, setExchangeRate] = useState<number>(1310);
+  const [unitSets, setUnitSets] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRate = async () => {
+      try {
+        const { exchangeRateAPI } = await import('../../services/api/masterData');
+        const rates = await exchangeRateAPI.getLatestRates();
+        const usdRate = rates.find(r => r.currency_code === 'USD');
+        if (usdRate) {
+          setExchangeRate(usdRate.sell_rate);
+        }
+      } catch (error) {
+        console.error('Failed to fetch exchange rate:', error);
+      }
+    };
+    fetchRate();
+  }, []);
+
+  // Load Unit Sets for multiplier support
+  useEffect(() => {
+    const loadUnitSets = async () => {
+      try {
+        const { rows: sets } = await postgres.query('SELECT * FROM unitsets ORDER BY name ASC');
+        const setsWithLines = await Promise.all(sets.map(async (set: any) => {
+          const { rows: lines } = await postgres.query(
+            'SELECT * FROM unitsetl WHERE unitset_id = $1 ORDER BY conv_fact1 ASC',
+            [set.id]
+          );
+          return {
+            ...set,
+            lines: lines.map((l: any) => ({
+              id: l.id,
+              code: l.code || l.item_code,
+              name: l.name || l.item_code,
+              conv_fact1: parseFloat(l.conv_fact1) || 1,
+              main_unit: l.main_unit || false
+            }))
+          };
+        }));
+        setUnitSets(setsWithLines);
+      } catch (err) {
+        console.error('[MobilePOS] Unit sets load failed:', err);
+      }
+    };
+    loadUnitSets();
+  }, []);
 
   // Notification system
   const [showNotification, setShowNotification] = useState(false);
@@ -58,35 +127,85 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     return matchesCategory && matchesSearch;
   });
 
-  const handleBarcodeSubmit = (e: React.FormEvent) => {
+  const handleBarcodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (barcodeInput.trim()) {
-      const searchTerm = barcodeInput.trim().toLowerCase();
+      const searchTerm = barcodeInput.trim();
 
-      // First try exact barcode match
-      let product = products.find(p => p.barcode === barcodeInput.trim());
+      try {
+        const result = await productAPI.lookupByBarcode(searchTerm);
 
-      // If not found, search by product name
-      if (!product) {
-        product = products.find(p => p.name.toLowerCase().includes(searchTerm));
-      }
+        if (result && result.product) {
+          const product = result.product;
+          const unitInfo = result.unitInfo;
 
-      if (product) {
-        addToCart(product);
-        setBarcodeInput('');
-      } else {
-        showNotif('Ürün bulunamadı!', 'error');
+          // Varyant kontrolü (Basit mobil versiyon için varyant desteği ekleyebiliriz veya direkt ekleriz)
+          if (product.hasVariants || (product.variants && product.variants.length > 0)) {
+            // Mobil için varyant seçim modalı gerekebilir. Şimdilik MarketPOS'taki gibi basit geçiyoruz
+            showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
+            return;
+          }
+
+          // Pricing logic: First check unit multiplier, then USD calculation
+          let price = product.price;
+          let unitMultiplier = unitInfo?.multiplier || 1;
+
+          // If unitMultiplier is 1 or missing, try to find in unitSets
+          if (unitInfo && unitMultiplier === 1 && unitInfo.unit) {
+            const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
+            if (pUnitsetId) {
+              const unitSet = unitSets.find(us => us.id === pUnitsetId);
+              const line = unitSet?.lines?.find((l: any) => l.name === unitInfo.unit || l.code === unitInfo.unit);
+              if (line) {
+                unitMultiplier = line.conv_fact1 || 1;
+              }
+            }
+          }
+
+          if (unitInfo) {
+            if (unitInfo.sale_price && unitInfo.sale_price > 0) {
+              price = unitInfo.sale_price;
+            } else if (unitMultiplier > 1) {
+              price = product.price * unitMultiplier;
+            }
+          }
+
+          // USD Auto-calculation
+          const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
+          if (isAutoCalc && (product as any).salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
+            let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || exchangeRate;
+            if (effectiveRate > 0 && effectiveRate < 10) effectiveRate *= 1000;
+            price = (product as any).salePriceUSD * effectiveRate * unitMultiplier;
+          }
+
+          addToCart(product, undefined, unitInfo?.unit, unitMultiplier, price);
+          setBarcodeInput('');
+        } else {
+          showNotif('Ürün bulunamadı!', 'error');
+        }
+      } catch (error) {
+        console.error('[MobilePOS] Barcode lookup error:', error);
+        showNotif('Barkod sorgulama hatası!', 'error');
       }
     }
   };
 
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find(item => item.productId === product.id);
+  const addToCart = (product: Product, variant?: any, unit?: string, multiplier?: number, customPrice?: number) => {
+    // Unique ID for cart matching
+    const itemMatch = (item: SaleItem) => {
+      if (variant) {
+        return item.productId === product.id && item.variant?.id === variant.id;
+      }
+      return item.productId === product.id && !item.variant && item.unit === unit;
+    };
+
+    const existingItem = cart.find(itemMatch);
+    const price = customPrice !== undefined ? customPrice : (variant?.price || product.price);
 
     if (existingItem) {
       setCart(cart.map(item =>
-        item.productId === product.id
-          ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price * (1 - item.discount / 100) }
+        itemMatch(item)
+          ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * price * (1 - item.discount / 100) }
           : item
       ));
     } else {
@@ -94,20 +213,23 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        price: product.price,
+        price: price,
         discount: 0,
-        total: product.price
+        total: price,
+        variant,
+        unit,
+        multiplier
       }]);
     }
   };
 
-  const updateQuantity = (productId: string, quantity: number) => {
+  const updateQuantity = (index: number, quantity: number) => {
     if (quantity <= 0) {
-      removeFromCart(productId);
+      removeFromCart(index);
       return;
     }
-    setCart(cart.map(item => {
-      if (item.productId === productId) {
+    setCart(cart.map((item, idx) => {
+      if (idx === index) {
         const newTotal = quantity * item.price * (1 - item.discount / 100);
         return { ...item, quantity, total: newTotal };
       }
@@ -115,9 +237,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     }));
   };
 
-  const updateItemDiscount = (productId: string, discount: number) => {
-    setCart(cart.map(item => {
-      if (item.productId === productId) {
+  const updateItemDiscount = (index: number, discount: number) => {
+    setCart(cart.map((item, idx) => {
+      if (idx === index) {
         const newTotal = item.quantity * item.price * (1 - discount / 100);
         return { ...item, discount, total: newTotal };
       }
@@ -125,8 +247,8 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     }));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(cart.filter(item => item.productId !== productId));
+  const removeFromCart = (index: number) => {
+    setCart(cart.filter((_, idx) => idx !== index));
   };
 
   // Check and apply campaigns automatically
@@ -285,10 +407,22 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       discount: totalDiscount,
       total,
       paymentMethod,
-      cashier: 'Admin'
+      cashier: 'Admin',
+      autoPrint: autoPrint,
+      language: receiptLanguage
     };
 
     onSaleComplete(sale);
+
+    // Automatic Printing Logic
+    if (autoPrint) {
+      const companyName = 'RetailEX Mobile'; // Dynamic value could be added if needed
+      printThermalReceipt(sale, companyName, { 
+        autoPrint: true, 
+        language: receiptLanguage 
+      });
+    }
+
     setCart([]);
     setSelectedCustomer(null);
     setDiscount(0);
@@ -479,11 +613,18 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   <div className="flex-1">
                     <div className="font-medium text-sm mb-1">{item.productName}</div>
                     <div className="text-xs text-gray-500">
-                      Birim: {item.price.toFixed(2)}
+                      {(() => {
+                        const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
+                        const unit = (item as any).unit || 'Adet';
+                        const basePrice = mult > 1 ? item.price / mult : item.price;
+                        return mult > 1
+                          ? <><span>{basePrice.toLocaleString('tr-TR')} / Adet × {mult}</span><span className="text-orange-500 ml-1">(={item.quantity * mult} Adet)</span></>
+                          : <span>{item.price.toLocaleString('tr-TR')} / {unit}</span>;
+                      })()}
                     </div>
                   </div>
                   <button
-                    onClick={() => removeFromCart(item.productId)}
+                    onClick={() => removeFromCart(idx)}
                     className="text-red-500 hover:bg-red-50 p-1.5 rounded -mt-1 -mr-1"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -494,7 +635,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                      onClick={() => updateQuantity(idx, item.quantity - 1)}
                       className="w-9 h-9 border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center rounded"
                     >
                       <Minus className="w-4 h-4" />
@@ -502,11 +643,11 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     <input
                       type="number"
                       value={item.quantity}
-                      onChange={(e) => updateQuantity(item.productId, parseInt(e.target.value) || 1)}
+                      onChange={(e) => updateQuantity(idx, parseInt(e.target.value) || 1)}
                       className="w-16 h-9 text-center border-2 border-gray-300 rounded font-medium"
                     />
                     <button
-                      onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                      onClick={() => updateQuantity(idx, item.quantity + 1)}
                       className="w-9 h-9 border-2 border-gray-300 hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center rounded"
                     >
                       <Plus className="w-4 h-4" />
@@ -523,7 +664,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   <input
                     type="number"
                     value={item.discount}
-                    onChange={(e) => updateItemDiscount(item.productId, parseFloat(e.target.value) || 0)}
+                    onChange={(e) => updateItemDiscount(idx, parseFloat(e.target.value) || 0)}
                     className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm"
                     placeholder="0"
                     min="0"
@@ -650,7 +791,16 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 <button
                   key={product.id}
                   onClick={() => {
-                    addToCart(product);
+                    // USD Auto-calculation for grid selection
+                    let price = product.price;
+                    const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
+                    if (isAutoCalc && (product as any).salePriceUSD > 0) {
+                      let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || exchangeRate;
+                      if (effectiveRate > 0 && effectiveRate < 10) effectiveRate *= 1000;
+                      price = (product as any).salePriceUSD * effectiveRate;
+                    }
+
+                    addToCart(product, undefined, undefined, undefined, price);
                     setShowProductsModal(false);
                   }}
                   className="bg-white border-2 border-gray-200 p-3 text-left hover:shadow-lg hover:border-blue-500 active:bg-blue-50 transition-all rounded-lg"
@@ -724,9 +874,63 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 </div>
               </button>
 
+              <div className="h-px bg-gray-200 my-2"></div>
+
+              {/* Printing Options */}
+              <div className="p-4 bg-gray-50 rounded-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 px-1">
+                    <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">Yazıcı Ayarları</div>
+                      <div className="text-[10px] text-gray-500 font-medium">Satış sonrası çıktı seçenekleri</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className={`flex flex-col gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer ${autoPrint ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className={`p-1.5 rounded-lg ${autoPrint ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                        <Plus className={`w-4 h-4 ${autoPrint ? '' : 'rotate-45'}`} />
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={autoPrint}
+                        onChange={(e) => setAutoPrint(e.target.checked)}
+                        className="hidden"
+                      />
+                    </div>
+                    <div className="text-[11px] font-bold text-gray-900 leading-tight">Otomatik Yazdır</div>
+                  </label>
+
+                  <div className={`flex flex-col gap-2 p-3 rounded-xl border-2 border-purple-500 bg-purple-50 transition-all`}>
+                    <div className="flex items-center justify-between">
+                      <div className="p-1.5 rounded-lg bg-purple-600 text-white">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <select
+                      value={receiptLanguage}
+                      onChange={(e) => setReceiptLanguage(e.target.value as any)}
+                      className="bg-transparent border-none text-[11px] font-bold text-gray-900 p-0 focus:ring-0 cursor-pointer"
+                    >
+                      <option value="tr">TR</option>
+                      <option value="en">EN</option>
+                      <option value="ar">AR</option>
+                      <option value="ku">KU</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-px bg-gray-200 my-2"></div>
+
               <button
                 onClick={() => setShowPayment(false)}
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100"
+                className="w-full px-4 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
               >
                 İptal
               </button>
@@ -827,24 +1031,34 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {/* Barcode Scanner Modal */}
       {showBarcodeScanner && (
         <BarcodeScanner
-          onScan={result => {
+          onScan={async result => {
             // Close scanner first
             setShowBarcodeScanner(false);
 
             // Debug - log what we're searching for
             console.log('Scanned barcode:', result.code);
-            console.log('Available products:', products.map(p => ({ name: p.name, barcode: p.barcode })));
 
-            // Find product by barcode
-            const product = products.find(p => p.barcode === result.code);
+            try {
+              const lookupResult = await productAPI.lookupByBarcode(result.code);
 
-            console.log('Found product:', product);
+              if (lookupResult && lookupResult.product) {
+                const product = lookupResult.product;
+                const unitInfo = lookupResult.unitInfo;
 
-            if (product) {
-              addToCart(product);
-              showNotif(`${product.name} sepete eklendi`, 'success');
-            } else {
-              showNotif(`Ürün bulunamadı!\nAranan barkod: ${result.code}`, 'error');
+                if (product.hasVariants || (product.variants && product.variants.length > 0)) {
+                  showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
+                  return;
+                }
+
+                const price = (unitInfo && unitInfo.sale_price > 0) ? unitInfo.sale_price : (product.price * (unitInfo?.multiplier || 1));
+                addToCart(product, undefined, unitInfo?.unit_code, unitInfo?.multiplier, price);
+                showNotif(`${product.name} sepete eklendi`, 'success');
+              } else {
+                showNotif(`Ürün bulunamadı!\nAranan barkod: ${result.code}`, 'error');
+              }
+            } catch (error) {
+              console.error('[MobilePOS] Barcode scanning error:', error);
+              showNotif('Barkod tarama hatası!', 'error');
             }
           }}
           onClose={() => setShowBarcodeScanner(false)}

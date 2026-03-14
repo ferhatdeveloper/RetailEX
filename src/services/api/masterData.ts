@@ -13,9 +13,178 @@ export interface Currency {
     code: string;
     name: string;
     symbol: string;
-    exchange_rate: number;
+    is_base_currency: boolean;
     is_active: boolean;
 }
+
+export interface ExchangeRate {
+    id: string;
+    currency_code: string;
+    date: string;
+    buy_rate: number;
+    sell_rate: number;
+    effective_buy?: number;
+    effective_sell?: number;
+    source: string;
+    is_active: boolean;
+    created_at?: string;
+}
+
+// ============================================================================
+// CURRENCY API
+// ============================================================================
+
+export const currencyAPI = {
+    async getAll(): Promise<Currency[]> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM currencies ORDER BY sort_order ASC, code ASC`
+            );
+            return rows;
+        } catch (error) {
+            console.error('[CurrencyAPI] getAll failed:', error);
+            return [];
+        }
+    },
+
+    async getByCode(code: string): Promise<Currency | null> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM currencies WHERE code = $1`,
+                [code]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            console.error('[CurrencyAPI] getByCode failed:', error);
+            return null;
+        }
+    },
+
+    async create(currency: Omit<Currency, 'id'>): Promise<Currency | null> {
+        try {
+            const { rows } = await postgres.query(
+                `INSERT INTO currencies (code, name, symbol, is_base_currency, is_active)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [currency.code, currency.name, currency.symbol, currency.is_base_currency ?? false, currency.is_active ?? true]
+            );
+            return rows[0];
+        } catch (error) {
+            console.error('[CurrencyAPI] create failed:', error);
+            return null;
+        }
+    },
+
+    async update(id: string, currency: Partial<Currency>): Promise<Currency | null> {
+        try {
+            const { rows } = await postgres.query(
+                `UPDATE currencies 
+                 SET name = COALESCE($1, name), 
+                     symbol = COALESCE($2, symbol), 
+                     is_active = COALESCE($3, is_active),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $4
+                 RETURNING *`,
+                [currency.name, currency.symbol, currency.is_active, id]
+            );
+            return rows[0];
+        } catch (error) {
+            console.error('[CurrencyAPI] update failed:', error);
+            return null;
+        }
+    },
+
+    async delete(id: string): Promise<boolean> {
+        try {
+            await postgres.query(`DELETE FROM currencies WHERE id = $1`, [id]);
+            return true;
+        } catch (error) {
+            console.error('[CurrencyAPI] delete failed:', error);
+            return false;
+        }
+    }
+};
+
+// ============================================================================
+// EXCHANGE RATE API
+// ============================================================================
+
+export const exchangeRateAPI = {
+    async getAll(): Promise<ExchangeRate[]> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM exchange_rates ORDER BY date DESC, created_at DESC LIMIT 100`
+            );
+            return rows;
+        } catch (error) {
+            console.error('[ExchangeRateAPI] getAll failed:', error);
+            return [];
+        }
+    },
+
+    async getLatestRates(): Promise<ExchangeRate[]> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT DISTINCT ON (currency_code) * 
+                 FROM exchange_rates 
+                 WHERE is_active = true 
+                 ORDER BY currency_code, date DESC, created_at DESC`
+            );
+            return rows;
+        } catch (error) {
+            console.error('[ExchangeRateAPI] getLatestRates failed:', error);
+            return [];
+        }
+    },
+
+    async save(rate: Omit<ExchangeRate, 'id'>): Promise<ExchangeRate | null> {
+        try {
+            const { rows } = await postgres.query(
+                `INSERT INTO exchange_rates (currency_code, date, buy_rate, sell_rate, source, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (currency_code, date, source) 
+                 DO UPDATE SET 
+                    buy_rate = EXCLUDED.buy_rate,
+                    sell_rate = EXCLUDED.sell_rate,
+                    updated_at = CURRENT_TIMESTAMP
+                 RETURNING *`,
+                [rate.currency_code, rate.date, rate.buy_rate, rate.sell_rate, rate.source || 'manual', rate.is_active ?? true]
+            );
+            return rows[0];
+        } catch (error) {
+            console.error('[ExchangeRateAPI] save failed:', error);
+            return null;
+        }
+    },
+
+    async update(id: string, rate: Partial<ExchangeRate>): Promise<ExchangeRate | null> {
+        try {
+            const { rows } = await postgres.query(
+                `UPDATE exchange_rates 
+                 SET buy_rate = COALESCE($1, buy_rate), 
+                     sell_rate = COALESCE($2, sell_rate),
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $3
+                 RETURNING *`,
+                [rate.buy_rate, rate.sell_rate, id]
+            );
+            return rows[0];
+        } catch (error) {
+            console.error('[ExchangeRateAPI] update failed:', error);
+            return null;
+        }
+    },
+
+    async delete(id: string): Promise<boolean> {
+        try {
+            await postgres.query(`DELETE FROM exchange_rates WHERE id = $1`, [id]);
+            return true;
+        } catch (error) {
+            console.error('[ExchangeRateAPI] delete failed:', error);
+            return false;
+        }
+    }
+};
 
 export interface Category {
     id: string;
@@ -66,37 +235,6 @@ export interface SpecialCode {
     module_type?: string;
     is_active: boolean;
 }
-
-// ============================================================================
-// CURRENCY API
-// ============================================================================
-
-export const currencyAPI = {
-    async getAll(): Promise<Currency[]> {
-        try {
-            const { rows } = await postgres.query(
-                `SELECT * FROM currencies WHERE is_active = true ORDER BY code ASC`
-            );
-            return rows;
-        } catch (error) {
-            console.error('[CurrencyAPI] getAll failed:', error);
-            return [];
-        }
-    },
-
-    async getByCode(code: string): Promise<Currency | null> {
-        try {
-            const { rows } = await postgres.query(
-                `SELECT * FROM currencies WHERE code = $1 AND is_active = true`,
-                [code]
-            );
-            return rows[0] || null;
-        } catch (error) {
-            console.error('[CurrencyAPI] getByCode failed:', error);
-            return null;
-        }
-    },
-};
 
 // ============================================================================
 // CATEGORY API

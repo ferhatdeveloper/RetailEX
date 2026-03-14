@@ -1,10 +1,10 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     X, Package, TrendingUp, Edit3, Barcode, History,
     ShoppingCart, Info, ArrowRightLeft, Printer, Trash2,
     ChevronRight, Box, Tag, Layers, Settings, FileText,
     AlertCircle, DollarSign, Warehouse, Clock, Search, RefreshCw, Download, Upload, Plus, Edit,
-    MapPin, Building2
+    MapPin, Building2, Calendar, Filter
 } from 'lucide-react';
 import { Product, ProductVariant } from '../../../core/types';
 import { productAPI } from '../../../services/api/products';
@@ -28,13 +28,35 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
     const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
     const [movements, setMovements] = useState<any[]>([]);
     const [loadingMovements, setLoadingMovements] = useState(false);
+    const [rateHistory, setRateHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    
+    // Filter states
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
+    const [filterType, setFilterType] = useState<'all' | 'in' | 'out'>('all');
 
     // Load movements when overview or movements tab is active
     useEffect(() => {
         if (activeTab === 'movements' || activeTab === 'overview') {
             loadMovements();
         }
+        if (activeTab === 'history') {
+            loadHistory();
+        }
     }, [activeTab, product.id]);
+
+    const loadHistory = async () => {
+        try {
+            setLoadingHistory(true);
+            const data = await productAPI.getExchangeRateHistory(product.id);
+            setRateHistory(data);
+        } catch (error) {
+            console.error('Failed to load rate history:', error);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
 
     const loadMovements = async () => {
         try {
@@ -288,18 +310,63 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
             case 'movements':
                 return (
                     <div className="flex flex-col h-full bg-white animate-in fade-in duration-300">
-                        <div className="px-4 py-2 border-b flex items-center justify-between bg-gray-50/50">
-                            <h2 className="text-xs font-bold text-gray-700 uppercase flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-blue-600" />
-                                Stok Hareketleri
-                            </h2>
-                            <button
-                                onClick={loadMovements}
-                                className="p-1 hover:bg-gray-200 rounded text-gray-500 transition-colors"
-                                title="Yenile"
-                            >
-                                <ArrowRightLeft className={`w-3 h-3 ${loadingMovements ? 'animate-spin' : ''} `} />
-                            </button>
+                        <div className="px-4 py-2 border-b flex flex-wrap items-center justify-between gap-4 bg-gray-50/50">
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-xs font-bold text-gray-700 uppercase flex items-center gap-2">
+                                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                                    Stok Hareketleri
+                                </h2>
+                                
+                                {/* Filters */}
+                                <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
+                                    <Calendar className="w-3 h-3 text-gray-400" />
+                                    <input 
+                                        type="date" 
+                                        value={filterStartDate}
+                                        onChange={(e) => setFilterStartDate(e.target.value)}
+                                        className="text-[10px] font-bold outline-none border-none p-0 w-24"
+                                    />
+                                    <span className="text-gray-300">-</span>
+                                    <input 
+                                        type="date" 
+                                        value={filterEndDate}
+                                        onChange={(e) => setFilterEndDate(e.target.value)}
+                                        className="text-[10px] font-bold outline-none border-none p-0 w-24"
+                                    />
+                                </div>
+
+                                <select 
+                                    value={filterType}
+                                    onChange={(e) => setFilterType(e.target.value as any)}
+                                    className="text-[10px] font-bold bg-white border border-gray-200 rounded-lg px-2 py-1 outline-none"
+                                >
+                                    <option value="all">TÜMÜ</option>
+                                    <option value="in">GİRİŞ ( + )</option>
+                                    <option value="out">ÇIKIŞ ( - )</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {(filterStartDate || filterEndDate || filterType !== 'all') && (
+                                    <button
+                                        onClick={() => {
+                                            setFilterStartDate('');
+                                            setFilterEndDate('');
+                                            setFilterType('all');
+                                        }}
+                                        className="text-[10px] font-bold text-red-600 hover:text-red-700 underline"
+                                    >
+                                        FİLTRELERİ TEMİZLE
+                                    </button>
+                                )}
+                                <button
+                                    onClick={loadMovements}
+                                    className="p-1 hover:bg-gray-200 rounded text-gray-500 transition-colors"
+                                    title="Yenile"
+                                >
+                                    <ArrowRightLeft className={`w-3 h-3 ${loadingMovements ? 'animate-spin' : ''} `} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-auto">
@@ -322,11 +389,35 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                 <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">İşlem / Belge No</th>
                                                 <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Tip</th>
                                                 <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Depo</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Döviz / Kur</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">Kar (Brt)</th>
                                                 <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">Miktar</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50">
-                                            {movements.map((item) => (
+                                            {movements
+                                                .filter(item => {
+                                                    const m = item.movement;
+                                                    const date = new Date(m?.movement_date || item.created_at);
+                                                    
+                                                    // Type filter
+                                                    if (filterType !== 'all' && m?.movement_type !== filterType) return false;
+                                                    
+                                                    // Date filter
+                                                    if (filterStartDate) {
+                                                        const start = new Date(filterStartDate);
+                                                        start.setHours(0, 0, 0, 0);
+                                                        if (date < start) return false;
+                                                    }
+                                                    if (filterEndDate) {
+                                                        const end = new Date(filterEndDate);
+                                                        end.setHours(23, 59, 59, 999);
+                                                        if (date > end) return false;
+                                                    }
+                                                    
+                                                    return true;
+                                                })
+                                                .map((item) => (
                                                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
                                                     <td className="px-4 py-2 whitespace-nowrap text-gray-500">
                                                         <span className="font-medium">{new Date(item.movement?.movement_date || item.created_at).toLocaleDateString('tr-TR')}</span>
@@ -351,6 +442,14 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                     <td className="px-4 py-2 text-gray-600 text-[11px]">
                                                         {item.movement?.warehouses?.name || 'Ana Depo'}
                                                     </td>
+                                                    <td className="px-4 py-2 text-gray-600 text-[11px] font-mono">
+                                                        {item.currency || 'IQD'} / {item.currency_rate?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right">
+                                                        <span className={`text-[11px] font-bold ${item.gross_profit > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                                                            {item.gross_profit > 0 ? item.gross_profit.toLocaleString('tr-TR') : '---'}
+                                                        </span>
+                                                    </td>
                                                     <td className="px-4 py-2 text-right">
                                                         <span className={`text-[11px] font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
                                                             } `}>
@@ -361,6 +460,92 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                             ))}
                                         </tbody>
                                     </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            case 'history':
+                return (
+                    <div className="flex flex-col h-full bg-white animate-in fade-in duration-300">
+                        <div className="px-4 py-2 border-b flex items-center justify-between bg-gray-50/50">
+                            <h2 className="text-xs font-bold text-gray-700 uppercase flex items-center gap-2">
+                                <History className="w-4 h-4 text-blue-600" />
+                                Değişim Geçmişi (Kur)
+                            </h2>
+                            <button
+                                onClick={loadHistory}
+                                className="p-1 hover:bg-gray-200 rounded text-gray-500 transition-colors"
+                                title="Yenile"
+                            >
+                                <RefreshCw className={`w-3 h-3 ${loadingHistory ? 'animate-spin' : ''} `} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-4">
+                            {loadingHistory ? (
+                                <div className="flex flex-col items-center justify-center h-full space-y-2">
+                                    <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-[10px] font-bold text-gray-400">YÜKLENİYOR...</p>
+                                </div>
+                            ) : rateHistory.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full p-8 text-gray-300 text-center">
+                                    <Clock className="w-10 h-10 mb-2 opacity-20" />
+                                    <h3 className="text-[11px] font-bold uppercase tracking-wider">Geçmiş Bulunamadı</h3>
+                                    <p className="text-[10px] mt-1">Özel kur değişikliği yapıldığında burada listelenecektir.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 max-w-2xl mx-auto">
+                                    {rateHistory.map((item, idx) => (
+                                        <div key={item.id} className="relative pl-8 pb-4">
+                                            {/* Timeline Line */}
+                                            {idx !== rateHistory.length - 1 && (
+                                                <div className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-gray-100"></div>
+                                            )}
+                                            
+                                            {/* Timeline Dot */}
+                                            <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-blue-50 border-2 border-blue-200 flex items-center justify-center z-10">
+                                                <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                                            </div>
+
+                                            <div className="bg-gray-50/50 border border-gray-100 rounded-lg p-3 hover:border-blue-200 transition-colors">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-[10px] font-bold text-blue-600 uppercase">KUR GÜNCELLEMESİ</span>
+                                                    <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                                                        <Clock className="w-3 h-3" />
+                                                        {new Date(item.change_date).toLocaleString('tr-TR')}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex-1">
+                                                        <span className="text-[9px] text-gray-400 block uppercase font-bold">Eski Kur</span>
+                                                        <span className="text-sm font-mono font-bold text-gray-500 line-through">
+                                                            {parseFloat(item.old_rate || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <ArrowRightLeft className="w-4 h-4 text-gray-300" />
+
+                                                    <div className="flex-1">
+                                                        <span className="text-[9px] text-gray-400 block uppercase font-bold">Yeni Kur</span>
+                                                        <span className="text-sm font-mono font-bold text-green-600">
+                                                            {parseFloat(item.new_rate || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
+                                                    <div className="w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center">
+                                                        <Info className="w-2 h-2 text-gray-500" />
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-500 font-medium">
+                                                        Düzenleyen: <span className="font-bold text-gray-700">{item.changed_by || 'Sistem'}</span>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>

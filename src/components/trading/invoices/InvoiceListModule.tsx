@@ -18,8 +18,11 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
   title?: string;
+  description?: string;
   defaultInvoiceTypeFilter?: string;
   defaultCategory?: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
+  customers?: any[];
+  products?: any[];
 }
 
 interface InvoiceType {

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Printer, Save, RefreshCw, CheckCircle, XCircle, Wifi, Usb } from 'lucide-react';
 import { useElectron } from '../../hooks/useElectron';
 
@@ -17,6 +17,9 @@ interface PrinterConfig {
   // Standard printer
   paperSize?: 'A4' | 'A5' | '80mm';
   orientation?: 'portrait' | 'landscape';
+  // Auto print & default language
+  autoPrint?: boolean;
+  defaultLanguage?: 'tr' | 'en' | 'ar' | 'ku';
 }
 
 export function PrinterSettings() {
@@ -31,7 +34,9 @@ export function PrinterSettings() {
     width: 48,
     encoding: 'PC857_TURKISH',
     paperSize: 'A4',
-    orientation: 'portrait'
+    orientation: 'portrait',
+    autoPrint: false,
+    defaultLanguage: 'tr'
   });
   
   const [availablePrinters, setAvailablePrinters] = useState<any[]>([]);
@@ -280,6 +285,35 @@ export function PrinterSettings() {
                     <Printer className="w-6 h-6" />
                     <span className="text-sm">Serial</span>
                   </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <label className="flex items-center gap-2 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.autoPrint}
+                    onChange={(e) => setConfig({ ...config, autoPrint: e.target.checked })}
+                    className="rounded text-blue-600"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">Otomatik Yazdır</span>
+                    <span className="text-xs text-gray-500">Satış sonrası onay sormadan yazdır</span>
+                  </div>
+                </label>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-2">Varsayılan Fiş Dili</label>
+                  <select
+                    value={config.defaultLanguage || 'tr'}
+                    onChange={(e) => setConfig({ ...config, defaultLanguage: e.target.value as any })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="tr">Türkçe</option>
+                    <option value="en">English</option>
+                    <option value="ar">العربية (Arapça)</option>
+                    <option value="ku">Kurdî (Kürtçe)</option>
+                  </select>
                 </div>
               </div>
             </div>

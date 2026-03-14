@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.51",
+      "version": "0.1.56",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -109,6 +109,7 @@
             "@types/react-dom": "^19.2.3",
             "@vercel/node": "^5.1.6",
             "@vitejs/plugin-react-swc": "^3.10.2",
+            "node-windows": "^1.0.0-beta.8",
             "ts-node": "^10.9.2",
             "typescript": "^5.9.3",
             "vite": "6.3.5"
@@ -123,8 +124,8 @@
             "deploy:preview": "vercel",
             "vercel:build": "npm run build",
             "tauri": "tauri",
-            "tauri:dev": "tauri dev",
-            "tauri:build": "tauri build",
+            "tauri:dev": "cd DeskApp && tauri dev",
+            "tauri:build": "cd DeskApp && tauri build",
             "electron:dev": "electron ./src/electron/main.js --dev",
             "bridge": "npx tsx src/services/pg_bridge.ts"
       }

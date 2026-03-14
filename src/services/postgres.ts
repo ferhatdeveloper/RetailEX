@@ -1,15 +1,18 @@
-﻿import { invoke } from '@tauri-apps/api/core';
+import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { logger } from './loggingService';
+
+const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname === 'retailex.app';
+const BRIDGE_URL = getBridgeUrl();
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
 
 // Remote PostgreSQL (Global/Main Server)
 export let REMOTE_CONFIG = {
-  host: '26.154.3.237',
+  host: '127.0.0.1',
   port: 5432,
-  database: 'retailos_db',
-  user: 'retailos_user',
-  password: 'RetailOS2025!Secure',
+  database: 'retailex_local',
+  user: 'postgres',
+  password: 'Yq7xwQpt6c',
 };
 
 // Local PostgreSQL (Branch/Local Offline Server)
@@ -40,8 +43,46 @@ export let ERP_SETTINGS = {
  * Initialize all configurations from SQLite backend
  */
 export async function initializeFromSQLite() {
+  if (!IS_TAURI) {
+    // Web environment: Always use 'online' mode by default
+    DB_SETTINGS.activeMode = 'online';
+    
+    // Load other credentials from localStorage
+    const savedConfig = localStorage.getItem('exretail_pg_config');
+    if (savedConfig) {
+      try {
+        const config = JSON.parse(savedConfig);
+        // We still keep activeMode as 'online' for web, ignoring saved db_mode
+        DB_SETTINGS.activeMode = 'online'; 
+        LOCAL_CONFIG.host = config.local_host || '127.0.0.1';
+        LOCAL_CONFIG.port = config.local_port || 5432;
+        LOCAL_CONFIG.database = config.local_db || 'retailex_local';
+        LOCAL_CONFIG.user = config.pg_local_user || 'postgres';
+        LOCAL_CONFIG.password = config.pg_local_pass || 'Yq7xwQpt6c';
+        LOCAL_CONFIG.isConfigured = config.is_configured === true;
+
+        REMOTE_CONFIG.host = config.remote_host || '127.0.0.1';
+        REMOTE_CONFIG.user = config.pg_remote_user || 'postgres';
+        REMOTE_CONFIG.password = config.pg_remote_pass || 'Yq7xwQpt6c';
+        REMOTE_CONFIG.database = 'retailex_local'; // Forced as requested
+
+        ERP_SETTINGS.firmNr = config.erp_firm_nr || '001';
+        ERP_SETTINGS.periodNr = config.erp_period_nr || '01';
+        
+        console.log('🌐 Web Config Loaded from localStorage');
+      } catch (e) {
+        console.warn('Failed to parse web config', e);
+      }
+    } else {
+      // Default Online Mode for Web when no config exists
+      DB_SETTINGS.activeMode = 'online';
+      console.log('🌐 Web Mode: Defaulting to Online (127.0.0.1)');
+    }
+    return;
+  }
+
   try {
-    const config: any = await invoke('get_app_config');
+    const config: any = await safeInvoke('get_app_config');
     if (config) {
       // Load System Settings
       DB_SETTINGS.activeMode = config.db_mode as ConnectionMode;
@@ -56,18 +97,22 @@ export async function initializeFromSQLite() {
       console.log('🏢 Applied ERP Settings:', ERP_SETTINGS);
 
       // Load Local DB Settings
-      if (config.local_db) LOCAL_CONFIG.host = config.local_db.split(':')[0] || 'localhost';
-      if (config.local_db && config.local_db.includes(':')) {
-        const portPart = config.local_db.split(':')[1];
-        if (portPart) LOCAL_CONFIG.port = parseInt(portPart.split('/')[0]) || 5432;
-        if (config.local_db.includes('/')) LOCAL_CONFIG.database = config.local_db.split('/')[1];
+      if (config.local_db && typeof config.local_db === 'string') {
+          LOCAL_CONFIG.host = config.local_db.split(':')[0] || 'localhost';
+          if (config.local_db.includes(':')) {
+            const portPart = config.local_db.split(':')[1];
+            if (portPart) LOCAL_CONFIG.port = parseInt(portPart.split('/')[0]) || 5432;
+            if (config.local_db.includes('/')) LOCAL_CONFIG.database = config.local_db.split('/')[1];
+          }
       }
 
       if (config.pg_local_user) LOCAL_CONFIG.user = config.pg_local_user;
       if (config.pg_local_pass) LOCAL_CONFIG.password = config.pg_local_pass;
 
       // Load Remote DB Settings
-      if (config.remote_db) REMOTE_CONFIG.host = config.remote_db.split(':')[0] || '91.205.41.130';
+      if (config.remote_db && typeof config.remote_db === 'string') {
+          REMOTE_CONFIG.host = config.remote_db.split(':')[0] || '26.154.3.237';
+      }
       if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
       if (config.pg_remote_pass) REMOTE_CONFIG.password = config.pg_remote_pass;
 
@@ -86,7 +131,7 @@ export async function initializeFromSQLite() {
 }
 
 /**
- * Update configurations and persist (Now syncs to SQLite too)
+ * Update configurations and persist (Now syncs to SQLite/localStorage too)
  */
 export async function updateConfigs(updates: {
   local?: Partial<typeof LOCAL_CONFIG>,
@@ -99,9 +144,31 @@ export async function updateConfigs(updates: {
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
 
+  if (!IS_TAURI) {
+    // Web: Sync to localStorage
+    const webConfig = {
+      db_mode: DB_SETTINGS.activeMode,
+      system_type: DB_SETTINGS.systemType,
+      erp_firm_nr: ERP_SETTINGS.firmNr,
+      erp_period_nr: ERP_SETTINGS.periodNr,
+      is_configured: LOCAL_CONFIG.isConfigured,
+      local_host: LOCAL_CONFIG.host,
+      local_port: LOCAL_CONFIG.port,
+      local_db: LOCAL_CONFIG.database,
+      pg_local_user: LOCAL_CONFIG.user,
+      pg_local_pass: LOCAL_CONFIG.password,
+      remote_host: REMOTE_CONFIG.host,
+      pg_remote_user: REMOTE_CONFIG.user,
+      pg_remote_pass: REMOTE_CONFIG.password
+    };
+    localStorage.setItem('exretail_pg_config', JSON.stringify(webConfig));
+    console.log('🌐 Web Config Saved to localStorage');
+    return;
+  }
+
   // Sync back to SQLite
   try {
-    const currentConfig: any = await invoke('get_app_config');
+    const currentConfig: any = await safeInvoke('get_app_config');
     const newConfig = {
       ...currentConfig,
       db_mode: DB_SETTINGS.activeMode,
@@ -111,7 +178,7 @@ export async function updateConfigs(updates: {
       selected_cash_registers: ERP_SETTINGS.selected_cash_registers,
       is_configured: LOCAL_CONFIG.isConfigured
     };
-    await invoke('save_app_config', { config: newConfig });
+    await safeInvoke('save_app_config', { config: newConfig });
   } catch (err) {
     console.error('Failed to sync config to SQLite:', err);
   }
@@ -132,9 +199,45 @@ export type PostgresStatus = {
  */
 export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_CONFIG): Promise<PostgresStatus> {
   try {
+    if (!IS_TAURI) {
+      // Browser: Check bridge status first
+      try {
+        const bridgeStatus = await fetch(`${BRIDGE_URL}/api/status`).then(r => r.json());
+        if (bridgeStatus.status !== 'RUNNING') throw new Error('Bridge is not running');
+      } catch (e) {
+        throw new Error('PostgreSQL Bridge bağlantısı kurulamadı. Lütfen bridge servisini başlatın.');
+      }
+
+      // Connectivity test via bridge (try a simple query)
+      const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
+      const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+      
+      const response = await fetch(`${BRIDGE_URL}/api/pg_query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connStr, sql: 'SELECT version()', params: [] })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Bağlantı hatası');
+      }
+
+      const res = await response.json();
+      return {
+        connected: true,
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        mode: DB_SETTINGS.activeMode,
+        version: res.rows[0].version,
+      };
+    }
+
     // Use backend to check connection (Browser cannot check TCP ports reliably)
-    const status: string = await invoke('check_db_status', {
-      config: await invoke('get_app_config')
+    const currentConfig = await safeInvoke('get_app_config');
+    const status: string = await safeInvoke('check_db_status', {
+      config: currentConfig
     });
 
     if (status === 'RUNNING') {
@@ -197,7 +300,7 @@ export class PostgresConnection {
     'products', 'customers', 'suppliers', 'sales_reps', 'cash_registers', 'cash_register_transactions',
     'categories', 'brands', 'units', 'tax_rates', 'special_codes',
     'unitsets', 'unitsetl',
-    'campaigns', 'product_variants', 'lots', 'bank_registers', 'expense_cards',
+    'campaigns', 'product_variants', 'product_barcodes', 'product_unit_conversions', 'lots', 'bank_registers', 'expense_cards',
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
     // Beauty card tables (beauty schema)
@@ -311,12 +414,14 @@ export class PostgresConnection {
     console.log(`[PG Query] [${DB_SETTINGS.activeMode}]`, resolvedSql, JSON.parse(JSON.stringify(normalizedParams)));
 
     // Attempt to log to a file for AI to read
-    try {
-      invoke('log_to_file', {
-        fileName: 'pg_queries.log',
-        content: `[${new Date().toISOString()}] SQL: ${resolvedSql} PARAMS: ${JSON.stringify(normalizedParams)}\n`
-      }).catch(() => { });
-    } catch (e) { }
+    if (IS_TAURI) {
+      try {
+        safeInvoke('log_to_file', {
+          fileName: 'pg_queries.log',
+          content: `[${new Date().toISOString()}] SQL: ${resolvedSql} PARAMS: ${JSON.stringify(normalizedParams)}\n`
+        }).catch(() => { });
+      } catch (e) { }
+    }
 
     const startTime = Date.now();
     try {
@@ -325,8 +430,26 @@ export class PostgresConnection {
       const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
       const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
 
-      const resultJson: string = await invoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
-      const rows = JSON.parse(resultJson);
+      let rows: any[];
+      if (IS_TAURI) {
+        const resultJson: string = await safeInvoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
+        rows = JSON.parse(resultJson);
+      } else {
+        // Web Environment: Use Bridge
+        const response = await fetch(`${BRIDGE_URL}/api/pg_query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Database query failed');
+        }
+
+        const data = await response.json();
+        rows = data.rows;
+      }
 
       const duration = Date.now() - startTime;
       logger.sql('Postgres', resolvedSql, normalizedParams, duration);
@@ -356,12 +479,15 @@ export class PostgresConnection {
    */
   async runMigrations(loadDemo: boolean = false): Promise<{ success: boolean; message: string }> {
     try {
+      if (!IS_TAURI) {
+        return { success: true, message: 'Web environment: Migrations handled via bridge or pre-configured' };
+      }
       console.log(`🛠 Running Database Migrations (Demo: ${loadDemo ? 'YES' : 'NO'})...`);
 
-      const config: any = await invoke('get_app_config');
+      const config: any = await safeInvoke('get_app_config');
       const target = DB_SETTINGS.activeMode === 'online' ? 'remote' : 'local';
 
-      const message: string = await invoke('run_migrations', {
+      const message: string = await safeInvoke('run_migrations', {
         config,
         target,
         loadDemoData: loadDemo

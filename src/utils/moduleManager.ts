@@ -1,4 +1,4 @@
-﻿import { LucideIcon } from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
 
 export interface ModuleDefinition {
   id: string;
@@ -717,7 +717,7 @@ export const ALL_MODULES: ModuleDefinition[] = [
   }
 ];
 
-const STORAGE_KEY = 'retailos_active_modules';
+const STORAGE_KEY = 'retailex_enabled_modules';
 
 class ModuleManager {
   private activeModules: Set<string>;
@@ -765,6 +765,13 @@ class ModuleManager {
 
   isModuleActive(moduleId: string): boolean {
     return this.activeModules.has(moduleId);
+  }
+
+  setActiveModules(moduleIds: string[]): void {
+    // Keep core modules always active
+    const coreIds = ALL_MODULES.filter(m => m.isCore).map(m => m.id);
+    this.activeModules = new Set([...coreIds, ...moduleIds]);
+    this.saveActiveModules();
   }
 
   toggleModule(moduleId: string): boolean {

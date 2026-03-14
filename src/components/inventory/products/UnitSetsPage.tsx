@@ -450,7 +450,7 @@ export default function UnitSetsPage() {
                                                 <input
                                                     type="number"
                                                     value={line.conv_fact1}
-                                                    onChange={e => updateLine(idx, 'conv_fact1', parseFloat(e.target.value))}
+                                                    onChange={e => updateLine(idx, 'conv_fact1', parseFloat(e.target.value) || 1)}
                                                     className="w-full bg-white border border-gray-100 rounded px-2 py-1 focus:border-blue-500 focus:ring-0 transition-all text-center font-bold text-blue-600"
                                                     disabled={line.main_unit}
                                                 />
@@ -459,7 +459,7 @@ export default function UnitSetsPage() {
                                                 <input
                                                     type="number"
                                                     value={line.conv_fact2}
-                                                    onChange={e => updateLine(idx, 'conv_fact2', parseFloat(e.target.value))}
+                                                    onChange={e => updateLine(idx, 'conv_fact2', parseFloat(e.target.value) || 1)}
                                                     className="w-full bg-white border border-gray-100 rounded px-2 py-1 focus:border-blue-500 focus:ring-0 transition-all text-center font-bold text-blue-600"
                                                     disabled={line.main_unit}
                                                 />

@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { toast } from 'sonner';
 import rbacService, { Role } from '../services/rbacService';
 import { postgres, ERP_SETTINGS } from '../services/postgres';
@@ -174,11 +174,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userWithRoles);
         useAuthStore.getState().login(userWithRoles as any);
 
-        // Restore firm and period context from session
+        // Save User Meta
+        const userMeta = {
+          firmNr: dbUser.firm_nr,
+          periodNr: latestSettings.periodNr
+        };
         localStorage.setItem('exretail_user_meta', JSON.stringify({
-          firm_nr: dbUser.firm_nr,
-          period_nr: latestSettings.periodNr
+          firm_nr: userMeta.firmNr,
+          period_nr: userMeta.periodNr
         }));
+
+        // Sync ERP settings with global state
+        const { updateConfigs } = await import('../services/postgres');
+        await updateConfigs({
+          erp: userMeta
+        });
 
         // Save session
         const sessionData = {

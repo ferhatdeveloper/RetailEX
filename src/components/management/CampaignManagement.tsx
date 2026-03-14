@@ -1,9 +1,9 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Tag, Calendar, CheckCircle, Search, RefreshCw, Download, Settings } from 'lucide-react';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { createColumnHelper, type ColumnDef } from '@tanstack/react-table';
 import type { Campaign, Product } from '../../App';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { campaignsAPI } from '../../services/api/campaigns';
 import { CreateCampaignPage } from './CreateCampaignPage';
 import { ContextMenu } from '../shared/ContextMenu';
 import { toast } from 'sonner';
@@ -31,19 +31,8 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
   const loadCampaigns = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-eae94dc0/campaigns`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setCampaigns(data.campaigns || []);
-      }
+      const data = await campaignsAPI.getAll();
+      setCampaigns(data || []);
     } catch (error) {
       console.error('Kampanyalar yüklenirken hata:', error);
       toast.error('Kampanyalar yüklenemedi');
@@ -71,17 +60,8 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
     if (!confirm(`"${name}" kampanyasını silmek istediğinizden emin misiniz?`)) return;
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-eae94dc0/campaigns/${id}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (response.ok) {
+      const success = await campaignsAPI.delete(id);
+      if (success) {
         setCampaigns(campaigns.filter(c => c.id !== id));
         toast.success('Kampanya silindi');
       } else {
@@ -98,19 +78,8 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
     if (!campaign) return;
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-eae94dc0/campaigns/${id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ ...campaign, active: !campaign.active })
-        }
-      );
-
-      if (response.ok) {
+      const success = await campaignsAPI.setActive(id, !campaign.active);
+      if (success) {
         setCampaigns(campaigns.map(c =>
           c.id === id ? { ...c, active: !c.active } : c
         ));

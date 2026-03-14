@@ -19,6 +19,7 @@ import { LanguageSelectionModal } from './LanguageSelectionModal';
 import { DashboardModule } from './DashboardModule';
 import { ProductManagement } from '../inventory/products/ProductManagement';
 import { StockModule } from '../inventory/stock/StockModule';
+import { ServiceManagement } from '../inventory/services/ServiceManagement';
 import { CustomerManagementModule } from '../trading/contacts/CustomerManagementModule';
 import { FinanceModule } from '../accounting/finance/FinanceModule';
 import { PurchaseModule } from '../trading/purchase/PurchaseModule';
@@ -102,6 +103,7 @@ import { VirmanModule } from '../accounting/reports/VirmanModule';
 import { PaymentPlansModule } from '../accounting/finance/PaymentPlansModule';
 import { BankPaymentPlansModule } from '../accounting/finance/BankPaymentPlansModule';
 import { MaterialMasterRecords, MasterRecordType } from '../inventory/products/MaterialMasterRecords';
+import { CostCenterManagement } from '../accounting/finance/CostCenterManagement';
 import { MaterialExtractReport } from '../inventory/reports/MaterialExtractReport';
 import { MaterialAdvancedReports, ReportViewType } from '../inventory/products/MaterialAdvancedReports';
 import { NewModulesDashboard } from './NewModulesDashboard';
@@ -111,6 +113,7 @@ import { VoiceAssistantWeb } from '../modules/VoiceAssistantWeb';
 import { ProductAnalyticsDashboard } from '../inventory/products/ProductAnalyticsDashboard';
 import { CashierScale } from '../scale/CashierScale';
 import { DatabaseMigrations } from './DatabaseMigrations';
+import SupabaseMigrationModule from './SupabaseMigrationModule';
 import { StoreManagementDashboard } from './StoreManagementDashboard';
 import { SecurityModulesWeb } from './SecurityModulesWeb';
 import { ReportDetailFullPage } from '../reports/ReportDetailFullPage';
@@ -187,13 +190,14 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
   'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'db-migrations' | 'store-management' | 'security-modules' | 'database-settings' | 'demo-data' |
-  'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' |
+  'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
+  'supabase-migration' |
   'restaurant' | 'beauty';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -691,7 +695,9 @@ export function ManagementModule({
   // Search functionality - Comprehensive recursive search through all menu items including children
   useEffect(() => {
     if (menuSearchQuery.trim() === '') {
-      setSearchResults([]);
+      if (searchResults.length > 0) {
+        setSearchResults([]);
+      }
       return;
     }
 
@@ -964,7 +970,7 @@ export function ManagementModule({
           return <MaterialAdvancedReports viewType='stockreports_bal' />;
 
         case 'customers':
-          return <CustomerManagementModule sales={sales} />;
+          return <CustomerManagementModule sales={sales} customers={customers} setCustomers={setCustomers} />;
         case 'cashbank':
           return <CashRegisterManagement
             initialTab="sessions"
@@ -991,6 +997,8 @@ export function ManagementModule({
           />;
         case 'banks':
           return <BankRegisterManagement />;
+        case 'service-cards':
+          return <ServiceManagement />;
         case 'discounts':
           return <DiscountManagement />;
         case 'finance':
@@ -1025,6 +1033,8 @@ export function ManagementModule({
           return <InventoryAgingReport />;
         case 'nebim-migration':
           return <NebimMigrationWizard />;
+        case 'supabase-migration':
+          return <SupabaseMigrationModule />;
         case 'income-statement':
           return <IncomeStatementReport />;
         case 'balance-sheet':
@@ -1050,29 +1060,29 @@ export function ManagementModule({
           return <LogisticsModule />;
         case 'salesinvoice':
         case 'sales-invoice-view': // Generic view
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-standard':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-retail':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="7" title={t.retailSalesTitle} description={t.retailSalesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="7" title={t.retailSalesTitle} description={t.retailSalesDesc} />;
         case 'sales-invoice-wholesale':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.wholesaleSales} description={t.wholesaleDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.wholesaleSales} description={t.wholesaleSales} />;
         case 'sales-invoice-consignment':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-return':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title={t.salesReturnTitle} description={t.salesReturnDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title={t.salesReturnTitle} description={t.salesReturnDesc} />;
         case 'purchaseinvoice':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Alis" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
         case 'purchase-invoice-standard':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Alis" defaultInvoiceTypeFilter="1" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Alis" defaultInvoiceTypeFilter="1" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
         case 'purchase-invoice-return':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title={t.purchaseReturnTitle} description={t.purchaseReturnDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title={t.purchaseReturnTitle} description={t.purchaseReturnDesc} />;
         case 'serviceinvoice':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" title={t.serviceInvoices} description={t.serviceInvoices} />;
+          return <InvoiceListModule products={products} defaultCategory="Hizmet" title={t.serviceInvoices} description={t.serviceInvoices} />;
         case 'serviceinvoice-received':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="4" title={t.receivedServiceInvoicesTitle} description={t.receivedServiceInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="4" title={t.receivedServiceInvoicesTitle} description={t.receivedServiceInvoicesDesc} />;
         case 'serviceinvoice-given':
-          return <InvoiceListModule customers={customers} products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="9" title={t.issuedServiceInvoicesTitle} description={t.issuedServiceInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Hizmet" defaultInvoiceTypeFilter="9" title={t.issuedServiceInvoicesTitle} description={t.issuedServiceInvoicesDesc} />;
         case 'proforma':
           return <UnifiedInvoiceModule customers={customers} products={products} />;
         case 'waybill-sales':
@@ -1161,7 +1171,14 @@ export function ManagementModule({
         case 'whatsapp':
           return <WhatsAppIntegrationModule />;
         case 'restaurant':
-          return <RestaurantMain />;
+          return <RestaurantMain
+            products={products}
+            customers={customers}
+            campaigns={campaigns}
+            currentUser={user as any}
+            onSaleComplete={() => { }}
+            setActiveModule={() => { }}
+          />;
         case 'beauty':
           return <BeautyMain />;
         case 'appointment':
@@ -1219,6 +1236,8 @@ export function ManagementModule({
 
         case 'payment-plans':
           return <PaymentPlansModule />;
+        case 'cost-centers':
+          return <CostCenterManagement />;
         case 'bank-payment-plans':
           return <BankPaymentPlansModule />;
         case 'security-modules':
@@ -1232,7 +1251,7 @@ export function ManagementModule({
             customers={customers}
             sales={sales}
             setCurrentScreen={(s: any) => setCurrentScreen(s)}
-            menuMode={menuMode}
+            menuMode={0}
           />;
       }
     } catch (error) {
@@ -1330,7 +1349,7 @@ export function ManagementModule({
   );
 }
 
-function PlaceholderModule({ screenName, onBack }: { screenName: string; onBack: () => void }) {
+function PlaceholderModule({ screenName, onBack, t }: { screenName: string; onBack: () => void; t: any }) {
   return (
     <div className="flex flex-col items-center justify-center h-full p-8 bg-slate-50">
       <div className="w-20 h-20 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">

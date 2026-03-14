@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RetailOS - Direct PostgreSQL Connection Hook
  * Direkt PostgreSQL bağlantısı - API olmadan
  */
@@ -7,11 +7,11 @@ import { useState, useEffect, useCallback } from 'react';
 
 // PostgreSQL Bağlantı Bilgileri
 const DB_CONFIG = {
-  host: '91.205.41.130',
+  host: '127.0.0.1',
   port: 5432,
-  database: 'retailos_db',
-  user: 'retailos_user',
-  password: 'RetailOS2025!Secure',
+  database: 'retailex_local',
+  user: 'postgres',
+  password: 'Yq7xwQpt6c',
 };
 
 // Bağlantı durumu tipi

@@ -52,16 +52,18 @@ export const organizationAPI = {
     async saveFirm(firm: any): Promise<Firm | null> {
         try {
             const isUpdate = !!firm.id;
+            const anaPara = firm.ana_para_birimi || 'IQD';
+            const raporPara = firm.raporlama_para_birimi || 'IQD';
             if (isUpdate) {
                 const { rows } = await postgres.query(
-                    `UPDATE firms SET name = $1, tax_nr = $2, tax_office = $3, city = $4 WHERE id = $5::text::uuid RETURNING *`,
-                    [firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, firm.id]
+                    `UPDATE firms SET name = $1, tax_nr = $2, tax_office = $3, city = $4, ana_para_birimi = $5, raporlama_para_birimi = $6 WHERE id = $7::text::uuid RETURNING *`,
+                    [firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, anaPara, raporPara, firm.id]
                 );
                 return rows[0];
             } else {
                 const { rows } = await postgres.query(
-                    `INSERT INTO firms (firm_nr, name, tax_nr, tax_office, city) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-                    [firm.firma_kodu || firm.firm_nr, firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city]
+                    `INSERT INTO firms (firm_nr, name, tax_nr, tax_office, city, ana_para_birimi, raporlama_para_birimi) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                    [firm.firma_kodu || firm.firm_nr, firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, anaPara, raporPara]
                 );
                 return rows[0];
             }

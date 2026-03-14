@@ -157,14 +157,24 @@ export const invoicesAPI = {
       if (invoice.items && invoice.items.length > 0) {
         for (const item of invoice.items) {
           const productId = item.code || item.productId;
+          const unitMultiplier = Number((item as any).multiplier || 1);
+          const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+          const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
+          const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
+
           await postgres.query(
             `INSERT INTO sale_items (
                 id,
                 invoice_id, firm_nr, period_nr, item_code, item_name,
-                quantity, unit_price, discount_rate, vat_rate,
+                quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
-                unit_cost, total_cost, gross_profit
-             ) VALUES ($1::text::uuid, $2::text::uuid, $3::text, $4::text, $5::text, $6::text, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric, $15::text::numeric)`,
+                unit_cost, total_cost, gross_profit,
+                unit_multiplier, base_quantity, unit_price_fc, currency
+             ) VALUES ($1::text::uuid, $2::text::uuid, $3::text, $4::text, $5::text, $6::text,
+               $7::text::numeric, $8::text, $9::text::numeric, $10::text::numeric, $11::text::numeric,
+               $12::text::numeric, $13::text::numeric,
+               $14::text::numeric, $15::text::numeric, $16::text::numeric,
+               $17::text::numeric, $18::text::numeric, $19::text::numeric, $20::text)`,
             [
               self.crypto.randomUUID(),
               invoiceId,
@@ -173,6 +183,7 @@ export const invoicesAPI = {
               String(productId),
               String(item.description || item.productName),
               Number(item.quantity),
+              String((item as any).unit || 'Adet'),
               Number(item.unitPrice || item.price),
               Number(item.discount || 0),
               Number((item as any).taxRate || (item as any).vat_rate || 0),
@@ -180,21 +191,24 @@ export const invoicesAPI = {
               Number(item.netAmount || item.total),
               Number(item.unitCost || 0),
               Number(item.totalCost || 0),
-              Number(item.grossProfit || 0)
+              Number(item.grossProfit || 0),
+              unitMultiplier,
+              baseQty,
+              unitPriceFC,
+              itemCurrency
             ],
             queryOptions
           );
 
-          // 3. Update stock (Simplified)
+          // 3. Update stock — use base_quantity (accounts for unit multiplier)
           if (productId) {
             let stockModifier = 0;
-            if (invoice.invoice_category === 'Alis') stockModifier = item.quantity;
-            else if (invoice.invoice_category === 'Satis') stockModifier = -item.quantity;
+            if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
+            else if (invoice.invoice_category === 'Satis') stockModifier = -baseQty;
             else if (invoice.invoice_category === 'Iade') {
-              // trcode 3 = Sales Return (Stock Increase), trcode 2/6 = Purchase Return (Stock Decrease)
-              if (Number(trcode) === 3) stockModifier = item.quantity;
-              else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -item.quantity;
-              else stockModifier = item.quantity; // Default to increase if unknown return type
+              if (Number(trcode) === 3) stockModifier = baseQty;
+              else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -baseQty;
+              else stockModifier = baseQty;
             }
 
             if (stockModifier !== 0) {
@@ -414,7 +428,8 @@ export const invoicesAPI = {
         code: item.item_code,
         description: item.item_name,
         productName: item.item_name,
-        quantity: item.quantity,
+        quantity: parseFloat(item.quantity),
+        unit: item.unit || 'Adet',
         unitPrice: parseFloat(item.unit_price),
         price: parseFloat(item.unit_price),
         discount: parseFloat(item.discount_rate || 0),
@@ -424,6 +439,10 @@ export const invoicesAPI = {
         unitCost: parseFloat(item.unit_cost || 0),
         totalCost: parseFloat(item.total_cost || 0),
         grossProfit: parseFloat(item.gross_profit || 0),
+        multiplier: parseFloat(item.unit_multiplier || 1),
+        baseQuantity: parseFloat(item.base_quantity || item.quantity),
+        unitPriceFC: parseFloat(item.unit_price_fc || item.unit_price),
+        currency: item.currency || 'IQD',
       }));
 
       return invoice;
@@ -468,13 +487,22 @@ export const invoicesAPI = {
         await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
         for (const item of invoice.items) {
           const productId = item.code || item.productId;
+          const unitMultiplier = Number((item as any).multiplier || 1);
+          const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+          const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
+          const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
           await postgres.query(
             `INSERT INTO sale_items (
                 invoice_id, firm_nr, period_nr, item_code, item_name,
-                quantity, unit_price, discount_rate, vat_rate,
+                quantity, unit, unit_price, discount_rate, vat_rate,
                 total_amount, net_amount,
-                unit_cost, total_cost, gross_profit
-             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text, $6::text::numeric, $7::text::numeric, $8::text::numeric, $9::text::numeric, $10::text::numeric, $11::text::numeric, $12::text::numeric, $13::text::numeric, $14::text::numeric)`,
+                unit_cost, total_cost, gross_profit,
+                unit_multiplier, base_quantity, unit_price_fc, currency
+             ) VALUES ($1::text::uuid, $2::text, $3::text, $4::text, $5::text,
+               $6::text::numeric, $7::text, $8::text::numeric, $9::text::numeric, $10::text::numeric,
+               $11::text::numeric, $12::text::numeric,
+               $13::text::numeric, $14::text::numeric, $15::text::numeric,
+               $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text)`,
             [
               id,
               String(firmNr),
@@ -482,6 +510,7 @@ export const invoicesAPI = {
               String(productId),
               String(item.description || item.productName),
               Number(item.quantity),
+              String((item as any).unit || 'Adet'),
               Number(item.unitPrice || item.price),
               Number(item.discount || 0),
               Number((item as any).taxRate || (item as any).vat_rate || 0),
@@ -489,7 +518,11 @@ export const invoicesAPI = {
               Number(item.netAmount || item.total),
               Number(item.unitCost || 0),
               Number(item.totalCost || 0),
-              Number(item.grossProfit || 0)
+              Number(item.grossProfit || 0),
+              unitMultiplier,
+              baseQty,
+              unitPriceFC,
+              itemCurrency
             ]
           );
         }

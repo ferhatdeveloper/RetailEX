@@ -1,9 +1,9 @@
-﻿// Create Campaign Page - Comprehensive Campaign Creation Interface
+// Create Campaign Page - Comprehensive Campaign Creation Interface
 
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, X, Plus, Trash2, Calendar, Percent, Tag, Users, Package, Image as ImageIcon, Globe, DollarSign, Clock, Info } from 'lucide-react';
 import type { Campaign, Product } from '../../App';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { campaignsAPI } from '../../services/api/campaigns';
 
 interface CreateCampaignPageProps {
   onBack: () => void;
@@ -109,22 +109,15 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
     };
 
     try {
-      const url = editingCampaign
-        ? `https://${projectId}.supabase.co/functions/v1/make-server-eae94dc0/campaigns/${editingCampaign.id}`
-        : `https://${projectId}.supabase.co/functions/v1/make-server-eae94dc0/campaigns`;
+      let result;
+      if (editingCampaign) {
+        result = await campaignsAPI.update(editingCampaign.id, campaign);
+      } else {
+        result = await campaignsAPI.create(campaign);
+      }
 
-      const response = await fetch(url, {
-        method: editingCampaign ? 'PUT' : 'POST',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(campaign)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        onSave(result.campaign);
+      if (result) {
+        onSave(result);
         alert(editingCampaign ? 'Kampanya güncellendi!' : 'Kampanya oluşturuldu!');
         onBack();
       } else {

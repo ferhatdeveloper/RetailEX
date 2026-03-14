@@ -1,9 +1,10 @@
-﻿import { Minus, Plus, Trash2, Percent, Package } from 'lucide-react';
+import { Minus, Plus, Trash2, Percent, Package } from 'lucide-react';
 import type { CartItem } from './types';
 import { useState, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { POSCartItemActionModal } from './POSCartItemActionModal';
+import { CampaignResult } from '../../utils/campaignEngine';
 
 interface CartCardsProps {
   cart: CartItem[];
@@ -16,6 +17,7 @@ interface CartCardsProps {
   onApplyItemDiscount?: (index: number, discountPercent: number) => void; // Yeni modal için
   isAdmin?: boolean;
   updateCartItemPrice?: (index: number, newPrice: number) => void;
+  campaignResult?: CampaignResult;
 }
 
 export function CartCards({
@@ -28,7 +30,8 @@ export function CartCards({
   onVariantPanelOpen,
   onApplyItemDiscount,
   isAdmin,
-  updateCartItemPrice
+  updateCartItemPrice,
+  campaignResult
 }: CartCardsProps) {
   const { darkMode } = useTheme();
   const { t } = useLanguage();
@@ -140,7 +143,7 @@ export function CartCards({
         <>
           <div className="space-y-2">
             {cart.map((item, index) => {
-              const price = item.price || item.variant?.price || item.product.price;
+              const price = item.price ?? item.variant?.price ?? item.product.price;
               const hasDiscount = item.discount > 0;
               const showLongPressMenu = longPressIndex === index;
 
@@ -204,9 +207,14 @@ export function CartCards({
                     onDoubleClick={() => updateCartItemQuantity(index, item.quantity + 1)}
                   >
                     {/* Left: Quantity Badge - Minimal */}
-                    <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-blue-600 flex flex-col items-center justify-center text-white shadow-sm">
+                    <div className={`flex-shrink-0 w-12 rounded-lg bg-blue-600 flex flex-col items-center justify-center text-white shadow-sm ${item.multiplier && item.multiplier > 1 ? 'h-14 py-1' : 'h-12'}`}>
                       <div className="text-lg font-bold leading-none">{formatNumber(item.quantity)}</div>
-                      <div className="text-[7px] opacity-90 leading-none mt-0.5">{item.product.unit || t.pcs}</div>
+                      <div className="text-[7px] opacity-90 leading-none mt-0.5">{item.unit || item.product.unit || t.pcs}</div>
+                      {item.multiplier && item.multiplier > 1 && (
+                        <div className="text-[6px] opacity-80 leading-none mt-0.5 bg-white/20 rounded px-1">
+                          ={item.quantity * item.multiplier} {item.product.unit}
+                        </div>
+                      )}
                     </div>
 
                     {/* Middle: Product Info */}
@@ -258,16 +266,27 @@ export function CartCards({
                             className={`text-[10px] mt-1 hover:underline cursor-pointer ${darkMode ? 'text-blue-400 font-bold' : 'text-blue-700 font-bold'}`}
                             title={t.clickToChangePrice || 'Fiyatı değiştirmek için tıklayın'}
                           >
-                            {formatNumber(price)} / {item.product.unit || t.pcs}
+                            {formatNumber(price)} / {item.unit || item.product.unit || t.pcs}
                           </button>
                         ) : (
                           <div className="text-[10px] text-gray-500 mt-1">
-                            {formatNumber(price)} / {item.product.unit || t.pcs}
+                            {item.multiplier && item.multiplier > 1 ? (
+                              <span className="text-orange-600 font-medium">
+                                {formatNumber(price / item.multiplier)} / {item.product.unit} × {item.multiplier}
+                              </span>
+                            ) : (
+                              <span>{formatNumber(price)} / {item.unit || item.product.unit || t.pcs}</span>
+                            )}
                           </div>
                         )}
                         {hasDiscount && (
                           <div className="text-[10px] text-gray-400 line-through leading-none mt-0.5">
                             {formatNumber(price * item.quantity)}
+                          </div>
+                        )}
+                        {campaignResult?.itemDiscounts?.find(d => d.index === index) && (
+                          <div className={`text-[10px] font-bold leading-none mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                            -{formatNumber(campaignResult.itemDiscounts.find(d => d.index === index)!.discountAmount)} (KMP)
                           </div>
                         )}
                       </div>
@@ -339,7 +358,7 @@ export function CartCards({
                           <h3 className="font-semibold text-gray-900 mb-1">{t.confirmItemDelete}</h3>
                           <p className="text-sm text-gray-600 mb-1">{item.product.name}</p>
                           <p className="text-xs text-gray-500">
-                            {formatNumber(item.quantity)} {item.product.unit || t.pcs} × {formatNumber(item.variant?.price || item.product.price)} = {formatNumber(item.subtotal)}
+                            {formatNumber(item.quantity)} {item.unit || item.product.unit || t.pcs} × {formatNumber(item.variant?.price || item.product.price)} = {formatNumber(item.subtotal)}
                           </p>
                         </div>
                         <div className="flex gap-2 justify-center">

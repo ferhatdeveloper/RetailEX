@@ -6,6 +6,8 @@ export interface CartItem {
   discount: number;
   subtotal: number;
   variant?: ProductVariant;
+  unit?: string;
+  multiplier?: number;
   price?: number; // Overridden price
   /** Mutfak durumu — sadece Restoran POS'unda kullanılır */
   kitchenStatus?: 'pending' | 'cooking' | 'ready' | 'served';

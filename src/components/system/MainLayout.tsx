@@ -153,6 +153,37 @@ export function MainLayout({
   const [showManagementPasswordModal, setShowManagementPasswordModal] = useState(false);
   const [managementPassword, setManagementPassword] = useState('');
   const [managementPasswordError, setManagementPasswordError] = useState('');
+  const [managementPasswordLoading, setManagementPasswordLoading] = useState(false);
+
+  const verifyManagementPassword = async (pwd: string): Promise<boolean> => {
+    if (!pwd) return false;
+    if (currentUser.role === 'admin' || currentUser.role === 'manager') return true;
+    try {
+      const { default: postgres, ERP_SETTINGS } = await import('../../services/postgres');
+      const username = (currentUser as any).username || (currentUser as any).email || '';
+      const { rows } = await postgres.query(
+        `SELECT 1 FROM public.users WHERE LOWER(username) = LOWER($1) AND firm_nr = $2 AND password_hash = crypt($3, password_hash) AND is_active = true LIMIT 1`,
+        [username, ERP_SETTINGS.firmNr, pwd]
+      );
+      return rows.length > 0;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleManagementAccess = async (pwd: string) => {
+    setManagementPasswordLoading(true);
+    const ok = await verifyManagementPassword(pwd);
+    setManagementPasswordLoading(false);
+    if (ok) {
+      setCurrentModule('management');
+      setShowManagementPasswordModal(false);
+      setManagementPassword('');
+      setManagementPasswordError('');
+    } else {
+      setManagementPasswordError('Hatalı şifre!');
+    }
+  };
 
   // POS state - müşteri ve personel seçimi
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -327,7 +358,7 @@ export function MainLayout({
 
   const handleDateChange = () => {
     // Yönetici şifresi kontrolü (basit örnek)
-    if (currentUser.role === 'manager' || currentUser.role === 'admin' || datePassword === '1234') {
+    if (currentUser.role === 'manager' || currentUser.role === 'admin') {
       const newDateTime = new Date(`${customDate}T${customTime}`);
       if (!isNaN(newDateTime.getTime())) {
         setCurrentTime(newDateTime);
@@ -883,22 +914,13 @@ export function MainLayout({
                     setManagementPasswordError('');
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      if (managementPassword === '1234' || currentUser.role === 'manager' || currentUser.role === 'admin') {
-                        setCurrentModule('management');
-                        setShowManagementPasswordModal(false);
-                        setManagementPassword('');
-                        setManagementPasswordError('');
-                      } else {
-                        setManagementPasswordError('Hatalı şifre!');
-                      }
-                    }
+                    if (e.key === 'Enter') handleManagementAccess(managementPassword);
                   }}
-                  placeholder="Yönetici şifresini girin"
+                  placeholder="Giriş şifrenizi girin"
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
+                  disabled={managementPasswordLoading}
                   autoFocus
                 />
-                <p className="text-xs text-gray-500 mt-1">Test için şifre: 1234</p>
                 {managementPasswordError && (
                   <p className="text-xs text-red-600 mt-2">{managementPasswordError}</p>
                 )}
@@ -917,19 +939,11 @@ export function MainLayout({
                 İptal
               </button>
               <button
-                onClick={() => {
-                  if (managementPassword === '1234' || currentUser.role === 'manager' || currentUser.role === 'admin') {
-                    setCurrentModule('management');
-                    setShowManagementPasswordModal(false);
-                    setManagementPassword('');
-                    setManagementPasswordError('');
-                  } else {
-                    setManagementPasswordError('Hatalı şifre!');
-                  }
-                }}
-                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                onClick={() => handleManagementAccess(managementPassword)}
+                disabled={managementPasswordLoading}
+                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60"
               >
-                {t.login}
+                {managementPasswordLoading ? '...' : t.login}
               </button>
             </div>
           </div>

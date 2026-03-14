@@ -14,23 +14,36 @@ import { serve } from '@hono/node-server';
 const app = new Hono();
 
 // Enable CORS for frontend requests
-app.use('*', cors());
+app.use('*', cors({
+    origin: ['https://retailex.app', 'http://localhost:8080', 'http://localhost:5173', 'http://localhost:6173', 'http://localhost:6174', 'http://localhost:3000'],
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+}));
 
 // DB Pool Cache: connectionString -> Pool
 const pools = new Map<string, Pool>();
 
 function getPool(connStr: string): Pool {
     if (!pools.has(connStr)) {
+        console.log(`[PG Bridge] Creating new pool for: ${connStr.replace(/:[^:@]+@/, ':***@')}`);
         const pool = new Pool({
             connectionString: connStr,
             max: 20,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 5000,
+            connectionTimeoutMillis: 15000, // Increased to 15s for remote connections
         });
+        
+        pool.on('error', (err) => {
+            console.error('[PG Bridge] Unexpected error on idle client', err);
+        });
+
         pools.set(connStr, pool);
     }
     return pools.get(connStr)!;
 }
+
+app.get('/api/status', (c) => {
+    return c.json({ status: 'RUNNING', version: '1.0.0', service: 'PostgreSQL Bridge' });
+});
 
 app.post('/api/pg_query', async (c) => {
     try {
@@ -40,7 +53,11 @@ app.post('/api/pg_query', async (c) => {
         if (!connStr) return c.json({ error: 'Connection string is required' }, 400);
 
         const pool = getPool(connStr);
+        const start = Date.now();
         const result = await pool.query(sql, params || []);
+        const duration = Date.now() - start;
+
+        console.log(`[PG Bridge] Query executed in ${duration}ms: ${sql.substring(0, 100)}...`);
 
         return c.json({
             rows: result.rows,

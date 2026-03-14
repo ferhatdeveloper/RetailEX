@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 interface DatabaseStatus {
   status: 'connected' | 'disconnected' | 'error' | 'checking';
@@ -11,8 +11,8 @@ export function useDatabaseStatus(checkInterval: number = 30000) {
   const [dbStatus, setDbStatus] = useState<DatabaseStatus>({
     status: 'checking',
     message: 'Bağlantı kontrol ediliyor...',
-    host: '91.205.41.130:5432',
-    database: 'retailos_db'
+    host: '127.0.0.1:5432',
+    database: 'retailex_local'
   });
 
   const [backendUnavailable, setBackendUnavailable] = useState(false);

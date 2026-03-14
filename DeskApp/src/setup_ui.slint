@@ -1,0 +1,137 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit, CheckBox } from "std-widgets.slint";
+
+export component SetupWindow inherits Window {
+    title: "RetailEX - Minimal Setup";
+    width: 480px;
+    height: 580px;
+    background: #121212; 
+
+    callback save-config();
+    callback select-folder();
+    callback install-local();
+    callback test-connection();
+
+    in-out property <string> terminal-name: "";
+    in-out property <string> store-id: "001";
+    in-out property <string> role: "terminal"; 
+    in-out property <string> db-mode: "hybrid"; 
+    in-out property <string> setup-path: "";
+    in-out property <string> status-msg: "Ready";
+    in-out property <bool> is-ready: false;
+
+    VerticalBox {
+        padding: 30px;
+        spacing: 20px;
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: "RetailEX Setup";
+                font-size: 24px;
+                font-weight: 900;
+                color: #ffffff;
+            }
+            Text {
+                text: "Portable Deployment Utility";
+                font-size: 14px;
+                color: #888888;
+            }
+        }
+
+        VerticalBox {
+            spacing: 8px;
+            Text { text: "INSTALLATION SOURCE"; font-size: 10px; font-weight: 800; color: #555555; }
+            HorizontalBox {
+                spacing: 10px;
+                LineEdit { 
+                    text <=> root.setup-path; 
+                    placeholder-text: "Select folder with installers...";
+                    height: 35px;
+                }
+                Button { 
+                    text: "📁"; 
+                    width: 40px;
+                    clicked => { root.select-folder(); }
+                }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 15px;
+            alignment: space-around;
+            
+            VerticalBox {
+                spacing: 10px;
+                Text { text: "MACHINE ROLE"; font-size: 10px; font-weight: 800; color: #555555; horizontal-alignment: center; }
+                Button { 
+                    text: "TERMINAL"; 
+                    primary: root.role == "terminal";
+                    clicked => { root.role = "terminal"; }
+                }
+                Button { 
+                    text: "MASTER"; 
+                    primary: root.role == "master";
+                    clicked => { root.role = "master"; }
+                }
+            }
+
+            VerticalBox {
+                spacing: 10px;
+                Text { text: "CONNECTIVITY"; font-size: 10px; font-weight: 800; color: #555555; horizontal-alignment: center; }
+                Button { 
+                    text: "HYBRID"; 
+                    primary: root.db-mode == "hybrid";
+                    clicked => { root.db-mode = "hybrid"; }
+                }
+                Button { 
+                    text: "ONLINE"; 
+                    primary: root.db-mode == "online";
+                    clicked => { root.db-mode = "online"; }
+                }
+            }
+        }
+
+        VerticalBox {
+            spacing: 8px;
+            Text { text: "IDENTITY"; font-size: 10px; font-weight: 800; color: #555555; }
+            HorizontalBox {
+                spacing: 10px;
+                LineEdit { text <=> root.terminal-name; placeholder-text: "Name (e.g. KASA-1)"; height: 35px; }
+                LineEdit { text <=> root.store-id; width: 60px; height: 35px; }
+            }
+        }
+
+        VerticalBox {
+            spacing: 12px;
+            padding-top: 10px;
+            
+            Button {
+                text: "PREPARE INFRASTRUCTURE";
+                enabled: root.setup-path != "";
+                clicked => { root.install-local(); }
+            }
+            
+            Button {
+                text: "APPLY & INITIALIZE";
+                primary: true;
+                clicked => { root.save-config(); }
+            }
+        }
+
+        Rectangle {
+            background: #1a1a1a;
+            height: 40px;
+            border-radius: 4px;
+            HorizontalBox {
+                padding-left: 15px;
+                padding-right: 15px;
+                Text {
+                    text: root.status-msg;
+                    font-size: 12px;
+                    color: #aaaaaa;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

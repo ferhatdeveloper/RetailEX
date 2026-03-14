@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -9,7 +9,7 @@ import { ProductOperationHub, HubTab } from './ProductOperationHub';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
-import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search } from 'lucide-react';
+import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -59,6 +59,11 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [hubInitialTab, setHubInitialTab] = useState<HubTab>('overview');
   const [editingProductId, setEditingProductId] = useState<string | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; product: Product } | null>(null);
+  const [showServicesOnly, setShowServicesOnly] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [showBulkRateModal, setShowBulkRateModal] = useState(false);
+  const [bulkRate, setBulkRate] = useState(1530); // Default common rate
+  const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
 
   // Design Center Integration
   const [showViewer, setShowViewer] = useState(false);
@@ -107,7 +112,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         (product.barcode || '').includes(searchQuery) ||
         (product.category?.toLowerCase() || '').includes(searchLower);
       const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
-      return matchesSearch && matchesCategory;
+      const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
+      return matchesSearch && matchesCategory && matchesService;
     });
   }, [displayProducts, searchQuery, categoryFilter]);
 
@@ -157,6 +163,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       header: tm('unitPrice').toUpperCase(),
       cell: info => info.getValue() ? formatNumber(info.getValue(), 2, false) : '-',
       size: 140
+    }),
+    columnHelper.accessor('salePriceUSD' as any, {
+      header: 'FİYAT (USD)',
+      cell: info => info.getValue() ? `$${formatNumber(info.getValue(), 2, false)}` : '-',
+      size: 120
+    }),
+    columnHelper.accessor('purchasePriceUSD' as any, {
+      header: 'ALIŞ (USD)',
+      cell: info => info.getValue() ? `$${formatNumber(info.getValue(), 2, false)}` : '-',
+      size: 120
     }),
     columnHelper.accessor('taxRate', {
       header: tm('tax').toUpperCase(),
@@ -232,6 +248,24 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <Plus className="w-3 h-3" />
               <span>{tm('newProduct')}</span>
             </button>
+            <button
+              onClick={() => setShowServicesOnly(!showServicesOnly)}
+              className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
+                showServicesOnly ? 'bg-orange-600 text-white' : 'bg-white/10 hover:bg-white/20'
+              }`}
+            >
+              <FileText className="w-3 h-3" />
+              <span>Hizmet Kartları</span>
+            </button>
+            {selectedProducts.length > 0 && (
+              <button
+                onClick={() => setShowBulkRateModal(true)}
+                className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white hover:bg-orange-600 transition-colors text-[10px] font-bold"
+              >
+                <TrendingUp className="w-3 h-3" />
+                <span>Toplu Kur {selectedProducts.length}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -268,6 +302,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, product });
               }}
+              enableSelection
+              onSelectionChange={setSelectedProducts}
               height="calc(100vh - 120px)"
               pageSize={50}
             />
@@ -399,6 +435,84 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             }
           ]}
         />
+      )}
+      {/* Bulk Rate Modal */}
+      {showBulkRateModal && (
+        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 border-b bg-orange-50 flex items-center justify-between">
+              <h3 className="font-bold text-orange-800 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5" />
+                Toplu Kur Güncelleme ({selectedProducts.length} Ürün)
+              </h3>
+              <button onClick={() => setShowBulkRateModal(false)} className="p-1 hover:bg-orange-100 rounded-lg text-orange-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Seçili ürünlerin USD fiyatlarını baz alarak IQD fiyatlarını güncelleyebilirsiniz.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Güncel Kur (1 USD)</label>
+                  <input
+                    type="number"
+                    value={bulkRate}
+                    onChange={(e) => setBulkRate(parseFloat(e.target.value) || 0)}
+                    className="w-full px-4 py-3 border-2 border-orange-100 rounded-xl focus:outline-none focus:border-orange-500 text-lg font-bold"
+                    placeholder="Kur örn: 1530"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Yuvarlama (MROUND)</label>
+                  <select
+                    value={roundTo}
+                    onChange={(e) => setRoundTo(parseInt(e.target.value))}
+                    className="w-full px-4 py-3 border-2 border-orange-100 rounded-xl focus:outline-none focus:border-orange-500 text-lg font-bold bg-white"
+                  >
+                    <option value={1}>Yok</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1000</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 flex gap-3 justify-end">
+              <button onClick={() => setShowBulkRateModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 font-medium">İptal</button>
+              <button
+                onClick={async () => {
+                  try {
+                    const mround = (num: number, mult: number) => num > 0 ? Math.round(num / mult) * mult : 0;
+                    
+                    const promises = selectedProducts.map(p => {
+                      const basePrice = p.salePriceUSD || 0;
+                      if (basePrice > 0) {
+                        const calculatedPrice = basePrice * bulkRate;
+                        const roundedPrice = mround(calculatedPrice, roundTo);
+                        return updateProduct(p.id, { ...p, price: roundedPrice });
+                      }
+                      return Promise.resolve();
+                    });
+                    
+                    await Promise.all(promises);
+                    toast.success(`${selectedProducts.length} ürünün fiyatı kur ve yuvarlama ile güncellendi.`);
+                    setShowBulkRateModal(false);
+                    setSelectedProducts([]);
+                  } catch (e: any) {
+                    toast.error(e.message || "Güncelleme başarısız.");
+                  }
+                }}
+                className="px-6 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 font-bold shadow-lg shadow-orange-200"
+              >
+                Fiyatları Güncelle
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

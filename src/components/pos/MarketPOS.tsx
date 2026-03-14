@@ -34,7 +34,8 @@ import {
   Lock,
   Unlock,
   CornerDownLeft,
-  Mic
+  Mic,
+  TrendingUp
 } from 'lucide-react';
 import { POSPaymentModal } from './POSPaymentModal';
 import { POSManagerAuthModal } from './POSManagerAuthModal';
@@ -57,11 +58,14 @@ import { CartCards } from './CartCards';
 import { VariantSelectionPanelForCart } from './VariantSelectionPanelForCart';
 import { POSDetailSidebar } from './POSDetailSidebar';
 import { BalanceLoadModal } from '../wallet/BalanceLoadModal';
+import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/KeyboardShortcutOverlay';
 import { salesAPI } from '../../services/api/sales';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useSaleStore } from '../../store';
+import { productAPI } from '../../services/api/products';
+import { postgres } from '../../services/postgres';
 
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -70,6 +74,7 @@ import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
 import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
+import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
 // import type { LayoutOrder } from './ScreenSettingsModal';
 export type LayoutOrder = 'cart-numpad-quick' | 'cart-fullscreen' | 'cart-wide-quick' | 'quick-dominant' | 'numpad-dominant' | 'cart-top-actions-bottom' | 'quick-top-cart-bottom' | 'quick-with-detail-sidebar' | 'quick-sidebar-numpad' | 'cart-quick-numpad-float' | string;
 
@@ -190,6 +195,57 @@ export default function MarketPOS({
 
   // Barcode input ref for numpad support
   const barcodeInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Exchange rate state
+  const [exchangeRate, setExchangeRate] = useState<number>(1310); // Default fallback
+  const [exchangeRateDate, setExchangeRateDate] = useState<string>('');
+  const [unitSets, setUnitSets] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchRate = async () => {
+      try {
+        const { exchangeRateAPI } = await import('../../services/api/masterData');
+        const rates = await exchangeRateAPI.getLatestRates();
+        const usdRate = rates.find(r => r.currency_code === 'USD');
+        if (usdRate) {
+          setExchangeRate(usdRate.sell_rate);
+          setExchangeRateDate(usdRate.date);
+        }
+      } catch (error) {
+        console.error('Failed to fetch exchange rate:', error);
+      }
+    };
+    fetchRate();
+  }, []);
+
+  // Load Unit Sets for multiplier support
+  useEffect(() => {
+    const loadUnitSets = async () => {
+      try {
+        const { rows: sets } = await postgres.query('SELECT * FROM unitsets ORDER BY name ASC');
+        const setsWithLines = await Promise.all(sets.map(async (set: any) => {
+          const { rows: lines } = await postgres.query(
+            'SELECT * FROM unitsetl WHERE unitset_id = $1 ORDER BY conv_fact1 ASC',
+            [set.id]
+          );
+          return {
+            ...set,
+            lines: lines.map((l: any) => ({
+              id: l.id,
+              code: l.code || l.item_code,
+              name: l.name || l.item_code,
+              conv_fact1: parseFloat(l.conv_fact1) || 1,
+              main_unit: l.main_unit || false
+            }))
+          };
+        }));
+        setUnitSets(setsWithLines);
+      } catch (err) {
+        console.error('[MarketPOS] Unit sets load failed:', err);
+      }
+    };
+    loadUnitSets();
+  }, []);
 
   // Category state
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -377,23 +433,35 @@ export default function MarketPOS({
     }, 0);
   }, [cart]);
 
-  const campaignDiscount = useMemo(() => {
-    if (!selectedCampaign) return 0;
-
-    const afterItemDiscount = subtotal - totalDiscount;
-
-    if (selectedCampaign.type === 'percentage') {
-      return afterItemDiscount * (selectedCampaign.discountValue || 0) / 100;
-    } else if (selectedCampaign.type === 'fixed') {
-      return Math.min(selectedCampaign.discountValue || 0, afterItemDiscount);
+  const campaignResult = useMemo<CampaignResult>(() => {
+    if (!selectedCampaign) {
+      return { totalDiscount: 0, itemDiscounts: [], appliedCampaignId: null };
     }
+    return applyCampaign(cart, selectedCampaign);
+  }, [selectedCampaign, cart]);
 
-    return 0;
-  }, [selectedCampaign, subtotal, totalDiscount]);
+  const campaignDiscount = useMemo(() => {
+    return campaignResult.totalDiscount;
+  }, [campaignResult]);
 
   const total = useMemo(() => {
     return subtotal - totalDiscount - campaignDiscount;
   }, [subtotal, totalDiscount, campaignDiscount]);
+
+  // Brüt Kar Hesaplama (Instant Profit)
+  const instantProfit = useMemo(() => {
+    let profit = 0;
+    cart.forEach(item => {
+      const salePrice = item.price || item.variant?.price || item.product.price;
+      const purchasePrice = item.variant?.cost || item.product.cost || 0;
+      const itemSubtotal = item.quantity * salePrice;
+      const itemDiscount = itemSubtotal * (item.discount / 100);
+      const itemNetProfit = (itemSubtotal - itemDiscount) - (item.quantity * purchasePrice);
+      profit += itemNetProfit;
+    });
+    // Sepet bazlı genel kampanya indirimini de kardan düşüyoruz
+    return profit - campaignDiscount;
+  }, [cart, campaignDiscount]);
 
   // Auto-apply campaign based on cart subtotal
   useEffect(() => {
@@ -463,7 +531,6 @@ export default function MarketPOS({
     } else {
       setInputValue('');
       setSavedQuantity(null); // Kaydedilmiş adeti de temizle
-      // Quantity modunda kal
     }
   };
 
@@ -473,14 +540,12 @@ export default function MarketPOS({
       setTimeout(() => barcodeInputRef.current?.focus(), 0);
     } else {
       setInputValue(prev => prev.slice(0, -1));
-      // Quantity modunda kal
     }
   };
 
-  const handleQuantity = () => {
+  const handleQuantity = async () => {
     // * tuşuna basıldığında: Eğer adet girilmişse kaydet, barkod moduna geç
     if (inputValue && !savedQuantity) {
-      // Adet girilmiş, kaydet ve barkod moduna geç
       const quantity = parseInt(inputValue) || 1;
       setSavedQuantity(quantity);
       setInputValue('');
@@ -494,7 +559,6 @@ export default function MarketPOS({
     let barcodeToSearch = barcodeInput.trim();
     let quantity = savedQuantity || 1;
 
-    // Eğer barcodeInput boşsa, inputValue'yu barkod olarak kullan
     if (!barcodeToSearch && inputValue) {
       barcodeToSearch = inputValue.trim();
     }
@@ -508,71 +572,32 @@ export default function MarketPOS({
       return;
     }
 
-    // Önce varyant barkodlarında ara
-    for (const product of products) {
-      if (product.variants && product.variants.length > 0) {
-        const foundVariant = product.variants.find((v: any) => v.barcode === barcodeToSearch);
-        if (foundVariant) {
-          // Varyant barkodu bulundu - adet ile ekle
-          addToCart(product, foundVariant, quantity);
-          setBarcodeInput('');
-          setInputValue('');
-          setSavedQuantity(null); // Kaydedilmiş adeti temizle
-          setNumpadMode('barcode');
-          setTimeout(() => barcodeInputRef.current?.focus(), 0);
-          return;
-        }
-      }
-    }
-
-    // Ana ürün barkodunda ara
-    const foundProduct = products.find(p => p.barcode === barcodeToSearch);
-
-    if (foundProduct) {
-      // Ürün varyantlı mı kontrol et
-      if (foundProduct.variants && foundProduct.variants.length > 0) {
-        // Varyantlı ürün - modal açmadan önce adet bilgisini sakla
-        // NOT: Modal'dan seçim yapınca quantity'yi kullanacağız
-        showNotif(t.pleaseSelectVariant, 'info');
-        setVariantSelectionProduct(foundProduct);
-        setShowVariantSelection(true);
-        setBarcodeInput('');
-        setInputValue('');
-      } else {
-        // Varyantsız ürün - adet ile ekle
-        addToCart(foundProduct, undefined, quantity);
-        setBarcodeInput('');
-        setInputValue('');
-        setSavedQuantity(null); // Kaydedilmiş adeti temizle
-        setNumpadMode('barcode');
-        setTimeout(() => barcodeInputRef.current?.focus(), 0);
-      }
-    } else {
-      showNotif(t.barcodeNotFoundWarning.replace('{barcode}', barcodeToSearch), 'error');
-      if (!missingBarcodes.includes(barcodeToSearch)) {
-        setMissingBarcodes(prev => [barcodeToSearch, ...prev]);
-      }
+    const found = await searchByBarcode(barcodeToSearch, quantity);
+    if (found) {
+      setBarcodeInput('');
+      setInputValue('');
+      setSavedQuantity(null);
+      setNumpadMode('barcode');
+      setTimeout(() => barcodeInputRef.current?.focus(), 0);
     }
   };
 
   const handleNumpadEnter = () => {
     if (numpadMode === 'barcode') {
-      // Barkod modunda - eğer kaydedilmiş adet varsa handleQuantity çağır, yoksa barkod ara
       if (savedQuantity) {
         handleQuantity();
       } else {
         handleBarcodeSearch();
       }
     } else {
-      // Quantity modunda - eğer adet girilmişse * tuşuna basılmış gibi davran
       if (inputValue && !savedQuantity) {
-        handleQuantity(); // Adeti kaydet, barkod moduna geç
+        handleQuantity();
       }
     }
   };
 
   // Barkod butonuna basınca direkt 1 adet ekle
-  const handleBarcodeButtonClick = () => {
+  const handleBarcodeButtonClick = async () => {
     // Numpad'dan veya barkod input'tan barkodu al
     const barcodeToSearch = inputValue.trim() || barcodeInput.trim();
 
@@ -582,7 +607,7 @@ export default function MarketPOS({
     }
 
     // Direkt bu barkod ile arama yap
-    const found = searchByBarcode(barcodeToSearch);
+    const found = await searchByBarcode(barcodeToSearch);
 
     // Eğer barkod bulunamadıysa, ürün arama ekranını aç
     if (!found) {
@@ -598,50 +623,98 @@ export default function MarketPOS({
   };
 
   // Barkod ile arama yap - ürün bulunursa true, bulunamazsa false döner
-  const searchByBarcode = (barcode: string): boolean => {
+  const searchByBarcode = async (barcode: string, quantity: number = 1): Promise<boolean> => {
     const trimmedBarcode = barcode.trim();
     logger.log('?? Aranan barkod:', trimmedBarcode);
 
-    // Önce varyant barkodlarında ara
-    for (const product of products) {
-      if (product.variants && product.variants.length > 0) {
-        const foundVariant = product.variants.find((v: any) => v.barcode === trimmedBarcode);
-        if (foundVariant) {
-          logger.log('? Varyant bulundu:', product.name, foundVariant);
-          addToCart(product, foundVariant);
+    try {
+      const result = await productAPI.lookupByBarcode(trimmedBarcode);
+
+      if (result && result.product) {
+        const product = result.product;
+        const unitInfo = result.unitInfo;
+
+        // Varyant kontrolü (Eğer ana ürün barkodu okutulmuşsa ve varyantları varsa)
+        if (product.hasVariants || (product.variants && product.variants.length > 0)) {
+          // Eğer okutulan barkod bir varyanta ait DEĞİLSE (yani birim barkodu veya ana barkod ise)
+          // varyant seçimini aç. Eğer unitInfo varsa (birim barkodu ise), varyantı da belirlemiş olabiliriz.
+          // Şimdilik ana ürün barkodu veya birim barkodu senaryosunda varyant kataloğunu açıyoruz.
+          logger.log('✅ Varyantlı ürün bulundu, varyant seçim paneli açılıyor');
+          showNotif(t.pleaseSelectVariant, 'info');
+          setVariantSelectionProduct(product);
+          setShowVariantSelection(true);
           return true;
         }
-      }
-    }
 
-    // Ana ürün barkodunda ara
-    const foundProduct = products.find(p => p.barcode === trimmedBarcode);
+        // Fiyat belirleme: Önce birim fiyatı, sonra USD hesaplaması, en son baz fiyat
+        let price = product.price;
+        let unitName: string | undefined = undefined;
+        let unitMultiplier: number | undefined = undefined;
 
-    if (foundProduct) {
-      // Eğer varyantlı ürünse, varyant seçim panelini göster
-      if (foundProduct.variants && foundProduct.variants.length > 0) {
-        logger.log('✅ Varyantlı ürün bulundu, varyant seçim paneli açılıyor');
-        showNotif(t.pleaseSelectVariant, 'info');
-        setVariantSelectionProduct(foundProduct);
-        setShowVariantSelection(true);
-        setBarcodeInput('');
+        if (unitInfo) {
+          unitName = unitInfo.unit || undefined;        // "Koli", "Palet" vb.
+          unitMultiplier = unitInfo.multiplier || undefined;
+
+          // If unitMultiplier is missing or 1, try to find it in unitSets
+          if ((!unitMultiplier || unitMultiplier === 1) && unitName) {
+            const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
+            if (pUnitsetId) {
+              const unitSet = unitSets.find(us => us.id === pUnitsetId);
+              const line = unitSet?.lines?.find((l: any) => l.name === unitName || l.code === unitName);
+              if (line) {
+                unitMultiplier = line.conv_fact1 || 1;
+                logger.log(`[MarketPOS] Multiplier found in unitSets for ${unitName}: ${unitMultiplier}`);
+              } else {
+                logger.log(`[MarketPOS] Unit ${unitName} not found in unitSet ${pUnitsetId}`);
+              }
+            } else {
+              logger.log(`[MarketPOS] Product has no unitset_id for unit lookup`);
+            }
+          }
+
+          // Öncelik 1: Birim barkoduna özel TL satış fiyatı
+          if (unitInfo.sale_price && unitInfo.sale_price > 0) {
+            price = unitInfo.sale_price;
+          }
+          // Öncelik 2: Çarpan varsa ve kendi özel fiyatı yoksa çarpanla fiyatlandır
+          else if (unitMultiplier && unitMultiplier > 1) {
+            price = product.price * unitMultiplier;
+          }
+        }
+
+        // USD Fiyat Kontrolü - Eğer TL fiyatı birim barkodundan direkt gelmediyse USD'den hesapla
+        if (product.autoCalculateUSD && product.salePriceUSD && product.salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
+          let effectiveRate = (product.customExchangeRate ?? 0) > 0 ? product.customExchangeRate! : exchangeRate;
+          
+          if (effectiveRate > 0 && effectiveRate < 10) {
+            effectiveRate = effectiveRate * 1000;
+          }
+          
+          const convertedPrice = product.salePriceUSD * effectiveRate;
+          // Eğer birim barkodu ise çarpanla çarp, değilse direkt convertedPrice
+          price = convertedPrice * (unitMultiplier || 1);
+          logger.log(`💵 USD Fiyat Dönüşümü: ${product.salePriceUSD}$ * ${effectiveRate} = ${price} IQD`);
+        }
+
+        addToCart(product, undefined, quantity, unitName, unitMultiplier, price);
+        return true;
       } else {
-        logger.log('✅ Varyantsız ürün, sepete ekleniyor');
-        addToCart(foundProduct);
+        logger.log('❌ Barkod bulunamadı');
+        showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
+        if (!missingBarcodes.includes(trimmedBarcode)) {
+          setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
+        }
+        return false;
       }
-      return true;
-    } else {
-      logger.log('❌ Barkod bulunamadı');
-      showNotif(t.barcodeNotFoundWarning.replace('{barcode}', trimmedBarcode), 'error');
-      if (!missingBarcodes.includes(trimmedBarcode)) {
-        setMissingBarcodes(prev => [trimmedBarcode, ...prev]);
-      }
+    } catch (error) {
+      console.error('[MarketPOS] Barcode lookup error:', error);
+      showNotif('Barkod sorgulama hatası!', 'error');
       return false;
     }
   };
 
   // Add to cart
-  const addToCart = (product: Product, variant?: any, customQuantity?: number) => {
+  const addToCart = (product: Product, variant?: any, customQuantity?: number, unit?: string, multiplier?: number, customPrice?: number) => {
     // Kasa açık mı kontrol et
     if (!isCashRegisterOpen) {
       showNotif(t.openCashRegisterToAddProduct, 'error');
@@ -651,18 +724,37 @@ export default function MarketPOS({
       return;
     }
 
+    let price: number = 0;
+    
+    // Manual selection path (price not provided by barcode lookup)
+    if (customPrice === undefined) {
+      const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
+      if (isAutoCalc && (product as any).salePriceUSD > 0) {
+        let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || exchangeRate;
+        // IQD Scaling Logic (e.g. 1.54 -> 1540)
+        if (effectiveRate > 0 && effectiveRate < 10) effectiveRate *= 1000;
+        
+        price = (product as any).salePriceUSD * effectiveRate * (multiplier || 1);
+        logger.log(`[MarketPOS] Manual Selection USD Price: ${(product as any).salePriceUSD}$ * ${effectiveRate} = ${price} IQD`);
+      } else {
+        price = variant?.price ?? product.price;
+      }
+    } else {
+      price = customPrice;
+    }
+
+    const quantity = customQuantity || 1;
+    const itemUnit = unit || product.unit || t.pcs;
+
     const existingItem = cart.find(item =>
       variant
         ? item.product.id === product.id && item.variant?.id === variant.id
-        : item.product.id === product.id && !item.variant
+        : item.product.id === product.id && !item.variant && (item.unit === itemUnit)
     );
-
-    const price = variant?.price || product.price;
-    const quantity = customQuantity || 1;
 
     if (existingItem) {
       setCart(cart.map(item =>
-        (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant)
+        (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
           ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * price * (1 - item.discount / 100) }
           : item
       ));
@@ -671,8 +763,11 @@ export default function MarketPOS({
         product,
         variant,
         quantity,
+        unit: itemUnit,
+        multiplier,
         discount: 0,
-        subtotal: price * quantity
+        subtotal: price * quantity,
+        price
       }]);
     }
 
@@ -680,7 +775,7 @@ export default function MarketPOS({
   };
 
   // Handle barcode search (barcodeInput'tan okur)
-  const handleBarcodeSearch = () => {
+  const handleBarcodeSearch = async () => {
     logger.log('Search handleBarcodeSearch called, barcodeInput:', barcodeInput);
 
     if (!barcodeInput.trim()) {
@@ -689,63 +784,22 @@ export default function MarketPOS({
     }
 
     const searchText = barcodeInput.trim();
+    const quantity = savedQuantity || 1;
 
-    // Eğer kaydedilmiş adet varsa, adet ile birlikte ekle
-    if (savedQuantity) {
-      const barcodeToSearch = searchText;
-      // Varyant barkodlarında ara
-      for (const product of products) {
-        if (product.variants && product.variants.length > 0) {
-          const foundVariant = product.variants.find((v: any) => v.barcode === barcodeToSearch);
-          if (foundVariant) {
-            addToCart(product, foundVariant, savedQuantity);
-            setBarcodeInput('');
-            setSavedQuantity(null);
-            setNumpadMode('barcode');
-            setTimeout(() => barcodeInputRef.current?.focus(), 0);
-            return;
-          }
-        }
-      }
+    const found = await searchByBarcode(searchText, quantity);
 
-      // Ana ürün barkodunda ara
-      const foundProduct = products.find(p => p.barcode === barcodeToSearch);
-      if (foundProduct) {
-        if (foundProduct.variants && foundProduct.variants.length > 0) {
-          showNotif(t.pleaseSelectVariant, 'info');
-          setVariantSelectionProduct(foundProduct);
-          setShowVariantSelection(true);
-          setBarcodeInput('');
-          setSavedQuantity(null);
-        } else {
-          addToCart(foundProduct, undefined, savedQuantity);
-          setBarcodeInput('');
-          setSavedQuantity(null);
-          setNumpadMode('barcode');
-          setTimeout(() => barcodeInputRef.current?.focus(), 0);
-        }
-      } else {
-        // Barkod bulunamadı - ürün arama ekranını aç
-        setProductSearchQuery(searchText);
-        setCatalogMode('add-to-cart');
-        setShowProductCatalogModal(true);
-        setBarcodeInput('');
-        setSavedQuantity(null);
-      }
+    // Eğer barkod bulunamadıysa, ürün arama ekranını aç
+    if (!found) {
+      setProductSearchQuery(searchText);
+      setCatalogMode('add-to-cart');
+      setShowProductCatalogModal(true);
+      setBarcodeInput('');
+      setSavedQuantity(null);
     } else {
-      // Normal barkod arama (1 adet)
-      const found = searchByBarcode(searchText);
-
-      // Eğer barkod bulunamadıysa, ürün arama ekranını aç
-      if (!found) {
-        setProductSearchQuery(searchText);
-        setCatalogMode('add-to-cart');
-        setShowProductCatalogModal(true);
-        setBarcodeInput('');
-        if (!missingBarcodes.includes(searchText)) {
-          setMissingBarcodes(prev => [searchText, ...prev]);
-        }
-      }
+      setBarcodeInput('');
+      setSavedQuantity(null);
+      setNumpadMode('barcode');
+      setTimeout(() => barcodeInputRef.current?.focus(), 0);
     }
   };
 
@@ -758,7 +812,7 @@ export default function MarketPOS({
 
     setCart(cart.map((item, i) => {
       if (i === index) {
-        const price = item.price || item.variant?.price || item.product.price;
+        const price = item.price ?? item.variant?.price ?? item.product.price;
         return {
           ...item,
           quantity: newQuantity,
@@ -916,6 +970,9 @@ export default function MarketPOS({
         productId: item.product.id,
         productName: item.product.name,
         quantity: item.quantity,
+        unit: item.unit || item.product.unit,
+        multiplier: item.multiplier || 1,
+        baseQuantity: item.quantity * (item.multiplier || 1),
         price: item.price || item.variant?.price || item.product.price,
         discount: item.discount,
         total: item.subtotal,
@@ -940,6 +997,15 @@ export default function MarketPOS({
       // Store sale and payment data for receipt
       setCompletedSale(sale);
       setCompletedPaymentData(paymentData);
+
+      // Automatic Printing Logic
+      if (paymentData.autoPrint) {
+        const companyName = t.companyName || 'RetailOS';
+        printThermalReceipt(sale, companyName, { 
+          autoPrint: true, 
+          language: paymentData.language || 'tr' 
+        });
+      }
 
       // Sepeti temizle
       setCart([]);
@@ -1356,6 +1422,7 @@ export default function MarketPOS({
           {/* Product Table */}
           {cartViewMode === 'table' ? (
             <CartTable
+              campaignResult={campaignResult}
               cart={cart}
               formatNumber={formatNumber}
               updateCartItemQuantity={updateCartItemQuantity}
@@ -1366,6 +1433,7 @@ export default function MarketPOS({
             />
           ) : (
             <CartCards
+              campaignResult={campaignResult}
               cart={cart}
               formatNumber={formatNumber}
               updateCartItemQuantity={updateCartItemQuantity}
@@ -1395,6 +1463,13 @@ export default function MarketPOS({
                   <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                     {selectedCustomer?.name || customer.name}
                   </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between px-2 py-1 bg-green-50 rounded-lg border border-green-100">
+                  <div className="flex items-center gap-1.5 grayscale opacity-70">
+                    <ArrowRightLeft className="w-3 h-3 text-green-700" />
+                    <span className="text-[10px] uppercase font-bold text-green-800">Güncel Kur</span>
+                  </div>
+                  <span className="text-xs font-black text-green-700">1$ = {exchangeRate} IQD</span>
                 </div>
               </div>
               <div className="flex justify-between items-center text-sm mb-1">
@@ -1569,6 +1644,19 @@ export default function MarketPOS({
                       <span className={`font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.totalLabel}</span>
                     </div>
                     <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatNumber(total, 2, true)}</div>
+                  </div>
+                </div>
+
+                {/* Instant Profit Display */}
+                <div className={`pt-2 border-t border-dashed ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between opacity-80">
+                    <div className="flex items-center gap-1.5">
+                      <TrendingUp className="w-4 h-4 text-green-500" />
+                      <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.instantProfit}</span>
+                    </div>
+                    <div className={`text-sm font-semibold text-green-600`}>
+                      {formatNumber(instantProfit, 2, true)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1853,7 +1941,7 @@ export default function MarketPOS({
         {/* Left - Receipt Number, Store, Cash Register, Shift */}
         <div className={`flex items-center gap-3`}>
           <div className="text-blue-400 font-medium">
-            {t.receipt}: {receiptNumber}
+            {t.receiptTitle}: {receiptNumber}
           </div>
           <div className={`flex items-center gap-1.5 ${rtlMode ? 'flex-row-reverse' : ''}`}>
             <span className="text-gray-400">{t.store}:</span>

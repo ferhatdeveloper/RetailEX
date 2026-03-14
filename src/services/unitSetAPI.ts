@@ -27,10 +27,17 @@ class UnitSetAPI {
             const { rows: sets } = await postgres.query('SELECT * FROM unitsets ORDER BY name ASC');
 
             const setsWithLines = await Promise.all(sets.map(async (set) => {
-                const { rows: lines } = await postgres.query(
+                const { rows: dbLines } = await postgres.query(
                     'SELECT * FROM unitsetl WHERE unitset_id = $1 ORDER BY main_unit DESC, code ASC',
                     [set.id]
                 );
+                
+                const lines = dbLines.map((l: any) => ({
+                    ...l,
+                    conv_fact1: Number(l.multiplier1 || 1),
+                    conv_fact2: Number(l.multiplier2 || 1)
+                }));
+                
                 return { ...set, lines };
             }));
 
@@ -71,8 +78,8 @@ class UnitSetAPI {
 
             for (const line of lines) {
                 await postgres.query(
-                    'INSERT INTO unitsetl (unitset_id, code, name, main_unit, conv_fact1, conv_fact2) VALUES ($1, $2, $3, $4, $5, $6)',
-                    [setId, line.code, line.name, line.main_unit, line.conv_fact1, line.conv_fact2]
+                    'INSERT INTO unitsetl (unitset_id, item_code, code, name, main_unit, multiplier1, multiplier2, conv_fact1, conv_fact2) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+                    [setId, line.code, line.code, line.name, line.main_unit, line.conv_fact1, line.conv_fact2, line.conv_fact1, line.conv_fact2]
                 );
             }
 

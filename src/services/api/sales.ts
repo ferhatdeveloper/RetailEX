@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Sales API - Dynamic Public Tables Implementation
  * Uses: rex_FIRM_PERIOD_sales, rex_FIRM_PERIOD_sale_items
  */
@@ -375,6 +375,7 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     discount: invoice.discount,
     tax: invoice.tax,
     total: invoice.total_amount,
+    profit: invoice.gross_profit || 0, // Brüt Kar
     paymentMethod: (invoice as any).payment_method || 'cash',
     status: invoice.status,
     notes: invoice.notes,
@@ -384,10 +385,14 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
       productId: res.productId || res.code,
       productName: res.productName || res.description,
       quantity: res.quantity,
+      unit: res.unit || 'Adet',
+      multiplier: (res as any).multiplier || 1,
+      baseQuantity: (res as any).baseQuantity ?? res.quantity,
       price: res.unitPrice,
       discount: res.discount,
+      cost: res.unitCost || 0,
+      profit: res.grossProfit || 0,
       total: res.total,
-      // variants: ...
     }))
   } as Sale;
 }

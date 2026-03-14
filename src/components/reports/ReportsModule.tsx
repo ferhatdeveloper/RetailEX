@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart3, TrendingUp, DollarSign, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
@@ -10,6 +10,8 @@ import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { moduleTranslations } from '../../locales/module-translations';
 import {
   BarChart, Bar, LineChart, Line, PieChart as RePieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -74,6 +76,9 @@ type ReportTab =
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission';
 
 export function ReportsModule({ sales, products }: ReportsModuleProps) {
+  const { language, tm: globalTm } = useLanguage();
+  const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
+
   const { selectedFirm } = useFirmaDonem();
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -93,32 +98,32 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
           color: '#10b981',
           lightColor: '#ecfdf5',
           icon: <ShoppingCart className="text-white w-5 h-5" />,
-          title: 'Market Otomasyonu',
-          groupLabel: 'MARKET ÖZEL'
+          title: tm('marketAutomation'),
+          groupLabel: tm('marketSpecial')
         };
       case 'restaurant':
         return {
           color: '#f59e0b',
           lightColor: '#fffbeb',
           icon: <BarChart3 className="text-white w-5 h-5" />,
-          title: 'Rapor Yönetimi',
-          groupLabel: 'RESTORAN ÖZEL'
+          title: tm('reportsAnalysis'),
+          groupLabel: tm('restaurantSpecial')
         };
       case 'beauty':
         return {
           color: '#ec4899',
           lightColor: '#fdf2f8',
           icon: <User className="text-white w-5 h-5" />,
-          title: 'Güzellik Merkezi',
-          groupLabel: 'GÜZELLİK ÖZEL'
+          title: tm('beautyCenter'),
+          groupLabel: tm('beautySpecial')
         };
       default:
         return {
           color: '#2563eb',
           lightColor: '#eff6ff',
           icon: <BarChart3 className="text-white w-5 h-5" />,
-          title: 'Perakende Satış',
-          groupLabel: 'MAĞAZA ÖZEL'
+          title: tm('retailSales'),
+          groupLabel: tm('storeSpecial')
         };
     }
   };
@@ -672,13 +677,13 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
 
   // Comparison Report
   const getComparisonData = (period: 'week' | 'month') => {
-    const today = new Date();
+    const now = new Date();
     const currentStart = period === 'week'
-      ? new Date(today.setDate(today.getDate() - 7))
-      : new Date(today.setMonth(today.getMonth() - 1));
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7)
+      : new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
     const previousStart = period === 'week'
-      ? new Date(today.setDate(today.getDate() - 14))
-      : new Date(today.setMonth(today.getMonth() - 2));
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14)
+      : new Date(now.getFullYear(), now.getMonth() - 2, now.getDate());
 
     // Örnek veriler
     return {
@@ -833,68 +838,68 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
     const commonGroups = [
       {
         key: 'grp-general',
-        label: 'GENEL & YAPAY ZEKA',
+        label: tm('genelYapayZeka'),
         type: 'group',
         children: [
-          { key: 'chat-ai', label: 'AI Asistan', icon: <RobotOutlined /> },
-          { key: 'daily-sales-executive', label: 'Yönetici Günlük Satış', icon: <RiseOutlined /> },
-          { key: 'daily', label: 'Günlük Rapor', icon: <CalendarOutlined /> },
-          { key: 'end-of-day', label: 'Gün Sonu Raporu', icon: <HistoryOutlined /> },
-          { key: 'z-report', label: 'Z Raporu', icon: <PrinterOutlined /> },
-          { key: 'comparison', label: 'Dönem Karşılaştırma', icon: <SwapOutlined /> },
+          { key: 'chat-ai', label: tm('aiAsistan'), icon: <RobotOutlined /> },
+          { key: 'daily-sales-executive', label: tm('yoneticiGunlukSatis'), icon: <RiseOutlined /> },
+          { key: 'daily', label: tm('gunlukRapor'), icon: <CalendarOutlined /> },
+          { key: 'end-of-day', label: tm('gunSonuRaporu'), icon: <HistoryOutlined /> },
+          { key: 'z-report', label: tm('zRaporu'), icon: <PrinterOutlined /> },
+          { key: 'comparison', label: tm('donemKarsilastirma'), icon: <SwapOutlined /> },
         ],
       },
       {
         key: 'grp-sales',
-        label: 'SATIŞ ANALİZLERİ',
+        label: tm('satisAnalizleri'),
         type: 'group',
         children: [
-          { key: 'top-products', label: 'En Çok Satanlar', icon: <LineChartOutlined /> },
-          { key: 'category-analysis', label: 'Kategori Analizi', icon: <PieChartOutlined /> },
-          { key: 'hourly-analysis', label: 'Saatlik Analiz', icon: <ClockCircleOutlined /> },
-          { key: 'cashiers', label: 'Kasiyer Performansı', icon: <TeamOutlined /> },
-          { key: 'customer-sales', label: 'Müşteri Satış', icon: <UserOutlined /> },
-          { key: 'sales-trend', label: 'Satış Trend Analizi', icon: <RiseOutlined /> },
-          { key: 'sales-target', label: 'Hedef vs Gerçekleşen', icon: <ThunderboltOutlined /> },
-          { key: 'detailed-sales', label: 'Detaylı Satış Raporu', icon: <LineChartOutlined /> },
-          { key: 'analysis', label: 'Analiz', icon: <BarChart3 /> },
+          { key: 'top-products', label: tm('enCokSatanlar'), icon: <LineChartOutlined /> },
+          { key: 'category-analysis', label: tm('kategoriAnalizi'), icon: <PieChartOutlined /> },
+          { key: 'hourly-analysis', label: tm('saatlikAnaliz'), icon: <ClockCircleOutlined /> },
+          { key: 'cashiers', label: tm('kasiyerPerformansi'), icon: <TeamOutlined /> },
+          { key: 'customer-sales', label: tm('musteriSatis'), icon: <UserOutlined /> },
+          { key: 'sales-trend', label: tm('satisTrendAnalizi'), icon: <RiseOutlined /> },
+          { key: 'sales-target', label: tm('hedefVsGerceklesen'), icon: <ThunderboltOutlined /> },
+          { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
+          { key: 'analysis', label: tm('analiz'), icon: <BarChart3 /> },
         ],
       },
       {
         key: 'grp-financial',
-        label: 'FİNANSAL RAPORLAR',
+        label: tm('finansalRaporlar'),
         type: 'group',
         children: [
-          { key: 'profit-loss', label: 'Kar-Zarar Raporu', icon: <AccountBookOutlined /> },
-          { key: 'cash-flow', label: 'Nakit Akış Raporu', icon: <TransactionOutlined /> },
-          { key: 'debt-aging', label: 'Borç/Alacak Yaşlandırma', icon: <HistoryOutlined /> },
-          { key: 'check-tracking', label: 'Çek/Senet Takibi', icon: <AuditOutlined /> },
-          { key: 'current-account', label: 'Cari Hesap Özeti', icon: <BankOutlined /> },
+          { key: 'profit-loss', label: tm('karZararRaporu'), icon: <AccountBookOutlined /> },
+          { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
+          { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
+          { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
+          { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
         ],
       },
       {
         key: 'grp-inventory',
-        label: 'STOK RAPORLARI',
+        label: tm('stokRaporlari'),
         type: 'group',
         children: [
-          { key: 'stock-status', label: 'Stok Durumu', icon: <DatabaseOutlined /> },
-          { key: 'stock-aging', label: 'Stok Yaşlandırma', icon: <HourglassOutlined /> },
-          { key: 'stock-turnover', label: 'Stok Dönüş Hızı', icon: <RetweetOutlined /> },
-          { key: 'stock-abc', label: 'Stok ABC Analizi', icon: <ApartmentOutlined /> },
-          { key: 'materials', label: 'Mal Hareket Raporu', icon: <DeploymentUnitOutlined /> },
-          { key: 'expiring-products', label: 'SKT Yaklaşanlar', icon: <ExclamationCircleOutlined /> },
+          { key: 'stock-status', label: tm('stokDurumu'), icon: <DatabaseOutlined /> },
+          { key: 'stock-aging', label: tm('stokYaslandirma'), icon: <HourglassOutlined /> },
+          { key: 'stock-turnover', label: tm('stokDonusHizi'), icon: <RetweetOutlined /> },
+          { key: 'stock-abc', label: tm('stokAbcAnalizi'), icon: <ApartmentOutlined /> },
+          { key: 'materials', label: tm('malHareketRaporu'), icon: <DeploymentUnitOutlined /> },
+          { key: 'expiring-products', label: tm('sktYaklasanlar'), icon: <ExclamationCircleOutlined /> },
         ],
       },
       {
         key: 'grp-payment',
-        label: 'ÖDEME VE İŞLEMLER',
+        label: tm('odemeVeIslemler'),
         type: 'group',
         children: [
-          { key: 'payment-distribution', label: 'Ödeme Dağılımı', icon: <CreditCardOutlined /> },
-          { key: 'discount-report', label: 'İndirim Raporu', icon: <TagsOutlined /> },
-          { key: 'cash-status', label: 'Kasa Durumu', icon: <BankOutlined /> },
-          { key: 'commission', label: 'Komisyon Raporu', icon: <SafetyCertificateOutlined /> },
-          { key: 'cash-report', label: 'Kasa Raporu', icon: <BankOutlined /> },
+          { key: 'payment-distribution', label: tm('odemeDagilimi'), icon: <CreditCardOutlined /> },
+          { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
+          { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
+          { key: 'commission', label: tm('komisyonRaporu'), icon: <SafetyCertificateOutlined /> },
+          { key: 'cash-report', label: tm('kasaRaporu'), icon: <BankOutlined /> },
         ],
       },
     ];
@@ -906,21 +911,21 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
         label: bizConfig.groupLabel,
         type: 'group',
         children: businessType === 'restaurant' ? [
-          { key: 'product-reports', label: 'Ürün Raporları', icon: <ShoppingCart className="w-4 h-4" /> },
-          { key: 'category-reports', label: 'Kategori Raporları', icon: <PieChartIcon className="w-4 h-4" /> },
-          { key: 'staff-reports', label: 'Personel Raporları', icon: <User className="w-4 h-4" /> },
-          { key: 'staff-performance', label: 'Personel H. Raporlar', icon: <TrendingUp className="w-4 h-4" /> },
-          { key: 'table-reports', label: 'Masa Raporları', icon: <ApartmentOutlined /> },
-          { key: 'payment-reports', label: 'Ödeme Raporları', icon: <CreditCard className="w-4 h-4" /> },
-          { key: 'discount-reports', label: 'İndirim Raporları', icon: <Percent className="w-4 h-4" /> },
-          { key: 'sales-movements', label: 'Satış Hareket Raporu', icon: <RiseOutlined /> },
-          { key: 'receipts', label: 'Adisyonlar', icon: <FileText className="w-4 h-4" /> },
-          { key: 'courier-reports', label: 'Kurye Raporları', icon: <Package className="w-4 h-4" /> },
-          { key: 'cash-register-reports', label: 'YazarKasa Raporları', icon: <PrinterOutlined /> },
-          { key: 'turnover-reports', label: 'Ciro Raporları', icon: <DollarSign className="w-4 h-4" /> },
+          { key: 'product-reports', label: tm('urunRaporlari'), icon: <ShoppingCart className="w-4 h-4" /> },
+          { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
+          { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
+          { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
+          { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
+          { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
+          { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
+          { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
+          { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
+          { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
+          { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
+          { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <DollarSign className="w-4 h-4" /> },
         ] : [
-          { key: 'detailed-sales', label: 'Detaylı Satış Raporu', icon: <LineChartOutlined /> },
-          { key: 'analysis', label: 'Analiz Raporu', icon: <PieChartOutlined /> },
+          { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
+          { key: 'analysis', label: tm('analiz'), icon: <PieChartOutlined /> },
         ]
       }
     ];
@@ -956,7 +961,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
             {!collapsed && (
               <div className="overflow-hidden">
                 <h2 className="text-base font-black text-slate-800 leading-tight truncate">{bizConfig.title}</h2>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Analiz & İstatistik</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">{tm('analizStats')}</p>
               </div>
             )}
           </div>
@@ -975,9 +980,9 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
           <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm shrink-0 h-[72px]">
             <div>
               <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || 'Rapor'}
+                {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
               </h1>
-              <p className="text-xs text-slate-500 font-medium">Verilerinizi kontrol edin ve performansı izleyin</p>
+              <p className="text-xs text-slate-500 font-medium">{tm('checkDataAndPerformance')}</p>
             </div>
             <div className="flex items-center gap-3">
               {/* Ekstra butonlar buraya gelebilir, örneğin genel dışa aktar */}
@@ -1221,18 +1226,18 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
             {selectedTab === 'cashiers' && (
               <div className="bg-white rounded-lg border">
                 <div className="p-4 border-b">
-                  <h3 className="text-lg">Kasiyer Performans Raporu</h3>
+                  <h3 className="text-lg">{tm('cashierPerformanceReport')}</h3>
                 </div>
                 <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                   <table className="w-full min-w-[800px]">
                     <thead className="bg-gray-50 border-b sticky top-0">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
-                        <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
-                        <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
-                        <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
-                        <th className="px-4 py-3 text-right text-sm">Nakit</th>
-                        <th className="px-4 py-3 text-right text-sm">Kart</th>
+                        <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -1278,19 +1283,19 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
                       <Award className="w-5 h-5 text-yellow-600" />
-                      En Çok Satan Ürünler (TOP 20)
+                      {tm('enCokSatanlar')} (TOP 20)
                     </h3>
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[900px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Sıra</th>
-                            <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                            <th className="px-4 py-3 text-right text-sm">Satış Adedi</th>
-                            <th className="px-4 py-3 text-right text-sm">Ciro</th>
-                            <th className="px-4 py-3 text-right text-sm">Ort. Fiyat</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('rankLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -1338,7 +1343,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border p-4">
                       <h3 className="text-lg mb-4 flex items-center gap-2">
                         <PieChartIcon className="w-5 h-5 text-blue-600" />
-                        Kategori Dağılımı (Ciro)
+                        {tm('categoryDistributionRevenue')}
                       </h3>
                       <ResponsiveContainer width="100%" height={300}>
                         <RePieChart>
@@ -1363,16 +1368,16 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border p-4">
                       <h3 className="text-lg mb-4 flex items-center gap-2">
                         <BarChart3 className="w-5 h-5 text-green-600" />
-                        Kategori Performansı
+                        {tm('categoryPerformance')}
                       </h3>
                       <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                         <table className="w-full min-w-[700px]">
                           <thead className="bg-gray-50 border-b sticky top-0">
                             <tr>
-                              <th className="px-4 py-2 text-left text-sm">Kategori</th>
-                              <th className="px-4 py-2 text-right text-sm">Ciro</th>
-                              <th className="px-4 py-2 text-right text-sm">Adet</th>
-                              <th className="px-4 py-2 text-right text-sm">Ort. Fiyat</th>
+                              <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -1411,7 +1416,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
                       <Clock className="w-5 h-5 text-purple-600" />
-                      Saatlik Satış Analizi
+                      {tm('hourlySalesAnalysis')}
                     </h3>
                     <ResponsiveContainer width="100%" height={400}>
                       <BarChart data={hourlyData}>
@@ -1421,23 +1426,23 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                         <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
                         <Tooltip />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="sales" fill="#3b82f6" name="Satış Sayısı" />
-                        <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Ciro (IQD)" />
+                        <Bar yAxisId="left" dataKey="sales" fill="#3b82f6" name={tm('transactionCount')} />
+                        <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name={tm('totalRevenueLabel') + ' (IQD)'} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b">
-                      <h4 className="text-md">Detaylı Saatlik Veriler</h4>
+                      <h4 className="text-md">{tm('detailedHourlyData')}</h4>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[700px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Saat</th>
-                            <th className="px-4 py-3 text-right text-sm">Satış Sayısı</th>
-                            <th className="px-4 py-3 text-right text-sm">Toplam Ciro</th>
-                            <th className="px-4 py-3 text-right text-sm">Ortalama Satış</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -1473,7 +1478,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Açılış Kasası</p>
+                          <p className="text-sm text-gray-600">{tm('openingCash')}</p>
                           <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} IQD</p>
                         </div>
                         <DollarSign className="w-12 h-12 text-blue-600 opacity-20" />
@@ -1482,7 +1487,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Günlük Nakit</p>
+                          <p className="text-sm text-gray-600">{tm('todayCash')}</p>
                           <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} IQD</p>
                         </div>
                         <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
@@ -1491,7 +1496,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Günlük Kart</p>
+                          <p className="text-sm text-gray-600">{tm('todayCard')}</p>
                           <p className="text-2xl text-purple-600 mt-1 font-bold">{formatNumber(cashStatus.todayCard, 2, false)} IQD</p>
                         </div>
                         <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
@@ -1500,7 +1505,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Kapanış Kasası</p>
+                          <p className="text-sm text-gray-600">{tm('closingCash')}</p>
                           <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} IQD</p>
                         </div>
                         <DollarSign className="w-12 h-12 text-orange-600 opacity-20" />
@@ -1510,38 +1515,38 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg mb-4">Ödeme Dağılımı</h3>
+                      <h3 className="text-lg mb-4">{tm('paymentDistribution')}</h3>
                       <div className="space-y-3">
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <span className="flex items-center gap-2">
                             <div className="w-3 h-3 bg-green-500 rounded"></div>
-                            Nakit
+                            {tm('cashLabel')}
                           </span>
                           <span className="font-semibold text-green-600">{formatNumber(cashStatus.todayCash, 2, false)} IQD</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <span className="flex items-center gap-2">
                             <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                            Kart
+                            {tm('cardLabel')}
                           </span>
                           <span className="font-semibold text-blue-600">{formatNumber(cashStatus.todayCard, 2, false)} IQD</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <span className="flex items-center gap-2">
                             <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                            Transfer
+                            {tm('transferLabel')}
                           </span>
                           <span className="font-semibold text-orange-600">{formatNumber(cashStatus.todayTransfer, 2, false)} IQD</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                          <span className="font-semibold">Toplam</span>
+                          <span className="font-semibold">{tm('totalLabel_rep')}</span>
                           <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} IQD</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="bg-white rounded-lg border p-4">
-                      <h3 className="text-lg mb-4">Kart Türleri</h3>
+                      <h3 className="text-lg mb-4">{tm('cardTypes')}</h3>
                       <div className="space-y-3">
                         {cashStatus.cards.map((card) => (
                           <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -1565,7 +1570,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Nakit</p>
+                          <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
                           <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} IQD</p>
                           <p className="text-xs text-gray-500 mt-1">{paymentDist.cash.count} işlem ({paymentDist.cash.percentage.toFixed(1)}%)</p>
                         </div>
@@ -1575,7 +1580,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Kart</p>
+                          <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
                           <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} IQD</p>
                           <p className="text-xs text-gray-500 mt-1">{paymentDist.card.count} işlem ({paymentDist.card.percentage.toFixed(1)}%)</p>
                         </div>
@@ -1585,7 +1590,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                     <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Transfer</p>
+                          <p className="text-sm text-gray-600">{tm('transferLabel')}</p>
                           <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} IQD</p>
                           <p className="text-xs text-gray-500 mt-1">{paymentDist.transfer.count} işlem ({paymentDist.transfer.percentage.toFixed(1)}%)</p>
                         </div>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Package, TrendingDown, AlertTriangle, ArrowLeftRight, FileText, Download, Upload, Printer } from 'lucide-react';
 import type { Product } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -25,6 +25,10 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
   const [sourceStore, setSourceStore] = useState('store1');
   const [targetStore, setTargetStore] = useState('store2');
   const [transferNote, setTransferNote] = useState('');
+  
+  // Movement filtering states
+  const [movementFilter, setMovementFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Calculate stock statistics
   const totalItems = products.reduce((sum, p) => sum + p.stock, 0);
@@ -171,7 +175,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingDown className="w-4 h-4 text-green-600" />
-                    <span className="text-[10px] text-gray-600">Toplam Stok Değeri</span>
+                    <span className="text-[10px] text-gray-600">Toplam Envanter (Alış)</span>
                   </div>
                   <div className="text-base text-green-600">{formatNumber(totalCostValue, 0, false)} IQD</div>
                   <div className="text-[9px] text-gray-500 mt-0.5">Maliyet bazlı</div>
@@ -330,7 +334,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                     return (
                       <div key={`category-${category}-${index}`} className="flex justify-between">
                         <span className="text-sm text-gray-600">{category}:</span>
-                        <span className="text-blue-600">{categoryStock} adet</span>
+                        <span className="text-sm text-gray-600">{categoryStock} ürün</span>
                       </div>
                     );
                   })}
@@ -342,55 +346,104 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
 
         {selectedTab === 'movements' && (
           <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl">Stok Hareketleri</h3>
-              <p className="text-sm text-gray-600 mt-1">Tüm giriş-çıkış kayıtları</p>
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl">Stok Hareketleri</h3>
+                <p className="text-sm text-gray-600 mt-1">Tüm giriş-çıkış kayıtları</p>
+              </div>
+              <div className="flex gap-2">
+                <select 
+                  className="px-3 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 outline-none"
+                  value={movementFilter}
+                  onChange={(e) => setMovementFilter(e.target.value)}
+                >
+                  <option value="all">Tüm Hareketler</option>
+                  <option value="in">Sadece Girişler</option>
+                  <option value="out">Sadece Çıkışlar</option>
+                  <option value="transfer">Transferler</option>
+                </select>
+                <input 
+                  type="text" 
+                  placeholder="Ürün veya döküman no ara..."
+                  className="px-3 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 outline-none w-64"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
             <div className="overflow-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b-2 border-gray-300">
+                <thead className="bg-[#f8fafc] border-b-2 border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">HAREKET NO</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">TARİH/SAAT</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">ÜRÜN</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">İŞLEM TİPİ</th>
-                    <th className="px-4 py-3 text-center text-sm text-gray-700">MİKTAR</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">AÇIKLAMA</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-700">KULLANICI</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">DÖKÜMAN NO</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">TARİH/SAAT</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">ÜRÜN</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">TİP</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">MİKTAR</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">FİYAT</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">MALİYET</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">KAR</th>
+                    <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-700">KUR</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">AÇIKLAMA</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {stockMovements.map((item: any) => {
-                    const movement = item.movement || {};
-                    const product = item.products || {};
-                    const isIncoming = movement.movement_type === 'in';
-                    const isOutgoing = movement.movement_type === 'out';
+                  {stockMovements
+                    .filter(item => {
+                      const m = item.movement || item;
+                      if (movementFilter !== 'all' && m.movement_type !== movementFilter) return false;
+                      if (!searchQuery) return true;
+                      const q = searchQuery.toLowerCase();
+                      const p = item.product_name || '';
+                      const doc = m.document_no || '';
+                      return p.toLowerCase().includes(q) || doc.toLowerCase().includes(q);
+                    })
+                    .map((item: any) => {
+                      const movement = item.movement || item;
+                      const isIncoming = movement.movement_type === 'in';
+                      const isOutgoing = movement.movement_type === 'out';
+                      
+                      const qty = Number(item.quantity) || 0;
+                      const price = Number(item.unit_price) || 0;
+                      const cost = Number(item.cost_price) || 0;
+                      const profit = isOutgoing ? (price - cost) * qty : 0;
+                      const rate = Number(movement.exchange_rate) || Number(item.exchange_rate) || 1;
 
-                    return (
-                      <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm">{movement.document_no || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {movement.movement_date ? new Date(movement.movement_date).toLocaleString('tr-TR') : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm">{product.name || 'Bilinmeyen Ürün'}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded ${isIncoming ? 'bg-green-100 text-green-700' :
-                            isOutgoing ? 'bg-red-100 text-red-700' :
-                              'bg-blue-100 text-blue-700'
-                            }`}>
-                            {isIncoming ? 'Giriş' : isOutgoing ? 'Çıkış' : movement.movement_type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={item.quantity > 0 ? 'text-green-600' : 'text-red-600'}>
-                            {item.quantity > 0 ? '+' : ''}{item.quantity}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{item.notes || movement.description || '-'}</td>
-                        <td className="px-4 py-3 text-sm">{movement.created_by || '-'}</td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr key={item.id} className="hover:bg-[#f1f5f9] transition-colors border-b border-gray-100">
+                          <td className="px-4 py-2 text-[11px] font-medium text-blue-700">{movement.document_no || '-'}</td>
+                          <td className="px-4 py-2 text-[11px] text-gray-500">
+                            {movement.movement_date ? new Date(movement.movement_date).toLocaleString('tr-TR') : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-[11px]">
+                            <span className="font-semibold block">{item.product_name || 'Bilinmeyen Ürün'}</span>
+                            <span className="text-[10px] text-gray-400">{item.product_code}</span>
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${isIncoming ? 'bg-green-100 text-green-700' :
+                              isOutgoing ? 'bg-red-100 text-red-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                              {isIncoming ? 'Giriş' : isOutgoing ? 'Çıkış' : movement.movement_type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right text-[11px] font-bold">
+                            <span className={qty > 0 ? 'text-green-600' : 'text-red-600'}>
+                              {qty > 0 ? '+' : ''}{formatNumber(qty, 0, false)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right text-[11px]">{formatNumber(price, 2, false)}</td>
+                          <td className="px-4 py-2 text-right text-[11px] text-gray-500 italic">{formatNumber(cost, 2, false)}</td>
+                          <td className="px-4 py-2 text-right text-[11px] font-bold text-purple-600">
+                            {profit !== 0 ? formatNumber(profit, 2, false) : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-center text-[11px] text-orange-600 font-mono">
+                            {rate > 1 ? `x${rate}` : '-'}
+                          </td>
+                          <td className="px-4 py-2 text-[11px] text-gray-500 truncate max-w-[150px]">{item.notes || movement.description || '-'}</td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -430,13 +483,13 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6 border-b bg-gradient-to-r from-orange-600 to-orange-700 text-white">
               <h3 className="text-xl">Stok Güncelle</h3>
-              <p className="text-sm text-orange-100 mt-1">{selectedProduct.name}</p>
+              <p className="text-sm text-orange-100 mt-1">{selectedProduct?.name}</p>
             </div>
 
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm text-gray-700 mb-1">Mevcut Stok</label>
-                <p className="text-2xl text-blue-600">{selectedProduct.stock} {selectedProduct.unit}</p>
+                <p className="text-2xl text-blue-600">{selectedProduct?.stock} {selectedProduct?.unit}</p>
               </div>
 
               <div>
@@ -500,11 +553,11 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                     Yeni Stok:{' '}
                     <span className="text-blue-600">
                       {updateType === 'add'
-                        ? selectedProduct.stock + updateQuantity
+                        ? (selectedProduct?.stock || 0) + updateQuantity
                         : updateType === 'subtract'
-                          ? Math.max(0, selectedProduct.stock - updateQuantity)
+                          ? Math.max(0, (selectedProduct?.stock || 0) - updateQuantity)
                           : updateQuantity
-                      } {selectedProduct.unit}
+                      } {selectedProduct?.unit}
                     </span>
                   </p>
                 </div>

@@ -3,7 +3,7 @@
  * Pattern: Memoization + Lazy Loading + Virtual Scrolling
  */
 
-import { useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 /**
  * Debounce hook
@@ -321,6 +321,6 @@ export class PerformanceMonitor {
 export const perfMonitor = new PerformanceMonitor();
 
 // React useState import
-import { useState } from 'react';
+
 
 

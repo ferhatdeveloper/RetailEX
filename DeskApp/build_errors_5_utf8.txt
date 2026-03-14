@@ -1,0 +1,153 @@
+﻿cargo :     Checking retailex v0.1.55 (D:\RetailEX\DeskApp)
+At line:1 char:1
++ cargo check 2> build_errors_5.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking r 
+   e...tailEX\DeskApp):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+error: expected one of `!` or `::`, found `;`
+ --> src\vpn.rs:2:11
+  |
+2 | error_here;
+  |           ^ expected one of `!` or `::`
+
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)
+]`) on by default
+
+error[E0433]: failed to resolve: could not find `__cmd__get_
+vpn_status` in `vpn`
+    --> src\main.rs:1404:14
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |              ^^^^^^^^^^^^^^ could not find `__cmd__ge
+t_vpn_status` in `vpn`
+
+error[E0433]: failed to resolve: could not find `__cmd__get_
+mesh_peers` in `vpn`
+    --> src\main.rs:1404:35
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |                                   ^^^^^^^^^^^^^^ coul
+d not find `__cmd__get_mesh_peers` in `vpn`
+
+error[E0433]: failed to resolve: could not find `__cmd__gene
+rate_vpn_keys` in `vpn`
+    --> src\main.rs:1404:56
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |                                                      
+  ^^^^^^^^^^^^^^^^^ could not find `__cmd__generate_vpn_keys
+` in `vpn`
+
+error[E0433]: failed to resolve: could not find `__cmd__star
+t_vpn_mesh` in `vpn`
+    --> src\main.rs:1404:80
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |                                                      
+                          ^^^^^^^^^^^^^^ could not find `__c
+md__start_vpn_mesh` in `vpn`
+
+error[E0433]: failed to resolve: could not find `__cmd__stop
+_vpn` in `vpn`
+    --> src\main.rs:1404:101
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |                                                      
+                                               ^^^^^^^^ coul
+d not find `__cmd__stop_vpn` in `vpn`
+
+error[E0433]: failed to resolve: could not find `__cmd__upda
+te_peer_endpoint` in `vpn`
+    --> src\main.rs:1404:116
+     |
+1404 |         vpn::get_vpn_status, vpn::get_mesh_peers, vpn
+::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn
+::update_peer_endpoint,
+     |                                                      
+                                                            
+  ^^^^^^^^^^^^^^^^^^^^ could not find `__cmd__update_peer_en
+dpoint` in `vpn`
+
+warning: unused import: `tokio_postgres::NoTls`
+ --> src\db_ops.rs:4:5
+  |
+4 | use tokio_postgres::NoTls;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)
+]`) on by default
+
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+
+warning: unused import: `tokio::time::timeout`
+   --> src\main.rs:155:9
+    |
+155 |     use tokio::time::timeout;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio::time::timeout`
+   --> src\main.rs:207:9
+    |
+207 |     use tokio::time::timeout;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rust_decimal::prelude::FromPrimitiv
+e`
+   --> src\main.rs:224:17
+    |
+224 |             use rust_decimal::prelude::FromPrimitive;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `retailex` (bin "RetailEX_VPN") due
+ to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error[E0282]: type annotations needed
+   --> src\sync.rs:483:66
+    |
+483 |         let keys_json = crate::vpn::generate_vpn_keys(
+).map_err(|e| e.to_string())?;
+    |                                                       
+           ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit typ
+e
+    |
+483 |         let keys_json = crate::vpn::generate_vpn_keys(
+).map_err(|e: /* Type */| e.to_string())?;
+    |                                                       
+            ++++++++++++
+
+For more information about this error, try `rustc --explain 
+E0282`.
+warning: `retailex` (bin "RetailEX_Service") generated 1 war
+ning
+error: could not compile `retailex` (bin "RetailEX_Service")
+ due to 2 previous errors; 1 warning emitted
+Some errors have detailed explanations: E0282, E0433.
+For more information about an error, try `rustc --explain E0
+282`.
+warning: `retailex` (bin "retailex") generated 5 warnings
+error: could not compile `retailex` (bin "retailex") due to 
+8 previous errors; 5 warnings emitted

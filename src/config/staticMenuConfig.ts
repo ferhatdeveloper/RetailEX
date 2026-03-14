@@ -1,4 +1,4 @@
-﻿// Statik Menü Yapısı - Otomatik Oluşturuldu
+// Statik Menü Yapısı - Otomatik Oluşturuldu
 // Bu dosya MenuManagementPanel'den dışa aktarılmıştır
 
 import {
@@ -57,7 +57,8 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.specialCodes, screen: 'special-codes', icon: Tag },
                     { label: t.menu.brandDefinitions, screen: 'brand-definitions', icon: Tag },
                     { label: t.menu.groupCodes, screen: 'group-codes', icon: Tag },
-                    { label: t.menu.productCategories, screen: 'product-categories', icon: Tag }
+                    { label: t.menu.productCategories, screen: 'product-categories', icon: Tag },
+                    { label: t.menu.serviceCards, screen: 'service-cards', icon: Briefcase }
                 ]
             },
             {
@@ -173,8 +174,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: Settings,
                 children: [
                     { label: t.menu.paymentPlans, screen: 'payment-plans', icon: Calendar },
-                    // { label: t.menu.bankPaymentPlans, screen: 'bank-payment-plans', icon: Calendar },
-                    // { label: t.menu.campaignDefinitions, screen: 'campaigndefs', icon: Percent }
+                    { label: 'Masraf Merkezleri', screen: 'cost-centers', icon: Target },
                 ]
             },
             {
@@ -290,6 +290,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
+            { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
         ]

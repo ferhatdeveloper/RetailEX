@@ -34,8 +34,20 @@ interface Company {
   telefon: string;
   email: string;
   ana_para_birimi: string;
+  raporlama_para_birimi: string;
   created_at: string;
 }
+
+const CURRENCIES = [
+  { value: 'IQD', label: 'IQD — Irak Dinarı' },
+  { value: 'USD', label: 'USD — Amerikan Doları' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'TRY', label: 'TRY — Türk Lirası' },
+  { value: 'SAR', label: 'SAR — Suudi Riyali' },
+  { value: 'AED', label: 'AED — BAE Dirhemi' },
+  { value: 'KWD', label: 'KWD — Kuveyt Dinarı' },
+  { value: 'GBP', label: 'GBP — İngiliz Sterlini' },
+];
 
 interface Period {
   id: string;
@@ -496,6 +508,32 @@ export function CompanySetup() {
             <div className="col-span-2"><label className="block text-sm mb-1">Adres</label><input className="w-full border p-2 rounded" value={formData.adres || ''} onChange={e => setFormData({ ...formData, adres: e.target.value })} disabled={mode === 'view'} /></div>
             <div><label className="block text-sm mb-1">Şehir</label><input className="w-full border p-2 rounded" value={formData.il || ''} onChange={e => setFormData({ ...formData, il: e.target.value })} disabled={mode === 'view'} /></div>
             <div><label className="block text-sm mb-1">İlçe</label><input className="w-full border p-2 rounded" value={formData.ilce || ''} onChange={e => setFormData({ ...formData, ilce: e.target.value })} disabled={mode === 'view'} /></div>
+
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Para Birimi</h3></div>
+            <div>
+              <label className="block text-sm mb-1">Ana Para Birimi</label>
+              <select
+                className="w-full border p-2 rounded bg-white"
+                value={formData.ana_para_birimi || 'IQD'}
+                onChange={e => setFormData({ ...formData, ana_para_birimi: e.target.value })}
+                disabled={mode === 'view'}
+              >
+                {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Fatura ve işlem para birimi</p>
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Raporlama Para Birimi</label>
+              <select
+                className="w-full border p-2 rounded bg-white"
+                value={formData.raporlama_para_birimi || 'IQD'}
+                onChange={e => setFormData({ ...formData, raporlama_para_birimi: e.target.value })}
+                disabled={mode === 'view'}
+              >
+                {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Konsolide raporlarda kullanılır</p>
+            </div>
           </>
         );
       }

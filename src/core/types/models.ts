@@ -1,4 +1,4 @@
-﻿// Core Business Models
+// Core Business Models
 
 export interface BranchStock {
   branchId: string;
@@ -51,7 +51,8 @@ export interface Product {
   isActive?: boolean;
   created_at?: string;
   updated_at?: string;
-  materialType?: 'commercial_goods' | 'mixed_parcel' | 'deposit_goods' | 'fixed_asset' | 'raw_material' | 'semi_finished' | 'consumable';
+  isService?: boolean;
+  materialType?: 'commercial_goods' | 'mixed_parcel' | 'deposit_goods' | 'fixed_asset' | 'raw_material' | 'semi_finished' | 'consumable' | 'service';
   // Additional fields for professional ERP
   categoryCode?: string;
   groupCode?: string;
@@ -85,6 +86,9 @@ export interface Product {
   priceList4?: number;
   priceList5?: number;
   priceList6?: number;
+  customExchangeRate?: number;
+  autoCalculateUSD?: boolean;
+  unitsetId?: string;
 }
 
 export interface ProductVariant {
@@ -180,6 +184,7 @@ export interface Sale {
   campaignId?: string;
   campaignName?: string;      // Kampanya adı
   campaignDiscount?: number;  // Kampanya indirimi
+  profit?: number;            // Toplam Kar
   cashier: string;
   table?: string;
   discountReason?: string;
@@ -190,6 +195,8 @@ export interface Sale {
   firmNr?: string;
   periodNr?: string;
   created_at?: string;
+  autoPrint?: boolean;
+  language?: string;
 }
 
 export interface SaleItem {
@@ -200,8 +207,12 @@ export interface SaleItem {
   price: number;
   discount: number;
   tax?: number;
+  cost?: number;    // Ürün maliyeti (Birim Alış)
+  profit?: number;  // Brüt Kar
   total: number;
   variant?: ProductVariant;
+  unit?: string;
+  multiplier?: number;
 }
 
 export interface Campaign {
@@ -261,6 +272,8 @@ export interface CartItem {
   discount: number;
   subtotal: number;
   variant?: ProductVariant;
+  unit?: string;
+  multiplier?: number;
 }
 
 export type Module = 'pos' | 'management';

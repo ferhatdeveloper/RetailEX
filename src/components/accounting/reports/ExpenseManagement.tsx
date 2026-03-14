@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Expense Management Module - Gider Yönetimi
  * 
  * Features:
@@ -19,22 +19,12 @@ import {
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
+import { expenseAPI, type Expense } from '../../../services/api/expenses';
+import { costCenterAPI, type CostCenter } from '../../../services/api/costCenters';
 
-interface Expense {
-  id: string;
-  category: string;
-  description: string;
-  amount: number;
-  payment_method: string;
-  document_number?: string;
-  document_url?: string;
-  store_id: string;
+interface ExpenseLocal extends Expense {
   store_name?: string;
-  created_by: string;
   created_by_name?: string;
-  expense_date: string;
-  created_at: string;
-  notes?: string;
 }
 
 interface ExpenseCategory {
@@ -83,94 +73,35 @@ export function ExpenseManagement() {
     payment_method: 'cash',
     document_number: '',
     store_id: '',
+    cost_center_id: '',
     expense_date: new Date().toISOString().split('T')[0],
     notes: '',
   });
 
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+
   useEffect(() => {
     loadExpenses();
+    loadCostCenters();
   }, []);
+
+  const loadCostCenters = async () => {
+    try {
+      const centers = await costCenterAPI.getAll();
+      setCostCenters(centers);
+    } catch (error) {
+      console.error('Error loading cost centers:', error);
+    }
+  };
 
   const loadExpenses = async () => {
     setLoading(true);
     try {
-      // TODO: Supabase API call
-      // const { data } = await supabase.from('expenses').select('*, stores(name), users(full_name)');
-
-      // Mock data for now
-      const mockExpenses: Expense[] = [
-        {
-          id: '1',
-          category: 'rent',
-          description: 'Aylık mağaza kirası - Baghdad Merkez',
-          amount: 3500000,
-          payment_method: 'bank_transfer',
-          document_number: 'KIRA-2024-12',
-          store_id: '1',
-          store_name: 'Baghdad Merkez',
-          created_by: '1',
-          created_by_name: 'Admin',
-          expense_date: '2024-12-01',
-          created_at: '2024-12-01T09:00:00Z',
-        },
-        {
-          id: '2',
-          category: 'electricity',
-          description: 'Elektrik faturası - Aralık 2024',
-          amount: 850000,
-          payment_method: 'cash',
-          document_number: 'ELK-1234567',
-          store_id: '1',
-          store_name: 'Baghdad Merkez',
-          created_by: '1',
-          created_by_name: 'Admin',
-          expense_date: '2024-12-05',
-          created_at: '2024-12-05T14:30:00Z',
-        },
-        {
-          id: '3',
-          category: 'salary',
-          description: 'Aralık maaşları',
-          amount: 12500000,
-          payment_method: 'bank_transfer',
-          document_number: 'MAAS-2024-12',
-          store_id: '1',
-          store_name: 'Baghdad Merkez',
-          created_by: '1',
-          created_by_name: 'Admin',
-          expense_date: '2024-12-25',
-          created_at: '2024-12-25T10:00:00Z',
-        },
-        {
-          id: '4',
-          category: 'water',
-          description: 'Su faturası',
-          amount: 320000,
-          payment_method: 'cash',
-          document_number: 'SU-987654',
-          store_id: '2',
-          store_name: 'Erbil Şubesi',
-          created_by: '2',
-          created_by_name: 'Manager Erbil',
-          expense_date: '2024-12-10',
-          created_at: '2024-12-10T11:20:00Z',
-        },
-        {
-          id: '5',
-          category: 'maintenance',
-          description: 'Klima bakım ve temizliği',
-          amount: 450000,
-          payment_method: 'cash',
-          document_number: 'BAK-5555',
-          store_id: '1',
-          store_name: 'Baghdad Merkez',
-          created_by: '1',
-          created_by_name: 'Admin',
-          expense_date: '2024-12-15',
-          created_at: '2024-12-15T15:45:00Z',
-        },
-      ];
-      setExpenses(mockExpenses);
+      const data = await expenseAPI.getAll({
+        startDate: filterDateFrom,
+        endDate: filterDateTo
+      });
+      setExpenses(data as ExpenseLocal[]);
     } catch (error) {
       console.error('Error loading expenses:', error);
     } finally {
@@ -187,6 +118,7 @@ export function ExpenseManagement() {
       payment_method: 'cash',
       document_number: '',
       store_id: '',
+      cost_center_id: '',
       expense_date: new Date().toISOString().split('T')[0],
       notes: '',
     });
@@ -202,6 +134,7 @@ export function ExpenseManagement() {
       payment_method: expense.payment_method,
       document_number: expense.document_number || '',
       store_id: expense.store_id,
+      cost_center_id: expense.cost_center_id || '',
       expense_date: expense.expense_date,
       notes: expense.notes || '',
     });
@@ -221,17 +154,32 @@ export function ExpenseManagement() {
   };
 
   const handleSaveExpense = async () => {
-    // TODO: Validation and API call
-    console.log('Saving expense:', formData);
-    setShowExpenseModal(false);
-    await loadExpenses();
+    try {
+      const data = {
+        ...formData,
+        amount: parseFloat(formData.amount),
+        created_by: '00000000-0000-0000-0000-000000000000' // Placeholder
+      };
+
+      if (editingExpense) {
+        await expenseAPI.update(editingExpense.id, data as any);
+      } else {
+        await expenseAPI.create(data as any);
+      }
+      
+      setShowExpenseModal(false);
+      await loadExpenses();
+    } catch (error) {
+      console.error('Error saving expense:', error);
+      alert('Gider kaydedilirken bir hata oluştu.');
+    }
   };
 
   const getCategoryInfo = (categoryId: string) => {
     return EXPENSE_CATEGORIES.find(c => c.id === categoryId) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
   };
 
-  const columnHelper = createColumnHelper<Expense>();
+  const columnHelper = createColumnHelper<ExpenseLocal>();
 
   const columns = [
     columnHelper.accessor('expense_date', {
@@ -284,10 +232,16 @@ export function ExpenseManagement() {
       },
       size: 100
     }),
-    columnHelper.accessor('store_name', {
+    columnHelper.accessor(row => row.store_name, {
+      id: 'store_name',
       header: 'MAĞAZA',
       cell: info => info.getValue() || '-',
       size: 120
+    }),
+    columnHelper.accessor('cost_center_name', {
+      header: 'MASRAF MERKEZİ',
+      cell: info => info.getValue() || '-',
+      size: 150
     }),
     columnHelper.accessor('document_number', {
       header: 'BELGE NO',
@@ -593,17 +547,34 @@ export function ExpenseManagement() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Belge No
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.document_number}
-                    onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
-                    placeholder="Fatura/Makbuz No"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Belge No
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.document_number}
+                      onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
+                      placeholder="Fatura/Makbuz No"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Masraf Merkezi
+                    </label>
+                    <select
+                      value={formData.cost_center_id}
+                      onChange={(e) => setFormData({ ...formData, cost_center_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                    >
+                      <option value="">Merkez Seçin</option>
+                      {costCenters.map(cc => (
+                        <option key={cc.id} value={cc.id}>{cc.name} ({cc.code})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div>

@@ -22,13 +22,12 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
         const daySales = sales.filter(s => {
-          const saleDate = new Date(s.date).toISOString().split('T')[0];
-          return saleDate === dateStr;
+          try { const saleDate = new Date(s.date).toISOString().split('T')[0]; return saleDate === dateStr; } catch { return false; }
         });
         data.push({
           date: dateStr,
           sales: daySales.length,
-          revenue: daySales.reduce((sum, s) => sum + s.total, 0),
+          revenue: daySales.reduce((sum, s) => sum + (s.total || 0), 0),
           label: date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric' })
         });
       }
@@ -36,14 +35,13 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
       const startDate = new Date(today);
       startDate.setDate(1); // Ayın başı
       const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      
+
       for (let i = 0; i < daysInMonth; i++) {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
         const dateStr = date.toISOString().split('T')[0];
         const daySales = sales.filter(s => {
-          const saleDate = new Date(s.date).toISOString().split('T')[0];
-          return saleDate === dateStr;
+          try { const saleDate = new Date(s.date).toISOString().split('T')[0]; return saleDate === dateStr; } catch { return false; }
         });
         if (daySales.length > 0 || i % 3 === 0) { // Her 3 günde bir göster
           data.push({
@@ -62,13 +60,12 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
         const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
         const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
         const monthSales = sales.filter(s => {
-          const saleDate = new Date(s.date);
-          return saleDate >= monthStart && saleDate <= monthEnd;
+          try { const saleDate = new Date(s.date); return saleDate >= monthStart && saleDate <= monthEnd; } catch { return false; }
         });
         data.push({
           date: monthStart.toISOString().split('T')[0],
           sales: monthSales.length,
-          revenue: monthSales.reduce((sum, s) => sum + s.total, 0),
+          revenue: monthSales.reduce((sum, s) => sum + (s.total || 0), 0),
           label: date.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })
         });
       }

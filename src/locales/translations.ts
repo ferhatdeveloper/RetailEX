@@ -128,12 +128,13 @@ export interface MenuTranslations {
   unitSets: string;
   userManagement: string;
   variants: string;
+  serviceCards: string;
   warehouseTransferWaybill: string;
   wasteWaybill: string;
   waybills: string;
   whatsappIntegration: string;
   wholesaleSales: string;
-  workflowAutomation: string;
+  supabaseDataTransfer: string;
 }
 
 export interface SidebarTranslations {
@@ -214,6 +215,32 @@ export interface Translations {
   sellRate: string;
   updateRates: string;
   menu: MenuTranslations;
+  receipt: {
+    title: string;
+    receiptNo: string;
+    date: string;
+    cashier: string;
+    customer: string;
+    table: string;
+    subtotal: string;
+    discount: string;
+    campaign: string;
+    total: string;
+    paymentDetails: string;
+    paid: string;
+    change: string;
+    thanks: string;
+    returnPolicy: string;
+    footer: string;
+    autoPrintReceipt: string;
+  };
+  campaignDiscount: string;
+  discountPercentage: string;
+  discountAmount: string;
+  itemDiscount: string;
+  totalPaid: string;
+  okLabel: string;
+  autoPrintReceipt: string;
   abcAnalysis: string;
   accountAdded: string;
   accountCode: string;
@@ -792,6 +819,9 @@ export interface Translations {
   printReceipt: string;
   printReport: string;
   processingText: string;
+  profit: string;
+  todaysProfit: string;
+  instantProfit: string;
   product: string;
   productAdded: string;
   productAddedToCart: string;
@@ -852,7 +882,7 @@ export interface Translations {
   quickProductPageSelect: string;
   quickProductSlot: string;
   rankingByRevenue: string;
-  receipt: string;
+  receiptTitle: string;
   receiptBased: string;
   receiptCancelled: string;
   receiptDataError: string;
@@ -1893,6 +1923,37 @@ export const translations: any = {
       salesOrders: 'Satış Siparişleri',
       currentAccountPersonel: 'Cari Hesap / Personel',
     },
+    receipt: {
+      title: 'SATIŞ FİŞİ',
+      receiptNo: 'FİŞ NO',
+      date: 'TARİH',
+      cashier: 'KASİYER',
+      customer: 'MÜŞTERİ',
+      table: 'MASA',
+      subtotal: 'ARA TOPLAM',
+      discount: 'İNDİRİM',
+      campaign: 'KAMPANYA',
+      total: 'TOPLAM',
+      paymentDetails: 'ÖDEME DETAYLARI',
+      paid: 'ÖDENEN',
+      change: 'PARA ÜSTÜ',
+      thanks: 'Bizi Tercih Ettiğiniz İçin Teşekkürler',
+      returnPolicy: 'Bu fiş iade ve değişim işlemlerinde gereklidir.',
+      footer: 'Profesyonel ERP Çözümleri',
+      autoPrintReceipt: 'Fişi Otomatik Yazdır',
+    },
+    campaignDiscount: 'Kampanya İndirimi',
+    discountPercentage: 'İndirim Oranı (%)',
+    discountAmount: 'İndirim Tutarı',
+    itemDiscount: 'Satır İndirimi',
+    totalPaid: 'Toplam Ödenen',
+    okLabel: 'Tamam',
+    autoPrintReceipt: 'Fişi Otomatik Yazdır',
+    receiptTitle: 'Fiş',
+    presents: 'Hediyeler',
+    profit: 'Kâr',
+    todaysProfit: 'Bugünkü Kâr',
+    instantProfit: 'Anlık Kazanç',
     menuManagement: 'Menü Yönetimi',
     min1Shortcut: 'En az 1 kısayol seçmelisiniz',
     minMaxStock: 'Minimum Maksimum Stok',
@@ -2153,7 +2214,6 @@ export const translations: any = {
     quickProductPageSelect: 'Hızlı Ürün Sayfası Seç',
     quickProductSlot: 'Hızlı Ürün Slot',
     rankingByRevenue: 'Ciro bazında sıralama',
-    receipt: 'Fiş',
     receiptBased: 'Fatura Bazında',
     receiptCancelled: 'Fiş iptal edildi: {reason}',
     receiptDataError: 'Fiş verileri yüklenemedi',
@@ -2415,7 +2475,7 @@ export const translations: any = {
       page: 'صفحة',
       passiveStatus: 'غير نشط',
       paymentMethodsChart: 'Ödeme Yöntemleri',
-      potentialProfit: 'Potansiyel Kâr',
+      potentialProfit: 'Potansiel Kâr',
       prepareReport: 'إعداد التقرير',
       previous: 'السابق',
       priceBulkUpdateSuccess: 'تمت زيادة جميع أسعار المنتجات بنسبة %{percent}',
@@ -2845,7 +2905,7 @@ export const translations: any = {
     close: 'Close',
     closeButton: 'Close',
     closeCashRegister: 'Close Cash Register',
-    closeCashRegisterProcess: 'Close Cash Register Process',
+    closeCashRegisterProcess: 'Cash Register Opening Process',
     closeEsc: 'Press ESC to close',
     closeMonth: 'Close Month',
     closePeriod: 'Close Period',
@@ -3174,6 +3234,7 @@ export const translations: any = {
       banks: 'Banks',
       biDashboardAi: 'BI Dashboard & AI',
       brandDefinitions: 'Brand Definitions',
+      serviceCards: 'Service Cards',
       campaignDefinitions: 'Campaign Definitions',
       cards: 'Cards',
       cashAccounts: 'Cash Accounts',
@@ -3353,7 +3414,7 @@ export const translations: any = {
     mixedPayment: 'Mixed',
     moduleInDevelopment: 'This module is currently under development and will soon be included in the EX-ROSERP ecosystem.',
     moduleLoadError: 'Module Loading Error',
-    moduleLoadErrorMessage: 'An error occurred while loading \"{screenName}\" screen.',
+    moduleLoadErrorMessage: 'An error occurred while loading "{screenName}" screen.',
     moduleLoadingError: 'Module Loading Error',
     modulePreparing: 'Preparing Module',
     moduleUnderDevelopment: 'This module is currently under development and will be included in the EX-ROSERP ecosystem soon.',
@@ -3511,7 +3572,7 @@ export const translations: any = {
     posted: 'Posted',
     potentialProfit: 'Potential Profit',
     prepareReport: 'Prepare Report',
-    preparingModule: '\"{screenName}\" Module is Being Prepared',
+    preparingModule: '"{screenName}" Module is Being Prepared',
     previous: 'Previous',
     price: 'Price',
     priceAndCampaign: 'Price & Campaign',
@@ -3536,6 +3597,10 @@ export const translations: any = {
     productCount: 'Product',
     productDefective: 'Product Defective',
     productDetails: 'Product Details',
+    presents: 'Presents',
+    profit: 'Profit',
+    todaysProfit: "Today's Profit",
+    instantProfit: 'Instant Profit',
     productInfo: 'Product Information',
     productLabel: 'Product',
     productManagement: 'Product Management',
@@ -3591,7 +3656,7 @@ export const translations: any = {
     quickProductPageSelect: 'Quick Product Page Select',
     quickProductSlot: 'Quick Product Slot',
     rankingByRevenue: 'Ranking by revenue',
-    receipt: 'Receipt',
+    receiptTitle: 'Receipt',
     receiptBased: 'Receipt Based',
     receiptCancelled: 'Receipt cancelled: {reason}',
     receiptDataError: 'Receipt data could not be loaded',
@@ -3956,6 +4021,32 @@ export const translations: any = {
     zReport: 'Z Report',
     zeroOpeningCashConfirm: 'Opening cash will be entered as 0.00. Do you want to continue?',
     zeroPlaceholder: '0',
+    receipt: {
+      title: 'SALES RECEIPT',
+      receiptNo: 'RECEIPT NO',
+      date: 'DATE',
+      cashier: 'CASHIER',
+      customer: 'CUSTOMER',
+      table: 'TABLE',
+      subtotal: 'SUBTOTAL',
+      discount: 'DISCOUNT',
+      campaign: 'CAMPAIGN',
+      total: 'TOTAL',
+      paymentDetails: 'PAYMENT DETAILS',
+      paid: 'PAID',
+      change: 'CHANGE',
+      thanks: 'Thank You For Choosing Us',
+      returnPolicy: 'This receipt is required for returns and exchanges.',
+      footer: 'Professional ERP Solutions',
+      autoPrintReceipt: 'Auto Print Receipt',
+    },
+    campaignDiscount: 'Campaign Discount',
+    discountPercentage: 'Discount percentage (%)',
+    discountAmount: 'Discount Amount',
+    itemDiscount: 'Item Discount',
+    totalPaid: 'Total Paid',
+    okLabel: 'OK',
+    autoPrintReceipt: 'Auto Print Receipt',
   },
   ar: {
     abcAnalysis: 'ABC Analizi',
@@ -4633,7 +4724,7 @@ export const translations: any = {
     mixedPayment: 'مختلط',
     moduleInDevelopment: 'هذه الوحدة قيد التطوير حالياً وستتم إضافتها قريباً إلى نظام EX-ROSERP.',
     moduleLoadError: 'خطأ في تحميل الوحدة',
-    moduleLoadErrorMessage: 'حدث خطأ أثناء تحميل شاشة \"{screenName}\". Primetime',
+    moduleLoadErrorMessage: 'حدث خطأ أثناء تحميل شاشة "{screenName}". Primetime',
     moduleLoadingError: 'خطأ في تحميل الوحدة',
     modulePreparing: 'جاري تحضير الوحدة',
     moduleUnderDevelopment: 'هذه الوحدة قيد التطوير حاليًا وستدرج في نظام EX-ROSERP قريبًا.',
@@ -4664,7 +4755,7 @@ export const translations: any = {
     noLogsYet: 'لا توجد سجلات بعد',
     noLowStock: 'لا توجد منتجات في مستوى مخزون منخفض',
     noLowStockInfo: 'Düşük stok seviyesinde ürün yok',
-    noLowStockWarning: 'Düşük stok seviyesinde ürün yok',
+    noLowStockWarning: 'لا توجد منتجات في مستوى مخزون منخفض',
     noMissingBarcodes: 'لا توجد باركودات مفقودة بعد.',
     noParkedReceipts: 'لا توجد إيصالات معلقة',
     noParkedReceiptsDescription: 'ستظهر الإيصالات المعلقة هنا',
@@ -4793,7 +4884,7 @@ export const translations: any = {
     posted: 'منشور',
     potentialProfit: 'الربح المحتمل',
     prepareReport: 'Raporu Hazırla',
-    preparingModule: 'وحدة \"{screenName}\" قيد التحضير',
+    preparingModule: 'وحدة "{screenName}" قيد التحضير',
     previous: 'Önceki',
     price: 'السعر',
     priceAndCampaign: 'الأسعار والحملات',
@@ -4817,7 +4908,11 @@ export const translations: any = {
     productCategories: 'فئات المنتجات',
     productCount: 'المنتج',
     productDefective: 'المنتج معيب',
-    productDetails: 'تفاصيل المنتج',
+    productDetails: 'تفاصيل الإيصال',
+    presents: 'الهدايا',
+    profit: 'الربح',
+    todaysProfit: 'ربح اليوم',
+    instantProfit: 'الربح اللحظي',
     productInfo: 'معلومات المنتج',
     productLabel: 'المنتج',
     productManagement: 'Ürün Yönetimi',
@@ -4873,7 +4968,7 @@ export const translations: any = {
     quickProductPageSelect: 'اختر صفحة المنتج السريع',
     quickProductSlot: 'فتحة منتج سريع',
     rankingByRevenue: 'الترتيب حسب الإيرادات',
-    receipt: 'الإيصال',
+    receiptTitle: 'الإيصال',
     receiptBased: 'حسب الفاتورة',
     receiptCancelled: 'تم إلغاء الإيصال: {reason}',
     receiptDataError: 'تعذر تحميل بيانات الإيصال',
@@ -5241,6 +5336,32 @@ export const translations: any = {
     zReport: 'تقرير Z',
     zeroOpeningCashConfirm: 'سيتم إدخال صندوق الافتتاح كـ 0.00. هل تريد المتابعة؟',
     zeroPlaceholder: '0',
+    receipt: {
+      title: 'إيصال المبيعات',
+      receiptNo: 'رقم الإيصال',
+      date: 'التاريخ',
+      cashier: 'الصراف',
+      customer: 'العميل',
+      table: 'الطاولة',
+      subtotal: 'المجموع الفرعي',
+      discount: 'الخصم',
+      campaign: 'الحملة',
+      total: 'الإجمالي',
+      paymentDetails: 'تفاصيل الدفع',
+      paid: 'المدفوع',
+      change: 'الباقي',
+      thanks: 'شکراً لاختياركم لنا',
+      returnPolicy: 'هذا الإيصال مطلوب لعمليات الإرجاع والاستبدال.',
+      footer: 'حلول تخطيط موارد المؤسسات الاحترافية',
+      autoPrintReceipt: 'طباعة الإيصال تلقائياً',
+    },
+    campaignDiscount: 'خصم الحملة',
+    discountPercentage: 'نسبة الخصم (%)',
+    discountAmount: 'مبلغ الخصم',
+    itemDiscount: 'خصم العنصر',
+    totalPaid: 'إجمالي المدفوع',
+    okLabel: 'تم',
+    autoPrintReceipt: 'طباعة الإيصال تلقائياً',
   },
   ku: {
     abcAnalysis: 'ABC Analizi',
@@ -5907,8 +6028,6 @@ export const translations: any = {
       whatsappIntegration: 'تكامل واتساب',
       wholesaleSales: 'مبيعات الجملة',
       workflowAutomation: 'أتمتة سير العمل',
-      salesOrders: 'داواکاری فرۆشتن',
-      currentAccountPersonel: 'هەژماری جاری / کارمەند',
     },
     menuManagement: 'إدارة القوائم',
     min1Shortcut: 'En az 1 kısayol seçmelisiniz',
@@ -5920,7 +6039,7 @@ export const translations: any = {
     mixedPayment: 'Karışık',
     moduleInDevelopment: 'ئەم مۆدیوڵە ئێستا لە قۆناغی گەشەپێداندایە و و بەم زووانە دەخرێتە ناو سیستەمی EX-ROSERP.',
     moduleLoadError: 'هەڵەی بارکردنی مۆدیۆل',
-    moduleLoadErrorMessage: 'هەڵەیەک ڕوویدا لە کاتی بارکردنی شاشەی \"{screenName}\". ',
+    moduleLoadErrorMessage: 'هەڵەیەک ڕوویدا لە کاتی بارکردنی شاشەی "{screenName}". ',
     moduleLoadingError: 'هەڵە لە بارکردنی مۆدیوڵ',
     modulePreparing: 'ئامادەکردنی مۆدیوڵ',
     moduleUnderDevelopment: 'ئەم مۆدیۆلە ئێستا لە ژێر گەشەپێداندایە و بەم زووانە دەخرێتە ناو کۆمەڵەی EX-ROSERP.',
@@ -6078,7 +6197,7 @@ export const translations: any = {
     posted: 'تۆمارکراو',
     potentialProfit: 'Potansiyel Kar',
     prepareReport: 'ئامادەکردنی ڕاپۆرت',
-    preparingModule: 'مۆدیۆلی \"{screenName}\" لە ئامادەکردندایە',
+    preparingModule: 'مۆدیۆلی "{screenName}" لە ئامادەکردندایە',
     previous: 'پێشوو',
     price: 'نرخ',
     priceAndCampaign: 'نرخ و کەمپەین',
@@ -6103,6 +6222,10 @@ export const translations: any = {
     productCount: 'ژمارەی بەرهەم',
     productDefective: 'Ürün Kusurlu',
     productDetails: 'وردەکاریی بەرهەم',
+    presents: 'دیارییەکان',
+    profit: 'قازانج',
+    todaysProfit: 'قازانجی ئەمڕۆ',
+    instantProfit: 'قازانجی ساتەوەخت',
     productInfo: 'Ürün Bilgileri',
     productLabel: 'Ürün',
     productManagement: 'بەڕێوەبردنی بەرهەمەکان',
@@ -6158,7 +6281,7 @@ export const translations: any = {
     quickProductPageSelect: 'Hızlı Ürün Sayfası Seç',
     quickProductSlot: 'Hızlı Ürün Slot',
     rankingByRevenue: 'Ciro bazında sıralama',
-    receipt: 'پسوڵە',
+    receiptTitle: 'پسوڵە',
     receiptBased: 'Fatura Bazında',
     receiptCancelled: 'Fiş iptal edildi: {reason}',
     receiptDataError: 'Fiş verileri yüklenemedi',
@@ -6576,5 +6699,31 @@ export const translations: any = {
     zReport: 'Z Raporu',
     zeroOpeningCashConfirm: 'Açılış kasası 0.00 olarak girilecek. Devam etmek istiyor musunuz?',
     zeroPlaceholder: '0',
+    receipt: {
+      title: 'وەسڵی فرۆشتن',
+      receiptNo: 'ژمارەی وەسڵ',
+      date: 'بەروار',
+      cashier: 'سندوقدار',
+      customer: 'کڕیار',
+      table: 'مێز',
+      subtotal: 'کۆی گشتی',
+      discount: 'داشکاندن',
+      campaign: 'کەمپەین',
+      total: 'کۆی گشتی',
+      paymentDetails: 'وردەکارییەکانی پارەدان',
+      paid: 'دراو',
+      change: 'ماوە',
+      thanks: 'سپاس بۆ هەڵبژاردنمان',
+      returnPolicy: 'ئەم وەسڵە پێویستە بۆ گەڕاندنەوە و گۆڕینی کاڵاکان.',
+      footer: 'چارەسەری پیشەگەرانەی ERP',
+      autoPrintReceipt: 'چاپکردنی وەسڵ بە خۆکار',
+    },
+    campaignDiscount: 'داشکاندنی کەمپەین',
+    discountPercentage: 'ڕێژەی داشکاندن (%)',
+    discountAmount: 'بڕی داشکاندن',
+    itemDiscount: 'داشکاندنی بابەت',
+    totalPaid: 'کۆی گشتی دراو',
+    okLabel: 'باشە',
+    autoPrintReceipt: 'چاپکردنی وەسڵ بە خۆکار',
   },
 };

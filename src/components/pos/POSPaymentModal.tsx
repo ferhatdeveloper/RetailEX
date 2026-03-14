@@ -1,4 +1,4 @@
-﻿import { X, CreditCard, DollarSign, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, QrCode, Tag, TrendingDown, Percent, Banknote, Minus, Check, Loader2 } from 'lucide-react';
+import { X, CreditCard, DollarSign, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Banknote, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
@@ -71,8 +71,9 @@ interface POSPaymentModalProps {
   campaignDiscount: number;
   selectedCampaign?: Campaign | null;  // Kampanya bilgisi
   selectedCustomer?: Customer | null;
+  receiptNumber?: string;
   onClose: () => void;
-  onComplete: (paymentData: any) => Promise<void> | void;
+  onComplete: (paymentData: any, options?: { autoPrint?: boolean; language?: string }) => Promise<void> | void;
 }
 
 export function POSPaymentModal({
@@ -82,6 +83,7 @@ export function POSPaymentModal({
   campaignDiscount,
   selectedCampaign,
   selectedCustomer,
+  receiptNumber = '',
   onClose,
   onComplete
 }: POSPaymentModalProps) {
@@ -95,8 +97,25 @@ export function POSPaymentModal({
   const [selectedGateway, setSelectedGateway] = useState<string>('');
   const [activeProviders, setActiveProviders] = useState<PaymentProvider[]>([]);
   const [showQRCode, setShowQRCode] = useState(false);
-  const [showAllCurrencies, setShowAllCurrencies] = useState(false);
   const [qrGatewayName, setQrGatewayName] = useState('');
+  const [processing, setProcessing] = useState(false);
+  
+  // Receipt Settings
+  const [autoPrint, setAutoPrint] = useState(true);
+  const [receiptLanguage, setReceiptLanguage] = useState<string>(useLanguage().language);
+
+  useEffect(() => {
+    const savedPrinter = localStorage.getItem('retailos-printer-settings');
+    if (savedPrinter) {
+      try {
+        const config = JSON.parse(savedPrinter);
+        if (config.autoPrint !== undefined) setAutoPrint(config.autoPrint);
+        if (config.defaultLanguage) setReceiptLanguage(config.defaultLanguage);
+      } catch (err) {
+        console.error('Failed to parse printer settings:', err);
+      }
+    }
+  }, []);
   const [isLoading, setIsLoading] = useState(false);
 
   const { t } = useLanguage();
@@ -211,7 +230,9 @@ export function POSPaymentModal({
         totalPaid: totalPaid,
         change: change,
         discount: calculatedDiscount,
-        finalTotal: finalTotal
+        finalTotal: finalTotal,
+        autoPrint: autoPrint,
+        language: receiptLanguage
       });
     } catch (error) {
       console.error('Payment confirmation error:', error);
@@ -788,6 +809,43 @@ export function POSPaymentModal({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Printing Options */}
+        <div className={`px-4 py-3 border-t flex items-center justify-between gap-4 ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={autoPrint}
+                onChange={(e) => setAutoPrint(e.target.checked)}
+                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+              />
+              <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                {t.autoPrintReceipt || 'Otomatik Yazdır'}
+              </span>
+            </label>
+            
+            <div className={`h-6 w-px ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`}></div>
+            
+            <div className="flex items-center gap-2">
+              <Globe className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+              <select
+                value={receiptLanguage}
+                onChange={(e) => setReceiptLanguage(e.target.value as any)}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+              >
+                <option value="tr">Türkçe</option>
+                <option value="en">English</option>
+                <option value="ar">العربية</option>
+                <option value="ku">Kurdî</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className={`text-[10px] px-2 py-1 rounded-full ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+            POS ID: {receiptNumber.split('-').pop()}
           </div>
         </div>
 

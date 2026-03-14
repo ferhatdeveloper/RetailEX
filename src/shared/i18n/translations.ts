@@ -1,4 +1,4 @@
-﻿export type Language = 'tr' | 'en' | 'ar' | 'ku';
+export type Language = 'tr' | 'en' | 'ar' | 'ku';
 
 export const translations = {
   // Common
@@ -244,6 +244,35 @@ export const translations = {
   english: { tr: 'English', en: 'English', ar: 'الإنجليزية', ku: 'ئینگلیزی' },
   arabic: { tr: 'العربية', en: 'العربية', ar: 'العربية', ku: 'عەرەبی' },
   kurdish: { tr: 'Kurdî (Soranî)', en: 'Kurdish (Sorani)', ar: 'الكردية (السورانية)', ku: 'کوردی (سۆرانی)' },
+
+  // ─── Variant Management ────────────────────────────────────────
+  thisIsAVariantProduct: { tr: 'Bu ürün varyantlıdır', en: 'This product has variants', ar: 'هذا المنتج متعدد الخيارات', ku: 'ئەم کاڵایە جۆرەجۆرە' },
+  attributeDefinitions: { tr: 'Özellik Tanımları', en: 'Attribute Definitions', ar: 'تعريفات الخصائص', ku: 'پێناسەی تایبەتمەندی' },
+  attributeName: { tr: 'Özellik Adı', en: 'Attribute Name', ar: 'اسم الخاصية', ku: 'ناوی تایبەتمەندی' },
+  valueEnterToAdd: { tr: 'Değer gir → Enter ile ekle', en: 'Enter value → press Enter to add', ar: 'أدخل قيمة ← اضغط Enter للإضافة', ku: 'نرخ بنووسە → Enter بکە بۆ زیادکردن' },
+  presetPackage: { tr: 'Hazır Paket', en: 'Preset Package', ar: 'حزمة جاهزة', ku: 'پاکێجی ئامادە' },
+  addAttribute: { tr: 'Özellik Ekle', en: 'Add Attribute', ar: 'إضافة خاصية', ku: 'تایبەتمەندی زیاد بکە' },
+  generateVariants: { tr: 'Varyant Oluştur', en: 'Generate Variants', ar: 'إنشاء المتغيرات', ku: 'جۆرەکان درووست بکە' },
+  combinations: { tr: 'Kombinasyon', en: 'Combinations', ar: 'تركيبات', ku: 'تێکەڵکردنەکان' },
+  variantList: { tr: 'Varyant Listesi', en: 'Variant List', ar: 'قائمة المتغيرات', ku: 'لیستی جۆرەکان' },
+  variantListCode: { tr: 'Varyant Kodu', en: 'Variant Code', ar: 'رمز المتغير', ku: 'کۆدی جۆر' },
+  variantAttributes: { tr: 'Özellikler', en: 'Attributes', ar: 'الخصائص', ku: 'تایبەتمەندیەکان' },
+  purchaseQuantity: { tr: 'Alış Adedi', en: 'Purchase Qty', ar: 'كمية الشراء', ku: 'ژمارەی کڕین' },
+  generateBarcodeBtn: { tr: 'Barkod Oluştur', en: 'Generate Barcode', ar: 'إنشاء الباركود', ku: 'بارکۆد درووست بکە' },
+  bulkPurchasePrice: { tr: 'Toplu Alış Fiyatı', en: 'Bulk Purchase Price', ar: 'سعر الشراء الجماعي', ku: 'نرخی کڕینی کۆ' },
+  bulkQuantity: { tr: 'Toplu Adet', en: 'Bulk Quantity', ar: 'الكمية الجماعية', ku: 'ژمارەی کۆجمعی' },
+  createPurchaseInvoice: { tr: 'Alış Faturası Oluştur', en: 'Create Purchase Invoice', ar: 'إنشاء فاتورة شراء', ku: 'پسووڵەی کڕین درووست بکە' },
+  printLabel: { tr: 'Etiket Bas', en: 'Print Label', ar: 'طباعة الملصق', ku: 'ئیتیکێت چاپ بکە' },
+  activateAll: { tr: 'Tümünü Aktifleştir', en: 'Activate All', ar: 'تفعيل الكل', ku: 'هەمووی چالاک بکە' },
+  deactivateAll: { tr: 'Tümünü Pasifleştir', en: 'Deactivate All', ar: 'تعطيل الكل', ku: 'هەمووی ناچالاک بکە' },
+  showWithoutGrouping: { tr: 'Grupsuz Göster', en: 'Show Without Grouping', ar: 'عرض بدون تجميع', ku: 'بێ گروپ نیشان بدە' },
+  groupBy: { tr: 'Göre Grupla', en: 'Group By', ar: 'تجميع حسب', ku: 'گروپ کردن بەپێی' },
+  other: { tr: 'Diğer', en: 'Other', ar: 'أخرى', ku: 'ئەوانی تر' },
+  allVariants: { tr: 'Tüm Varyantlar', en: 'All Variants', ar: 'جميع المتغيرات', ku: 'هەموو جۆرەکان' },
+  expandAll: { tr: 'Tümünü Genişlet', en: 'Expand All', ar: 'توسيع الكل', ku: 'هەمووی فراوان بکە' },
+  collapseAll: { tr: 'Tümünü Daralt', en: 'Collapse All', ar: 'طي الكل', ku: 'هەمووی داخبکە' },
+  digits: { tr: 'Haneli', en: 'Digits', ar: 'أرقام', ku: 'ژمارە' },
+  alphanumeric: { tr: 'Alfanümerik', en: 'Alphanumeric', ar: 'أبجدي رقمي', ku: 'ئەلفابێتی-ژمارەیی' },
 };
 
 export const translate = (key: keyof typeof translations, lang: Language): string => {

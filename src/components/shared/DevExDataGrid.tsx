@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -29,6 +29,9 @@ interface DevExDataGridProps<T> {
   onRowDoubleClick?: (row: T) => void;
   onRowContextMenu?: (e: React.MouseEvent, row: T) => void;
   height?: string | number;
+  enableSelection?: boolean;
+  onSelectionChange?: (selectedRows: T[]) => void;
+  selectedRowIds?: Record<string, boolean>;
 }
 
 interface FilterMenuProps {
@@ -199,13 +202,31 @@ export function DevExDataGrid<T>({
   onRowDoubleClick,
   onRowContextMenu,
   height,
+  enableSelection,
+  onSelectionChange,
+  selectedRowIds,
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [rowSelection, setRowSelection] = useState({});
+  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
+
+  // Sync internal selection with prop if provided
+  useEffect(() => {
+    if (selectedRowIds) {
+      setRowSelection(selectedRowIds);
+    }
+  }, [selectedRowIds]);
+
+  // Notify parent of selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const selectedRows = table.getSelectedRowModel().rows.map(row => row.original);
+      onSelectionChange(selectedRows);
+    }
+  }, [rowSelection]);
 
   // Custom filter function for DevExpress-style operators
   const customFilterFn = (row: any, columnId: string, filterValue: any) => {
@@ -233,9 +254,41 @@ export function DevExDataGrid<T>({
     }
   };
 
+  const finalColumns = useMemo(() => {
+    if (!enableSelection) return columns;
+
+    const selectionColumn: ColumnDef<T, any> = {
+      id: 'select',
+      header: ({ table }) => (
+        <div className="px-1">
+          <input
+            type="checkbox"
+            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={table.getIsAllPageRowsSelected()}
+            onChange={table.getToggleAllPageRowsSelectedHandler()}
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="px-1" onClick={e => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            checked={row.getIsSelected()}
+            disabled={!row.getCanSelect()}
+            onChange={row.getToggleSelectedHandler()}
+          />
+        </div>
+      ),
+      size: 40,
+    };
+
+    return [selectionColumn, ...columns];
+  }, [columns, enableSelection]);
+
   const table = useReactTable({
     data,
-    columns,
+    columns: finalColumns,
     state: {
       sorting,
       columnFilters,
@@ -248,6 +301,7 @@ export function DevExDataGrid<T>({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    enableRowSelection: true,
     filterFns: {
       custom: customFilterFn,
     },

@@ -1,4 +1,4 @@
-﻿import {
+import {
   TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Users,
   AlertTriangle, Clock, Zap, FileText, UserPlus, PackagePlus,
   BarChart3, Layers, ArrowRight, TrendingUpDown, Wallet, Settings, X,
@@ -248,6 +248,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   today.setHours(0, 0, 0, 0);
   const todaysSales = sales.filter(s => new Date(s.date) >= today);
   const totalRevenue = todaysSales.reduce((sum, s) => sum + s.total, 0);
+  const totalProfitToday = todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   // Yesterday's sales for comparison
   const yesterday = new Date(today);
@@ -257,9 +258,14 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     return saleDate >= yesterday && saleDate < today;
   });
   const yesterdayRevenue = yesterdaySales.reduce((sum, s) => sum + s.total, 0);
+  const yesterdayProfit = yesterdaySales.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   const revenueChange = yesterdayRevenue > 0
     ? ((totalRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+    : 0;
+
+  const profitChange = yesterdayProfit > 0
+    ? ((totalProfitToday - yesterdayProfit) / yesterdayProfit) * 100
     : 0;
 
   // This week's data
@@ -412,7 +418,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
             <h3 className="text-[11px] text-gray-700">{t.dailySummary || 'Günlük Özet'}</h3>
           </div>
-          <div className="grid grid-cols-4 divide-x divide-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <DollarSign className="w-4 h-4 text-blue-600" />
@@ -434,6 +440,20 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
               </div>
               <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {t.currencyCode || 'IQD'}</div>
               <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {t.transaction || 'işlem'}</div>
+            </div>
+
+            <div className="p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                <span className="text-[10px] text-gray-600">{t.todaysProfit || 'Bugünkü Kâr'}</span>
+                {profitChange !== 0 && (
+                  <span className={`text-[9px] ${profitChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {profitChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(profitChange), 1, false)}%
+                  </span>
+                )}
+              </div>
+              <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{t.profitMargin || 'Kâr Marjı'}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
             </div>
 
             <div className="p-3">

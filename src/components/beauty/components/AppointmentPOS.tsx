@@ -11,9 +11,9 @@
  */
 import React, { useEffect, useState, useMemo } from 'react';
 import {
-    ArrowLeft, Plus, Minus, X, Search, User,
+    ArrowLeft, Plus, Minus, X, Search, User, UserPlus,
     CalendarDays, Clock, CheckCircle2, Scissors, Package,
-    Sparkles, Receipt, ChevronDown, ChevronUp
+    Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
@@ -78,9 +78,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, onBack }: Props) {
     const { tm } = useLanguage();
 
     const STATUS_OPTS = [
-        { value: AppointmentStatus.SCHEDULED,   label: tm('bAppointmentScheduled') },
-        { value: AppointmentStatus.CONFIRMED,    label: tm('bAppointmentConfirmed') },
-        { value: AppointmentStatus.IN_PROGRESS,  label: tm('bAppointmentStarted') },
+        { value: AppointmentStatus.SCHEDULED, label: tm('bAppointmentScheduled') },
+        { value: AppointmentStatus.CONFIRMED, label: tm('bAppointmentConfirmed') },
+        { value: AppointmentStatus.IN_PROGRESS, label: tm('bAppointmentStarted') },
     ];
 
     const CATEGORY_TR: Record<string, string> = {
@@ -100,8 +100,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, onBack }: Props) {
 
     // ── Customer ─────────────────────────────────────────────────────────
     const [customer, setCustomer] = useState<BeautyCustomer | null>(null);
-    const [custQ, setCustQ] = useState('');
-    const [custDrop, setCustDrop] = useState(false);
+    const [showCustModal, setShowCustModal] = useState(false);
+    const [custModalQ, setCustModalQ] = useState('');
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [newCust, setNewCust] = useState({ name: '', phone: '', email: '' });
+    const [savingCust, setSavingCust] = useState(false);
 
     // ── Appointment details ───────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
@@ -137,12 +140,32 @@ export function AppointmentPOS({ prefillDate, prefillTime, onBack }: Props) {
 
     const categories = useMemo(() => Array.from(new Set(services.map(s => s.category))), [services]);
 
-    const filteredCusts = useMemo(() =>
-        custQ ? customers.filter(c =>
-            c.name.toLowerCase().includes(custQ.toLowerCase()) ||
-            (c.phone ?? '').includes(custQ)
-        ).slice(0, 6) : []
-        , [customers, custQ]);
+    const filteredCusts = useMemo(() => {
+        const q = custModalQ.toLowerCase();
+        if (!q) return customers;
+        return customers.filter(c =>
+            c.name.toLowerCase().includes(q) ||
+            (c.phone ?? '').includes(custModalQ)
+        );
+    }, [customers, custModalQ]);
+
+    const handleSaveNewCustomer = async () => {
+        if (!newCust.name.trim()) return;
+        setSavingCust(true);
+        try {
+            const id = await beautyService.createCustomer({ name: newCust.name.trim(), phone: newCust.phone.trim() || undefined, email: newCust.email.trim() || undefined, is_active: true });
+            await loadCustomers();
+            const created = { id, name: newCust.name.trim(), phone: newCust.phone.trim() || undefined, is_active: true } as BeautyCustomer;
+            setCustomer(created);
+            setShowCustModal(false);
+            setShowAddForm(false);
+            setNewCust({ name: '', phone: '', email: '' });
+        } catch (e) {
+            logger.error('createCustomer failed', e);
+        } finally {
+            setSavingCust(false);
+        }
+    };
 
     // ── Cart actions ──────────────────────────────────────────────────────
     const addService = (svc: typeof services[0]) => {
@@ -366,43 +389,319 @@ export function AppointmentPOS({ prefillDate, prefillTime, onBack }: Props) {
                 {/* ── RIGHT: Cart + Appointment + Checkout ─────────── */}
                 <div style={{ width: 400, height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
 
-                    {/* Customer */}
-                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', flexShrink: 0, position: 'relative' }}>
-                        {customer ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: '#f5f3ff', borderRadius: 5, border: '1px solid #ddd6fe' }}>
-                                <div style={{ width: 28, height: 28, background: '#7c3aed', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
-                                    {customer.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ fontSize: 12, fontWeight: 700, color: '#4c1d95' }}>{customer.name}</p>
-                                    {customer.phone && <p style={{ fontSize: 10, color: '#7c3aed' }}>{customer.phone}</p>}
-                                </div>
-                                <button onClick={() => setCustomer(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a78bfa' }}><X size={13} /></button>
+                    {/* Customer Section - Compact & Modern */}
+                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '10px 14px',
+                            background: customer ? '#f5f3ff' : '#fafafa',
+                            borderRadius: 12,
+                            border: `1px solid ${customer ? '#ddd6fe' : '#e5e7eb'}`,
+                            transition: 'all 0.2s ease',
+                            boxShadow: customer ? '0 2px 4px rgba(124, 58, 237, 0.05)' : 'none'
+                        }}>
+                            <div style={{
+                                width: 36,
+                                height: 36,
+                                background: customer ? '#7c3aed' : '#f3f4f6',
+                                borderRadius: 10,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: customer ? '#fff' : '#9ca3af',
+                                fontSize: 14,
+                                fontWeight: 800,
+                                flexShrink: 0
+                            }}>
+                                {customer ? customer.name.charAt(0).toUpperCase() : <User size={18} />}
                             </div>
-                        ) : (
-                            <div style={{ position: 'relative' }}>
-                                <User size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
-                                <input value={custQ} onChange={e => { setCustQ(e.target.value); setCustDrop(true); }}
-                                    onFocus={() => setCustDrop(true)}
-                                    placeholder="Müşteri seç... *"
-                                    style={{ ...iStyle, paddingLeft: 26, border: canSave ? '1px solid #e5e7eb' : '1px solid #fca5a5' }} />
-                                {custDrop && filteredCusts.length > 0 && (
-                                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 50, marginTop: 2 }}>
-                                        {filteredCusts.map(c => (
-                                            <button key={c.id} onClick={() => { setCustomer(c); setCustQ(''); setCustDrop(false); }}
-                                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                                                onMouseEnter={e => (e.currentTarget.style.background = '#f5f3ff')}
-                                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                                            >
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{c.name}</span>
-                                                {c.phone && <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.phone}</span>}
-                                            </button>
-                                        ))}
-                                    </div>
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                {customer ? (
+                                    <>
+                                        <p style={{ fontSize: 13, fontWeight: 700, color: '#111827', margin: 0 }}>{customer.name}</p>
+                                        {customer.phone && <p style={{ fontSize: 11, color: '#6b7280', margin: 0, marginTop: 2 }}>{customer.phone}</p>}
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={() => { setShowCustModal(true); setCustModalQ(''); setShowAddForm(false); }}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            padding: 0,
+                                            fontSize: 13,
+                                            fontWeight: 600,
+                                            color: '#6b7280',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                            width: '100%'
+                                        }}
+                                    >
+                                        {tm('bSelectCustomer')}...
+                                    </button>
                                 )}
                             </div>
-                        )}
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {customer && (
+                                    <button
+                                        onClick={() => setCustomer(null)}
+                                        style={{
+                                            width: 28,
+                                            height: 28,
+                                            borderRadius: 8,
+                                            border: 'none',
+                                            background: '#fee2e2',
+                                            color: '#ef4444',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => { setShowCustModal(true); setCustModalQ(''); setShowAddForm(false); }}
+                                    style={{
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: 8,
+                                        border: '1px solid #e5e7eb',
+                                        background: '#fff',
+                                        color: '#374151',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.1s'
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                                >
+                                    <MoreHorizontal size={14} />
+                                </button>
+                            </div>
+                        </div>
                     </div>
+
+                    {/* Modern Customer Modal */}
+                    {showCustModal && (
+                        <div style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(17, 24, 39, 0.4)',
+                            backdropFilter: 'blur(8px)',
+                            zIndex: 200,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 20
+                        }}>
+                            <div style={{
+                                background: '#fff',
+                                borderRadius: 20,
+                                width: '100%',
+                                maxWidth: 480,
+                                maxHeight: '85vh',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                                overflow: 'hidden',
+                                border: '1px solid rgba(255,255,255,0.1)'
+                            }}>
+                                {/* Header */}
+                                <div style={{
+                                    padding: '24px 24px 16px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}>
+                                    <div>
+                                        <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>{tm('bSelectCustomer')}</h3>
+                                        <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>Satış için bir müşteri seçin veya ekleyin.</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowCustModal(false)}
+                                        style={{
+                                            width: 32,
+                                            height: 32,
+                                            borderRadius: 10,
+                                            background: '#f3f4f6',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            color: '#6b7280',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center'
+                                        }}
+                                    >
+                                        <X size={18} />
+                                    </button>
+                                </div>
+
+                                {/* Search Bar */}
+                                <div style={{ padding: '0 24px 16px' }}>
+                                    <div style={{ position: 'relative' }}>
+                                        <Search size={18} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                                        <input
+                                            autoFocus
+                                            value={custModalQ}
+                                            onChange={e => setCustModalQ(e.target.value)}
+                                            placeholder="İsim, telefon veya e-posta..."
+                                            style={{
+                                                width: '100%',
+                                                height: 46,
+                                                padding: '0 16px 0 44px',
+                                                background: '#f9fafb',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: 14,
+                                                fontSize: 14,
+                                                fontWeight: 500,
+                                                color: '#111827',
+                                                outline: 'none',
+                                                boxSizing: 'border-box',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onFocus={e => e.currentTarget.style.borderColor = '#7c3aed'}
+                                            onBlur={e => e.currentTarget.style.borderColor = '#e5e7eb'}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* List Section */}
+                                <div style={{
+                                    flex: 1,
+                                    overflowY: 'auto',
+                                    padding: '0 12px 12px',
+                                    minHeight: 200
+                                }} className="custom-scrollbar">
+                                    {filteredCusts.length === 0 ? (
+                                        <div style={{ padding: '40px 0', textAlign: 'center' }}>
+                                            <div style={{
+                                                width: 48, height: 48, background: '#f3f4f6', borderRadius: 16,
+                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                color: '#9ca3af', marginBottom: 12
+                                            }}>
+                                                <User size={24} />
+                                            </div>
+                                            <p style={{ fontSize: 14, fontWeight: 600, color: '#6b7280' }}>Müşteri bulunamadı</p>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                            {filteredCusts.map(c => (
+                                                <button key={c.id}
+                                                    onClick={() => { setCustomer(c); setShowCustModal(false); setCustModalQ(''); }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 12,
+                                                        width: '100%',
+                                                        padding: '12px',
+                                                        background: 'transparent',
+                                                        border: 'none',
+                                                        borderRadius: 12,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'left',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                    onMouseEnter={e => {
+                                                        e.currentTarget.style.background = '#f5f3ff';
+                                                        e.currentTarget.style.transform = 'translateX(4px)';
+                                                    }}
+                                                    onMouseLeave={e => {
+                                                        e.currentTarget.style.background = 'transparent';
+                                                        e.currentTarget.style.transform = 'translateX(0)';
+                                                    }}
+                                                >
+                                                    <div style={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        background: '#ede9fe',
+                                                        borderRadius: 10,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: '#7c3aed',
+                                                        fontSize: 14,
+                                                        fontWeight: 800,
+                                                        flexShrink: 0
+                                                    }}>
+                                                        {c.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0 }}>{c.name}</p>
+                                                        {c.phone && <p style={{ fontSize: 12, color: '#6b7280', margin: '2px 0 0' }}>{c.phone}</p>}
+                                                    </div>
+                                                    <div style={{ color: '#d1d5db' }}>
+                                                        <ChevronDown size={18} style={{ transform: 'rotate(-90deg)' }} />
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Quick Add / Footer */}
+                                <div style={{
+                                    padding: '16px 24px 24px',
+                                    borderTop: '1px solid #f3f4f6',
+                                    background: '#fafafa'
+                                }}>
+                                    {!showAddForm ? (
+                                        <button
+                                            onClick={() => setShowAddForm(true)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: 8,
+                                                width: '100%',
+                                                height: 44,
+                                                background: '#7c3aed',
+                                                border: 'none',
+                                                borderRadius: 12,
+                                                cursor: 'pointer',
+                                                color: '#fff',
+                                                fontSize: 14,
+                                                fontWeight: 700,
+                                                boxShadow: '0 4px 12px rgba(124, 58, 237, 0.2)'
+                                            }}
+                                        >
+                                            <UserPlus size={18} />
+                                            {tm('bNewCustomer')}
+                                        </button>
+                                    ) : (
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 10,
+                                            background: '#fff',
+                                            padding: 16,
+                                            borderRadius: 14,
+                                            border: '1px solid #e5e7eb'
+                                        }}>
+                                            <h4 style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#374151' }}>Yeni Kayıt</h4>
+                                            <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder="Ad Soyad *" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder="Telefon" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                <input value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder="E-posta" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 5 }}>
+                                                <button onClick={() => { setShowAddForm(false); setNewCust({ name: '', phone: '', email: '' }); }} style={{ flex: 1, height: 38, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}>İptal</button>
+                                                <button onClick={handleSaveNewCustomer} disabled={!newCust.name.trim() || savingCust} style={{ flex: 1.5, height: 38, border: 'none', borderRadius: 10, background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: (!newCust.name.trim() || savingCust) ? 0.6 : 1 }}>
+                                                    {savingCust ? '...' : 'Müşteriyi Kaydet'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Cart Section (Scrollable) */}
                     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }} className="custom-scrollbar">

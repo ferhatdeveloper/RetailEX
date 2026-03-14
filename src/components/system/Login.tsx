@@ -150,20 +150,17 @@ export function Login({ onLogin }: LoginProps) {
   const loadFirms = async () => {
     try {
       setLoadingFirms(true);
-      let rows = [];
-
-      if (isTauri) {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const { postgres } = await import('../../services/postgres');
-        // Fix: Fetch ALL firms from local DB, as it only contains relevant configured firms
-        const result = await postgres.query(
-          `SELECT * FROM firms ORDER BY firm_nr ASC`,
-          []
-        );
-        rows = result.rows;
-      }
-
+      const { postgres } = await import('../../services/postgres');
+      
+      // Fetch ALL firms - works on both Tauri and Web (via bridge)
+      const result = await postgres.query(
+        `SELECT * FROM firms ORDER BY firm_nr ASC`,
+        []
+      );
+      
+      const rows = result.rows || [];
       setFirms(rows);
+      
       if (rows.length > 0) {
         const lastFirm = localStorage.getItem('exretail_selected_firma_id');
         if (lastFirm && rows.find(f => f.firm_nr === lastFirm)) {
@@ -287,7 +284,7 @@ export function Login({ onLogin }: LoginProps) {
         is_configured: false,
         db_mode: "hybrid",
         local_db: "localhost:5432/retailex_local",
-        remote_db: "91.205.41.130:5432/retailos_db",
+        remote_db: "127.0.0.1:5432/retailex_local",
         terminal_name: "",
         store_id: "001",
         erp_firm_nr: "001",
@@ -298,9 +295,9 @@ export function Login({ onLogin }: LoginProps) {
         erp_pass: "",
         erp_db: "LOGO_DB",
         pg_local_user: "postgres",
-        pg_local_pass: "",
+        pg_local_pass: "Yq7xwQpt6c",
         pg_remote_user: "postgres",
-        pg_remote_pass: "",
+        pg_remote_pass: "Yq7xwQpt6c",
         system_type: "retail",
         selected_firms: ["001"],
         central_api_url: "https://api.retailex.com/sync",

@@ -1,0 +1,127 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit, CheckBox, TabWidget } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "RetailEX - Portable Setup & Configurator";
+    width: 600px;
+    height: 500px;
+    background: #fdfdfd;
+
+    callback save-config();
+    callback check-postgres();
+    callback install-postgres();
+    callback test-connection();
+
+    in-out property <string> terminal-name: "";
+    in-out property <string> store-id: "001";
+    in-out property <string> role: "terminal"; // terminal, master
+    in-out property <string> db-mode: "hybrid"; // hybrid, online
+    in-out property <string> center-ip: "91.205.41.130";
+    in-out property <string> pg-status: "Checking...";
+    in-out property <bool> pg-installed: false;
+
+    VerticalBox {
+        padding: 20px;
+        spacing: 15px;
+
+        Text {
+            text: "RetailEX Deployment Utility";
+            font-size: 22px;
+            font-weight: 800;
+            color: #1a2a3a;
+        }
+
+        TabWidget {
+            Tab {
+                title: "Role & Mode";
+                VerticalBox {
+                    spacing: 20px;
+                    padding: 10px;
+                    
+                    Text { text: "Select Machine Role:"; font-weight: 600; }
+                    HorizontalBox {
+                        spacing: 10px;
+                        Button { 
+                            text: "Terminal (Kasa)"; 
+                            primary: root.role == "terminal";
+                            clicked => { root.role = "terminal"; }
+                        }
+                        Button { 
+                            text: "Master (Merkez)"; 
+                            primary: root.role == "master";
+                            clicked => { root.role = "master"; }
+                        }
+                    }
+
+                    Text { text: "Select Connectivity Mode:"; font-weight: 600; }
+                    HorizontalBox {
+                        spacing: 10px;
+                        Button { 
+                            text: "Hybrid (Offline + Sync)"; 
+                            primary: root.db-mode == "hybrid";
+                            clicked => { root.db-mode = "hybrid"; }
+                        }
+                        Button { 
+                            text: "Online (Direct Connection)"; 
+                            primary: root.db-mode == "online";
+                            clicked => { root.db-mode = "online"; }
+                        }
+                    }
+                }
+            }
+            Tab {
+                title: "Network & Identity";
+                VerticalBox {
+                    spacing: 10px;
+                    padding: 10px;
+                    
+                    Text { text: "Terminal Name (e.g., KASA-1):"; }
+                    LineEdit { text <=> root.terminal-name; placeholder-text: "Enter unique name"; }
+                    
+                    Text { text: "Store ID:"; }
+                    LineEdit { text <=> root.store-id; }
+                    
+                    Text { text: "Center Server IP/Host:"; }
+                    LineEdit { text <=> root.center-ip; }
+                    
+                    Button { text: "Test Connection"; clicked => { root.test-connection(); } }
+                }
+            }
+            Tab {
+                title: "Infrastructure";
+                VerticalBox {
+                    spacing: 15px;
+                    padding: 10px;
+                    
+                    HorizontalBox {
+                        Text { text: "PostgreSQL 15 Status: "; }
+                        Text { 
+                            text: root.pg-status; 
+                            color: root.pg-installed ? green : red;
+                            font-weight: 700;
+                        }
+                    }
+
+                    if (!root.pg-installed) : Button {
+                        text: "Install PostgreSQL 15 (Silent)";
+                        clicked => { root.install-postgres(); }
+                    }
+
+                    Text { 
+                        text: "Note: This will install Postgres with default RetailEX credentials."; 
+                        font-size: 11px;
+                        italic: true;
+                    }
+                }
+            }
+        }
+
+        HorizontalBox {
+            alignment: end;
+            Button {
+                text: "Initialize RetailEX";
+                primary: true;
+                clicked => { root.save-config(); }
+            }
+        }
+    }
+}

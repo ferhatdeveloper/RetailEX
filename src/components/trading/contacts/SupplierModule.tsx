@@ -18,6 +18,22 @@ export function SupplierModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<number>(1310);
+  const [showUSD, setShowUSD] = useState(false);
+
+  useEffect(() => {
+    const fetchRate = async () => {
+      try {
+        const { exchangeRateAPI } = await import('../../../services/api/masterData');
+        const rates = await exchangeRateAPI.getLatestRates();
+        const usdRate = rates.find(r => r.currency_code === 'USD');
+        if (usdRate) setExchangeRate(usdRate.sell_rate);
+      } catch (e) {
+        console.error('Exchange rate fetch failed:', e);
+      }
+    };
+    fetchRate();
+  }, []);
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; supplier: Supplier | null } | null>(null);
@@ -156,15 +172,17 @@ export function SupplierModule() {
       header: tm('crmBalance'),
       cell: info => {
         const val = info.getValue() || 0;
-        const isSupplier = info.row.original.cardType === 'supplier';
-        // Standart Muhasebe: Bakiye > 0 ise B (Borçlu), Bakiye < 0 ise A (Alacaklı)
+        const valUSD = val / exchangeRate;
         const label = val === 0 ? '' : val > 0 ? 'B' : 'A';
         const colorClass = label === 'B' ? 'text-red-600' : 'text-orange-600';
         const badgeClass = label === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
         return (
-          <div className="flex items-center justify-end gap-1.5 font-bold">
-            <span className={colorClass}>{formatNumber(Math.abs(val), 2, false)} IQD</span>
-            {label && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`}>{label}</span>}
+          <div className="flex flex-col items-end gap-0.5 font-bold">
+            <div className="flex items-center gap-1.5">
+              <span className={colorClass}>{formatNumber(Math.abs(val), 0, false)} IQD</span>
+              {label && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`}>{label}</span>}
+            </div>
+            <span className="text-[10px] text-gray-400 font-medium">({formatNumber(Math.abs(valUSD), 2, true)} USD)</span>
           </div>
         );
       },
@@ -311,19 +329,26 @@ export function SupplierModule() {
                 </button>
                 {/* Summary chips */}
                 <div className="flex items-center gap-1.5 ml-2">
-                  <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(totalBorc, 2, false)}</span>
-                  <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(totalAlacak, 2, false)}</span>
+                  <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(showUSD ? totalBorc / exchangeRate : totalBorc, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
+                  <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(showUSD ? totalAlacak / exchangeRate : totalAlacak, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
                   {(() => {
                     // netBalance > 0 = B (taraf bize borçlu), < 0 = A (biz borçluyuz)
                     const netLabel = netBalance > 0 ? 'B' : netBalance < 0 ? 'A' : '';
                     const netCls = netBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : netBalance < 0 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
+                    const amount = showUSD ? Math.abs(netBalance) / exchangeRate : Math.abs(netBalance);
                     return (
                       <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`}>
-                        {tm('netAmount')}: {formatNumber(Math.abs(netBalance), 2, false)} {netLabel}
+                        {tm('netAmount')}: {formatNumber(amount, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : 'IQD'} {netLabel}
                       </span>
                     );
                   })()}
                 </div>
+                <button 
+                  onClick={() => setShowUSD(!showUSD)} 
+                  className={`ml-2 px-2 py-1 rounded text-[10px] font-black uppercase transition-all ${showUSD ? 'bg-green-600 text-white shadow-lg scale-105' : 'bg-gray-200 text-gray-600'}`}
+                >
+                  {showUSD ? 'USD MODU' : 'IQD MODU'}
+                </button>
                 <button onClick={() => window.print()} className="p-1 hover:bg-gray-100 rounded" title={tm('print')}><Printer className="w-3.5 h-3.5 text-gray-400" /></button>
                 <button onClick={() => setSelectedAccount(null)} className="p-1 hover:bg-gray-100 rounded" title={tm('close')}><X className="w-4 h-4 text-gray-400" /></button>
               </div>
@@ -359,11 +384,27 @@ export function SupplierModule() {
                           <td className="px-3 py-1.5 font-mono text-blue-600 font-bold">{row.fiche_no || '-'}</td>
                           <td className="px-3 py-1.5"><span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${color}`}>{label}</span></td>
                           <td className="px-3 py-1.5 text-gray-400 max-w-[150px] truncate">{row.notes || ''}</td>
-                          <td className="px-3 py-1.5 text-right font-bold text-red-600">{row.borcAmount > 0 ? formatNumber(row.borcAmount, 2, false) : ''}</td>
-                          <td className="px-3 py-1.5 text-right font-bold text-green-600">{row.alacakAmount > 0 ? formatNumber(row.alacakAmount, 2, false) : ''}</td>
+                          <td className="px-3 py-1.5 text-right font-bold text-red-600">
+                            {row.borcAmount > 0 ? (
+                              <div className="flex flex-col">
+                                <span>{formatNumber(showUSD ? row.borcAmount / exchangeRate : row.borcAmount, showUSD ? 2 : 0, showUSD)}</span>
+                                {showUSD && <span className="text-[9px] opacity-50 font-normal">{(row.borcAmount).toLocaleString()} IQD</span>}
+                              </div>
+                            ) : ''}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-bold text-green-600">
+                            {row.alacakAmount > 0 ? (
+                              <div className="flex flex-col">
+                                <span>{formatNumber(showUSD ? row.alacakAmount / exchangeRate : row.alacakAmount, showUSD ? 2 : 0, showUSD)}</span>
+                                {showUSD && <span className="text-[9px] opacity-50 font-normal">{(row.alacakAmount).toLocaleString()} IQD</span>}
+                              </div>
+                            ) : ''}
+                          </td>
                           <td className={`px-3 py-1.5 text-right font-black ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                            {formatNumber(Math.abs(row.balance), 2, false)}
-                            {row.balance !== 0 && <span className="ml-0.5 text-[9px]">{row.balance > 0 ? 'B' : 'A'}</span>}
+                            <div className="flex flex-col">
+                              <span>{formatNumber(showUSD ? Math.abs(row.balance) / exchangeRate : Math.abs(row.balance), showUSD ? 2 : 0, showUSD)} {row.balance !== 0 && <span className="ml-0.5 text-[9px]">{row.balance > 0 ? 'B' : 'A'}</span>}</span>
+                              {showUSD && row.balance !== 0 && <span className="text-[9px] opacity-50 font-normal">{Math.abs(row.balance).toLocaleString()} IQD</span>}
+                            </div>
                           </td>
                         </tr>
                       );

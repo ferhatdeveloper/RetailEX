@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Supabase Client - Singleton Instance
  * ExRetailOS - Central Database Connection
  * 

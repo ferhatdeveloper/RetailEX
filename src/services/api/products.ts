@@ -1,10 +1,11 @@
-﻿/**
+/**
  * Product API - Direct PostgreSQL Implementation
  * Note: Uses rex_{firm}_products table
  */
 
 import { postgres, ERP_SETTINGS } from '../postgres';
 import type { Product } from '../../core/types';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export const productAPI = {
   /**
@@ -59,6 +60,96 @@ export const productAPI = {
   },
 
   /**
+   * Deep lookup by any barcode (primary or unit-specific)
+   */
+  async lookupByBarcode(barcode: string): Promise<{ product: Product, unitInfo?: any } | null> {
+    try {
+      // 1. Try primary barcode first
+      const product = await this.getByBarcode(barcode);
+      if (product) return { product };
+
+      // 2. Try unit-specific barcodes
+      const { rows } = await postgres.query(
+        `SELECT * FROM product_barcodes WHERE barcode_code = $1 ORDER BY is_primary DESC LIMIT 1`,
+        [barcode]
+      );
+
+      if (rows[0]) {
+        const foundProduct = await this.getById(rows[0].product_id);
+        if (foundProduct) {
+          const unitName = rows[0].unit;
+          const unitsetId = (foundProduct as any).unitsetId || (foundProduct as any).unitset_id;
+          let multiplier = 1;
+
+          // Öncelik 1: unitset_id varsa unitsetl tablosundan çarpan bul
+          if (unitName && unitsetId) {
+            try {
+              const { rows: unitRows } = await postgres.query(
+                `SELECT conv_fact1, multiplier1 FROM unitsetl WHERE unitset_id = $1 AND (name = $2 OR code = $2) LIMIT 1`,
+                [unitsetId, unitName]
+              );
+              if (unitRows[0]) {
+                multiplier = parseFloat(unitRows[0].conv_fact1 || unitRows[0].multiplier1) || 1;
+              }
+            } catch (_) { /* ignore */ }
+          }
+
+          // Öncelik 2: unitset_id yoksa product_unit_conversions tablosundan çarpan bul
+          // (Kullanıcı ürünü manuel birim çevrimi ile kurmuş, unitset atamamış)
+          if (multiplier === 1 && unitName) {
+            try {
+              const { rows: convRows } = await postgres.query(
+                `SELECT factor FROM product_unit_conversions WHERE product_id = $1 AND from_unit = $2 LIMIT 1`,
+                [foundProduct.id, unitName]
+              );
+              if (convRows[0]) {
+                multiplier = parseFloat(convRows[0].factor) || 1;
+              }
+            } catch (_) { /* ignore */ }
+          }
+
+          return {
+            product: foundProduct,
+            unitInfo: { ...rows[0], multiplier }
+          };
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error('[ProductAPI] lookupByBarcode failed:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Internal: Generate next barcode from template
+   */
+  async generateNextBarcode(): Promise<string> {
+    try {
+      const { rows } = await postgres.query(
+        'SELECT * FROM public.barcode_templates WHERE is_active = true ORDER BY created_at ASC LIMIT 1'
+      );
+
+      if (!rows[0]) return '';
+
+      const template = rows[0];
+      const nextValue = BigInt(template.current_value) + 1n;
+      const barcodeValue = `${template.prefix}${nextValue.toString().padStart(template.length - template.prefix.length, '0')}`;
+
+      await postgres.query(
+        'UPDATE public.barcode_templates SET current_value = $1, updated_at = NOW() WHERE id = $2',
+        [nextValue.toString(), template.id]
+      );
+
+      return barcodeValue;
+    } catch (error) {
+      console.error('[ProductAPI] generateNextBarcode failed:', error);
+      return '';
+    }
+  },
+
+  /**
    * Create new product
    */
   async create(product: Omit<Product, 'id'>): Promise<Product | null> {
@@ -68,7 +159,7 @@ export const productAPI = {
       const productData = {
         name: product.name,
         code: product.code || '',
-        barcode: product.barcode || '',
+        barcode: product.barcode || await this.generateNextBarcode(),
         // V2: 'category' kolonu kaldırıldı → category_code kullan
         category_code: (product as any).categoryCode || (product as any).category_code || product.category || '',
         price: product.price || 0,
@@ -78,6 +169,7 @@ export const productAPI = {
         max_stock: product.max_stock || 0,
         critical_stock: product.criticalStock || 0,
         unit: product.unit || 'Adet',
+        unitset_id: (product as any).unitsetId || (product as any).unitset_id || null,
         is_active: true,
         firm_nr: ERP_SETTINGS.firmNr,
         image_url: product.image_url || '',
@@ -97,20 +189,102 @@ export const productAPI = {
         vat_rate: product.taxRate || 0,
         special_code_1: product.specialCode1 || '',
         special_code_2: product.specialCode2 || '',
-        special_code_3: product.specialCode3 || '',
-        special_code_4: product.specialCode4 || '',
-        special_code_5: product.specialCode5 || '',
-        special_code_6: product.specialCode6 || '',
-        price_list_1: product.priceList1 || 0,
-        price_list_2: product.priceList2 || 0,
-        price_list_3: product.priceList3 || 0,
-        price_list_4: product.priceList4 || 0,
-        price_list_5: product.priceList5 || 0,
-        price_list_6: product.priceList6 || 0,
+        special_code_3: (product as any).specialCode3 || '',
+        special_code_4: (product as any).specialCode4 || '',
+        special_code_5: (product as any).specialCode5 || '',
+        special_code_6: (product as any).specialCode6 || '',
+        unit2: (product as any).unit2 || '',
+        unit3: (product as any).unit3 || '',
+        has_variants: (product as any).hasVariants || (product as any).has_variants || false,
+        // Redundancy handling for V2
+        categorycode: (product as any).categoryCode || (product as any).category_code || product.category || '',
+        materialtype: (product as any).materialType || (product as any).material_type || 'commercial_goods',
+        hasvariants: (product as any).hasVariants || (product as any).has_variants || false,
       };
 
       const columns = Object.keys(productData);
       const values = Object.values(productData);
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+
+      const query = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+      const { rows } = await postgres.query(query, values);
+
+      return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+    } catch (error) {
+      console.error('[ProductAPI] create failed:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Add a new product
+   */
+  async addProduct(product: Product): Promise<Product | null> {
+    try {
+      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const productData = { ...product, firm_nr: ERP_SETTINGS.firmNr };
+
+      // Ensure id is not an empty string (let database generate it if new)
+      if (!productData.id || productData.id === '') {
+        delete (productData as any).id;
+      }
+
+      // Mapping for camelCase to snake_case (Shared with update)
+      const fieldMapping: Record<string, string> = {
+        minStock: 'min_stock',
+        maxStock: 'max_stock',
+        criticalStock: 'critical_stock',
+        category: 'category_code',
+        categoryCode: 'category_code',
+        groupCode: 'group_code',
+        groupcode: 'group_code',
+        subGroupCode: 'sub_group_code',
+        specialCode1: 'special_code_1',
+        specialCode2: 'special_code_2',
+        specialCode3: 'special_code_3',
+        specialCode4: 'special_code_4',
+        specialCode5: 'special_code_5',
+        specialCode6: 'special_code_6',
+        priceList1: 'price_list_1',
+        priceList2: 'price_list_2',
+        priceList3: 'price_list_3',
+        priceList4: 'price_list_4',
+        priceList5: 'price_list_5',
+        priceList6: 'price_list_6',
+        taxRate: 'vat_rate',
+        vatRate: 'vat_rate',
+        materialType: 'material_type',
+        isActive: 'is_active',
+        hasVariants: 'has_variants',
+        customExchangeRate: 'custom_exchange_rate',
+        autoCalculateUSD: 'auto_calculate_usd',
+        salePriceUSD: 'sale_price_usd',
+        purchasePriceUSD: 'purchase_price_usd',
+        unitsetId: 'unitset_id',
+      };
+
+      const finalData: Record<string, any> = {};
+      
+      // Auto-barcode if empty
+      if (!productData.barcode || productData.barcode === '') {
+        productData.barcode = await this.generateNextBarcode();
+      }
+
+      Object.entries(productData).forEach(([key, value]) => {
+        if (value !== undefined) {
+          const dbKey = fieldMapping[key] || key;
+          finalData[dbKey] = value;
+          
+          // Redundancy handling
+          if (dbKey === 'has_variants') finalData['hasvariants'] = value;
+          if (dbKey === 'category_code') finalData['categorycode'] = value;
+          if (dbKey === 'material_type') finalData['materialtype'] = value;
+          if (dbKey === 'vat_rate') finalData['vatrate'] = value;
+        }
+      });
+
+      const columns = Object.keys(finalData);
+      const values = Object.values(finalData);
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
 
       const query = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`;
@@ -119,7 +293,7 @@ export const productAPI = {
       const newId = rows[0]?.id;
       return newId ? { ...product, id: newId } as Product : null;
     } catch (error) {
-      console.error('[ProductAPI] create failed:', error);
+      console.error('[ProductAPI] addProduct failed:', error);
       throw error;
     }
   },
@@ -137,18 +311,10 @@ export const productAPI = {
       // Mapping for camelCase to snake_case
       const fieldMapping: Record<string, string> = {
         minStock: 'min_stock',
-        min_stock: 'min_stock',
-        max_stock: 'max_stock',
+        maxStock: 'max_stock',
         criticalStock: 'critical_stock',
-        critical_stock: 'critical_stock',
-        // V2: 'category' kolonu yok → category_code'a map et
         category: 'category_code',
         categoryCode: 'category_code',
-        category_code: 'category_code',
-        groupCode: 'group_code',
-        group_code: 'group_code',
-        subGroupCode: 'sub_group_code',
-        sub_group_code: 'sub_group_code',
         specialCode1: 'special_code_1',
         specialCode2: 'special_code_2',
         specialCode3: 'special_code_3',
@@ -166,19 +332,56 @@ export const productAPI = {
         materialType: 'material_type',
         material_type: 'material_type',
         isActive: 'is_active',
-        hasVariants: 'has_variants',
-        has_variants: 'has_variants'
+        has_variants: 'has_variants',
+        unitsetId: 'unitset_id',
+        customExchangeRate: 'custom_exchange_rate',
+        autoCalculateUSD: 'auto_calculate_usd',
+        salePriceUSD: 'sale_price_usd',
+        purchasePriceUSD: 'purchase_price_usd',
       };
+
+      const fieldValues = new Map<string, any>();
 
       Object.entries(updates).forEach(([key, value]) => {
         if (key !== 'id' && value !== undefined) {
           const dbKey = fieldMapping[key] || key;
-          fields.push(`${dbKey} = $${i++}`);
-          values.push(value);
+          fieldValues.set(dbKey, value);
+
+          // Redundancy handling
+          if (dbKey === 'has_variants') fieldValues.set('hasvariants', value);
+          if (dbKey === 'category_code') fieldValues.set('categorycode', value);
+          if (dbKey === 'material_type') fieldValues.set('materialtype', value);
+          if (dbKey === 'vat_rate') fieldValues.set('vatrate', value);
         }
       });
 
-      if (fields.length === 0) return this.getById(id);
+      if (fieldValues.size === 0) return productAPI.getById(id);
+
+      // Handle Logging for Custom Exchange Rate BEFORE update
+      if (fieldValues.has('custom_exchange_rate')) {
+        try {
+          const oldProduct = await productAPI.getById(id);
+          const oldRate = oldProduct?.customExchangeRate || 0;
+          const newRate = fieldValues.get('custom_exchange_rate');
+          
+          if (oldRate !== newRate) {
+            const currentUser = useAuthStore.getState().user;
+            
+            await postgres.query(
+              `INSERT INTO product_exchange_rate_history (product_id, old_rate, new_rate, changed_by) 
+               VALUES ($1, $2, $3, $4)`,
+              [id, oldRate, newRate, currentUser?.fullName || 'Sistem']
+            );
+          }
+        } catch (logErr) {
+          console.error('[ProductAPI] Logging rate change failed:', logErr);
+        }
+      }
+
+      fieldValues.forEach((value, dbKey) => {
+        fields.push(`${dbKey} = $${i++}`);
+        values.push(value);
+      });
 
       values.push(id);
       values.push(ERP_SETTINGS.firmNr);
@@ -227,6 +430,7 @@ export const productAPI = {
       return [];
     }
   },
+
   /**
    * Update product stock
    */
@@ -241,6 +445,63 @@ export const productAPI = {
     } catch (error) {
       console.error('[ProductAPI] updateStock failed:', error);
       return false;
+    }
+  },
+
+  /**
+   * Bulk update products
+   */
+  async bulkUpdate(ids: string[], updates: Partial<Product>): Promise<number> {
+    try {
+      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const fields: string[] = [];
+      const values: any[] = [];
+      let i = 1;
+
+      const fieldMapping: Record<string, string> = {
+        price: 'price',
+        cost: 'cost',
+        isActive: 'is_active',
+        taxRate: 'vat_rate',
+        salePriceUSD: 'sale_price_usd',
+        purchasePriceUSD: 'purchase_price_usd',
+      };
+
+      Object.entries(updates).forEach(([key, value]) => {
+        if (key !== 'id' && value !== undefined) {
+          const dbKey = fieldMapping[key] || key;
+          fields.push(`${dbKey} = $${i++}`);
+          values.push(value);
+        }
+      });
+
+      if (fields.length === 0) return 0;
+
+      values.push(ids);
+      const query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = ANY($${i}) AND firm_nr = ${ERP_SETTINGS.firmNr}`;
+      const { rowCount } = await postgres.query(query, values);
+
+      return rowCount || 0;
+    } catch (error) {
+      console.error('[ProductAPI] bulkUpdate failed:', error);
+      throw error;
+    }
+  },
+  /**
+   * Get product exchange rate history
+   */
+  async getExchangeRateHistory(productId: string): Promise<any[]> {
+    try {
+      const { rows } = await postgres.query(
+        `SELECT * FROM product_exchange_rate_history 
+         WHERE product_id = $1 
+         ORDER BY change_date DESC`,
+        [productId]
+      );
+      return rows;
+    } catch (error) {
+      console.error('[ProductAPI] getExchangeRateHistory failed:', error);
+      return [];
     }
   },
 };
@@ -292,5 +553,10 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     priceList4: parseFloat(dbProduct.price_list_4 || 0),
     priceList5: parseFloat(dbProduct.price_list_5 || 0),
     priceList6: parseFloat(dbProduct.price_list_6 || 0),
+    salePriceUSD: parseFloat(dbProduct.sale_price_usd || 0),
+    purchasePriceUSD: parseFloat(dbProduct.purchase_price_usd || 0),
+    customExchangeRate: parseFloat(dbProduct.custom_exchange_rate || 0),
+    autoCalculateUSD: dbProduct.auto_calculate_usd === true,
+    unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
   };
 }

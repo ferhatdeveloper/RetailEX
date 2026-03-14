@@ -1,4 +1,5 @@
 // Permission Hook - Unified RBAC System
+import { useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { DISCOUNT_LIMITS, USER_ROLES } from '../../core/config/constants';
 
@@ -9,7 +10,7 @@ export const usePermission = () => {
    * Check if user has permission for an action on a module.
    * Format: hasPermission('pos', 'CREATE') or hasPermission('products', 'READ')
    */
-  const hasPermission = (moduleOrCode: string, action?: string): boolean => {
+  const hasPermission = useCallback((moduleOrCode: string, action?: string): boolean => {
     // Admin bypass
     if (user?.roles?.some(r => r.id === 'admin' || r.name?.toLowerCase() === 'admin')) {
       return true;
@@ -28,9 +29,9 @@ export const usePermission = () => {
 
     // Default to READ if only module is provided
     return contextHasPermission(moduleOrCode, 'READ');
-  };
+  }, [user, contextHasPermission]);
 
-  const getMaxDiscount = (): number => {
+  const getMaxDiscount = useCallback((): number => {
     if (!user) return 0;
     // Map role names/IDs to discount limits
     const roleId = user.roles?.[0]?.id || '';
@@ -39,36 +40,28 @@ export const usePermission = () => {
     if (roleId === 'admin' || roleName === 'admin') return DISCOUNT_LIMITS.admin;
     if (roleId === 'manager' || roleName === 'manager') return DISCOUNT_LIMITS.manager;
     return DISCOUNT_LIMITS.cashier;
-  };
+  }, [user]);
 
-  const canApplyDiscount = (discountPercentage: number): boolean => {
+  const canApplyDiscount = useCallback((discountPercentage: number): boolean => {
     const maxDiscount = getMaxDiscount();
     return discountPercentage <= maxDiscount;
-  };
+  }, [getMaxDiscount]);
 
-  const isRole = (roleName: string): boolean => {
+  const isRole = useCallback((roleName: string): boolean => {
     return user?.roles?.some(r => r.name?.toLowerCase() === roleName.toLowerCase() || r.id === roleName.toLowerCase()) || false;
-  };
+  }, [user]);
 
-  const isCashier = (): boolean => {
-    return isRole(USER_ROLES.CASHIER);
-  };
+  const isCashier = useCallback(() => isRole(USER_ROLES.CASHIER), [isRole]);
+  const isManager = useCallback(() => isRole(USER_ROLES.MANAGER), [isRole]);
+  const isAdmin = useCallback(() => isRole(USER_ROLES.ADMIN), [isRole]);
 
-  const isManager = (): boolean => {
-    return isRole(USER_ROLES.MANAGER);
-  };
-
-  const isAdmin = (): boolean => {
-    return isRole(USER_ROLES.ADMIN);
-  };
-
-  const needsManagerAuth = (discountPercentage: number): boolean => {
+  const needsManagerAuth = useCallback((discountPercentage: number): boolean => {
     if (!user) return true;
     const userMaxDiscount = getMaxDiscount();
     return discountPercentage > userMaxDiscount;
-  };
+  }, [user, getMaxDiscount]);
 
-  return {
+  return useMemo(() => ({
     user,
     permissions: user?.roles?.flatMap(r => r.permissions) || [],
     hasPermission,
@@ -79,5 +72,15 @@ export const usePermission = () => {
     isManager,
     isAdmin,
     needsManagerAuth,
-  };
+  }), [
+    user,
+    hasPermission,
+    getMaxDiscount,
+    canApplyDiscount,
+    isRole,
+    isCashier,
+    isManager,
+    isAdmin,
+    needsManagerAuth
+  ]);
 };

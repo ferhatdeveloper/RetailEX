@@ -4,13 +4,15 @@ import {
     CheckCircle, Globe, WifiOff, Zap, Layout, Settings2,
     ChevronRight, Loader2, Save, Cloud, User, Lock, Building2,
     Network, Fingerprint, RefreshCw, Activity, Download, Terminal, Info, Upload, Monitor,
-    Maximize2, Minimize2, UtensilsCrossed, Sparkles, FileCode
+    Maximize2, Minimize2, UtensilsCrossed, Sparkles, FileCode, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { NeonLogo } from '../ui/NeonLogo';
 import { AppFooter } from '../shared/AppFooter';
 import { postgres, initializeFromSQLite } from '../../services/postgres';
 import { nebimMigrationService } from '../../services/migration/NebimV3MigrationService';
+import { SupabaseMigrationService } from '../../services/api/supabaseMigrationService';
+import { IS_TAURI, safeInvoke } from '../../utils/env';
 
 interface AppConfig {
     is_configured: boolean;
@@ -54,6 +56,7 @@ interface AppConfig {
     max_users?: number;
     enabled_modules: string[];
     bayi_seti: boolean;
+    base_currency: string;
 }
 
 interface Company {
@@ -112,7 +115,7 @@ interface MigrationStatus {
 
 const SetupWizard: React.FC = () => {
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-    const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+    const isTauri = IS_TAURI;
 
     useEffect(() => {
         const handleResize = () => setWindowWidth(window.innerWidth);
@@ -142,7 +145,7 @@ const SetupWizard: React.FC = () => {
     const [downloadedSqlPath, setDownloadedSqlPath] = useState<string | null>(null);
     const [isDumpingSql, setIsDumpingSql] = useState(false);
     const [loadDemoData, setLoadDemoData] = useState(false); // Demo data loading option
-    const [config, setConfig] = useState<AppConfig>({
+    const INITIAL_CONFIG: AppConfig = {
         is_configured: false,
         db_mode: 'local', // Default 'local'
         local_db: 'localhost:5432/retailex_local',
@@ -162,7 +165,7 @@ const SetupWizard: React.FC = () => {
         pg_remote_user: '',
         pg_remote_pass: '',
         skip_integration: false,
-        system_type: 'beauty', // Changed default to generic retail, but wait, the prompt asks for 'beauty' to be an option
+        system_type: 'retail', // Changed default to retail so it doesn't look like Bayi Seti
         role: 'client',
         selected_firms: [],
         enable_mesh: false,
@@ -179,14 +182,25 @@ const SetupWizard: React.FC = () => {
             daily_backup: true,
             hourly_backup: false,
             periodic_min: 0,
-            backup_path: 'C:\\RetailEX_Backups',
+            backup_path: 'C:\\RetailEx_Backups',
             last_run: ''
         },
         selected_cash_registers: [],
         is_nebim_migration: false,
-        enabled_modules: ['pos', 'wms', 'restaurant', 'beauty'],
-        bayi_seti: true,
-    });
+        vpn_config: {
+            private_key: '',
+            public_key: '',
+            listen_port: 51820,
+            virtual_ip: '10.8.0.5',
+            peers: [],
+            enable_discovery: true
+        },
+        enabled_modules: ['pos', 'wms'], // Only default retail modules
+        bayi_seti: false,
+        base_currency: 'TRY',
+    };
+
+    const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
 
     const [availableCashRegisters, setAvailableCashRegisters] = useState<any[]>([]);
 
@@ -208,11 +222,32 @@ const SetupWizard: React.FC = () => {
     const [installationStep, setInstallationStep] = useState<'PENDING' | 'CONFIGURING' | 'DATABASE' | 'MIGRATIONS' | 'ENTITIES' | 'USERS' | 'SYNC' | 'DEVICE' | 'COMPLETED' | 'ERROR'>('PENDING');
     const [migrationReport, setMigrationReport] = useState<MigrationStatus[]>([]);
 
-    const downloadSupabaseSql = async (project: any, tablesOnly: boolean = false) => {
+    // New states for DB configuration prompt
+    const [importDbConfig, setImportDbConfig] = useState({
+        host: 'localhost',
+        port: 5432,
+        database: 'retailex_local',
+        user: 'postgres',
+        password: 'password'
+    });
+    const [selectedProject, setSelectedProject] = useState<any | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Supabase Cloud-to-Cloud states
+    const [importTargetType, setImportTargetType] = useState<'local' | 'supabase'>('local');
+    const [targetSupabaseToken, setTargetSupabaseToken] = useState('');
+    const [targetSupabaseProjects, setTargetSupabaseProjects] = useState<any[]>([]);
+    const [selectedTargetProject, setSelectedTargetProject] = useState<any | null>(null);
+    const [isFetchingTargetSupabase, setIsFetchingTargetSupabase] = useState(false);
+
+    const [sourceServiceRoleKey, setSourceServiceRoleKey] = useState('');
+    const [targetServiceRoleKey, setTargetServiceRoleKey] = useState('');
+
+    const downloadSupabaseSql = async (project: any, tablesOnly: boolean = false): Promise<string | null> => {
         // No password required anymore (API Mode)
         if (!supabaseToken) {
             toast.error("Supabase oturumu (Token) bulunamadı.");
-            return;
+            return null;
         }
 
         setIsDumpingSql(true);
@@ -241,8 +276,8 @@ const SetupWizard: React.FC = () => {
             // Call the new API-based backend command
             let filePath = "";
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                filePath = await invoke<string>('dump_supabase_to_sql', {
+                
+                filePath = await safeInvoke<string>('dump_supabase_to_sql', {
                     projectRef: project.id,
                     token: supabaseToken,
                     outputPath: outputPath,
@@ -252,57 +287,176 @@ const SetupWizard: React.FC = () => {
 
             if (unlisten) unlisten();
             setDownloadedSqlPath(filePath);
-            toast.success(`İndirme Tamamlandı!\nDosya: ${filePath}`, { id: 'dump-progress', duration: 5000 });
+            toast.success(`İndirme Tamamlandı!\nDosya: ${filePath}`, { id: 'dump-progress', duration: 3000 });
+
+            return filePath;
 
         } catch (err: any) {
             console.error('Dump failed:', err);
             toast.error('İndirme hatası: ' + err, { id: 'dump-progress' });
+            return null;
         } finally {
             setIsDumpingSql(false);
         }
     };
 
-    const runDownloadedSql = async (format: 'postgresql' | 'supabase' = 'supabase') => {
-        if (!downloadedSqlPath) return;
-        setLoading(true);
-        toast.info('SQL yedeği yerel veritabanına aktarılıyor...');
+    const handleFullImport = async () => {
+        if (!selectedProject) {
+            toast.error("Lütfen bir kaynak proje seçin.");
+            return;
+        }
+
+        if (importTargetType === 'supabase' && !selectedTargetProject) {
+            toast.error("Lütfen bir hedef proje seçin.");
+            return;
+        }
+
+        setIsImporting(true);
         try {
-            const host = config.local_db.split('/')[0];
-            const dbName = config.local_db.split('/')[1] || 'postgres';
-            const localConnStr = `postgres://${config.pg_local_user}:${config.pg_local_pass}@${host}/${dbName}`;
+            if (importTargetType === 'local') {
+                const filePath = await downloadSupabaseSql(selectedProject, backupType === 'tables');
+                if (filePath) {
+                    await handleDirectRestore(filePath);
+                }
+            } else {
+                // Cloud-to-Cloud Migration
+                toast.loading('Buluttan buluta aktarım başlatılıyor...', { id: 'import-progress' });
+
+                const migrationService = new SupabaseMigrationService((logs) => {
+                    const latestLog = logs[logs.length - 1];
+                    if (latestLog) {
+                        setSyncLogs(prev => [...prev, `[Supabase] ${latestLog.message}`]);
+                        if (latestLog.level === 'error') toast.error(latestLog.message);
+                    }
+                });
+
+                const sourceConfig = {
+                    url: `https://${selectedProject.id}.supabase.co`,
+                    key: (sourceServiceRoleKey?.trim()) || (supabaseToken?.trim())
+                };
+
+                const targetConfig = {
+                    url: `https://${selectedTargetProject.id}.supabase.co`,
+                    key: (targetServiceRoleKey?.trim()) || (targetSupabaseToken?.trim())
+                };
+
+                const connected = await migrationService.connect(sourceConfig, targetConfig);
+                if (!connected) {
+                    toast.error('Supabase bağlantısı kurulamadı. Lütfen API key/token kontrol edin.');
+                    return;
+                }
+
+                const tables = await migrationService.getTables(selectedProject.id, supabaseToken?.trim());
+                toast.info(`${tables.length} tablo bulundu, aktarım başlıyor...`, { id: 'import-progress' });
+
+                // 1. Functions
+                if (migrateOptions.functions) {
+                    await migrationService.migrateFunctions(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 2. Tables
+                for (const table of tables) {
+                    await migrationService.migrateTable(
+                        table,
+                        undefined,
+                        selectedProject.id,
+                        selectedTargetProject.id,
+                        supabaseToken?.trim(),
+                        targetSupabaseToken?.trim(),
+                        !migrateOptions.data
+                    );
+                }
+
+                // Create default admin if schema-only
+                if (!migrateOptions.data) {
+                    await migrationService.setupDefaultAdmin(selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 3. Views
+                if (migrateOptions.views) {
+                    await migrationService.migrateViews(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 4. Triggers
+                if (migrateOptions.triggers) {
+                    await migrationService.migrateTriggers(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 5. Policies
+                if (migrateOptions.policies) {
+                    await migrationService.migratePolicies(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                toast.success('Buluttan buluta aktarım tamamlandı!', { id: 'import-progress', duration: 4000 });
+                setDbInitialized(true);
+            }
+        } catch (err) {
+            console.error('Full import failed:', err);
+            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+
+    const handleDirectRestore = async (forcePath?: string) => {
+        const pathToUse = forcePath || downloadedSqlPath;
+        if (!pathToUse) return;
+        setLoading(true);
+        toast.info('Veritabanı hazırlanıyor ve SQL aktarılıyor...', { id: 'import-progress' });
+
+        try {
+            // 1. Create temporary config for the backend call
+            const tempConfig = {
+                ...config,
+                local_db: `${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`,
+                pg_local_user: importDbConfig.user,
+                pg_local_pass: importDbConfig.password
+            };
 
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
+                
 
-                if (format === 'postgresql') {
-                    // PostgreSQL format: preprocess to strip Supabase-specific extensions/auth refs
-                    const fs = await import('@tauri-apps/plugin-fs');
-                    const rawSql = await fs.readTextFile(downloadedSqlPath);
-                    const cleanedSql = rawSql
-                        .split('\n')
-                        .filter(line => {
-                            const l = line.trim().toLowerCase();
-                            return !l.startsWith('create extension') &&
-                                !l.startsWith('comment on extension') &&
-                                !l.includes('auth.') &&
-                                !l.includes('storage.') &&
-                                !l.includes('realtime.') &&
-                                !l.includes('supabase_');
-                        })
-                        .join('\n');
-                    await invoke('pg_execute', { connStr: localConnStr, sql: cleanedSql });
-                } else {
-                    // Supabase format: run as-is
-                    await invoke('pg_execute_file', {
-                        filePath: downloadedSqlPath,
-                        connStr: localConnStr
+                // 2. Ensure DB exists (Invoke backend command)
+                await safeInvoke('create_database', { config: tempConfig, target: 'local' });
+
+                // 3. Execute SQL
+                const connStr = `postgres://${importDbConfig.user}:${importDbConfig.password}@${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`;
+
+                toast.loading('SQL dosyası veritabanına aktarılıyor...', { id: 'import-progress' });
+
+                if (backupFormat === 'postgresql') {
+                    // Use new backend command for efficient cleaning and execution of Supabase dumps
+                    await safeInvoke('pg_execute_supabase_dump', {
+                        host: importDbConfig.host,
+                        port: Number(importDbConfig.port),
+                        user: importDbConfig.user,
+                        pass: importDbConfig.password,
+                        dbName: importDbConfig.database,
+                        filePath: pathToUse
                     });
+                } else {
+                    await safeInvoke('pg_execute_file', { filePath: pathToUse, connStr });
                 }
+
+                // 4. Update main config with new path
+                const newLocalDb = `${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`;
+                setConfig(prev => ({
+                    ...prev,
+                    local_db: newLocalDb,
+                    pg_local_user: importDbConfig.user,
+                    pg_local_pass: importDbConfig.password
+                }));
+
+                // 5. Test connection to confirm
+                await safeInvoke('check_db_status', { config: { ...config, local_db: newLocalDb, pg_local_user: importDbConfig.user, pg_local_pass: importDbConfig.password } });
             }
 
-            toast.success('Veritabanı şeması başarıyla yerel sunucuya aktarıldı!');
+            toast.success('İçe aktarma başarıyla tamamlandı!', { id: 'import-progress', duration: 4000 });
+            setDbInitialized(true);
         } catch (err: any) {
-            toast.error('İçe aktarma hatası: ' + err);
+            console.error('Import error:', err);
+            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
         } finally {
             setLoading(false);
         }
@@ -312,8 +466,8 @@ const SetupWizard: React.FC = () => {
         setDbStatus('CHECKING');
         try {
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const status = await invoke<string>('check_db_status', { config });
+                
+                const status = await safeInvoke<string>('check_db_status', { config });
                 if (status.startsWith('ERROR')) {
                     setDbStatus('ERROR');
                     setDbErrorMessage(status);
@@ -377,8 +531,8 @@ const SetupWizard: React.FC = () => {
 
                 // Fetch Cash Registers for Step 5
                 if (isTauri) {
-                    const { invoke } = await import('@tauri-apps/api/core');
-                    invoke<any>('get_logo_data_preview', { config, entity: 'KSCARD' })
+                    
+                    safeInvoke<any>('get_logo_data_preview', { config, entity: 'KSCARD' })
                         .then(res => {
                             const results = res.data || res || [];
                             setAvailableCashRegisters(results);
@@ -398,21 +552,28 @@ const SetupWizard: React.FC = () => {
                 }
                 return;
             } else {
-                // Standalone Mode: En az bir firma tanımlanmış olmalı. 
-                // Firm seçilmemişse süreci durduralım veya kullanıcıyı uyaralım.
-                const updatedFirms = config.selected_firms;
+                // Standalone Mode: firma numarasını doğrula ve normalize et
+                const normalizedFirmNr = (config.erp_firm_nr || '001').padStart(3, '0');
+                const normalizedPeriodNr = (config.erp_period_nr || '01').padStart(2, '0');
+
+                if (!config.title?.trim()) {
+                    toast.error('Lütfen firma unvanını giriniz.');
+                    return;
+                }
+
                 const updatedConfig = {
                     ...config,
-                    selected_firms: updatedFirms,
-                    erp_firm_nr: config.erp_firm_nr,
-                    erp_period_nr: config.erp_period_nr || (new Date().getFullYear().toString())
+                    selected_firms: config.selected_firms,
+                    erp_firm_nr: normalizedFirmNr,
+                    erp_period_nr: normalizedPeriodNr,
                 };
 
                 // Companies state'ini de besleyelim ki ileride hata vermesin
                 if (companies.length === 0) {
                     setCompanies([{
-                        id: '001',
-                        name: config.title || 'Merkez Firma',
+                        id: normalizedFirmNr,
+                        name: config.title,
+                        title: config.title,
                         periods: [],
                         stores: [],
                         users: []
@@ -452,14 +613,14 @@ const SetupWizard: React.FC = () => {
         const init = async () => {
             try {
                 if (isTauri) {
-                    const { invoke } = await import('@tauri-apps/api/core');
+                    
                     // 1. Get HWID
-                    const sysId = await invoke<string>('get_system_id');
+                    const sysId = await safeInvoke<string>('get_system_id');
                     console.log('System ID:', sysId);
                     setConfig(prev => ({ ...prev, terminal_name: sysId }));
 
                     // 2. Check existing config
-                    const existing: any = await invoke('get_app_config');
+                    const existing: any = await safeInvoke('get_app_config');
                     if (existing && existing.is_configured) {
                         setHasExistingConfig(true);
                         setConfig(prev => ({
@@ -474,11 +635,11 @@ const SetupWizard: React.FC = () => {
 
                     // 3. Check for Installer Bootstrap (Smart Onboarding)
                     try {
-                        const bootstrap: any = await invoke('get_app_config');
+                        const bootstrap: any = await safeInvoke('get_app_config');
                     } catch (e) { }
 
                     // 4. Get OS Username
-                    const user = await invoke<string>('get_os_username');
+                    const user = await safeInvoke<string>('get_os_username');
                     setOsUsername(user);
                 }
             } catch (err) {
@@ -503,8 +664,8 @@ const SetupWizard: React.FC = () => {
 
         try {
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const response = await invoke<any>('get_logo_data_preview', {
+                
+                const response = await safeInvoke<any>('get_logo_data_preview', {
                     config: targetConfig,
                     entity: actualEntity
                 });
@@ -536,8 +697,8 @@ const SetupWizard: React.FC = () => {
         setTestingLogo(true);
         try {
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const response: any = await invoke('test_mssql_connection', { config });
+                
+                const response: any = await safeInvoke('test_mssql_connection', { config });
                 const detected = response.detected_erp;
 
                 let pathIsNebim = config.is_nebim_migration;
@@ -557,7 +718,7 @@ const SetupWizard: React.FC = () => {
                 if (pathIsNebim) {
                     setStep(5);
                 } else {
-                    const fetchedCompanies = await invoke<any[]>('get_logo_firms', {
+                    const fetchedCompanies = await safeInvoke<any[]>('get_logo_firms', {
                         config: { ...config, is_nebim_migration: false, erp_method: 'sql' }
                     });
                     const companiesList: Company[] = fetchedCompanies.map(f => ({
@@ -587,8 +748,8 @@ const SetupWizard: React.FC = () => {
             let fetchedPeriods: Period[] = [];
 
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                fetchedPeriods = await invoke<Period[]>('get_logo_periods', { config: targetConfig, firm_nr: firmNr });
+                
+                fetchedPeriods = await safeInvoke<Period[]>('get_logo_periods', { config: targetConfig, firm_nr: firmNr });
             } else {
                 fetchedPeriods = [{ nr: 1, start_date: '2026-01-01', end_date: '2026-12-31' }];
             }
@@ -628,8 +789,8 @@ const SetupWizard: React.FC = () => {
             const host = config.local_db.split('/')[0];
             const connStr = `postgres://${config.pg_local_user}:${config.pg_local_pass}@${host}/postgres`;
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                await invoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
+                
+                await safeInvoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
             }
             toast.success('PostgreSQL bağlantısı başarılı!');
         } catch (err: any) {
@@ -647,8 +808,8 @@ const SetupWizard: React.FC = () => {
             const target = config.db_mode === 'online' ? 'remote' : 'local';
 
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const rawResult = await invoke('run_migrations', { config, target, loadDemoData: false }) as string;
+                
+                const rawResult = await safeInvoke('run_migrations', { config, target, loadDemoData: false }) as string;
 
                 let report: MigrationStatus[] = [];
                 try {
@@ -685,14 +846,14 @@ const SetupWizard: React.FC = () => {
                 if (!config.skip_integration && config.erp_firm_nr && config.erp_period_nr) {
                     toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
                     // 1. Init Firm Schema (Cards)
-                    await invoke('init_firm_schema', {
+                    await safeInvoke('init_firm_schema', {
                         config,
                         firmNr: config.erp_firm_nr,
                         target: target === 'remote' ? 'remote' : 'local'
                     });
 
                     // 2. Init Period Schema (Transactions)
-                    await invoke('init_period_schema', {
+                    await safeInvoke('init_period_schema', {
                         config,
                         firmNr: config.erp_firm_nr,
                         periodNr: config.erp_period_nr,
@@ -735,8 +896,8 @@ const SetupWizard: React.FC = () => {
     const generateVpnConfig = async () => {
         try {
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const keys = await invoke<any>('generate_vpn_keys');
+                
+                const keys = await safeInvoke<any>('generate_vpn_keys');
                 setConfig({ ...config, vpn_config: keys });
                 toast.success('VPN Anahtarları Güvenli Bir Şekilde Üretildi.');
             } else {
@@ -752,8 +913,8 @@ const SetupWizard: React.FC = () => {
             toast.info('🔐 Donanım kimliği tespit ediliyor...');
 
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const keys = await invoke<{
+                
+                const keys = await safeInvoke<{
                     device_id: string;
                     encrypted_private_key: string;
                     public_key: string;
@@ -777,24 +938,46 @@ const SetupWizard: React.FC = () => {
     };
 
     const fetchSupabaseProjects = async () => {
-        if (!supabaseToken) {
+        const trimmedToken = supabaseToken?.trim();
+        if (!trimmedToken) {
             toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
             return;
         }
         setIsFetchingSupabase(true);
         try {
-            // In a real scenario, this would be a Tauri command to avoid CORS and keep token safe
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const projects = await invoke<any[]>('list_supabase_projects', { token: supabaseToken });
+                
+                const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
                 setSupabaseProjects(projects);
-                toast.success(`${projects.length} proje bulundu.`);
+                toast.success(`${projects.length} kaynak proje bulundu.`);
             }
         } catch (err: any) {
             console.error('Supabase fetch error:', err);
-            toast.error(`Proje listesi alınamadı: ${err}`);
+            toast.error(`Kaynak proje listesi alınamadı: ${err}`);
         } finally {
             setIsFetchingSupabase(false);
+        }
+    };
+
+    const fetchTargetSupabaseProjects = async () => {
+        const trimmedToken = targetSupabaseToken?.trim();
+        if (!trimmedToken) {
+            toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
+            return;
+        }
+        setIsFetchingTargetSupabase(true);
+        try {
+            if (isTauri) {
+                
+                const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
+                setTargetSupabaseProjects(projects);
+                toast.success(`${projects.length} hedef proje bulundu.`);
+            }
+        } catch (err: any) {
+            console.error('Supabase fetch error:', err);
+            toast.error(`Hedef proje listesi alınamadı: ${err}`);
+        } finally {
+            setIsFetchingTargetSupabase(false);
         }
     };
 
@@ -834,8 +1017,8 @@ const SetupWizard: React.FC = () => {
 
             // Call create_database with target parameter
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                await invoke('create_database', { config, target });
+                
+                await safeInvoke('create_database', { config, target });
             } else {
                 console.log(`Web Modu: ${targetName} veritabanı başlatma simüle edildi.`);
             }
@@ -856,6 +1039,13 @@ const SetupWizard: React.FC = () => {
     };
 
     const [syncLogs, setSyncLogs] = useState<string[]>([]);
+    const [migrateOptions, setMigrateOptions] = useState({
+        functions: true,
+        views: true,
+        triggers: true,
+        policies: true,
+        data: true
+    });
 
     const handleSave = async () => {
         setLoading(true);
@@ -866,8 +1056,8 @@ const SetupWizard: React.FC = () => {
         // Ensure defaults for standalone
         let finalDbConfig = { ...config, is_configured: true };
         if (config.skip_integration) {
-            finalDbConfig.erp_firm_nr = config.erp_firm_nr;
-            finalDbConfig.erp_period_nr = config.erp_period_nr;
+            finalDbConfig.erp_firm_nr = (config.erp_firm_nr || '001').padStart(3, '0');
+            finalDbConfig.erp_period_nr = (config.erp_period_nr || '01').padStart(2, '0');
         }
 
         try {
@@ -882,7 +1072,7 @@ const SetupWizard: React.FC = () => {
             }
 
             if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
+                
                 const { emit } = await import('@tauri-apps/api/event');
 
                 await emit('sync-event', '🚀 Sistem yapılandırma süreci başlatıldı...');
@@ -890,7 +1080,7 @@ const SetupWizard: React.FC = () => {
                 // 1. Save to SQLite backend (ALWAYS save latest config)
                 await emit('sync-event', '💾 Yapılandırma kaydediliyor...');
 
-                await invoke('save_app_config', { config: finalDbConfig });
+                await safeInvoke('save_app_config', { config: finalDbConfig });
                 await emit('sync-event', '✅ Yapılandırma başarıyla kaydedildi.');
 
                 // 2. Load into current JS context
@@ -905,7 +1095,7 @@ const SetupWizard: React.FC = () => {
                     setInstallationStep('DATABASE');
                     await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
                     const target = config.db_mode === 'online' ? 'remote' : 'local';
-                    await invoke('create_database', { config, target });
+                    await safeInvoke('create_database', { config, target });
                     await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
                 }
             }
@@ -915,11 +1105,11 @@ const SetupWizard: React.FC = () => {
             setInstallationStep('MIGRATIONS');
             try {
                 if (isTauri) {
-                    const { invoke } = await import('@tauri-apps/api/core');
+                    
                     const { emit } = await import('@tauri-apps/api/event');
 
                     await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
-                    const migrationResult = await invoke('run_migrations', { config, target, loadDemoData });
+                    const migrationResult = await safeInvoke('run_migrations', { config, target, loadDemoData });
                     await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
                     setDbInitialized(true);
                 }
@@ -968,7 +1158,7 @@ const SetupWizard: React.FC = () => {
                 // Even if firmData is not in memory (cached from prev step), 
                 // we should proceed with the known firmId if it's explicitly provided.
                 const currentFirmId = firmId.padStart(3, '0');
-                const currentFirmName = firmData?.name || `Firma ${currentFirmId}`;
+                const currentFirmName = firmData?.name || finalDbConfig.title || `Firma ${currentFirmId}`;
                 const currentFirmTaxNr = firmData?.tax_nr || '';
                 const currentFirmTaxOffice = firmData?.tax_office || '';
                 const currentFirmCity = firmData?.city || '';
@@ -987,15 +1177,15 @@ const SetupWizard: React.FC = () => {
                         tax_nr = EXCLUDED.tax_nr,
                         tax_office = EXCLUDED.tax_office,
                         city = EXCLUDED.city
-                    `, [currentFirmId, currentFirmName, currentFirmTaxNr, currentFirmTaxOffice, currentFirmCity, firmData?.title || currentFirmName]);
+                    `, [currentFirmId, currentFirmName, currentFirmTaxNr, currentFirmTaxOffice, currentFirmCity, firmData?.title || finalDbConfig.title || currentFirmName]);
 
                 // 2. Firm-Level Dynamic Tables (Cards - Items, CLCard etc)
                 if (isTauri) {
-                    const { invoke } = await import('@tauri-apps/api/core');
+                    
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('sync-event', `🏢 Organizasyon yapıları hazırlanıyor...`);
                     await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
-                    await invoke('init_firm_schema', { config: finalDbConfig, firmNr: currentFirmId, target });
+                    await safeInvoke('init_firm_schema', { config: finalDbConfig, firmNr: currentFirmId, target });
                     await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır.`);
 
                     // Restaurant firm tables (masa, reçete)
@@ -1023,9 +1213,9 @@ const SetupWizard: React.FC = () => {
                     if (isTauri) {
                         try {
                             const { emit } = await import('@tauri-apps/api/event');
-                            const { invoke } = await import('@tauri-apps/api/core');
+                            
                             await emit('sync-event', `📅 Dönem ${pNr}: Hareket tabloları (Fatura, Hareketler) oluşturuluyor...`);
-                            await invoke('init_period_schema', { config: finalDbConfig, firmNr: currentFirmId, periodNr: pNr, target });
+                            await safeInvoke('init_period_schema', { config: finalDbConfig, firmNr: currentFirmId, periodNr: pNr, target });
                             await emit('sync-event', `✅ Dönem ${pNr} hareket tabloları hazır.`);
 
                             // Restaurant period tables (sipariş, mutfak)
@@ -1234,8 +1424,8 @@ const SetupWizard: React.FC = () => {
                 setInstallationStep('SYNC');
                 toast.info('ERP verileri senkronize ediliyor...');
                 if (isTauri) {
-                    const { invoke } = await import('@tauri-apps/api/core');
-                    await invoke('sync_logo_data', { config: config });
+                    
+                    await safeInvoke('sync_logo_data', { config: config });
                 } else {
                     console.log('Web Modu: Veri senkronizasyonu simüle ediliyor...');
                     await new Promise(r => setTimeout(r, 1000));
@@ -1244,11 +1434,7 @@ const SetupWizard: React.FC = () => {
 
             // 6. Apply System Type Profile (Modules etc.)
             const { moduleManager } = await import('../../utils/moduleManager');
-            if (config.system_type === 'beauty') {
-                moduleManager.applyBeautyCenterProfile();
-            } else {
-                moduleManager.resetToDefaults();
-            }
+            moduleManager.setActiveModules(config.enabled_modules);
 
             // 6.1 Save module visibility config (Bayi Seti)
             localStorage.setItem('retailex_enabled_modules', JSON.stringify(config.enabled_modules));
@@ -1267,6 +1453,10 @@ const SetupWizard: React.FC = () => {
             }
 
             setInstallationStep('COMPLETED');
+
+            // Update localStorage cache ONLY after full successful install, so App.tsx fast-path
+            // reads is_configured:true on redirect and skips the wizard.
+            localStorage.setItem('retailex_web_config', JSON.stringify(finalDbConfig));
 
             toast.success(isUpdateMode ? 'Güncelleme başarıyla tamamlandı!' : 'Kurulum başarıyla tamamlandı!');
             setTimeout(() => {
@@ -1418,7 +1608,22 @@ const SetupWizard: React.FC = () => {
                                                         <ArrowRight className="w-4 h-4" />
                                                     </button>
                                                     <button
-                                                        onClick={() => setHasExistingConfig(false)}
+                                                        onClick={() => {
+                                                            localStorage.setItem('exretail_firma_donem_configured', 'true');
+                                                            window.location.reload();
+                                                        }}
+                                                        className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2"
+                                                    >
+                                                        <ShieldCheck className="w-4 h-4" />
+                                                        <span>PANELE GİT (ATLA)</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setHasExistingConfig(false);
+                                                            setIsUpdateMode(false);
+                                                            setConfig(INITIAL_CONFIG);
+                                                            toast.info('Sistem sıfırlandı, yeni kurulum başlatılıyor.');
+                                                        }}
                                                         className="px-8 py-3.5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white rounded-2xl font-bold text-sm transition-all flex items-center gap-2 border border-white/5"
                                                     >
                                                         Yeniden Kurulum Yap
@@ -1440,7 +1645,7 @@ const SetupWizard: React.FC = () => {
                                             { id: 'retail', label: 'Mağazacılık', desc: 'Tekstil, Ayakkabı', icon: Layout },
                                             { id: 'market', label: 'Market', desc: 'Süpermarket, Büfe', icon: CheckCircle },
                                             { id: 'wms', label: 'Depo', desc: 'WMS Entegre', icon: Building2 },
-                                            { id: 'restaurant', label: 'Restoran', desc: 'Masa & Mutfak', icon: UtensilsCrossed },
+                                            { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
                                             { id: 'beauty', label: 'Güzellik', desc: 'Klinik & Bakım', icon: Sparkles },
                                             { id: 'bayi', label: 'Bayi Seti', desc: 'Tüm Modüller', icon: Shield },
                                         ].map((sys) => (
@@ -1486,6 +1691,87 @@ const SetupWizard: React.FC = () => {
                                                 )}
                                             </button>
                                         ))}
+                                    </div>
+
+                                    {/* Section: Module Visibility (Relocated under Business Type) */}
+                                    <div className="pt-2 pb-2 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-sm font-black text-white/90 tracking-tight uppercase">Modül Erişim Kontrolü</h2>
+                                                <p className="text-blue-400/50 font-bold uppercase tracking-[0.1em] text-[8px]">Module Access Configuration</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Bayi Seti Toggle */}
+                                        {config.system_type === 'bayi' && !bayiSetiUnlocked && (
+                                            <div className="flex gap-2 items-center animate-in fade-in slide-in-from-top-4 duration-500">
+                                                <div className="relative flex-1">
+                                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                                    <input
+                                                        type="password"
+                                                        value={bayiSetiPassword}
+                                                        onChange={(e) => setBayiSetiPassword(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && bayiSetiPassword === '10021993') {
+                                                                setBayiSetiUnlocked(true);
+                                                                toast.success('Bayi Seti kilidi açıldı.');
+                                                            }
+                                                        }}
+                                                        placeholder="Bayi Seti Şifresi..."
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-600"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        if (bayiSetiPassword === '10021993') {
+                                                            setBayiSetiUnlocked(true);
+                                                            toast.success('Bayi Seti kilidi açıldı.');
+                                                        } else {
+                                                            toast.error('Hatalı şifre.');
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl text-[9px] font-black uppercase tracking-widest border border-blue-500/20 transition-all"
+                                                >
+                                                    KILİDİ AÇ
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {(config.system_type !== 'bayi' || bayiSetiUnlocked) && (
+                                            <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                {[
+                                                    { id: 'pos', label: 'Satış (POS)', icon: Zap },
+                                                    { id: 'wms', label: 'Depo (WMS)', icon: Building2 },
+                                                    { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
+                                                    { id: 'beauty', label: 'Beauty', icon: Sparkles },
+                                                ].map((mod) => {
+                                                    const isEnabled = config.enabled_modules.includes(mod.id);
+
+                                                    return (
+                                                        <button
+                                                            key={mod.id}
+                                                            onClick={() => {
+                                                                const newModules = isEnabled
+                                                                    ? config.enabled_modules.filter(m => m !== mod.id)
+                                                                    : [...config.enabled_modules, mod.id];
+                                                                setConfig({ ...config, enabled_modules: newModules });
+                                                            }}
+                                                            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${isEnabled
+                                                                ? 'bg-blue-600/10 border-blue-500/40 text-white'
+                                                                : 'bg-white/[0.02] border-white/5 text-slate-500 hover:border-white/10'
+                                                                }`}
+                                                        >
+                                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${isEnabled ? 'bg-blue-600' : 'bg-slate-800'}`}>
+                                                                <mod.icon className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <span className="text-[10px] font-black">{mod.label}</span>
+                                                            {isEnabled && <CheckCircle className="w-3.5 h-3.5 text-blue-400 ml-auto" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                        <p className="text-[9px] text-slate-600 font-medium">Yönetim (Backoffice) modülü her zaman erişilebilirdir.</p>
                                     </div>
                                 </div>
 
@@ -1571,95 +1857,7 @@ const SetupWizard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Section Separator */}
-                                <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
-
-                                {/* Section: Module Visibility (Bayi Seti) */}
-                                <div className="space-y-4">
-                                    <div>
-                                        <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Modül Erişim Kontrolü</h2>
-                                        <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[9px]">Module Access Configuration</p>
-                                    </div>
-
-                                    {/* Bayi Seti Toggle */}
-                                    {config.system_type === 'bayi' && !bayiSetiUnlocked && (
-                                        <div className="flex gap-2 items-center animate-in fade-in slide-in-from-top-4 duration-500">
-                                            <div className="relative flex-1">
-                                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                                                <input
-                                                    type="password"
-                                                    value={bayiSetiPassword}
-                                                    onChange={(e) => setBayiSetiPassword(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter' && bayiSetiPassword === '10021993') {
-                                                            setBayiSetiUnlocked(true);
-                                                            toast.success('Bayi Seti kilidi açıldı.');
-                                                        }
-                                                    }}
-                                                    placeholder="Bayi Seti Şifresi..."
-                                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-600"
-                                                />
-                                            </div>
-                                            <button
-                                                onClick={() => {
-                                                    if (bayiSetiPassword === '10021993') {
-                                                        setBayiSetiUnlocked(true);
-                                                        toast.success('Bayi Seti kilidi açıldı.');
-                                                    } else {
-                                                        toast.error('Hatalı şifre.');
-                                                    }
-                                                }}
-                                                className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl text-[9px] font-black uppercase tracking-widest border border-blue-500/20 transition-all"
-                                            >
-                                                KILİDİ AÇ
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {(config.system_type !== 'bayi' || bayiSetiUnlocked) && (
-                                        <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                            {[
-                                                { id: 'pos', label: 'Satış (POS)', icon: Zap },
-                                                { id: 'wms', label: 'Depo (WMS)', icon: Building2 },
-                                                { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
-                                                { id: 'beauty', label: 'Beauty', icon: Sparkles },
-                                            ].map((mod) => {
-                                                const isEnabled = config.enabled_modules.includes(mod.id);
-                                                // If not bayi, modules are fixed based on type (but user can still toggle? original code allowed toggle)
-                                                // Actually "seçilenin dışından modüller gizlenecek" means they should probably be disabled if not relevant,
-                                                // or just not shown. I'll just show the enabled ones.
-
-                                                if (!isEnabled && config.system_type !== 'bayi') return null;
-
-                                                return (
-                                                    <button
-                                                        key={mod.id}
-                                                        onClick={() => {
-                                                            // Only allow manual toggle if in Bayi mode
-                                                            if (config.system_type !== 'bayi') return;
-
-                                                            const newModules = isEnabled
-                                                                ? config.enabled_modules.filter(m => m !== mod.id)
-                                                                : [...config.enabled_modules, mod.id];
-                                                            setConfig({ ...config, enabled_modules: newModules });
-                                                        }}
-                                                        className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${isEnabled
-                                                            ? 'bg-blue-600/10 border-blue-500/40 text-white'
-                                                            : 'bg-white/[0.02] border-white/5 text-slate-500 hover:border-white/10'
-                                                            } ${config.system_type !== 'bayi' ? 'cursor-default' : ''}`}
-                                                    >
-                                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${isEnabled ? 'bg-blue-600' : 'bg-slate-800'}`}>
-                                                            <mod.icon className="w-3.5 h-3.5" />
-                                                        </div>
-                                                        <span className="text-[10px] font-black">{mod.label}</span>
-                                                        {isEnabled && <CheckCircle className="w-3.5 h-3.5 text-blue-400 ml-auto" />}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                    <p className="text-[9px] text-slate-600 font-medium">Yönetim (Backoffice) modülü her zaman erişilebilirdir.</p>
-                                </div>
+                                {/* Section: Module Visibility (Removed from here, moved up) */}
                             </div>
                         )}
 
@@ -2139,83 +2337,349 @@ const SetupWizard: React.FC = () => {
                                         <div className="p-8 rounded-[32px] bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border border-blue-500/30 shadow-2xl relative overflow-hidden group">
                                             <div className="absolute top-0 right-0 w-60 h-60 bg-blue-500/10 blur-[80px] rounded-full group-hover:bg-blue-500/20 transition-all duration-1000" />
 
-                                            <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-                                                <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-inner">
-                                                    <Cloud className="w-10 h-10 text-emerald-400" />
-                                                </div>
-                                                <div className="flex-1 text-center md:text-left">
-                                                    <h3 className="text-xl font-bold text-white mb-1">Supabase Proje Aktarıcı</h3>
-                                                    <p className="text-xs text-blue-200/60 font-medium leading-relaxed mb-4">
-                                                        Buluttaki Supabase projenizi tek adımda içe aktarın.
-                                                        {backupType === 'tables' ? ' Yalnızca tablo yapısı (şema) indirilir.' : ' Tüm tablolar ve kayıtlar yerel sunucunuza kopyalanır.'}
-                                                    </p>
-
-                                                    <div className="flex flex-col sm:flex-row gap-3">
-                                                        <div className="flex-1 relative">
-                                                            <input
-                                                                type="password"
-                                                                value={supabaseToken}
-                                                                onChange={(e) => setSupabaseToken(e.target.value)}
-                                                                placeholder="Supabase PAT (Management Token)"
-                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono focus:border-blue-500 outline-none transition-all placeholder:text-blue-200/20"
-                                                            />
-                                                        </div>
-                                                        <button
-                                                            onClick={fetchSupabaseProjects}
-                                                            disabled={isFetchingSupabase || !supabaseToken}
-                                                            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] tracking-widest transition-all flex items-center justify-center gap-2"
-                                                        >
-                                                            {isFetchingSupabase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
-                                                            PROJELERİ LİSTELE
-                                                        </button>
+                                            <div className="flex flex-col items-center relative z-10 w-full">
+                                                <div className="flex w-full items-center gap-8 mb-8">
+                                                    <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+                                                        <Cloud className="w-10 h-10 text-emerald-400" />
                                                     </div>
+                                                    <div className="flex-1">
+                                                        <h3 className="text-xl font-bold text-white mb-1">Supabase Proje Aktarıcı</h3>
+                                                        <p className="text-xs text-blue-200/60 font-medium leading-relaxed">
+                                                            Buluttaki Supabase projenizi tek adımda içe aktarın.
+                                                            {backupType === 'tables' ? ' Yalnızca tablo yapısı (şema) indirilir.' : ' Tüm tablolar ve kayıtlar hedef sunucunuza kopyalanır.'}
+                                                        </p>
+                                                    </div>
+                                                </div>
 
-                                                    {supabaseProjects.length > 0 && (
-                                                        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-4">
-                                                            {supabaseProjects.map((p: any) => (
-                                                                <div
-                                                                    key={p.id}
-                                                                    className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group/item"
-                                                                >
-                                                                    <div className="flex items-center gap-4 mb-4">
-                                                                        <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center group-hover/item:bg-blue-500 group-hover/item:text-white transition-all">
-                                                                            <Database className="w-5 h-5 text-blue-400 group-hover/item:text-white" />
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                                                    {/* Source Supabase */}
+                                                    <div className="space-y-4 bg-white/[0.03] p-6 rounded-2xl border border-white/5">
+                                                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest pl-1 mb-2">Kaynak (Source) Cloud</div>
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="password"
+                                                                    value={supabaseToken}
+                                                                    onChange={(e) => setSupabaseToken(e.target.value)}
+                                                                    placeholder="Kaynak Supabase PAT"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono focus:border-blue-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                />
+                                                                <input
+                                                                    type="password"
+                                                                    value={sourceServiceRoleKey}
+                                                                    onChange={(e) => setSourceServiceRoleKey(e.target.value)}
+                                                                    placeholder="Kaynak Service Role Key (DB İşlemleri İçin)"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono focus:border-blue-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                />
+                                                            </div>
+                                                            <button
+                                                                onClick={fetchSupabaseProjects}
+                                                                disabled={isFetchingSupabase || !supabaseToken}
+                                                                className="w-full py-3 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/20 text-blue-400 rounded-xl font-black text-[9px] tracking-widest transition-all flex items-center justify-center gap-2"
+                                                            >
+                                                                {isFetchingSupabase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                                                KAYNAK PROJELERİ LİSTELE
+                                                            </button>
+                                                        </div>
+
+                                                        {supabaseProjects.length > 0 && (
+                                                            <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                                {supabaseProjects.map((p: any) => (
+                                                                    <div
+                                                                        key={p.id}
+                                                                        onClick={() => setSelectedProject(p)}
+                                                                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedProject?.id === p.id
+                                                                            ? 'bg-blue-500/20 border-blue-500'
+                                                                            : 'bg-white/5 border-white/10 hover:border-white/20'}`}
+                                                                    >
+                                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedProject?.id === p.id ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                                            <Database className="w-4 h-4" />
                                                                         </div>
                                                                         <div className="flex-1 min-w-0">
-                                                                            <div className="text-xs font-bold text-white truncate">{p.name}</div>
-                                                                            <div className="text-[10px] text-blue-200/40 uppercase font-black tracking-tighter">{p.id}</div>
+                                                                            <div className="text-[10px] font-bold text-white truncate">{p.name}</div>
+                                                                            <div className="text-[9px] text-blue-200/40 truncate">{p.id}</div>
                                                                         </div>
-                                                                        <button
-                                                                            onClick={() => selectSupabaseProject(p)}
-                                                                            className="p-2 bg-blue-600 rounded-lg text-white"
-                                                                        >
-                                                                            <ChevronRight className="w-4 h-4" />
-                                                                        </button>
+                                                                        {selectedProject?.id === p.id && <CheckCircle className="w-3 h-3 text-blue-500" />}
                                                                     </div>
-                                                                    <div className="flex gap-2">
-                                                                        <button
-                                                                            onClick={() => downloadSupabaseSql(p, backupType === 'tables')}
-                                                                            disabled={isDumpingSql}
-                                                                            className="flex-1 py-1.5 bg-indigo-600/20 border border-indigo-500/30 text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-1.5"
-                                                                        >
-                                                                            {isDumpingSql ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                                                                            {backupType === 'tables' ? 'ŞEMA İNDİR' : 'SQL İNDİR'}
-                                                                        </button>
-                                                                        {downloadedSqlPath && downloadedSqlPath.includes(p.id) && (
-                                                                            <button
-                                                                                onClick={() => runDownloadedSql(backupFormat)}
-                                                                                className="flex-1 py-1.5 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10 animate-in zoom-in-95"
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Target Environment */}
+                                                    <div className="space-y-4 bg-white/[0.03] p-6 rounded-2xl border border-white/5">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest pl-1">Hedef (Target) Ortam / Cloud</div>
+                                                            <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                                                                {(['local', 'supabase'] as const).map((t) => (
+                                                                    <button
+                                                                        key={t}
+                                                                        onClick={() => setImportTargetType(t)}
+                                                                        className={`px-3 py-1 rounded-md text-[8px] font-black uppercase transition-all ${importTargetType === t ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}
+                                                                    >
+                                                                        {t === 'local' ? 'Lokal' : 'Supabase'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {importTargetType === 'local' ? (
+                                                            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+                                                                <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                                                                    <div className="text-[10px] font-bold text-blue-300/60 mb-1">Yerel PostgreSQL Hedefi</div>
+                                                                    <p className="text-[9px] text-slate-500">Veriler buluttan SQL dump olarak indirilir ve yerel veritabanınıza geri yüklenir.</p>
+                                                                </div>
+                                                                {/* Shared DB Config fields could be shown here if needed, but they are below */}
+                                                                <div className="text-[9px] text-slate-600 italic">Yerel veritabanı ayarları aşağıdaki panelden yönetilebilir.</div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300 w-full">
+                                                                <div className="flex flex-col gap-3">
+                                                                    <div className="relative flex flex-col gap-2">
+                                                                        <input
+                                                                            type="password"
+                                                                            value={targetSupabaseToken}
+                                                                            onChange={(e) => setTargetSupabaseToken(e.target.value)}
+                                                                            placeholder="Hedef Supabase PAT"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono focus:border-emerald-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                        />
+                                                                        <input
+                                                                            type="password"
+                                                                            value={targetServiceRoleKey}
+                                                                            onChange={(e) => setTargetServiceRoleKey(e.target.value)}
+                                                                            placeholder="Hedef Service Role Key (DB İşlemleri İçin)"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono focus:border-emerald-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                        />
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={fetchTargetSupabaseProjects}
+                                                                        disabled={isFetchingTargetSupabase || !targetSupabaseToken}
+                                                                        className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/20 text-emerald-400 rounded-xl font-black text-[9px] tracking-widest transition-all flex items-center justify-center gap-2"
+                                                                    >
+                                                                        {isFetchingTargetSupabase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                                                        HEDEF PROJELERİ LİSTELE
+                                                                    </button>
+                                                                </div>
+
+                                                                {targetSupabaseProjects.length > 0 && (
+                                                                    <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                                        {targetSupabaseProjects.map((p: any) => (
+                                                                            <div
+                                                                                key={p.id}
+                                                                                onClick={() => setSelectedTargetProject(p)}
+                                                                                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedTargetProject?.id === p.id
+                                                                                    ? 'bg-emerald-500/20 border-emerald-500'
+                                                                                    : 'bg-white/5 border-white/10 hover:border-white/20'}`}
                                                                             >
-                                                                                <Terminal className="w-3 h-3" />
-                                                                                LOKAL KUR
-                                                                            </button>
-                                                                        )}
+                                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedTargetProject?.id === p.id ? 'bg-emerald-500 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                                                                    <Database className="w-4 h-4" />
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="text-[10px] font-bold text-white truncate">{p.name}</div>
+                                                                                    <div className="text-[9px] text-emerald-200/40 truncate">{p.id}</div>
+                                                                                </div>
+                                                                                {selectedTargetProject?.id === p.id && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Panel */}
+                                                {(selectedProject && (importTargetType === 'local' || selectedTargetProject)) && (
+                                                    <div className="mt-8 pt-8 border-t border-white/10 w-full animate-in slide-in-from-bottom-4">
+                                                        {importTargetType === 'local' && (
+                                                            <div className="space-y-6 mb-8">
+                                                                <div className="flex items-center gap-3 mb-2">
+                                                                    <Settings2 className="w-4 h-4 text-emerald-400" />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Hedef SQL Veritabanı Bilgileri (Yerel)</span>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Host & Port</label>
+                                                                        <div className="flex gap-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                className="flex-[3] bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.host}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, host: e.target.value })}
+                                                                                placeholder="localhost"
+                                                                            />
+                                                                            <input
+                                                                                type="number"
+                                                                                className="flex-[2] bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.port}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, port: parseInt(e.target.value) })}
+                                                                                placeholder="5432"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Veritabanı Adı</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                            value={importDbConfig.database}
+                                                                            onChange={(e) => setImportDbConfig({ ...importDbConfig, database: e.target.value })}
+                                                                            placeholder="retailex_local"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Admin Kullanıcı & Şifre</label>
+                                                                        <div className="flex gap-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.user}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, user: e.target.value })}
+                                                                                placeholder="postgres"
+                                                                            />
+                                                                            <input
+                                                                                type="password"
+                                                                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.password}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, password: e.target.value })}
+                                                                                placeholder="password"
+                                                                            />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            ))}
+                                                            </div>
+                                                        )}
+
+                                                        {importTargetType === 'supabase' && (
+                                                            <div className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4 animate-in fade-in slide-in-from-top-4">
+                                                                <div className="flex items-center gap-2 mb-2 text-emerald-400 font-bold text-[10px] tracking-widest uppercase">
+                                                                    <Settings2 className="w-4 h-4" />
+                                                                    Aktarım Seçenekleri
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.functions}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, functions: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">Fonksiyonlar</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.views}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, views: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">View Yapıları</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.triggers}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, triggers: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">Triggerlar</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.policies}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, policies: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">RLS Politikaları</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/40 cursor-pointer transition-all group lg:col-span-2">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.data}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, data: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-emerald-500/20 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] font-bold text-emerald-400 group-hover:text-emerald-300 transition-colors">Tablo Verilerini Aktar (Schema Only için kapatın)</span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                                                            {importTargetType === 'local' && (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (!selectedProject) return;
+                                                                        await downloadSupabaseSql(selectedProject, backupType === 'tables');
+                                                                    }}
+                                                                    disabled={isImporting || isDumpingSql || !supabaseToken}
+                                                                    className="flex-1 max-w-xs py-4 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 rounded-2xl font-black text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                                                                >
+                                                                    <Download className="w-4 h-4" />
+                                                                    SADECE SQL İNDİR
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={handleFullImport}
+                                                                disabled={isImporting || isDumpingSql || !supabaseToken}
+                                                                className={`flex-[2] max-w-md py-4 ${importTargetType === 'supabase' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'} disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-xs tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]`}
+                                                            >
+                                                                {isImporting || isDumpingSql ? (
+                                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                                ) : (
+                                                                    <Zap className="w-5 h-5" />
+                                                                )}
+                                                                {isImporting ? 'AKTARIYOR...' : isDumpingSql ? 'İNDİRİLİYOR...' : importTargetType === 'supabase' ? 'BULUTTAN BULUTA AKTARMAYI BAŞLAT' : 'İÇE AKTARMAYI BAŞLAT'}
+                                                            </button>
                                                         </div>
-                                                    )}
-                                                </div>
+
+                                                        {syncLogs.length > 0 && (
+                                                            <div className="mt-8 animate-in fade-in slide-in-from-top-4">
+                                                                <div className="bg-black/60 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl shadow-2xl">
+                                                                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="flex gap-1.5">
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
+                                                                            </div>
+                                                                            <div className="h-4 w-px bg-white/10 mx-1" />
+                                                                            <Terminal className="w-4 h-4 text-emerald-400" />
+                                                                            <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Migration Terminal</span>
+                                                                        </div>
+                                                                        {isImporting && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                                                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="h-[300px] overflow-y-auto p-6 font-mono text-[11px] leading-relaxed custom-scrollbar bg-black/40">
+                                                                        <div className="space-y-1.5">
+                                                                            {syncLogs.map((log, i) => (
+                                                                                <div key={i} className="flex gap-3 animate-in fade-in duration-200">
+                                                                                    <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
+                                                                                    <span className={
+                                                                                        log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') 
+                                                                                        ? 'text-red-400' 
+                                                                                        : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') 
+                                                                                        ? 'text-emerald-400' 
+                                                                                        : 'text-slate-300'
+                                                                                    }>
+                                                                                        {log}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))}
+                                                                            <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -2240,7 +2704,7 @@ const SetupWizard: React.FC = () => {
                                             if (isTauri) {
                                                 try {
                                                     const { open } = await import('@tauri-apps/plugin-dialog');
-                                                    const { invoke } = await import('@tauri-apps/api/core');
+                                                    
 
                                                     const selected = await open({
                                                         multiple: false,
@@ -2252,10 +2716,10 @@ const SetupWizard: React.FC = () => {
                                                         const target = config.db_mode === 'online' ? 'remote' : 'local';
 
                                                         toast.info('Veritabanı hazırlanıyor...');
-                                                        await invoke('create_database', { config, target });
+                                                        await safeInvoke('create_database', { config, target });
 
                                                         toast.info('Eski yedek yükleniyor...');
-                                                        await invoke('pg_execute_file', {
+                                                        await safeInvoke('pg_execute_file', {
                                                             connStr: target === 'local'
                                                                 ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
                                                                 : config.remote_db,
@@ -2264,7 +2728,7 @@ const SetupWizard: React.FC = () => {
 
                                                         toast.info('Veriler yeni yapıya dönüştürülüyor...');
                                                         const migrationScriptPath = 'd:/Exretailosv1/database/scripts/migrate_legacy_to_v3.sql';
-                                                        await invoke('pg_execute_file', {
+                                                        await safeInvoke('pg_execute_file', {
                                                             connStr: target === 'local'
                                                                 ? `postgres://${config.pg_local_user}:${config.pg_local_pass}@localhost:5432/${config.local_db.split('/')[1] || config.local_db}`
                                                                 : config.remote_db,
@@ -2468,11 +2932,60 @@ const SetupWizard: React.FC = () => {
                                     <div className="space-y-8">
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <h2 className="text-3xl font-black text-white tracking-tight">Firma Seçimi</h2>
-                                                <p className="text-blue-400/60 font-black uppercase tracking-[0.2em] text-[10px] mt-1">Lütfen devam etmek için bir firma seçin</p>
+                                                <h2 className="text-3xl font-black text-white tracking-tight">Firma Bilgileri</h2>
+                                                <p className="text-blue-400/60 font-black uppercase tracking-[0.2em] text-[10px] mt-1">Lütfen devam etmek için firma ve para birimi ayarlarını yapın</p>
                                             </div>
                                             <div className="flex bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
-                                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{companies.length} Müsait Firma</div>
+                                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{config.skip_integration ? '1 Tanımlı Firma' : `${companies.length} Müsait Firma`}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="space-y-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Firma Ünvanı & No</label>
+                                                    <div className="flex gap-2">
+                                                        <div className="relative group flex-1">
+                                                            <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold"
+                                                                value={config.title}
+                                                                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                                                                placeholder="Firma Ünvanı"
+                                                            />
+                                                        </div>
+                                                        <div className="relative group w-24">
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white text-center focus:outline-none focus:border-blue-500 transition-all font-mono font-bold"
+                                                                value={config.erp_firm_nr}
+                                                                onChange={(e) => setConfig({ ...config, erp_firm_nr: e.target.value.padStart(3, '0').slice(-3) })}
+                                                                placeholder="001"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Raporlama Para Birimi</label>
+                                                    <div className="relative group">
+                                                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
+                                                        <select
+                                                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-bold appearance-none cursor-pointer"
+                                                            value={config.base_currency}
+                                                            onChange={(e) => setConfig({ ...config, base_currency: e.target.value })}
+                                                        >
+                                                            <option value="TRY" className="bg-slate-900">Türk Lirası (TRY)</option>
+                                                            <option value="USD" className="bg-slate-900">Amerikan Doları (USD)</option>
+                                                            <option value="EUR" className="bg-slate-900">Euro (EUR)</option>
+                                                            <option value="GBP" className="bg-slate-900">İngiliz Sterlini (GBP)</option>
+                                                        </select>
+                                                        <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none rotate-90" />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -2731,7 +3244,13 @@ const SetupWizard: React.FC = () => {
                                                             className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-emerald-500 transition-all font-bold text-sm"
                                                             value={config.title}
                                                             onChange={(e) => setConfig({ ...config, title: e.target.value })}
-                                                            placeholder="Örn: Merkez Mağaza A.Ş."
+                                                            placeholder={
+                                                                config.system_type === 'market' ? "Örn: Seçkin Market Gıda Ltd." :
+                                                                    config.system_type === 'restaurant' ? "Örn: Lezzet Durağı Restoran" :
+                                                                        config.system_type === 'beauty' ? "Örn: Estetik Merkezi Bakım" :
+                                                                            config.system_type === 'wms' ? "Örn: Lojistik Merkez Depo" :
+                                                                                "Örn: Merkez İşletme A.Ş."
+                                                            }
                                                         />
                                                     </div>
 
@@ -3206,8 +3725,8 @@ const SetupWizard: React.FC = () => {
                                                     <button
                                                         onClick={async () => {
                                                             if (isTauri) {
-                                                                const { invoke } = await import('@tauri-apps/api/core');
-                                                                invoke('open_migration_log').catch(e => toast.error(e));
+                                                                
+                                                                safeInvoke('open_migration_log').catch(e => toast.error(e));
                                                             }
                                                         }}
                                                         className="flex items-center gap-3 px-6 py-5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10 transition-all hover:text-white"
@@ -3227,37 +3746,40 @@ const SetupWizard: React.FC = () => {
 
                                     {/* Right Side: Professional Terminal */}
                                     <div className="w-full lg:w-1/2 flex flex-col h-[600px]">
-                                        <div className="flex-1 bg-[#0c1117] border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden relative group/terminal">
-                                            <div className="p-6 border-b border-white/10 bg-white/[0.02] flex items-center justify-between">
+                                        <div className="flex-1 bg-black/60 border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl relative group/terminal">
+                                            <div className="p-6 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="flex gap-1.5 leading-none">
-                                                        <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/20" />
-                                                        <div className="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
-                                                        <div className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/20" />
+                                                    <div className="flex gap-1.5">
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
+                                                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
                                                     </div>
-                                                    <div className="h-4 w-px bg-white/10 mx-2" />
-                                                    <div className="flex items-center gap-2">
-                                                        <Terminal className="w-4 h-4 text-blue-400" />
-                                                        <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Console Output</span>
-                                                    </div>
+                                                    <div className="h-4 w-px bg-white/10 mx-1" />
+                                                    <Terminal className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">System Core Console</span>
                                                 </div>
+                                                {installationStep !== 'COMPLETED' && installationStep !== 'ERROR' && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                        <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="flex-1 overflow-y-auto p-8 font-mono text-[11px] leading-relaxed custom-scrollbar bg-black/40">
-                                                <div className="space-y-2">
+                                                <div className="space-y-1.5">
                                                     {syncLogs.map((log, i) => (
-                                                        <div key={i} className="flex gap-4 animate-in fade-in duration-200 border-b border-white/[0.02] pb-2 mb-2 last:border-0">
-                                                            <span className="text-blue-500/40 font-bold shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
-                                                            <span className={`flex-1 break-all ${log.includes('❌') || log.includes('💥') || log.includes('HATA') || log.includes('Hata') || log.includes('Error')
-                                                                ? 'text-red-400'
+                                                        <div key={i} className="flex gap-4 animate-in fade-in duration-200">
+                                                            <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
+                                                            <span className={`flex-1 break-all ${
+                                                                log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') || log.includes('💥')
+                                                                ? 'text-red-400' 
+                                                                : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') || log.includes('başarı') || log.includes('hazır')
+                                                                ? 'text-emerald-400' 
                                                                 : log.includes('⚠️') || log.includes('uyarı') || log.includes('Uyarı')
-                                                                    ? 'text-yellow-400'
-                                                                    : log.includes('✅') || log.includes('hazır') || log.includes('Tamamlandı') || log.includes('başarı')
-                                                                        ? 'text-emerald-400'
-                                                                        : log.startsWith('  ')
-                                                                            ? 'text-red-300/80 pl-2'
-                                                                            : 'text-slate-300'
-                                                                }`}>
+                                                                ? 'text-yellow-400'
+                                                                : 'text-slate-300'
+                                                            }`}>
                                                                 {log}
                                                             </span>
                                                         </div>
@@ -3282,13 +3804,13 @@ const SetupWizard: React.FC = () => {
                         nextDisabled={loading || step === (config.skip_integration ? 7 : 10)}
                         nextLabel={step === (config.skip_integration ? 6 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
+                        forceShowStatus={true}
                     />
-                </div >
-            </div >
+                </div>
+            </div>
+
         </div >
     );
 };
 
 export default SetupWizard;
-
-

@@ -17,6 +17,9 @@ import { Loader2, Monitor } from 'lucide-react';
 import SetupWizard from './components/system/SetupWizard';
 import { NeonLogo } from './components/ui/NeonLogo';
 import { supabase } from './utils/supabase/client';
+import { AdminElevationPrompt } from './components/system/AdminElevationPrompt';
+import { listen } from '@tauri-apps/api/event';
+import { IS_TAURI, safeInvoke } from './utils/env';
 
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
 import './services/websocketPatch';
@@ -45,7 +48,8 @@ function App() {
   const [installingPg, setInstallingPg] = useState(false);
   const [version, setVersion] = useState<string>('0.1.46');
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+  const [showElevationPrompt, setShowElevationPrompt] = useState(false);
+  const [elevationReason, setElevationReason] = useState('');
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -68,9 +72,7 @@ function App() {
 
     const startupFlow = async () => {
       try {
-        if (isTauri) {
-          const { invoke } = await import('@tauri-apps/api/core');
-
+        if (IS_TAURI) {
           // ── FAST PATH ────────────────────────────────────────────────────────
           // Eğer önceki oturumdan cache'lenmiş config varsa, Tauri'yi bekleme
           const cachedRaw = localStorage.getItem('retailex_web_config');
@@ -82,15 +84,7 @@ function App() {
               applyConfig(cachedConfig);
 
               // Arka planda config'i yenile (bir sonraki açılış için)
-              invoke('get_app_version').then((v: any) => setVersion(String(v))).catch(() => { });
-              invoke('get_app_config').then((fresh: any) => {
-                if (fresh) {
-                  localStorage.setItem('retailex_web_config', JSON.stringify(fresh));
-                  import('./services/postgres').then(({ postgres }) =>
-                    postgres.connect(fresh).catch(() => { })
-                  ).catch(() => { });
-                }
-              }).catch(() => { });
+              safeInvoke('get_app_version').then((v: any) => setVersion(String(v))).catch(() => { });
               return; // UI gösterildi, bitti
             } catch { /* cache bozuksa slow path'e düş */ }
           }
@@ -99,14 +93,14 @@ function App() {
           // get_app_version + get_app_config PARALEL, 3 saniye max bekle
           const results = await Promise.race([
             Promise.allSettled([
-              invoke('get_app_config'),
-              invoke('get_app_version'),
+              safeInvoke('get_app_config'),
+              safeInvoke('get_app_version'),
             ]),
             new Promise<PromiseSettledResult<any>[]>(r =>
               setTimeout(() => r([
                 { status: 'rejected', reason: 'timeout' },
                 { status: 'rejected', reason: 'timeout' },
-              ]), 3000)
+              ]), 10000)
             ),
           ]);
 
@@ -126,19 +120,19 @@ function App() {
           applyConfig(config || { is_configured: !!localStorage.getItem('exretail_firma_donem_configured') });
 
           // PG kontrolü arka planda — UI'yı bloke etme
-          invoke('check_pg16').then((exists: any) => {
+          safeInvoke('check_pg16').then((exists: any) => {
             if (!exists) {
               setInstallingPg(true);
-              invoke('install_pg16').catch(() => { }).finally(() => setInstallingPg(false));
+              safeInvoke('install_pg16').catch(() => { }).finally(() => setInstallingPg(false));
             }
           }).catch(() => { });
         } else {
           // ── Web Flow ──────────────────────────────────────────────────────────
-          const saved = localStorage.getItem('retailex_web_config');
-          if (saved) { try { await initializeFromSQLite(); } catch { await initializeFromSQLite(); } }
-          else await initializeFromSQLite();
+          await initializeFromSQLite();
           setIsPgReady(true);
+          // Browser modunda kurulum sihirbazına gerek yok, doğrudan Login'e geç
           setIsConfigured(true);
+          if ((window as any).removeLoader) (window as any).removeLoader();
         }
       } catch (err) {
         console.error('[Startup] Flow failed:', err);
@@ -149,16 +143,40 @@ function App() {
 
     startupFlow();
 
-    // Güvenlik ağı: 5 saniyede UI'ı zorla göster
+    // Güvenlik ağı: 3 saniyede UI'ı zorla göster
     const emergencyTimer = setTimeout(() => {
       console.warn('[Startup] Emergency timeout — forcing UI');
       setIsPgReady(true);
-      setIsConfigured(prev => prev === null ? !!localStorage.getItem('exretail_firma_donem_configured') : prev);
+      setIsConfigured(prev => prev === null ? true : prev);
+      
+      // Force element removal if window.removeLoader is missing or failed
+      const loader = document.getElementById('app-loader');
+      if (loader) loader.remove();
       if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 5000);
+    }, 3000); // Reduced to 3s for faster web feedback
 
     return () => clearTimeout(emergencyTimer);
-  }, [isTauri]);
+  }, [IS_TAURI]);
+
+  // VPN Permission Error Listener
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setupListener = async () => {
+      if (IS_TAURI) {
+        unlisten = await listen('vpn-permission-error', (event) => {
+          console.error('[VPN] Permission Error:', event.payload);
+          setElevationReason(String(event.payload));
+          setShowElevationPrompt(true);
+        });
+      }
+    };
+
+    setupListener();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [IS_TAURI]);
 
   // Remove loader when app is ready
   useEffect(() => {
@@ -246,13 +264,13 @@ function App() {
       <div className="fixed inset-0 bg-[#0f1113] flex items-center justify-center animate-in fade-in duration-500">
         <div className="text-center space-y-6">
           <NeonLogo size="lg" className="animate-pulse" />
-          <p className="text-blue-500/50 text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">
+          <p className="text-blue-400 text-xs font-black uppercase tracking-[0.4em] animate-pulse">
             {installingPg ? 'Veritabanı Altyapısı Hazırlanıyor...' : 'Sistem Yükleniyor...'}
           </p>
           {installingPg && (
-            <p className="text-gray-400 text-[10px] animate-pulse">Lütfen bekleyin, bu işlem ilk sefere mahsustur.</p>
+            <p className="text-gray-300 text-sm animate-pulse">Lütfen bekleyin, bu işlem ilk sefere mahsustur.</p>
           )}
-          <div className="mt-8 text-blue-400/50 text-[10px] font-mono tracking-widest uppercase">
+          <div className="mt-8 text-blue-300 text-xs font-mono tracking-widest uppercase">
             Enterprise OS v{version} • Initializing Core
           </div>
         </div>
@@ -264,6 +282,11 @@ function App() {
     <FirmaDonemProvider>
       <VersionProvider>
         <ErrorBoundary>
+          <AdminElevationPrompt 
+            isOpen={showElevationPrompt} 
+            onClose={() => setShowElevationPrompt(false)} 
+            reason={elevationReason}
+          />
           {/* Global Loading / Setup Wizard Check */}
           {isConfigured === null || authLoading ? (
             <div className="min-h-screen bg-[#050510] flex items-center justify-center">
