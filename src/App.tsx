@@ -45,6 +45,7 @@ function App() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [isPgReady, setIsPgReady] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
   const [version, setVersion] = useState<string>('0.1.46');
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
@@ -65,32 +66,19 @@ function App() {
         localStorage.setItem('exretail_selected_firma_id', config.erp_firm_nr);
         localStorage.setItem('exretail_selected_donem_id', config.erp_period_nr || '01');
         localStorage.setItem('exretail_firma_donem_configured', 'true');
+        localStorage.setItem('retailex_web_config', JSON.stringify(config));
       } else {
         setIsConfigured(false);
+        // Clear ghost flags if backend says not configured
+        localStorage.removeItem('exretail_firma_donem_configured');
+        localStorage.removeItem('retailex_web_config');
       }
     };
 
     const startupFlow = async () => {
       try {
         if (IS_TAURI) {
-          // ── FAST PATH ────────────────────────────────────────────────────────
-          // Eğer önceki oturumdan cache'lenmiş config varsa, Tauri'yi bekleme
-          const cachedRaw = localStorage.getItem('retailex_web_config');
-          if (cachedRaw) {
-            try {
-              const cachedConfig = JSON.parse(cachedRaw);
-              await initializeFromSQLite(); // initializeFromSQLite takes no arguments based on lint
-              setIsPgReady(true);
-              applyConfig(cachedConfig);
-
-              // Arka planda config'i yenile (bir sonraki açılış için)
-              safeInvoke('get_app_version').then((v: any) => setVersion(String(v))).catch(() => { });
-              return; // UI gösterildi, bitti
-            } catch { /* cache bozuksa slow path'e düş */ }
-          }
-
-          // ── SLOW PATH (ilk açılış) ────────────────────────────────────────────
-          // get_app_version + get_app_config PARALEL, 3 saniye max bekle
+          // ── SLOW PATH (Source of Truth) ──────────────────────────────────────────
           const results = await Promise.race([
             Promise.allSettled([
               safeInvoke('get_app_config'),
@@ -117,43 +105,62 @@ function App() {
           }
 
           setIsPgReady(true);
-          applyConfig(config || { is_configured: !!localStorage.getItem('exretail_firma_donem_configured') });
+          
+          // Final configuration check: if we have a config object OR something in localStorage
+          const finalConfigured = !!(config?.is_configured || localStorage.getItem('exretail_firma_donem_configured'));
+          applyConfig(config || { is_configured: finalConfigured });
 
-          // PG kontrolü arka planda — UI'yı bloke etme
           safeInvoke('check_pg16').then((exists: any) => {
             if (!exists) {
               setInstallingPg(true);
               safeInvoke('install_pg16').catch(() => { }).finally(() => setInstallingPg(false));
             }
           }).catch(() => { });
+
+          setIsInitialized(true);
         } else {
           // ── Web Flow ──────────────────────────────────────────────────────────
           await initializeFromSQLite();
           setIsPgReady(true);
-          // Browser modunda kurulum sihirbazına gerek yok, doğrudan Login'e geç
           setIsConfigured(true);
+          setIsInitialized(true);
           if ((window as any).removeLoader) (window as any).removeLoader();
         }
       } catch (err) {
         console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
         setIsConfigured(!!localStorage.getItem('exretail_firma_donem_configured'));
+        setIsInitialized(true);
       }
     };
 
     startupFlow();
 
-    // Güvenlik ağı: 3 saniyede UI'ı zorla göster
+    // Emergency fallback to prevent white screen if initialization hangs
     const emergencyTimer = setTimeout(() => {
-      console.warn('[Startup] Emergency timeout — forcing UI');
-      setIsPgReady(true);
-      setIsConfigured(prev => prev === null ? true : prev);
+      if (!isInitialized) {
+        console.warn('⚠️ Emergency initialization triggered - slow startup detected');
+        
+        // Recover from cache if possible
+        const cachedRaw = localStorage.getItem('retailex_web_config');
+        const hasLegacyFlag = !!localStorage.getItem('exretail_firma_donem_configured');
+        
+        if (cachedRaw || hasLegacyFlag) {
+          console.info('Retrieved configuration from cache during emergency fallback');
+          setIsConfigured(true);
+        } else {
+          // Only show wizard if absolutely no config is found
+          setIsConfigured(IS_TAURI ? false : true);
+        }
+        
+        setIsPgReady(true);
+        setIsInitialized(true);
+      }
       
-      // Force element removal if window.removeLoader is missing or failed
       const loader = document.getElementById('app-loader');
       if (loader) loader.remove();
       if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 3000); // Reduced to 3s for faster web feedback
+    }, 15000); // Increased to 15s to allow for background service startup
 
     return () => clearTimeout(emergencyTimer);
   }, [IS_TAURI]);

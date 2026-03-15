@@ -358,11 +358,15 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
         vec![config.erp_firm_nr.clone()]
     };
 
-    for current_firm_nr in firms_to_sync {
+    for raw_firm_nr in firms_to_sync {
+        let firm_nr_int = raw_firm_nr.parse::<i32>().unwrap_or(0);
+        let current_firm_nr = format!("{:03}", firm_nr_int);
+        
+        log_to_file(&format!("Processing firm: {} (int: {})", current_firm_nr, firm_nr_int));
         let _ = window.emit("sync-event", format!("Firma {} için veriler alınıyor...", current_firm_nr));
 
         // 2. Sync Firm
-        let firm_nr_int = current_firm_nr.parse::<i32>().unwrap_or(0);
+
     let firm_query = format!("SELECT NAME, TITLE FROM L_CAPIFIRM WHERE NR = {}", firm_nr_int);
     let firm_rows = mssql_client.simple_query(firm_query).await.map_err(|e| e.to_string())?.into_first_result().await.map_err(|e| e.to_string())?;
     

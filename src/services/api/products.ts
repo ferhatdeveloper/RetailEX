@@ -196,10 +196,6 @@ export const productAPI = {
         unit2: (product as any).unit2 || '',
         unit3: (product as any).unit3 || '',
         has_variants: (product as any).hasVariants || (product as any).has_variants || false,
-        // Redundancy handling for V2
-        categorycode: (product as any).categoryCode || (product as any).category_code || product.category || '',
-        materialtype: (product as any).materialType || (product as any).material_type || 'commercial_goods',
-        hasvariants: (product as any).hasVariants || (product as any).has_variants || false,
       };
 
       const columns = Object.keys(productData);
@@ -274,12 +270,6 @@ export const productAPI = {
         if (value !== undefined) {
           const dbKey = fieldMapping[key] || key;
           finalData[dbKey] = value;
-          
-          // Redundancy handling
-          if (dbKey === 'has_variants') finalData['hasvariants'] = value;
-          if (dbKey === 'category_code') finalData['categorycode'] = value;
-          if (dbKey === 'material_type') finalData['materialtype'] = value;
-          if (dbKey === 'vat_rate') finalData['vatrate'] = value;
         }
       });
 
@@ -315,6 +305,8 @@ export const productAPI = {
         criticalStock: 'critical_stock',
         category: 'category_code',
         categoryCode: 'category_code',
+        groupCode: 'group_code',
+        subGroupCode: 'sub_group_code',
         specialCode1: 'special_code_1',
         specialCode2: 'special_code_2',
         specialCode3: 'special_code_3',
@@ -330,9 +322,8 @@ export const productAPI = {
         taxRate: 'vat_rate',
         vatRate: 'vat_rate',
         materialType: 'material_type',
-        material_type: 'material_type',
         isActive: 'is_active',
-        has_variants: 'has_variants',
+        hasVariants: 'has_variants',
         unitsetId: 'unitset_id',
         customExchangeRate: 'custom_exchange_rate',
         autoCalculateUSD: 'auto_calculate_usd',
@@ -346,12 +337,6 @@ export const productAPI = {
         if (key !== 'id' && value !== undefined) {
           const dbKey = fieldMapping[key] || key;
           fieldValues.set(dbKey, value);
-
-          // Redundancy handling
-          if (dbKey === 'has_variants') fieldValues.set('hasvariants', value);
-          if (dbKey === 'category_code') fieldValues.set('categorycode', value);
-          if (dbKey === 'material_type') fieldValues.set('materialtype', value);
-          if (dbKey === 'vat_rate') fieldValues.set('vatrate', value);
         }
       });
 

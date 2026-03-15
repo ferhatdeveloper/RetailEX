@@ -119,15 +119,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       logger.info('Auth', `Login attempt: ${username} (Firm: ${ERP_SETTINGS.firmNr})`);
 
-      // 1. Query user directly from public.users joined with roles
+      // 1. Query user from auth.users joined with roles
       const sql = `
-        SELECT u.*, r.name as role_name, r.permissions as role_permissions, r.color as role_color
-        FROM users u
-        LEFT JOIN roles r ON u.role_id = r.id
-        WHERE LOWER(u.username) = LOWER($1)
-        AND u.firm_nr = $2
-        AND u.password_hash = crypt($3, u.password_hash)
-        AND u.is_active = true
+        SELECT 
+            u.id, 
+            u.email, 
+            u.raw_user_meta_data->>'username' as username,
+            u.raw_user_meta_data->>'full_name' as full_name,
+            u.raw_user_meta_data->>'firm_nr' as firm_nr,
+            r.id as role_id,
+            r.name as role_name, 
+            r.permissions as role_permissions, 
+            r.color as role_color
+        FROM auth.users u
+        LEFT JOIN roles r ON (u.raw_user_meta_data->>'role') = r.name
+        WHERE LOWER(u.raw_user_meta_data->>'username') = LOWER($1)
+        AND (u.raw_user_meta_data->>'firm_nr') = $2
+        AND u.encrypted_password = crypt($3, u.encrypted_password)
       `;
 
       const { ERP_SETTINGS: latestSettings } = await import('../services/postgres');

@@ -1,4 +1,5 @@
 import type { Product, Customer, Campaign, ProductVariant } from '../../App';
+export type { Product, Customer, Campaign, ProductVariant };
 
 export interface CartItem {
   product: Product;

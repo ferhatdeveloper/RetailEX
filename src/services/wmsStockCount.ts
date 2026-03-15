@@ -224,7 +224,7 @@ class WMSStockCountService {
         // ── Step 1: Direct products match (barcode or code) ──────────────────
         try {
             const { rows } = await this.conn.query<any>(
-                `SELECT id, name, code, barcode, unitset_id, purchase_price, price_list_1
+                `SELECT id, name, code, barcode, unitset_id
                  FROM products WHERE (barcode = $1 OR code = $1) AND is_active = true LIMIT 1`,
                 [barcode]
             );
@@ -254,7 +254,7 @@ class WMSStockCountService {
 
                 // Fetch the parent product
                 const { rows: pRows } = await this.conn.query<any>(
-                    `SELECT id, name, code, barcode, unitset_id, purchase_price, price_list_1
+                    `SELECT id, name, code, barcode, unitset_id
                      FROM products WHERE id::text = $1 LIMIT 1`,
                     [String(pb.product_id)]
                 );

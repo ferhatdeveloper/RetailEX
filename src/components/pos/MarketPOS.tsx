@@ -842,7 +842,6 @@ export default function MarketPOS({
     setCart(cart.filter((_, i) => i !== index));
     showNotif(t.productRemovedFromCart, 'info');
   };
-
   // Update cart item variant
   const updateCartItemVariant = (index: number, variant: any) => {
     const item = cart[index];
@@ -856,6 +855,23 @@ export default function MarketPOS({
     ));
 
     showNotif(t.variantChanged.replace('{variant}', `${variant.color || ''} ${variant.size || ''}`.trim()), 'success');
+  };
+
+  // Update cart item unit
+  const updateCartItemUnit = (index: number, unit: string, multiplier: number) => {
+    setCart(cart.map((item, i) => {
+      if (i === index) {
+        const price = item.price ?? item.variant?.price ?? item.product.price;
+        return {
+          ...item,
+          unit: unit,
+          multiplier: multiplier,
+          subtotal: item.quantity * price * (1 - item.discount / 100)
+        };
+      }
+      return item;
+    }));
+    showNotif(t.unitChanged?.replace('{unit}', unit) || `Birim ${unit} olarak güncellendi`, 'success');
   };
 
   // Clear cart
@@ -1430,6 +1446,8 @@ export default function MarketPOS({
               removeFromCart={removeFromCart}
               isAdmin={currentUser.role === 'admin'}
               updateCartItemPrice={updateCartItemPrice}
+              updateCartItemUnit={updateCartItemUnit}
+              unitSets={unitSets}
             />
           ) : (
             <CartCards
@@ -1444,6 +1462,8 @@ export default function MarketPOS({
               onApplyItemDiscount={handleApplyItemDiscountByIndex}
               isAdmin={currentUser.role === 'admin'}
               updateCartItemPrice={updateCartItemPrice}
+              updateCartItemUnit={updateCartItemUnit}
+              unitSets={unitSets}
             />
           )}
         </div>

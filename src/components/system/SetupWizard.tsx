@@ -123,7 +123,7 @@ const SetupWizard: React.FC = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    if (windowWidth < 1024) return null;
+    // Removed: if (windowWidth < 1024) return null;
 
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -1535,11 +1535,12 @@ const SetupWizard: React.FC = () => {
                         ] : [
                             { id: 1, label: 'Altyapı Seçimi', icon: Server },
                             { id: 2, label: 'Entegrasyon Tercihi', icon: Layout },
-                            { id: 3, label: 'Sistem Veritabanı', icon: Database },
-                            { id: 4, label: 'Cihaz Kaydı', icon: Cpu },
-                            { id: 5, label: 'Private Mesh (VPN)', icon: Shield },
-                            { id: 6, label: 'Özet ve Onay', icon: CheckCircle },
-                            { id: 7, label: 'Sistem Kurulumu', icon: Activity },
+                            { id: 3, label: 'Firma & Dönem', icon: Globe },
+                            { id: 4, label: 'Sistem Veritabanı', icon: Database },
+                            { id: 5, label: 'Cihaz Kaydı', icon: Cpu },
+                            { id: 6, label: 'Private Mesh (VPN)', icon: Shield },
+                            { id: 7, label: 'Özet ve Onay', icon: CheckCircle },
+                            { id: 8, label: 'Sistem Kurulumu', icon: Activity },
                         ]).map((s) => (
                             <div
                                 key={s.id}
@@ -1580,55 +1581,55 @@ const SetupWizard: React.FC = () => {
                 <div className="flex-1 flex flex-col relative overflow-hidden h-[700px]">
                     {/* Scrollable Content */}
                     <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+                        {/* STEP 1: BUSINESS TYPE & ROLE */}
                         {step === 1 && (
                             <div className="space-y-12 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {hasExistingConfig && (
-                                    <div className="p-8 rounded-[32px] bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border-2 border-emerald-500/30 shadow-[0_20px_60px_-15px_rgba(16,185,129,0.2)] relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-500/10 blur-[60px] rounded-full group-hover:bg-emerald-500/20 transition-all duration-700" />
-
-                                        <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-                                            <div className="w-20 h-20 rounded-3xl bg-emerald-500 flex items-center justify-center shadow-xl shadow-emerald-500/20 transform group-hover:scale-105 transition-transform duration-500">
-                                                <Zap className="w-10 h-10 text-white animate-pulse" />
-                                            </div>
-                                            <div className="flex-1 text-center md:text-left">
-                                                <h3 className="text-2xl font-black text-white mb-2">Hızlı Güncelleme Modu Aktif</h3>
-                                                <p className="text-emerald-100/70 text-sm font-bold uppercase tracking-widest leading-none mb-4">Mevcut bir yapılandırma tespit edildi.</p>
-                                                <p className="text-emerald-100/60 text-xs leading-relaxed max-w-lg mb-6">
+                                    <div className="p-8 rounded-[32px] bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-white/10 shadow-2xl relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl transition-all group-hover:bg-blue-500/20" />
+                                        <div className="relative z-10 flex items-center justify-between">
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                                        <Zap className="w-5 h-5 text-white" />
+                                                    </div>
+                                                    <h2 className="text-3xl font-black text-white tracking-tight">Hızlı Güncelleme Modu Aktif</h2>
+                                                </div>
+                                                <p className="text-blue-200/70 font-medium uppercase tracking-[0.2em] text-[10px]">MEVCUT BİR YAPILANDIRMA TESPİT EDİLDİ.</p>
+                                                <p className="text-slate-400 text-sm max-w-lg leading-relaxed">
                                                     Sistem ayarlarınızı değiştirmeden sadece veritabanı şemasını (tabloları ve mantıksal katmanları) en güncel sürüme yükseltmek için bu modu kullanabilirsiniz.
                                                 </p>
-                                                <div className="flex flex-wrap gap-4">
-                                                    <button
-                                                        onClick={() => {
-                                                            setIsUpdateMode(true);
-                                                            setStep(5);
-                                                        }}
-                                                        className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2"
-                                                    >
-                                                        <span>KUR (GÜNCELLE)</span>
-                                                        <ArrowRight className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            localStorage.setItem('exretail_firma_donem_configured', 'true');
-                                                            window.location.reload();
-                                                        }}
-                                                        className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2"
-                                                    >
-                                                        <ShieldCheck className="w-4 h-4" />
-                                                        <span>PANELE GİT (ATLA)</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setHasExistingConfig(false);
-                                                            setIsUpdateMode(false);
-                                                            setConfig(INITIAL_CONFIG);
-                                                            toast.info('Sistem sıfırlandı, yeni kurulum başlatılıyor.');
-                                                        }}
-                                                        className="px-8 py-3.5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white rounded-2xl font-bold text-sm transition-all flex items-center gap-2 border border-white/5"
-                                                    >
-                                                        Yeniden Kurulum Yap
-                                                    </button>
-                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-3">
+                                                <button
+                                                    onClick={() => {
+                                                        setIsUpdateMode(true);
+                                                        setStep(config.skip_integration ? 7 : 9); // Jump to Summary/Özet
+                                                    }}
+                                                    className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20 flex items-center gap-3 active:scale-95 group"
+                                                >
+                                                    KUR (GÜNCELLE) <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const updatedConfig = { ...config, is_configured: true };
+                                                        localStorage.setItem('retailex_web_config', JSON.stringify(updatedConfig));
+                                                        localStorage.setItem('exretail_firma_donem_configured', 'true');
+                                                        toast.success('Panele yönlendiriliyorsunuz...');
+                                                        setTimeout(() => {
+                                                            window.location.href = '/';
+                                                        }, 1000);
+                                                    }}
+                                                    className="px-8 py-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Activity className="w-4 h-4" /> PANELE GİT (ATLA)
+                                                </button>
+                                                <button
+                                                    onClick={() => setHasExistingConfig(false)}
+                                                    className="px-8 py-4 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
+                                                >
+                                                    Yeniden Kurulum Yap
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -1658,16 +1659,21 @@ const SetupWizard: React.FC = () => {
                                                     }
 
                                                     let newModules: string[] = [];
+                                                    let isBayiSeti = false;
                                                     if (sys.id === 'retail' || sys.id === 'market') newModules = ['pos', 'wms'];
                                                     else if (sys.id === 'wms') newModules = ['wms'];
                                                     else if (sys.id === 'restaurant') newModules = ['restaurant'];
                                                     else if (sys.id === 'beauty') newModules = ['beauty'];
-                                                    else if (sys.id === 'bayi') newModules = ['pos', 'wms', 'restaurant', 'beauty'];
+                                                    else if (sys.id === 'bayi') {
+                                                        newModules = ['pos', 'wms', 'restaurant', 'beauty'];
+                                                        isBayiSeti = true;
+                                                    }
 
                                                     setConfig({
                                                         ...config,
                                                         system_type: sys.id as any,
-                                                        enabled_modules: newModules
+                                                        enabled_modules: newModules,
+                                                        bayi_seti: isBayiSeti
                                                     });
                                                 }}
                                                 className={`group relative p-2.5 rounded-xl border transition-all duration-300 ${config.system_type === sys.id
@@ -1981,7 +1987,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 3 && config.skip_integration) || (step === 6 && !config.skip_integration)) && (
+                        {((step === 4 && config.skip_integration) || (step === 6 && !config.skip_integration)) && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 <div className="flex items-center justify-between">
                                     <div>
@@ -2926,7 +2932,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === 4 && (
+                        {((step === 4 && !config.skip_integration) || (step === 3 && config.skip_integration)) && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {!config.skip_integration ? (
                                     <div className="space-y-8">
@@ -3442,152 +3448,60 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === (config.skip_integration ? 5 : 7) && ( /* Networking & Device Security */
+                        {((step === 7 && !config.skip_integration) || (step === 5 && config.skip_integration)) && (
                             <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
                                 <div className="text-center space-y-3">
-                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black tracking-widest uppercase mb-4">
-                                        <Shield className="w-3.5 h-3.5" /> Networking & Device Security
+                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black tracking-widest uppercase mb-4">
+                                        <Monitor className="w-3.5 h-3.5" /> Device Configuration
                                     </div>
-                                    <h2 className="text-4xl font-black text-white tracking-tight">Bağlantı ve Cihaz Güvenliği</h2>
+                                    <h2 className="text-4xl font-black text-white tracking-tight">Cihaz Kaydı ve Terminal Rolü</h2>
                                     <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
-                                        Bu cihazın rolünü ve merkez ile olan iletişim yöntemini belirleyin.
+                                        Bu cihazın ismini, donanım kimliğini ve ağdaki rolünü (Merkez vs Terminal) belirleyin.
                                     </p>
                                 </div>
 
-                                <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Left Column: Device Identity & Role */}
-                                    <div className="space-y-6">
-                                        <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group h-full">
-                                            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full" />
-                                            <div className="flex items-center gap-4 mb-8">
-                                                <div className="w-14 h-14 rounded-2xl bg-purple-600/20 flex items-center justify-center">
-                                                    <Monitor className="w-7 h-7 text-purple-400" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-lg font-bold text-white">Cihaz Yapılandırması</div>
-                                                    <div className="text-[10px] text-purple-400/60 font-black uppercase tracking-widest">Device Identity & Role</div>
-                                                </div>
+                                <div className="max-w-2xl mx-auto">
+                                    <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full" />
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="w-14 h-14 rounded-2xl bg-purple-600/20 flex items-center justify-center">
+                                                <Monitor className="w-7 h-7 text-purple-400" />
                                             </div>
+                                            <div>
+                                                <div className="text-lg font-bold text-white">Donanım ve Kimlik</div>
+                                                <div className="text-[10px] text-purple-400/60 font-black uppercase tracking-widest">Hardware Identity</div>
+                                            </div>
+                                        </div>
 
-                                            <div className="space-y-6">
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <button onClick={() => setConfig({ ...config, role: 'center' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'center' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/5'}`}>
-                                                        <div className="text-xs font-bold text-white">Merkez Sunucu</div>
-                                                        <div className="text-[9px] text-slate-500">Master</div>
-                                                    </button>
-                                                    <button onClick={() => setConfig({ ...config, role: 'client' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'client' ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
-                                                        <div className="text-xs font-bold text-white">Şube Cihazı</div>
-                                                        <div className="text-[9px] text-slate-500">Terminal</div>
-                                                    </button>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Adı</label>
-                                                    <input
-                                                        type="text"
-                                                        value={config.terminal_name || ''}
-                                                        onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
-                                                        placeholder="Cihaz ismi girin..."
-                                                        className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-white text-xs outline-none focus:border-purple-500/50"
-                                                    />
-                                                </div>
-
-                                                <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <Fingerprint className="w-4 h-4 text-emerald-400" />
-                                                        <span className="text-[10px] font-bold text-white">Donanım Kimliği</span>
-                                                    </div>
-                                                    <div className="text-[9px] font-mono text-emerald-500/60 break-all">{config.device_id || 'ID üretiliyor...'}</div>
-                                                </div>
-
-                                                <button onClick={generateHardwareBoundVpnKeys} className="w-full py-3 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-xl font-black text-[9px] tracking-widest border border-purple-500/20 transition-all flex items-center justify-center gap-2">
-                                                    <RefreshCw className="w-3.5 h-3.5" /> KİMLİĞİ YENİLE
+                                        <div className="space-y-6">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button onClick={() => setConfig({ ...config, role: 'center' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'center' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Merkez Sunucu</div>
+                                                    <div className="text-[9px] text-slate-500">Master Control</div>
+                                                </button>
+                                                <button onClick={() => setConfig({ ...config, role: 'client' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'client' ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Şube Terminali</div>
+                                                    <div className="text-[9px] text-slate-500">Point of Sale</div>
                                                 </button>
                                             </div>
-                                        </div>
-                                    </div>
 
-                                    {/* Right Column: Connection Strategy */}
-                                    <div className="space-y-6">
-                                        <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group h-full">
-                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-[60px] rounded-full" />
-                                            <div className="flex items-center gap-4 mb-8">
-                                                <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 flex items-center justify-center">
-                                                    <Globe className="w-7 h-7 text-indigo-400" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-lg font-bold text-white">Bağlantı Stratejisi</div>
-                                                    <div className="text-[10px] text-indigo-400/60 font-black uppercase tracking-widest">Connectivity Method</div>
-                                                </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Takma Adı (Terminal Name)</label>
+                                                <input
+                                                    type="text"
+                                                    value={config.terminal_name || ''}
+                                                    onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
+                                                    placeholder="Örn: KASA-01, MERKEZ-SRV..."
+                                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-white text-xs outline-none focus:border-purple-500/50"
+                                                />
                                             </div>
 
-                                            <div className="space-y-6">
-                                                <div className="flex gap-4">
-                                                    <button onClick={() => setConfig({ ...config, enable_mesh: true })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${config.enable_mesh ? 'bg-indigo-600/10 border-indigo-500' : 'bg-white/5 border-white/5'}`}>
-                                                        <div className="text-xs font-bold text-white">Mesh Network</div>
-                                                        <div className="text-[9px] text-slate-500">Statik IP Yok</div>
-                                                    </button>
-                                                    <button onClick={() => setConfig({ ...config, enable_mesh: false })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${!config.enable_mesh ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
-                                                        <div className="text-xs font-bold text-white">Klasik IP</div>
-                                                        <div className="text-[9px] text-slate-500">Statik IP Şart</div>
-                                                    </button>
+                                            <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Fingerprint className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-[10px] font-bold text-white">Donanım Parmak İzi</span>
                                                 </div>
-
-                                                {config.enable_mesh ? (
-                                                    <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                                                        <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
-                                                            <div className="text-[10px] text-indigo-200/50 font-medium leading-relaxed">
-                                                                Üstün keşif algoritması ile firewall engellerini aşın. Port yönlendirme gerektirmez.
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 font-mono">Mesh Identity (Public Key)</label>
-                                                            <input
-                                                                type="text"
-                                                                value={config.vpn_config?.public_key || 'Üretiliyor...'}
-                                                                readOnly
-                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-mono text-emerald-400/80"
-                                                            />
-                                                        </div>
-                                                        <button onClick={generateVpnConfig} className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-xl font-black text-[9px] tracking-widest border border-indigo-500/20 transition-all">
-                                                            MESH ANAHTARLARI ÜRET
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                                                        <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
-                                                            <p className="text-[9px] text-blue-200/50 font-medium">Standard TCP. Merkez IP/Domain zorunludur.</p>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez Adresi</label>
-                                                            <input
-                                                                type="text"
-                                                                value={config.central_api_url || ''}
-                                                                placeholder="https://merkez.domain.com"
-                                                                onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
-                                                                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* Connection Summary / Info Block - Integrated at bottom of same step */}
-                                <div className="lg:col-span-2">
-                                    <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-[32px] flex items-start gap-5">
-                                        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
-                                            <Activity className="w-6 h-6 text-white" />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-bold text-white mb-1">
-                                                {config.enable_mesh ? 'Tak-Çalıştır Senkronizasyon (Mesh)' : 'Doğrudan Veri Akışı (Standard)'}
-                                            </div>
-                                            <div className="text-[11px] text-blue-200/60 leading-relaxed font-medium">
-                                                {config.enable_mesh
-                                                    ? 'Cihazlar kendi aralarında güvenli bir tünel açar. Şirket hattınızda statik IP olmasına gerek yoktur.'
-                                                    : 'Sistem doğrudan merkez IP adresine bağlanır. Statik IP ve port yönlendirme gereklidir.'}
+                                                <div className="text-[9px] font-mono text-emerald-500/60 break-all">{config.device_id || 'ID üretiliyor...'}</div>
                                             </div>
                                         </div>
                                     </div>
@@ -3595,7 +3509,103 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === (config.skip_integration ? 6 : 9) && (
+                        {((step === 8 && !config.skip_integration) || (step === 6 && config.skip_integration)) && (
+                            <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                                <div className="text-center space-y-3">
+                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black tracking-widest uppercase mb-4">
+                                        <Shield className="w-3.5 h-3.5" /> Networking & Private Mesh
+                                    </div>
+                                    <h2 className="text-4xl font-black text-white tracking-tight">Özel Ağ ve Bağlantı Güvenliği</h2>
+                                    <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
+                                        Cihazlar arasındaki veri trafiğini şifrelemek ve statik IP gereksinimini ortadan kaldırmak için Mesh katmanını yapılandırın.
+                                    </p>
+                                </div>
+
+                                <div className="max-w-2xl mx-auto space-y-6">
+                                    <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-[60px] rounded-full" />
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 flex items-center justify-center">
+                                                <Globe className="w-7 h-7 text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <div className="text-lg font-bold text-white">Bağlantı Stratejisi</div>
+                                                <div className="text-[10px] text-indigo-400/60 font-black uppercase tracking-widest">Connectivity Method</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <div className="flex gap-4">
+                                                <button onClick={() => setConfig({ ...config, enable_mesh: true })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${config.enable_mesh ? 'bg-indigo-600/10 border-indigo-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Private Mesh</div>
+                                                    <div className="text-[9px] text-slate-500">Statik IP Gerektirmez</div>
+                                                </button>
+                                                <button onClick={() => setConfig({ ...config, enable_mesh: false })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${!config.enable_mesh ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Standart IP</div>
+                                                    <div className="text-[9px] text-slate-500">Sabit IP Zorunludur</div>
+                                                </button>
+                                            </div>
+
+                                            {config.enable_mesh ? (
+                                                <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                                                    <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
+                                                        <div className="text-[10px] text-indigo-200/50 font-medium leading-relaxed">
+                                                            Zero-configuration networking protokolü. Port yönlendirme yapmadan şubeler arası güvenli tünel oluşturur.
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 font-mono">Mesh Public Key</label>
+                                                        <input
+                                                            type="text"
+                                                            value={config.vpn_config?.public_key || 'Üretiliyor...'}
+                                                            readOnly
+                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-mono text-emerald-400/80"
+                                                        />
+                                                    </div>
+                                                    <button onClick={generateVpnConfig} className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-xl font-black text-[9px] tracking-widest border border-indigo-500/20 transition-all flex items-center justify-center gap-2">
+                                                        <RefreshCw className="w-3 h-3" /> MESH ANAHTARLARI ÜRET
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                                                    <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
+                                                        <p className="text-[9px] text-blue-200/50 font-medium">Klasik TCP/IP bağlantısı. Merkez sunucunun sabit bir IP adresi olmalıdır.</p>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez IP / Domain</label>
+                                                        <input
+                                                            type="text"
+                                                            value={config.central_api_url || ''}
+                                                            placeholder="https://1.2.3.4 veya https://merkez.domain.com"
+                                                            onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
+                                                            className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-[32px] flex items-start gap-5">
+                                        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
+                                            <Activity className="w-6 h-6 text-white" />
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-bold text-white mb-1">
+                                                {config.enable_mesh ? 'Mesh Güvenlik Katmanı Aktif' : 'Standart Bağlantı Katmanı Aktif'}
+                                            </div>
+                                            <div className="text-[11px] text-blue-200/60 leading-relaxed font-medium">
+                                                {config.enable_mesh
+                                                    ? 'Cihazlar WireGuard tabanlı uçtan uca şifreleme ile haberleşir. Dışarıdan erişim tamamen kapalıdır.'
+                                                    : 'Sistem doğrudan merkez sunucu ile konuşur. Şirket hattınızda statik IP ve 5432-3001 portları açık olmalıdır.'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {((step === 9 && !config.skip_integration) || (step === 7 && config.skip_integration)) && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 <div>
                                     <h2 className="text-4xl font-black mb-2 text-white tracking-tight">
@@ -3666,7 +3676,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {step === (config.skip_integration ? 7 : 10) && (
+                        {((step === 10 && !config.skip_integration) || (step === 8 && config.skip_integration)) && (
                             <div className="fixed inset-0 z-[60] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700">
                                 <div className="absolute inset-0 overflow-hidden">
                                     <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
@@ -3799,10 +3809,10 @@ const SetupWizard: React.FC = () => {
                             console.log("Navigating back from step:", step);
                             prevStep();
                         }}
-                        onNext={step < (config.skip_integration ? 7 : 10) ? nextStep : undefined}
-                        prevDisabled={step === 1 || loading || (step === (config.skip_integration ? 7 : 10) && installationStep !== 'COMPLETED')}
-                        nextDisabled={loading || step === (config.skip_integration ? 7 : 10)}
-                        nextLabel={step === (config.skip_integration ? 6 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
+                        onNext={step < (config.skip_integration ? 8 : 10) ? nextStep : undefined}
+                        prevDisabled={step === 1 || loading || (step === (config.skip_integration ? 8 : 10) && installationStep !== 'COMPLETED')}
+                        nextDisabled={loading || step === (config.skip_integration ? 8 : 10)}
+                        nextLabel={step === (config.skip_integration ? 7 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
                         forceShowStatus={true}
                     />

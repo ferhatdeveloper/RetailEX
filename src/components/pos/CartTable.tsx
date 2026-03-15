@@ -13,7 +13,9 @@ interface CartTableProps {
   removeFromCart: (index: number) => void;
   isAdmin?: boolean;
   updateCartItemPrice?: (index: number, newPrice: number) => void;
+  updateCartItemUnit?: (index: number, unit: string, multiplier: number) => void;
   campaignResult?: CampaignResult;
+  unitSets?: any[];
 }
 
 export function CartTable({
@@ -24,7 +26,9 @@ export function CartTable({
   removeFromCart,
   isAdmin,
   updateCartItemPrice,
-  campaignResult
+  updateCartItemUnit,
+  campaignResult,
+  unitSets = []
 }: CartTableProps) {
   const { darkMode } = useTheme();
   const { t } = useLanguage();

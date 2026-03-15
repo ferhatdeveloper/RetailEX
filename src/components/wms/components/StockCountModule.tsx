@@ -513,8 +513,8 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
     // Split known vs unknown
     const knownLines = lines.filter(l => l.product_id);
     const unknownLines = lines.filter(l => !l.product_id);
-    // Newest first for scan tab
-    const sortedLines = [...knownLines].reverse();
+    // Newest first for scan tab — ALL lines (known + unknown)
+    const sortedLines = [...lines].reverse();
 
     // Footer totals
     const totalAdet = lines.reduce((s, l) => s + (l.base_counted_qty ?? l.counted_qty ?? 0), 0);
@@ -690,11 +690,14 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
 
                                         {/* product info */}
                                         <div className="flex-1 min-w-0">
-                                            <div className={`text-sm font-medium truncate leading-tight ${textClass}`}>
+                                            <div className={`text-sm font-medium truncate leading-tight ${!line.product_id ? 'text-orange-500' : textClass}`}>
                                                 {line.product_name || line.barcode}
                                             </div>
                                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                                 <span className="text-[11px] text-gray-400 font-mono">{line.barcode}</span>
+                                                {!line.product_id && (
+                                                    <span className="text-[11px] text-orange-400 font-semibold">Tanımsız</span>
+                                                )}
                                                 {line.unit && line.unit !== 'Adet' && (
                                                     <span className="text-[11px] text-purple-500 font-semibold">{line.unit}</span>
                                                 )}
@@ -707,31 +710,38 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                                         </div>
 
                                         {/* qty controls */}
-                                        <div className="flex items-center gap-0.5 shrink-0">
-                                            <button onClick={() => updateLineQty(line, (line.counted_qty || 0) - 1)}
-                                                className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
-                                                <Minus className="w-3 h-3" />
-                                            </button>
-                                            {isEditing ? (
-                                                <input type="number" value={editingLine.qty}
-                                                    onChange={e => setEditingLine({ id: line.id, qty: parseInt(e.target.value) || 0 })}
-                                                    onBlur={() => { updateLineQty(line, editingLine.qty); setEditingLine(null); }}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter') { updateLineQty(line, editingLine.qty); setEditingLine(null); }
-                                                        if (e.key === 'Escape') setEditingLine(null);
-                                                    }}
-                                                    className={`w-12 text-center text-sm font-bold border-b-2 border-blue-500 focus:outline-none ${darkMode ? 'bg-gray-700 text-white' : 'bg-white'}`}
-                                                    autoFocus />
-                                            ) : (
-                                                <button onClick={() => setEditingLine({ id: line.id, qty: line.counted_qty || 0 })}
-                                                    className={`w-12 text-center text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                                                    {line.counted_qty}
+                                        <div className="flex flex-col items-center shrink-0">
+                                            <div className="flex items-center gap-0.5">
+                                                <button onClick={() => updateLineQty(line, (line.counted_qty || 0) - 1)}
+                                                    className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
+                                                    <Minus className="w-3 h-3" />
                                                 </button>
+                                                {isEditing ? (
+                                                    <input type="number" value={editingLine.qty}
+                                                        onChange={e => setEditingLine({ id: line.id, qty: parseInt(e.target.value) || 0 })}
+                                                        onBlur={() => { updateLineQty(line, editingLine.qty); setEditingLine(null); }}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') { updateLineQty(line, editingLine.qty); setEditingLine(null); }
+                                                            if (e.key === 'Escape') setEditingLine(null);
+                                                        }}
+                                                        className={`w-12 text-center text-sm font-bold border-b-2 border-blue-500 focus:outline-none ${darkMode ? 'bg-gray-700 text-white' : 'bg-white'}`}
+                                                        autoFocus />
+                                                ) : (
+                                                    <button onClick={() => setEditingLine({ id: line.id, qty: line.counted_qty || 0 })}
+                                                        className={`w-12 text-center text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                                                        {line.counted_qty}
+                                                    </button>
+                                                )}
+                                                <button onClick={() => updateLineQty(line, (line.counted_qty || 0) + 1)}
+                                                    className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
+                                                    <Plus className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                            {(line.unit_multiplier || 1) > 1 && (
+                                                <span className="text-[9px] text-orange-500 font-medium leading-none mt-0.5">
+                                                    ={(line.counted_qty || 0) * (line.unit_multiplier || 1)} Adet
+                                                </span>
                                             )}
-                                            <button onClick={() => updateLineQty(line, (line.counted_qty || 0) + 1)}
-                                                className={`w-7 h-7 flex items-center justify-center text-gray-400 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded transition-colors`}>
-                                                <Plus className="w-3 h-3" />
-                                            </button>
                                         </div>
                                         <button onClick={() => handleDeleteLine(line.id)}
                                             className="w-6 h-6 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors shrink-0">
@@ -815,6 +825,11 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                                                 {line.counted_qty}
                                                 {line.unit && <span className="text-xs text-gray-400 ml-0.5">{line.unit}</span>}
                                             </div>
+                                            {(line.unit_multiplier || 1) > 1 && (
+                                                <div className="text-[10px] text-orange-500 font-medium">
+                                                    ={(line.counted_qty || 0) * (line.unit_multiplier || 1)} Adet
+                                                </div>
+                                            )}
                                             {vr !== 0 && (
                                                 <div className={`text-xs font-bold ${vr < 0 ? 'text-red-500' : 'text-yellow-500'}`}>{vr > 0 ? '+' : ''}{vr}</div>
                                             )}

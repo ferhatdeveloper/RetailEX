@@ -17,7 +17,9 @@ interface CartCardsProps {
   onApplyItemDiscount?: (index: number, discountPercent: number) => void; // Yeni modal için
   isAdmin?: boolean;
   updateCartItemPrice?: (index: number, newPrice: number) => void;
+  updateCartItemUnit?: (index: number, unit: string, multiplier: number) => void;
   campaignResult?: CampaignResult;
+  unitSets?: any[];
 }
 
 export function CartCards({
@@ -31,7 +33,9 @@ export function CartCards({
   onApplyItemDiscount,
   isAdmin,
   updateCartItemPrice,
-  campaignResult
+  updateCartItemUnit,
+  campaignResult,
+  unitSets = []
 }: CartCardsProps) {
   const { darkMode } = useTheme();
   const { t } = useLanguage();
@@ -128,7 +132,10 @@ export function CartCards({
           onApplyDiscount={handleApplyItemDiscount}
           onRemoveItem={removeFromCart}
           onUpdateVariant={updateCartItemVariant}
+          onUpdatePrice={updateCartItemPrice}
+          onUpdateUnit={updateCartItemUnit}
           formatNumber={formatNumber}
+          unitSets={unitSets}
         />
       )}
       {cart.length === 0 ? (

@@ -181,11 +181,12 @@ export function Login({ onLogin }: LoginProps) {
     try {
       const { postgres } = await import('../../services/postgres');
       const result = await postgres.query(
-        `SELECT u.username, u.full_name as "fullName", r.name as role 
-         FROM users u 
-         LEFT JOIN roles r ON u.role_id = r.id 
-         WHERE u.is_active = true 
-         ORDER BY u.full_name ASC`,
+        `SELECT 
+            raw_user_meta_data->>'username' as username, 
+            raw_user_meta_data->>'full_name' as "fullName", 
+            raw_user_meta_data->>'role' as role 
+         FROM auth.users 
+         ORDER BY raw_user_meta_data->>'full_name' ASC`,
         []
       );
       setDbUsers(result.rows);
@@ -385,13 +386,12 @@ export function Login({ onLogin }: LoginProps) {
 
     try {
       const { postgres } = await import('../../services/postgres');
-      // Fix: Query public.users instead of auth.users
+      // Fix: Query auth.users instead of public.users
       const sql = `
-        SELECT id, username
-        FROM users
-        WHERE LOWER(username) = LOWER($1)
-        AND password_hash = crypt($2, password_hash)
-        AND is_active = true
+        SELECT id, raw_user_meta_data->>'username' as username
+        FROM auth.users
+        WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)
+        AND encrypted_password = crypt($2, encrypted_password)
       `;
       console.log('Login: Verifying credentials for', trimmedUsername);
       const result = await postgres.query(sql, [trimmedUsername, trimmedPassword]);
