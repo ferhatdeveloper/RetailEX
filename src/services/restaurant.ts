@@ -11,10 +11,11 @@ export class RestaurantService {
     // -------------------------------------------------------------------------
 
     static async getFloors(storeId?: string) {
-        let sql = 'SELECT * FROM rest.floors WHERE is_active = true';
+        // rest.floors şemasında is_active yok; tüm katları getir
+        let sql = 'SELECT * FROM rest.floors';
         const params: any[] = [];
         if (storeId) {
-            sql += ' AND store_id = $1';
+            sql += ' WHERE store_id = $1';
             params.push(storeId);
         }
         sql += ' ORDER BY display_order';
@@ -32,7 +33,7 @@ export class RestaurantService {
         if (floor.id) {
             const sql = `
                 UPDATE rest.floors
-                SET name=$2, color=$3, display_order=$4, updated_at=NOW()
+                SET name=$2, color=$3, display_order=$4
                 WHERE id=$1
                 RETURNING *
             `;
@@ -53,7 +54,7 @@ export class RestaurantService {
     }
 
     static async deleteFloor(floorId: string) {
-        await this.db.query('UPDATE rest.floors SET is_active=false WHERE id=$1', [floorId]);
+        await this.db.query('DELETE FROM rest.floors WHERE id=$1', [floorId]);
     }
 
     // -------------------------------------------------------------------------
@@ -70,6 +71,19 @@ export class RestaurantService {
         sql += ' ORDER BY number';
         const { rows } = await this.db.query(sql, params);
         return rows as Table[];
+    }
+
+    /** Arka plan senkronizasyonu için sadece masa durumları (hafif sorgu). */
+    static async getTableStatuses(floorId?: string): Promise<{ id: string; floor_id: string; status: string; waiter?: string; total: number; start_time?: string }[]> {
+        let sql = 'SELECT id, floor_id, status, waiter, total, start_time FROM rest_tables';
+        const params: any[] = [];
+        if (floorId) {
+            sql += ' WHERE floor_id = $1';
+            params.push(floorId);
+        }
+        sql += ' ORDER BY number';
+        const { rows } = await this.db.query(sql, params);
+        return rows;
     }
 
     static async addTable(table: {
@@ -108,6 +122,16 @@ export class RestaurantService {
         staffId?: string,
         total: number = 0
     ) {
+        if (status === 'empty') {
+            // Kapalı/dolu masayı boşaltırken linked_order_ids ve garson bilgisini de sıfırla
+            const sql = `
+                UPDATE rest_tables
+                SET status='empty', waiter=NULL, staff_id=NULL, total=0, linked_order_ids='{}', updated_at=NOW()
+                WHERE id=$1
+            `;
+            await this.db.query(sql, [tableId]);
+            return;
+        }
         const sql = `
             UPDATE rest_tables
             SET status=$2, waiter=$3, staff_id=$4, total=$5, updated_at=NOW()
@@ -152,6 +176,7 @@ export class RestaurantService {
         if (updates.seats !== undefined) { sets.push(`seats=$${i++}`); vals.push(updates.seats); }
         if (updates.floorId !== undefined) { sets.push(`floor_id=$${i++}`); vals.push(updates.floorId); }
         if (updates.isLarge !== undefined) { sets.push(`is_large=$${i++}`); vals.push(updates.isLarge); }
+        if ('color' in updates) { sets.push(`color=$${i++}`); vals.push(updates.color ?? null); }
         // For positions, we support both camelCase and snake_case if someone passes it
         const posX = (updates as any).posX ?? (updates as any).pos_x;
         const posY = (updates as any).posY ?? (updates as any).pos_y;
@@ -219,6 +244,23 @@ export class RestaurantService {
         `;
         const { rows } = await this.db.query(sql, [tableId]);
         return rows[0] ?? null;
+    }
+
+    /** Bir masadaki tüm açık siparişleri döndürür (birleştirilmiş masada birden fazla olabilir). */
+    static async getTableOrders(tableId: string) {
+        const sql = `
+            SELECT o.*,
+                   t.number as table_number,
+                   json_agg(i ORDER BY i.created_at) FILTER (WHERE i.id IS NOT NULL) as items
+            FROM rest_orders o
+            LEFT JOIN rest_tables t ON t.id = o.table_id
+            LEFT JOIN rest_order_items i ON i.order_id = o.id
+            WHERE o.table_id = $1 AND o.status = 'open'
+            GROUP BY o.id, t.number
+            ORDER BY o.opened_at ASC
+        `;
+        const { rows } = await this.db.query(sql, [tableId]);
+        return rows ?? [];
     }
 
     static async addOrderItem(orderId: string, item: {
@@ -397,62 +439,88 @@ export class RestaurantService {
     }
 
     /**
-     * Merges source table orders into target table.
+     * Birleştir: Kaynak masanın siparişini hedef masaya bağlar (sipariş ayrı kalır, işlem numarasına göre taşıma mümkün).
      */
     static async mergeTables(sourceTableId: string, targetTableId: string) {
         const sourceOrder = await this.getActiveOrder(sourceTableId);
         if (!sourceOrder) return;
 
-        let targetOrder = await this.getActiveOrder(targetTableId);
+        const targetOrder = await this.getActiveOrder(targetTableId);
         if (!targetOrder) {
-            // If target has no active order, just transfer the whole order
             await this.transferTable(sourceTableId, targetTableId);
             return;
         }
 
-        // Move items from source to target order
+        // Kaynak siparişi hedef masaya bağla (item'ları taşıma, siparişi link et)
         await this.db.query(
-            'UPDATE rest_order_items SET order_id = $2 WHERE order_id = $1',
-            [sourceOrder.id, targetOrder.id]
+            'UPDATE rest_orders SET table_id = $2, updated_at = NOW() WHERE id = $1',
+            [sourceOrder.id, targetTableId]
         );
 
-        // Recompute target order total
-        await this.db.query(
-            `UPDATE rest_orders SET total_amount = (
-                SELECT COALESCE(SUM(subtotal), 0) FROM rest_order_items WHERE order_id = $1
-             ), updated_at=NOW() WHERE id=$1`,
-            [targetOrder.id]
-        );
-
-        // Delete (or close) the now-empty source order
-        await this.db.query('DELETE FROM rest_orders WHERE id = $1', [sourceOrder.id]);
-
-        // Update table statuses
-        const { rows } = await this.db.query('SELECT waiter, total_amount FROM rest_orders WHERE id = $1', [targetOrder.id]);
-        await this.updateTableStatus(targetTableId, 'occupied', rows[0]?.waiter, undefined, rows[0]?.total_amount || 0);
+        // Hedef masanın toplamı = kendi siparişi + bağlı siparişler
+        const allOrders = await this.getTableOrders(targetTableId);
+        const totalAmount = allOrders.reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0), 0);
+        await this.updateTableStatus(targetTableId, 'occupied', targetOrder.waiter, undefined, totalAmount);
         await this.updateTableStatus(sourceTableId, 'empty', undefined, undefined, 0);
     }
 
     /**
      * Transfers an entire order from one table to another.
+     * Veritabanında: siparişin table_id'si hedef masaya alınır, kaynak masa boş, hedef masa dolu olarak güncellenir.
      */
-    static async transferTable(sourceTableId: string, targetTableId: string) {
+    static async transferTable(sourceTableId: string, targetTableId: string): Promise<void> {
         const order = await this.getActiveOrder(sourceTableId);
-        if (!order) return;
+        if (!order) {
+            throw new Error('Bu masada taşınacak açık sipariş yok. Sipariş kapalı veya iptal olabilir.');
+        }
 
-        // Change table ID on the order
+        // Siparişi hedef masaya taşı
         await this.db.query(
             'UPDATE rest_orders SET table_id = $2, updated_at=NOW() WHERE id = $1',
             [order.id, targetTableId]
         );
 
-        // Update table statuses
+        // Masa durumlarını güncelle: hedef dolu, kaynak boş (linked_order_ids de sıfırlanır)
         await this.updateTableStatus(targetTableId, 'occupied', order.waiter, undefined, order.total_amount || 0);
         await this.updateTableStatus(sourceTableId, 'empty', undefined, undefined, 0);
     }
 
     static async moveTable(fromTableId: string, toTableId: string) {
         await this.transferTable(fromTableId, toTableId);
+    }
+
+    /**
+     * Tek bir siparişi (işlem numarası) başka masaya taşır (birleştirilmiş masada kullanım).
+     */
+    static async moveOrderToTable(orderId: string, targetTableId: string) {
+        const { rows: orderRows } = await this.db.query(
+            'SELECT id, table_id, waiter, total_amount FROM rest_orders WHERE id = $1 AND status = $2',
+            [orderId, 'open']
+        );
+        if (!orderRows?.length) throw new Error('Sipariş bulunamadı veya kapalı.');
+        const order = orderRows[0];
+        const sourceTableId = order.table_id;
+        if (!sourceTableId) throw new Error('Sipariş masaya bağlı değil.');
+        if (sourceTableId === targetTableId) return;
+
+        await this.db.query(
+            'UPDATE rest_orders SET table_id = $2, updated_at = NOW() WHERE id = $1',
+            [orderId, targetTableId]
+        );
+
+        const sourceOrders = await this.getTableOrders(sourceTableId);
+        const sourceTotal = sourceOrders.reduce((s: number, o: any) => s + (Number(o.total_amount) || 0), 0);
+        const sourceWaiter = sourceOrders[0]?.waiter;
+        if (sourceOrders.length === 0) {
+            await this.updateTableStatus(sourceTableId, 'empty', undefined, undefined, 0);
+        } else {
+            await this.updateTableStatus(sourceTableId, 'occupied', sourceWaiter, undefined, sourceTotal);
+        }
+
+        const targetOrders = await this.getTableOrders(targetTableId);
+        const targetTotal = targetOrders.reduce((s: number, o: any) => s + (Number(o.total_amount) || 0), 0);
+        const targetWaiter = targetOrders[0]?.waiter;
+        await this.updateTableStatus(targetTableId, 'occupied', targetWaiter, undefined, targetTotal);
     }
 
     static async splitOrder(orderId: string, itemIds: string[], targetTableId?: string) {
@@ -493,6 +561,81 @@ export class RestaurantService {
             'UPDATE rest_order_items SET options=$1 WHERE id=$2',
             [JSON.stringify(options), itemId]
         );
+    }
+
+    /** Tek bir sipariş kalemini başka masanın siparişine taşır (yanlış masaya giden ürün için). */
+    static async moveOrderItemToTable(itemId: string, targetTableId: string) {
+        const { rows: itemRows } = await this.db.query(
+            'SELECT order_id, subtotal FROM rest_order_items WHERE id = $1 AND (is_void IS NOT TRUE)',
+            [itemId]
+        );
+        if (!itemRows?.length) throw new Error('Ürün bulunamadı veya iptal.');
+        const sourceOrderId = itemRows[0].order_id;
+
+        const { rows: sourceOrderRows } = await this.db.query(
+            'SELECT table_id, floor_id, waiter FROM rest_orders WHERE id = $1 AND status = $2',
+            [sourceOrderId, 'open']
+        );
+        if (!sourceOrderRows?.length) throw new Error('Kaynak sipariş bulunamadı.');
+        const sourceTableId = sourceOrderRows[0].table_id;
+        if (sourceTableId === targetTableId) return;
+
+        let targetOrder = await this.getActiveOrder(targetTableId);
+        if (!targetOrder) {
+            const { rows: tbl } = await this.db.query(
+                'SELECT floor_id FROM rest_tables WHERE id = $1',
+                [targetTableId]
+            );
+            const floorId = tbl[0]?.floor_id ?? null;
+            const year = new Date().getFullYear();
+            const { rows: seqRows } = await this.db.query(
+                'SELECT COUNT(*)+1 AS seq FROM rest_orders WHERE order_no LIKE $1',
+                [`RES-${year}-%`]
+            );
+            const seq = String(seqRows[0]?.seq ?? 1).padStart(5, '0');
+            const orderNo = `RES-${year}-${seq}`;
+            const { rows: newOrder } = await this.db.query(
+                `INSERT INTO rest_orders (order_no, table_id, floor_id, waiter, customer_id, status)
+                 VALUES ($1, $2, $3, $4, NULL, 'open') RETURNING id`,
+                [orderNo, targetTableId, floorId, sourceOrderRows[0].waiter ?? null]
+            );
+            targetOrder = { id: newOrder[0].id };
+        }
+
+        await this.db.query(
+            'UPDATE rest_order_items SET order_id = $2 WHERE id = $1',
+            [itemId, targetOrder.id]
+        );
+
+        const recalc = (orderId: string) =>
+            this.db.query(
+                `UPDATE rest_orders SET total_amount = (SELECT COALESCE(SUM(subtotal), 0) FROM rest_order_items WHERE order_id = $1 AND (is_void IS NOT TRUE)), updated_at = NOW() WHERE id = $1`,
+                [orderId]
+            );
+        await recalc(sourceOrderId);
+        await recalc(targetOrder.id);
+
+        const { rows: sourceItems } = await this.db.query(
+            'SELECT COUNT(*) AS cnt FROM rest_order_items WHERE order_id = $1 AND (is_void IS NOT TRUE)',
+            [sourceOrderId]
+        );
+        if (Number(sourceItems[0]?.cnt ?? 0) === 0) {
+            await this.updateTableStatus(sourceTableId, 'empty', undefined, undefined, 0);
+            await this.db.query('DELETE FROM rest_orders WHERE id = $1', [sourceOrderId]);
+        } else {
+            const { rows: sumRow } = await this.db.query(
+                'SELECT COALESCE(SUM(subtotal), 0) AS total FROM rest_order_items WHERE order_id = $1 AND (is_void IS NOT TRUE)',
+                [sourceOrderId]
+            );
+            await this.updateTableStatus(sourceTableId, 'occupied', sourceOrderRows[0].waiter ?? null, undefined, Number(sumRow[0]?.total ?? 0));
+        }
+
+        const { rows: targetSum } = await this.db.query(
+            'SELECT COALESCE(SUM(subtotal), 0) AS total FROM rest_order_items WHERE order_id = $1 AND (is_void IS NOT TRUE)',
+            [targetOrder.id]
+        );
+        const targetOrderFull = await this.getActiveOrder(targetTableId);
+        await this.updateTableStatus(targetTableId, 'occupied', targetOrderFull?.waiter ?? null, undefined, Number(targetSum[0]?.total ?? 0));
     }
 
     static async cancelOrder(orderId: string) {
@@ -552,20 +695,32 @@ export class RestaurantService {
             note?: string;
         }>;
     }) {
-        // 1. Fetch preparation times for all products
+        // 1. Fetch preparation times (products.preparation_time yoksa veya tablo farklıysa varsayılan 5 dk)
         const productIds = params.items.map(i => i.productId);
-        const { rows: products } = await this.db.query(
-            'SELECT id, preparation_time FROM products WHERE id = ANY($1)',
-            [productIds]
-        );
+        const productIdsCsv = productIds.filter(Boolean).join(',');
+        let prepTimeMap = new Map<string, number>();
+        try {
+            const { rows: products } = await this.db.query(
+                productIdsCsv
+                    ? "SELECT id, preparation_time FROM products WHERE id = ANY(string_to_array($1, ',')::uuid[])"
+                    : 'SELECT id, 5 AS preparation_time FROM products WHERE false',
+                productIdsCsv ? [productIdsCsv] : []
+            );
+            prepTimeMap = new Map(products.map((p: any) => [p.id, Number(p?.preparation_time) || 5]));
+        } catch {
+            params.items.forEach(i => i.productId && prepTimeMap.set(i.productId, 5));
+        }
 
-        const prepTimeMap = new Map(products.map((p: any) => [p.id, p.preparation_time || 5]));
-
-        // --- PHASE 2.6: KITCHEN LOAD ANALYSIS ---
-        const { rows: activeCounts } = await this.db.query(
-            "SELECT COUNT(*) as count FROM rest.rest_kitchen_items WHERE status IN ('new', 'cooking')"
-        );
-        const activeItemCount = parseInt(activeCounts[0].count);
+        // --- PHASE 2.6: KITCHEN LOAD ANALYSIS (tablo yoksa 0 kabul et) ---
+        let activeItemCount = 0;
+        try {
+            const { rows: activeCounts } = await this.db.query(
+                "SELECT COUNT(*) as count FROM rest.rest_kitchen_items WHERE status IN ('new', 'cooking')"
+            );
+            activeItemCount = parseInt(activeCounts[0]?.count ?? '0', 10) || 0;
+        } catch {
+            activeItemCount = 0;
+        }
         const loadMultiplier = 1 + (activeItemCount * 0.05); // +5% per active item
         // ----------------------------------------
 
@@ -613,12 +768,13 @@ export class RestaurantService {
 
     static async getActiveKitchenOrders() {
         const sql = `
-            SELECT ko.*,
+            SELECT ko.*, o.table_id,
                    json_agg(ki ORDER BY ki.id) FILTER (WHERE ki.id IS NOT NULL) as items
             FROM rest_kitchen_orders ko
+            LEFT JOIN rest_orders o ON o.id = ko.order_id
             LEFT JOIN rest_kitchen_items ki ON ki.kitchen_order_id = ko.id
             WHERE ko.status NOT IN ('served')
-            GROUP BY ko.id
+            GROUP BY ko.id, o.table_id
             ORDER BY ko.sent_at ASC
         `;
         const { rows } = await this.db.query(sql);
@@ -629,11 +785,9 @@ export class RestaurantService {
         kitchenOrderId: string,
         status: 'new' | 'cooking' | 'ready' | 'served'
     ) {
-        const extra =
-            status === 'ready' ? ', cooked_at=NOW()' :
-                status === 'served' ? ', served_at=NOW()' : '';
+        // Nota: rest_kitchen_orders şemasında updated_at/cooked_at/served_at yok; sadece status güncellenir.
         await this.db.query(
-            `UPDATE rest_kitchen_orders SET status=$2${extra}, updated_at=NOW() WHERE id=$1`,
+            `UPDATE rest_kitchen_orders SET status=$2 WHERE id=$1`,
             [kitchenOrderId, status]
         );
     }
@@ -769,18 +923,82 @@ export class RestaurantService {
     // PHASE 2: VOID / COMPLEMENTARY / KDS
     // -------------------------------------------------------------------------
 
-    static async voidOrderItem(itemId: string, reason: string) {
-        await this.db.query('SELECT rest.rest_void_order_item($1, $2)', [itemId, reason]);
+    /** Tam iptal: kalemi is_void=TRUE yap, sipariş toplamından düş (DB fonksiyonu yok, uygulama tarafında) */
+    static async _fullVoidOrderItem(itemId: string, reason: string) {
+        const { rows: [row] } = await this.db.query(`
+            SELECT order_id, subtotal FROM rest_order_items WHERE id = $1
+        `, [itemId]);
+        if (!row) return;
+        const orderId = row.order_id;
+        const itemTotal = parseFloat(row.subtotal) || 0;
+        await this.db.query(`
+            UPDATE rest_order_items SET is_void = TRUE, void_reason = $1 WHERE id = $2
+        `, [reason, itemId]);
+        await this.db.query(`
+            UPDATE rest_orders SET total_amount = total_amount - $1, updated_at = NOW() WHERE id = $2
+        `, [itemTotal, orderId]);
     }
 
+    /** İptal: voidQuantity verilmezse veya kalem adedine eşitse tümü iptal; aksi halde sadece o adet iptal (kalan sepette kalır) */
+    static async voidOrderItem(itemId: string, reason: string, voidQuantity?: number) {
+        if (voidQuantity == null || voidQuantity <= 0) {
+            await this._fullVoidOrderItem(itemId, reason);
+            return;
+        }
+        const { rows: [item] } = await this.db.query(`
+            SELECT order_id, product_id, product_name, quantity, unit_price, discount_pct, subtotal, status, course, note
+            FROM rest_order_items WHERE id = $1
+        `, [itemId]);
+        if (!item) {
+            await this._fullVoidOrderItem(itemId, reason);
+            return;
+        }
+        const qty = Number(item.quantity);
+        const unitPrice = Number(item.unit_price);
+        const discountPct = Number(item.discount_pct ?? 0);
+        const voidSubtotal = voidQuantity * unitPrice * (1 - discountPct / 100);
+
+        if (voidQuantity >= qty) {
+            await this._fullVoidOrderItem(itemId, reason);
+            return;
+        }
+        // Kısmi iptal: yeni satır (iptal) ekle, mevcut satırın miktarını düşür
+        await this.db.query(`
+            INSERT INTO rest_order_items (order_id, product_id, product_name, quantity, unit_price, discount_pct, subtotal, status, course, note, is_void, void_reason)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
+        `, [
+            item.order_id, item.product_id, item.product_name, voidQuantity, unitPrice, discountPct, voidSubtotal,
+            item.status ?? 'pending', item.course ?? null, item.note ?? null, reason
+        ]);
+        const newQty = qty - voidQuantity;
+        const newSubtotal = newQty * unitPrice * (1 - discountPct / 100);
+        await this.db.query(`
+            UPDATE rest_order_items SET quantity = $2, subtotal = $3 WHERE id = $1
+        `, [itemId, newQty, newSubtotal]);
+        await this.db.query(`
+            UPDATE rest_orders SET total_amount = total_amount - $1, updated_at = NOW() WHERE id = $2
+        `, [voidSubtotal, item.order_id]);
+    }
+
+    /** İkram: kalemi is_complimentary=TRUE yap, sipariş toplamından düş (DB fonksiyonu yok, uygulama tarafında) */
     static async markItemAsComplementary(itemId: string) {
-        await this.db.query('SELECT rest.rest_mark_complementary($1)', [itemId]);
+        const { rows: [row] } = await this.db.query(`
+            SELECT order_id, subtotal FROM rest_order_items WHERE id = $1 AND (is_complimentary IS NOT TRUE)
+        `, [itemId]);
+        if (!row) return;
+        const itemTotal = parseFloat(row.subtotal) || 0;
+        await this.db.query(`
+            UPDATE rest_order_items SET is_complimentary = TRUE WHERE id = $1
+        `, [itemId]);
+        await this.db.query(`
+            UPDATE rest_orders SET total_amount = total_amount - $1, updated_at = NOW() WHERE id = $2
+        `, [itemTotal, row.order_id]);
     }
 
     static async updateKitchenOrderItemStatus(orderItemId: string, status: string) {
         const sql = `
-            UPDATE rest.rest_kitchen_order_items
-            SET status = $2, updated_at = NOW()
+            UPDATE rest_kitchen_items
+            SET status = $2
             WHERE id = $1
             RETURNING *
         `;
@@ -788,7 +1006,7 @@ export class RestaurantService {
 
         // If status is 'served', also update the main order item served_at
         if (status === 'served') {
-            const getOiId = 'SELECT order_item_id FROM rest.rest_kitchen_order_items WHERE id = $1';
+            const getOiId = 'SELECT order_item_id FROM rest_kitchen_items WHERE id = $1';
             const res = await this.db.query(getOiId, [orderItemId]);
             if (res.rows[0]?.order_item_id) {
                 await this.db.query(
@@ -938,7 +1156,7 @@ export class RestaurantService {
         });
         const sql = `
             INSERT INTO rest_orders (order_no, table_id, waiter, customer_id, status, note)
-            VALUES ($1, 'DELIVERY', $2, $3, 'open', $4)
+            VALUES ($1, NULL, $2, $3, 'open', $4)
             RETURNING *
         `;
         const { rows } = await this.db.query(sql, [
@@ -1019,7 +1237,7 @@ export class RestaurantService {
         });
         const sql = `
             INSERT INTO rest_orders (order_no, table_id, waiter, customer_id, status, note)
-            VALUES ($1, 'TAKEAWAY', $2, $3, 'open', $4)
+            VALUES ($1, NULL, $2, $3, 'open', $4)
             RETURNING *
         `;
         const { rows } = await this.db.query(sql, [
@@ -1078,25 +1296,64 @@ export class RestaurantService {
         }
     }
 
+    /** Garson/waiter sayılan rol adları (küçük harf) */
+    private static readonly WAITER_ROLE_KEYS = ['garson', 'görevli', 'waiter', 'servis', 'personel'];
+
     static async getStaffList(firmNr: string): Promise<Staff[]> {
         const prefix = `rex_${firmNr.toLowerCase()}`;
         const tableName = `rest.${prefix}_rest_staff`;
+        const staffList: Staff[] = [];
 
         try {
-            const { rows } = await this.db.query(
+            const { rows: restRows } = await this.db.query(
                 `SELECT * FROM ${tableName} WHERE is_active = true ORDER BY name`
             );
-            return rows.map(r => ({
-                id: r.id,
-                name: r.name,
-                role: r.role,
-                pin: r.pin,
-                isActive: r.is_active
-            }));
+            for (const r of restRows) {
+                staffList.push({
+                    id: r.id,
+                    name: r.name,
+                    role: r.role ?? 'Garson',
+                    pin: r.pin ?? '',
+                    isActive: r.is_active !== false
+                });
+            }
         } catch (error) {
-            console.error('Get Staff List Error:', error);
-            return [];
+            console.error('Get Staff List Error (rest_staff):', error);
         }
+
+        try {
+            const roleCondition = RestaurantService.WAITER_ROLE_KEYS
+                .map((_, i) => `(LOWER(COALESCE(r.name, u.role, '')) LIKE $${i + 2})`)
+                .join(' OR ');
+            const roleParams = RestaurantService.WAITER_ROLE_KEYS.map(k => `%${k}%`);
+            const { rows: userRows } = await this.db.query(
+                `SELECT u.id, u.full_name, u.username, COALESCE(r.name, u.role) AS role_name
+                 FROM public.users u
+                 LEFT JOIN public.roles r ON r.id = u.role_id
+                 WHERE u.firm_nr = $1 AND u.is_active = true
+                 AND (${roleCondition})
+                 ORDER BY u.full_name, u.username`,
+                [firmNr, ...roleParams]
+            );
+            const existingNames = new Set(staffList.map(s => s.name.toLowerCase().trim()));
+            for (const u of userRows) {
+                const name = (u.full_name || u.username || '').trim();
+                if (!name || existingNames.has(name.toLowerCase())) continue;
+                existingNames.add(name.toLowerCase());
+                staffList.push({
+                    id: u.id,
+                    name,
+                    role: u.role_name || 'Garson',
+                    pin: '',
+                    isActive: true
+                });
+            }
+        } catch (error) {
+            console.error('Get Staff List Error (users):', error);
+        }
+
+        staffList.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+        return staffList;
     }
 
     // -------------------------------------------------------------------------
@@ -1205,87 +1462,208 @@ export class RestaurantService {
     // -------------------------------------------------------------------------
 
     static async getZReportData(workDayDate: string) {
-        // 1. Payment method breakdown + totals
-        const { rows: paymentRows } = await this.db.query(`
+        // Tarihi YYYY-MM-DD yap (DB DATE karşılaştırması için). Gelen "17.03.2026" veya "2026-03-17" olabilir.
+        const normalizedDate = (() => {
+            const d = workDayDate.trim();
+            const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+            if (isoMatch) return d;
+            const trMatch = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(d);
+            if (trMatch) return `${trMatch[3]}-${trMatch[2].padStart(2, '0')}-${trMatch[1].padStart(2, '0')}`;
+            return new Date().toISOString().slice(0, 10);
+        })();
+
+        try {
+            // 1. Payment method breakdown + totals (sadece rest_orders — tablo adı postgres tarafından prefix’lenir)
+            const { rows: paymentRows } = await this.db.query(`
+                SELECT
+                    COALESCE(UPPER(payment_method), 'DİĞER') AS method,
+                    SUM(total_amount)                         AS amount,
+                    COUNT(*)                                  AS count
+                FROM rest_orders
+                WHERE status = 'closed'
+                  AND (closed_at IS NOT NULL AND closed_at::date = $1::date)
+                GROUP BY COALESCE(UPPER(payment_method), 'DİĞER')
+                ORDER BY SUM(total_amount) DESC
+            `, [normalizedDate]);
+
+            const totalSales = paymentRows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+            const netCash = paymentRows
+                .filter((r: any) => /NAK[İI]T|CASH/i.test(r.method))
+                .reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+
+            // 2. Kategori özeti (products tablosuna bağlı değil; sadece rest tabloları)
+            const { rows: catRows } = await this.db.query(`
+                SELECT
+                    'Satış' AS category,
+                    SUM(oi.subtotal) AS amount,
+                    COUNT(oi.id)     AS count
+                FROM rest_order_items oi
+                JOIN rest_orders o ON oi.order_id = o.id
+                WHERE o.status = 'closed'
+                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (oi.is_void IS NOT TRUE)
+            `, [normalizedDate]);
+
+            // 3. İptaller
+            const { rows: voidRows } = await this.db.query(`
+                SELECT
+                    COALESCE(oi.void_reason, 'İptal') AS reason,
+                    SUM(oi.subtotal)                  AS amount,
+                    COUNT(oi.id)                      AS count
+                FROM rest_order_items oi
+                JOIN rest_orders o ON oi.order_id = o.id
+                WHERE o.status = 'closed'
+                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND oi.is_void = TRUE
+                GROUP BY COALESCE(oi.void_reason, 'İptal')
+            `, [normalizedDate]);
+
+            // 4. İkramlar
+            const { rows: compRows } = await this.db.query(`
+                SELECT COALESCE(SUM(oi.subtotal), 0) AS amount, COALESCE(COUNT(oi.id), 0) AS count
+                FROM rest_order_items oi
+                JOIN rest_orders o ON oi.order_id = o.id
+                WHERE o.status = 'closed'
+                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND oi.is_complimentary = TRUE
+            `, [normalizedDate]);
+
+            return {
+                totalSales,
+                netCash,
+                paymentsByType: paymentRows.map((r: any) => ({
+                    type: r.method,
+                    amount: parseFloat(r.amount) || 0,
+                    count: parseInt(r.count) || 0,
+                })),
+                salesByCategory: (catRows?.length ? catRows : [{ category: 'Satış', amount: 0, count: 0 }]).map((r: any) => ({
+                    category: r.category,
+                    amount: parseFloat(r.amount) || 0,
+                    count: parseInt(r.count) || 0,
+                })),
+                voids: voidRows.map((r: any) => ({
+                    reason: r.reason,
+                    amount: parseFloat(r.amount) || 0,
+                    count: parseInt(r.count) || 0,
+                })),
+                complements: {
+                    amount: parseFloat(compRows?.[0]?.amount) || 0,
+                    count: parseInt(compRows?.[0]?.count) || 0,
+                },
+            };
+        } catch (err: any) {
+            const msg = err?.message || String(err);
+            console.error('[getZReportData]', msg, err);
+            throw new Error(`Z-Raporu verisi alınamadı: ${msg}. Restoran mali gün tabloları (rest_orders, rest_order_items) mevcut mu kontrol edin.`);
+        }
+    }
+
+    /** İptal edilen kalemlerin raporu — sebep, tutar, tarih, masa, fiş (kayıt altı) */
+    static async getVoidReport(params?: { fromDate?: string; toDate?: string; limit?: number }) {
+        let sql = `
             SELECT
-                COALESCE(UPPER(payment_method), 'DİĞER') AS method,
-                SUM(total_amount)                         AS amount,
-                COUNT(*)                                  AS count
-            FROM rest_orders
-            WHERE status = 'closed'
-              AND DATE(closed_at) = $1
-            GROUP BY COALESCE(UPPER(payment_method), 'DİĞER')
-            ORDER BY SUM(total_amount) DESC
-        `, [workDayDate]);
-
-        const totalSales = paymentRows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
-        const netCash = paymentRows
-            .filter((r: any) => /NAK[İI]T|CASH/i.test(r.method))
-            .reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
-
-        // 2. Category breakdown (via product join)
-        const { rows: catRows } = await this.db.query(`
-            SELECT
-                COALESCE(p.category, 'Diğer') AS category,
-                SUM(oi.subtotal)               AS amount,
-                COUNT(oi.id)                   AS count
+                oi.id AS item_id,
+                oi.product_name,
+                oi.quantity,
+                oi.unit_price,
+                oi.subtotal,
+                COALESCE(oi.void_reason, 'İptal') AS void_reason,
+                oi.status AS item_status,
+                o.order_no,
+                o.opened_at,
+                o.closed_at,
+                o.waiter,
+                t.number AS table_number
             FROM rest_order_items oi
-            JOIN rest_orders o  ON oi.order_id  = o.id
-            LEFT JOIN products p ON oi.product_id = p.id
-            WHERE o.status = 'closed'
-              AND DATE(o.closed_at) = $1
-              AND (oi.is_void IS NOT TRUE)
-            GROUP BY COALESCE(p.category, 'Diğer')
-            ORDER BY SUM(oi.subtotal) DESC
-        `, [workDayDate]);
+            JOIN rest_orders o ON o.id = oi.order_id
+            LEFT JOIN rest_tables t ON t.id = o.table_id
+            WHERE oi.is_void = TRUE
+        `;
+        const vals: any[] = [];
+        let idx = 1;
+        if (params?.fromDate) { sql += ` AND COALESCE(o.closed_at, o.opened_at) >= $${idx++}`; vals.push(params.fromDate); }
+        if (params?.toDate) { sql += ` AND COALESCE(o.closed_at, o.opened_at) < $${idx++}`; vals.push(params.toDate); }
+        sql += ' ORDER BY COALESCE(o.closed_at, o.opened_at) DESC, oi.id';
+        if (params?.limit) { sql += ` LIMIT $${idx}`; vals.push(params.limit); }
+        const { rows } = await this.db.query(sql, vals);
+        return rows.map((r: any) => ({
+            itemId: r.item_id,
+            productName: r.product_name,
+            quantity: Number(r.quantity),
+            unitPrice: Number(r.unit_price),
+            subtotal: Number(r.subtotal),
+            voidReason: r.void_reason,
+            itemStatus: r.item_status ?? 'pending',
+            orderNo: r.order_no,
+            openedAt: r.opened_at,
+            closedAt: r.closed_at,
+            waiter: r.waiter,
+            tableNumber: r.table_number ?? '—',
+        }));
+    }
 
-        // 3. Voids
-        const { rows: voidRows } = await this.db.query(`
-            SELECT
-                COALESCE(oi.void_reason, 'İptal') AS reason,
-                SUM(oi.subtotal)                  AS amount,
-                COUNT(oi.id)                      AS count
-            FROM rest_order_items oi
-            JOIN rest_orders o ON oi.order_id = o.id
-            WHERE o.status = 'closed'
-              AND DATE(o.closed_at) = $1
-              AND oi.is_void = TRUE
-            GROUP BY COALESCE(oi.void_reason, 'İptal')
-        `, [workDayDate]);
+    /** İade işlemini kayıt altına al (sebep zorunlu, rapor için) */
+    static async logReturn(data: {
+        returnNumber: string;
+        originalReceipt?: string;
+        productName: string;
+        productId?: string;
+        quantity: number;
+        unitPrice: number;
+        totalAmount: number;
+        returnReason: string;
+        staffName?: string;
+    }) {
+        try {
+            await this.db.query(`
+                INSERT INTO rest.return_log (return_number, original_receipt, product_id, product_name, quantity, unit_price, total_amount, return_reason, staff_name)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `, [
+                data.returnNumber,
+                data.originalReceipt ?? null,
+                data.productId ?? null,
+                data.productName,
+                data.quantity,
+                data.unitPrice,
+                data.totalAmount,
+                data.returnReason,
+                data.staffName ?? null,
+            ]);
+        } catch (e) {
+            console.error('[RestaurantService] logReturn error (table rest.return_log may not exist):', e);
+        }
+    }
 
-        // 4. Complements
-        const { rows: compRows } = await this.db.query(`
-            SELECT SUM(oi.subtotal) AS amount, COUNT(oi.id) AS count
-            FROM rest_order_items oi
-            JOIN rest_orders o ON oi.order_id = o.id
-            WHERE o.status = 'closed'
-              AND DATE(o.closed_at) = $1
-              AND oi.is_complementary = TRUE
-        `, [workDayDate]);
-
-        return {
-            totalSales,
-            netCash,
-            paymentsByType: paymentRows.map((r: any) => ({
-                type: r.method,
-                amount: parseFloat(r.amount) || 0,
-                count: parseInt(r.count) || 0,
-            })),
-            salesByCategory: catRows.map((r: any) => ({
-                category: r.category,
-                amount: parseFloat(r.amount) || 0,
-                count: parseInt(r.count) || 0,
-            })),
-            voids: voidRows.map((r: any) => ({
-                reason: r.reason,
-                amount: parseFloat(r.amount) || 0,
-                count: parseInt(r.count) || 0,
-            })),
-            complements: {
-                amount: parseFloat(compRows[0]?.amount) || 0,
-                count: parseInt(compRows[0]?.count) || 0,
-            },
-        };
+    /** İade kayıtları raporu */
+    static async getReturnReport(params?: { fromDate?: string; toDate?: string; limit?: number }) {
+        try {
+            let sql = `
+                SELECT id, return_number, original_receipt, product_name, quantity, unit_price, total_amount, return_reason, staff_name, created_at
+                FROM rest.return_log WHERE 1=1
+            `;
+            const vals: any[] = [];
+            let idx = 1;
+            if (params?.fromDate) { sql += ` AND created_at >= $${idx++}`; vals.push(params.fromDate); }
+            if (params?.toDate) { sql += ` AND created_at < $${idx++}`; vals.push(params.toDate); }
+            sql += ' ORDER BY created_at DESC';
+            if (params?.limit) { sql += ` LIMIT $${idx}`; vals.push(params.limit); }
+            const { rows } = await this.db.query(sql, vals);
+            return rows.map((r: any) => ({
+                id: r.id,
+                returnNumber: r.return_number,
+                originalReceipt: r.original_receipt,
+                productName: r.product_name,
+                quantity: Number(r.quantity),
+                unitPrice: Number(r.unit_price),
+                totalAmount: Number(r.total_amount),
+                returnReason: r.return_reason,
+                staffName: r.staff_name,
+                createdAt: r.created_at,
+            }));
+        } catch (e) {
+            console.error('[RestaurantService] getReturnReport error:', e);
+            return [];
+        }
     }
 
     static async saveStaff(firmNr: string, staff: Partial<Staff>): Promise<Staff> {

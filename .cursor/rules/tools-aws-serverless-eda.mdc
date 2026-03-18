@@ -1,0 +1,16 @@
+---
+description: AWS Serverless & Event-Driven — Lambda, API Gateway, DynamoDB, Step Functions, EventBridge, SQS, SNS
+globs: "**/template.yaml,**/template.yml,**/serverless*,**/*lambda*"
+alwaysApply: false
+---
+
+# AWS Serverless & Event-Driven Architecture
+
+Well-Architected tabanlı serverless API’ler, Lambda, REST/HTTP API Gateway, mikroservisler, async akışlar. Lambda (TypeScript/Python), API Gateway, DynamoDB, Step Functions, EventBridge, SQS, SNS ve serverless desenleri.
+
+## Ön koşul
+AWS MCP araçları gerekli. Sorularda güncel AWS dokümantasyonunu MCP ile doğrula.
+
+## Kullanım
+- Serverless uygulama yaşam döngüsü: SAM CLI ile init, deploy, yerel Lambda test, şablon üretimi.
+- Event-driven desenler, kuyruk/pub-sub, güvenlik ve observability best practice’leri. Referans: `tools/aws-skills-zxkane/plugins/serverless-eda/.../references/` (eda-patterns, serverless-patterns, security-best-practices).

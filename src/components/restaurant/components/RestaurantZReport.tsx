@@ -1,17 +1,5 @@
 import React from 'react';
-import {
-    FileText,
-    Printer,
-    X,
-    TrendingUp,
-    PieChart,
-    Users,
-    Clock,
-    Banknote,
-    CreditCard,
-    Ticket,
-    ChevronRight
-} from 'lucide-react';
+import { FileText, Printer, X, Clock, Banknote, CreditCard } from 'lucide-react';
 import { cn } from '../../ui/utils';
 
 interface ZReportData {
@@ -34,144 +22,192 @@ interface RestaurantZReportProps {
     onPrint?: () => void;
 }
 
+/** 80mm fiş için satır formatı (yaklaşık 32 karakter genişlik) */
+function padLine(left: string, right: string, width = 32): string {
+    const n = width - left.length - right.length;
+    return n > 0 ? left + ' '.repeat(n) + right : left.slice(0, width - right.length) + right;
+}
+
 export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onClose, onPrint }) => {
-    const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD' }).format(num);
+    const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
+
+    /** 80mm termal fiş içeriği — yazdırma penceresine gönderilecek HTML */
+    const getReceipt80mmHtml = () => {
+        const d = data;
+        const lines: string[] = [];
+        lines.push('');
+        lines.push('      RETAILEX - Z RAPORU');
+        lines.push('  ' + new Date(d.date).toLocaleDateString('tr-TR'));
+        lines.push('--------------------------------');
+        lines.push(padLine('Acilis', new Date(d.openedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })));
+        lines.push(padLine('Kapanis', new Date(d.closedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })));
+        lines.push(padLine('Sorumlu', d.staffName));
+        lines.push('--------------------------------');
+        lines.push(padLine('TOPLAM SATIS', fmt(d.totalSales)));
+        lines.push(padLine('NET NAKIT', fmt(d.netCash)));
+        lines.push('--------------------------------');
+        lines.push('  ODEME TIPLERI');
+        (d.paymentsByType || []).forEach((p: any) => {
+            lines.push(padLine(p.type, fmt(p.amount)));
+            lines.push('    ' + p.count + ' islem');
+        });
+        lines.push('--------------------------------');
+        lines.push('  KATEGORI');
+        (d.salesByCategory || []).forEach((c: any) => {
+            lines.push(padLine(c.category + ' (' + c.count + ' adet)', fmt(c.amount)));
+        });
+        if ((d.voids || []).length > 0) {
+            lines.push('--------------------------------');
+            lines.push('  IPTALLER');
+            d.voids.forEach((v: any) => lines.push(padLine(v.reason, fmt(v.amount))));
+        }
+        if ((d.complements?.count || 0) > 0) {
+            lines.push('--------------------------------');
+            lines.push(padLine('Ikram', fmt(d.complements.amount) + ' (' + d.complements.count + ' urun)'));
+        }
+        lines.push('--------------------------------');
+        lines.push('     GUN SONU Z RAPORU');
+        lines.push('');
+        return lines.join('\n');
+    };
+
+    const openPrint80mm = () => {
+        const html = getReceipt80mmHtml();
+        const win = window.open('', '_blank', 'width=320,height=600');
+        if (!win) return;
+        const content = html.split('\n').map(line => `<div class="line">${line.replace(/ /g, '&nbsp;')}</div>`).join('');
+        win.document.write(`
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Z-Raporu</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', Courier, monospace; font-size: 11px; line-height: 1.35; padding: 8px; background: #fff; color: #000; }
+  .receipt { width: 80mm; max-width: 80mm; min-height: 100vh; }
+  .line { white-space: pre; letter-spacing: 0.02em; }
+  @media print {
+    body { padding: 0; margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .receipt { width: 80mm !important; max-width: 80mm !important; }
+    .no-print { display: none !important; }
+    @page { size: 80mm auto; margin: 4mm; }
+  }
+</style>
+</head>
+<body>
+  <div class="receipt">${content}</div>
+  <div class="no-print" style="margin-top:16px;text-align:center;">
+    <button onclick="window.print()" style="padding:10px 24px;font-size:14px;cursor:pointer;">80mm Fiş Yazdır</button>
+    <button onclick="window.close()" style="margin-left:8px;padding:10px 24px;font-size:14px;cursor:pointer;">Kapat</button>
+  </div>
+</body></html>
+        `);
+        win.document.close();
+    };
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[32px] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 pt-8 pb-6 shrink-0 relative overflow-hidden">
-                    {/* Decorative Background Pattern */}
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
-
-                    <div className="flex items-center justify-between mb-6 relative z-10">
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-lg">
-                                <FileText className="w-7 h-7 text-white" />
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-black uppercase tracking-tight">Z-RAPORU</h2>
-                                <p className="text-[10px] font-black text-white/70 uppercase tracking-widest mt-0.5">Günlük Kasa Özeti</p>
-                            </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[5000]">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
+                {/* Başlık */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center">
+                            <FileText className="w-5 h-5" />
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-xl flex items-center justify-center transition-all active:scale-90"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Z-Raporu</h2>
+                            <p className="text-xs text-slate-500">{new Date(data.date).toLocaleDateString('tr-TR')} — {data.staffName}</p>
+                        </div>
                     </div>
+                    <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-200 text-slate-500">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">AÇILIŞ</p>
-                            <p className="text-sm font-bold">{new Date(data.openedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</p>
+                {/* Özet */}
+                <div className="px-6 py-4 border-b border-slate-100 space-y-3 shrink-0">
+                    <div className="flex items-center gap-4 text-sm">
+                        <span className="flex items-center gap-1.5 text-slate-500">
+                            <Clock className="w-4 h-4" /> Açılış: {new Date(data.openedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        <span className="text-slate-500">Kapanış: {new Date(data.closedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Toplam Satış</p>
+                            <p className="text-xl font-bold text-slate-900 mt-0.5">{fmt(data.totalSales)}</p>
                         </div>
-                        <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">KAPANIŞ</p>
-                            <p className="text-sm font-bold">{new Date(data.closedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</p>
-                        </div>
-                        <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">SORUMLU</p>
-                            <p className="text-sm font-bold truncate">{data.staffName}</p>
+                        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Net Nakit</p>
+                            <p className="text-xl font-bold text-slate-900 mt-0.5">{fmt(data.netCash)}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Content */}
-                <div className="flex-1 overflow-auto p-8 space-y-8">
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-200">
-                            <p className="text-[10px] font-black opacity-80 uppercase tracking-widest mb-2">TOPLAM SATIŞ</p>
-                            <h3 className="text-3xl font-black">{fmt(data.totalSales)}</h3>
-                        </div>
-                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-6 text-white shadow-xl shadow-emerald-200">
-                            <p className="text-[10px] font-black opacity-80 uppercase tracking-widest mb-2">NET NAKİT</p>
-                            <h3 className="text-3xl font-black">{fmt(data.netCash)}</h3>
-                        </div>
-                    </div>
-
-                    {/* Category Sales */}
+                {/* Detay */}
+                <div className="flex-1 overflow-auto px-6 py-4 space-y-4 text-sm">
                     <section>
-                        <div className="flex items-center gap-2 mb-4">
-                            <PieChart className="w-4 h-4 text-blue-500" />
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Kategori Bazlı Satışlar</h4>
-                        </div>
-                        <div className="bg-slate-50 rounded-[32px] p-2 space-y-1">
-                            {data.salesByCategory.map((cat, i) => (
-                                <div key={i} className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 bg-slate-100 rounded-xl flex items-center justify-center text-[10px] font-black text-slate-500">
-                                            {cat.count}
-                                        </div>
-                                        <span className="text-sm font-bold text-slate-700">{cat.category}</span>
-                                    </div>
-                                    <span className="font-black text-slate-900">{fmt(cat.amount)}</span>
-                                </div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ödeme tipleri</h3>
+                        <ul className="space-y-1.5">
+                            {data.paymentsByType.map((p, i) => (
+                                <li key={i} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0">
+                                    <span className="flex items-center gap-2 text-slate-600">
+                                        {p.type === 'NAKİT' || /NAKIT|CASH/i.test(p.type) ? <Banknote className="w-4 h-4 text-emerald-500" /> : <CreditCard className="w-4 h-4 text-slate-400" />}
+                                        {p.type}
+                                    </span>
+                                    <span className="font-semibold text-slate-900">{fmt(p.amount)}</span>
+                                </li>
                             ))}
-                        </div>
+                        </ul>
                     </section>
-
-                    {/* Payment Types */}
                     <section>
-                        <div className="flex items-center gap-2 mb-4">
-                            <Banknote className="w-4 h-4 text-emerald-500" />
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Ödeme Tipleri</h4>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            {data.paymentsByType.map((pt, i) => (
-                                <div key={i} className="bg-white border border-slate-100 rounded-2xl p-4 flex flex-col items-center text-center">
-                                    {pt.type === 'NAKİT' && <Banknote className="w-5 h-5 text-emerald-500 mb-2" />}
-                                    {pt.type === 'KREDI KARTI' && <CreditCard className="w-5 h-5 text-blue-500 mb-2" />}
-                                    {pt.type === 'YEMEK CEKI' && <Ticket className="w-5 h-5 text-purple-500 mb-2" />}
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{pt.type}</p>
-                                    <p className="text-sm font-black text-slate-900">{fmt(pt.amount)}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{pt.count} işlem</p>
-                                </div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Kategori</h3>
+                        <ul className="space-y-1.5">
+                            {data.salesByCategory.map((c, i) => (
+                                <li key={i} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0">
+                                    <span className="text-slate-600">{c.category} ({c.count})</span>
+                                    <span className="font-semibold text-slate-900">{fmt(c.amount)}</span>
+                                </li>
                             ))}
-                        </div>
+                        </ul>
                     </section>
-
-                    {/* Voids & Complements */}
-                    <div className="grid grid-cols-2 gap-6">
-                        <section>
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 text-red-500">İptaller (Voids)</h4>
-                            <div className="bg-red-50 rounded-2xl p-4 space-y-2 border border-red-100">
-                                {data.voids.map((v, i) => (
-                                    <div key={i} className="flex justify-between items-center text-xs">
-                                        <span className="font-bold text-red-700">{v.reason}</span>
-                                        <span className="font-black text-red-900">{fmt(v.amount)}</span>
-                                    </div>
-                                ))}
-                                {data.voids.length === 0 && <p className="text-[10px] text-red-400 font-bold italic">İptal işlemi bulunmuyor</p>}
-                            </div>
+                    {(data.voids?.length > 0 || (data.complements?.count ?? 0) > 0) && (
+                        <section className="grid grid-cols-2 gap-4">
+                            {data.voids?.length > 0 && (
+                                <div>
+                                    <h3 className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2">İptaller</h3>
+                                    <ul className="space-y-1 text-slate-600">
+                                        {data.voids.map((v, i) => (
+                                            <li key={i} className="flex justify-between"><span>{v.reason}</span><span>{fmt(v.amount)}</span></li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {(data.complements?.count ?? 0) > 0 && (
+                                <div>
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">İkram</h3>
+                                    <p className="text-slate-600">{data.complements.count} ürün — {fmt(data.complements.amount)}</p>
+                                </div>
+                            )}
                         </section>
-                        <section>
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 px-1 text-slate-500">İkramlar</h4>
-                            <div className="bg-slate-100 rounded-2xl p-4 flex justify-between items-center border border-slate-200">
-                                <span className="text-xs font-bold text-slate-600">{data.complements.count} Ürün</span>
-                                <span className="text-xs font-black text-slate-900">{fmt(data.complements.amount)}</span>
-                            </div>
-                        </section>
-                    </div>
+                    )}
                 </div>
 
-                {/* Footer Actions */}
-                <div className="p-8 bg-slate-50 border-t flex gap-4 shrink-0">
+                {/* Alt butonlar */}
+                <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex gap-3 shrink-0">
                     <button
                         onClick={onClose}
-                        className="flex-1 px-8 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase text-xs hover:bg-slate-100 transition-all"
+                        className={cn(
+                            'flex-1 py-3 rounded-xl font-semibold text-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        )}
                     >
-                        KAPAT
+                        Kapat
                     </button>
                     <button
-                        onClick={onPrint}
-                        className="flex-1 px-8 py-4 bg-[#0f172a] text-white rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-[#1e293b] transition-all shadow-xl shadow-slate-300 active:scale-95"
+                        onClick={openPrint80mm}
+                        className="flex-1 py-3 rounded-xl font-semibold text-sm bg-slate-800 text-white flex items-center justify-center gap-2 hover:bg-slate-700"
                     >
                         <Printer className="w-4 h-4" />
-                        RAPORU YAZDIR
+                        80mm Fiş Yazdır
                     </button>
                 </div>
             </div>

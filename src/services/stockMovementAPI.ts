@@ -105,31 +105,62 @@ class StockMovementAPI {
      * Get movements for a specific product
      */
     async getProductMovements(productId: string): Promise<any[]> {
+        const mapRow = (r: any) => ({
+            ...r,
+            currency: r.currency,
+            currency_rate: parseFloat(r.currency_rate || 1),
+            gross_profit: parseFloat(r.gross_profit || 0),
+            movement: {
+                document_no: r.document_no,
+                movement_type: r.movement_type,
+                movement_date: r.movement_date,
+                status: r.status,
+                trcode: r.trcode,
+                warehouses: { name: r.warehouse_name }
+            }
+        });
+
+        // Query 1: Manual stock movements (ambar fişleri)
+        let slipRows: any[] = [];
         try {
             const { rows } = await postgres.query(
-                `SELECT 
-                    i.id, i.movement_id, i.product_id, i.quantity, i.unit_price, i.created_at,
+                `SELECT
+                    i.id, i.movement_id, i.product_id::text as product_id, i.quantity, i.unit_price, i.created_at,
                     m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
-                    s.name as warehouse_name,
+                    COALESCE(s.name, '') as warehouse_name,
                     'slip' as source_type,
                     COALESCE(m.exchange_rate, 1.0) as currency_rate,
                     'IQD' as currency,
-                    0 as gross_profit
+                    0::numeric as gross_profit
                  FROM stock_movement_items i
                  JOIN stock_movements m ON i.movement_id = m.id
                  LEFT JOIN stores s ON m.warehouse_id = s.id
-                 WHERE (i.product_id::text = $1 OR i.product_id IN (SELECT id::text FROM products WHERE code = $1))
+                 WHERE i.product_id::text = $1
+                    OR i.product_id IN (SELECT id FROM products WHERE code = $1 OR id::text = $1)`,
+                [productId]
+            );
+            slipRows = rows;
+        } catch (err) {
+            console.warn('[StockMovementAPI] stock_movement_items query failed:', err);
+        }
 
-                 UNION ALL
-
-                 SELECT
-                    si.id, si.invoice_id as movement_id, si.item_code as product_id, si.quantity, si.unit_price, si.created_at,
+        // Query 2: Invoice-based movements (satış/alış faturaları)
+        let invoiceRows: any[] = [];
+        try {
+            const { rows } = await postgres.query(
+                `SELECT
+                    si.id,
+                    si.invoice_id as movement_id,
+                    si.item_code as product_id,
+                    si.quantity,
+                    si.unit_price,
+                    si.created_at,
                     sl.fiche_no as document_no,
-                    CASE 
+                    CASE
                         WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
-                        WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3 THEN 'in'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6) THEN 'out'
+                        WHEN sl.fiche_type = 'sales_invoice'    THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3         THEN 'in'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6)   THEN 'out'
                         ELSE 'out'
                     END as movement_type,
                     sl.date as movement_date,
@@ -143,30 +174,25 @@ class StockMovementAPI {
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id
                  LEFT JOIN stores st ON sl.store_id = st.id
-                 WHERE (si.item_code = $1 OR si.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1))
-                 
-                 ORDER BY movement_date DESC, created_at DESC`,
+                 WHERE si.item_code = $1
+                    OR si.item_code IN (SELECT code FROM products WHERE id::text = $1 OR code = $1)
+                    OR si.product_id::text = $1`,
                 [productId]
             );
-
-            return rows.map(r => ({
-                ...r,
-                currency: r.currency,
-                currency_rate: parseFloat(r.currency_rate || 1),
-                gross_profit: parseFloat(r.gross_profit || 0),
-                movement: {
-                    document_no: r.document_no,
-                    movement_type: r.movement_type,
-                    movement_date: r.movement_date,
-                    status: r.status,
-                    trcode: r.trcode,
-                    warehouses: { name: r.warehouse_name }
-                }
-            }));
-        } catch (error) {
-            console.error('[StockMovementAPI] getProductMovements failed:', error);
-            return [];
+            invoiceRows = rows;
+        } catch (err) {
+            console.warn('[StockMovementAPI] sale_items query failed:', err);
         }
+
+        const combined = [...slipRows, ...invoiceRows];
+        combined.sort((a, b) => {
+            const da = new Date(a.movement_date || a.created_at).getTime();
+            const db = new Date(b.movement_date || b.created_at).getTime();
+            return db - da;
+        });
+
+        console.log(`[StockMovementAPI] getProductMovements(${productId}): slips=${slipRows.length}, invoices=${invoiceRows.length}`);
+        return combined.map(mapRow);
     }
 
     /**

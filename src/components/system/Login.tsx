@@ -180,7 +180,25 @@ export function Login({ onLogin }: LoginProps) {
   const loadUsers = async () => {
     try {
       const { postgres } = await import('../../services/postgres');
-      const result = await postgres.query(
+      // Önce public.users (Kullanıcı Yönetimi) — garson vb. tüm tanımlı kullanıcılar burada
+      try {
+        const result = await postgres.query(
+          `SELECT u.username, u.full_name AS "fullName", COALESCE(r.name, u.role) AS role
+           FROM public.users u
+           LEFT JOIN public.roles r ON r.id = u.role_id
+           WHERE u.is_active = true
+           ORDER BY u.full_name ASC`,
+          []
+        );
+        if (result.rows && result.rows.length > 0) {
+          setDbUsers(result.rows);
+          return;
+        }
+      } catch (_) {
+        // public.users yoksa veya hata varsa auth.users'a düş
+      }
+      // Fallback: auth.users (eski / Supabase auth)
+      const authResult = await postgres.query(
         `SELECT 
             raw_user_meta_data->>'username' as username, 
             raw_user_meta_data->>'full_name' as "fullName", 
@@ -189,7 +207,7 @@ export function Login({ onLogin }: LoginProps) {
          ORDER BY raw_user_meta_data->>'full_name' ASC`,
         []
       );
-      setDbUsers(result.rows);
+      setDbUsers(authResult.rows || []);
     } catch (e) {
       console.error('Failed to load users for login:', e);
     }

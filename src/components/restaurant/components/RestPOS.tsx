@@ -35,6 +35,7 @@ import {
     BookmarkCheck,
     User,
     ShoppingBag,
+    ArrowRightLeft,
 } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { POSPaymentModal } from '../../pos/POSPaymentModal';
@@ -74,6 +75,10 @@ interface RestPOSProps {
     covers?: number;
     /** POS çalışma modu: masa servisi, perakende veya self servis */
     posMode?: 'table' | 'retail' | 'selfservice';
+    /** MASA TAŞI tıklandığında masalar ekranına geçip tam ekran masa seçimi açılsın (verilirse lokal modal açılmaz) */
+    onRequestMoveTable?: () => void;
+    /** Mutfak butonuna basıp sipariş gönderildikten sonra masalara dönüp garson seçim açılsın */
+    onAfterSendToKitchen?: () => void;
 }
 
 const fmt = (num: number) => {
@@ -98,9 +103,8 @@ const PLATE_PALETTE = [
     { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0' },  // emerald
 ];
 
-export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedCustomer: initCustomer, currentStaff, onSaleComplete, onBack, table, covers = 0, posMode = 'table' }) => {
+export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedCustomer: initCustomer, currentStaff, onSaleComplete, onBack, table, covers = 0, posMode = 'table', onRequestMoveTable, onAfterSendToKitchen }) => {
     const [query, setQuery] = useState('');
-    const [showPrintDialog, setShowPrintDialog] = useState(false);
     const [completedSaleForPrint, setCompletedSaleForPrint] = useState<any>(null);
     const [selectedCat, setSelectedCat] = useState<string | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
@@ -164,6 +168,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     /** Seçili tabak: null = tümünü göster, string = sadece o tabağı göster + yeni ürünler bu tabağa */
     const [activePlate, setActivePlate] = useState<string | null>(null);
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const cycleItemPlate = (idx: number) => {
         if (plates.length === 0) return;
@@ -226,9 +231,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     const {
         closeBill, setCustomerForTable, tables, openTable,
         addItemToTable, sendToKitchen, requestBill,
-        categories, loadCategories, moveTable,
+        categories, loadCategories, moveTable, mergeTables,
         splitOrder, updateOrderItemOptions, voidOrderItem, markItemAsComplementary,
-        markAsClean
+        markAsClean, moveOrderItemToTable
     } = useRestaurantStore();
 
     // ── Masa oturum kilidi ───────────────────────────────────────────────
@@ -271,26 +276,30 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         }
     }, [table, tables, customers]);
 
-    // ── DB'den sipariş yükle (masaya geri dönüldüğünde) ───────────────────
+    // ── Masanın siparişlerini sepete yükle (hesap/billing dahil — ürünler kaybolmasın)
     useEffect(() => {
         if (!table?.id || posMode !== 'table') return;
+        if (cart.length > 0) return; // zaten sepette ürün varsa dokunma
+        // Önce store'daki güncel masayı kullan; yoksa veya sipariş yoksa prop'taki table.orders kullan
         const storeTable = tables.find(t => t.id === table.id);
-        if (!storeTable?.orders?.length || cart.length > 0) return;
-        // Convert DB OrderItems to local CartItems
-        const loaded = storeTable.orders
-            .filter(o => !o.isVoid)
-            .map(o => ({
+        const orders = (storeTable?.orders?.length ? storeTable.orders : table.orders) ?? [];
+        if (!orders.length) return;
+        const loaded = orders
+            .filter((o: any) => !o.isVoid)
+            .map((o: any) => ({
+                ...({ id: o.id } as any),
                 product: { id: o.menuItemId, name: o.name, price: o.price, category: '' } as any,
                 quantity: o.quantity,
                 price: o.price,
                 subtotal: o.price * o.quantity,
                 discount: 0,
                 kitchenStatus: (o.status === 'pending' ? 'pending'
-                    : o.status === 'cooking' ? 'cooking' : 'served') as CartItem['kitchenStatus']
+                    : o.status === 'cooking' ? 'cooking' : 'served') as CartItem['kitchenStatus'],
+                ...(o.sourceTableNumber && { sourceTableNumber: o.sourceTableNumber, sourceTableId: o.sourceTableId })
             } as CartItem));
         setCart(loaded);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [table?.id]);
+    }, [table?.id, table?.orders, tables]);
 
     useEffect(() => {
         loadCategories();
@@ -335,8 +344,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     const [showReturnModal, setShowReturnModal] = useState(false);
     const [splitSelectedItems, setSplitSelectedItems] = useState<number[]>([]);
     const [targetTableId, setTargetTableId] = useState<string | null>(null);
+    const [moveItemToTable, setMoveItemToTable] = useState<{ itemId: string; itemName: string } | null>(null);
     const [showVoidReasonModal, setShowVoidReasonModal] = useState(false);
-    const [voidingItem, setVoidingItem] = useState<{ tableId: string; itemId: string; name: string } | null>(null);
+    const [voidingItem, setVoidingItem] = useState<{ tableId: string; itemId: string; name: string; quantity: number } | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [discountInput, setDiscountInput] = useState('');
     const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -473,6 +483,26 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         setCart(next);
     };
 
+    /** Sepetteki kalem için iptal/iade akışını başlat — kırmızı SİL / minus basınca sebep modalı açılır, kayıt altına alınır */
+    const openVoidForCartItem = (idx: number) => {
+        const item = cart[idx];
+        if (!item) return;
+        const orderItemId = (item as any).id;
+        if (table?.id && orderItemId) {
+            setVoidingItem({
+                tableId: table.id,
+                itemId: orderItemId,
+                name: item.product?.name ?? (item as any).name ?? '',
+                quantity: item.quantity,
+            });
+            setShowVoidReasonModal(true);
+        } else {
+            setCart(cart.filter((_, i) => i !== idx));
+            setExpandedCartItem(expandedCartItem === idx ? null : expandedCartItem !== null && expandedCartItem > idx ? expandedCartItem - 1 : expandedCartItem);
+            notify('Ürün sepetten kaldırıldı');
+        }
+    };
+
     const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.subtotal ?? 0), 0), [cart]);
     const discountAmount = useMemo(() => subtotal * (orderDiscount / 100), [subtotal, orderDiscount]);
     const grandTotal = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
@@ -486,31 +516,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
     const remaining = grandTotal - paid;
 
     const handlePaymentComplete = async (paymentData: any) => {
-        // Build sale object for print receipt (not for DB save — closeBill does that)
+        // Yazdırmadan önce tam tutar: sale objesi mevcut sepetten (ürünler kaybolmasın)
         const sale: any = {
             id: `RES-${Date.now()}`,
             receiptNumber,
             date: new Date().toISOString(),
+            cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || 'Garson'),
+            table: table?.number,
             items: cart.map(item => ({
-                productId: item.product.id,
-                productName: item.product.name,
+                productId: item.product?.id ?? (item as any).product?.id,
+                productName: item.product?.name ?? (item as any).product?.name ?? (item as any).name,
                 quantity: item.quantity,
-                price: item.price || item.product.price,
+                price: item.price ?? item.product?.price,
                 discount: item.discount || 0,
-                total: item.subtotal || (item as any).total,
+                total: item.subtotal ?? (item as any).total ?? (item.price ?? 0) * item.quantity,
                 variant: item.variant
             })),
             subtotal,
             discount: (discountAmount || 0) + (paymentData.discount || 0),
-            total: paymentData.finalTotal || grandTotal,
+            total: paymentData.finalTotal ?? grandTotal,
             payment: paymentData,
-            tableNumber: table?.number,
-            waiter: currentStaff,
             note: orderNote,
         };
 
         try {
-            // closeBill handles: DB order close + table status reset + salesStore.addSale
+            // Yazdır/kapat: önce DB'de masayı kapat, sonra UI temizle ve fiş göster
             if (table) {
                 await closeBill(table.id, paymentData);
             }
@@ -529,14 +559,74 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 }
             }
         } finally {
-            // Always clean up UI regardless of DB errors
+            // Ödeme bittikten sonra: sepeti temizle, fiş numarasını yenile, modal kapat
             generateNewReceiptNumber();
             setCart([]);
             setOrderDiscount(0);
             setOrderNote('');
             setShowPaymentModal(false);
-            setCompletedSaleForPrint(sale);
-            setShowPrintDialog(true);
+
+            if (paymentData.autoPrint) {
+                // Otomatik yazdır: direkt print window aç, preview gösterme
+                const win = window.open('', '_blank', 'width=400,height=700');
+                if (win) {
+                    const itemRows = (sale.items || []).map((it: any) =>
+                        `<tr><td style="text-align:left;padding:2px 4px">${it.productName || ''}</td><td style="text-align:center;padding:2px 4px">${it.quantity} Adet x ${(it.price ?? 0).toLocaleString('tr-TR')} IQD</td><td style="text-align:right;padding:2px 4px;font-weight:bold">${((it.total ?? 0)).toLocaleString('tr-TR')} IQD</td></tr>`
+                    ).join('');
+                    const payRows = (paymentData.payments || []).map((p: any) =>
+                        `<tr><td>${p.method === 'cash' ? '💵 Nakit' : p.method === 'card' ? '💳 Kart' : '📱 QR'}</td><td style="text-align:right;font-weight:bold">${(p.amount ?? 0).toLocaleString('tr-TR')} IQD</td></tr>`
+                    ).join('');
+                    win.document.write(`
+                        <html><head><title>Fiş - ${sale.receiptNumber}</title>
+                        <style>
+                          @page{size:80mm auto;margin:0}
+                          body{font-family:'Courier New',Courier,monospace;margin:0;padding:8px;font-size:12px;width:80mm}
+                          h2{text-align:center;margin:4px 0;font-size:16px}
+                          .sub{text-align:center;font-size:10px;color:#555;margin:2px 0}
+                          hr{border:0;border-top:1px dashed #333;margin:6px 0}
+                          table{width:100%;border-collapse:collapse}
+                          td{padding:2px 4px;font-size:11px}
+                          .total{font-size:14px;font-weight:bold;text-align:right}
+                          .center{text-align:center}
+                        </style>
+                        </head><body>
+                        <h2>${sale.cashier ? sale.cashier.split(' ')[0] || 'Firma' : 'Firma'}</h2>
+                        <p class="sub">Profesyonel ERP Çözümleri</p>
+                        <hr/>
+                        <table>
+                          <tr><td>FİŞ NO:</td><td style="text-align:right;font-weight:bold">${sale.receiptNumber}</td></tr>
+                          <tr><td>TARİH:</td><td style="text-align:right">${new Date(sale.date).toLocaleString('tr-TR')}</td></tr>
+                          ${sale.cashier ? `<tr><td>KASİYER:</td><td style="text-align:right">${sale.cashier}</td></tr>` : ''}
+                          ${sale.table ? `<tr><td>MASA:</td><td style="text-align:right">${sale.table}</td></tr>` : ''}
+                        </table>
+                        <hr/>
+                        <table>${itemRows}</table>
+                        <hr/>
+                        <table>
+                          <tr><td>ARA TOPLAM:</td><td style="text-align:right">${(sale.subtotal ?? 0).toLocaleString('tr-TR')} IQD</td></tr>
+                          ${sale.discount > 0 ? `<tr><td>İNDİRİM:</td><td style="text-align:right;color:red">-${(sale.discount ?? 0).toLocaleString('tr-TR')} IQD</td></tr>` : ''}
+                        </table>
+                        <hr/>
+                        <p class="total">TOPLAM: ${(sale.total ?? 0).toLocaleString('tr-TR')} IQD</p>
+                        <hr/>
+                        <p style="font-weight:bold;margin:4px 0">ÖDEME DETAYLARI:</p>
+                        <table>${payRows}</table>
+                        <p style="text-align:right;margin:4px 0">ÖDENEN: ${(paymentData.payments || []).reduce((s: number, p: any) => s + (p.amount || 0), 0).toLocaleString('tr-TR')} IQD</p>
+                        <hr/>
+                        <p class="center" style="font-size:10px">*** Bizi Tercih Ettiğiniz İçin Teşekkürler ***</p>
+                        <p class="center" style="font-size:9px;color:#666">Bu fiş iade ve değişim işlemlerinde gereklidir.</p>
+                        <hr/>
+                        <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+                        </body></html>
+                    `);
+                    win.document.close();
+                }
+                notify('Ödeme tamamlandı!');
+                onBack?.();
+            } else {
+                // Manuel: Receipt80mm önizleme göster
+                setCompletedSaleForPrint(sale);
+            }
         }
     };
 
@@ -549,43 +639,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         setShowPaymentModal(true);
     };
 
-    /* ---------- print dialog handlers ---------- */
-    const handlePrintReceipt = () => {
-        if (!completedSaleForPrint) return;
-        const s = completedSaleForPrint;
-        const win = window.open('', '_blank', 'width=400,height=600');
-        if (!win) return;
-        const itemRows = (s.items || []).map((it: any) =>
-            `<tr><td>${it.productName || ''}</td><td style="text-align:center">${it.quantity}</td><td style="text-align:right">${(it.price ?? 0).toFixed(2)}</td><td style="text-align:right">${((it.total ?? 0)).toFixed(2)}</td></tr>`
-        ).join('');
-        win.document.write(`
-            <html><head><title>Adisyon - ${s.receiptNumber}</title>
-            <style>body{font-family:monospace;margin:0;padding:8px;font-size:12px}h2{text-align:center;margin:4px 0}hr{border-top:1px dashed #333}table{width:100%;border-collapse:collapse}td{padding:2px 4px}.total{font-size:14px;font-weight:bold;text-align:right}</style>
-            </head><body>
-            <h2>ADİSYON FİŞİ</h2>
-            <p style="text-align:center;margin:2px 0">${s.receiptNumber}</p>
-            <p style="text-align:center;margin:2px 0">${new Date(s.date).toLocaleString('tr-TR')}</p>
-            ${s.tableNumber ? `<p style="text-align:center">Masa: ${s.tableNumber}</p>` : ''}
-            ${s.waiter ? `<p style="text-align:center">Garson: ${typeof s.waiter === 'object' ? s.waiter.name : s.waiter}</p>` : ''}
-            <hr/>
-            <table><thead><tr><th style="text-align:left">Ürün</th><th>Adet</th><th style="text-align:right">Fiyat</th><th style="text-align:right">Toplam</th></tr></thead>
-            <tbody>${itemRows}</tbody></table>
-            <hr/>
-            <p class="total">TOPLAM: ${(s.total ?? 0).toFixed(2)} IQD</p>
-            <hr/><p style="text-align:center;font-size:10px">Teşekkür ederiz!</p>
-            </body></html>
-        `);
-        win.document.close();
-        win.focus();
-        win.print();
-        win.close();
-    };
-
-    const handleDismissPrintDialog = (doPrint: boolean) => {
-        if (doPrint) handlePrintReceipt();
-        setShowPrintDialog(false);
+    const handleClosePrintReceipt = () => {
         setCompletedSaleForPrint(null);
-        notify('Ödeme tamamlandı!');
+        notify('Ödeme tamamlandı, masa kapatıldı.');
         onBack?.();
     };
 
@@ -637,7 +693,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
         >
 
             {/* ── UNIFIED HEADER ─────────────────────────────────────── */}
-            <header className="flex flex-col shrink-0 z-30">
+            <header className="flex flex-col shrink-0 z-20">
                 {/* TOP HEADER */}
                 <div
                     className="border-b px-4 py-2.5 flex items-center justify-between gap-4 shadow-xl min-h-[64px] backdrop-blur-xl relative overflow-hidden"
@@ -655,14 +711,22 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                             Geri
                         </button>
 
-                        <div className="relative group flex-1">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-white/50 group-focus-within:text-white transition-all scale-90 group-focus-within:scale-100" />
+                        <div className="relative group flex-1 h-11 min-w-0">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-white/50 group-focus-within:text-white transition-all scale-90 group-focus-within:scale-100 pointer-events-none z-10" />
                             <input
+                                ref={searchInputRef}
                                 type="text"
+                                inputMode="search"
+                                autoComplete="off"
                                 placeholder="Ürün veya kategori ara..."
-                                className="w-full h-11 bg-black/20 hover:bg-black/30 focus:bg-white/15 border border-white/10 focus:border-white/40 text-white placeholder:text-white/40 pl-10 pr-4 rounded-2xl outline-none transition-all text-[14px] font-bold shadow-inner"
+                                className="absolute inset-0 w-full h-full bg-black/20 hover:bg-black/30 focus:bg-white/15 border border-white/10 focus:border-white/40 text-white placeholder:text-white/40 pl-10 pr-4 rounded-2xl outline-none transition-all text-[14px] font-bold shadow-inner"
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
+                                onFocus={() => {
+                                    if ((window as any).__TAURI_INTERNALS__) {
+                                        import('@tauri-apps/api/core').then(({ invoke }) => invoke('show_touch_keyboard')).catch(() => {});
+                                    }
+                                }}
                             />
                         </div>
                     </div>
@@ -861,7 +925,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                         {table && (
                             <>
                                 <button
-                                    onClick={() => setShowMoveTableModal(true)}
+                                    onClick={() => onRequestMoveTable ? onRequestMoveTable() : setShowMoveTableModal(true)}
                                     className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-100 border border-amber-500/30 transition-all hover:scale-105 active:scale-95 shadow-lg font-black text-[12px] tracking-wide"
                                 >
                                     <RotateCcw className="w-4.5 h-4.5" /> MASA TAŞI
@@ -923,7 +987,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                         const emoji = emojis[ci % emojis.length];
                                         return (
                                             <button
-                                                key={cat}
+                                                key={`${groupIndex}-${cat}-${ci}`}
                                                 onClick={() => setSelectedCat(active ? null : cat)}
                                                 className={cn(
                                                     'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 group active:scale-[0.97]',
@@ -1141,15 +1205,29 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                                 <span className="truncate max-w-[120px]">{(item as any).note}</span>
                                                             </div>
                                                         )}
+                                                        {(item as any).sourceTableNumber && (item as any).sourceTableNumber !== table?.number && (
+                                                            <div className="inline-flex mt-1 items-center gap-1.5 flex-wrap">
+                                                                <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                                                    Masa {(item as any).sourceTableNumber}&apos;ten
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={e => { e.stopPropagation(); setMoveItemToTable({ itemId: (item as any).id, itemName: item.product?.name ?? '' }); setTargetTableId(null); }}
+                                                                    className="text-[9px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1"
+                                                                >
+                                                                    <ArrowRightLeft className="w-3 h-3" /> Başka masaya taşı
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 
-                                                {/* Right Minus Action Stripe - Flat Red Style */}
+                                                {/* Right Minus / İptal — basınca iptal sebep modalı açılır, kayıt altına alınır */}
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); updateQty(idx, -1); }}
+                                                    onClick={(e) => { e.stopPropagation(); openVoidForCartItem(idx); }}
                                                     style={{ backgroundColor: '#dc2626' }}
                                                     className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center transition-all active:scale-95"
-                                                    title="Azalt"
+                                                    title="İptal / İade"
                                                 >
                                                     <Minus className="w-6 h-6 text-white font-black" />
                                                 </button>
@@ -1172,7 +1250,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                             onChange={e => updateItemNote(idx, e.target.value)}
                                                         />
                                                     </div>
-                                                    <button onClick={() => setCart(cart.filter((_, i) => i !== idx))} className="flex-1 h-8 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm max-w-[60px]">
+                                                    <button onClick={() => openVoidForCartItem(idx)} className="flex-1 h-8 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm max-w-[60px]">
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                         SİL
                                                     </button>
@@ -1256,6 +1334,20 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                                         📝 {(item as any).note}
                                                                     </div>
                                                                 )}
+                                                                {(item as any).sourceTableNumber && (item as any).sourceTableNumber !== table?.number && (
+                                                                    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                                        <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                                            Masa {(item as any).sourceTableNumber}&apos;ten
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={e => { e.stopPropagation(); setMoveItemToTable({ itemId: (item as any).id, itemName: item.product?.name ?? '' }); setTargetTableId(null); }}
+                                                                            className="text-[9px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1"
+                                                                        >
+                                                                            <ArrowRightLeft className="w-2.5 h-2.5" /> Taşı
+                                                                        </button>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </td>
 
@@ -1290,7 +1382,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                                         <td className="px-2 py-2.5 text-center border-l border-gray-100" onClick={e => e.stopPropagation()}>
                                                             <div className="flex flex-col gap-1">
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); setCart(cart.filter((_, i) => i !== idx)); setExpandedCartItem(null); notify('Ürün silindi'); }}
+                                                                    onClick={(e) => { e.stopPropagation(); openVoidForCartItem(idx); setExpandedCartItem(null); }}
                                                                     className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 font-bold transition-colors border border-red-100/50"
                                                                 >
                                                                     <Trash2 className="w-4 h-4" />
@@ -1440,34 +1532,29 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
 
             {/* ── MODALS ──────────────────────────────────────────────── */}
 
-            {/* Print Preview Modal (80mm) */}
+            {/* Print Preview Modal (80mm) — ödeme öncesi adisyon */}
             {showPrintPreview && table && (
                 <Receipt80mm
                     sale={{
                         id: 'preview',
-                        receiptNumber: 'TASLAK',
+                        receiptNumber: receiptNumber || 'ADİSYON',
                         date: new Date().toISOString(),
                         items: cart.map(item => ({
-                            productId: item.id,
-                            productName: item.name,
+                            productId: item.product?.id || (item as any).id,
+                            productName: item.product?.name || (item as any).name,
                             quantity: item.quantity,
-                            price: item.price,
-                            discount: 0,
-                            total: item.price * item.quantity,
+                            price: item.price || item.product?.price,
+                            discount: item.discount || 0,
+                            total: item.subtotal ?? (item.price * item.quantity),
                             variant: item.variant
                         })),
                         subtotal: subtotal,
-                        discount: orderDiscount,
+                        discount: discountAmount,
                         total: grandTotal,
-                        paymentMethod: 'Nakit',
-                        cashier: waiter || 'Kasiyer',
+                        cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || waiter || ''),
                         table: table.number.toString(),
                     }}
-                    paymentData={{
-                        payments: [{ method: 'cash', amount: grandTotal, currency: 'IQD' }],
-                        totalPaid: grandTotal,
-                        change: 0
-                    }}
+                    paymentData={{ payments: [], totalPaid: 0, change: 0 }}
                     onClose={() => setShowPrintPreview(false)}
                 />
             )}
@@ -1488,29 +1575,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 />
             )}
 
-            {/* Print Dialog */}
-            {showPrintDialog && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
-                    <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-5" style={{ minWidth: 320 }}>
-                        <div className="text-4xl">🖨️</div>
-                        <h2 className="text-lg font-bold text-gray-800 text-center">Adisyon fişi yazdırılsın mı?</h2>
-                        <p className="text-sm text-gray-500 text-center">Masa kapatılacak ve masalar listesine dönülecek.</p>
-                        <div className="flex gap-3 w-full">
-                            <button
-                                onClick={() => handleDismissPrintDialog(false)}
-                                className="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold hover:bg-gray-50 transition-colors"
-                            >
-                                Hayır
-                            </button>
-                            <button
-                                onClick={() => handleDismissPrintDialog(true)}
-                                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <span>🖨️</span> Yazdır
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            {/* Receipt80mm — ödeme sonrası fiş önizleme */}
+            {completedSaleForPrint && (
+                <Receipt80mm
+                    sale={completedSaleForPrint}
+                    paymentData={completedSaleForPrint.payment}
+                    onClose={handleClosePrintReceipt}
+                />
             )}
 
             {/* Sales History Modal */}
@@ -1521,12 +1592,32 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 />
             )}
 
-            {/* Return Modal */}
+            {/* Return Modal — iade sebep zorunlu, kayıt altına alınır */}
             {showReturnModal && (
                 <POSReturnModal
                     sales={salesHistory}
                     onClose={() => setShowReturnModal(false)}
-                    onReturnComplete={() => { setShowReturnModal(false); notify('İade işlemi tamamlandı'); }}
+                    onReturnComplete={async (returnData: any) => {
+                        const reason = returnData?.returnReason || 'Belirtilmedi';
+                        const staffName = returnData?.cashier || waiter || '—';
+                        if (returnData?.items?.length) {
+                            for (const it of returnData.items) {
+                                await RestaurantService.logReturn({
+                                    returnNumber: returnData.returnNumber || `IADE-${Date.now()}`,
+                                    originalReceipt: returnData.originalReceiptNumber,
+                                    productName: it.productName || it.product_name || '—',
+                                    productId: it.productId || it.product_id,
+                                    quantity: it.quantity || 1,
+                                    unitPrice: it.price || it.unit_price || 0,
+                                    totalAmount: it.total ?? (it.quantity * (it.price || 0)),
+                                    returnReason: reason,
+                                    staffName,
+                                });
+                            }
+                        }
+                        setShowReturnModal(false);
+                        notify('İade işlemi tamamlandı (kayıt altına alındı)');
+                    }}
                 />
             )}
 
@@ -1535,6 +1626,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 <RestaurantStaffPinModal
                     onClose={() => setShowStaffModal(false)}
                     onSelect={(staffName) => { setWaiter(staffName); setShowStaffModal(false); }}
+                    skipConfirmation
                 />
             )}
 
@@ -1609,9 +1701,18 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                         : item
                                 ));
                                 notify('Sipariş mutfağa gönderildi!');
-                            } catch (err) {
+                                if (onAfterSendToKitchen) {
+                                    onAfterSendToKitchen();
+                                } else {
+                                    onBack?.();
+                                }
+                            } catch (err: any) {
                                 console.error('[RestPOS] sendToKitchen error:', err);
-                                notify('HATA: Sipariş mutfağa gönderilirken hata oluştu. Veritabanı yapısını güncellemek için uygulamayı kapatıp açın.');
+                                const msg = err?.message || String(err);
+                                const hint = /relation|column|does not exist|tablo|sütun/i.test(msg)
+                                    ? ' Veritabanı migrasyonlarını çalıştırıp uygulamayı yeniden başlatın.'
+                                    : '';
+                                notify(`HATA: Sipariş mutfağa gönderilirken hata oluştu. ${msg}${hint}`, 'error');
                             }
                         }
                     }}
@@ -1641,10 +1742,20 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                         }
                     }}
                     onVoidItem={() => {
-                        if (table && longPressedProduct) {
-                            setVoidingItem({ tableId: table.id, itemId: longPressedProduct.id, name: longPressedProduct.name });
-                            setShowVoidReasonModal(true);
+                        if (!table || !longPressedProduct) return;
+                        const cartItem = cart.find(c => c.product?.id === longPressedProduct.id);
+                        const orderItemId = (cartItem as any)?.id;
+                        if (!cartItem || !orderItemId) {
+                            notify('Bu ürün siparişte bulunamadı veya henüz kaydedilmedi.', 'error');
+                            return;
                         }
+                        setVoidingItem({
+                            tableId: table.id,
+                            itemId: orderItemId,
+                            name: longPressedProduct.name,
+                            quantity: cartItem.quantity,
+                        });
+                        setShowVoidReasonModal(true);
                     }}
                     fmt={fmt}
                 />
@@ -1664,25 +1775,46 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                 </div>
             )}
 
-            {/* Move Table Modal */}
-            {showMoveTableModal && table && (
+            {/* Move Table Modal veya tek ürün başka masaya taşı */}
+            {(showMoveTableModal || moveItemToTable) && table && (
                 <RestaurantMoveTableModal
                     currentTable={table}
                     tables={tables}
                     targetTableId={targetTableId}
                     onTargetSelect={setTargetTableId}
-                    onClose={() => { setShowMoveTableModal(false); setTargetTableId(null); }}
-                    onConfirm={async () => {
-                        if (table && targetTableId) {
+                    moveSingleItem={moveItemToTable ?? undefined}
+                    onClose={() => { setShowMoveTableModal(false); setMoveItemToTable(null); setTargetTableId(null); }}
+                    onConfirm={async (action, targetId, moveScope) => {
+                        if (action === 'moveItem' && moveItemToTable && targetId) {
                             try {
-                                await moveTable(table.id, targetTableId);
+                                await moveOrderItemToTable(table.id, moveItemToTable.itemId, targetId);
+                                setCart(prev => prev.filter((c: any) => c.id !== moveItemToTable.itemId));
+                                notify('Ürün masaya taşındı');
+                                setShowMoveTableModal(false);
+                                setMoveItemToTable(null);
+                                setTargetTableId(null);
+                            } catch (e) {
+                                console.error('Move item error', e);
+                                notify('Ürün taşınırken hata oluştu', 'error');
+                            }
+                            return;
+                        }
+                        if (table && targetId) {
+                            try {
+                                if (action === 'move') {
+                                    const sourceTableId = (moveScope === 'all' || !moveScope) ? table.id : moveScope.tableId;
+                                    await moveTable(sourceTableId, targetId);
+                                    notify(moveScope !== 'all' && moveScope ? 'İşlem taşındı' : 'Masa başarıyla taşındı');
+                                } else {
+                                    await mergeTables(table.id, targetId);
+                                    notify('Masalar birleştirildi');
+                                }
                                 setShowMoveTableModal(false);
                                 setTargetTableId(null);
-                                notify('Masa başarıyla taşındı');
                                 onBack?.();
                             } catch (error) {
-                                console.error('Move table error:', error);
-                                notify('Masa taşınırken bir hata oluştu', 'error');
+                                console.error(action === 'move' ? 'Move table error' : 'Merge tables error', error);
+                                notify(action === 'move' ? 'Masa taşınırken bir hata oluştu' : 'Masalar birleştirilirken bir hata oluştu', 'error');
                             }
                         }
                     }}
@@ -1731,15 +1863,28 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
             {showVoidReasonModal && table && voidingItem && (
                 <RestaurantVoidReasonModal
                     itemName={voidingItem.name}
+                    quantity={voidingItem.quantity}
                     reason={voidReason}
                     onReasonChange={setVoidReason}
                     onClose={() => { setShowVoidReasonModal(false); setVoidingItem(null); setVoidReason(''); }}
-                    onConfirm={async (reason) => {
-                        await voidOrderItem(table?.id || '', voidingItem?.itemId || '', reason);
+                    onConfirm={async (reason: string, voidQuantity: number) => {
+                        if (!reason?.trim()) return;
+                        const itemId = voidingItem?.itemId;
+                        const totalQty = voidingItem?.quantity ?? 1;
+                        await voidOrderItem(table?.id || '', itemId || '', reason.trim(), voidQuantity);
                         setShowVoidReasonModal(false);
                         setVoidingItem(null);
                         setVoidReason('');
-                        notify('Ürün iptal edildi');
+                        notify(voidQuantity >= totalQty ? 'Ürün iptal edildi (kayıt altına alındı)' : `${voidQuantity} adet iptal edildi (kayıt altına alındı)`);
+                        if (itemId) {
+                            const idx = cart.findIndex((c: any) => c.id === itemId);
+                            if (idx >= 0) {
+                                if (voidQuantity >= totalQty)
+                                    setCart(cart.filter((_: any, i: number) => i !== idx));
+                                else
+                                    setCart(cart.map((c: any, i: number) => i === idx ? { ...c, quantity: c.quantity - voidQuantity, subtotal: (c.quantity - voidQuantity) * (c.price ?? c.product?.price ?? 0) } : c));
+                            }
+                        }
                     }}
                 />
             )}

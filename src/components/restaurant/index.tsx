@@ -24,7 +24,8 @@ import {
     RefreshCw,
     CalendarDays,
     ZoomIn,
-    ZoomOut
+    ZoomOut,
+    FileText
 } from 'lucide-react';
 
 // Sub-components
@@ -32,6 +33,7 @@ import { RestaurantFloorPlan } from './components/RestaurantFloorPlan';
 import { KitchenDisplay } from './components/KitchenDisplay';
 import { RecipeManagement } from './components/RecipeManagement';
 import { TicketHistory } from './components/TicketHistory';
+import { VoidReturnReport } from './components/VoidReturnReport';
 import { RestPOS } from './components/RestPOS';
 import { ModuleWrapper } from './components/ModuleWrapper';
 import { POSOpenCashRegisterModal } from '../pos/POSOpenCashRegisterModal';
@@ -40,7 +42,7 @@ import { RestaurantReservations } from './components/RestaurantReservations';
 import { RestaurantSettings } from './components/RestaurantSettings';
 import { DeliveryManagement } from './components/DeliveryManagement';
 import { TakeawayManagement } from './components/TakeawayManagement';
-
+import { RestaurantStaffPinModal } from './components/RestaurantStaffPinModal';
 // Lazy loaded components
 const CustomerManagementModule = React.lazy(() => import('../trading/contacts/CustomerManagementModule').then(m => ({ default: m.CustomerManagementModule })));
 const StockModule = React.lazy(() => import('../inventory/stock/StockModule').then(m => ({ default: m.StockModule })));
@@ -112,8 +114,12 @@ export default function RestaurantModule({
         setZoomLevel(100);
         localStorage.setItem('retailos_zoom_level', '100');
     };
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+    const [moveTableSource, setMoveTableSource] = useState<Table | null>(null);
+    const [showStaffModalOnFloor, setShowStaffModalOnFloor] = useState(false);
+    /** Masalar ekranına girildiğinde garson seçimi zorunlu (X yok, panele dön ile çıkış) */
+    const [staffPickMandatory, setStaffPickMandatory] = useState(false);
     const [initialCovers, setInitialCovers] = useState(0);
     const [posMode, setPosMode] = useState<'table' | 'retail' | 'selfservice'>('table');
     const {
@@ -122,6 +128,8 @@ export default function RestaurantModule({
         loadMenu,
         loadRegions,
         loadRecipes,
+        syncTableStatuses,
+        loadKitchenOrders,
         currentStaff: storeStaff,
         workDayDate,
         isDayActive,
@@ -141,6 +149,23 @@ export default function RestaurantModule({
         loadRegions();
         loadRecipes();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'floor') {
+            setShowStaffModalOnFloor(true);
+            setStaffPickMandatory(true);
+        }
+    }, [activeTab]);
+
+    // Arka planda masa durumlarını ve mutfak siparişlerini periyodik senkronize et (ağ/çoklu cihaz senkronu)
+    useEffect(() => {
+        const sync = () => {
+            syncTableStatuses().catch(() => {});
+            loadKitchenOrders().catch(() => {});
+        };
+        const interval = setInterval(sync, 15000);
+        return () => clearInterval(interval);
+    }, [syncTableStatuses, loadKitchenOrders]);
 
     const handleSelectTable = (table: Table, covers: number) => {
         setSelectedTable(table);
@@ -233,7 +258,7 @@ export default function RestaurantModule({
                     <div className="flex items-center gap-4">
                         <div className="flex flex-col items-end">
                             <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">Mali Gün</span>
-                            <span className="text-sm font-bold text-white leading-none">{workDayDate || 'KAPALI'}</span>
+                            <span className="text-sm font-bold text-white leading-none">{workDayDate ? (workDayDate.includes('.') ? workDayDate : new Date(workDayDate + 'T12:00:00').toLocaleDateString('tr-TR')) : 'KAPALI'}</span>
                         </div>
 
                         <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/5">
@@ -324,37 +349,39 @@ export default function RestaurantModule({
                             </div>
                             <div className="res-stat-card cursor-pointer" style={{ backgroundColor: isDayActive ? '#10b981' : '#8b5cf6' }}
                                 onClick={async () => {
-                                    if (!isDayActive) setShowRegisterModal(true);
-                                    else {
-                                        if (activeTablesCount > 0) {
-                                            alert(`Uyarı: Kapatılamaz! Hala açık olan ${activeTablesCount} adet masa var.`);
-                                            return;
-                                        }
-                                        if (confirm('Mali günü kapatmak ve Z-Raporu almak istiyor musunuz?')) {
-                                            const closedAt = new Date().toISOString();
-                                            const dateStr = workDayDate || new Date().toISOString().slice(0, 10);
-                                            try {
-                                                const dbData = await RestaurantService.getZReportData(dateStr);
-                                                setZReportData({
-                                                    date: closedAt,
-                                                    openedAt: new Date(Date.now() - 10 * 3600000).toISOString(),
-                                                    closedAt,
-                                                    staffName: storeStaff?.name || 'Yönetici',
-                                                    openingCash: registerOpeningCash,
-                                                    ...dbData,
-                                                });
-                                                setShowZReport(true);
-                                                closeRegister();
-                                            } catch (err) {
-                                                console.error(err);
-                                            }
-                                        }
+                                    if (!isDayActive) {
+                                        setShowRegisterModal(true);
+                                        return;
+                                    }
+                                    if (activeTablesCount > 0) {
+                                        alert(`Uyarı: Gün kapatılamaz. Hala açık olan ${activeTablesCount} masa var. Önce masaları kapatın veya hesap alın.`);
+                                        return;
+                                    }
+                                    if (!confirm('Mali günü kapatmak ve Z-Raporu almak istiyor musunuz? Kapatıldıktan sonra yeni gün başlatmanız gerekir.')) return;
+                                    const closedAt = new Date().toISOString();
+                                    const dateStr = workDayDate || new Date().toISOString().slice(0, 10);
+                                    try {
+                                        const dbData = await RestaurantService.getZReportData(dateStr);
+                                        setZReportData({
+                                            date: closedAt,
+                                            openedAt: new Date(Date.now() - 10 * 3600000).toISOString(),
+                                            closedAt,
+                                            staffName: storeStaff?.name || 'Yönetici',
+                                            openingCash: registerOpeningCash,
+                                            ...dbData,
+                                        });
+                                        setShowZReport(true);
+                                        closeRegister();
+                                    } catch (err: any) {
+                                        console.error(err);
+                                        const msg = err?.message || String(err);
+                                        alert(msg.includes('Z-Raporu') ? msg : `Z-Raporu alınamadı. ${msg}\n\nGün kapatılmadı.`);
                                     }
                                 }}>
                                 <Clock className="w-6 h-6 text-white" />
                                 <div className="ml-5">
                                     <div className="res-stat-value text-white">{isDayActive ? 'GÜNÜ KAPAT' : 'GÜNÜ BAŞLAT'}</div>
-                                    <div className="res-stat-label text-white/80">MALİ GÜN ({workDayDate || 'KAPALI'})</div>
+                                    <div className="res-stat-label text-white/80">MALİ GÜN ({workDayDate ? (workDayDate.includes('.') ? workDayDate : new Date(workDayDate + 'T12:00:00').toLocaleDateString('tr-TR')) : 'KAPALI'})</div>
                                 </div>
                             </div>
                         </div>
@@ -379,6 +406,9 @@ export default function RestaurantModule({
                                 )}
                                 {hasPermission('restaurant.orders', 'READ') && (
                                     <DashboardTile icon={<History />} label="Siparişler" color="#06b6d4" onClick={() => setActiveTab('history')} disabled={!isDayActive} />
+                                )}
+                                {hasPermission('restaurant.pos', 'READ') && (
+                                    <DashboardTile icon={<FileText />} label="İptal / İade Raporu" color="#dc2626" onClick={() => setActiveTab('voidReport')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.reservations', 'READ') && (
                                     <DashboardTile icon={<CalendarDays />} label="Rezervasyon" color="#f43f5e" onClick={() => setActiveTab('reservations')} disabled={!isDayActive} />
@@ -429,6 +459,16 @@ export default function RestaurantModule({
                         initialCovers={initialCovers}
                         posMode={posMode}
                         handleSelectTable={handleSelectTable}
+                        setSelectedTable={setSelectedTable}
+                        moveTableSource={moveTableSource}
+                        setMoveTableSource={setMoveTableSource}
+                        onRequestStaffChange={() => {
+                            setStaffPickMandatory(false);
+                            setShowStaffModalOnFloor(true);
+                        }}
+                        onAfterSendToKitchen={() => {
+                            setActiveTab('floor');
+                        }}
                     />
                 )}
             </main>
@@ -462,6 +502,25 @@ export default function RestaurantModule({
                     setRtlMode={setRtlMode}
                 />
             )}
+            {showStaffModalOnFloor && (
+                <RestaurantStaffPinModal
+                    onClose={() => {
+                        setShowStaffModalOnFloor(false);
+                        setStaffPickMandatory(false);
+                    }}
+                    onSelect={() => {
+                        setShowStaffModalOnFloor(false);
+                        setStaffPickMandatory(false);
+                    }}
+                    skipConfirmation
+                    mandatory={staffPickMandatory}
+                    onNavigateBack={() => {
+                        setActiveTab('dashboard');
+                        setShowStaffModalOnFloor(false);
+                        setStaffPickMandatory(false);
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -482,6 +541,13 @@ interface RestaurantContentProps {
     initialCovers: number;
     posMode: 'table' | 'retail' | 'selfservice';
     handleSelectTable: (table: Table, covers: number) => void;
+    setSelectedTable: (t: Table | null) => void;
+    moveTableSource: Table | null;
+    setMoveTableSource: (t: Table | null) => void;
+    /** Personel badge tıklanınca garson değişimi modalını açar */
+    onRequestStaffChange?: () => void;
+    /** Mutfak butonuna basıp sipariş gönderildikten sonra masalara dönüp garson seçim açılsın */
+    onAfterSendToKitchen?: () => void;
 }
 
 function RestaurantContent({
@@ -498,11 +564,48 @@ function RestaurantContent({
     selectedTable,
     initialCovers,
     posMode,
-    handleSelectTable
+    handleSelectTable,
+    setSelectedTable,
+    moveTableSource,
+    setMoveTableSource,
+    onRequestStaffChange,
+    onAfterSendToKitchen
 }: RestaurantContentProps) {
+    const { tables, moveTable, mergeTables } = useRestaurantStore();
+    const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
+
     return (
         <div className="h-full bg-[#020617]">
-            {activeTab === 'floor' && <RestaurantFloorPlan onSelectTable={handleSelectTable} onBack={() => setActiveTab('dashboard')} />}
+            {activeTab === 'floor' && (
+                <RestaurantFloorPlan
+                    onSelectTable={handleSelectTable}
+                    onBack={() => { setMoveTableSource(null); setMoveTargetTableId(null); setActiveTab('dashboard'); }}
+                    moveTableSource={moveTableSource}
+                    moveTargetTableId={moveTargetTableId}
+                    onMoveTargetSelect={setMoveTargetTableId}
+                    onRequestStaffChange={onRequestStaffChange}
+                    onMoveConfirm={async (mode, targetId) => {
+                        try {
+                            if (mode === 'move') {
+                                await moveTable(moveTableSource!.id, targetId);
+                            } else {
+                                await mergeTables(moveTableSource!.id, targetId);
+                            }
+                            // Yenilemeden sonra güncel listeden hedef masayı al (closure'daki tables eski kalmasın)
+                            const freshTables = useRestaurantStore.getState().tables;
+                            const targetTable = freshTables.find(t => t.id === targetId);
+                            setMoveTableSource(null);
+                            setMoveTargetTableId(null);
+                            setActiveTab('pos');
+                            setSelectedTable(targetTable || moveTableSource!);
+                        } catch (e: any) {
+                            console.error(e);
+                            alert('Masa taşınırken hata: ' + (e?.message || 'Bilinmeyen hata'));
+                        }
+                    }}
+                    onMoveCancel={() => { setMoveTableSource(null); setMoveTargetTableId(null); }}
+                />
+            )}
             {activeTab === 'kds' && <KitchenDisplay onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'pos' && (
                 <RestPOS
@@ -518,10 +621,13 @@ function RestaurantContent({
                     table={selectedTable}
                     covers={initialCovers}
                     posMode={posMode}
+                    onRequestMoveTable={selectedTable ? () => { setMoveTableSource(selectedTable); setActiveTab('floor'); } : undefined}
+                    onAfterSendToKitchen={onAfterSendToKitchen}
                 />
             )}
             {activeTab === 'recipes' && <RecipeManagement onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'history' && <TicketHistory onClose={() => setActiveTab('dashboard')} />}
+            {activeTab === 'voidReport' && <VoidReturnReport onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'customers' && (
                 <ModuleWrapper title="Müşteri Yönetimi" onBack={() => setActiveTab('dashboard')}>
                     <Suspense fallback={<LoadingSpinner />}><CustomerManagementModule sales={[]} customers={customers} setCustomers={() => { }} /></Suspense>
@@ -557,6 +663,7 @@ function RestaurantContent({
             {activeTab === 'takeaway' && (
                 <Suspense fallback={<LoadingSpinner />}><TakeawayManagement onBack={() => setActiveTab('dashboard')} /></Suspense>
             )}
+
         </div>
     );
 }

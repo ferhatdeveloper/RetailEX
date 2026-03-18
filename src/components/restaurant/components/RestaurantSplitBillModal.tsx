@@ -20,7 +20,7 @@ export function RestaurantSplitBillModal({
     fmt
 }: RestaurantSplitBillModalProps) {
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
             <div
                 className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col"
                 onClick={e => e.stopPropagation()}

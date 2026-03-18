@@ -16,7 +16,7 @@ export const RestaurantTableCloseConfirmModal: React.FC<RestaurantTableCloseConf
     onJustLeave
 }) => {
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="bg-blue-600 px-8 py-6 flex items-center justify-between relative overflow-hidden">

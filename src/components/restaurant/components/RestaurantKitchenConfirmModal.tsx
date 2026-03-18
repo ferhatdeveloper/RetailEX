@@ -82,20 +82,24 @@ export function RestaurantKitchenConfirmModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300"
+            style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+        >
             <div
-                className="bg-white rounded-[32px] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
+                className="bg-white rounded-[32px] w-full max-w-sm max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col relative"
+                style={{ zIndex: 10 }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 p-8 flex items-center justify-between text-white relative overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 p-6 flex items-center justify-between text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
                     <div className="flex items-center gap-4 relative z-10">
                         <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20 shadow-lg">
                             <ChefHat className="w-6 h-6" />
                         </div>
                         <div>
-                            <h3 className="text-2xl font-black uppercase tracking-tight leading-none">Mutfağa Gönder</h3>
+                            <h3 className="text-xl font-black uppercase tracking-tight leading-none">Mutfağa Gönder</h3>
                             <p className="text-[10px] text-white/70 font-black uppercase tracking-widest mt-1.5">
                                 {table ? `Masa ${table.number}` : 'YENİ SİPARİŞ'}
                             </p>
@@ -103,10 +107,10 @@ export function RestaurantKitchenConfirmModal({
                     </div>
                 </div>
 
-                <div className="p-6 space-y-4">
+                <div className="flex-1 min-h-0 flex flex-col p-6 overflow-hidden">
                     {/* Özet */}
                     {pendingCount > 0 ? (
-                        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3 flex items-center gap-3 shrink-0">
                             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-emerald-600 shadow-sm">
                                 <Info className="w-4 h-4" />
                             </div>
@@ -115,7 +119,7 @@ export function RestaurantKitchenConfirmModal({
                             </p>
                         </div>
                     ) : (
-                        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
+                        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 flex items-center gap-3 shrink-0">
                             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-amber-600 shadow-sm">
                                 <ChefHat className="w-4 h-4" />
                             </div>
@@ -125,17 +129,19 @@ export function RestaurantKitchenConfirmModal({
                         </div>
                     )}
 
-                    {/* Satır listesi */}
-                    <div className="bg-slate-50 border-2 border-slate-100 rounded-[24px] p-4 max-h-[260px] overflow-auto space-y-2">
-                        {/* Bekleyen satırlar */}
-                        {pendingItems.map((item, i) => renderRow(item, i, false))}
-                        {/* Zaten gönderilmiş satırlar — soluk */}
-                        {sentItems.map((item, i) => renderRow(item, pendingItems.length + i, true))}
+                    {/* Satır listesi — ekrana sığar, taşarsa scroll */}
+                    <div className="flex-1 min-h-0 mt-4 flex flex-col overflow-hidden">
+                        <div className="bg-slate-50 border-2 border-slate-100 rounded-[24px] flex-1 min-h-0 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                            {/* Bekleyen satırlar */}
+                            {pendingItems.map((item, i) => renderRow(item, i, false))}
+                            {/* Zaten gönderilmiş satırlar — soluk */}
+                            {sentItems.map((item, i) => renderRow(item, pendingItems.length + i, true))}
+                        </div>
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
+                <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
                     <button
                         onClick={onClose}
                         className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] hover:bg-slate-100 transition-all active:scale-95 shadow-sm"

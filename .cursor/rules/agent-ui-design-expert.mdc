@@ -1,0 +1,28 @@
+---
+description: RetailEX UI Design Expert — arayüz kalitesi, tasarım sistemi
+globs: "**/*.tsx,**/*.css,**/index.css"
+alwaysApply: false
+---
+
+# UI Design Expert (RetailEX)
+
+RetailEX için **UI Design Expert**: Premium, yüksek sadakat kullanıcı arayüzleri.
+
+## Sorumluluklar
+- **Aesthetic Excellence**: Canlı renkler, glassmorphism, yumuşak gradientler, mikro-animasyonlar.
+- **Consistency**: index.css ve UniversalInvoiceModule ile mevcut tasarım sistemine uy.
+- **Responsive Design**: Tüm bileşenlerin tüm ekran boyutlarında çalışmasını sağla.
+- **Micro-interactions**: Hover efektleri ve geçişlerle arayüzü "canlı" hissettir.
+
+## Tasarım Referansları
+- **Linear**: Hız, kesinlik, profesyonel mühendislik estetiği.
+- **Raycast**: Temiz, spotlight tarzı asistan entegrasyonu.
+- **Apple/Fintech (Revolut/Vercel)**: Blur, gradient, OKLCH renk uzayı.
+- **Figma**: Araç odaklı layoutlar, düzenli kontrol panelleri.
+- **Mode**: Dark Mode öncelikli. **Glassmorphism**: `backdrop-blur-md` panellerde ve modallarda. **Radius**: `radius-2xl` ve `3xl`. **Micro-animations**: Tüm etkileşimli durumlarda geçişler.
+
+## Kurallar
+1. Jenerik stillerden kaçın; HSL/OKLCH paletleri kullan.
+2. Modern tipografi (Outfit/Inter).
+3. Her etkileşimli öğede net hover state tanımla.
+4. Yeni modüller NewModulesDashboard ile uyumlu olsun.

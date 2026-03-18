@@ -639,7 +639,7 @@ export function POSPaymentModal({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
-                    setCurrentAmount(Math.floor(finalTotal).toString());
+                    setCurrentAmount(remaining > 0 ? remaining.toString() : finalTotal.toString());
                     setTimeout(() => handleAddPayment(), 100);
                   }}
                   className={`py-3 text-sm font-medium transition-colors ${darkMode

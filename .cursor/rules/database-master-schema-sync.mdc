@@ -1,0 +1,33 @@
+---
+description: Yeni SQL şema değişikliklerini sıfır kurulum için 000_master_schema.sql içine de eklemek
+alwaysApply: true
+---
+
+# Veritabanı: sıfır kurulum ve migration birlikte
+
+## Zorunlu pratik
+
+Yeni **tablo, kolon, indeks, fonksiyon, şema veya constraint** içeren SQL yazdığında:
+
+1. **Mevcut veritabanları için** — numaralı migration dosyası kullan: `database/migrations/NNN_açıklama.sql` (örn. `003_user_allowed_firms_periods.sql`). `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` gibi idempotent ifadeler tercih edilir.
+2. **Sıfırdan kurulum için** — **aynı şema değişikliğini** `database/migrations/000_master_schema.sql` içine de ekle veya güncelle.
+
+Böylece sadece `000_master_schema.sql` (ve isteğe bağlı `001_demo_data.sql`) çalıştıran yeni ortamlar, migration zincirine ihtiyaç duymadan güncel şemayı alır.
+
+## Ne zaman ne yapılır
+
+| Durum | Yapılacak |
+|-------|-----------|
+| Yeni kolon / tablo | `NNN_*.sql` + `000_master_schema.sql` ilgili `CREATE TABLE` / tablo tanımına ekle |
+| Yeni migration dosyası oluşturuldu | Master şemada eksik kalan parça varsa master’ı güncelle |
+| Sadece veri (seed) | Genelde sadece `001_demo_data.sql` veya ayrı script; master’a DDL ekleme |
+
+## Kontrol listesi (agent)
+
+- [ ] Numaralı migration yazıldı veya güncellendi mi?
+- [ ] `000_master_schema.sql` yeni kurulumda aynı yapıyı içeriyor mu?
+- [ ] `database/migrations/README_ORDER.md` gerekirse yeni migration satırı ile güncellendi mi?
+
+## Not
+
+Tauri’de çok satırlı `DO $$ … $$` bloklarından kaçın; DDL’i ayrı `ALTER`/`CREATE` satırlarına böl (proje bağlamındaki kural ile uyumlu).

@@ -118,6 +118,9 @@ CREATE TABLE IF NOT EXISTS public.users (
   store_id     UUID REFERENCES public.stores(id),
   is_active    BOOLEAN DEFAULT true,
   last_login_at TIMESTAMPTZ,
+  allowed_firm_nrs   JSONB DEFAULT '[]',
+  allowed_periods    JSONB DEFAULT '[]',
+  allowed_store_ids  JSONB DEFAULT '[]',
   created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -1423,6 +1426,7 @@ BEGIN
       locked_by_staff_name VARCHAR(255),
       locked_at            TIMESTAMPTZ,
       linked_order_ids     text[] DEFAULT ''{}'',
+      color                VARCHAR(20) DEFAULT NULL,
       updated_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_rest_tables');

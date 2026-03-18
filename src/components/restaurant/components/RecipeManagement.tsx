@@ -31,9 +31,12 @@ interface RecipeManagementProps {
 }
 
 export function RecipeManagement({ onBack }: RecipeManagementProps) {
-    const { recipes, updateRecipe, menu, loadRecipes } = useRestaurantStore();
+    const { recipes, updateRecipe, menu, loadRecipes, loadMenu } = useRestaurantStore();
 
-    useEffect(() => { loadRecipes(); }, []);
+    useEffect(() => {
+        loadRecipes();
+        if (menu.length === 0) loadMenu();
+    }, []);
     const { products } = useProductStore();
 
     const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(menu[0] || null);
@@ -255,12 +258,12 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                     </div>
                 </div>
 
-                {/* Right: Recipe Editor */}
+                {/* Right: Recipe Editor - only show when editingRecipe is for selected product */}
                 <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
-                    {selectedMenuItem && editingRecipe ? (
+                    {selectedMenuItem && editingRecipe && editingRecipe.menuItemId === selectedMenuItem.id ? (
                         <>
-                            {/* Editor Content Area */}
-                            <div className="flex-1 overflow-auto p-6 custom-scrollbar">
+                            {/* Editor Content Area - key ensures correct product when switching */}
+                            <div key={selectedMenuItem.id} className="flex-1 overflow-auto p-6 custom-scrollbar">
                                 <div className="mb-6 flex items-center justify-between">
                                     <h3 className="text-[10px] font-black text-slate-400 tracking-widest uppercase flex items-center gap-2">
                                         <FileText className="w-3 h-3" /> Malzeme Listesi ({editingRecipe.ingredients.length})
@@ -322,11 +325,12 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                 </div>
                             </div>
 
-                            {/* Summary Footer bar */}
+                            {/* Summary Footer bar - product name from selectedMenuItem for consistency */}
                             <div className="p-4 grid grid-cols-4 gap-4 bg-white border-t border-slate-200 shrink-0 shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
                                 <div className="bg-[#f1f8ff]/50 p-4 rounded-3xl border border-blue-100 flex flex-col items-center justify-center">
                                     <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Temel Maliyet</span>
                                     <span className="text-xl font-black mt-1 text-blue-600 leading-none">{editingRecipe.totalCost.toLocaleString()}</span>
+                                    <span className="text-[9px] text-slate-400 mt-1 truncate max-w-full">{selectedMenuItem.name}</span>
                                 </div>
 
                                 <div className="bg-[#fff1f1]/50 p-4 rounded-3xl border border-red-100 flex flex-col items-center justify-center">

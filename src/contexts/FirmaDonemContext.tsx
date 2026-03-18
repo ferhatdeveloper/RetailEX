@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Firma & Dönem Context (Enterprise Edition)
  * 
  * Logo-style Enterprise Architecture:
@@ -160,7 +160,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       const { rows } = await postgres.query('SELECT * FROM firms ORDER BY firm_nr ASC');
       console.log('[FirmaDonemContext] Raw firms rows:', rows);
 
-      const mappedFirms = (rows || []).map((f: any) => ({
+      let mappedFirms = (rows || []).map((f: any) => ({
         ...f,
         logicalref: parseInt(f.firm_nr) || f.nr || 0,
         nr: parseInt(f.firm_nr) || f.nr || 0,
@@ -170,6 +170,16 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         raporlama_para_birimi: f.raporlama_para_birimi || 'IQD'
       }));
 
+      try {
+        const sessionStr = localStorage.getItem('exretail_session');
+        if (sessionStr) {
+          const session = JSON.parse(sessionStr);
+          const allowedFirmNrs = session?.user?.allowed_firm_nrs;
+          if (Array.isArray(allowedFirmNrs) && allowedFirmNrs.length > 0) {
+            mappedFirms = mappedFirms.filter((f: any) => allowedFirmNrs.includes(f.firm_nr));
+          }
+        }
+      } catch (_) { /* ignore */ }
       setFirms(mappedFirms);
 
       if (mappedFirms.length > 0) {
@@ -228,7 +238,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         }
       };
 
-      const mappedPeriods = (rows || []).map((p: any) => {
+      let mappedPeriods = (rows || []).map((p: any) => {
         const isActive = p.is_active === true || p.is_active === 1 || p.is_active === 'true';
 
         const mapped = {
@@ -251,6 +261,24 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
         return mapped;
       });
+
+      try {
+        const sessionStr = localStorage.getItem('exretail_session');
+        if (sessionStr) {
+          const session = JSON.parse(sessionStr);
+          const allowedPeriods = session?.user?.allowed_periods;
+          if (Array.isArray(allowedPeriods) && allowedPeriods.length > 0) {
+            const firmNrRow = await postgres.query('SELECT firm_nr FROM firms WHERE id::text = $1 OR firm_nr = $1 LIMIT 1', [firmIdOrNr]);
+            const effectiveFirmNr = firmNrRow?.rows?.[0]?.firm_nr || (typeof firmIdOrNr === 'string' && !firmIdOrNr.match(/^[0-9a-f-]{36}$/i) ? firmIdOrNr : null);
+            if (effectiveFirmNr) {
+              const allowedNrsForFirm = allowedPeriods.filter((x: any) => x.firm_nr === effectiveFirmNr).map((x: any) => x.period_nr);
+              if (allowedNrsForFirm.length > 0) {
+                mappedPeriods = mappedPeriods.filter((p: any) => allowedNrsForFirm.includes(p.nr));
+              }
+            }
+          }
+        }
+      } catch (_) { /* ignore */ }
 
       console.log('[FirmaDonemContext] Total mapped periods:', mappedPeriods.length);
       console.log('[FirmaDonemContext] ========== END DEBUG ==========');

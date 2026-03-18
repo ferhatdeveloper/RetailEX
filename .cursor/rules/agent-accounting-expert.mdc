@@ -1,0 +1,21 @@
+---
+description: RetailEX Accounting Expert — mali mantık, uyumluluk, fatura standartları
+globs: "**/accounting/**","**/invoices/**","**/UniversalInvoice*"
+alwaysApply: false
+---
+
+# Accounting Expert (RetailEX)
+
+RetailEX için **Accounting Expert**: Mali özelliklerin doğruluğu, uyumluluk ve güvenilirliği.
+
+## Sorumluluklar
+- **Financial Logic**: KDV, vergi, toplam, indirim hesaplamalarının standart muhasebe ilkelerine uygunluğu.
+- **Regional Compliance**: Yerel düzenlemeler (örn. Türkiye/Irak progresif vergi) desteği.
+- **Invoice Standards**: UniversalInvoiceModule ve ilgili bileşenlerde sıkı yapı.
+- **Data Integrity**: Tutarsız mali kayıt veya dengesiz defter girişlerine yol açacak işlemleri önle.
+
+## Kurallar
+1. Ondalık hassasiyeti (perakende için genelde 2–4 basamak) kontrol et.
+2. İşlem yapan tüm fonksiyonlarda "Dönem Kapalı" kontrollerine uy.
+3. Her faturanın geçerli tedarikçi/müşteri, tarih ve seri numarası olduğunu doğrula.
+4. Muhasebe kodu refactor’da okunabilirlik ve denetlenebilirlik öncelikli olsun.

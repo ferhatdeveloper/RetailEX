@@ -12,13 +12,15 @@ interface User {
   username: string;
   email: string;
   full_name: string;
-  role_ids: string[]; // Multiple roles (mapped from single role in DB for now)
+  role_ids: string[];
   roles: Role[];
-  firm_nr?: string; // Firma numarası (örn: "009")
-  period_nr?: string; // Dönem numarası (örn: "01")
-  firma_id?: string; // Legacy field
+  firm_nr?: string;
+  period_nr?: string;
+  firma_id?: string;
   store_id?: string;
   created_at: string;
+  allowed_firm_nrs?: string[];
+  allowed_periods?: { firm_nr: string; period_nr: number }[];
 }
 
 interface AuthContextType {
@@ -139,7 +141,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       `;
 
       const { ERP_SETTINGS: latestSettings } = await import('../services/postgres');
-      const result = await postgres.query(sql, [username, latestSettings.firmNr, password]);
+      let result = await postgres.query(sql, [username, latestSettings.firmNr, password]);
+
+      // public.users fallback (Kullanıcı Yönetimi'nde eklenen garson vb.)
+      if (!result.rowCount || result.rowCount === 0) {
+        const publicSql = `
+          SELECT u.id, u.email, u.username, u.full_name, u.firm_nr, u.store_id, u.created_at, u.role,
+                 u.allowed_firm_nrs, u.allowed_periods,
+                 r.id as role_id, r.name as role_name, r.permissions as role_permissions, r.color as role_color
+          FROM public.users u
+          LEFT JOIN public.roles r ON r.id = u.role_id
+          WHERE LOWER(u.username) = LOWER($1) AND u.firm_nr = $2 AND u.is_active = true
+          AND u.password_hash IS NOT NULL AND u.password_hash = crypt($3, u.password_hash)
+          LIMIT 1
+        `;
+        result = await postgres.query(publicSql, [username, latestSettings.firmNr, password]);
+      }
 
       if (result.rowCount > 0) {
         const dbUser = result.rows[0];
@@ -166,6 +183,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           updated_at: new Date().toISOString()
         };
 
+        const allowedFirmNrs = dbUser.allowed_firm_nrs != null ? (typeof dbUser.allowed_firm_nrs === 'string' ? JSON.parse(dbUser.allowed_firm_nrs || '[]') : dbUser.allowed_firm_nrs) : [];
+        const allowedPeriods = dbUser.allowed_periods != null ? (typeof dbUser.allowed_periods === 'string' ? JSON.parse(dbUser.allowed_periods || '[]') : dbUser.allowed_periods) : [];
         const userWithRoles: User = {
           id: dbUser.id,
           username: dbUser.username,
@@ -176,7 +195,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           firm_nr: dbUser.firm_nr,
           period_nr: latestSettings.periodNr,
           store_id: dbUser.store_id,
-          created_at: dbUser.created_at
+          created_at: dbUser.created_at,
+          allowed_firm_nrs: allowedFirmNrs,
+          allowed_periods: allowedPeriods
         };
 
         setUser(userWithRoles);

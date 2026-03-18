@@ -41,7 +41,7 @@ export class WebSocketService {
   private userId: string | null = null;
   private storeId: string | null = null;
 
-  constructor(url: string = 'ws://localhost:8000/api/v1/ws') {
+  constructor(url: string = 'ws://127.0.0.1:9999/api/v1/ws') {
     this.url = url;
   }
 

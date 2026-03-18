@@ -1,0 +1,73 @@
+---
+description: RetailEX standart modal stili — yeni veya güncellenecek tüm modallar bu “flat” tipi baz almalı
+globs: "**/*Modal*.tsx,**/*Modal*.tsx,**/components/**/*.tsx"
+alwaysApply: false
+---
+
+# RetailEX Flat Modal Standardı
+
+Yeni oluşturulacak veya mevcut bir modal üzerinde işlem yapılacaksa **bu modal tipi baz alınmalı**. Referans bileşenler: `RestaurantStaffPinModal`, `POSPaymentModal`, `UserManagementModule` (Kullanıcı Düzenle modalı).
+
+## Genel yapı
+
+- **Overlay:** Tam ekran, arka plan karartma + blur.
+- **Kutu:** Beyaz, yuvarlatılmış köşeler, ince border, hafif gölge. İçerik scroll edilebilir.
+- **Header:** Gradient arka plan (mavi–indigo), beyaz metin, sağ üstte kapatma (X) butonu.
+- **Body:** Form/içerik alanı, padding’li, overflow-y-auto.
+- **Footer:** Alt çizgi + hafif arka plan, İptal + birincil aksiyon butonları.
+
+## Zorunlu sınıflar ve yapı
+
+```tsx
+{/* Overlay */}
+<div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
+  <div className="bg-white rounded-[2rem] w-full max-w-{...} max-h-[90vh] overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
+    {/* Header — gradient */}
+    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black uppercase tracking-tight">Başlık</h2>
+          <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Alt başlık</p>
+        </div>
+        <button type="button" onClick={onClose} className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+    {/* Body — scroll */}
+    <div className="flex-1 overflow-y-auto p-8">...</div>
+    {/* Footer */}
+    <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+      <button type="button" className="flex-1 ... rounded-2xl border-2 border-slate-200 ...">İptal</button>
+      <button type="button" className="flex-1 ... rounded-2xl bg-blue-600 text-white ...">Ana aksiyon</button>
+    </div>
+  </div>
+</div>
+```
+
+## Form alanları
+
+- **Label:** `text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5`
+- **Input:** `px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none ... text-slate-800 font-medium`
+- **Select:** `appearance-none bg-white` + sağda **tek bir** chevron ikonu (Lucide `ChevronDown`), inline `backgroundImage` ile chevron **kullanılmamalı** (tekrarlama/çakışma olur).
+
+## Select + Chevron (tek ikon)
+
+Dropdown’da çoklu chevron hatasını önlemek için:
+
+- Select’i bir `relative` div içine al.
+- Select’e: `pr-11 appearance-none` (sağda ikon için boşluk).
+- Sağda tek ikon: `<ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />`
+- Select üzerinde **backgroundImage / data URI chevron kullanma**.
+
+## Butonlar (footer)
+
+- İptal: `rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]`
+- Birincil: `rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]`
+
+## Kurallar
+
+1. Yeni modal eklendiğinde veya eski modal düzenlendiğinde bu yapı ve sınıflar uygulanmalı.
+2. Modal overlay z-index: `z-[9999]` veya ihtiyaca göre yüksek bir değer; çakışma olmamalı.
+3. Kapatma: Header’da X butonu; gerekirse backdrop’a tıklanınca kapatma (isteğe bağlı, `mandatory` gibi durumlarda kapatma kapatılabilir).
+4. Animasyon: `animate-in fade-in` (overlay), `animate-in zoom-in-95` (kutu); süre `duration-200` veya `duration-300`.

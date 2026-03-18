@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChefHat, Clock, CheckCircle, Bell, Utensils, ArrowLeft, Filter } from 'lucide-react';
+import { ChefHat, Clock, CheckCircle, Bell, Utensils, ArrowLeft, Filter, RefreshCw } from 'lucide-react';
 import { useRestaurantStore } from '../store/useRestaurantStore';
 import { cn } from '@/components/ui/utils';
 import { KitchenOrder, OrderItem } from '../types';
@@ -22,10 +22,12 @@ interface KitchenDisplayProps {
 export function KitchenDisplay({ onBack }: KitchenDisplayProps) {
     const { kitchenOrders, loadKitchenOrders, markAsReady, markAsServed } = useRestaurantStore();
     const [filter, setFilter] = useState<'all' | 'new' | 'cooking' | 'ready'>('all');
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        loadKitchenOrders();
-        const interval = setInterval(loadKitchenOrders, 5000); // 5s auto-refresh
+        setLoading(true);
+        loadKitchenOrders().finally(() => setLoading(false));
+        const interval = setInterval(() => loadKitchenOrders(), 5000); // 5s auto-refresh
         return () => clearInterval(interval);
     }, []);
 
@@ -35,52 +37,57 @@ export function KitchenDisplay({ onBack }: KitchenDisplayProps) {
 
     return (
         <div className="flex flex-col h-full bg-[#f8f9fa] animate-in fade-in duration-300 overflow-hidden">
-            {/* Header */}
-            <div className="border-b px-6 py-4 flex items-center justify-between z-20 shrink-0 gap-8 shadow-2xl"
+            {/* Header — butonlar görünür, sağ blok taşmayacak */}
+            <div className="border-b px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 z-20 shrink-0 shadow-2xl min-h-[72px]"
                 style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-shrink-0">
                     <button onClick={onBack}
-                        className="flex items-center gap-2.5 px-6 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[12px] group shrink-0 shadow-inner">
-                        <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+                        className="flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 bg-white text-blue-600 hover:bg-white/95 rounded-xl sm:rounded-2xl transition-all active:scale-95 border-2 border-white font-black uppercase text-[11px] sm:text-[12px] shrink-0 shadow-lg">
+                        <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span>Geri</span>
                     </button>
-                    <div className="flex items-center gap-4 ml-4">
-                        <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
-                            <ChefHat className="w-6 h-6 text-white" />
+                    <button
+                        onClick={() => { setLoading(true); loadKitchenOrders().finally(() => setLoading(false)); }}
+                        disabled={loading}
+                        className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 bg-white text-blue-600 hover:bg-white/95 rounded-xl sm:rounded-2xl transition-all active:scale-95 border-2 border-white font-black uppercase text-[11px] sm:text-[12px] shrink-0 shadow-lg disabled:opacity-60"
+                        title="Mutfak siparişlerini yenile"
+                    >
+                        <RefreshCw className={cn("w-4 h-4 sm:w-5 sm:h-5", loading && "animate-spin")} />
+                        <span>Yenile</span>
+                    </button>
+                    <div className="flex items-center gap-3 ml-2 sm:ml-4 min-w-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
+                            <ChefHat className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
-                        <div>
-                            <h2 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none">Mutfak Ekranı (KDS)</h2>
-                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-1">Kitchen Display System</p>
+                        <div className="min-w-0">
+                            <h2 className="text-base sm:text-xl font-black italic tracking-tighter text-white uppercase leading-none truncate">Mutfak Ekranı (KDS)</h2>
+                            <p className="text-[9px] sm:text-[10px] text-white/70 font-bold uppercase tracking-widest mt-0.5">Kitchen Display System</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-6">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-6 shrink-0">
                     {/* Status Filters */}
-                    <div className="flex items-center gap-2 bg-black/10 p-1.5 rounded-2xl border border-white/10">
+                    <div className="flex items-center gap-1.5 sm:gap-2 bg-white/15 p-1.5 rounded-xl sm:rounded-2xl border border-white/20">
                         <FilterButton active={filter === 'all'} label="TÜMÜ" onClick={() => setFilter('all')} />
                         <FilterButton active={filter === 'new'} label="YENİ" onClick={() => setFilter('new')} activeColor="bg-blue-500" />
                         <FilterButton active={filter === 'cooking'} label="PİŞİYOR" onClick={() => setFilter('cooking')} activeColor="bg-amber-500" />
                         <FilterButton active={filter === 'ready'} label="HAZIR" onClick={() => setFilter('ready')} activeColor="bg-emerald-500" />
                     </div>
 
-                    {/* Load Indicator */}
-                    <div className="flex items-center gap-6 px-6 py-2 bg-black/20 rounded-2xl border border-white/10">
-                        <div className="text-center">
-                            <p className="text-[9px] font-black text-white/50 uppercase tracking-widest leading-none">KDS YOĞUNLUĞU</p>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className={cn(
-                                    "text-sm font-black uppercase tracking-tighter",
-                                    kitchenOrders.length > 15 ? "text-red-400" : kitchenOrders.length > 8 ? "text-amber-400" : "text-emerald-400"
-                                )}>
-                                    {kitchenOrders.length > 15 ? "YÜKSEK" : kitchenOrders.length > 8 ? "ORTA" : "DÜŞÜK"}
-                                </span>
-                                <div className="flex gap-1 ml-1">
-                                    <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 0 ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-white/10")} />
-                                    <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 8 ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-white/10")} />
-                                    <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 15 ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" : "bg-white/10")} />
-                                </div>
-                            </div>
+                    {/* Yoğunluk göstergesi */}
+                    <div className="flex items-center gap-2 px-4 py-2 sm:px-6 sm:py-2.5 bg-white/20 rounded-xl sm:rounded-2xl border border-white/20">
+                        <p className="text-[9px] font-black text-white/80 uppercase tracking-widest leading-none whitespace-nowrap">Yoğunluk</p>
+                        <span className={cn(
+                            "text-xs sm:text-sm font-black uppercase tracking-tighter whitespace-nowrap",
+                            kitchenOrders.length > 15 ? "text-red-200" : kitchenOrders.length > 8 ? "text-amber-200" : "text-emerald-200"
+                        )}>
+                            {kitchenOrders.length > 15 ? "YÜKSEK" : kitchenOrders.length > 8 ? "ORTA" : "DÜŞÜK"}
+                        </span>
+                        <div className="flex gap-1">
+                            <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 0 ? "bg-emerald-300" : "bg-white/30")} />
+                            <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 8 ? "bg-amber-300" : "bg-white/30")} />
+                            <div className={cn("w-1.5 h-3 rounded-full", kitchenOrders.length > 15 ? "bg-red-300" : "bg-white/30")} />
                         </div>
                     </div>
                 </div>
@@ -188,10 +195,14 @@ function OrderCard({ order, onReady, onServed }: { order: KitchenOrder, onReady:
                             )}
 
                             {isTime && item.status !== 'ready' && order.status !== 'ready' && (
-                                <div className="flex items-center gap-2 mt-1 text-[10px] font-black text-blue-600 uppercase tracking-widest animate-pulse">
-                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                                <button
+                                    type="button"
+                                    onClick={onReady}
+                                    className="mt-2 w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[11px] sm:text-[12px] uppercase tracking-widest shadow-lg shadow-blue-500/30 border-2 border-blue-500 transition-all active:scale-95"
+                                >
+                                    <Utensils className="w-4 h-4 shrink-0" />
                                     PİŞİRMEYE BAŞLA!
-                                </div>
+                                </button>
                             )}
 
                             {item.notes && (
@@ -239,7 +250,7 @@ function FilterButton({ active, label, onClick, activeColor = "bg-blue-600" }: {
                 "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
                 active
                     ? cn(activeColor, "text-white shadow-lg")
-                    : "text-white/50 hover:text-white hover:bg-white/5"
+                    : "text-white/80 hover:text-white hover:bg-white/10 border border-white/20"
             )}
         >
             {label}

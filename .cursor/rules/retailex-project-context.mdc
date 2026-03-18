@@ -1,0 +1,33 @@
+---
+description: RetailEX proje bağlamı — ERP mimarisi, modüller, DB ve kurallar (referans)
+alwaysApply: true
+---
+
+# RetailEX Proje Bağlamı
+
+**RetailEX**: Çok kiracılı, çok mağazalı perakende/restoran/güzellik merkezi ERP. Web veya Tauri 2 masaüstü.
+
+## Teknoloji
+- Frontend: React 18, TypeScript, Vite 6. State: Zustand + TanStack React Query. UI: Radix, shadcn, Ant Design 6.
+- DB: PostgreSQL 16. ORM yok — ham SQL, `PostgresConnection` (services/postgres.ts).
+- Web: `pg_bridge` (Hono proxy, `npm run bridge` → :3001). Tauri: doğrudan Rust ile PG.
+- i18n: i18next, tr/en/ar/ku. Modül çevirileri `tm('bKey')`, güzellik prefix `b`.
+
+## Dizinler
+- `src/components/`: system, pos, inventory, trading, accounting, wms, restaurant, beauty, management, reports, shared.
+- `src/services/`: postgres.ts, pg_bridge.ts, api/, beautyService, wmsService, rbacService.
+- `src/contexts/`: Auth, Language, Theme, FirmaDonem, Version.
+- `DeskApp/`: Tauri 2 (Rust). `database/migrations/`: şema + demo. `android/`: Capacitor 8.
+
+## Veritabanı
+- Multi-tenant: kart `rex_{firmNr}_{table}`, hareket `rex_{firmNr}_{periodNr}_{table}`. Tablo adını düz yaz; prefix postgres.ts ekler.
+- Şemalar: public, wms, rest, beauty. Firma/dönem: `ERP_SETTINGS.firmNr`, `periodNr`.
+- Tauri'de `DO $$ … END $$` kullanma; DDL'i ayrı satırlara böl.
+
+## Modüller
+POS (MarketPOS, MobilePOS), Yönetim (dashboard, ürünler, faturalar, raporlar, kasa, banka, kampanyalar), WMS (alım/sevkiyat/sayım), Restoran, Güzellik (randevu, uzman, CRM), Muhasebe/Finans.
+
+## Kritik kurallar
+- Tauri hata: `err?.message || String(err)`.
+- Yeni WMS servisi: `PostgresConnection.getInstance()` + `ERP_SETTINGS`.
+- Dark mode: `darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'`.

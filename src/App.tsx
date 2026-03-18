@@ -58,6 +58,14 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // HTML loader'ı kaldır: React logo+spinner çizildikten sonra, böylece arada boş ekran olmaz
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if ((window as any).removeLoader) (window as any).removeLoader();
+    }, 120);
+    return () => clearTimeout(t);
+  }, []);
+
   // Unified Infrastructure & Config Check
   useEffect(() => {
     const applyConfig = (config: any) => {
@@ -88,7 +96,7 @@ function App() {
               setTimeout(() => r([
                 { status: 'rejected', reason: 'timeout' },
                 { status: 'rejected', reason: 'timeout' },
-              ]), 10000)
+              ]), 5000)
             ),
           ]);
 
@@ -97,7 +105,7 @@ function App() {
           if (ver) setVersion(String(ver));
           if (config) localStorage.setItem('retailex_web_config', JSON.stringify(config));
 
-          await initializeFromSQLite().catch(() => { });
+          await initializeFromSQLite(config).catch(() => { });
           if (config) {
             import('./services/postgres').then(({ postgres }) =>
               postgres.connect().catch(() => { })
@@ -118,6 +126,7 @@ function App() {
           }).catch(() => { });
 
           setIsInitialized(true);
+          if ((window as any).removeLoader) (window as any).removeLoader();
         } else {
           // ── Web Flow ──────────────────────────────────────────────────────────
           await initializeFromSQLite();
@@ -160,7 +169,7 @@ function App() {
       const loader = document.getElementById('app-loader');
       if (loader) loader.remove();
       if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 15000); // Increased to 15s to allow for background service startup
+    }, 10000); // Fallback if startup hangs; loader removed as soon as ready
 
     return () => clearTimeout(emergencyTimer);
   }, [IS_TAURI]);
@@ -265,21 +274,17 @@ function App() {
     localStorage.removeItem('exretail_firma_donem_configured');
   }, [logout]);
 
-  // Loading state for infrastructure or config check
+  // Load + Neon logo tek ekranda: logo ile spinner birlikte
   if (isConfigured === null || !isPgReady || installingPg) {
     return (
-      <div className="fixed inset-0 bg-[#0f1113] flex items-center justify-center animate-in fade-in duration-500">
-        <div className="text-center space-y-6">
+      <div className="fixed inset-0 bg-[#0f1113] flex items-center justify-center animate-in fade-in duration-300">
+        <div className="text-center flex flex-col items-center gap-6">
           <NeonLogo size="lg" className="animate-pulse" />
-          <p className="text-blue-400 text-xs font-black uppercase tracking-[0.4em] animate-pulse">
-            {installingPg ? 'Veritabanı Altyapısı Hazırlanıyor...' : 'Sistem Yükleniyor...'}
-          </p>
+          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
           {installingPg && (
-            <p className="text-gray-300 text-sm animate-pulse">Lütfen bekleyin, bu işlem ilk sefere mahsustur.</p>
+            <p className="text-gray-300 text-sm animate-pulse">Veritabanı hazırlanıyor, lütfen bekleyin.</p>
           )}
-          <div className="mt-8 text-blue-300 text-xs font-mono tracking-widest uppercase">
-            Enterprise OS v{version} • Initializing Core
-          </div>
+          <div className="text-blue-300 text-xs font-mono tracking-widest uppercase">v{version}</div>
         </div>
       </div>
     );
@@ -296,8 +301,11 @@ function App() {
           />
           {/* Global Loading / Setup Wizard Check */}
           {isConfigured === null || authLoading ? (
-            <div className="min-h-screen bg-[#050510] flex items-center justify-center">
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+            <div className="min-h-screen bg-[#0f1113] flex items-center justify-center">
+              <div className="text-center flex flex-col items-center gap-6">
+                <NeonLogo size="lg" className="animate-pulse" />
+                <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+              </div>
             </div>
           ) : (windowWidth >= 1024 && !isConfigured) ? (
             <SetupWizard />

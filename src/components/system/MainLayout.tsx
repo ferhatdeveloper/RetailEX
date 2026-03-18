@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
 import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles } from 'lucide-react';
@@ -250,7 +250,9 @@ export function MainLayout({
   useEffect(() => {
     // Only connect if user is authenticated
     if (currentUser.id) {
-      wsService.connect(currentUser.id, 'default_store');
+      wsService.connect(currentUser.id, 'default_store').catch(() => {
+        // Backend ws server may not be running (e.g. Tauri without ws on 8000) — ignore
+      });
 
       // Update local status for the UI indicator
       const checkStatus = setInterval(() => {

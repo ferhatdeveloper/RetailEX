@@ -1,0 +1,15 @@
+---
+description: AWS maliyet optimizasyonu, billing, observability, operasyon
+alwaysApply: false
+---
+
+# AWS Cost & Operations
+
+Maliyet optimizasyonu, faturalandırma analizi, maliyet tahmini, observability ve operasyon best practice’leri. Billing, Cost Explorer, Budgets, CloudWatch, CloudTrail ile çalışırken.
+
+## Ön koşul
+AWS MCP araçları gerekli. Pricing/Cost/CloudWatch MCP sunucuları varsa kullan. Sorularda önce AWS dokümantasyonunu MCP ile kontrol et.
+
+## Konular
+- Billing ve maliyet trendleri, bütçe kullanımı, cost allocation tag’ler.
+- CloudWatch alarmları, loglar; güvenlik değerlendirmesi. Referans: `tools/aws-skills-zxkane/plugins/aws-cost-ops/.../references/` (cloudwatch-alarms, operations-patterns).

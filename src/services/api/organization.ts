@@ -87,6 +87,61 @@ export const organizationAPI = {
     },
 
     /**
+     * Get stores (mağaza/depo) for a firm
+     */
+    async getStoresByFirmNr(firmNr: string): Promise<{ id: string; code: string; name: string; type?: string }[]> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT id, code, name, type FROM public.stores WHERE firm_nr = $1 AND is_active = true ORDER BY name`,
+                [firmNr]
+            );
+            return (rows || []).map((r: any) => ({
+                id: r.id?.toString?.() ?? r.id,
+                code: r.code || '',
+                name: r.name || '',
+                type: r.type
+            }));
+        } catch (error) {
+            console.error('[OrganizationAPI] getStoresByFirmNr failed:', error);
+            return [];
+        }
+    },
+
+    /**
+     * Get all firms with their periods and stores (for user tree: firma -> dönemler, mağazalar/depolar)
+     */
+    async getFirmsWithPeriodsAndStores(): Promise<{
+        firms: Firm[];
+        periodsByFirmNr: Record<string, Period[]>;
+        storesByFirmNr: Record<string, { id: string; code: string; name: string; type?: string }[]>;
+    }> {
+        const firms = await this.getFirms();
+        const periodsByFirmNr: Record<string, Period[]> = {};
+        const storesByFirmNr: Record<string, { id: string; code: string; name: string; type?: string }[]> = {};
+        await Promise.all(
+            firms.map(async (f: any) => {
+                const firmNr = f.firm_nr || f.firma_kodu || '';
+                const [periods, stores] = await Promise.all([
+                    this.getPeriods(f.id || firmNr),
+                    this.getStoresByFirmNr(firmNr)
+                ]);
+                periodsByFirmNr[firmNr] = periods;
+                storesByFirmNr[firmNr] = stores;
+                return { periods, stores };
+            })
+        );
+        return { firms, periodsByFirmNr, storesByFirmNr };
+    },
+
+    /**
+     * Get all firms with their periods (for user allowed firms/periods selection)
+     */
+    async getFirmsWithPeriods(): Promise<{ firms: Firm[]; periodsByFirmNr: Record<string, Period[]> }> {
+        const { firms, periodsByFirmNr } = await this.getFirmsWithPeriodsAndStores();
+        return { firms, periodsByFirmNr };
+    },
+
+    /**
      * Get periods for a firm
      */
     async getPeriods(firmId: string): Promise<Period[]> {

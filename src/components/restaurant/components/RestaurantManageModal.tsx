@@ -35,9 +35,11 @@ export function RestaurantManageModal({
     const [bulkPrefix, setBulkPrefix] = useState('M');
     const [bulkCount, setBulkCount] = useState(5);
     const [loading, setLoading] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     const handleSave = async () => {
         setLoading(true);
+        setSaveError(null);
         try {
             if (type === 'region') {
                 if (newRegionName.trim()) {
@@ -54,15 +56,17 @@ export function RestaurantManageModal({
                 });
             }
             onClose();
-        } catch (error) {
-            console.error('[RestaurantManageModal] Save error:', error);
+        } catch (error: any) {
+            const msg = error?.message ?? String(error);
+            console.error('[RestaurantManageModal] Save error:', msg);
+            setSaveError(msg || 'Kayıt sırasında hata oluştu');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div
                 className="bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
                 onClick={e => e.stopPropagation()}
@@ -195,6 +199,13 @@ export function RestaurantManageModal({
                         </div>
                     )}
                 </div>
+
+                {/* Error */}
+                {saveError && (
+                    <div className="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-xs font-semibold">
+                        {saveError}
+                    </div>
+                )}
 
                 {/* Footer Actions */}
                 <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">

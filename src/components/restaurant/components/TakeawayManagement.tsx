@@ -214,8 +214,8 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                         </div>
 
                         {filtered.map(order => (
-                            <div key={order.id} className="bg-white border border-slate-200 rounded-[2.5rem] p-6 hover:border-orange-500 hover:shadow-2xl transition-all flex flex-col shadow-sm">
-                                <div className="flex justify-between items-start mb-5">
+                            <div key={order.id} className="bg-white border border-slate-200 rounded-[2.5rem] p-6 hover:border-orange-500 hover:shadow-2xl transition-all flex flex-col shadow-sm min-h-[300px] overflow-visible">
+                                <div className="flex justify-between items-start mb-5 shrink-0">
                                     <div>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">{order.orderNo}</span>
                                         <h3 className="font-black text-slate-800 text-lg leading-none">{order.customerName}</h3>
@@ -224,7 +224,7 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                                         {getStatusLabel(order.takeawayStatus)}
                                     </Badge>
                                 </div>
-                                <div className="space-y-4 mb-6 bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100">
+                                <div className="space-y-4 mb-4 bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 min-h-0 flex-1">
                                     {order.phone && (
                                         <div className="flex items-center gap-3 text-slate-500">
                                             <Phone className="w-4 h-4 shrink-0 text-orange-500/70" />
@@ -237,7 +237,7 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                                         </Badge>
                                     )}
                                 </div>
-                                <div className="mt-auto pt-5 border-t border-slate-100 flex items-center justify-between">
+                                <div className="shrink-0 pt-4 border-t border-slate-100 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="bg-orange-50 p-2.5 rounded-xl border border-orange-100">
                                             <Timer className="w-4 h-4 text-orange-500" />
@@ -253,21 +253,24 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                                         </span>
                                     </div>
                                 </div>
-                                <div className="mt-6 flex gap-3">
-                                    {nextStatus(order.takeawayStatus) && (
+                                <div className="shrink-0 mt-4 flex gap-3 bg-orange-50/80 -mx-2 px-2 py-3 rounded-2xl border border-orange-100">
+                                    {nextStatus(order.takeawayStatus) ? (
                                         <button
+                                            type="button"
                                             onClick={() => handleStatusChange(order.id, nextStatus(order.takeawayStatus)!)}
                                             className={cn(
-                                                "flex-1 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 text-white",
+                                                "flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg active:scale-95 text-white border-0",
                                                 order.takeawayStatus === 'ready'
                                                     ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
-                                                    : 'bg-slate-900 hover:bg-black'
+                                                    : 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/20'
                                             )}>
-                                            {order.takeawayStatus === 'ready' ? <PackageCheck className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                                            {order.takeawayStatus === 'ready' ? <PackageCheck className="w-4 h-4 shrink-0" /> : <CheckCircle2 className="w-4 h-4 shrink-0" />}
                                             {nextLabel(order.takeawayStatus)}
                                         </button>
+                                    ) : (
+                                        <span className="flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase text-slate-500 flex items-center justify-center bg-slate-100">Teslim alındı</span>
                                     )}
-                                    <button className="p-3.5 bg-slate-100 text-slate-600 rounded-2xl hover:bg-slate-200 transition-all active:scale-95">
+                                    <button type="button" className="p-3.5 bg-white border-2 border-orange-200 text-orange-700 rounded-2xl hover:bg-orange-50 transition-all active:scale-95 shadow-sm" title="Detay">
                                         <ChevronRight className="w-5 h-5" />
                                     </button>
                                 </div>

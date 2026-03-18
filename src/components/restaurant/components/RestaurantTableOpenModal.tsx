@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Utensils, Plus, Minus, Users, CheckCircle, Info, Calendar, RefreshCcw } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { Table, Reservation } from '../types';
@@ -56,16 +57,24 @@ export function RestaurantTableOpenModal({
         (!r.tableId || r.tableId === table.id)
     );
 
-    return (
-        <>
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9998] p-4 animate-in fade-in duration-300">
+    const modalContent = (
+        <div
+            className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-300"
+            style={{
+                zIndex: 2147483647,
+                isolation: 'isolate',
+                transform: 'translateZ(0)',
+            }}
+        >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
                 <div
-                    className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300 max-h-[90vh]"
+                    className="relative bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300 max-h-[90vh]"
+                    style={{ zIndex: 10 }}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header with Gradient */}
-                    <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between text-white relative overflow-hidden shrink-0">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
+                    <div className="relative z-10 bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between text-white overflow-hidden shrink-0">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl pointer-events-none" />
 
                         <div className="flex items-center gap-4 relative z-10">
                             <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/20">
@@ -78,7 +87,7 @@ export function RestaurantTableOpenModal({
                         </div>
                         <button
                             onClick={onClose}
-                            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-all active:scale-90"
+                            className="relative z-20 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-all active:scale-90"
                         >
                             <X className="w-6 h-6" />
                         </button>
@@ -173,8 +182,8 @@ export function RestaurantTableOpenModal({
                         </div>
                     </div>
 
-                    {/* Footer Actions */}
-                    <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
+                    {/* Footer Actions — yüksek z-index ile grid'in üstünde */}
+                    <div className="relative z-20 p-6 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
                         <button
                             onClick={onClose}
                             className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] hover:bg-slate-100 transition-colors active:scale-95"
@@ -183,16 +192,13 @@ export function RestaurantTableOpenModal({
                         </button>
                         <button
                             onClick={() => onConfirm(covers, selectedResId)}
-                            className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-3 shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
+                            className="relative z-20 flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-3 shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
                         >
                             <CheckCircle className="w-5 h-5" />
                             <span>MASAYI AÇ</span>
                         </button>
                     </div>
                 </div>
-            </div>
-
-            {/* Staff PIN Modal */}
             {showStaffModal && (
                 <RestaurantStaffPinModal
                     onClose={() => setShowStaffModal(false)}
@@ -200,8 +206,13 @@ export function RestaurantTableOpenModal({
                         setLocalStaffName(staffName);
                         setShowStaffModal(false);
                     }}
+                    skipConfirmation
                 />
             )}
-        </>
+        </div>
     );
+
+    return typeof document !== 'undefined' && document.body
+        ? createPortal(modalContent, document.body)
+        : modalContent;
 }

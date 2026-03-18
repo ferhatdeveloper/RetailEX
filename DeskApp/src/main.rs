@@ -1513,12 +1513,32 @@ fn main() {
         mssql::test_mssql_connection, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data,
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction,
-        request_elevation
+        request_elevation,
+        show_touch_keyboard
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
 
+
+/// Windows: Dokunmatik klavyeyi (TabTip) açar. Tauri WebView'da input focus'ta klavye açılmıyorsa frontend bu komutu çağırır.
+#[tauri::command]
+async fn show_touch_keyboard() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let tabtip = r"C:\Program Files\Common Files\microsoft shared\ink\TabTip.exe";
+        if std::path::Path::new(tabtip).exists() {
+            let _ = Command::new(tabtip)
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .spawn();
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = ();
+    }
+    Ok(())
+}
 
 #[tauri::command]
 async fn request_elevation() -> Result<(), String> {

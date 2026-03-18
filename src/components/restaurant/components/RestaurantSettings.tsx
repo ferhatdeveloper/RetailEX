@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Settings, Users, Printer, Receipt, ChevronLeft, Shield } from 'lucide-react';
+import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid } from 'lucide-react';
 import { RestaurantPrinterSettings } from './RestaurantPrinterSettings';
 import { UserManagementModule } from '../../system/UserManagementModule';
 import { RoleManagement } from '../../system/RoleManagement';
+import { FloorTableManagement } from './FloorTableManagement';
 import { cn } from '@/components/ui/utils';
 
 export function RestaurantSettings({ onBack }: { onBack: () => void }) {
-    const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'printers' | 'receipts'>('users');
+    const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables'>('general');
 
     return (
         <div className="flex h-full bg-slate-50 w-full overflow-hidden">
@@ -86,6 +87,18 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         <Receipt className={cn("w-5 h-5", activeTab === 'receipts' ? "text-orange-500" : "text-slate-400")} />
                         Adisyon & Fatura
                     </button>
+                    <button
+                        onClick={() => setActiveTab('tables')}
+                        className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold",
+                            activeTab === 'tables'
+                                ? "bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-100/50"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        )}
+                    >
+                        <LayoutGrid className={cn("w-5 h-5", activeTab === 'tables' ? "text-blue-500" : "text-slate-400")} />
+                        Masa & Bölge
+                    </button>
                 </div>
             </div>
 
@@ -93,6 +106,11 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
             <div className="flex-1 bg-slate-50 overflow-hidden flex flex-col relative">
                 <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar">
                     <div className="max-w-7xl mx-auto h-full">
+                        {activeTab === 'tables' && (
+                            <div className="h-full">
+                                <FloorTableManagement />
+                            </div>
+                        )}
                         {activeTab === 'general' && (
                             <div className="flex items-center justify-center h-full text-slate-400 font-medium">
                                 <div className="text-center">

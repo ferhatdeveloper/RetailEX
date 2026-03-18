@@ -15,7 +15,9 @@ export async function safeInvoke<T>(command: string, args?: any, fallback?: T): 
       const { invoke } = await import('@tauri-apps/api/core');
       return await invoke(command, args) as T;
     } catch (error) {
-      console.error(`[Tauri Invoke Error] ${command}:`, error);
+      const msg = String(error ?? '');
+      const isCommandNotFound = msg.includes('not found') || msg.includes('Command');
+      if (!isCommandNotFound) console.error(`[Tauri Invoke Error] ${command}:`, error);
       if (fallback !== undefined) return fallback;
       throw error;
     }

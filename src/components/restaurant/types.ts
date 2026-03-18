@@ -36,6 +36,9 @@ export interface OrderItem {
     voidReason?: string;
     isComplementary?: boolean;
     preparationTime?: number;
+    /** Birleştirilmiş masalardan geldiyse kaynak masa (etiket + yanlış masaya taşıma için) */
+    sourceTableId?: string;
+    sourceTableNumber?: string;
 }
 
 export interface MergedOrderRef {
@@ -69,6 +72,8 @@ export interface Table {
     lockedByStaffId?: string;
     lockedByStaffName?: string;
     lockedAt?: string;
+    /** Özel masa rengi — null ise durum rengini kullan */
+    color?: string | null;
 }
 
 export interface KitchenOrder {
@@ -78,6 +83,8 @@ export interface KitchenOrder {
     waiter: string;
     time: string;
     elapsed: number;
+    /** Mutfağa gönderilme anı (canlı "X dk" için) */
+    sentAt?: string;
     items: OrderItem[];
     status: KitchenStatus;
 }

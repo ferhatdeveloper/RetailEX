@@ -40,6 +40,8 @@ interface RestaurantState {
     requestBill: (tableId: string) => Promise<void>;
     closeBill: (tableId: string, paymentData: any) => Promise<void>;
     markAsClean: (tableId: string) => Promise<void>;
+    /** Masayı servisten çıkarıp temizlik aşamasına alır (served → cleaning) */
+    markAsCleaning: (tableId: string) => Promise<void>;
     addTable: (table: Omit<Table, 'orders' | 'status' | 'total'>) => Promise<void>;
     updateTable: (table: Partial<Table>, persist?: boolean) => Promise<void>;
     removeTable: (tableId: string) => Promise<void>;
@@ -57,6 +59,8 @@ interface RestaurantState {
 
     // Load (DB sync) Actions
     loadTables: (floorId?: string) => Promise<void>;
+    /** Arka plan: sadece masa durumlarını senkronize eder; değişiklik varsa gerekirse tam yükleme yapar */
+    syncTableStatuses: (floorId?: string) => Promise<void>;
     loadMenu: () => Promise<void>;
     loadCategories: () => Promise<void>;
     loadRegions: (storeId?: string) => Promise<void>;
@@ -79,8 +83,10 @@ interface RestaurantState {
     updateOrderItemOptions: (itemId: string, options: any) => Promise<void>;
 
     // Phase 2: Void & Complementary
-    voidOrderItem: (tableId: string, itemId: string, reason: string) => Promise<void>;
+    voidOrderItem: (tableId: string, itemId: string, reason: string, voidQuantity?: number) => Promise<void>;
     markItemAsComplementary: (tableId: string, itemId: string) => Promise<void>;
+    /** Tek ürünü başka masaya taşır (birleştirilmiş masada yanlış giden ürün için) */
+    moveOrderItemToTable: (currentTableId: string, itemId: string, targetTableId: string) => Promise<void>;
 
     // Phase 3: Staff/PIN
     loginWithPin: (pin: string) => Promise<LoginResult>;
@@ -281,6 +287,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         })),
                     });
 
+                    const sentAt = new Date().toISOString();
                     const kitchenOrder: KitchenOrder = {
                         id: kitchenOrderId,
                         tableId: table.id,
@@ -288,6 +295,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         waiter: table.waiter || 'Genel',
                         time: new Date().toLocaleTimeString(),
                         elapsed: 0,
+                        sentAt,
                         items: pendingItems,
                         status: 'new'
                     };
@@ -465,9 +473,7 @@ export const useRestaurantStore = create<RestaurantState>()(
             transferTable: async (sourceTableId, targetTableId) => {
                 try {
                     await RestaurantService.transferTable(sourceTableId, targetTableId);
-                    // Re-load all tables to ensure state is perfectly in sync with DB
-                    const currentFloorId = get().tables.find(t => t.id === sourceTableId)?.floorId;
-                    await get().loadTables(currentFloorId);
+                    await get().loadTables(undefined);
                 } catch (err) {
                     console.error('[RestaurantStore] transferTable error:', err);
                     throw err;
@@ -477,8 +483,8 @@ export const useRestaurantStore = create<RestaurantState>()(
             moveTable: async (sourceTableId, targetTableId) => {
                 try {
                     await RestaurantService.moveTable(sourceTableId, targetTableId);
-                    const currentFloorId = get().tables.find(t => t.id === sourceTableId)?.floorId;
-                    await get().loadTables(currentFloorId);
+                    // Tüm masaları yeniden yükle; sadece bir kat yüklenirse diğer katlar kaybolur
+                    await get().loadTables(undefined);
                 } catch (err) {
                     console.error('[RestaurantStore] moveTable error:', err);
                     throw err;
@@ -490,6 +496,34 @@ export const useRestaurantStore = create<RestaurantState>()(
                 await get().loadRecipes();
             },
 
+            syncTableStatuses: async (floorId) => {
+                try {
+                    const statuses = await RestaurantService.getTableStatuses(floorId);
+                    const state = get();
+                    let needsFullLoad = false;
+                    const hadEmpty = new Set(state.tables.filter(t => t.status === 'empty').map(t => t.id));
+                    if (statuses.length > state.tables.length) needsFullLoad = true;
+                    const nextTables = state.tables.map(t => {
+                        const row = statuses.find((s: any) => s.id === t.id);
+                        if (!row) return t;
+                        const wasEmpty = hadEmpty.has(t.id);
+                        const nowEmpty = (row.status ?? 'empty') === 'empty';
+                        if (wasEmpty && !nowEmpty) needsFullLoad = true;
+                        return {
+                            ...t,
+                            status: row.status ?? t.status,
+                            waiter: row.waiter ?? t.waiter,
+                            total: Number(row.total ?? 0),
+                            startTime: row.start_time ?? t.startTime
+                        };
+                    });
+                    set({ tables: nextTables });
+                    if (needsFullLoad) await get().loadTables(floorId);
+                } catch (err) {
+                    console.warn('[RestaurantStore] syncTableStatuses failed:', err);
+                }
+            },
+
             loadTables: async (floorId) => {
                 const rows = await RestaurantService.getTables(floorId);
                 const tablesWithOrders = await Promise.all(rows.map(async (r: any) => {
@@ -498,6 +532,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         status: r.status ?? 'empty', floorId: r.floor_id ?? '',
                         location: r.location, orders: [], startTime: r.start_time,
                         waiter: r.waiter, total: Number(r.total || 0), isLarge: r.is_large ?? false,
+                        color: r.color ?? null,
                         faturaNo: undefined, mergedOrders: []
                     };
                     if (baseTable.status !== 'empty') {
@@ -505,26 +540,31 @@ export const useRestaurantStore = create<RestaurantState>()(
                         if (activeOrder) {
                             baseTable.activeOrderId = activeOrder.id;
                             baseTable.faturaNo = activeOrder.order_no;
+                            const mainTableNum = (activeOrder as any).table_number ?? baseTable.number;
                             baseTable.orders = (activeOrder.items || []).map((i: any) => ({
                                 id: i.id, menuItemId: i.product_id, name: i.product_name,
                                 quantity: Number(i.quantity), price: Number(i.unit_price),
                                 status: i.status || 'cooking', course: i.course, options: i.note,
-                                isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary
+                                isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
+                                sourceTableId: baseTable.id, sourceTableNumber: mainTableNum
                             }));
                         }
 
-                        // Load linked (merged) orders
+                        // Load linked (merged) orders — her ürüne kaynak masa etiketi
                         const linkedIds: string[] = r.linked_order_ids || [];
                         if (linkedIds.length > 0) {
                             const linkedOrders = await RestaurantService.getLinkedOrders(linkedIds);
                             const mergedRefs: MergedOrderRef[] = [];
                             for (const lo of linkedOrders) {
-                                mergedRefs.push({ orderId: lo.id, faturaNo: lo.order_no, tableId: '', tableNumber: '' });
+                                const loTableId = (lo as any).table_id ?? '';
+                                const loTableNum = (lo as any).table_number ?? '';
+                                mergedRefs.push({ orderId: lo.id, faturaNo: lo.order_no, tableId: loTableId, tableNumber: loTableNum });
                                 const loItems = (lo.items || []).map((i: any) => ({
                                     id: i.id, menuItemId: i.product_id, name: i.product_name,
                                     quantity: Number(i.quantity), price: Number(i.unit_price),
                                     status: i.status || 'cooking', course: i.course, options: i.note,
-                                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary
+                                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
+                                    sourceTableId: loTableId, sourceTableNumber: loTableNum
                                 }));
                                 baseTable.orders = [...baseTable.orders, ...loItems];
                             }
@@ -561,14 +601,28 @@ export const useRestaurantStore = create<RestaurantState>()(
             },
 
             loadKitchenOrders: async () => {
-                const rows = await RestaurantService.getActiveKitchenOrders();
-                console.log("KITCHEN ORDERS LOADED:", rows);
-                set({ kitchenOrders: rows.map((ko: any) => ({ id: ko.id, tableId: ko.order_id ?? '', tableName: ko.table_number ?? '', waiter: ko.waiter ?? '', time: ko.sent_at ? new Date(ko.sent_at).toLocaleTimeString() : new Date().toLocaleTimeString(), elapsed: ko.sent_at ? Math.floor((Date.now() - new Date(ko.sent_at).getTime()) / 60000) : 0, items: (ko.items ?? []).map((i: any) => ({ id: i.id, menuItemId: i.order_item_id ?? '', name: i.product_name, quantity: Number(i.quantity), price: 0, status: i.status ?? 'cooking', course: i.course, notes: i.note, startAt: i.start_at, preparationTime: i.preparation_time, estimatedReadyAt: i.estimated_ready_at })), status: ko.status ?? 'new', estimatedReadyAt: ko.estimated_ready_at })) });
+                try {
+                    const rows = await RestaurantService.getActiveKitchenOrders();
+                    set({ kitchenOrders: rows.map((ko: any) => {
+                    const sentAt = ko.sent_at ?? null;
+                    const elapsed = sentAt ? Math.floor((Date.now() - new Date(sentAt).getTime()) / 60000) : 0;
+                    return { id: ko.id, tableId: ko.table_id ?? ko.order_id ?? '', tableName: ko.table_number ?? '', waiter: ko.waiter ?? '', time: sentAt ? new Date(sentAt).toLocaleTimeString() : new Date().toLocaleTimeString(), elapsed, sentAt: sentAt ?? undefined, items: (ko.items ?? []).map((i: any) => ({ id: i.id, menuItemId: i.order_item_id ?? '', name: i.product_name, quantity: Number(i.quantity), price: 0, status: i.status ?? 'cooking', course: i.course, notes: i.note, startAt: i.start_at, preparationTime: i.preparation_time, estimatedReadyAt: i.estimated_ready_at })), status: ko.status ?? 'new', estimatedReadyAt: ko.estimated_ready_at };
+                }) });
+                } catch (err) {
+                    console.error('[RestaurantStore] loadKitchenOrders failed:', err);
+                    // Hata durumunda mevcut listeyi silme; böylece aynı oturumda gönderilen siparişler kaybolmaz.
+                }
             },
 
             addRegion: async (region, storeId) => {
-                const dbRegion = await RestaurantService.saveFloor({ store_id: storeId, name: region.name, display_order: region.order });
-                set(state => ({ regions: [...state.regions, { id: dbRegion.id, name: dbRegion.name, order: dbRegion.display_order }].sort((a, b) => a.order - b.order) }));
+                try {
+                    const dbRegion = await RestaurantService.saveFloor({ store_id: storeId, name: region.name, display_order: region.order });
+                    if (!dbRegion) throw new Error('Bölge kaydedilemedi — DB satır dönmedi');
+                    set(state => ({ regions: [...state.regions, { id: dbRegion.id, name: dbRegion.name, order: dbRegion.display_order ?? region.order }].sort((a, b) => a.order - b.order) }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] addRegion hatası:', err?.message ?? String(err));
+                    throw err;
+                }
             },
 
             removeRegion: async (regionId) => {
@@ -592,13 +646,16 @@ export const useRestaurantStore = create<RestaurantState>()(
                 await RestaurantService.updateOrderItemOptions(itemId, options);
                 set(state => ({ tables: state.tables.map(t => ({ ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, options } : o) })) }));
             },
-            voidOrderItem: async (tableId, itemId, reason) => {
+            voidOrderItem: async (tableId, itemId, reason, voidQuantity) => {
                 const state = get();
                 const table = state.tables.find(t => t.id === tableId);
                 const orderItem = table?.orders.find(o => o.id === itemId);
+                const qtyToVoid = voidQuantity ?? orderItem?.quantity ?? 1;
 
-                // ✅ Stock Restoration on Void
-                if (orderItem && !orderItem.isVoid) {
+                // Stok iadesi: Sadece henüz mutfağa GİTMEMİŞ (pending) kalemlerde. Mutfakta üretilmiş (cooking/ready/served)
+                // ürün masadan geri gelirse stok iade edilmez — hammadde zaten kullanıldı.
+                const wasNotProducedYet = orderItem?.status === 'pending';
+                if (orderItem && !orderItem.isVoid && qtyToVoid > 0 && wasNotProducedYet) {
                     try {
                         const productStore = useProductStore.getState();
                         const recipe = state.recipes.find(r => r.menuItemId === orderItem.menuItemId);
@@ -607,23 +664,16 @@ export const useRestaurantStore = create<RestaurantState>()(
                                 if (ingredient.materialId) {
                                     const prod = productStore.products.find(p => p.id === ingredient.materialId);
                                     if (prod) {
-                                        const restoration = convertUnit(ingredient.quantity * orderItem.quantity, ingredient.unit || 'gr', prod.unit || 'kg');
+                                        const restoration = convertUnit(ingredient.quantity * qtyToVoid, ingredient.unit || 'gr', prod.unit || 'kg');
                                         await productStore.updateStock(prod.id, prod.stock + restoration);
-
-                                        // Log Stock Movement (Reversal)
                                         await stockMovementAPI.create(
                                             {
-                                                trcode: 1, // Sarf (Reversal)
+                                                trcode: 1,
                                                 movement_type: 'in',
-                                                description: `Sipariş İptal (İade): ${orderItem.name}`,
+                                                description: `Sipariş İptal (İade): ${orderItem.name} x ${qtyToVoid}`,
                                                 document_no: table?.faturaNo || `VOID-${table?.number}`
                                             },
-                                            [{
-                                                product_id: prod.id,
-                                                quantity: restoration,
-                                                unit_price: prod.cost || 0,
-                                                notes: `Void İptal İadesi`
-                                            }]
+                                            [{ product_id: prod.id, quantity: restoration, unit_price: prod.cost || 0, notes: `Void İptal İadesi (mutfağa gitmeden)` }]
                                         );
                                     }
                                 }
@@ -634,12 +684,17 @@ export const useRestaurantStore = create<RestaurantState>()(
                     }
                 }
 
-                await RestaurantService.voidOrderItem(itemId, reason);
+                await RestaurantService.voidOrderItem(itemId, reason, qtyToVoid);
                 if (table) await get().loadTables(table.floorId);
             },
             markItemAsComplementary: async (tableId, itemId) => {
                 await RestaurantService.markItemAsComplementary(itemId);
                 const table = get().tables.find(t => t.id === tableId);
+                if (table) await get().loadTables(table.floorId);
+            },
+            moveOrderItemToTable: async (currentTableId, itemId, targetTableId) => {
+                await RestaurantService.moveOrderItemToTable(itemId, targetTableId);
+                const table = get().tables.find(t => t.id === currentTableId);
                 if (table) await get().loadTables(table.floorId);
             },
             loginWithPin: async (pin) => {
@@ -661,7 +716,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                 set(state => ({ staffList: state.staffList.filter(s => s.id !== staffId) }));
             },
             setCurrentStaff: (staff) => set({ currentStaff: staff }),
-            openRegister: (cash, note) => set({ isRegisterOpen: true, registerOpeningCash: cash, registerOpeningNote: note, workDayDate: new Date().toLocaleDateString('tr-TR'), isDayActive: true }),
+            openRegister: (cash, note) => set({ isRegisterOpen: true, registerOpeningCash: cash, registerOpeningNote: note, workDayDate: new Date().toISOString().slice(0, 10), isDayActive: true }),
             closeRegister: () => set({ isRegisterOpen: false, registerOpeningCash: 0, registerOpeningNote: '', isDayActive: false }),
             loadSystemPrinters: async () => {
                 try {

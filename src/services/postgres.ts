@@ -40,9 +40,10 @@ export let ERP_SETTINGS = {
 };
 
 /**
- * Initialize all configurations from SQLite backend
+ * Initialize all configurations from SQLite backend.
+ * @param preloadedConfig - Optional config from App startup (Tauri); avoids duplicate get_app_config call.
  */
-export async function initializeFromSQLite() {
+export async function initializeFromSQLite(preloadedConfig?: any) {
   if (!IS_TAURI) {
     // Web environment: Always use 'online' mode by default
     DB_SETTINGS.activeMode = 'online';
@@ -82,7 +83,7 @@ export async function initializeFromSQLite() {
   }
 
   try {
-    const config: any = await safeInvoke('get_app_config');
+    const config: any = preloadedConfig ?? (await safeInvoke('get_app_config'));
     if (config) {
       // Load System Settings
       DB_SETTINGS.activeMode = config.db_mode as ConnectionMode;
@@ -358,11 +359,13 @@ export class PostgresConnection {
       console.log(`[PG Params Types Original]`, types);
     }
 
-    // Normalizasyon: Postgres bridge için tipleri koru (booleans/numbers ham iletilir)
+    // Normalizasyon: Postgres bridge için tipleri koru (booleans/numbers ham iletilir).
+    // Dizileri stringify etme — ANY($1) ve array parametreleri için gerçek dizi gönderilmeli (Tauri/Rust tarafında doğru bind edilsin).
     const normalizedParams = params.map((p: any) => {
       if (p === null || p === undefined) return null;
       if (typeof p === 'boolean' || typeof p === 'number') return p;
       if (typeof p === 'bigint') return p.toString();
+      if (Array.isArray(p)) return p;
 
       if (typeof p === 'object') {
         if (p instanceof Date) return p.toISOString();
@@ -413,14 +416,12 @@ export class PostgresConnection {
 
     console.log(`[PG Query] [${DB_SETTINGS.activeMode}]`, resolvedSql, JSON.parse(JSON.stringify(normalizedParams)));
 
-    // Attempt to log to a file for AI to read
+    // Attempt to log to a file for AI to read (no-op if Tauri backend has no log_to_file command)
     if (IS_TAURI) {
-      try {
-        safeInvoke('log_to_file', {
-          fileName: 'pg_queries.log',
-          content: `[${new Date().toISOString()}] SQL: ${resolvedSql} PARAMS: ${JSON.stringify(normalizedParams)}\n`
-        }).catch(() => { });
-      } catch (e) { }
+      void safeInvoke('log_to_file', {
+        fileName: 'pg_queries.log',
+        content: `[${new Date().toISOString()}] SQL: ${resolvedSql} PARAMS: ${JSON.stringify(normalizedParams)}\n`
+      }, null as any);
     }
 
     const startTime = Date.now();

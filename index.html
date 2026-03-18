@@ -117,6 +117,23 @@
         opacity: 0.5;
       }
     }
+
+    /* Logo + spinner birlikte (load ile neon logo birleşik) */
+    .loader-spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: loader-spin 0.7s linear infinite;
+      margin-top: 8px;
+    }
+    #app-loader.loader-minimal .loader-spinner {
+      width: 28px;
+      height: 28px;
+      margin-top: 0;
+    }
+    @keyframes loader-spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 
@@ -148,55 +165,56 @@
         <span class="retail">Retail</span><span class="ex">Ex</span>
       </div>
     </div>
-    <div class="loading-bar-container">
-      <div class="loading-bar"></div>
-    </div>
-    <div class="loading-text" id="loading-text">Sistem Hazırlanıyor...</div>
+    <div class="loader-spinner" aria-hidden="true"></div>
+    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 11px; color: rgba(255,255,255,0.5);">Sistem Hazırlanıyor...</div>
   </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
-    // Loading text messages
-    const loadingMessages = [
-      "Sistem Hazırlanıyor...",
-      "Veritabanı Bekleniyor...",
-      "Bağlantı Kuruluyor...",
-      "Modüller Yükleniyor...",
-      "Arayüz Hazırlanıyor...",
-      "Son Ayarlar Yapılıyor..."
-    ];
-    let msgIndex = 0;
-    const loadingTextEl = document.getElementById('loading-text');
+    // Yenilemede tam splash yerine minimal göstergede tut — siyah ekran olmasın
+    var loaderEl = document.getElementById('app-loader');
+    var loadingTextEl = document.getElementById('loading-text');
+    var isRefresh = !!sessionStorage.getItem('retailex_splash_seen');
+    var msgInterval = null;
 
-    const msgInterval = setInterval(() => {
-      msgIndex = (msgIndex + 1) % loadingMessages.length;
-      if (loadingTextEl) {
-        // fade out slightly or just replace
-        loadingTextEl.innerText = loadingMessages[msgIndex];
-      }
-    }, 1500); // changes every 1.5s
+    if (loaderEl && isRefresh) {
+      loaderEl.classList.add('loader-minimal');
+      if (loadingTextEl) loadingTextEl.style.display = 'none';
+    }
+    if (loadingTextEl && !isRefresh) {
+      var loadingMessages = [
+        "Sistem Hazırlanıyor...",
+        "Veritabanı Bekleniyor...",
+        "Bağlantı Kuruluyor...",
+        "Modüller Yükleniyor...",
+        "Arayüz Hazırlanıyor...",
+        "Son Ayarlar Yapılıyor..."
+      ];
+      var msgIndex = 0;
+      msgInterval = setInterval(function () {
+        msgIndex = (msgIndex + 1) % loadingMessages.length;
+        if (loadingTextEl) loadingTextEl.innerText = loadingMessages[msgIndex];
+      }, 1500);
+    }
 
-    // Remove loader when app is mounted
     window.removeLoader = function () {
-      console.log('[Splash] removeLoader called');
-      clearInterval(msgInterval);
-      const loader = document.getElementById('app-loader');
+      sessionStorage.setItem('retailex_splash_seen', '1');
+      if (msgInterval) clearInterval(msgInterval);
+      var loader = document.getElementById('app-loader');
       if (loader) {
         loader.style.opacity = '0';
-        loader.style.pointerEvents = 'none'; // Ensure it doesn't block clicks
-        setTimeout(() => {
-          loader.remove();
-        }, 300);
+        loader.style.pointerEvents = 'none';
+        setTimeout(function () { loader.remove(); }, 300);
       }
     };
-    // Safety net: instead of auto-removing, we just keep the logo until React is ready.
+    // Safety net: remove loader if app never calls removeLoader (e.g. crash)
     setTimeout(function () {
       const loader = document.getElementById('app-loader');
       if (loader) {
-        console.warn('[Splash] Auto-removing loader after 10s safety timeout');
+        console.warn('[Splash] Auto-removing loader after 6s safety timeout');
         window.removeLoader();
       }
-    }, 10000);
+    }, 6000);
   </script>
 </body>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     Users,
     Clock,
@@ -17,7 +17,12 @@ import {
     LogOut,
     Lock,
     Unlock,
-    DollarSign
+    DollarSign,
+    CheckCircle2,
+    Sparkles,
+    ArrowRightLeft,
+    Merge,
+    RotateCcw
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '../../ui/utils';
@@ -30,7 +35,11 @@ import { RestaurantZReport } from './RestaurantZReport';
 import { POSOpenCashRegisterModal } from '../../pos/POSOpenCashRegisterModal';
 import { RestaurantTableOpenModal } from './RestaurantTableOpenModal';
 import { RestaurantManageModal } from './RestaurantManageModal';
-import { getStatusConfig } from '../utils/tableStatusConfig';
+import { getStatusConfig, TABLE_STATUS_CONFIG } from '../utils/tableStatusConfig';
+
+/** Serviste (mor) kartın otomatik maviye dönme süresi — masaya ürün gitmiş (ms) */
+const SERVED_TO_BLUE_MS = 15 * 1000;
+const servedFirstSeenAt = new Map<string, number>();
 
 async function getStoreId(): Promise<string | null> {
     try {
@@ -54,9 +63,17 @@ async function getStoreId(): Promise<string | null> {
 interface RestaurantFloorPlanProps {
     onSelectTable: (table: Table, covers: number) => void;
     onBack: () => void;
+    /** Masa taşıma modu: kaynak masa set edilince floor üzerinde hedef seçimi */
+    moveTableSource?: Table | null;
+    moveTargetTableId?: string | null;
+    onMoveTargetSelect?: (id: string | null) => void;
+    onMoveConfirm?: (mode: 'move' | 'merge', targetId: string) => void;
+    onMoveCancel?: () => void;
+    /** Personel badge tıklandığında garson değişimi modalını açar */
+    onRequestStaffChange?: () => void;
 }
 
-export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPlanProps) {
+export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, moveTargetTableId, onMoveTargetSelect, onMoveConfirm, onMoveCancel, onRequestStaffChange }: RestaurantFloorPlanProps) {
     const [activeFloor, setActiveFloor] = useState('Tümü');
     const [activeView, setActiveView] = useState<'tables' | 'kroki' | 'orders'>('tables');
     const [searchTerm, setSearchTerm] = useState('');
@@ -93,6 +110,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
     const [isBulkMode, setIsBulkMode] = useState(false);
     const [bulkPrefix, setBulkPrefix] = useState('M');
     const [bulkCount, setBulkCount] = useState(5);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const handlePrintZReport = () => {
         if (!zReportData) return;
@@ -212,14 +230,22 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                         <span>Geri</span>
                     </button>
 
-                    <div className="relative flex-1 max-w-lg group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 group-focus-within:text-white transition-colors" />
+                    <div className="relative flex-1 max-w-lg group h-12 min-w-0">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70 group-focus-within:text-white transition-colors pointer-events-none z-10" />
                         <input
+                            ref={searchInputRef}
                             type="text"
+                            inputMode="search"
+                            autoComplete="off"
                             placeholder="Masa veya sipariş ara..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full bg-white/10 border border-white/20 rounded-2xl h-12 pl-12 pr-4 text-sm focus:ring-2 focus:ring-white/30 focus:border-white/40 transition-all font-medium text-white placeholder:text-white/35 outline-none"
+                            onFocus={() => {
+                                if ((window as any).__TAURI_INTERNALS__) {
+                                    import('@tauri-apps/api/core').then(({ invoke }) => invoke('show_touch_keyboard')).catch(() => {});
+                                }
+                            }}
+                            className="absolute inset-0 w-full h-full bg-white/20 border-2 border-white/30 rounded-2xl pl-12 pr-4 text-sm focus:ring-2 focus:ring-white/50 focus:border-white/60 focus:bg-white/25 transition-all font-semibold text-white placeholder:text-white/65 outline-none cursor-text"
                         />
                     </div>
 
@@ -271,8 +297,9 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                 <div className="flex items-center gap-3">
                     {currentStaff && (
                         <button
-                            onClick={logout}
+                            onClick={onRequestStaffChange ?? logout}
                             className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all border border-red-500/20 group"
+                            title={onRequestStaffChange ? 'Garson değiştir' : 'Çıkış'}
                         >
                             <div className="flex flex-col items-end mr-1">
                                 <span className="text-[10px] font-bold text-red-500/60 uppercase leading-none mb-1">Personel</span>
@@ -348,9 +375,54 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
             </div>
 
             {/* Content Area */}
-            <main className="flex-1 overflow-hidden relative">
+            <main className="flex-1 overflow-hidden relative z-0">
                 {activeView === 'tables' && (
                     <div className="h-full overflow-auto flex flex-col" style={{ backgroundColor: '#f1f3f5' }}>
+                        {/* Masa taşıma üst bar — kaynak seçiliyken; hedef seçilince Taşı/Birleştir/İptal burada */}
+                        {moveTableSource && (
+                            <div className="shrink-0 px-6 py-3 flex flex-wrap items-center justify-between gap-4 bg-amber-500/95 text-white border-b border-amber-600/50 shadow-lg">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <RotateCcw className="w-5 h-5 shrink-0" />
+                                    {moveTargetTableId ? (
+                                        <>
+                                            <span className="font-black uppercase text-sm tracking-wide">
+                                                Masa <span className="bg-white/20 px-2 py-0.5 rounded-lg">{moveTableSource.number}</span>
+                                                <ArrowRightLeft className="inline-block w-4 h-4 mx-1.5 align-middle text-amber-200" />
+                                                Masa <span className="bg-white/20 px-2 py-0.5 rounded-lg">{tables.find(t => t.id === moveTargetTableId)?.number ?? moveTargetTableId}</span>
+                                            </span>
+                                            {onMoveConfirm && (
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onMoveConfirm('move', moveTargetTableId)}
+                                                        className="flex items-center gap-1.5 px-4 py-2 bg-white text-amber-600 hover:bg-amber-50 rounded-xl font-black uppercase text-[11px] transition-all shadow"
+                                                    >
+                                                        <ArrowRightLeft className="w-3.5 h-3.5" /> Taşı
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onMoveConfirm('merge', moveTargetTableId)}
+                                                        className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase text-[11px] transition-all"
+                                                    >
+                                                        <Merge className="w-3.5 h-3.5" /> Birleştir
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="font-black uppercase text-sm tracking-wide">
+                                            Masa <span className="bg-white/20 px-2 py-0.5 rounded-lg">{moveTableSource.number}</span> taşınıyor — hedef masayı seçin
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={onMoveCancel}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl font-black text-[12px] uppercase transition-all shrink-0"
+                                >
+                                    <X className="w-4 h-4" /> İptal
+                                </button>
+                            </div>
+                        )}
                         <div className="flex-1 p-4">
                             <div
                                 className="grid gap-4 w-full"
@@ -360,7 +432,17 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
                                     <TableCard
                                         key={table.id}
                                         table={table}
+                                        isMoveSource={moveTableSource?.id === table.id}
+                                        isMoveTarget={moveTargetTableId === table.id}
+                                        moveTargetMode={!!moveTableSource}
+                                        moveTargetTableId={moveTableSource && table.id !== moveTableSource.id ? table.id : undefined}
+                                        onMoveTargetSelect={onMoveTargetSelect}
                                         onClick={() => {
+                                            if (moveTableSource) {
+                                                if (table.id === moveTableSource.id) return;
+                                                onMoveTargetSelect?.(table.id);
+                                                return;
+                                            }
                                             if (table.status === 'empty') {
                                                 setOpenModal({ table, covers: table.seats });
                                             } else {
@@ -492,9 +574,28 @@ export function RestaurantFloorPlan({ onSelectTable, onBack }: RestaurantFloorPl
     );
 }
 
-function TableCard({ table, onClick }: { table: Table, onClick: () => void }) {
-    const { markAsClean } = useRestaurantStore();
-    const config = getStatusConfig(table.status);
+function TableCard({ table, onClick, isMoveSource, isMoveTarget, moveTargetMode, moveTargetTableId, onMoveTargetSelect }: { table: Table; onClick: () => void; isMoveSource?: boolean; isMoveTarget?: boolean; moveTargetMode?: boolean; moveTargetTableId?: string; onMoveTargetSelect?: (id: string) => void }) {
+    const { markAsClean, kitchenOrders, markAsServed } = useRestaurantStore();
+    const baseConfig = getStatusConfig(table.status);
+    const kitchenOrder = table.status === 'kitchen' ? kitchenOrders.find(ko => ko.tableId === table.id) : null;
+
+    // Serviste (mor) kart: bir süre sonra otomatik maviye dön
+    if (table.status === 'served') {
+        if (!servedFirstSeenAt.has(table.id)) servedFirstSeenAt.set(table.id, Date.now());
+    } else {
+        servedFirstSeenAt.delete(table.id);
+    }
+    const [servedElapsed, setServedElapsed] = React.useState(0);
+    React.useEffect(() => {
+        if (table.status !== 'served') return;
+        const firstSeen = servedFirstSeenAt.get(table.id) ?? Date.now();
+        const tick = () => setServedElapsed(Date.now() - firstSeen);
+        tick();
+        const iv = setInterval(tick, 1000);
+        return () => clearInterval(iv);
+    }, [table.status, table.id]);
+    const useBlueForServed = table.status === 'served' && servedElapsed >= SERVED_TO_BLUE_MS;
+    const config = useBlueForServed ? TABLE_STATUS_CONFIG.occupied : baseConfig;
 
     // window.__tableLocks'tan aktif garson adını oku (her 1.5sn poll)
     const [activeStaff, setActiveStaff] = React.useState<string | null>(null);
@@ -511,22 +612,25 @@ function TableCard({ table, onClick }: { table: Table, onClick: () => void }) {
     const myName = useRestaurantStore.getState().currentStaff?.name;
     const isLocked = !!activeStaff && activeStaff !== myName;
     const isCleaning = table.status === 'cleaning';
+    const clickable = moveTargetMode || (!isCleaning && !isLocked);
 
     return (
         <div
-            onClick={isCleaning ? undefined : (isLocked ? undefined : onClick)}
+            onClick={clickable ? onClick : undefined}
             style={{ backgroundColor: config.bg }}
             className={cn(
                 "relative cursor-pointer flex flex-col justify-between p-2 sm:p-3 lg:p-4 group hover:brightness-110 active:scale-[0.98] transition-all border border-white/20 rounded-xl sm:rounded-2xl lg:rounded-[2rem] aspect-square shadow-xl",
                 config.shadow,
                 table.isLarge ? "col-span-2 !aspect-[2/1]" : "col-span-1",
                 "text-white",
-                (isLocked || isCleaning) && "cursor-default"
+                !clickable && "cursor-default",
+                isMoveSource && "ring-4 ring-amber-400 ring-offset-2 ring-offset-slate-200",
+                isMoveTarget && "ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-200"
             )}
         >
             <div className="absolute top-0 left-0 right-0 h-[40%] bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
 
-            {/* Üst satır: toplam + timer */}
+            {/* Üst satır: toplam + timer veya mutfakta süresi */}
             <div className="flex justify-between items-start w-full pointer-events-none relative z-10">
                 <div className="flex items-center gap-1 bg-black/30 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-white/10">
                     <History className="w-3 h-3 sm:w-3.5 sm:h-3.5 opacity-70" />
@@ -540,32 +644,62 @@ function TableCard({ table, onClick }: { table: Table, onClick: () => void }) {
                         <TableTimer startTime={table.startTime} />
                     </div>
                 )}
+                {table.status === 'kitchen' && kitchenOrder && (
+                    <div className="flex items-center gap-1 bg-white/25 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-white/20">
+                        <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 opacity-90" />
+                        <KitchenElapsed sentAt={kitchenOrder.sentAt} fallbackElapsed={kitchenOrder.elapsed} />
+                    </div>
+                )}
             </div>
 
             {/* Orta: masa numarası */}
             <div className="flex flex-col items-center justify-center flex-1 py-1 pointer-events-none relative z-10">
                 <span className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tighter leading-none drop-shadow-2xl">{table.number}</span>
                 <span className="text-[8px] sm:text-[9px] lg:text-[11px] font-black uppercase tracking-widest mt-1 opacity-80 italic">{table.location}</span>
-                {/* Durum etiketi — empty hariç */}
+                {/* Durum etiketi — ikon + kısa metin (masaya gitti / temizlendi vb.) */}
                 {table.status !== 'empty' && (
                     <span
                         style={{ backgroundColor: 'rgba(0,0,0,0.25)', color: '#fff' }}
-                        className="mt-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
+                        className="mt-1 inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full"
                     >
-                        {config.label}
+                        {table.status === 'served' && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
+                        {table.status === 'cleaning' && <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
+                        {table.status === 'kitchen' && <Utensils className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
+                        {table.status === 'served' ? 'Masaya gitti' : table.status === 'cleaning' ? 'Temizlik' : config.label}
                     </span>
                 )}
             </div>
 
-            {/* Alt satır: kişi + tutar */}
-            <div className="flex justify-between items-center w-full relative z-10">
-                {/* Temizlik butonu */}
-                {isCleaning ? (
+            {/* Alt satır: kişi + tutar veya aksiyon butonları (Temizlendi ile aynı stil) */}
+            <div className="flex justify-between items-center w-full relative z-20">
+                {moveTargetMode && !isMoveSource && moveTargetTableId && onMoveTargetSelect ? (
+                    <button
+                        type="button"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 min-h-[44px] bg-amber-500 hover:bg-amber-600 text-white active:scale-95 rounded-xl sm:rounded-2xl transition-all text-xs sm:text-[13px] font-black uppercase border-2 border-amber-400 shadow-lg shadow-amber-900/30 hover:shadow-amber-800/40 pointer-events-auto cursor-pointer touch-manipulation"
+                        onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onMoveTargetSelect(moveTargetTableId);
+                        }}
+                    >
+                        <ArrowRightLeft className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 pointer-events-none" />
+                        <span className="pointer-events-none">Taşı</span>
+                    </button>
+                ) : isCleaning ? (
                     <button
                         onClick={e => { e.stopPropagation(); markAsClean(table.id); }}
                         className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-white/20 hover:bg-white/35 active:scale-95 rounded-xl transition-all text-[10px] font-black uppercase border border-white/20"
                     >
-                        <span>✓</span> Temizlendi
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        Temizlendi
+                    </button>
+                ) : table.status === 'kitchen' && kitchenOrder ? (
+                    <button
+                        onClick={e => { e.stopPropagation(); markAsServed(kitchenOrder.id); }}
+                        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-white/20 hover:bg-white/35 active:scale-95 rounded-xl transition-all text-[10px] font-black uppercase border border-white/20"
+                    >
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        Masaya gitti
                     </button>
                 ) : (
                     <>
@@ -616,6 +750,22 @@ function TableTimer({ startTime }: { startTime: string }) {
         return () => clearInterval(interval);
     }, [startTime]);
     return <span className="text-[9px] sm:text-[11px] font-black">{elapsed}</span>;
+}
+
+/** Mutfağa gönderildiğinden beri geçen dakika — her dakika güncellenir */
+function KitchenElapsed({ sentAt, fallbackElapsed }: { sentAt?: string; fallbackElapsed?: number }) {
+    const [minutes, setMinutes] = React.useState(() => {
+        if (sentAt) return Math.floor((Date.now() - new Date(sentAt).getTime()) / 60000);
+        return Math.max(0, fallbackElapsed ?? 0);
+    });
+    React.useEffect(() => {
+        if (!sentAt) return;
+        const tick = () => setMinutes(Math.floor((Date.now() - new Date(sentAt).getTime()) / 60000));
+        const interval = setInterval(tick, 60000);
+        tick();
+        return () => clearInterval(interval);
+    }, [sentAt]);
+    return <span className="text-[9px] sm:text-[11px] font-black tabular-nums">{minutes} dk</span>;
 }
 
 function FloorSubTab({ icon, label, active, activeColor, onClick }: { icon: React.ReactNode, label: string, active?: boolean, activeColor?: string, onClick?: () => void }) {
