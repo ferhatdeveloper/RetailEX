@@ -109,6 +109,7 @@
             "@types/react-dom": "^19.2.3",
             "@vercel/node": "^5.1.6",
             "@vitejs/plugin-react-swc": "^3.10.2",
+            "better-sqlite3": "^11.10.0",
             "node-windows": "^1.0.0-beta.8",
             "ts-node": "^10.9.2",
             "typescript": "^5.9.3",
@@ -127,6 +128,9 @@
             "tauri:dev": "cd DeskApp && tauri dev",
             "tauri:build": "cd DeskApp && tauri build",
             "electron:dev": "electron ./src/electron/main.js --dev",
-            "bridge": "npx tsx src/services/pg_bridge.ts"
+            "bridge": "npx tsx src/services/pg_bridge.ts",
+            "db:migrate": "node database/scripts/run-pending-migrations.mjs",
+            "db:migrate:dry": "node database/scripts/run-pending-migrations.mjs --dry-run",
+            "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only"
       }
 }

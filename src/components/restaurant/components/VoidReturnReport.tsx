@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Trash2, RotateCcw, Calendar, FileText, RefreshCw } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { RestaurantService } from '../../../services/restaurant';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 
 interface VoidReturnReportProps {
     onBack?: () => void;
@@ -152,9 +153,9 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
                 </div>
                 <div className="text-sm font-black text-slate-600">
                     {tab === 'void' ? (
-                        <>Toplam iptal: <span className="text-red-600">{totalVoidAmount.toLocaleString('tr-TR')} ₺</span></>
+                        <>Toplam iptal: <span className="text-red-600">{formatMoneyAmount(totalVoidAmount, { minFrac: 0, maxFrac: 2 })}</span></>
                     ) : (
-                        <>Toplam iade: <span className="text-blue-600">{totalReturnAmount.toLocaleString('tr-TR')} ₺</span></>
+                        <>Toplam iade: <span className="text-blue-600">{formatMoneyAmount(totalReturnAmount, { minFrac: 0, maxFrac: 2 })}</span></>
                     )}
                 </div>
             </div>
@@ -201,7 +202,7 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
                                                     <span className="text-slate-500 font-medium" title="Mutfakta üretildikten sonra iptal — stok iade edilmedi">Hayır</span>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3 text-xs font-black text-right text-slate-800">{v.subtotal.toLocaleString('tr-TR')} ₺</td>
+                                            <td className="px-4 py-3 text-xs font-black text-right text-slate-800">{formatMoneyAmount(v.subtotal)}</td>
                                         </tr>
                                     );})}
                                 </tbody>
@@ -232,7 +233,7 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
                                         <td className="px-4 py-3 text-xs font-bold text-slate-800">{r.returnNumber} {r.originalReceipt && ` / ${r.originalReceipt}`}</td>
                                         <td className="px-4 py-3 text-xs font-bold text-slate-800">{r.productName} × {r.quantity}</td>
                                         <td className="px-4 py-3 text-xs text-blue-700 font-medium">{r.returnReason}</td>
-                                        <td className="px-4 py-3 text-xs font-black text-right text-slate-800">{r.totalAmount.toLocaleString('tr-TR')} ₺</td>
+                                        <td className="px-4 py-3 text-xs font-black text-right text-slate-800">{formatMoneyAmount(r.totalAmount)}</td>
                                     </tr>
                                 ))}
                             </tbody>

@@ -11,6 +11,7 @@ import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../t
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -34,8 +35,7 @@ const PAY_ICONS: Record<PayMethod, React.ElementType> = {
 let _itemId = 0;
 const nextId = () => `pos_${++_itemId}`;
 
-const fmt = (n: number) =>
-    new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
+const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export function BeautyPOS() {

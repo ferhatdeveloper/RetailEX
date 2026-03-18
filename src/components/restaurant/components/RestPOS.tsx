@@ -1469,7 +1469,6 @@ export const RestPOS: React.FC<RestPOSProps> = ({ products, customers, selectedC
                                 <span className="text-[34px] font-black text-slate-900 tabular-nums leading-none tracking-tighter drop-shadow-sm">
                                     {fmt(grandTotal)}
                                 </span>
-                                <span className="text-[10px] font-black text-blue-600 mt-1 uppercase tracking-widest opacity-70">TÜRK LİRASI</span>
                             </div>
                         </div>
                     </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Package, TrendingUp, Filter, Plus, AlertTriangle, CheckSquare, Square, Flame, Banknote, Clock, LayoutGrid } from 'lucide-react';
 
@@ -188,10 +188,10 @@ export function SupplierHistoryModal({ isOpen, onClose, supplierName, onAddItems
                                             {item.quantity} <span className="text-[10px] font-normal text-gray-400 ml-0.5">{item.unit}</span>
                                         </td>
                                         <td className="py-3 px-4 text-right font-mono text-gray-700">
-                                            {item.price.toFixed(2)} ₺
+                                            {item.price.toFixed(2)}
                                         </td>
                                         <td className="py-3 px-4 text-right font-bold text-blue-600 font-mono">
-                                            {item.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                                            {item.total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                                         </td>
                                         <td className="py-3 px-4 text-center">
                                             {item.stockStatus === 'low' && (

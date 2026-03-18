@@ -1,4 +1,4 @@
-﻿/**
+/**
  * QR Scanner Service
  * Pattern: Strategy Pattern + Observer Pattern
  * Features: Camera integration, QR code scanning, loyalty points
@@ -418,7 +418,7 @@ export class LoyaltyPointsProcessor {
       success: true,
       discount,
       newBalance,
-      message: `${points} puan kullanıldı. İndirim: ${discount} TL`
+      message: `${points} puan kullanıldı. İndirim: ${discount}`
     };
   }
 }

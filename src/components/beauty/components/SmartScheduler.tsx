@@ -13,6 +13,7 @@ import { logger } from '../../../services/loggingService';
 import { WeekView, MonthView } from './WeekMonthViews';
 import { StaffTimelineView } from './StaffTimelineView';
 import { AppointmentPOS } from './AppointmentPOS';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
 type ViewType = 'day' | 'week' | 'month' | 'timeline' | 'device' | 'list';
@@ -147,7 +148,7 @@ function NewAppointmentPage({
                                 <label style={labelStyle}>{tm('bServiceLabel')} <span style={{ color: '#ef4444' }}>*</span></label>
                                 <select value={form.service_id} onChange={e => onServiceChange(e.target.value)} style={selectStyle}>
                                     <option value="">{tm('bSelect')}</option>
-                                    {services.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — ₺{s.price}</option>)}
+                                    {services.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — {formatMoneyAmount(s.price, { minFrac: 0, maxFrac: 0 })}</option>)}
                                 </select>
                             </div>
                             <div style={fieldStyle}>
@@ -228,7 +229,7 @@ function NewAppointmentPage({
                                 { label: tm('bDate'),             value: form.date ? new Date(form.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
                                 { label: tm('bTime'),             value: form.time },
                                 { label: tm('bDuration'),         value: `${form.duration} ${tm('bMinutes')}` },
-                                { label: tm('bPriceHeader'),      value: form.total_price > 0 ? `₺${form.total_price.toLocaleString('tr-TR')}` : '—' },
+                                { label: tm('bPriceHeader'),      value: form.total_price > 0 ? formatMoneyAmount(form.total_price, { minFrac: 0, maxFrac: 0 }) : '—' },
                             ].map(({ label, value }) => (
                                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                                     <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
@@ -632,7 +633,7 @@ export function SmartScheduler() {
                                                     <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}{tm('bDkSuffix')}</span>
                                                 </div>
                                                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right' }}>{(apt.total_price ?? 0) > 0 ? `₺${apt.total_price.toLocaleString('tr-TR')}` : '—'}</span>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right' }}>{(apt.total_price ?? 0) > 0 ? formatMoneyAmount(apt.total_price ?? 0, { minFrac: 0, maxFrac: 0 }) : '—'}</span>
                                             </div>
                                         );
                                     })
@@ -665,7 +666,7 @@ export function SmartScheduler() {
                                     { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
                                     { label: tm('bDuration'),      value: `${selectedApt.duration ?? 30}${tm('bDkSuffix')}` },
                                     { label: tm('bDeviceView'),    value: selectedApt.device_name ?? '—' },
-                                    { label: tm('bPriceHeader'),   value: (selectedApt.total_price ?? 0) > 0 ? `₺${selectedApt.total_price!.toLocaleString('tr-TR')}` : '—' },
+                                    { label: tm('bPriceHeader'),   value: (selectedApt.total_price ?? 0) > 0 ? formatMoneyAmount(selectedApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—' },
                                 ].map(({ label, value }) => (
                                     <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
                                         <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>

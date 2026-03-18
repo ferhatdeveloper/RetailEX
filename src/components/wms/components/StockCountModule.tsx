@@ -775,16 +775,16 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                             <div className={`grid grid-cols-3 divide-x ${dividerClass}`}>
                                 <div className="py-2 text-center">
                                     <div className="text-[10px] text-gray-400 uppercase tracking-wide">Alış Değeri</div>
-                                    <div className={`text-sm font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{fmt(totalAlisValue)} ₺</div>
+                                    <div className={`text-sm font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>{fmt(totalAlisValue)}</div>
                                 </div>
                                 <div className="py-2 text-center">
                                     <div className="text-[10px] text-gray-400 uppercase tracking-wide">Satış Değeri</div>
-                                    <div className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{fmt(totalSatisValue)} ₺</div>
+                                    <div className={`text-sm font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{fmt(totalSatisValue)}</div>
                                 </div>
                                 <div className="py-2 text-center">
                                     <div className="text-[10px] text-gray-400 uppercase tracking-wide">Kar</div>
                                     <div className={`text-sm font-bold ${totalKar >= 0 ? (darkMode ? 'text-green-400' : 'text-green-600') : 'text-red-500'}`}>
-                                        {totalKar >= 0 ? '+' : ''}{fmt(totalKar)} ₺
+                                        {totalKar >= 0 ? '+' : ''}{fmt(totalKar)}
                                     </div>
                                 </div>
                             </div>
@@ -843,13 +843,13 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                                     {linePrice && (alisVal > 0 || satisVal > 0) && (
                                         <div className={`mt-1.5 ml-4 flex items-center gap-3 text-xs border-t pt-1.5 ${borderClass}`}>
                                             <span className={darkMode ? 'text-orange-400' : 'text-orange-600'}>
-                                                Alış: {fmt(alisVal)} ₺
+                                                Alış: {fmt(alisVal)}
                                             </span>
                                             <span className={darkMode ? 'text-blue-400' : 'text-blue-600'}>
-                                                Satış: {fmt(satisVal)} ₺
+                                                Satış: {fmt(satisVal)}
                                             </span>
                                             <span className={satisVal - alisVal >= 0 ? (darkMode ? 'text-green-400' : 'text-green-600') : 'text-red-500'}>
-                                                Kar: {fmt(satisVal - alisVal)} ₺
+                                                Kar: {fmt(satisVal - alisVal)}
                                             </span>
                                         </div>
                                     )}

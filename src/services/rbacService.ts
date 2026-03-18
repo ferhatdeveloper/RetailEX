@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Role-Based Access Control (RBAC) Service
  * 
  * Comprehensive permission and role management:
@@ -35,6 +35,8 @@ export interface Role {
   isActive: boolean;
   created_at: string;
   updated_at: string;
+  /** Giriş sonrası açılacak modül: restaurant, pos, management, wms, beauty */
+  landingRoute?: string;
 }
 
 export interface UserRole {

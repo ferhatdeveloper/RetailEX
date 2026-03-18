@@ -1,4 +1,4 @@
-﻿import { Send, CheckCircle, XCircle, Clock, Download, Maximize2, Minimize2, Upload, FileText, RefreshCw, Trash2 } from 'lucide-react';
+import { Send, CheckCircle, XCircle, Clock, Download, Maximize2, Minimize2, Upload, FileText, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { eTransformService, type EDocument, type EInvoiceData } from '../../services/eTransformService';
 import { toast } from 'sonner';
@@ -267,7 +267,7 @@ export function ETransformModule() {
                     </td>
                     <td className="px-2 py-0.5 text-[10px] border-r border-gray-200">{doc.customer}</td>
                     <td className="px-2 py-0.5 text-[10px] text-gray-600 border-r border-gray-200">{new Date(doc.date).toLocaleDateString('tr-TR')}</td>
-                    <td className="px-2 py-0.5 text-right text-[10px] text-blue-600 border-r border-gray-200">{doc.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL</td>
+                    <td className="px-2 py-0.5 text-right text-[10px] text-blue-600 border-r border-gray-200">{doc.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
                     <td className="px-2 py-0.5 text-center border-r border-gray-200">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] ${statusBadge.color}`}>
                         <StatusIcon className="w-3 h-3" />

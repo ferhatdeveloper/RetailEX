@@ -116,11 +116,21 @@ export function RoleForm() {
     const [role, setRole] = useState<RoleType | null>(null);
 
     // Advanced form state
+    const LANDING_OPTIONS: { value: string; label: string }[] = [
+        { value: '', label: tm('landingDefault') || 'Ana sayfa (varsayılan)' },
+        { value: 'restaurant', label: 'Restoran' },
+        { value: 'pos', label: 'POS' },
+        { value: 'management', label: 'Yönetim' },
+        { value: 'wms', label: 'Depo (WMS)' },
+        { value: 'beauty', label: 'Güzellik' }
+    ];
+
     const [formData, setFormData] = useState({
         name: '',
         description: '',
         permissions: [] as Permission[],
-        color: '#3B82F6'
+        color: '#3B82F6',
+        landing_route: '' as string
     });
 
     const [activeCategoryTab, setActiveCategoryTab] = useState(MODULE_GROUPS[0].id);
@@ -169,7 +179,8 @@ export function RoleForm() {
                     name: existingRole.name,
                     description: existingRole.description || '',
                     permissions: normalizedPermissions,
-                    color: existingRole.color || '#3B82F6'
+                    color: existingRole.color || '#3B82F6',
+                    landing_route: existingRole.landing_route ?? ''
                 });
             } else {
                 alert('Rol bulunamadı.');
@@ -347,6 +358,21 @@ export function RoleForm() {
                                             className="w-full h-full border-0 absolute -top-2 -left-2 w-[150%] h-[150%] cursor-pointer"
                                         />
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                        {tm('landingPage') || 'Giriş sonrası yönlendirilecek sayfa'}
+                                    </label>
+                                    <select
+                                        value={formData.landing_route}
+                                        onChange={(e) => setFormData({ ...formData, landing_route: e.target.value })}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium text-slate-800"
+                                    >
+                                        {LANDING_OPTIONS.map(opt => (
+                                            <option key={opt.value || 'default'} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 {role?.is_system_role && (

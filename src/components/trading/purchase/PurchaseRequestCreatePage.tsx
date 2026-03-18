@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     FileText, X, Save, Calendar, User, ClipboardList,
     Package, Search, Plus, Trash2, CheckCircle2,
@@ -687,7 +687,7 @@ export function PurchaseRequestCreatePage({
                             <div className="h-4 w-px bg-gray-300"></div>
                             <span className="text-gray-600 font-medium">Genel Toplam:</span>
                             <span className="text-lg font-bold text-blue-700">
-                                {items.reduce((acc, i) => acc + (i.total || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} TL
+                                {items.reduce((acc, i) => acc + (i.total || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                         </div>
                     </div>
@@ -734,7 +734,7 @@ export function PurchaseRequestCreatePage({
                                             </div>
                                             <div className="text-right">
                                                 <div className="font-bold text-gray-900 group-hover:text-blue-700">
-                                                    {product.price?.toLocaleString()} ₺
+                                                    {product.price?.toLocaleString()}
                                                 </div>
                                                 <div className="text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full inline-block mt-1">
                                                     Seç

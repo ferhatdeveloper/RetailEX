@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Advanced Campaign Engine
  * Pattern: Strategy Pattern + Chain of Responsibility
  * Features: Coupons, Loyalty, Time-based, Segmentation
@@ -227,7 +227,7 @@ class BasketValidator extends CampaignValidator {
       if (total < campaign.minBasketAmount) {
         return { 
           valid: false, 
-          message: `Minimum sepet tutarı ${campaign.minBasketAmount} TL` 
+          message: `Minimum sepet tutarı ${campaign.minBasketAmount}` 
         };
       }
     }
@@ -535,7 +535,7 @@ export const mockCampaigns: Campaign[] = [
   {
     id: 'camp-002',
     code: 'MORNING50',
-    name: 'Sabah İndirimi 50 TL',
+    name: 'Sabah İndirimi 50',
     type: 'AMOUNT_DISCOUNT',
     trigger: 'AUTO',
     discountAmount: 50,

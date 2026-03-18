@@ -59,7 +59,7 @@ const parseFormattedNumber = (value: string): number => {
 interface Payment {
   method: 'cash' | 'card' | 'gateway' | 'veresiye';
   amount: number;
-  currency: 'IQD' | 'USD' | 'EUR' | 'TRY';
+  currency: 'IQD' | 'USD' | 'EUR';
   gatewayProvider?: string;
   transactionId?: string;
 }
@@ -90,7 +90,7 @@ export function POSPaymentModal({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [currentMethod, setCurrentMethod] = useState<'cash' | 'card' | 'gateway' | 'veresiye'>('cash');
   const [currentAmount, setCurrentAmount] = useState('');
-  const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR' | 'TRY'>('IQD');
+  const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>('IQD');
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
   const [discountValue, setDiscountValue] = useState('');
   const [showNumpad, setShowNumpad] = useState(false);
@@ -131,11 +131,10 @@ export function POSPaymentModal({
   }, []);
 
   // Currency exchange rates (base: IQD)
-  const exchangeRates = {
+  const exchangeRates: Record<string, number> = {
     IQD: 1,
     USD: 1310,
     EUR: 1450,
-    TRY: 45
   };
 
   // Calculate additional discount
@@ -152,7 +151,7 @@ export function POSPaymentModal({
 
   // Calculate total paid (convert all to IQD)
   const totalPaid = payments.reduce((sum, payment) => {
-    const amountInIQD = payment.amount * exchangeRates[payment.currency];
+    const amountInIQD = payment.amount * (exchangeRates[payment.currency] ?? 1);
     return sum + amountInIQD;
   }, 0);
 

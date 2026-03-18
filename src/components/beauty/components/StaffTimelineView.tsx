@@ -49,13 +49,8 @@ export function StaffTimelineView({ currentDate, onAppointmentClick, timeSlots, 
         });
     }, [specialists, dayAppointments]);
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('tr-TR', {
-            style: 'currency',
-            currency: 'TRY',
-            minimumFractionDigits: 0
-        }).format(amount);
-    };
+    const formatCurrency = (amount: number) =>
+        new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 
     if (staffData.length === 0) {
         return (

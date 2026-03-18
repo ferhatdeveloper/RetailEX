@@ -66,13 +66,18 @@ export function RestaurantManageModal({
     };
 
     return (
-        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div
+            className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-300"
+            style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+        >
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
             <div
-                className="bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
+                className="relative bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]"
+                style={{ zIndex: 10 }}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header with Gradient */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between text-white relative overflow-hidden">
+                <div className="relative z-10 bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between text-white overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="flex items-center gap-4 relative z-10">
@@ -94,7 +99,7 @@ export function RestaurantManageModal({
                     </button>
                 </div>
 
-                <div className="p-8 space-y-6">
+                <div className="flex-1 overflow-y-auto p-8 space-y-6">
                     {/* Session Info Bar Style for Context */}
                     <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-3">
                         <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
@@ -207,8 +212,8 @@ export function RestaurantManageModal({
                     </div>
                 )}
 
-                {/* Footer Actions */}
-                <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
+                {/* Footer Actions — grid'in üstünde kalması için yüksek z-index */}
+                <div className="relative z-20 p-6 bg-slate-50 border-t border-slate-100 flex gap-4 shrink-0">
                     <button
                         onClick={onClose}
                         className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] hover:bg-slate-100 transition-colors active:scale-95 shadow-sm"

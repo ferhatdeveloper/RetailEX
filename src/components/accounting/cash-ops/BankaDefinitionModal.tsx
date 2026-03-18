@@ -142,7 +142,6 @@ export function BankaDefinitionModal({ banka, onClose, onSuccess }: BankaDefinit
                                     <option value="IQD">IQD</option>
                                     <option value="USD">USD</option>
                                     <option value="EUR">EUR</option>
-                                    <option value="TRY">TRY</option>
                                 </select>
                             </div>
                             {!banka && (

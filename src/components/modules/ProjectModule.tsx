@@ -1,4 +1,4 @@
-﻿import { Briefcase, Calendar, Users } from 'lucide-react';
+import { Briefcase, Calendar, Users } from 'lucide-react';
 
 export function ProjectModule() {
   const projects = [
@@ -43,7 +43,7 @@ export function ProjectModule() {
                 <Calendar className="w-4 h-4 text-purple-600" />
                 <span className="text-[10px] text-gray-600">Toplam Bütçe</span>
               </div>
-              <div className="text-base text-purple-600">{projects.reduce((s, p) => s + p.budget, 0).toLocaleString()} TL</div>
+              <div className="text-base text-purple-600">{projects.reduce((s, p) => s + p.budget, 0).toLocaleString()}</div>
             </div>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
@@ -82,8 +82,8 @@ export function ProjectModule() {
                   <td className="px-2 py-0.5 text-[10px] border-r border-gray-200">{project.client}</td>
                   <td className="px-2 py-0.5 text-[10px] text-gray-600 border-r border-gray-200">{new Date(project.startDate).toLocaleDateString('tr-TR')}</td>
                   <td className="px-2 py-0.5 text-[10px] text-gray-600 border-r border-gray-200">{new Date(project.endDate).toLocaleDateString('tr-TR')}</td>
-                  <td className="px-2 py-0.5 text-right text-[10px] border-r border-gray-200">{project.budget.toLocaleString()} TL</td>
-                  <td className="px-2 py-0.5 text-right text-[10px] text-orange-600 border-r border-gray-200">{project.spent.toLocaleString()} TL</td>
+                  <td className="px-2 py-0.5 text-right text-[10px] border-r border-gray-200">{project.budget.toLocaleString()}</td>
+                  <td className="px-2 py-0.5 text-right text-[10px] text-orange-600 border-r border-gray-200">{project.spent.toLocaleString()}</td>
                   <td className="px-2 py-0.5 border-r border-gray-200">
                     <div className="flex items-center gap-1">
                       <div className="flex-1 bg-gray-200 rounded-full h-1.5">

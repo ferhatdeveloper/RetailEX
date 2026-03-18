@@ -81,6 +81,10 @@ export function MainLayout({
     // 0. Yetki bazlı kesin öncelik:
     if (isAdmin() || (currentUser?.role && ['admin', 'manager'].includes(currentUser.role))) return 'management';
 
+    // 0b. Garson / Waiter rolü — koşulsuz restoran
+    const primaryRoleName = (currentUser?.roles?.[0]?.name || currentUser?.role || '').toLowerCase();
+    if (primaryRoleName === 'garson' || primaryRoleName === 'waiter') return 'restaurant';
+
     // 1. Önce localStorage'da kayıtlı modüle bak (Sayfa yenileme durumu)
     const savedModule = localStorage.getItem('retailex_active_module') as Module;
     if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {

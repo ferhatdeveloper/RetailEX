@@ -96,7 +96,6 @@ export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinition
                                         <option value="IQD">IQD</option>
                                         <option value="USD">USD</option>
                                         <option value="EUR">EUR</option>
-                                        <option value="TRY">TRY</option>
                                     </select>
                                 </div>
                                 {!kasa && (

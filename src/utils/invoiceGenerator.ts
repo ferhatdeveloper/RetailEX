@@ -1,4 +1,4 @@
-﻿import type { Sale } from '../App';
+import type { Sale } from '../App';
 
 export interface InvoiceData {
   invoiceNo: string;
@@ -183,7 +183,7 @@ export function printInvoiceHTML(invoice: InvoiceData): string {
   <table class="total-row">
     <tr>
       <td>TOPLAM:</td>
-      <td class="right">${invoice.total.toFixed(2)} TL</td>
+      <td class="right">${invoice.total.toFixed(2)}</td>
     </tr>
     <tr style="font-size: 12px;">
       <td>Ödeme:</td>

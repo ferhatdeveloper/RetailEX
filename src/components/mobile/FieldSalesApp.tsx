@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Mobile Field Sales Application
  * Pattern: Progressive Web App + Offline-First
  * Features: GPS tracking, route navigation, check-in/out, live sync
@@ -432,7 +432,7 @@ function VisitScreen({ visit, plannedVisit, location, onCheckOut, onUpdateOutcom
               <div className="text-xs text-gray-600">Sipariş</div>
             </div>
             <div className="bg-green-50 p-3 rounded">
-              <div className="text-2xl text-green-600">{visit.outcomes.collection_total} TL</div>
+              <div className="text-2xl text-green-600">{visit.outcomes.collection_total}</div>
               <div className="text-xs text-gray-600">Tahsilat</div>
             </div>
           </div>

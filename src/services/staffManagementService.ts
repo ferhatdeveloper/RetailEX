@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Staff Management Service
  * Pattern: Strategy Pattern + State Pattern
  * Features: Shift management, commission calculation, performance tracking
@@ -408,7 +408,7 @@ export class StaffManagementService {
 
     if (totalSales > 50000) {
       bonuses.push({
-        reason: '50.000 TL üzeri satış bonusu',
+        reason: '50.000 üzeri satış bonusu',
         amount: 500
       });
     }

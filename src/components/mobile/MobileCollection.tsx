@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Mobile Collection (Sahada Tahsilat)
  * Features: Payment collection, receipt photo, multiple payment methods
  */
@@ -41,7 +41,7 @@ export function MobileCollection({ customerId, customerName }: { customerId: str
     pending.push(collection);
     localStorage.setItem('pending_collections', JSON.stringify(pending));
 
-    toast.success(`${parseFloat(amount).toFixed(2)} TL tahsilat kaydedildi`);
+    toast.success(`${parseFloat(amount).toFixed(2)} tahsilat kaydedildi`);
     
     // Reset
     setAmount('');
@@ -62,7 +62,7 @@ export function MobileCollection({ customerId, customerName }: { customerId: str
           <div className="space-y-4">
             {/* Amount */}
             <div>
-              <label className="block text-sm mb-2">Tutar (TL)</label>
+              <label className="block text-sm mb-2">Tutar</label>
               <input
                 type="number"
                 value={amount}

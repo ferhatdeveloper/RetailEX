@@ -92,7 +92,7 @@ export default function RestaurantModule({
     selectedCustomer: initialSelectedCustomer = null,
     setActiveModule
 }: RestaurantModuleProps) {
-    const { hasPermission } = usePermission();
+    const { hasPermission, isAdmin } = usePermission();
     const { t } = useLanguage();
 
     const handleZoomIn = () => {
@@ -131,6 +131,7 @@ export default function RestaurantModule({
         syncTableStatuses,
         loadKitchenOrders,
         currentStaff: storeStaff,
+        setCurrentStaff,
         workDayDate,
         isDayActive,
         openRegister,
@@ -152,10 +153,22 @@ export default function RestaurantModule({
 
     useEffect(() => {
         if (activeTab === 'floor') {
-            setShowStaffModalOnFloor(true);
-            setStaffPickMandatory(true);
+            if (isAdmin()) {
+                setShowStaffModalOnFloor(false);
+                setStaffPickMandatory(false);
+                setCurrentStaff({
+                    id: currentUser?.id ?? 'admin',
+                    name: currentUser?.fullName || currentUser?.username || 'Admin',
+                    role: 'Admin',
+                    pin: '',
+                    isActive: true,
+                });
+            } else {
+                setShowStaffModalOnFloor(true);
+                setStaffPickMandatory(true);
+            }
         }
-    }, [activeTab]);
+    }, [activeTab, isAdmin, currentUser?.id, currentUser?.fullName, currentUser?.username, setCurrentStaff]);
 
     // Arka planda masa durumlarını ve mutfak siparişlerini periyodik senkronize et (ağ/çoklu cihaz senkronu)
     useEffect(() => {
@@ -584,6 +597,7 @@ function RestaurantContent({
                     moveTargetTableId={moveTargetTableId}
                     onMoveTargetSelect={setMoveTargetTableId}
                     onRequestStaffChange={onRequestStaffChange}
+                    onOpenReservations={() => setActiveTab('reservations')}
                     onMoveConfirm={async (mode, targetId) => {
                         try {
                             if (mode === 'move') {

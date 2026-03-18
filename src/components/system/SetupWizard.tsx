@@ -197,7 +197,7 @@ const SetupWizard: React.FC = () => {
         },
         enabled_modules: ['pos', 'wms'], // Only default retail modules
         bayi_seti: false,
-        base_currency: 'TRY',
+        base_currency: 'IQD',
     };
 
     const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
@@ -1405,7 +1405,7 @@ const SetupWizard: React.FC = () => {
             if (!isUpdateMode) {
                 toast.info('Para birimleri tanımlanıyor...');
                 const currencies = [
-                    ['TRY', 'Türk Lirası', '₺', true],
+                    ['IQD', 'Irak Dinarı', '', true],
                     ['USD', 'Amerikan Doları', '$', false],
                     ['EUR', 'Euro', '€', false],
                     ['GBP', 'İngiliz Sterlini', '£', false]
@@ -2984,7 +2984,7 @@ const SetupWizard: React.FC = () => {
                                                             value={config.base_currency}
                                                             onChange={(e) => setConfig({ ...config, base_currency: e.target.value })}
                                                         >
-                                                            <option value="TRY" className="bg-slate-900">Türk Lirası (TRY)</option>
+                                                            <option value="IQD" className="bg-slate-900">Irak Dinarı (IQD)</option>
                                                             <option value="USD" className="bg-slate-900">Amerikan Doları (USD)</option>
                                                             <option value="EUR" className="bg-slate-900">Euro (EUR)</option>
                                                             <option value="GBP" className="bg-slate-900">İngiliz Sterlini (GBP)</option>

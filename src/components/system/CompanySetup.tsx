@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Building2,
   Store,
@@ -42,7 +42,6 @@ const CURRENCIES = [
   { value: 'IQD', label: 'IQD — Irak Dinarı' },
   { value: 'USD', label: 'USD — Amerikan Doları' },
   { value: 'EUR', label: 'EUR — Euro' },
-  { value: 'TRY', label: 'TRY — Türk Lirası' },
   { value: 'SAR', label: 'SAR — Suudi Riyali' },
   { value: 'AED', label: 'AED — BAE Dirhemi' },
   { value: 'KWD', label: 'KWD — Kuveyt Dinarı' },

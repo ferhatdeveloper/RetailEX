@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Search, X, Code, CheckCircle, AlertCircle } from 'lucide-react';
@@ -116,7 +116,7 @@ export function BroadcastFormFields({ type, action, formData, setFormData, onReq
       { label: 'ID', value: formData.productId },
       { label: 'Barkod', value: formData.productBarcode },
       { label: 'Ürün Adı', value: formData.productName },
-      { label: 'Fiyat', value: `${formData.productPrice} ₺` },
+      { label: 'Fiyat', value: String(formData.productPrice) },
       { label: 'Stok', value: formData.productStock },
       { label: 'Kategori', value: formData.productCategory },
     ]);
@@ -126,8 +126,8 @@ export function BroadcastFormFields({ type, action, formData, setFormData, onReq
   if (type === 'price') {
     return renderSelectionState('Ürün (Fiyat Güncellemesi)', 'priceProductId', 'product', [
       { label: 'ID', value: formData.priceProductId },
-      { label: 'Eski Fiyat', value: `${formData.oldPrice} ₺` },
-      { label: 'Yeni Fiyat', value: formData.newPrice ? `${formData.newPrice} ₺` : '(Girilecek)' }, // Yeni fiyat manuel girilmeli mi? Kullanıcı "tümü değişenler DB'den" dedi, fiyat değişimi broadcast ediliyorsa yeni fiyat DB'deki fiyattır.
+      { label: 'Eski Fiyat', value: String(formData.oldPrice) },
+      { label: 'Yeni Fiyat', value: formData.newPrice ? String(formData.newPrice) : '(Girilecek)' }, // Yeni fiyat manuel girilmeli mi? Kullanıcı "tümü değişenler DB'den" dedi, fiyat değişimi broadcast ediliyorsa yeni fiyat DB'deki fiyattır.
     ]);
     // Note: For price update, usually you select a product and the "new price" is whatever is in the DB currently, 
     // or maybe you want to broadcast a change TO the DB value. Assuming DB value is the source of truth.

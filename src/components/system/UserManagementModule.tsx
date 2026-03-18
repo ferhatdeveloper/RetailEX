@@ -383,112 +383,112 @@ export function UserManagementModule() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-black uppercase tracking-tight">
-                    {editingUser ? tm('editUser') : tm('createUser')}
-                  </h2>
+                {editingUser ? tm('editUser') : tm('createUser')}
+              </h2>
                   <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
                     {editingUser ? 'Bilgileri güncelleyin' : 'Yeni kullanıcı ekleyin'}
                   </p>
                 </div>
-                <button
+              <button
                   type="button"
-                  onClick={() => setShowUserModal(false)}
+                onClick={() => setShowUserModal(false)}
                   className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                  title={tm('close')}
-                >
+                title={tm('close')}
+              >
                   <X className="w-5 h-5" />
-                </button>
+              </button>
               </div>
             </div>
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-8">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div className="space-y-4">
-                  <div>
+              <div className="space-y-4">
+                <div>
                     <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {tm('usernameLabel')} *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    {tm('usernameLabel')} *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                       className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                      placeholder="kullanici123"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {tm('fullNameLabel')} *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                      placeholder="Ahmet Yılmaz"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {tm('emailLabel')}
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                      placeholder="ahmet@example.com"
-                    />
-                  </div>
+                    placeholder="kullanici123"
+                  />
                 </div>
-
-                <div className="space-y-4">
-                  <div>
+                <div>
                     <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {tm('roleLabel')} *
-                    </label>
+                    {tm('fullNameLabel')} *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.full_name}
+                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
+                    placeholder="Ahmet Yılmaz"
+                  />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('emailLabel')}
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
+                    placeholder="ahmet@example.com"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('roleLabel')} *
+                  </label>
                     <div className="relative">
-                      <select
-                        value={formData.role_id}
-                        onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
+                  <select
+                    value={formData.role_id}
+                    onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
                         className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium appearance-none bg-white"
-                      >
-                        <option value="">{tm('selectRole')}</option>
-                        {roles.map(role => (
-                          <option key={role.id} value={role.id}>{role.name.toUpperCase()}</option>
-                        ))}
-                      </select>
+                  >
+                    <option value="">{tm('selectRole')}</option>
+                    {roles.map(role => (
+                      <option key={role.id} value={role.id}>{role.name.toUpperCase()}</option>
+                    ))}
+                  </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {tm('bPhone')}
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                      placeholder="+964 750 123 4567"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      {editingUser ? tm('passwordOptional') : `${tm('passwordLabel')} *`}
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
-                        placeholder={tm('passwordPlaceholder')}
-                      />
-                    </div>
-                  </div>
                 </div>
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('bPhone')}
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
+                    placeholder="+964 750 123 4567"
+                  />
+                </div>
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {editingUser ? tm('passwordOptional') : `${tm('passwordLabel')} *`}
+                </label>
+                <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none transition-all text-slate-800 font-medium"
+                    placeholder={tm('passwordPlaceholder')}
+                  />
+                </div>
+              </div>
+            </div>
 
                 {/* Tree: Firma → Dönemler, Mağazalar/Depolar — tam genişlik */}
                 <div className="col-span-2 w-full min-w-0 space-y-2 p-4 rounded-2xl border border-slate-200 bg-slate-50/50">

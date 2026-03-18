@@ -1,4 +1,4 @@
-﻿/**
+/**
  * e-Dönüşüm Service
  * GİB (Gelir İdaresi Başkanlığı) entegrasyonu
  * Pattern: Service Layer Pattern
@@ -130,7 +130,7 @@ export function generateEInvoiceXML(data: EInvoiceData, uuid: string): string {
   <cbc:UUID>${uuid}</cbc:UUID>
   <cbc:IssueDate>${data.invoiceDate}</cbc:IssueDate>
   <cbc:InvoiceTypeCode>SATIS</cbc:InvoiceTypeCode>
-  <cbc:DocumentCurrencyCode>TRY</cbc:DocumentCurrencyCode>
+  <cbc:DocumentCurrencyCode>IQD</cbc:DocumentCurrencyCode>
   
   <cac:AccountingSupplierParty>
     <cac:Party>
@@ -178,18 +178,18 @@ export function generateEInvoiceXML(data: EInvoiceData, uuid: string): string {
   <cac:InvoiceLine>
     <cbc:ID>${index + 1}</cbc:ID>
     <cbc:InvoicedQuantity unitCode="C62">${item.quantity}</cbc:InvoicedQuantity>
-    <cbc:LineExtensionAmount currencyID="TRY">${item.amount.toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:LineExtensionAmount currencyID="IQD">${item.amount.toFixed(2)}</cbc:LineExtensionAmount>
     <cac:Item>
       <cbc:Name>${item.name}</cbc:Name>
     </cac:Item>
     <cac:Price>
-      <cbc:PriceAmount currencyID="TRY">${item.unitPrice.toFixed(2)}</cbc:PriceAmount>
+      <cbc:PriceAmount currencyID="IQD">${item.unitPrice.toFixed(2)}</cbc:PriceAmount>
     </cac:Price>
     <cac:TaxTotal>
-      <cbc:TaxAmount currencyID="TRY">${(item.amount * item.taxRate / 100).toFixed(2)}</cbc:TaxAmount>
+      <cbc:TaxAmount currencyID="IQD">${(item.amount * item.taxRate / 100).toFixed(2)}</cbc:TaxAmount>
       <cac:TaxSubtotal>
-        <cbc:TaxableAmount currencyID="TRY">${item.amount.toFixed(2)}</cbc:TaxableAmount>
-        <cbc:TaxAmount currencyID="TRY">${(item.amount * item.taxRate / 100).toFixed(2)}</cbc:TaxAmount>
+        <cbc:TaxableAmount currencyID="IQD">${item.amount.toFixed(2)}</cbc:TaxableAmount>
+        <cbc:TaxAmount currencyID="IQD">${(item.amount * item.taxRate / 100).toFixed(2)}</cbc:TaxAmount>
         <cbc:Percent>${item.taxRate}</cbc:Percent>
         <cac:TaxCategory>
           <cac:TaxScheme>
@@ -203,14 +203,14 @@ export function generateEInvoiceXML(data: EInvoiceData, uuid: string): string {
   `).join('')}
   
   <cac:TaxTotal>
-    <cbc:TaxAmount currencyID="TRY">${data.totalTax.toFixed(2)}</cbc:TaxAmount>
+    <cbc:TaxAmount currencyID="IQD">${data.totalTax.toFixed(2)}</cbc:TaxAmount>
   </cac:TaxTotal>
   
   <cac:LegalMonetaryTotal>
-    <cbc:LineExtensionAmount currencyID="TRY">${data.totalAmount.toFixed(2)}</cbc:LineExtensionAmount>
-    <cbc:TaxExclusiveAmount currencyID="TRY">${data.totalAmount.toFixed(2)}</cbc:TaxExclusiveAmount>
-    <cbc:TaxInclusiveAmount currencyID="TRY">${data.grandTotal.toFixed(2)}</cbc:TaxInclusiveAmount>
-    <cbc:PayableAmount currencyID="TRY">${data.grandTotal.toFixed(2)}</cbc:PayableAmount>
+    <cbc:LineExtensionAmount currencyID="IQD">${data.totalAmount.toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="IQD">${data.totalAmount.toFixed(2)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="IQD">${data.grandTotal.toFixed(2)}</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="IQD">${data.grandTotal.toFixed(2)}</cbc:PayableAmount>
   </cac:LegalMonetaryTotal>
 </Invoice>`;
 

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Printer, Search, X, Plus, Minus, Check, Grid3x3, Download } from 'lucide-react';
 import type { Product } from '../../../App';
 import type { Template } from '../../../core/types/templates';
@@ -276,7 +276,7 @@ export function BulkLabelPrint({ onClose }: BulkLabelPrintProps) {
                 >
                   <p className="text-sm truncate mb-1">{product.name}</p>
                   <p className="text-xs text-gray-600 mb-1">{product.barcode}</p>
-                  <p className="text-sm text-blue-600">{product.price.toFixed(2)} TL</p>
+                  <p className="text-sm text-blue-600">{product.price.toFixed(2)}</p>
                   <p className="text-xs text-gray-500">{product.category}</p>
                 </button>
               ))}

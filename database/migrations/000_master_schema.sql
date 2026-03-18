@@ -101,9 +101,11 @@ CREATE TABLE IF NOT EXISTS public.roles (
   permissions   JSONB DEFAULT '[]',
   is_system_role BOOLEAN DEFAULT false,
   color         VARCHAR(20) DEFAULT '#3B82F6',
+  landing_route VARCHAR(100) DEFAULT NULL,
   created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+COMMENT ON COLUMN public.roles.landing_route IS 'Giriş sonrası açılacak modül: restaurant, pos, management, wms, beauty veya boş (ana sayfa).';
 
 CREATE TABLE IF NOT EXISTS public.users (
   id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -547,6 +549,23 @@ CREATE TABLE IF NOT EXISTS rest.printer_profiles (
   address    VARCHAR(255),
   created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- İade/iptal raporu (VoidReturnReport) — 002 / SETUP_RESTAURANT_CHAT_ADDITIONS ile uyumlu
+CREATE TABLE IF NOT EXISTS rest.return_log (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  return_number    VARCHAR(50) NOT NULL,
+  original_receipt VARCHAR(100),
+  product_id       UUID,
+  product_name     VARCHAR(255) NOT NULL,
+  quantity         DECIMAL(15,3) NOT NULL DEFAULT 1,
+  unit_price       DECIMAL(15,2) NOT NULL DEFAULT 0,
+  total_amount     DECIMAL(15,2) NOT NULL DEFAULT 0,
+  return_reason    TEXT NOT NULL,
+  staff_name       VARCHAR(255),
+  created_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_return_log_created_at ON rest.return_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_return_log_reason ON rest.return_log(return_reason);
 
 -- ============================================================================
 -- 7. BEAUTY SCHEMA (Static global)
@@ -1584,13 +1603,14 @@ INSERT INTO units (code, name) VALUES
 ('M2',   'Metrekare')
 ON CONFLICT (code) DO NOTHING;
 
--- RBAC Rolleri
-INSERT INTO public.roles (id, name, description, is_system_role, color, permissions) VALUES
-('00000000-0000-0000-0000-000000000001', 'admin',   'Tam yetkili sistem yöneticisi',  true, '#9333ea', '["*"]'),
-('00000000-0000-0000-0000-000000000002', 'manager', 'Mağaza Müdürü',                  true, '#3B82F6', '["pos.*", "management.*", "reports.*"]'),
-('00000000-0000-0000-0000-000000000003', 'cashier', 'Kasiyer — Satış Yetkisi',        true, '#10B981', '["pos.view", "pos.sell"]'),
-('00000000-0000-0000-0000-000000000004', 'stock',   'Stok ve Depo Sorumlusu',         true, '#F59E0B', '["management.products", "reports.inventory"]')
-ON CONFLICT (name) DO NOTHING;
+-- RBAC Rolleri (landing_route: giriş sonrası açılacak modül)
+INSERT INTO public.roles (id, name, description, is_system_role, color, permissions, landing_route) VALUES
+('00000000-0000-0000-0000-000000000001', 'admin',   'Tam yetkili sistem yöneticisi',  true, '#9333ea', '["*"]', NULL),
+('00000000-0000-0000-0000-000000000002', 'manager', 'Mağaza Müdürü',                  true, '#3B82F6', '["pos.*", "management.*", "reports.*"]', NULL),
+('00000000-0000-0000-0000-000000000003', 'cashier', 'Kasiyer — Satış Yetkisi',        true, '#10B981', '["pos.view", "pos.sell"]', 'pos'),
+('00000000-0000-0000-0000-000000000004', 'stock',   'Stok ve Depo Sorumlusu',         true, '#F59E0B', '["management.products", "reports.inventory"]', NULL),
+('00000000-0000-0000-0000-000000000005', 'garson', 'Garson — Restoran masa servisi', true, '#F97316', '["restaurant.pos", "restaurant.kds"]', 'restaurant')
+ON CONFLICT (name) DO UPDATE SET landing_route = EXCLUDED.landing_route;
 
 -- Admin Kullanıcısı
 INSERT INTO public.users (id, firm_nr, username, password_hash, full_name, email, role, role_id, is_active)

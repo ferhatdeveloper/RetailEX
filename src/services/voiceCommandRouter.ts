@@ -1,4 +1,4 @@
-﻿// src/services/voiceCommandRouter.ts
+// src/services/voiceCommandRouter.ts
 import { useNavigate } from 'react-router-dom';
 import { dashboardAPI } from './api/dashboard';
 import { VoiceCommandResult } from './voiceTypes';
@@ -195,7 +195,7 @@ export class VoiceCommandRouter {
             switch (result.intent) {
                 case 'query_revenue': {
                     const stats = await dashboardAPI.getStats();
-                    finalResponse = `Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} TL ciro yapıldı. Toplam işlem sayısı ${stats.totalTransactions}.`;
+                    finalResponse = `Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} ciro yapıldı. Toplam işlem sayısı ${stats.totalTransactions}.`;
                     break;
                 }
                 case 'query_stock_summary': {
@@ -211,7 +211,7 @@ export class VoiceCommandRouter {
                     const stores = await dashboardAPI.getStoreList();
                     const topStore = stores.sort((a, b) => b.revenue - a.revenue)[0];
                     if (topStore) {
-                        finalResponse = `Bugün en çok satışı ${topStore.revenue.toLocaleString('tr-TR')} TL ile ${topStore.name} mağazamız gerçekleştirdi.`;
+                        finalResponse = `Bugün en çok satışı ${topStore.revenue.toLocaleString('tr-TR')} tutarında ${topStore.name} mağazamız gerçekleştirdi.`;
                     } else {
                         finalResponse = "Satış verisi bulunan herhangi bir mağaza henüz kaydedilmemiş.";
                     }
@@ -338,9 +338,9 @@ export class VoiceCommandRouter {
                 case '/dashboard': {
                     const stats = await dashboardAPI.getStats();
                     if (stats.criticalAlerts > 0) {
-                        return `Dashboard hazır. Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} TL satış yapıldı. Dikkat: ${stats.criticalAlerts} ürün kritik stok seviyesinde.`;
+                        return `Dashboard hazır. Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} satış yapıldı. Dikkat: ${stats.criticalAlerts} ürün kritik stok seviyesinde.`;
                     }
-                    return `Dashboard açıldı. Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} TL tutarında ${stats.totalTransactions} işlem gerçekleşti.`;
+                    return `Dashboard açıldı. Bugün toplam ${stats.totalRevenue.toLocaleString('tr-TR')} tutarında ${stats.totalTransactions} işlem gerçekleşti.`;
                 }
                 case '/stock': {
                     const alerts = await dashboardAPI.getCriticalAlerts(3);
@@ -353,7 +353,7 @@ export class VoiceCommandRouter {
                     const stores = await dashboardAPI.getStoreList();
                     const topStore = stores.sort((a, b) => b.revenue - a.revenue)[0];
                     if (topStore) {
-                        return `Müşteri listesi açıldı. Bugün en iyi performansı ${topStore.revenue.toLocaleString('tr-TR')} TL ciro ile ${topStore.name} mağazası gösteriyor.`;
+                        return `Müşteri listesi açıldı. Bugün en iyi performansı ${topStore.revenue.toLocaleString('tr-TR')} ciro ile ${topStore.name} mağazası gösteriyor.`;
                     }
                     return "Müşteri listesi hazır.";
                 }

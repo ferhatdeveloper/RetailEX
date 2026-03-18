@@ -2005,7 +2005,6 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="IQD">IQD - {tm('iraqiDinar')}</option>
-                      <option value="TL">TL - {tm('turkishLira')}</option>
                       <option value="USD">USD - {tm('usDollar')}</option>
                       <option value="EUR">EUR - {tm('euro')}</option>
                       <option value="GBP">GBP - {tm('britishPound')}</option>

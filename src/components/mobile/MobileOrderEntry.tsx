@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Mobile Order Entry (Sahada Sipariş Alma)
  * Features: Product search, cart, customer selection, offline support
  */
@@ -103,7 +103,7 @@ export function MobileOrderEntry({ customerId }: { customerId: string }) {
           <div key={i} className="bg-white p-3 rounded-lg flex items-center justify-between">
             <div>
               <div className="font-medium">{name}</div>
-              <div className="text-sm text-gray-600">{(100 + i * 50)} TL</div>
+              <div className="text-sm text-gray-600">{(100 + i * 50)}</div>
             </div>
             <button
               onClick={() => addToCart({ id: `p${i}`, code: `P00${i}`, name, price: 100 + i * 50 })}
@@ -135,7 +135,7 @@ export function MobileOrderEntry({ customerId }: { customerId: string }) {
           </div>
           <div className="flex items-center justify-between mb-3 text-lg">
             <span>Toplam</span>
-            <span className="text-blue-600">{total.toFixed(2)} TL</span>
+            <span className="text-blue-600">{total.toFixed(2)}</span>
           </div>
           <button
             onClick={submitOrder}

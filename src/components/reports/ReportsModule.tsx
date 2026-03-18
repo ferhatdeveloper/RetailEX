@@ -1361,7 +1361,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
                         </RePieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1621,7 +1621,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
                         </RePieChart>
                       </ResponsiveContainer>
                       <div className="space-y-3">
@@ -2232,7 +2232,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                               ))}
                             </Pie>
-                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
                             <Legend verticalAlign="bottom" height={36} />
                           </RePieChart>
                         </ResponsiveContainer>
@@ -2266,14 +2266,14 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                                 <p className="text-sm">{item.label}</p>
                                 {item.sub && <p className="text-[10px] text-slate-400 italic">{item.sub}</p>}
                               </div>
-                              <p className="text-sm">₺ {formatNumber(item.value, 2, false)}</p>
+                              <p className="text-sm">{formatNumber(item.value, 2, false)}</p>
                             </div>
                           ));
                         })()}
                         <div className="flex items-center gap-2 pt-2 text-purple-600 font-bold">
                           <TagsOutlined />
                           <span className="text-sm">İndirim Toplam</span>
-                          <span className="ml-auto">₺ {formatNumber(businessType === 'restaurant' ? (restStats?.discountTotal || 0) : dailyDiscount, 2, false)}</span>
+                          <span className="ml-auto">{formatNumber(businessType === 'restaurant' ? (restStats?.discountTotal || 0) : dailyDiscount, 2, false)}</span>
                         </div>
                       </div>
                     </div>
@@ -2367,7 +2367,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                             >
                               <Cell fill="#ffab91" />
                             </Pie>
-                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
                             <Legend />
                           </RePieChart>
                         </ResponsiveContainer>
@@ -2391,7 +2391,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                               <Cell fill="#90caf9" />
                               <Cell fill="#80cbc4" />
                             </Pie>
-                            <Tooltip formatter={(value: any) => formatNumber(value, 2, false) + ' ₺'} />
+                            <Tooltip formatter={(value: any) => formatNumber(value, 2, false)} />
                             <Legend />
                           </RePieChart>
                         </ResponsiveContainer>
@@ -2480,13 +2480,13 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                               <p className="text-sm">{item.label}</p>
                               {item.sub && <p className="text-[10px] text-slate-400 italic">{item.sub}</p>}
                             </div>
-                            <p className="text-sm">₺ {formatNumber(item.value, 2, false)}</p>
+                            <p className="text-sm">{formatNumber(item.value, 2, false)}</p>
                           </div>
                         ))}
                         <div className="flex items-center gap-2 pt-2 text-purple-600 font-bold">
                           <TagsOutlined />
                           <span className="text-sm uppercase font-black">İndirim Toplam</span>
-                          <span className="ml-auto">₺ 0,00</span>
+                          <span className="ml-auto">{formatNumber(0, 2, false)}</span>
                         </div>
                       </div>
                     </div>
@@ -2518,7 +2518,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="name" axisLine={false} tickLine={false} />
                           <YAxis axisLine={false} tickLine={false} />
-                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
                           <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -2542,7 +2542,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                           <span className="text-sm font-bold text-slate-700">{method}</span>
                           <div className="flex gap-20">
                             <span className="text-sm font-bold">-</span>
-                            <span className="text-sm font-bold">₺ {formatNumber(total as number, 2, false)}</span>
+                            <span className="text-sm font-bold">{formatNumber(total as number, 2, false)}</span>
                           </div>
                         </div>
                       ))}
@@ -2550,7 +2550,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                         <span className="text-sm font-bold text-slate-700">Toplamlar</span>
                         <div className="flex gap-20">
                           <span className="text-sm font-bold">-</span>
-                          <span className="text-sm font-bold">₺ {formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
+                          <span className="text-sm font-bold">{formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
                         </div>
                       </div>
                     </div>
@@ -2577,7 +2577,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                           <YAxis axisLine={false} tickLine={false} />
-                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
                           <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={25} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -2603,7 +2603,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                             <span className="text-xs font-bold text-slate-500">Satış Verisi</span>
                             <div className="flex gap-20 font-bold text-xs">
                               <span>{formatNumber(prod.quantity, 2, false)} Adet</span>
-                              <span>₺ {formatNumber(prod.revenue, 2, false)}</span>
+                              <span>{formatNumber(prod.revenue, 2, false)}</span>
                             </div>
                           </div>
                         </React.Fragment>
@@ -2612,7 +2612,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                         <span className="text-sm font-bold text-slate-700">Genel Toplam</span>
                         <div className="flex gap-20">
                           <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.quantity || 0), 0), 2, false)}</span>
-                          <span className="text-sm font-bold">₺ {formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.revenue || 0), 0), 2, false)}</span>
+                          <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.revenue || 0), 0), 2, false)}</span>
                         </div>
                       </div>
                     </div>
@@ -2635,7 +2635,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
                           <YAxis axisLine={false} tickLine={false} />
-                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false) + ' ₺'} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
                           <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -2662,7 +2662,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                               <span className="text-[11px] font-medium text-slate-600">{item.product_name}</span>
                               <div className="flex gap-20 font-bold text-[11px]">
                                 <span>{formatNumber(item.quantity, 0, false)}</span>
-                                <span>₺ {formatNumber(item.subtotal, 2, false)}</span>
+                                <span>{formatNumber(item.subtotal, 2, false)}</span>
                               </div>
                             </div>
                           ))}
@@ -2670,7 +2670,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                             <span className="text-xs text-amber-700">Kategori Toplamı</span>
                             <div className="flex gap-20 text-xs text-amber-700">
                               <span>{formatNumber(cat.totalQuantity, 2, false)}</span>
-                              <span>₺ {formatNumber(cat.totalRevenue, 2, false)}</span>
+                              <span>{formatNumber(cat.totalRevenue, 2, false)}</span>
                             </div>
                           </div>
                         </React.Fragment>
@@ -2679,7 +2679,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                         <span className="text-sm">Genel Toplam</span>
                         <div className="flex gap-20">
                           <span>{formatNumber(categories.reduce((s, c) => s + c.totalQuantity, 0), 2, false)}</span>
-                          <span>₺ {formatNumber(categories.reduce((s, c) => s + c.totalRevenue, 0), 2, false)}</span>
+                          <span>{formatNumber(categories.reduce((s, c) => s + c.totalRevenue, 0), 2, false)}</span>
                         </div>
                       </div>
                     </div>
@@ -2777,8 +2777,8 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
                             <div className="col-span-1 font-bold text-slate-800">{item.product}</div>
                             <div className="col-span-1">{item.cari}</div>
                             <div className="col-span-1 text-center font-bold">{item.qty}</div>
-                            <div className="col-span-1 font-bold">₺{item.price}</div>
-                            <div className="col-span-1 font-black">₺{item.total}</div>
+                            <div className="col-span-1 font-bold">{formatNumber(Number(item.price), 2, false)}</div>
+                            <div className="col-span-1 font-black">{formatNumber(Number(item.total), 2, false)}</div>
                             <div className="col-span-1 text-green-500 font-bold">{item.status}</div>
                             <div className="col-span-2">---</div>
                           </div>

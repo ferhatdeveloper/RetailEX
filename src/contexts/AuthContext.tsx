@@ -132,7 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             r.id as role_id,
             r.name as role_name, 
             r.permissions as role_permissions, 
-            r.color as role_color
+            r.color as role_color,
+            r.landing_route as role_landing_route
         FROM auth.users u
         LEFT JOIN roles r ON (u.raw_user_meta_data->>'role') = r.name
         WHERE LOWER(u.raw_user_meta_data->>'username') = LOWER($1)
@@ -148,11 +149,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const publicSql = `
           SELECT u.id, u.email, u.username, u.full_name, u.firm_nr, u.store_id, u.created_at, u.role,
                  u.allowed_firm_nrs, u.allowed_periods,
-                 r.id as role_id, r.name as role_name, r.permissions as role_permissions, r.color as role_color
+                 r.id as role_id, r.name as role_name, r.permissions as role_permissions, r.color as role_color,
+                 r.landing_route as role_landing_route
           FROM public.users u
           LEFT JOIN public.roles r ON r.id = u.role_id
-          WHERE LOWER(u.username) = LOWER($1) AND u.firm_nr = $2 AND u.is_active = true
+          WHERE LOWER(u.username) = LOWER($1) AND u.is_active = true
           AND u.password_hash IS NOT NULL AND u.password_hash = crypt($3, u.password_hash)
+          AND (
+            u.firm_nr = $2::text
+            OR (
+              COALESCE(jsonb_array_length(u.allowed_firm_nrs), 0) > 0
+              AND u.allowed_firm_nrs @> jsonb_build_array($2::text)
+            )
+            OR (
+              COALESCE(jsonb_array_length(COALESCE(u.allowed_firm_nrs, '[]'::jsonb)), 0) = 0
+              AND u.firm_nr = $2::text
+            )
+          )
           LIMIT 1
         `;
         result = await postgres.query(publicSql, [username, latestSettings.firmNr, password]);
@@ -172,6 +185,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
 
+        const roleName = (dbUser.role_name || dbUser.role || '').toLowerCase();
+        const isGarson = roleName === 'garson' || roleName === 'waiter';
+        const landingRouteRaw = dbUser.role_landing_route && String(dbUser.role_landing_route).trim() ? String(dbUser.role_landing_route).trim() : null;
+        const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
         const resolvedRole: Role = {
           id: dbUser.role_id || 'dynamic',
           name: dbUser.role_name || dbUser.role || 'User',
@@ -180,7 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isSystemRole: false,
           isActive: true,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          landingRoute: landingRoute || undefined
         };
 
         const allowedFirmNrs = dbUser.allowed_firm_nrs != null ? (typeof dbUser.allowed_firm_nrs === 'string' ? JSON.parse(dbUser.allowed_firm_nrs || '[]') : dbUser.allowed_firm_nrs) : [];
@@ -202,6 +220,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(userWithRoles);
         useAuthStore.getState().login(userWithRoles as any);
+
+        if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(landingRoute)) {
+          localStorage.setItem('retailex_active_module', landingRoute);
+        }
 
         // Save User Meta
         const userMeta = {

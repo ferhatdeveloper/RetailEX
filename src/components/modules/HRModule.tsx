@@ -1,4 +1,4 @@
-﻿import { UserCog, Users, DollarSign } from 'lucide-react';
+import { UserCog, Users, DollarSign } from 'lucide-react';
 
 export function HRModule() {
   const employees = [
@@ -36,7 +36,7 @@ export function HRModule() {
                 <DollarSign className="w-4 h-4 text-green-600" />
                 <span className="text-[10px] text-gray-600">Aylık Bordro</span>
               </div>
-              <div className="text-base text-green-600">{employees.reduce((s, e) => s + e.salary, 0).toLocaleString()} TL</div>
+              <div className="text-base text-green-600">{employees.reduce((s, e) => s + e.salary, 0).toLocaleString()}</div>
             </div>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
@@ -71,7 +71,7 @@ export function HRModule() {
                   <td className="px-2 py-0.5 border-r border-gray-200">
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] rounded">{emp.department}</span>
                   </td>
-                  <td className="px-2 py-0.5 text-right text-[10px] text-green-600 border-r border-gray-200">{emp.salary.toLocaleString()} TL</td>
+                  <td className="px-2 py-0.5 text-right text-[10px] text-green-600 border-r border-gray-200">{emp.salary.toLocaleString()}</td>
                   <td className="px-2 py-0.5 text-[10px] text-gray-600">{new Date(emp.startDate).toLocaleDateString('tr-TR')}</td>
                 </tr>
               ))}

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Widget System
  * Pattern: Composite Pattern + Observer Pattern
  * Drag-drop customizable dashboard widgets
@@ -117,7 +117,7 @@ export class RevenueWidget extends Widget {
         size={this.config.size}
       >
         <div className="p-4">
-          <div className="text-3xl text-green-600">{this.data.value} TL</div>
+          <div className="text-3xl text-green-600">{this.data.value}</div>
           {this.data.change && (
             <div className={`text-sm mt-1 ${this.data.trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
               {this.data.trend === 'up' ? '↑' : '↓'} {Math.abs(this.data.change)}%

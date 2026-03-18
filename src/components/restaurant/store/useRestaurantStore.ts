@@ -69,6 +69,7 @@ interface RestaurantState {
 
     // Region & Printer Actions
     addRegion: (region: Region, storeId: string | null) => Promise<void>;
+    updateRegion: (regionId: string, updates: { name: string }, storeId: string | null) => Promise<void>;
     removeRegion: (regionId: string) => Promise<void>;
     updatePrinterRoute: (route: PrinterRouting) => void;
     removePrinterRoute: (routeId: string) => void;
@@ -621,6 +622,25 @@ export const useRestaurantStore = create<RestaurantState>()(
                     set(state => ({ regions: [...state.regions, { id: dbRegion.id, name: dbRegion.name, order: dbRegion.display_order ?? region.order }].sort((a, b) => a.order - b.order) }));
                 } catch (err: any) {
                     console.error('[RestaurantStore] addRegion hatası:', err?.message ?? String(err));
+                    throw err;
+                }
+            },
+
+            updateRegion: async (regionId, updates, storeId) => {
+                const state = get();
+                const region = state.regions.find(r => r.id === regionId);
+                if (!region) throw new Error('Bölge bulunamadı');
+                try {
+                    const dbRegion = await RestaurantService.saveFloor({
+                        id: regionId,
+                        store_id: storeId,
+                        name: updates.name,
+                        display_order: region.order,
+                    });
+                    if (!dbRegion) throw new Error('Bölge güncellenemedi');
+                    set(s => ({ regions: s.regions.map(r => r.id === regionId ? { ...r, name: dbRegion.name } : r) }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] updateRegion hatası:', err?.message ?? String(err));
                     throw err;
                 }
             },

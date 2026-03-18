@@ -1,4 +1,4 @@
-﻿// Template Types for Invoice & Label Designer
+// Template Types for Invoice & Label Designer
 
 export type TemplateType = 'invoice' | 'label';
 export type TemplateFormat = '80mm' | 'A5' | 'A4' | 'label-small' | 'label-medium' | 'label-large';
@@ -184,7 +184,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 160,
         width: 60,
         height: 8,
-        content: 'TOPLAM: {{total}} TL',
+        content: 'TOPLAM: {{total}}',
         fontSize: 14,
         fontWeight: 'bold',
         textAlign: 'right'
@@ -286,7 +286,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 235,
         width: 40,
         height: 20,
-        content: 'Ara Toplam: {{subtotal}}\nTAX: {{tax}}\nTOPLAM: {{total}} TL',
+        content: 'Ara Toplam: {{subtotal}}\nTAX: {{tax}}\nTOPLAM: {{total}}',
         fontSize: 10,
         fontWeight: 'bold',
         textAlign: 'right'
@@ -336,7 +336,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 32,
         width: 50,
         height: 6,
-        content: '{{price}} TL',
+        content: '{{price}}',
         fontSize: 14,
         fontWeight: 'bold',
         textAlign: 'center'

@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { APP_VERSION } from '../core/version';
 
 interface VersionContextType {
@@ -172,7 +172,7 @@ function getOperationReason(type: string, details: any): string {
   if (details) {
     if (details.saleId) return `${baseReason} (#${details.saleId})`;
     if (details.productName) return `${baseReason}: ${details.productName}`;
-    if (details.total) return `${baseReason} (${details.total.toFixed(2)} TL)`;
+    if (details.total) return `${baseReason} (${details.total.toFixed(2)})`;
   }
   
   return baseReason;

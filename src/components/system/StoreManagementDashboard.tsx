@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
     Store,
     TrendingUp,
@@ -116,7 +116,7 @@ export function StoreManagementDashboard() {
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 {[
-                    { title: 'Toplam Günlük Ciro', value: `₺${totalRevenue.toLocaleString()}`, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' },
+                    { title: 'Toplam Günlük Ciro', value: totalRevenue.toLocaleString('tr-TR'), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' },
                     { title: 'Aktif Mağazalar', value: `${activeStores}/${stores.length}`, icon: Store, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' },
                     { title: 'Toplam Personel', value: totalStaff, icon: Users, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
                     { title: 'Kritik Stok Uyarıları', value: '12', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
@@ -189,7 +189,7 @@ export function StoreManagementDashboard() {
                                 <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700 flex justify-between items-center">
                                     <div>
                                         <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-500'}`}>Günlük Ciro</span>
-                                        <p className="font-bold text-lg">₺{store.dailyRevenue.toLocaleString()}</p>
+                                        <p className="font-bold text-lg">{store.dailyRevenue.toLocaleString('tr-TR')}</p>
                                     </div>
                                     <button className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 transition-colors">
                                         <ArrowRight className="w-4 h-4" />
@@ -219,7 +219,7 @@ export function StoreManagementDashboard() {
                                     tick={{ fill: darkMode ? '#9ca3af' : '#64748b' }}
                                     axisLine={false}
                                     tickLine={false}
-                                    tickFormatter={(value) => `₺${value / 1000}k`}
+                                    tickFormatter={(value) => `${value / 1000}k`}
                                 />
                                 <Tooltip
                                     contentStyle={{
@@ -229,7 +229,7 @@ export function StoreManagementDashboard() {
                                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                     }}
                                     itemStyle={{ color: darkMode ? '#fff' : '#0f172a' }}
-                                    formatter={(value: any) => [`₺${value.toLocaleString()}`, 'Ciro']}
+                                    formatter={(value: any) => [value.toLocaleString('tr-TR'), 'Ciro']}
                                 />
                                 <Bar
                                     dataKey="revenue"

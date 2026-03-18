@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyPackage } from '../../../types/beauty';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 
 const PKG_COLORS = [
     '#9333ea', '#6366f1', '#ec4899', '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
@@ -110,13 +111,13 @@ export function PackageManagement() {
                                             <div>
                                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tm('bPackagePrice')}</span>
                                                 <div className="flex items-baseline gap-2 mt-1">
-                                                    <span className="text-2xl font-black text-slate-900 leading-none">₺{fp.toLocaleString('tr-TR')}</span>
-                                                    {hasDiscount && <span className="text-sm text-slate-400 line-through">₺{(pkg.price ?? 0).toLocaleString('tr-TR')}</span>}
+                                                    <span className="text-2xl font-black text-slate-900 leading-none">{formatMoneyAmount(fp, { minFrac: 0, maxFrac: 0 })}</span>
+                                                    {hasDiscount && <span className="text-sm text-slate-400 line-through">{formatMoneyAmount(pkg.price ?? 0, { minFrac: 0, maxFrac: 0 })}</span>}
                                                 </div>
                                             </div>
                                             <div className="text-right">
                                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tm('bSessionPrice')}</span>
-                                                <p className="text-sm font-black text-slate-600 mt-1">₺{pkg.total_sessions ? Math.round(fp / pkg.total_sessions).toLocaleString('tr-TR') : '-'}</p>
+                                                <p className="text-sm font-black text-slate-600 mt-1">{pkg.total_sessions ? formatMoneyAmount(Math.round(fp / pkg.total_sessions), { minFrac: 0, maxFrac: 0 }) : '-'}</p>
                                             </div>
                                         </div>
                                         <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -189,7 +190,7 @@ export function PackageManagement() {
                             {(editing.discount_pct ?? 0) > 0 && (editing.price ?? 0) > 0 && (
                                 <div className="bg-green-50 rounded-xl px-4 py-2 flex items-center justify-between">
                                     <span className="text-xs font-bold text-green-700">{tm('bPackageSalePrice')}</span>
-                                    <span className="text-sm font-black text-green-700">₺{finalPrice(editing).toLocaleString('tr-TR')}</span>
+                                    <span className="text-sm font-black text-green-700">{formatMoneyAmount(finalPrice(editing), { minFrac: 0, maxFrac: 0 })}</span>
                                 </div>
                             )}
                             <div>

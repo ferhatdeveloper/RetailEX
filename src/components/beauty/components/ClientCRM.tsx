@@ -12,6 +12,7 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import type { BeautyCustomer, BeautyPackagePurchase } from '../../../types/beauty';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 
 const EMPTY_FORM: Partial<BeautyCustomer> = {
     name: '', phone: '', email: '', address: '', city: '', notes: '',
@@ -131,7 +132,7 @@ export function ClientCRM() {
         d ? new Date(d).toLocaleDateString('tr-TR') : '-';
 
     const formatCurrency = (n?: number) =>
-        n != null ? `₺${Number(n).toLocaleString('tr-TR')}` : '₺0';
+        formatMoneyAmount(n ?? 0, { minFrac: 0, maxFrac: 0 });
 
     const GRAD_COLORS = [
         'from-purple-500 to-indigo-500',

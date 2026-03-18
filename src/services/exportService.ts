@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Export Service
  * Excel ve PDF export işlemleri
  * Pattern: Strategy Pattern
@@ -246,7 +246,7 @@ export class ExportService {
       'Tarih': new Date(sale.date).toLocaleDateString('tr-TR'),
       'Müşteri': sale.customerName || 'Misafir',
       'Ürün Sayısı': sale.items.length,
-      'Toplam': `${sale.total.toFixed(2)} TL`,
+      'Toplam': sale.total.toFixed(2),
       'Ödeme': sale.paymentMethod,
       'Durum': sale.status || 'Tamamlandı'
     }));
@@ -268,7 +268,7 @@ export class ExportService {
       'Barkod': product.barcode,
       'Ürün Adı': product.name,
       'Kategori': product.category,
-      'Fiyat': `${product.price.toFixed(2)} TL`,
+      'Fiyat': product.price.toFixed(2),
       'Stok': product.stock,
       'Durum': product.stock > 0 ? 'Stokta' : 'Tükendi'
     }));

@@ -10,10 +10,10 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
-const fmt = (n: number) =>
-    new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
+const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 const pctChange = (current: number, prev: number): { pct: string; up: boolean } => {
     if (prev === 0) return { pct: current > 0 ? '+100%' : '0%', up: current > 0 };

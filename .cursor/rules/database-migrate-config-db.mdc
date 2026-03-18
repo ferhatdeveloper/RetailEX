@@ -1,0 +1,38 @@
+---
+description: Yeni SQL migration sonrası config.db ile bekleyen migration çalıştırma (npm run db:migrate)
+alwaysApply: true
+---
+
+# Migration çalıştırma: config.db + bekleyen SQL
+
+## Ne zaman
+
+Yeni numaralı migration dosyası (`database/migrations/002_*.sql`, `003_*.sql`, …) eklendikten veya kullanıcı şema hatası aldığında, hedef PostgreSQL’de **henüz uygulanmamış** dosyaları çalıştırmak için:
+
+```bash
+npm run db:migrate
+```
+
+## Nasıl çalışır
+
+1. **Bağlantı:** `config.db` (SQLite) içindeki `config` tablosu `id=1` satırındaki JSON okunur — DeskApp ile aynı yapı (`local_db`, `remote_db`, `pg_local_*`, `pg_remote_*`, `db_mode`). Şifreler Base64 decode edilir (Rust tarafıyla uyumlu).
+2. **config.db yolu sırası:** `CONFIG_DB` ortam değişkeni → `C:\RetailEX\config.db` → `C:\RetailEx\config.db` → proje kökü `config.db`.
+3. **Hedef PG:** `db_mode === 'online'` ise **remote** (`remote_db` + `pg_remote_*`), aksi halde **local**. İsterseniz `MIGRATE_TARGET=local` veya `MIGRATE_TARGET=remote` ile zorlayın.
+4. **Dosyalar:** `database/migrations/` altında `NNN_*.sql` (`N` rakam), **000** ve **001** hariç (sıfır kurulum / demo). `SETUP_*.sql` gibi numarasız dosyalar otomatik çalışmaz.
+5. **Durum:** `public.schema_migrations` tablosunda uygulanan dosya adları tutulur; tekrar çalıştırmada atlanır.
+
+## config.db yoksa
+
+```bash
+set PGHOST=127.0.0.1
+set PGUSER=postgres
+set PGPASSWORD=...
+set PGDATABASE=retailex_local
+npm run db:migrate:env
+```
+
+## Ajan / geliştirici notu
+
+- Yeni şema değişikliği yazıldığında: numaralı migration **ve** `000_master_schema.sql` güncellemesi (`database-master-schema-sync.mdc`).
+- Kullanıcıya veya kendine: migration dosyası eklendiyse `npm run db:migrate` veya `--dry-run` ile listeyi kontrol et: `npm run db:migrate:dry`.
+- `psql` PATH’te veya PostgreSQL kurulum dizininde bulunursa dosya `psql -f` ile çalışır; yoksa `pg` ile basit çoklu ifade ayrıştırması kullanılır (`DO $$` içeren karmaşık SQL için `psql` gerekir).

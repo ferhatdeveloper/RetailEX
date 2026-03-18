@@ -672,7 +672,7 @@ export default function MarketPOS({
             }
           }
 
-          // Öncelik 1: Birim barkoduna özel TL satış fiyatı
+          // Öncelik 1: Birim barkoduna özel yerel satış fiyatı
           if (unitInfo.sale_price && unitInfo.sale_price > 0) {
             price = unitInfo.sale_price;
           }
@@ -682,7 +682,7 @@ export default function MarketPOS({
           }
         }
 
-        // USD Fiyat Kontrolü - Eğer TL fiyatı birim barkodundan direkt gelmediyse USD'den hesapla
+        // USD fiyat kontrolü — yerel fiyat birim barkodundan gelmediyse USD'den hesapla
         if (product.autoCalculateUSD && product.salePriceUSD && product.salePriceUSD > 0 && (!unitInfo || !unitInfo.sale_price)) {
           let effectiveRate = (product.customExchangeRate ?? 0) > 0 ? product.customExchangeRate! : exchangeRate;
           
@@ -958,7 +958,7 @@ export default function MarketPOS({
     let paymentMethod = 'cash';
     if (paymentData.payments && paymentData.payments.length > 0) {
       // Calculate total amounts by payment method
-      const exchangeRates: any = { IQD: 1, USD: 1310, EUR: 1450, TRY: 45 };
+      const exchangeRates: any = { IQD: 1, USD: 1310, EUR: 1450 };
       const methodTotals: Record<string, number> = { cash: 0, card: 0, veresiye: 0 };
 
       paymentData.payments.forEach((payment: any) => {

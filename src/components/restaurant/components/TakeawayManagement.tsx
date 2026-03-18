@@ -6,6 +6,7 @@ import {
 import { cn } from '@/components/ui/utils';
 import { Badge } from '@/components/ui/badge';
 import { RestaurantService } from '../../../services/restaurant';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 
 type TakeawayStatus = 'pending' | 'preparing' | 'ready' | 'picked_up';
 
@@ -249,7 +250,7 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                                     <div className="text-right">
                                         <span className="text-[10px] font-black text-slate-400 uppercase block leading-none mb-1.5 tracking-widest">ÖDENECEK</span>
                                         <span className="text-xl font-black text-slate-900 tabular-nums leading-none">
-                                            {order.total.toLocaleString('tr-TR')} ₺
+                                            {formatMoneyAmount(order.total, { minFrac: 0, maxFrac: 2 })}
                                         </span>
                                     </div>
                                 </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Search, RefreshCw, Package, Users, Percent } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -158,7 +158,7 @@ export function BroadcastDataSelector({ type, isOpen, onClose, onSelect, theme }
                                                 <div className="font-medium truncate">{item.name}</div>
                                                 <div className="text-xs opacity-60 flex justify-between mt-1">
                                                     <span>{item.barcode}</span>
-                                                    <span className="font-mono">{formatNumber(item.price, 2)} ₺</span>
+                                                    <span className="font-mono">{formatNumber(item.price, 2)}</span>
                                                 </div>
                                             </div>
                                         </div>

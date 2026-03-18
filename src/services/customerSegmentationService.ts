@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Customer Segmentation & Loyalty Service
  * Pattern: Strategy Pattern + Observer Pattern
  * Features: RFM analysis, segmentation, loyalty tiers, automated campaigns
@@ -460,7 +460,7 @@ export class CustomerSegmentationService {
       balance_after: currentBalance + points,
       reference_type: referenceType,
       reference_id: referenceId,
-      description: `${amount.toFixed(2)} TL alışveriş için ${points} puan`,
+      description: `${amount.toFixed(2)} tutarında alışveriş için ${points} puan`,
       created_at: new Date().toISOString(),
       expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year
     };

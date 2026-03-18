@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Mobile Warehouse Transfer
  * Pattern: Parameter-driven workflow
  * Features: Transfer between warehouses with approval control
@@ -43,7 +43,7 @@ export function WarehouseTransfer() {
   const [session, setSession] = useState<TransferSession | null>(null);
   const [systemParams, setSystemParams] = useState<SystemParameters>({
     require_transfer_approval: true, // Varsayılan: Onay gerekli
-    approval_threshold: 5000, // 5000 TL üstü onay
+    approval_threshold: 5000, // limit üstü onay
     allow_negative_stock: false
   });
   const [scannedBarcode, setScannedBarcode] = useState('');
@@ -249,7 +249,7 @@ export function WarehouseTransfer() {
 
     if (requiresApproval) {
       toast.info(
-        `Transfer ${systemParams.approval_threshold} TL üstünde olduğu için onaya gönderildi`,
+        `Transfer ${systemParams.approval_threshold} tutar üstünde olduğu için onaya gönderildi`,
         { duration: 4000 }
       );
     } else {
@@ -299,7 +299,7 @@ export function WarehouseTransfer() {
               <div className="space-y-1 text-gray-700">
                 <div>• Onay Gerekliliği: {systemParams.require_transfer_approval ? 'Aktif' : 'Pasif'}</div>
                 {systemParams.require_transfer_approval && (
-                  <div>• Onay Limiti: {systemParams.approval_threshold.toLocaleString()} TL</div>
+                  <div>• Onay Limiti: {systemParams.approval_threshold.toLocaleString()}</div>
                 )}
                 <div>• Eksi Stok: {systemParams.allow_negative_stock ? 'İzinli' : 'İzinsiz'}</div>
               </div>
@@ -368,7 +368,7 @@ export function WarehouseTransfer() {
             <span>{toWh?.name}</span>
           </div>
           <div className="bg-blue-700 px-2 py-1 rounded">
-            {session.total_value.toLocaleString()} TL
+            {session.total_value.toLocaleString()}
           </div>
         </div>
       </div>
@@ -379,7 +379,7 @@ export function WarehouseTransfer() {
           <div className="bg-orange-50 border-l-4 border-orange-500 p-3 text-xs">
             <div className="flex items-center gap-2 text-orange-700">
               <Clock className="w-4 h-4" />
-              <span>Bu transfer {systemParams.approval_threshold.toLocaleString()} TL üstünde olduğu için onay gerektirecek</span>
+              <span>Bu transfer {systemParams.approval_threshold.toLocaleString()} tutar üstünde olduğu için onay gerektirecek</span>
             </div>
           </div>
         )}
@@ -421,7 +421,7 @@ export function WarehouseTransfer() {
                   <div className="text-xs text-gray-600">{item.product_code}</div>
                 </div>
                 <div className="text-sm text-blue-600">
-                  {(item.quantity * item.unit_price).toLocaleString()} TL
+                  {(item.quantity * item.unit_price).toLocaleString()}
                 </div>
               </div>
 
@@ -445,7 +445,7 @@ export function WarehouseTransfer() {
                   +
                 </button>
                 <div className="flex-1 text-right text-xs text-gray-600">
-                  @ {item.unit_price.toLocaleString()} TL
+                  @ {item.unit_price.toLocaleString()}
                 </div>
               </div>
             </div>

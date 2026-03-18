@@ -31,8 +31,10 @@ export const RestaurantTableCloseConfirmModal: React.FC<RestaurantTableCloseConf
                         </div>
                     </div>
                     <button
+                        type="button"
                         onClick={onClose}
-                        className="w-10 h-10 rounded-xl bg-black/10 hover:bg-black/20 text-white flex items-center justify-center transition-all active:scale-95 relative z-10"
+                        className="w-12 h-12 min-h-[48px] min-w-[48px] rounded-xl bg-black/10 hover:bg-black/20 active:bg-black/30 text-white flex items-center justify-center transition-all active:scale-95 relative z-10 touch-manipulation cursor-pointer select-none"
+                        aria-label="Kapat"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -49,28 +51,31 @@ export const RestaurantTableCloseConfirmModal: React.FC<RestaurantTableCloseConf
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 pt-2">
+                    <div className="grid grid-cols-1 gap-4 pt-2">
                         <button
+                            type="button"
                             onClick={onConfirmClose}
-                            className="w-full flex items-center justify-center gap-3 py-4.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white rounded-[1.5rem] font-black uppercase tracking-tighter text-[14px] transition-all shadow-xl shadow-rose-500/20 active:scale-[0.97] border border-white/10"
+                            className="w-full flex items-center justify-center gap-3 min-h-[64px] py-6 px-5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-[1.5rem] font-black uppercase tracking-tighter text-[15px] transition-all shadow-lg active:scale-[0.97] border border-rose-700 touch-manipulation cursor-pointer select-none"
                         >
-                            <Trash2 className="w-5 h-5 drop-shadow-sm" />
+                            <Trash2 className="w-6 h-6 drop-shadow-sm shrink-0" />
                             <span>Masayı Kapat (Boşalt)</span>
                         </button>
 
                         <button
+                            type="button"
                             onClick={onJustLeave}
-                            className="w-full flex items-center justify-center gap-3 py-4.5 bg-slate-50 hover:bg-white text-slate-800 rounded-[1.5rem] font-black uppercase tracking-tighter text-[14px] transition-all active:scale-[0.97] border border-slate-200 shadow-sm hover:shadow-md"
+                            className="w-full flex items-center justify-center gap-3 min-h-[64px] py-6 px-5 bg-slate-50 hover:bg-white active:bg-slate-100 text-slate-800 rounded-[1.5rem] font-black uppercase tracking-tighter text-[15px] transition-all active:scale-[0.97] border-2 border-slate-200 shadow-sm hover:shadow-md touch-manipulation cursor-pointer select-none"
                         >
-                            <LogOut className="w-5 h-5 opacity-70" />
+                            <LogOut className="w-6 h-6 opacity-70 shrink-0" />
                             <span>Sadece Çık (Dolu Kalsın)</span>
                         </button>
 
                         <button
+                            type="button"
                             onClick={onClose}
-                            className="w-full flex items-center justify-center gap-2 py-3.5 text-slate-400 hover:text-blue-600 font-black uppercase tracking-widest text-[11px] transition-all group"
+                            className="w-full flex items-center justify-center gap-2 min-h-[56px] py-5 px-5 rounded-2xl text-slate-500 hover:text-blue-600 hover:bg-slate-50 active:text-blue-600 active:bg-slate-100 font-black uppercase tracking-widest text-[13px] transition-all group touch-manipulation cursor-pointer select-none border border-slate-200"
                         >
-                            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform shrink-0" />
                             <span>Masaya Geri Dön</span>
                         </button>
                     </div>

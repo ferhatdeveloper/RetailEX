@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Package, Truck, MapPin, Clock, CheckCircle, XCircle, AlertCircle,
   Search, Filter, Plus, Edit2, Trash2, Eye, Download, Upload,
@@ -663,7 +663,7 @@ export function CargoIntegrationModule() {
                 >
                   <div className="text-3xl mb-2">{company.logo}</div>
                   <p className="text-xs">{company.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">{company.pricing.basePrice.toFixed(2)} ₺</p>
+                  <p className="text-xs text-gray-500 mt-1">{company.pricing.basePrice.toFixed(2)}</p>
                 </button>
               ))}
             </div>
@@ -781,7 +781,7 @@ export function CargoIntegrationModule() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Değer (₺)</label>
+                <label className="block text-sm text-gray-700 mb-1">Değer</label>
                 <input
                   type="number"
                   step="0.01"

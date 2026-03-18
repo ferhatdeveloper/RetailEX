@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   CreditCard, DollarSign, CheckCircle, XCircle, Clock, AlertCircle,
   Search, Filter, Download, Settings, RefreshCw, Eye, Send, Copy,
@@ -277,7 +277,7 @@ export function PaymentIntegrationModule() {
       status: 'success',
       paymentDate: '2024-12-10 15:45',
       installment: 1,
-      currency: 'TRY'
+      currency: 'IQD'
     },
     {
       id: '2',
@@ -300,7 +300,7 @@ export function PaymentIntegrationModule() {
       status: 'success',
       paymentDate: '2024-12-10 14:20',
       installment: 3,
-      currency: 'TRY'
+      currency: 'IQD'
     },
     {
       id: '3',
@@ -323,7 +323,7 @@ export function PaymentIntegrationModule() {
       status: 'pending',
       paymentDate: '2024-12-10 13:10',
       installment: 6,
-      currency: 'TRY'
+      currency: 'IQD'
     },
     {
       id: '4',
@@ -346,7 +346,7 @@ export function PaymentIntegrationModule() {
       status: 'failed',
       paymentDate: '2024-12-10 12:05',
       installment: 1,
-      currency: 'TRY'
+      currency: 'IQD'
     },
     {
       id: '5',

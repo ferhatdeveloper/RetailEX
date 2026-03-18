@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
 // ─── Design tokens (flat) ────────────────────────────────────────────────────
@@ -93,8 +94,7 @@ export function ClinicDashboard() {
         return { todayApts: sorted, completed: completed.length, pending: pending.length, inProg: inProg.length, revenue, rate, total: todayApts.length };
     }, [appointments, todayStr]);
 
-    const fmt = (n: number) =>
-        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
+    const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
     const activeStaff = specialists.filter(s => s.is_active);
     const topServices = services.slice(0, 6);

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -110,7 +110,7 @@ const AccountItem = ({
                 {/* Balance (Mock for now or 0) */}
                 <div className="text-right w-32 font-mono text-sm mr-6">
                     <span className={'text-gray-400'}>
-                        0.00 TL
+                        0.00
                     </span>
                 </div>
 
@@ -422,7 +422,7 @@ export function ChartOfAccounts() {
                             <Input
                                 value={newAccountName}
                                 onChange={(e) => setNewAccountName(e.target.value)}
-                                placeholder="Örn: AKBANK TL HESABI"
+                                placeholder="Örn: AKBANK hesabı"
                             />
                         </div>
                     </div>

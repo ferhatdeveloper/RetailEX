@@ -22,6 +22,7 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal } from '../../pos/POSPaymentModal';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -42,8 +43,7 @@ interface CartLine {
 let _uid = 0;
 const uid = () => `line_${++_uid}`;
 
-const fmt = (n: number) =>
-    new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n);
+const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function Label({ children }: { children: React.ReactNode }) {

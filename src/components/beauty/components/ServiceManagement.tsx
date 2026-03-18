@@ -9,6 +9,7 @@ import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/components/ui/utils';
+import { formatMoneyAmount } from '../../../utils/formatMoney';
 import '../ClinicStyles.css';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -62,8 +63,7 @@ export function ServiceManagement() {
         setDeleteConfirm(null);
     };
 
-    const formatCurrency = (amount: number) =>
-        new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(amount);
+    const formatCurrency = (amount: number) => formatMoneyAmount(amount, { minFrac: 0, maxFrac: 0 });
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -246,11 +246,11 @@ export function ServiceManagement() {
                                     <Input type="number" min={5} value={editing.duration_min ?? 60} onChange={e => setEditing(p => ({ ...p, duration_min: Number(e.target.value) }))} className="h-12 bg-gray-50 border-gray-100 rounded-xl focus:border-purple-500 font-bold" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Fiyat (₺)</label>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Fiyat</label>
                                     <Input type="number" min={0} value={editing.price ?? 0} onChange={e => setEditing(p => ({ ...p, price: Number(e.target.value) }))} className="h-12 bg-gray-50 border-gray-100 rounded-xl focus:border-purple-500 font-bold" />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Maliyet (₺)</label>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Maliyet</label>
                                     <Input type="number" min={0} value={editing.cost_price ?? 0} onChange={e => setEditing(p => ({ ...p, cost_price: Number(e.target.value) }))} className="h-12 bg-gray-50 border-gray-100 rounded-xl focus:border-purple-500 font-bold" />
                                 </div>
                             </div>

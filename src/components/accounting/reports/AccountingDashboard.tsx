@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { accountingAPI, YevmiyeFisi, YevmiyeSatiri, HesapPlani } from '../../../services/api/accounting';
 import { Plus, X, Save, AlertCircle } from 'lucide-react';
 
@@ -132,10 +132,10 @@ export function AccountingDashboard() {
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-xs">{fis.aciklama}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                  {getTotalBorc(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                  {getTotalBorc(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                  {getTotalAlacak(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                  {getTotalAlacak(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${fis.onay_durumu === 'ONAYLANDI' ? 'bg-green-100 text-green-800' :
@@ -371,10 +371,10 @@ function YeniFisModal({ onClose, onSave, accounts }: { onClose: () => void, onSa
                 <tr>
                   <td colSpan={2} className="px-4 py-3 text-right text-gray-500 text-xs uppercase">Toplam</td>
                   <td className="px-4 py-3 text-right text-sm text-gray-900 border-l border-gray-200">
-                    {totalBorc.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                    {totalBorc.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-4 py-3 text-right text-sm text-gray-900 border-l border-gray-200">
-                    {totalAlacak.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                    {totalAlacak.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                   </td>
                   <td></td>
                 </tr>

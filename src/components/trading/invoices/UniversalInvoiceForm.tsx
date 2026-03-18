@@ -2427,7 +2427,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                         <option value="IQD">IQD</option>
                         <option value="USD">USD</option>
                         <option value="EUR">EUR</option>
-                        <option value="TRY">TRY</option>
                       </select>
                     </div>
                     {currency !== 'IQD' && (
@@ -2900,7 +2899,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                         >
                           <option value="USD">USD</option>
                           <option value="EUR">EUR</option>
-                          <option value="TRY">TRY</option>
                           <option value="IQD">IQD</option>
                         </select>
                       </div>

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Loader2, AlertCircle, Users, Check } from 'lucide-react';
+import { Plus, Trash2, Loader2, AlertCircle, Users, Check, Lock } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useRestaurantStore } from '../store/useRestaurantStore';
 import { RestaurantService } from '../../../services/restaurant';
 import { ERP_SETTINGS } from '../../../services/postgres';
+import { usePermission } from '@/shared/hooks/usePermission';
 
 async function getStoreId(): Promise<string | null> {
     try {
@@ -25,6 +26,7 @@ async function getStoreId(): Promise<string | null> {
 
 export function FloorTableManagement() {
     const { regions, tables, addRegion, removeRegion, addTable, removeTable } = useRestaurantStore();
+    const { isAdmin } = usePermission();
 
     const [selectedRegionId, setSelectedRegionId] = useState<string>('');
 
@@ -109,8 +111,14 @@ export function FloorTableManagement() {
     };
 
     return (
-        <div className="flex gap-5">
-
+        <div className="flex flex-col gap-4">
+            {!isAdmin() && (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+                    <Lock className="w-5 h-5 shrink-0" />
+                    <span className="font-semibold">Bölge ve masa ekleme/silme yetkisi sadece yöneticilerdedir. Listeyi görüntüleyebilirsiniz.</span>
+                </div>
+            )}
+            <div className="flex gap-5">
             {/* Left — Regions */}
             <div className="w-60 shrink-0 flex flex-col gap-3">
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -135,23 +143,26 @@ export function FloorTableManagement() {
                                 <span className="text-[10px] text-slate-400 shrink-0">
                                     {tables.filter(t => t.floorId === r.id).length} masa
                                 </span>
-                                <button
-                                    onClick={e => { e.stopPropagation(); handleDeleteRegion(r.id); }}
-                                    className={`shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                                        deletingRegionId === r.id
-                                            ? 'bg-red-500 text-white'
-                                            : 'text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100'
-                                    }`}
-                                    title={deletingRegionId === r.id ? 'Onayla' : 'Sil'}
-                                >
-                                    {deletingRegionId === r.id ? <Check className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
-                                </button>
+                                {isAdmin() && (
+                                    <button
+                                        onClick={e => { e.stopPropagation(); handleDeleteRegion(r.id); }}
+                                        className={`shrink-0 w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                                            deletingRegionId === r.id
+                                                ? 'bg-red-500 text-white'
+                                                : 'text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100'
+                                        }`}
+                                        title={deletingRegionId === r.id ? 'Onayla' : 'Sil'}
+                                    >
+                                        {deletingRegionId === r.id ? <Check className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+                                    </button>
+                                )}
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* Add region */}
+                {/* Add region — sadece admin */}
+                {isAdmin() && (
                 <div className="space-y-1.5">
                     {regionError && (
                         <div className="flex items-start gap-1.5 text-red-500 text-[10px]">
@@ -176,6 +187,7 @@ export function FloorTableManagement() {
                         </button>
                     </div>
                 </div>
+                )}
             </div>
 
             {/* Right — Tables */}
@@ -188,7 +200,7 @@ export function FloorTableManagement() {
                                 ? <>{selectedRegion.name} <span className="font-normal normal-case">— {regionTables.length} masa</span></>
                                 : 'Masalar'}
                         </p>
-                        {selectedRegionId && (
+                        {isAdmin() && selectedRegionId && (
                             <button
                                 onClick={() => setIsBulkMode(!isBulkMode)}
                                 className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase transition-all border ${
@@ -222,17 +234,19 @@ export function FloorTableManagement() {
                                         <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
                                             <Users className="w-2.5 h-2.5" />{t.seats}
                                         </span>
-                                        <button
-                                            onClick={() => handleDeleteTable(t.id)}
-                                            className={`absolute top-1 right-1 w-4 h-4 rounded flex items-center justify-center transition-colors ${
-                                                deletingTableId === t.id
-                                                    ? 'bg-red-500 text-white'
-                                                    : 'text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100'
-                                            }`}
-                                            title={deletingTableId === t.id ? 'Onayla' : 'Sil'}
-                                        >
-                                            {deletingTableId === t.id ? <Check className="w-2.5 h-2.5" /> : <Trash2 className="w-2.5 h-2.5" />}
-                                        </button>
+                                        {isAdmin() && (
+                                            <button
+                                                onClick={() => handleDeleteTable(t.id)}
+                                                className={`absolute top-1 right-1 w-4 h-4 rounded flex items-center justify-center transition-colors ${
+                                                    deletingTableId === t.id
+                                                        ? 'bg-red-500 text-white'
+                                                        : 'text-slate-300 hover:text-red-400 opacity-0 group-hover:opacity-100'
+                                                }`}
+                                                title={deletingTableId === t.id ? 'Onayla' : 'Sil'}
+                                            >
+                                                {deletingTableId === t.id ? <Check className="w-2.5 h-2.5" /> : <Trash2 className="w-2.5 h-2.5" />}
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -240,7 +254,8 @@ export function FloorTableManagement() {
                     </div>
                 </div>
 
-                {/* Add table form — always visible */}
+                {/* Add table form — sadece admin */}
+                {isAdmin() && (
                 <div className="space-y-1.5">
                     {tableError && (
                         <div className="flex items-start gap-1.5 text-red-500 text-[10px]">
@@ -288,6 +303,8 @@ export function FloorTableManagement() {
                         )}
                     </div>
                 </div>
+                )}
+            </div>
             </div>
         </div>
     );

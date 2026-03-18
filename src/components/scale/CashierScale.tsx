@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Scale, Package, ChevronLeft, Send, ShoppingCart, RefreshCcw } from 'lucide-react';
@@ -141,7 +141,7 @@ export function CashierScale({ onBack }: { onBack: () => void }) {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="font-mono text-blue-600 font-bold">{p.price_per_kg.toLocaleString('tr-TR')} ₺</div>
+                                    <div className="font-mono text-blue-600 font-bold">{p.price_per_kg.toLocaleString('tr-TR')}</div>
                                     <div className="text-[10px] text-slate-400 uppercase tracking-wider">Birim (kg)</div>
                                 </div>
                             </button>
@@ -205,7 +205,7 @@ export function CashierScale({ onBack }: { onBack: () => void }) {
                                         <div className="text-right">
                                             <div className="text-sm font-medium text-slate-400 uppercase">Toplam Tutar</div>
                                             <div className="text-4xl font-black text-blue-600 font-mono">
-                                                {totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺
+                                                {totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </div>
                                         </div>
                                     </div>
@@ -220,7 +220,7 @@ export function CashierScale({ onBack }: { onBack: () => void }) {
                                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                                             <div className="text-xs text-slate-400 font-bold uppercase mb-1">Birim Fiyat</div>
                                             <div className="text-2xl font-bold text-slate-700 font-mono">
-                                                {selectedProduct.price_per_kg.toLocaleString('tr-TR')} <span className="text-sm text-slate-500">₺/kg</span>
+                                                {selectedProduct.price_per_kg.toLocaleString('tr-TR')} <span className="text-sm text-slate-500">/kg</span>
                                             </div>
                                         </div>
                                     </div>

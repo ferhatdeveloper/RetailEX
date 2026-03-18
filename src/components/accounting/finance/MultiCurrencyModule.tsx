@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Multi-Currency Module
  * 
  * Complete multi-currency support:
@@ -52,7 +52,6 @@ const CURRENCIES: Currency[] = [
   { code: 'USD', name: 'US Dollar', symbol: '$', flagEmoji: 'ğŸ‡ºğŸ‡¸', isBaseCurrency: false, isActive: true },
   { code: 'EUR', name: 'Euro', symbol: '€', flagEmoji: 'ğŸ‡ªğŸ‡º', isBaseCurrency: false, isActive: true },
   { code: 'GBP', name: 'British Pound', symbol: '£', flagEmoji: 'ğŸ‡¬ğŸ‡§', isBaseCurrency: false, isActive: true },
-  { code: 'TRY', name: 'Turkish Lira', symbol: '₺', flagEmoji: 'ğŸ‡¹ğŸ‡·', isBaseCurrency: false, isActive: true },
   { code: 'SAR', name: 'Saudi Riyal', symbol: 'SAR', flagEmoji: 'ğŸ‡¸ğŸ‡¦', isBaseCurrency: false, isActive: true },
   { code: 'AED', name: 'UAE Dirham', symbol: 'AED', flagEmoji: 'ğŸ‡¦ğŸ‡ª', isBaseCurrency: false, isActive: true },
   { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'KWD', flagEmoji: 'ğŸ‡°ğŸ‡¼', isBaseCurrency: false, isActive: false },
@@ -107,7 +106,7 @@ export function MultiCurrencyModule() {
       },
       {
         id: '4',
-        fromCurrency: 'TRY',
+        fromCurrency: 'USD',
         toCurrency: 'IQD',
         rate: 40,
         date: new Date(),

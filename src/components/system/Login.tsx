@@ -404,24 +404,29 @@ export function Login({ onLogin }: LoginProps) {
 
     try {
       const { postgres } = await import('../../services/postgres');
-      // Fix: Query auth.users instead of public.users
-      const sql = `
+      const sqlAuth = `
         SELECT id, raw_user_meta_data->>'username' as username
         FROM auth.users
         WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)
         AND encrypted_password = crypt($2, encrypted_password)
       `;
       console.log('Login: Verifying credentials for', trimmedUsername);
-      const result = await postgres.query(sql, [trimmedUsername, trimmedPassword]);
+      const result = await postgres.query(sqlAuth, [trimmedUsername, trimmedPassword]);
+      if (result.rowCount > 0) return true;
 
-      if (result.rowCount === 0) {
-        console.warn('Login: No matching user found or password incorrect for', trimmedUsername);
-        // Debug: Check if user exists at all
-        const existCheck = await postgres.query("SELECT count(*) FROM auth.users WHERE LOWER(raw_user_meta_data->>'username') = LOWER($1)", [trimmedUsername]);
-        console.log('Login: User exists check count:', existCheck.rows[0]?.count);
-      }
+      // Kullanıcı Yönetimi (public.users) — liste buradan geliyor, şifre password_hash
+      const sqlPublic = `
+        SELECT 1 FROM public.users u
+        WHERE LOWER(u.username) = LOWER($1) AND u.is_active = true
+        AND u.password_hash IS NOT NULL
+        AND u.password_hash = crypt($2, u.password_hash)
+        LIMIT 1
+      `;
+      const pub = await postgres.query(sqlPublic, [trimmedUsername, trimmedPassword]);
+      if (pub.rowCount > 0) return true;
 
-      return result.rowCount > 0;
+      console.warn('Login: No matching user or wrong password for', trimmedUsername);
+      return false;
     } catch (e) {
       console.error('Verify error:', e);
       return false;
@@ -817,7 +822,7 @@ export function Login({ onLogin }: LoginProps) {
       )}
 
       {showSupport && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[300] p-4">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[1000] p-4">
           <div className={`w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-900' : 'bg-white'} border shadow-3xl rounded-sm transition-all`}>
             <div className="p-6 bg-red-800 flex items-center justify-between border-b border-white/10">
               <div className="flex items-center gap-4 text-white">
@@ -870,85 +875,111 @@ export function Login({ onLogin }: LoginProps) {
         </div>
       )}
 
-      {/* Setup Wizard Modal */}
+      {/* Setup Wizard Modal — flat modal standard */}
       {showSetupWizard && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !isSetupLoading && setShowSetupWizard(false)} />
-          <div className={`relative w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-900' : 'bg-white'} border shadow-2xl rounded-sm`}>
-            <div className="p-6 bg-blue-800 flex items-center justify-between border-b border-white/10">
-              <div className="flex items-center gap-3 text-white">
-                <Building2 className="w-5 h-5" />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[5000] p-4 animate-in fade-in duration-200" onClick={() => !isSetupLoading && setShowSetupWizard(false)}>
+          <div
+            className="bg-white rounded-[2rem] w-full max-w-md max-h-[90vh] overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black uppercase tracking-tight">Kurulum</h2>
+                    <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">ERP Core Engine</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => !isSetupLoading && setShowSetupWizard(false)}
+                  className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  aria-label="Kapat"
+                >
+                  <CloseIcon className="w-5 h-5" />
+                </button>
               </div>
-              <CloseIcon className="w-5 h-5 text-white cursor-pointer" onClick={() => !isSetupLoading && setShowSetupWizard(false)} />
             </div>
 
-            <div className="p-8 space-y-6">
+            <div className="flex-1 overflow-y-auto p-8">
               {setupSuccessData ? (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-xl space-y-5">
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center border border-blue-100">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center border border-blue-200">
                         <CheckCircle className="w-6 h-6 text-blue-600" />
                       </div>
                       <div>
-                        <h3 className={`text-base font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{setupSuccessData.terminal_name}</h3>
+                        <h3 className="text-base font-bold tracking-tight text-slate-900">{setupSuccessData.terminal_name || 'Terminal'}</h3>
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">Lisans bilgisi</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-100 group hover:border-blue-200 transition-colors">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-4 rounded-xl bg-white border border-slate-200">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Cihaz / Lisans ID</p>
+                        <p className="text-xs font-medium text-slate-800 truncate" title={setupSuccessData.device_id || setupSuccessData.terminal_name}>
+                          {setupSuccessData.device_id || setupSuccessData.terminal_name || '—'}
+                        </p>
                       </div>
-                      <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-100 group hover:border-blue-200 transition-colors">
-                        <p className="text-sm font-black text-black">
-                          {new Date(setupSuccessData.license_expiry).toLocaleDateString('tr-TR')}
+                      <div className="p-4 rounded-xl bg-white border border-slate-200">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Lisans bitiş</p>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {(() => {
+                            const raw = setupSuccessData.license_expiry;
+                            if (!raw) return '—';
+                            const d = new Date(raw);
+                            return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('tr-TR');
+                          })()}
                         </p>
                       </div>
                     </div>
 
-                    <div className="p-3.5 bg-emerald-50 rounded-lg border border-emerald-100 flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
-                        Lisans Aktif & Güvenli
-                      </p>
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Lisans aktif & güvenli</p>
                     </div>
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => window.location.reload()}
-                    className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest transition-all rounded-sm flex items-center justify-center gap-3"
+                    className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-wider shadow-lg shadow-blue-200/50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                   >
                     Uygulamayı Başlat
-                    <ArrowRight className="w-4 h-4" />
+                    <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Organizasyon / Firma ID</label>
-                    <div className="relative group">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={setupFirmId}
-                        onChange={(e) => setSetupFirmId(e.target.value)}
-                        disabled={isSetupLoading}
-                        placeholder="Örn: 550e8400-e29b..."
-                        className={`w-full pl-12 pr-4 py-4 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-sm ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
-                      />
-                    </div>
-                    <p className="text-[9px] text-gray-500 font-bold uppercase px-1 leading-relaxed">
-                      Supabase üzerindeki organizasyon ID'sini girerek veritabanı ayarlarını otomatik çekebilirsiniz.
-                    </p>
+                <div className="space-y-5">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Organizasyon / Firma ID</label>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={setupFirmId}
+                      onChange={(e) => setSetupFirmId(e.target.value)}
+                      disabled={isSetupLoading}
+                      placeholder="Örn: 550e8400-e29b-..."
+                      className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none font-medium text-slate-800 bg-white"
+                    />
                   </div>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-relaxed">
+                    Supabase üzerindeki organizasyon ID'sini girerek veritabanı ayarlarını otomatik çekebilirsiniz.
+                  </p>
 
                   <button
+                    type="button"
                     onClick={handleSetup}
-                    disabled={isSetupLoading || !setupFirmId}
-                    className={`w-full py-4 text-white font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 rounded-sm ${isSetupLoading ? 'bg-gray-700' : 'bg-blue-600 hover:bg-blue-500'}`}
+                    disabled={isSetupLoading || !setupFirmId.trim()}
+                    className="w-full py-4 rounded-2xl font-bold uppercase tracking-wider flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200/50"
                   >
                     {isSetupLoading ? (
                       <>
-                        <NeonLogo variant="badge" size="sm" className="scale-75 origin-center animate-pulse" />
+                        <Loader2 className="w-5 h-5 animate-spin" />
                         Kuruluyor...
                       </>
                     ) : (
@@ -961,13 +992,14 @@ export function Login({ onLogin }: LoginProps) {
                 </div>
               )}
 
-              <div className="pt-4 border-t border-gray-800 flex flex-col items-center gap-2">
+              <div className="mt-6 pt-6 border-t border-slate-200">
                 <button
+                  type="button"
                   onClick={handleFactoryReset}
-                  className="text-[9px] font-black text-red-500 hover:text-red-400 uppercase tracking-widest flex items-center gap-2"
+                  className="w-full py-2.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:border-red-200 hover:text-red-600 transition-all flex items-center justify-center gap-2"
                 >
-                  <RotateCcw className="w-3 h-3" />
-                  if (!confirm('DİKKAT: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Setup Sihirbazı tekrar açılacak.\n- Veritabanı verileri KORUNACAK.\n\nOnaylıyor musunuz?')) return;
+                  <RotateCcw className="w-4 h-4" />
+                  Fabrika ayarlarına döndür
                 </button>
               </div>
             </div>
@@ -977,8 +1009,8 @@ export function Login({ onLogin }: LoginProps) {
 
       {/* Live Logs Modal */}
       {showLogs && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[999999] p-4 md:p-8 isolate">
-          <div className={`w-full max-w-5xl h-[85vh] rounded-[24px] overflow-hidden flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] border-2 ${darkMode ? 'bg-[#0f172a] border-white/20' : 'bg-white border-gray-200'} relative z-[100000]`}>
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[10000] p-4 md:p-8 isolate">
+          <div className={`w-full max-w-5xl h-[85vh] rounded-[24px] overflow-hidden flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] border-2 ${darkMode ? 'bg-[#0f172a] border-white/20' : 'bg-white border-gray-200'} relative z-[10001]`}>
             {/* Header */}
             <div className={`p-6 border-b border-white/10 flex items-center justify-between ${darkMode ? 'bg-[#1e293b]' : 'bg-gray-50'}`}>
               <div className="flex items-center gap-4">

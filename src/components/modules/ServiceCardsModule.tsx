@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Plus, Search, Edit2, Trash2, X, DollarSign, Tag } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { serviceAPI, Service, CreateServiceInput } from '../../services/serviceAPI';
@@ -199,7 +199,7 @@ export function ServiceCardsModule() {
                                                 )}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
-                                                ₺{service.unit_price.toFixed(2)}
+                                                {service.unit_price.toFixed(2)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
                                                 %{service.tax_rate}

@@ -1,4 +1,4 @@
-﻿// Mock data for 50 stores retail chain
+// Mock data for 50 stores retail chain
 
 export interface Store {
   id: string;
@@ -110,7 +110,7 @@ export const storeAlerts: StoreAlert[] = [
     storeName: stores[11].name,
     type: 'warning',
     category: 'cash',
-    message: 'Kasa dengesi yüksek (75,000 TL) - nakit transferi önerilir',
+    message: 'Kasa dengesi yüksek (75,000) - nakit transferi önerilir',
     timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
     resolved: false
   },

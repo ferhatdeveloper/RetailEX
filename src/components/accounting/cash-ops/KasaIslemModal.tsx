@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Kasa İşlem Modal
  * CH Tahsilat, CH Ödeme, Kasa Giriş, Kasa Çıkış formları
  * Flat design matching 'Ödeme Al' style
@@ -429,7 +429,6 @@ export function KasaIslemModal({
                 <option value="IQD">IQD</option>
                 <option value="USD">USD</option>
                 <option value="EUR">EUR</option>
-                <option value="TRY">TRY</option>
               </select>
             </div>
           </div>

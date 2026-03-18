@@ -19,6 +19,8 @@ export interface Role {
     userCount: number;
     color: string;
     is_system_role?: boolean;
+    /** Giriş sonrası yönlendirilecek modül: restaurant, pos, management, wms, beauty veya boş */
+    landing_route?: string | null;
 }
 
 export const roleAPI = {
@@ -48,7 +50,8 @@ export const roleAPI = {
                     permissions: perms,
                     userCount: parseInt(r.user_count) || 0,
                     color: r.color || '#3B82F6',
-                    is_system_role: r.is_system_role
+                    is_system_role: r.is_system_role,
+                    landing_route: r.landing_route ?? null
                 };
             });
         } catch (error) {
@@ -63,9 +66,9 @@ export const roleAPI = {
     async create(role: Omit<Role, 'id' | 'userCount'>): Promise<Role | null> {
         try {
             const { rows } = await postgres.query(
-                `INSERT INTO roles (name, description, permissions, color) 
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-                [role.name, role.description, JSON.stringify(role.permissions), role.color]
+                `INSERT INTO roles (name, description, permissions, color, landing_route) 
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+                [role.name, role.description, JSON.stringify(role.permissions), role.color, role.landing_route ?? null]
             );
             return rows[0];
         } catch (error) {
@@ -83,10 +86,11 @@ export const roleAPI = {
             const values: any[] = [];
             let i = 1;
 
-            if (updates.name) { fields.push(`name = $${i++}`); values.push(updates.name); }
-            if (updates.description) { fields.push(`description = $${i++}`); values.push(updates.description); }
-            if (updates.permissions) { fields.push(`permissions = $${i++}`); values.push(JSON.stringify(updates.permissions)); }
-            if (updates.color) { fields.push(`color = $${i++}`); values.push(updates.color); }
+            if (updates.name !== undefined) { fields.push(`name = $${i++}`); values.push(updates.name); }
+            if (updates.description !== undefined) { fields.push(`description = $${i++}`); values.push(updates.description); }
+            if (updates.permissions !== undefined) { fields.push(`permissions = $${i++}`); values.push(JSON.stringify(updates.permissions)); }
+            if (updates.color !== undefined) { fields.push(`color = $${i++}`); values.push(updates.color); }
+            if (updates.landing_route !== undefined) { fields.push(`landing_route = $${i++}`); values.push(updates.landing_route || null); }
 
             if (fields.length === 0) return null;
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Professional Print System
  * Supports thermal 58mm/80mm, A4 invoices, QR codes, and logo customization
  */
@@ -130,7 +130,7 @@ export function generateThermalReceipt(
             <td style="text-align: right;">
               ${item.discount ? `-%${item.discount}` : ''}
             </td>
-            <td style="text-align: right;">${item.total.toFixed(2)} TL</td>
+            <td style="text-align: right;">${item.total.toFixed(2)}</td>
           </tr>
         `).join('')}
       </table>
@@ -140,23 +140,23 @@ export function generateThermalReceipt(
       <table>
         <tr>
           <td>Ara Toplam:</td>
-          <td style="text-align: right;">${data.subtotal.toFixed(2)} TL</td>
+          <td style="text-align: right;">${data.subtotal.toFixed(2)}</td>
         </tr>
         ${data.discount > 0 ? `
           <tr>
             <td>İndirim:</td>
-            <td style="text-align: right;">-${data.discount.toFixed(2)} TL</td>
+            <td style="text-align: right;">-${data.discount.toFixed(2)}</td>
           </tr>
         ` : ''}
         ${data.tax > 0 ? `
           <tr>
             <td>TAX:</td>
-            <td style="text-align: right;">${data.tax.toFixed(2)} TL</td>
+            <td style="text-align: right;">${data.tax.toFixed(2)}</td>
           </tr>
         ` : ''}
         <tr class="total-row">
           <td>TOPLAM:</td>
-          <td style="text-align: right;">${data.total.toFixed(2)} TL</td>
+          <td style="text-align: right;">${data.total.toFixed(2)}</td>
         </tr>
       </table>
       
@@ -164,8 +164,8 @@ export function generateThermalReceipt(
       
       <div>Ödeme: ${data.paymentMethod}</div>
       ${data.receivedAmount ? `
-        <div>Alınan: ${data.receivedAmount.toFixed(2)} TL</div>
-        <div>Para Üstü: ${(data.change || 0).toFixed(2)} TL</div>
+        <div>Alınan: ${data.receivedAmount.toFixed(2)}</div>
+        <div>Para Üstü: ${(data.change || 0).toFixed(2)}</div>
       ` : ''}
       
       ${config.showQRCode ? `
@@ -340,9 +340,9 @@ export function generateA4Invoice(
             <tr>
               <td>${item.name}</td>
               <td class="text-right">${item.quantity}</td>
-              <td class="text-right">${item.price.toFixed(2)} TL</td>
+              <td class="text-right">${item.price.toFixed(2)}</td>
               <td class="text-right">${item.discount ? `%${item.discount}` : '-'}</td>
-              <td class="text-right">${item.total.toFixed(2)} TL</td>
+              <td class="text-right">${item.total.toFixed(2)}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -351,23 +351,23 @@ export function generateA4Invoice(
       <div class="totals">
         <div class="total-row">
           <span>Ara Toplam:</span>
-          <span>${data.subtotal.toFixed(2)} TL</span>
+          <span>${data.subtotal.toFixed(2)}</span>
         </div>
         ${data.discount > 0 ? `
           <div class="total-row">
             <span>İndirim:</span>
-            <span>-${data.discount.toFixed(2)} TL</span>
+            <span>-${data.discount.toFixed(2)}</span>
           </div>
         ` : ''}
         ${data.tax > 0 ? `
           <div class="total-row">
             <span>TAX (%18):</span>
-            <span>${data.tax.toFixed(2)} TL</span>
+            <span>${data.tax.toFixed(2)}</span>
           </div>
         ` : ''}
         <div class="total-row grand-total">
           <span>GENEL TOPLAM:</span>
-          <span>${data.total.toFixed(2)} TL</span>
+          <span>${data.total.toFixed(2)}</span>
         </div>
       </div>
 

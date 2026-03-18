@@ -3,6 +3,7 @@ import { X, Plus, Minus, Percent, Trash2, Package, Calculator, DollarSign, Scale
 import type { CartItem, ProductVariant } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
+import { formatMoneyAmount } from '../../utils/formatMoney';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface POSCartItemActionModalProps {
@@ -232,7 +233,7 @@ export function POSCartItemActionModal({
                 </div>
                 <div className="text-right">
                   <p className="text-xs uppercase font-black opacity-50 tracking-widest">Birim Fiyat</p>
-                  <p className="text-xl font-black">{formatNumber(currentPrice, 2, false)} <span className="text-base font-bold">₺</span></p>
+                  <p className="text-xl font-black">{formatMoneyAmount(currentPrice)}</p>
                 </div>
               </div>
 
@@ -304,9 +305,6 @@ export function POSCartItemActionModal({
                               : darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-200 text-gray-900'
                           }`}
                         />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <span className={`text-xl font-black ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>₺</span>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -427,7 +425,7 @@ export function POSCartItemActionModal({
                           <span className={`font-black text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{v.color}{v.color && v.size && '/'}{v.size}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-purple-600">{formatNumber(v.price || 0)}₺</span>
+                          <span className="font-bold text-purple-600">{formatMoneyAmount(v.price || 0)}</span>
                           <span className={v.stock > 0 ? 'text-green-600' : 'text-red-500'}>Stok: {v.stock}</span>
                         </div>
                       </button>
@@ -452,17 +450,17 @@ export function POSCartItemActionModal({
                 <div className={`rounded-xl p-4 space-y-1 ${darkMode ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
                   <div className="flex justify-between items-center text-[10px] font-black opacity-50 uppercase tracking-widest">
                     <span>Ara Toplam</span>
-                    <span>{formatNumber(itemTotal, 2, false)} ₺</span>
+                    <span>{formatMoneyAmount(itemTotal)}</span>
                   </div>
                   {discountPercent > 0 && (
                     <div className="flex justify-between items-center text-[10px] font-black text-orange-600 uppercase tracking-widest">
                       <span>İndirim (%{discount})</span>
-                      <span>-{formatNumber(discountAmount, 2, false)} ₺</span>
+                      <span>-{formatMoneyAmount(discountAmount)}</span>
                     </div>
                   )}
                   <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-between items-baseline">
                     <span className="text-xs font-black uppercase tracking-widest opacity-80">NET TOPLAM</span>
-                    <span className="text-3xl font-black text-blue-600">{formatNumber(newTotal, 2, false)} <span className="text-lg">₺</span></span>
+                    <span className="text-3xl font-black text-blue-600">{formatMoneyAmount(newTotal)}</span>
                   </div>
                 </div>
               )}
