@@ -54,6 +54,7 @@ ENV/
 # IDE
 .vscode/
 .idea/
+# .cursor/ — ASLA ignore etme: roller .cursor/rules/*.mdc repoda tutulur
 *.swp
 *.swo
 *~

@@ -10,6 +10,7 @@
 
 ```
 d:/RetailEX/
+├── .cursor/                     # Cursor Rules (roller) — rules/*.mdc, repoda
 ├── src/                         # Frontend kaynak kodu (React/TS)
 │   ├── App.tsx                  # Kök bileşen, startup flow
 │   ├── main.tsx                 # Vite giriş noktası
