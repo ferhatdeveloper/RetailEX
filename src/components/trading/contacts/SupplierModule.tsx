@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, Plus, X, Search, Edit, Trash2, Mail, Phone, MapPin,
-  FileText, Loader2, Printer, RefreshCw, ChevronDown
+  FileText, Loader2, Printer, RefreshCw
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -53,6 +53,62 @@ export function SupplierModule() {
   });
 
   useEffect(() => { loadSuppliers(); }, []);
+
+  useEffect(() => {
+    const openCallerForm = async (rawPhone: string, forceCreate?: boolean) => {
+      const phone = rawPhone.trim();
+      if (!phone) return;
+      if (!forceCreate) {
+        setSearchQuery(phone);
+      }
+      setFormData({
+        code: '',
+        name: '',
+        phone,
+        email: '',
+        address: '',
+        city: '',
+        payment_terms: 30,
+        credit_limit: 0,
+        tax_number: '',
+        tax_office: '',
+        notes: '',
+        cardType: 'customer',
+      });
+      setEditingSupplier(null);
+      setShowAddModal(true);
+      try {
+        const code = await supplierAPI.generateCode('customer');
+        setFormData(prev => ({ ...prev, code }));
+      } catch {
+        // no-op
+      }
+    };
+
+    const fromStorage = localStorage.getItem('callerid_customer_phone')?.trim();
+    if (fromStorage) {
+      localStorage.removeItem('callerid_customer_phone');
+      void openCallerForm(fromStorage, true);
+    }
+
+    const onCaller = (ev: Event) => {
+      const custom = ev as CustomEvent<{ phone?: string; forceCreate?: boolean }>;
+      const phone = custom.detail?.phone?.trim();
+      if (!phone) return;
+      void openCallerForm(phone, custom.detail?.forceCreate === true);
+    };
+    window.addEventListener('callerid-open-customer', onCaller);
+    return () => window.removeEventListener('callerid-open-customer', onCaller);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAccount) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedAccount(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedAccount]);
 
   const loadSuppliers = async () => {
     setLoading(true);
@@ -246,7 +302,7 @@ export function SupplierModule() {
   const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode));
 
   return (
-    <div className="h-full flex flex-col" onClick={() => setContextMenu(null)}>
+    <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -268,9 +324,7 @@ export function SupplierModule() {
         </div>
       </div>
 
-      {/* Main split area */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 p-3 gap-3">
-        {/* Search */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 p-3 gap-3">
         <div className="bg-white px-3 py-2 border border-gray-200 rounded flex-shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -284,8 +338,7 @@ export function SupplierModule() {
           </div>
         </div>
 
-        {/* Grid (takes remaining space or half when ekstresi open) */}
-        <div className={`bg-white border border-gray-200 rounded overflow-hidden flex-shrink-0 ${selectedAccount ? 'h-[40%]' : 'flex-1'}`}>
+        <div className="flex-1 min-h-0 flex flex-col rounded border border-gray-200 bg-white overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <RefreshCw className="w-6 h-6 animate-spin text-blue-600 mr-2" />
@@ -302,37 +355,43 @@ export function SupplierModule() {
               onRowContextMenu={(e, supplier) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, supplier }); }}
               onRowDoubleClick={handleEditClick}
               pageSize={50}
+              height="100%"
             />
           )}
         </div>
+      </div>
 
-        {/* Inline Ekstresi Panel */}
-        {selectedAccount && (
-          <div className="flex-1 bg-white border border-gray-200 rounded overflow-hidden flex flex-col min-h-0">
-            {/* Panel Header */}
-            <div className="px-4 py-2.5 border-b bg-gray-50 flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-500" />
-                <span className="text-sm font-bold text-gray-700">{selectedAccount.name}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${selectedAccount.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+      {/* Tam ekran — hesap hareketleri / ekstre */}
+      {selectedAccount && (
+        <div
+          className="fixed inset-0 z-[10050] flex flex-col bg-white"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="supplier-ekstre-title"
+        >
+          <div className="flex-shrink-0 border-b border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 shadow-sm">
+            <div className="px-3 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 min-w-0" id="supplier-ekstre-title">
+                <FileText className="w-5 h-5 text-indigo-600 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('accountStatement')}</p>
+                  <p className="text-base font-bold text-gray-900 truncate">{selectedAccount.name}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase shrink-0 ${selectedAccount.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
                   {selectedAccount.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
                 </span>
-                <span className="text-xs text-gray-400 ml-1">— {tm('accountStatement')}</span>
               </div>
-              <div className="flex items-center gap-2">
-                {/* Date filters */}
-                <input type="date" value={ekstresiStart} onChange={e => setEkstresiStart(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="date" value={ekstresiStart} onChange={e => setEkstresiStart(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <span className="text-gray-400 text-xs">—</span>
-                <input type="date" value={ekstresiEnd} onChange={e => setEkstresiEnd(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <button onClick={() => loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd)} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition-colors">
+                <input type="date" value={ekstresiEnd} onChange={e => setEkstresiEnd(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => loadEkstresi(selectedAccount, ekstresiStart, ekstresiEnd)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition-colors">
                   {tm('bring')}
                 </button>
-                {/* Summary chips */}
-                <div className="flex items-center gap-1.5 ml-2">
+                <div className="hidden sm:flex flex-wrap items-center gap-1.5">
                   <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(showUSD ? totalBorc / exchangeRate : totalBorc, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
                   <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(showUSD ? totalAlacak / exchangeRate : totalAlacak, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
                   {(() => {
-                    // netBalance > 0 = B (taraf bize borçlu), < 0 = A (biz borçluyuz)
                     const netLabel = netBalance > 0 ? 'B' : netBalance < 0 ? 'A' : '';
                     const netCls = netBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : netBalance < 0 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
                     const amount = showUSD ? Math.abs(netBalance) / exchangeRate : Math.abs(netBalance);
@@ -343,79 +402,91 @@ export function SupplierModule() {
                     );
                   })()}
                 </div>
-                <button 
-                  onClick={() => setShowUSD(!showUSD)} 
-                  className={`ml-2 px-2 py-1 rounded text-[10px] font-black uppercase transition-all ${showUSD ? 'bg-green-600 text-white shadow-lg scale-105' : 'bg-gray-200 text-gray-600'}`}
+                <button
+                  type="button"
+                  onClick={() => setShowUSD(!showUSD)}
+                  className={`px-2 py-1.5 rounded text-[10px] font-black uppercase transition-all ${showUSD ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}
                 >
-                  {showUSD ? 'USD MODU' : 'IQD MODU'}
+                  {showUSD ? 'USD' : 'IQD'}
                 </button>
-                <button onClick={() => window.print()} className="p-1 hover:bg-gray-100 rounded" title={tm('print')}><Printer className="w-3.5 h-3.5 text-gray-400" /></button>
-                <button onClick={() => setSelectedAccount(null)} className="p-1 hover:bg-gray-100 rounded" title={tm('close')}><X className="w-4 h-4 text-gray-400" /></button>
+                <button type="button" onClick={() => window.print()} className="p-2 hover:bg-gray-200 rounded-lg border border-transparent hover:border-gray-300" title={tm('print')}><Printer className="w-4 h-4 text-gray-600" /></button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAccount(null)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg"
+                  title={tm('close')}
+                >
+                  <X className="w-4 h-4" />
+                  {tm('close')}
+                </button>
               </div>
             </div>
-
-            {/* Ekstresi Table */}
-            <div className="flex-1 overflow-auto">
-              {ekstresiLoading ? (
-                <div className="flex items-center justify-center h-20 gap-2 text-gray-400">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-xs">{tm('loading')}</span>
-                </div>
-              ) : ekstresiRows.length === 0 ? (
-                <div className="flex items-center justify-center h-20 gap-2 text-gray-300">
-                  <FileText className="w-5 h-5" />
-                  <span className="text-xs">{tm('noRecordFound')}</span>
-                </div>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-gray-50 border-b">
-                    <tr>
-                      {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map(h => (
-                        <th key={h} className={`px-3 py-2 text-[10px] font-black text-gray-400 uppercase tracking-wider ${[tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ekstresiRows.map((row, idx) => {
-                      const { label, color } = typeInfo(row);
-                      return (
-                        <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/30 ${idx % 2 ? 'bg-gray-50/40' : ''}`}>
-                          <td className="px-3 py-1.5 font-mono text-gray-500">{row.date ? String(row.date).split('T')[0] : '-'}</td>
-                          <td className="px-3 py-1.5 font-mono text-blue-600 font-bold">{row.fiche_no || '-'}</td>
-                          <td className="px-3 py-1.5"><span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${color}`}>{label}</span></td>
-                          <td className="px-3 py-1.5 text-gray-400 max-w-[150px] truncate">{row.notes || ''}</td>
-                          <td className="px-3 py-1.5 text-right font-bold text-red-600">
-                            {row.borcAmount > 0 ? (
-                              <div className="flex flex-col">
-                                <span>{formatNumber(showUSD ? row.borcAmount / exchangeRate : row.borcAmount, showUSD ? 2 : 0, showUSD)}</span>
-                                {showUSD && <span className="text-[9px] opacity-50 font-normal">{(row.borcAmount).toLocaleString()} IQD</span>}
-                              </div>
-                            ) : ''}
-                          </td>
-                          <td className="px-3 py-1.5 text-right font-bold text-green-600">
-                            {row.alacakAmount > 0 ? (
-                              <div className="flex flex-col">
-                                <span>{formatNumber(showUSD ? row.alacakAmount / exchangeRate : row.alacakAmount, showUSD ? 2 : 0, showUSD)}</span>
-                                {showUSD && <span className="text-[9px] opacity-50 font-normal">{(row.alacakAmount).toLocaleString()} IQD</span>}
-                              </div>
-                            ) : ''}
-                          </td>
-                          <td className={`px-3 py-1.5 text-right font-black ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                            <div className="flex flex-col">
-                              <span>{formatNumber(showUSD ? Math.abs(row.balance) / exchangeRate : Math.abs(row.balance), showUSD ? 2 : 0, showUSD)} {row.balance !== 0 && <span className="ml-0.5 text-[9px]">{row.balance > 0 ? 'B' : 'A'}</span>}</span>
-                              {showUSD && row.balance !== 0 && <span className="text-[9px] opacity-50 font-normal">{Math.abs(row.balance).toLocaleString()} IQD</span>}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+            <div className="sm:hidden px-3 pb-3 flex flex-wrap gap-1.5">
+              <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(showUSD ? totalBorc / exchangeRate : totalBorc, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
+              <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(showUSD ? totalAlacak / exchangeRate : totalAlacak, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="flex-1 min-h-0 overflow-auto">
+            {ekstresiLoading ? (
+              <div className="flex items-center justify-center min-h-[40vh] gap-2 text-gray-400">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-sm">{tm('loading')}</span>
+              </div>
+            ) : ekstresiRows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center min-h-[40vh] gap-2 text-gray-300">
+                <FileText className="w-10 h-10" />
+                <span className="text-sm">{tm('noRecordFound')}</span>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-[1] bg-gray-100 border-b border-gray-200">
+                  <tr>
+                    {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map(h => (
+                      <th key={h} className={`px-4 py-3 text-[11px] font-black text-gray-600 uppercase tracking-wider ${[tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ekstresiRows.map((row, idx) => {
+                    const { label, color } = typeInfo(row);
+                    return (
+                      <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
+                        <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
+                        <td className="px-4 py-2 font-mono text-blue-600 font-bold">{row.fiche_no || '-'}</td>
+                        <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${color}`}>{label}</span></td>
+                        <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">{row.notes || ''}</td>
+                        <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">
+                          {row.borcAmount > 0 ? (
+                            <div className="flex flex-col items-end">
+                              <span>{formatNumber(showUSD ? row.borcAmount / exchangeRate : row.borcAmount, showUSD ? 2 : 0, showUSD)}</span>
+                              {showUSD && <span className="text-[10px] opacity-50 font-normal">{(row.borcAmount).toLocaleString()} IQD</span>}
+                            </div>
+                          ) : ''}
+                        </td>
+                        <td className="px-4 py-2 text-right font-bold text-green-600 whitespace-nowrap">
+                          {row.alacakAmount > 0 ? (
+                            <div className="flex flex-col items-end">
+                              <span>{formatNumber(showUSD ? row.alacakAmount / exchangeRate : row.alacakAmount, showUSD ? 2 : 0, showUSD)}</span>
+                              {showUSD && <span className="text-[10px] opacity-50 font-normal">{(row.alacakAmount).toLocaleString()} IQD</span>}
+                            </div>
+                          ) : ''}
+                        </td>
+                        <td className={`px-4 py-2 text-right font-black whitespace-nowrap ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                          <div className="flex flex-col items-end">
+                            <span>{formatNumber(showUSD ? Math.abs(row.balance) / exchangeRate : Math.abs(row.balance), showUSD ? 2 : 0, showUSD)} {row.balance !== 0 && <span className="ml-0.5 text-[10px]">{row.balance > 0 ? 'B' : 'A'}</span>}</span>
+                            {showUSD && row.balance !== 0 && <span className="text-[10px] opacity-50 font-normal">{Math.abs(row.balance).toLocaleString()} IQD</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (

@@ -49,6 +49,7 @@ import { ServiceModule } from '../modules/ServiceModule';
 import { ProjectModule } from '../modules/ProjectModule';
 import { IntegrationsModule } from '../modules/IntegrationsModule';
 import { ReportsModule } from '../reports/ReportsModule';
+import { CategoryGroupSalesProfitReport } from '../reports/CategoryGroupSalesProfitReport';
 import { ProfitDashboard } from '../reports/ProfitDashboard';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -193,7 +194,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
-  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'materials' | 'MYFisleri' |
+  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
@@ -1135,6 +1136,8 @@ export function ManagementModule({
           return <ReportsModule sales={sales} products={products} />;
         case 'profit-dashboard':
           return <ProfitDashboard />;
+        case 'category-group-profit-report':
+          return <CategoryGroupSalesProfitReport />;
         case 'settings':
         case 'generalsettings':
         case 'definitions':
@@ -1173,6 +1176,7 @@ export function ManagementModule({
         case 'restaurant':
           return <RestaurantMain
             products={products}
+            sales={sales}
             customers={customers}
             campaigns={campaigns}
             currentUser={user as any}
@@ -1281,7 +1285,7 @@ export function ManagementModule({
   };
 
   return (
-    <div className={`h-full flex relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+    <div className={`h-full min-h-0 flex relative ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
       {/* Mobile Overlay - Sidebar açıkken arka planı karart */}
       {isMobile && effectiveSidebarOpen && (
         <div
@@ -1324,7 +1328,7 @@ export function ManagementModule({
       {/* Mobile Menu Button - REMOVED: Managed by MainLayout Header */}
 
       {/* Main Content */}
-      <div className={`flex-1 overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'w-full' : ''}`}>
+      <div className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'w-full' : ''}`}>
         <Suspense fallback={
           <div className="h-full flex items-center justify-center">
             <div className="text-center">

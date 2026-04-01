@@ -144,6 +144,190 @@ export interface BeautyAppointment {
     is_package_session: boolean;
     package_purchase_id?: string;
     reminder_sent?: boolean;
+    branch_id?: string;
+    room_id?: string;
+    tele_meeting_url?: string;
+    booking_channel?: string;
+    corporate_account_id?: string;
+    reminder_sent_at?: string;
+    last_notification_channel?: string;
+}
+
+export interface BeautyBranch {
+    id: string;
+    name: string;
+    address?: string;
+    phone?: string;
+    is_active: boolean;
+    sort_order?: number;
+}
+
+export interface BeautyRoom {
+    id: string;
+    branch_id?: string;
+    name: string;
+    capacity?: number;
+    is_active: boolean;
+}
+
+export interface BeautyPortalSettings {
+    id: string;
+    online_booking_enabled: boolean;
+    public_slug?: string;
+    public_token: string;
+    reminder_hours_before: number;
+    sms_template?: string;
+    whatsapp_template?: string;
+    /** Atak SMS — whatshapp ile aynı alan adları */
+    sms_user?: string | null;
+    sms_password?: string | null;
+    sms_sender?: string | null;
+    /** EVOLUTION | META | NONE */
+    whatsapp_provider?: string | null;
+    whatsapp_base_url?: string | null;
+    whatsapp_token?: string | null;
+    whatsapp_instance_id?: string | null;
+    whatsapp_phone_id?: string | null;
+    /** sms | whatsapp | both */
+    default_reminder_channel?: string | null;
+}
+
+export interface BeautyCorporateAccount {
+    id: string;
+    name: string;
+    tax_nr?: string;
+    discount_pct?: number;
+    notes?: string;
+    is_active: boolean;
+}
+
+export interface BeautyConsentTemplate {
+    id: string;
+    title: string;
+    body_html?: string;
+    is_active: boolean;
+    sort_order?: number;
+}
+
+export interface BeautyMembership {
+    id: string;
+    name: string;
+    monthly_price: number;
+    session_credit?: number;
+    benefits_json?: Record<string, unknown>;
+    is_active: boolean;
+}
+
+export interface BeautyServiceConsumableRow {
+    id: string;
+    service_id: string;
+    product_id: string;
+    qty_per_service: number;
+}
+
+export interface BeautyCustomerHealth {
+    customer_id: string;
+    allergies?: string;
+    medications?: string;
+    pregnancy?: boolean;
+    chronic_notes?: string;
+    warnings_banner?: string;
+    kvkk_consent_at?: string;
+}
+
+export interface BeautyProductBatch {
+    id: string;
+    product_id: string;
+    lot_code?: string;
+    expiry_date?: string;
+    qty: number;
+    barcode?: string;
+}
+
+export interface BeautyMarketingCampaign {
+    id: string;
+    name: string;
+    channel?: string;
+    segment_filter_json?: Record<string, unknown>;
+    message_template?: string;
+    scheduled_at?: string;
+    status?: string;
+    sent_count?: number;
+}
+
+export interface BeautyIntegrationSettings {
+    id: number;
+    google_calendar_id?: string;
+    external_calendar_json?: Record<string, unknown>;
+}
+
+export interface BeautyWaitlistEntry {
+    id: string;
+    customer_id?: string;
+    service_id?: string;
+    specialist_id?: string;
+    preferred_date_from?: string;
+    preferred_date_to?: string;
+    notes?: string;
+    status: string;
+    created_at?: string;
+}
+
+export interface BeautyBookingRequest {
+    id: string;
+    name: string;
+    phone: string;
+    email?: string;
+    service_id?: string;
+    requested_date?: string;
+    requested_time?: string;
+    notes?: string;
+    status: string;
+    processed_appointment_id?: string;
+    created_at?: string;
+}
+
+export interface BeautyClinicalNote {
+    id: string;
+    appointment_id?: string;
+    customer_id?: string;
+    subjective?: string;
+    objective?: string;
+    assessment?: string;
+    plan?: string;
+    extra_json?: Record<string, unknown>;
+    created_by?: string;
+    created_at?: string;
+}
+
+export interface BeautyPatientPhoto {
+    id: string;
+    customer_id: string;
+    appointment_id?: string;
+    kind?: string;
+    storage_url: string;
+    caption?: string;
+    taken_at?: string;
+}
+
+export interface BeautyAuditLogEntry {
+    id: string;
+    table_name: string;
+    record_id?: string;
+    action: string;
+    user_id?: string;
+    payload_json?: Record<string, unknown>;
+    created_at?: string;
+}
+
+export interface BeautyClinicAnalytics {
+    noShowCount: number;
+    cancelledCount: number;
+    completedCount: number;
+    scheduledCount: number;
+    pendingBookingRequests: number;
+    waitlistActive: number;
+    consumableUsage30d: number;
 }
 
 export interface BeautyLead {
@@ -173,6 +357,44 @@ export interface BeautyBodyRegion {
     sort_order: number;
 }
 
+/** Sistem dilleri ile uyumlu (LanguageContext) */
+export type SatisfactionLangCode = 'tr' | 'en' | 'ar' | 'ku';
+
+export type SatisfactionQuestionType = 'rating' | 'text' | 'yes_no';
+
+/** Soru metinleri: her dil için ayrı */
+export type BeautySatisfactionLabels = Partial<Record<SatisfactionLangCode, string>>;
+
+export interface BeautySatisfactionSurvey {
+    id: string;
+    name: string;
+    is_active: boolean;
+    sort_order: number;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface BeautySatisfactionQuestion {
+    id: string;
+    survey_id: string;
+    sort_order: number;
+    question_type: SatisfactionQuestionType | string;
+    scale_max: number;
+    is_required: boolean;
+    labels_json: BeautySatisfactionLabels;
+    created_at?: string;
+    updated_at?: string;
+}
+
+/** Anket cevabı — label_snapshot: kayıt anındaki soru metni (CRM görünümü için) */
+export interface BeautySurveyAnswer {
+    question_id: string;
+    rating?: number;
+    text?: string;
+    yes_no?: boolean;
+    label_snapshot?: string;
+}
+
 export interface BeautyCustomerFeedback {
     id: string;
     appointment_id: string;
@@ -184,6 +406,8 @@ export interface BeautyCustomerFeedback {
     comment?: string;
     would_recommend: boolean;
     created_at: string;
+    survey_id?: string | null;
+    survey_answers?: BeautySurveyAnswer[] | null;
 }
 
 export interface BeautySale {

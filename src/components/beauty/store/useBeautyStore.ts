@@ -7,6 +7,7 @@ import type {
 } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { logger } from '../../../services/loggingService';
+import { formatLocalYmd } from '../../../utils/dateLocal';
 
 interface BeautyState {
     // Data
@@ -20,9 +21,12 @@ interface BeautyState {
     customers:          BeautyCustomer[];
     isLoading:          boolean;
     error:              string | null;
+    /** Son yüklenen randevu aralığı (yenileme / kayıt sonrası aynı görünümü korumak için). */
+    lastAppointmentRange: { start: string; end: string } | null;
 
     // Appointment actions
     loadAppointments:       (date: string) => Promise<void>;
+    loadAppointmentsInRange:(start: string, end: string) => Promise<void>;
     createAppointment:      (data: Partial<BeautyAppointment>) => Promise<void>;
     updateAppointment:      (id: string, data: Partial<BeautyAppointment>) => Promise<void>;
     updateAppointmentStatus:(id: string, status: AppointmentStatus) => Promise<void>;
@@ -76,14 +80,15 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     customers:      [],
     isLoading:      false,
     error:          null,
+    lastAppointmentRange: null,
 
     // -------------------------------------------------------------------------
     // Appointments
     // -------------------------------------------------------------------------
-    loadAppointments: async (date) => {
-        set({ isLoading: true, error: null });
+    loadAppointmentsInRange: async (start, end) => {
+        set({ isLoading: true, error: null, lastAppointmentRange: { start, end } });
         try {
-            const appointments = await beautyService.getAppointments(date);
+            const appointments = await beautyService.getAppointmentsInRange(start, end);
             set({ appointments });
         } catch (e: any) {
             set({ error: e?.message || String(e) });
@@ -92,11 +97,17 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
         }
     },
 
+    loadAppointments: async (date) => {
+        await get().loadAppointmentsInRange(date, date);
+    },
+
     createAppointment: async (data) => {
         try {
             await beautyService.createAppointment(data);
-            const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
-            await get().loadAppointments(dateStr);
+            const r = get().lastAppointmentRange;
+            const fallback = data.date ?? data.appointment_date ?? formatLocalYmd(new Date());
+            if (r) await get().loadAppointmentsInRange(r.start, r.end);
+            else await get().loadAppointmentsInRange(fallback, fallback);
         } catch (e: any) {
             logger.crudError('BeautyStore', 'createAppointment', e);
             throw e;
@@ -106,8 +117,10 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     updateAppointment: async (id, data) => {
         try {
             await beautyService.updateAppointment(id, data);
-            const dateStr = data.date ?? data.appointment_date ?? new Date().toISOString().split('T')[0];
-            await get().loadAppointments(dateStr);
+            const r = get().lastAppointmentRange;
+            const fallback = data.date ?? data.appointment_date ?? formatLocalYmd(new Date());
+            if (r) await get().loadAppointmentsInRange(r.start, r.end);
+            else await get().loadAppointmentsInRange(fallback, fallback);
         } catch (e: any) {
             logger.crudError('BeautyStore', 'updateAppointment', e, { id });
             throw e;

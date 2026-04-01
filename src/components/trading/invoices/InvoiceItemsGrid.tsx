@@ -63,6 +63,10 @@ interface InvoiceItemsGridProps {
     unitSets?: any[];
     currency?: string;
     currencyRate?: number;
+    /** Firma ana / yerel para (sütun etiketleri ve çeviri satırları) */
+    ledgerCurrency?: string;
+    /** Kod alanı odak: satır indeksi + inputta görünen metin (ürün arama state senkronu) */
+    onCodeFieldFocus?: (rowIndex: number, displayCode: string) => void;
 }
 
 export const InvoiceItemsGrid = React.memo(({
@@ -86,7 +90,9 @@ export const InvoiceItemsGrid = React.memo(({
     getProductCode,
     unitSets = [],
     currency = 'IQD',
-    currencyRate = 1
+    currencyRate = 1,
+    ledgerCurrency = 'IQD',
+    onCodeFieldFocus
 }: InvoiceItemsGridProps) => {
     const { language } = useLanguage();
     const tm = (key: string) => moduleTranslations[key]?.[language] || key;
@@ -128,11 +134,11 @@ export const InvoiceItemsGrid = React.memo(({
                             {isColumnVisible('description2') && <th className="px-2 py-2 text-left text-gray-700 border-r border-gray-200 w-32">{tm('itemDescription2')}</th>}
                             {isColumnVisible('quantity') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-24">{tm('itemQuantity')}</th>}
                             {isColumnVisible('unit') && <th className="px-2 py-2 text-left text-gray-700 border-r border-gray-200 w-16">{tm('itemUnit')}</th>}
-                            {isColumnVisible('unitPrice') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemPrice')}{currency !== 'IQD' ? ` (${currency})` : ''}</th>}
-                            {isColumnVisible('amount') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemGross')}{currency !== 'IQD' ? ` (${currency})` : ''}</th>}
+                            {isColumnVisible('unitPrice') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemPrice')}{currency !== ledgerCurrency ? ` (${currency})` : ''}</th>}
+                            {isColumnVisible('amount') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemGross')}{currency !== ledgerCurrency ? ` (${currency})` : ''}</th>}
                             {isColumnVisible('discountPercent') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-14">%</th>}
                             {isColumnVisible('discountAmount') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-24">{tm('itemDiscount')}</th>}
-                            {isColumnVisible('netAmount') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemNetTotal')}{currency !== 'IQD' ? ` (${currency})` : ''}</th>}
+                            {isColumnVisible('netAmount') && <th className="px-2 py-2 text-right text-gray-700 border-r border-gray-200 w-28">{tm('itemNetTotal')}{currency !== ledgerCurrency ? ` (${currency})` : ''}</th>}
 
                             {invoiceType.category === 'Alis' && (
                                 <>
@@ -173,9 +179,9 @@ export const InvoiceItemsGrid = React.memo(({
                                             onFocus={() => setCurrentRowIndex(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
                                         >
-                                            <option>{tm('itemTypeMaterial')}</option>
-                                            <option>{tm('itemTypeService')}</option>
-                                            <option>{tm('itemTypeDiscount')}</option>
+                                            <option value="Malzeme">{tm('itemTypeMaterial')}</option>
+                                            <option value="Hizmet">{tm('itemTypeService')}</option>
+                                            <option value="İndirim">{tm('itemTypeDiscount')}</option>
                                         </select>
                                     </td>
                                 )}
@@ -187,7 +193,10 @@ export const InvoiceItemsGrid = React.memo(({
                                             value={getProductCode(item.code)}
                                             onChange={(e) => handleProductSearchChange(e.target.value, index)}
                                             onKeyDown={(e) => handleProductKeyDown(e, index)}
-                                            onFocus={() => setCurrentRowIndex(index)}
+                                            onFocus={() => {
+                                                setCurrentRowIndex(index);
+                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
+                                            }}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
                                             placeholder={tm('itemSearchPlaceholder')}
                                         />
@@ -214,7 +223,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                     >
                                                         <div className="font-medium truncate">{product.code}</div>
                                                         <div className="text-xs opacity-90 truncate">{product.name}</div>
-                                                        <div className="text-xs opacity-75 mt-0.5">{product.unit} • {formatNumber(product.price)} IQD</div>
+                                                        <div className="text-xs opacity-75 mt-0.5">{product.unit} • {formatNumber(product.price)} {ledgerCurrency}</div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -261,9 +270,14 @@ export const InvoiceItemsGrid = React.memo(({
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm text-right bg-transparent"
                                         />
                                         {/* Çarpan göstergesi: 5 KOLI → 120 ADET */}
-                                        {item.multiplier && item.multiplier > 1 && item.quantity > 0 && (
-                                            <div className="text-xs text-orange-500 text-right px-1.5 leading-tight">
-                                                ={formatNumber((item.baseQuantity ?? item.quantity * item.multiplier), 0, false)} baz
+                                        {item.multiplier && item.multiplier !== 1 && item.quantity > 0 && (
+                                            <div className="text-xs text-orange-600 text-right px-1.5 leading-tight" title={tm('multiplierLogicDesc')}>
+                                                → {formatNumber(
+                                                    item.baseQuantity ?? (item.quantity * (item.multiplier || 1)),
+                                                    0,
+                                                    false
+                                                )}{' '}
+                                                {tm('pieceUnitShort')}
                                             </div>
                                         )}
                                     </td>
@@ -273,15 +287,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         <select
                                             value={item.unit}
                                             onChange={(e) => {
-                                                const newUnit = e.target.value;
-                                                updateItem(index, 'unit', newUnit);
-                                                if (item.unitsetId) {
-                                                    const unitSet = unitSets.find(us => us.id === item.unitsetId);
-                                                    const line = unitSet?.lines?.find((l: any) => l.name === newUnit || l.code === newUnit);
-                                                    const mult = parseFloat(line?.conv_fact1 || line?.multiplier1 || '1') || 1;
-                                                    updateItem(index, 'multiplier', mult);
-                                                    updateItem(index, 'baseQuantity', item.quantity * mult);
-                                                }
+                                                updateItem(index, 'unit', e.target.value);
                                             }}
                                             onFocus={() => setCurrentRowIndex(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700"
@@ -325,9 +331,9 @@ export const InvoiceItemsGrid = React.memo(({
                                 {isColumnVisible('amount') && (
                                     <td className="border-r border-gray-100 px-1.5 py-1 text-right text-gray-700 bg-gray-50/30 w-28">
                                         {formatNumber(item.amount, 2, true)}
-                                        {currency !== 'IQD' && item.amount > 0 && (
+                                        {currency !== ledgerCurrency && item.amount > 0 && (
                                             <div className="text-xs text-gray-400 leading-tight">
-                                                {formatNumber(item.amount * (currencyRate || 1), 0, true)} IQD
+                                                {formatNumber(item.amount * (currencyRate || 1), 2, true)} {ledgerCurrency}
                                             </div>
                                         )}
                                     </td>
@@ -359,9 +365,9 @@ export const InvoiceItemsGrid = React.memo(({
                                 {isColumnVisible('netAmount') && (
                                     <td className="border-r border-gray-100 px-1.5 py-1 text-right font-semibold text-blue-700 bg-blue-50/30 w-28">
                                         {formatNumber(item.netAmount, 2, true)}
-                                        {currency !== 'IQD' && item.netAmount > 0 && (
+                                        {currency !== ledgerCurrency && item.netAmount > 0 && (
                                             <div className="text-xs text-blue-400 font-normal leading-tight">
-                                                {formatNumber(item.netAmount * (currencyRate || 1), 0, true)} IQD
+                                                {formatNumber(item.netAmount * (currencyRate || 1), 2, true)} {ledgerCurrency}
                                             </div>
                                         )}
                                     </td>

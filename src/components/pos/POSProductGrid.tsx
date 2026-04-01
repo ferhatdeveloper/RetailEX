@@ -1,4 +1,4 @@
-﻿import { Search, Calculator, Package, Check } from 'lucide-react';
+import { Search, Calculator, Package, Check } from 'lucide-react';
 import { useState, memo, useRef, useEffect } from 'react';
 import type { Product } from '../../App';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -201,10 +201,10 @@ export function POSProductGrid({
                   )}
 
                   {/* Product Image */}
-                  {product.image_url && (
+                  {(product.image_url_cdn || product.image_url) && (
                     <div className="mb-2 flex items-center justify-center bg-gray-50 rounded overflow-hidden" style={{ height: '80px' }}>
                       <img
-                        src={product.image_url}
+                        src={product.image_url_cdn || product.image_url}
                         alt={product.name}
                         className="max-h-full max-w-full object-contain"
                         onError={(e) => {
@@ -263,10 +263,10 @@ export function POSProductGrid({
                 )}
 
                 {/* Product Image Thumbnail */}
-                {product.image_url ? (
+                {(product.image_url_cdn || product.image_url) ? (
                   <div className="flex-shrink-0 w-16 h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center">
                     <img
-                      src={product.image_url}
+                      src={product.image_url_cdn || product.image_url}
                       alt={product.name}
                       className="max-h-full max-w-full object-contain"
                       onError={(e) => {

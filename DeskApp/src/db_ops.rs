@@ -264,8 +264,10 @@ pub async fn apply_migrations_internal(
             .map_err(|e| format!("Migration kontrol hatası ({}): {}", name, e))?;
 
         if rows.is_empty() {
-            // Skip demo data if not requested
-            if name == "006_demo_data.sql" && load_demo_data != Some(true) {
+            // İsteğe bağlı demo seed: 001_demo_data.sql vb. (*_demo_data.sql). Eski kod yanlışlıkla yalnızca 006_demo_data.sql'yi kontrol ediyordu.
+            // load_demo_data yalnızca kurulumda "Demo bilgileri yükle" ile Some(true) gelir; aksi halde atlanır.
+            let is_demo_seed_migration = name.ends_with("_demo_data.sql");
+            if is_demo_seed_migration && load_demo_data != Some(true) {
                 report.push(MigrationStatus {
                     name: name.clone(),
                     status: "Demo Skipped".to_string(),

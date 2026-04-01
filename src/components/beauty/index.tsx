@@ -4,9 +4,10 @@ import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
     UserCog, BarChart3, Bell, Search, Plus,
     ChevronLeft, ChevronRight, Box, Megaphone,
-    Sparkles, Settings2, ShoppingBag, Globe
+    Sparkles, Settings2, ShoppingBag, Globe, ClipboardList,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
+import { formatLocalYmd } from '../../utils/dateLocal';
 
 import { SmartScheduler } from './components/SmartScheduler';
 import { ClientCRM } from './components/ClientCRM';
@@ -18,6 +19,8 @@ import { DeviceManagement } from './components/DeviceManagement';
 import { ReportDashboard } from './components/ReportDashboard';
 import { LeadManagement } from './components/LeadManagement';
 import { AppointmentPOS } from './components/AppointmentPOS';
+import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
+import { ClinicOperationsHub } from './components/ClinicOperationsHub';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import './ClinicStyles.css';
 
@@ -40,6 +43,7 @@ const MENU_GROUPS = [
             { id: 'services', icon: Scissors, label: 'Hizmetler' },
             { id: 'packages', icon: Package, label: 'Paketler' },
             { id: 'devices', icon: Box, label: 'Cihazlar' },
+            { id: 'surveys', icon: ClipboardList, label: 'Memnuniyet anketleri' },
         ],
     },
     {
@@ -48,6 +52,7 @@ const MENU_GROUPS = [
             { id: 'staff', icon: UserCog, label: 'Personel' },
             { id: 'leads', icon: Megaphone, label: 'Leads & CRM' },
             { id: 'reports', icon: BarChart3, label: 'Raporlar' },
+            { id: 'clinic_ops', icon: ClipboardList, label: 'Klinik operasyon' },
         ],
     },
 ];
@@ -55,7 +60,9 @@ const MENU_GROUPS = [
 const PAGE_TITLES: Record<string, string> = {
     dashboard: 'Dashboard', clients: 'Müşteriler', calendar: 'Randevular',
     pos: 'Kasa / POS', services: 'Hizmetler', packages: 'Paketler',
-    devices: 'Cihazlar', staff: 'Personel', leads: 'Leads & CRM', reports: 'Raporlar',
+    devices: 'Cihazlar', surveys: 'Memnuniyet anketleri',
+    staff: 'Personel', leads: 'Leads & CRM', reports: 'Raporlar',
+    clinic_ops: 'Klinik operasyon',
 };
 
 // Sidebar constants
@@ -70,10 +77,35 @@ export default function BeautyModule() {
     const { loadSpecialists, loadServices, loadAppointments } = useBeautyStore();
 
     React.useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatLocalYmd(new Date());
         loadSpecialists();
         loadServices();
         loadAppointments(today);
+    }, []);
+
+    React.useEffect(() => {
+        const applyAction = (target?: string) => {
+            if (target === 'beauty_calendar') {
+                setActiveTab('calendar');
+            }
+        };
+        const fromStorage = localStorage.getItem('callerid_context_action');
+        if (fromStorage) {
+            try {
+                const parsed = JSON.parse(fromStorage) as { target?: string };
+                applyAction(parsed?.target);
+            } catch {
+                // no-op
+            } finally {
+                localStorage.removeItem('callerid_context_action');
+            }
+        }
+        const onCtx = (ev: Event) => {
+            const custom = ev as CustomEvent<{ target?: string }>;
+            applyAction(custom.detail?.target);
+        };
+        window.addEventListener('callerid-open-context-action', onCtx);
+        return () => window.removeEventListener('callerid-open-context-action', onCtx);
     }, []);
 
     return (
@@ -294,8 +326,10 @@ export default function BeautyModule() {
                     {activeTab === 'services' && <ServiceManagement />}
                     {activeTab === 'staff' && <StaffManagement />}
                     {activeTab === 'devices' && <DeviceManagement />}
+                    {activeTab === 'surveys' && <SatisfactionSurveyManagement />}
                     {activeTab === 'leads' && <LeadManagement />}
                     {activeTab === 'reports' && <ReportDashboard />}
+                    {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
                 </main>
             </div>
 

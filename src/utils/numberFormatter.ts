@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Number Formatting Utilities for ExRetailOS
  * Automatic formatting for number inputs across the system
  */
@@ -57,6 +57,58 @@ export const parseFormattedNumber = (value: string): number => {
     .replace(/,/g, '.'); // Ondalık virgülü noktaya çevir
   return parseFloat(normalized) || 0;
 };
+
+/**
+ * Virgül yokken nokta: TR'de çoğunlukla binlik (1.555 → 1555); tek nokta + 3 hane → binlik birleştir.
+ * Tek/çift hane ondalık için nokta (1.54) veya virgül (1,54) kullanın.
+ */
+function parseDotsWithoutCommaAsTr(s: string): number {
+  const parts = s.split('.');
+  if (parts.some((p) => p === '' || !/^\d+$/.test(p))) return NaN;
+  if (parts.length === 1) return parseFloat(parts[0]);
+  if (parts.length === 2) {
+    const [a, b] = parts;
+    if (b.length === 3 && /^\d{3}$/.test(b)) {
+      if (a === '0') return parseFloat(`${a}.${b}`);
+      return parseFloat(a + b);
+    }
+    return parseFloat(`${a}.${b}`);
+  }
+  return parseFloat(parts.join(''));
+}
+
+/**
+ * Kur / ondalık form alanı: "1,54", "1.234,56" (TR), "1.555" (TR binlik = 1555), "1.54" (ondalık nokta).
+ * type="number" virgül kabul etmediği için text input ile kullanın.
+ */
+export function parseDecimalStringForInput(value: string): number {
+  let s = String(value).trim().replace(/\s/g, '');
+  /* Arapça / tam genişlik ondalık virgül → ASCII virgül */
+  s = s.replace(/[\u060C\u066B\uFF0C\u201A]/g, ',');
+  if (!s) return NaN;
+  s = s.replace(/,$/, '').replace(/\.$/, '');
+  if (!s) return NaN;
+  if (s.includes(',')) {
+    const lastComma = s.lastIndexOf(',');
+    const intPart = s.slice(0, lastComma).replace(/\./g, '');
+    const fracPart = s.slice(lastComma + 1).replace(/[^\d]/g, '');
+    const normalized = fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+    const n = parseFloat(normalized);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  if (s.includes('.')) {
+    const n = parseDotsWithoutCommaAsTr(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Gösterim: 1.54 → "1,54" (virgüllü ondalık, grup yok) */
+export function formatDecimalForTrInput(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '';
+  return String(n).replace('.', ',');
+}
 
 /**
  * Format number for display with currency

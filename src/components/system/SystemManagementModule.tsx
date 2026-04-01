@@ -1,16 +1,17 @@
-﻿// System Management Module - All System Settings Modules
+// System Management Module - All System Settings Modules
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download,
-  Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X
+  Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image
 } from 'lucide-react';
 
 type SystemView =
   | 'userManagement'
   | 'roleAuthorization'
   | 'definitionsParameters'
+  | 'receiptSettings'
   | 'dataBroadcast'
   | 'backupRestore'
   | 'logAudit'
@@ -23,6 +24,7 @@ export function SystemManagementModule() {
     { id: 'userManagement' as const, label: 'Kullanıcı Yönetimi', icon: Users, color: 'blue' },
     { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
     { id: 'definitionsParameters' as const, label: 'Tanımlar/Parametreler', icon: Settings, color: 'green' },
+    { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
     { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
@@ -31,11 +33,35 @@ export function SystemManagementModule() {
 
   return (
     <div className="h-full flex bg-gray-50">
+      {/* Sol menü */}
+      <div className="w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+        <nav className="p-2 space-y-0.5">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setCurrentView(item.id)}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
       {/* Content Area */}
       <div className="flex-1 overflow-auto">
         {currentView === 'userManagement' && <UserManagementView />}
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
         {currentView === 'definitionsParameters' && <DefinitionsParametersView />}
+        {currentView === 'receiptSettings' && <ReceiptSettingsView />}
         {currentView === 'dataBroadcast' && <DataBroadcastView />}
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
@@ -279,6 +305,198 @@ function DefinitionsParametersView() {
         <div className="text-center py-8">
           <Settings className="h-16 w-16 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">Parametre yönetimi ekranı hazırlanıyor...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Fiş / Firma Bilgisi View — fişte gösterilecek logo ve firma bilgileri
+function ReceiptSettingsView() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    companyName: '',
+    companyAddress: '',
+    companyPhone: '',
+    companyTaxOffice: '',
+    companyTaxNumber: '',
+    logoDataUrl: '' as string,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getReceiptSettings } = await import('../../services/receiptSettingsService');
+        const data = await getReceiptSettings();
+        if (!cancelled) {
+          setForm({
+            companyName: data.companyName ?? '',
+            companyAddress: data.companyAddress ?? '',
+            companyPhone: data.companyPhone ?? '',
+            companyTaxOffice: data.companyTaxOffice ?? '',
+            companyTaxNumber: data.companyTaxNumber ?? '',
+            logoDataUrl: data.logoDataUrl ?? '',
+          });
+        }
+      } catch (e) {
+        if (!cancelled) setToast('Ayarlar yüklenemedi.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, logoDataUrl: (reader.result as string) ?? '' }));
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setToast(null);
+    try {
+      const { saveReceiptSettings } = await import('../../services/receiptSettingsService');
+      await saveReceiptSettings({
+        companyName: form.companyName || undefined,
+        companyAddress: form.companyAddress || undefined,
+        companyPhone: form.companyPhone || undefined,
+        companyTaxOffice: form.companyTaxOffice || undefined,
+        companyTaxNumber: form.companyTaxNumber || undefined,
+        logoDataUrl: form.logoDataUrl || undefined,
+      });
+      setToast('Fiş ayarları kaydedildi.');
+    } catch (e) {
+      setToast('Kaydetme başarısız.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <div className="text-gray-500">Yükleniyor...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+          <Receipt className="h-5 w-5 text-amber-600" />
+          Fiş / Firma Bilgisi
+        </h3>
+        <p className="text-gray-600 mb-6 text-sm">Hesap ve mutfak fişlerinde görünecek firma adı, adres, telefon ve logo.</p>
+
+        {toast && (
+          <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${toast.includes('başarısız') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
+            {toast}
+          </div>
+        )}
+
+        <div className="space-y-6 max-w-xl">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Firma logosu (fişte üstte)</label>
+            <div className="flex items-start gap-4">
+              <div className="shrink-0 w-24 h-24 border border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center">
+                {form.logoDataUrl ? (
+                  <img src={form.logoDataUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <Image className="w-10 h-10 text-gray-400" />
+                )}
+              </div>
+              <div className="flex-1">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  className="block w-full text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-amber-50 file:text-amber-700"
+                />
+                <p className="text-xs text-gray-500 mt-1">Önerilen: kare veya yatay logo, 200x200 px civarı.</p>
+                {form.logoDataUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, logoDataUrl: '' }))}
+                    className="mt-2 text-xs text-red-600 hover:underline"
+                  >
+                    Logoyu kaldır
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Firma / işletme adı</label>
+            <input
+              type="text"
+              value={form.companyName}
+              onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              placeholder="Örn: ABC Restoran"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Adres</label>
+            <input
+              type="text"
+              value={form.companyAddress}
+              onChange={(e) => setForm((f) => ({ ...f, companyAddress: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              placeholder="Cadde, mahalle, şehir"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+            <input
+              type="text"
+              value={form.companyPhone}
+              onChange={(e) => setForm((f) => ({ ...f, companyPhone: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              placeholder="+90 212 ..."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vergi dairesi</label>
+              <input
+                type="text"
+                value={form.companyTaxOffice}
+                onChange={(e) => setForm((f) => ({ ...f, companyTaxOffice: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                placeholder="Örn: Kadıköy"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vergi numarası</label>
+              <input
+                type="text"
+                value={form.companyTaxNumber}
+                onChange={(e) => setForm((f) => ({ ...f, companyTaxNumber: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                placeholder="10 haneli"
+              />
+            </div>
+          </div>
+
+          <div className="pt-4 border-t flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

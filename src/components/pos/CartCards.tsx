@@ -5,6 +5,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { POSCartItemActionModal } from './POSCartItemActionModal';
 import { CampaignResult } from '../../utils/campaignEngine';
+import { cn } from '../ui/utils';
 
 interface CartCardsProps {
   cart: CartItem[];
@@ -15,7 +16,6 @@ interface CartCardsProps {
   updateCartItemVariant?: (index: number, variant: any) => void;
   onVariantPanelOpen?: (index: number) => void; // Varyant paneli açıldığında parent'a bildir
   onApplyItemDiscount?: (index: number, discountPercent: number) => void; // Yeni modal için
-  isAdmin?: boolean;
   updateCartItemPrice?: (index: number, newPrice: number) => void;
   updateCartItemUnit?: (index: number, unit: string, multiplier: number) => void;
   campaignResult?: CampaignResult;
@@ -31,7 +31,6 @@ export function CartCards({
   updateCartItemVariant,
   onVariantPanelOpen,
   onApplyItemDiscount,
-  isAdmin,
   updateCartItemPrice,
   updateCartItemUnit,
   campaignResult,
@@ -39,10 +38,12 @@ export function CartCards({
 }: CartCardsProps) {
   const { darkMode } = useTheme();
   const { t } = useLanguage();
-  const [longPressIndex, setLongPressIndex] = useState<number | null>(null);
   const [actionModalIndex, setActionModalIndex] = useState<number | null>(null);
   const [variantPanelIndex, setVariantPanelIndex] = useState<number | null>(null);
   const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
+  const [editingPriceIndex, setEditingPriceIndex] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState('');
+  const priceInputRef = useRef<HTMLInputElement | null>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Get color hex code helper
@@ -107,10 +108,6 @@ export function CartCards({
     }
   };
 
-  const closeLongPressMenu = () => {
-    setLongPressIndex(null);
-  };
-
   const handleApplyItemDiscount = (index: number, discountPercent: number) => {
     if (onApplyItemDiscount) {
       onApplyItemDiscount(index, discountPercent);
@@ -118,6 +115,25 @@ export function CartCards({
       // Fallback to old method
       handleItemDiscountClick(index);
     }
+  };
+
+  const startEditingPrice = (index: number, currentUnitPrice: number) => {
+    setEditingPriceIndex(index);
+    setEditingPriceValue(currentUnitPrice.toString());
+    setTimeout(() => priceInputRef.current?.focus(), 0);
+  };
+
+  const commitPriceEdit = (index: number) => {
+    if (editingPriceIndex !== index || !updateCartItemPrice) {
+      setEditingPriceIndex(null);
+      return;
+    }
+    const raw = editingPriceValue.replace(',', '.');
+    const newUnitPrice = parseFloat(raw);
+    if (!Number.isNaN(newUnitPrice) && newUnitPrice >= 0 && cart[index]) {
+      updateCartItemPrice(index, newUnitPrice);
+    }
+    setEditingPriceIndex(null);
   };
 
   return (
@@ -152,82 +168,76 @@ export function CartCards({
             {cart.map((item, index) => {
               const price = item.price ?? item.variant?.price ?? item.product.price;
               const hasDiscount = item.discount > 0;
-              const showLongPressMenu = longPressIndex === index;
+              const canEditPrice = Boolean(updateCartItemPrice);
+              const stripeColor = darkMode ? '#3b82f6' : '#2563eb';
+              const editingUnitPrice = editingPriceIndex === index
+                ? parseFloat(editingPriceValue.replace(',', '.'))
+                : price;
+              const computedLineTotal = Number.isNaN(editingUnitPrice)
+                ? item.subtotal
+                : item.quantity * editingUnitPrice * (1 - (item.discount || 0) / 100);
 
               return (
                 <div
                   key={index}
-                  className={`rounded-lg border transition-all relative ${darkMode ? 'bg-gray-700 border-gray-600 hover:border-blue-500' : 'bg-white border-gray-200 hover:border-blue-400'}`}
+                  className={cn(
+                    'rounded-[16px] border transition-all relative overflow-hidden select-none',
+                    darkMode
+                      ? 'bg-gray-800/95 border-gray-600 hover:border-blue-500/70'
+                      : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300'
+                  )}
                   onMouseDown={() => handleMouseDown(index)}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
                   onTouchStart={() => handleMouseDown(index)}
                   onTouchEnd={handleMouseUp}
                 >
-                  {/* Long Press Menu */}
-                  {showLongPressMenu && (
-                    <div className="absolute inset-0 bg-white rounded-lg z-10 flex items-center justify-center gap-2 p-3 border-2 border-blue-500">
-                      <button
-                        onClick={() => {
-                          handleItemDiscountClick(index);
-                          closeLongPressMenu();
-                        }}
-                        className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Percent className="w-4 h-4" />
-                        {t.applyDiscount}
-                      </button>
-                      {item.product.variants && item.product.variants.length > 0 && (
-                        <button
-                          onClick={() => {
-                            setVariantPanelIndex(index);
-                            if (onVariantPanelOpen) onVariantPanelOpen(index);
-                          }}
-                          className="flex-1 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded font-medium transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Package className="w-4 h-4" />
-                          {t.changeVariant}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setDeleteConfirmIndex(index);
-                          closeLongPressMenu();
-                        }}
-                        className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        {t.delete}
-                      </button>
-                      <button
-                        onClick={closeLongPressMenu}
-                        className="px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-medium transition-colors"
-                      >
-                        {t.cancel}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Main Content */}
                   <div
-                    className="flex items-center gap-4 p-3 select-none"
+                    className="absolute top-0 left-0 bottom-0 w-1 z-[1] shadow-[2px_0_10px_rgba(0,0,0,0.06)]"
+                    style={{ backgroundColor: stripeColor }}
+                    aria-hidden
+                  />
+
+                  {/* Main Content — RestPOS tarzı kompakt kart */}
+                  <div
+                    className="flex items-center gap-3 p-2.5 pl-4 select-none relative z-0"
                     onDoubleClick={() => updateCartItemQuantity(index, item.quantity + 1)}
                   >
-                    {/* Left: Quantity Badge - Minimal */}
-                    <div className={`flex-shrink-0 w-12 rounded-lg bg-blue-600 flex flex-col items-center justify-center text-white shadow-sm ${item.multiplier && item.multiplier > 1 ? 'h-14 py-1' : 'h-12'}`}>
-                      <div className="text-lg font-bold leading-none">{formatNumber(item.quantity)}</div>
-                      <div className="text-[7px] opacity-90 leading-none mt-0.5">{item.unit || item.product.unit || t.pcs}</div>
+                    {/* Sol: miktar rozeti */}
+                    <div
+                      className={cn(
+                        'flex-shrink-0 w-11 rounded-[12px] flex flex-col items-center justify-center text-white shadow-md transition-transform active:scale-95',
+                        item.multiplier && item.multiplier > 1 ? 'h-[52px] py-1' : 'h-11'
+                      )}
+                      style={{
+                        backgroundColor: stripeColor,
+                        boxShadow: darkMode ? `0 4px 12px ${stripeColor}44` : `0 4px 10px ${stripeColor}33`
+                      }}
+                    >
+                      <div className="text-[16px] font-black leading-none drop-shadow-sm">{formatNumber(item.quantity)}</div>
+                      <div className="text-[8px] font-bold opacity-90 leading-none mt-0.5 uppercase tracking-tighter">
+                        {item.unit || item.product.unit || t.pcs}
+                      </div>
                       {item.multiplier && item.multiplier > 1 && (
-                        <div className="text-[6px] opacity-80 leading-none mt-0.5 bg-white/20 rounded px-1">
+                        <div className="text-[6px] opacity-90 leading-none mt-0.5 bg-white/20 rounded px-1 font-bold">
                           ={item.quantity * item.multiplier} {item.product.unit}
                         </div>
                       )}
                     </div>
 
-                    {/* Middle: Product Info */}
+                    {/* Orta: ürün bilgisi */}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-gray-900 truncate mb-0.5 text-sm">{item.product.name}</h4>
-                      <p className="text-[10px] text-gray-500 font-mono mb-0.5">{item.product.barcode}</p>
+                      <h4
+                        className={cn(
+                          'font-extrabold truncate mb-0.5 text-[14px] leading-tight tracking-tight',
+                          darkMode ? 'text-gray-100' : 'text-slate-900'
+                        )}
+                      >
+                        {item.product.name}
+                      </h4>
+                      <p className={cn('text-[10px] font-mono mb-0.5', darkMode ? 'text-gray-500' : 'text-slate-500')}>
+                        {item.product.barcode}
+                      </p>
                       {item.variant && (
                         <button
                           onClick={() => {
@@ -255,36 +265,96 @@ export function CartCards({
                       )}
                     </div>
 
-                    {/* Right: Price + Controls - Minimal & Responsive */}
+                    {/* Sağ: satır tutarı + kontroller */}
                     <div className="flex items-center gap-2">
-                      {/* Price - Compact */}
-                      <div className="text-end min-w-[80px]">
-                        <div className="text-lg font-bold text-blue-600 leading-none">
-                          {formatNumber(item.subtotal)}
-                        </div>
-                        {isAdmin ? (
-                          <button
-                            onClick={() => {
-                              const val = prompt(t.enterNewPrice || 'Yeni Fiyat Girin:', price.toString());
-                              if (val !== null && !isNaN(parseFloat(val)) && updateCartItemPrice) {
-                                updateCartItemPrice(index, parseFloat(val));
+                      {/* Tutar: tek dokunuşta düzenle (modal / uzun basış gerekmez) */}
+                      <div
+                        className="text-end min-w-[76px]"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                      >
+                        {canEditPrice && editingPriceIndex === index ? (
+                          <input
+                            ref={priceInputRef}
+                            type="text"
+                            inputMode="decimal"
+                            value={editingPriceValue}
+                            onChange={(e) => setEditingPriceValue(e.target.value)}
+                            onBlur={() => commitPriceEdit(index)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitPriceEdit(index);
+                              }
+                              if (e.key === 'Escape') {
+                                setEditingPriceIndex(null);
                               }
                             }}
-                            className={`text-[10px] mt-1 hover:underline cursor-pointer ${darkMode ? 'text-blue-400 font-bold' : 'text-blue-700 font-bold'}`}
+                            className={cn(
+                              'w-full text-[15px] font-black leading-none bg-transparent border-b-2 border-blue-500 outline-none text-right py-0 tabular-nums',
+                              darkMode ? 'text-blue-400' : 'text-blue-600'
+                            )}
+                          />
+                        ) : canEditPrice ? (
+                          <button
+                            type="button"
                             title={t.clickToChangePrice || 'Fiyatı değiştirmek için tıklayın'}
+                            onClick={() => startEditingPrice(index, price)}
+                            className={cn(
+                              'text-left w-full rounded-lg px-1 -mx-1 py-0.5 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/40',
+                              darkMode ? 'hover:bg-gray-700/80' : 'hover:bg-blue-50/90'
+                            )}
                           >
-                            {formatNumber(price)} / {item.unit || item.product.unit || t.pcs}
+                            <div
+                              className={cn(
+                                'text-[15px] font-black leading-none tabular-nums',
+                                darkMode ? 'text-blue-400' : 'text-blue-600'
+                              )}
+                            >
+                              {formatNumber(item.subtotal)}
+                            </div>
                           </button>
                         ) : (
-                          <div className="text-[10px] text-gray-500 mt-1">
-                            {item.multiplier && item.multiplier > 1 ? (
-                              <span className="text-orange-600 font-medium">
-                                {formatNumber(price / item.multiplier)} / {item.product.unit} × {item.multiplier}
-                              </span>
-                            ) : (
-                              <span>{formatNumber(price)} / {item.unit || item.product.unit || t.pcs}</span>
+                          <div
+                            className={cn(
+                              'text-[15px] font-black leading-none tabular-nums',
+                              darkMode ? 'text-gray-200' : 'text-slate-800'
                             )}
+                          >
+                            {formatNumber(item.subtotal)}
                           </div>
+                        )}
+                        {editingPriceIndex === index && (
+                          <div className={cn('text-[10px] mt-0.5 font-semibold', darkMode ? 'text-blue-300' : 'text-blue-700')}>
+                            {formatNumber(item.quantity)} × {formatNumber(editingUnitPrice || 0)} = {formatNumber(computedLineTotal || 0)}
+                          </div>
+                        )}
+                        {editingPriceIndex !== index && (
+                          <>
+                            <div
+                              className={cn(
+                                'text-[10px] mt-0.5 font-semibold',
+                                canEditPrice
+                                  ? darkMode
+                                    ? 'text-blue-400/90'
+                                    : 'text-blue-700'
+                                  : darkMode
+                                    ? 'text-gray-500'
+                                    : 'text-slate-500'
+                              )}
+                            >
+                              {item.multiplier && item.multiplier > 1 ? (
+                                <span className={darkMode ? 'text-orange-400' : 'text-orange-600'}>
+                                  {formatNumber(price / item.multiplier)} / {item.product.unit} × {item.multiplier}
+                                </span>
+                              ) : (
+                                <span>
+                                  {formatNumber(price)} / {item.unit || item.product.unit || t.pcs}
+                                </span>
+                              )}
+                            </div>
+                          </>
                         )}
                         {hasDiscount && (
                           <div className="text-[10px] text-gray-400 line-through leading-none mt-0.5">
@@ -356,22 +426,34 @@ export function CartCards({
                     </div>
                   </div>
 
-                  {/* Delete Confirmation Overlay */}
+                  {/* Delete Confirmation Modal */}
                   {deleteConfirmIndex === index && (
-                    <div className="absolute inset-0 bg-white/95 backdrop-blur-sm rounded-lg z-20 flex items-center justify-center p-4 border-2 border-red-500">
-                      <div className="text-center">
-                        <div className="mb-3">
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4"
+                      onClick={() => setDeleteConfirmIndex(null)}
+                    >
+                      <div
+                        className={cn(
+                          'w-full max-w-md rounded-2xl border shadow-2xl p-5',
+                          darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-red-200'
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="text-center">
                           <Trash2 className="w-8 h-8 text-red-600 mx-auto mb-2" />
-                          <h3 className="font-semibold text-gray-900 mb-1">{t.confirmItemDelete}</h3>
-                          <p className="text-sm text-gray-600 mb-1">{item.product.name}</p>
-                          <p className="text-xs text-gray-500">
-                            {formatNumber(item.quantity)} {item.unit || item.product.unit || t.pcs} × {formatNumber(item.variant?.price || item.product.price)} = {formatNumber(item.subtotal)}
+                          <h3 className={cn('font-bold mb-1', darkMode ? 'text-gray-100' : 'text-gray-900')}>{t.confirmItemDelete}</h3>
+                          <p className={cn('text-sm mb-1 font-semibold', darkMode ? 'text-gray-300' : 'text-gray-700')}>{item.product.name}</p>
+                          <p className={cn('text-xs', darkMode ? 'text-gray-400' : 'text-gray-500')}>
+                            {formatNumber(item.quantity)} {item.unit || item.product.unit || t.pcs} × {formatNumber(price)} = {formatNumber(item.subtotal)}
                           </p>
                         </div>
-                        <div className="flex gap-2 justify-center">
+                        <div className="flex gap-2 justify-center mt-4">
                           <button
                             onClick={() => setDeleteConfirmIndex(null)}
-                            className="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-medium transition-colors text-sm"
+                            className={cn(
+                              'px-6 py-2.5 rounded-lg font-medium transition-colors text-sm',
+                              darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-200' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                            )}
                           >
                             {t.cancel}
                           </button>
@@ -380,7 +462,7 @@ export function CartCards({
                               removeFromCart(index);
                               setDeleteConfirmIndex(null);
                             }}
-                            className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded font-medium transition-colors flex items-center gap-2 text-sm"
+                            className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
                           >
                             <Trash2 className="w-4 h-4" />
                             {t.yesDelete}

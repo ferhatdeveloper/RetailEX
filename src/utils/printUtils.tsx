@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import type { Invoice } from '../core/types';
 import { CorporateInvoiceTemplate, PrintConfig } from '../components/trading/invoices/CorporateInvoiceTemplate';
 import { PostgresConnection, ERP_SETTINGS } from '../services/postgres';
+import { getReceiptSettings } from '../services/receiptSettingsService';
 
 export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA') => {
   try {
@@ -25,17 +26,25 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
       return;
     }
 
-    // Fetch active firm details dynamically
+    // Firma bilgisi: önce fiş/firma ayarları (logo, adres vb.), yoksa postgres firm details
     const postgres = PostgresConnection.getInstance();
     const firmDetails = await postgres.getFirmDetails(ERP_SETTINGS.firmNr);
+    let receiptSettings: Awaited<ReturnType<typeof getReceiptSettings>> = {};
+    try {
+      receiptSettings = await getReceiptSettings();
+    } catch {
+      // Fiş ayarları yoksa firmDetails kullanılır
+    }
 
     const companyConfig: PrintConfig = {
-      showLogo: true,
+      showLogo: !!receiptSettings.logoDataUrl,
+      logoUrl: receiptSettings.logoDataUrl || undefined,
       showQRCode: true,
-      companyName: firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
-      companyAddress: firmDetails?.address || 'Adres tanımlanmamış.',
-      companyPhone: firmDetails?.phone || '',
-      companyTaxNo: firmDetails?.tax_nr || '',
+      companyName: receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
+      companyAddress: receiptSettings.companyAddress || firmDetails?.address || 'Adres tanımlanmamış.',
+      companyPhone: receiptSettings.companyPhone || firmDetails?.phone || '',
+      companyTaxNo: receiptSettings.companyTaxNumber || firmDetails?.tax_nr || '',
+      companyTaxOffice: receiptSettings.companyTaxOffice || undefined,
       footerText: 'Bizi tercih ettiğiniz için teşekkür ederiz.'
     };
 

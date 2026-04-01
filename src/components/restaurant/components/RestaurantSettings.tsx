@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid } from 'lucide-react';
+import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid, Phone, Bike } from 'lucide-react';
+import { RestaurantFoodDeliverySettings } from './RestaurantFoodDeliverySettings';
 import { RestaurantPrinterSettings } from './RestaurantPrinterSettings';
+import { RestaurantCallerIdSettings } from './RestaurantCallerIdSettings';
 import { UserManagementModule } from '../../system/UserManagementModule';
 import { RoleManagement } from '../../system/RoleManagement';
 import { FloorTableManagement } from './FloorTableManagement';
 import { cn } from '@/components/ui/utils';
 
 export function RestaurantSettings({ onBack }: { onBack: () => void }) {
-    const [activeTab, setActiveTab] = useState<'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables'>('general');
+    const [activeTab, setActiveTab] = useState<
+        'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables' | 'callerid' | 'delivery'
+    >('general');
 
     return (
         <div className="flex h-full bg-slate-50 w-full overflow-hidden">
@@ -99,6 +103,30 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         <LayoutGrid className={cn("w-5 h-5", activeTab === 'tables' ? "text-blue-500" : "text-slate-400")} />
                         Masa & Bölge
                     </button>
+                    <button
+                        onClick={() => setActiveTab('callerid')}
+                        className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold",
+                            activeTab === 'callerid'
+                                ? "bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-100/50"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        )}
+                    >
+                        <Phone className={cn("w-5 h-5", activeTab === 'callerid' ? "text-violet-500" : "text-slate-400")} />
+                        Arayan No (Caller ID)
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('delivery')}
+                        className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold",
+                            activeTab === 'delivery'
+                                ? "bg-cyan-50 text-cyan-800 shadow-sm ring-1 ring-cyan-100/50"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        )}
+                    >
+                        <Bike className={cn("w-5 h-5", activeTab === 'delivery' ? "text-cyan-600" : "text-slate-400")} />
+                        Paket platformları
+                    </button>
                 </div>
             </div>
 
@@ -140,6 +168,16 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                                     <Receipt className="w-16 h-16 mx-auto mb-4 opacity-20" />
                                     <p>Adisyon Tasarımı ve Vergi Ayarları Yapılandırılıyor...</p>
                                 </div>
+                            </div>
+                        )}
+                        {activeTab === 'callerid' && (
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                                <RestaurantCallerIdSettings />
+                            </div>
+                        )}
+                        {activeTab === 'delivery' && (
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 md:p-8">
+                                <RestaurantFoodDeliverySettings />
                             </div>
                         )}
                     </div>

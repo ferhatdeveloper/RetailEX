@@ -12,8 +12,9 @@
     body {
       margin: 0;
       padding: 0;
-      background-color: #0f1113;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      min-height: 100vh;
     }
 
     #app-loader {
@@ -27,9 +28,9 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      background-color: #0f1113;
-      color: #fff;
-      transition: opacity 0.3s ease-out;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #f1f5f9;
+      transition: opacity 0.4s ease-out;
     }
 
     .logo-container {
@@ -166,12 +167,11 @@
       </div>
     </div>
     <div class="loader-spinner" aria-hidden="true"></div>
-    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 11px; color: rgba(255,255,255,0.5);">Sistem Hazırlanıyor...</div>
+    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">RetailEX başlatılıyor...</div>
   </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
-    // Yenilemede tam splash yerine minimal göstergede tut — siyah ekran olmasın
     var loaderEl = document.getElementById('app-loader');
     var loadingTextEl = document.getElementById('loading-text');
     var isRefresh = !!sessionStorage.getItem('retailex_splash_seen');
@@ -179,22 +179,21 @@
 
     if (loaderEl && isRefresh) {
       loaderEl.classList.add('loader-minimal');
-      if (loadingTextEl) loadingTextEl.style.display = 'none';
+      if (loadingTextEl) loadingTextEl.textContent = 'Yükleniyor...';
     }
     if (loadingTextEl && !isRefresh) {
       var loadingMessages = [
-        "Sistem Hazırlanıyor...",
-        "Veritabanı Bekleniyor...",
-        "Bağlantı Kuruluyor...",
-        "Modüller Yükleniyor...",
-        "Arayüz Hazırlanıyor...",
-        "Son Ayarlar Yapılıyor..."
+        "RetailEX başlatılıyor...",
+        "Sistem hazırlanıyor...",
+        "Veritabanı bağlantısı bekleniyor...",
+        "Modüller yükleniyor...",
+        "Arayüz hazırlanıyor..."
       ];
       var msgIndex = 0;
       msgInterval = setInterval(function () {
         msgIndex = (msgIndex + 1) % loadingMessages.length;
-        if (loadingTextEl) loadingTextEl.innerText = loadingMessages[msgIndex];
-      }, 1500);
+        if (loadingTextEl) loadingTextEl.textContent = loadingMessages[msgIndex];
+      }, 1800);
     }
 
     window.removeLoader = function () {
@@ -204,17 +203,20 @@
       if (loader) {
         loader.style.opacity = '0';
         loader.style.pointerEvents = 'none';
-        setTimeout(function () { loader.remove(); }, 300);
+        setTimeout(function () { loader.remove(); }, 400);
       }
     };
-    // Safety net: remove loader if app never calls removeLoader (e.g. crash)
+    setTimeout(function () {
+      var loader = document.getElementById('app-loader');
+      if (loader && loadingTextEl) loadingTextEl.textContent = 'Hâlâ yükleniyor, lütfen bekleyin...';
+    }, 8000);
     setTimeout(function () {
       const loader = document.getElementById('app-loader');
       if (loader) {
-        console.warn('[Splash] Auto-removing loader after 6s safety timeout');
+        console.warn('[Splash] Auto-removing loader after 15s');
         window.removeLoader();
       }
-    }, 6000);
+    }, 15000);
   </script>
 </body>
 

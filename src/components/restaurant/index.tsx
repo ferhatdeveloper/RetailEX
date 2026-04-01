@@ -50,17 +50,20 @@ const ReportsModule = React.lazy(() => import('../reports/ReportsModule').then(m
 const KasalarModule = React.lazy(() => import('../accounting/cash-ops/KasalarModule').then(m => ({ default: m.KasalarModule })));
 const RoleManagement = React.lazy(() => import('../system/RoleManagement').then(m => ({ default: m.RoleManagement })));
 
-import { Table, Staff } from './types';
+import { Table, Staff, type RestaurantCallerIdPickRequest } from './types';
 import { useRestaurantStore } from './store/useRestaurantStore';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { RestaurantService } from '../../services/restaurant';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
+import { isMainModuleVisible } from '../../utils/mainModuleVisibility';
 import './restaurant-premium.css';
 
 interface RestaurantModuleProps {
     products: Product[];
+    /** Uygulama geneli POS satışları — raporlar Yönetim ile aynı veriyi görsün */
+    sales?: Sale[];
     customers: Customer[];
     campaigns: Campaign[];
     currentUser: UserType;
@@ -83,6 +86,7 @@ export default function RestaurantModule({
     rtlMode = false,
     setRtlMode = () => { },
     products = [],
+    sales = [],
     customers = [],
     campaigns = [],
     currentUser,
@@ -128,6 +132,7 @@ export default function RestaurantModule({
         loadMenu,
         loadRegions,
         loadRecipes,
+        loadCategories,
         syncTableStatuses,
         loadKitchenOrders,
         currentStaff: storeStaff,
@@ -136,19 +141,59 @@ export default function RestaurantModule({
         isDayActive,
         openRegister,
         closeRegister,
-        registerOpeningCash
+        registerOpeningCash,
     } = useRestaurantStore();
+    const [callerIdPickRequest, setCallerIdPickRequest] = useState<RestaurantCallerIdPickRequest | null>(null);
 
     const [showRegisterModal, setShowRegisterModal] = useState(false);
     const [showZReport, setShowZReport] = useState(false);
     const [zReportData, setZReportData] = useState<any>(null);
     const [showLanguageModal, setShowLanguageModal] = useState(false);
+    const [callerIdDeliveryPhone, setCallerIdDeliveryPhone] = useState<string | null>(null);
+
+    const newCallerPickId = () =>
+        typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cid-${Date.now()}`;
 
     useEffect(() => {
         loadTables();
         loadMenu();
         loadRegions();
         loadRecipes();
+    }, []);
+
+    useEffect(() => {
+        const applyAction = (target?: string, phone?: string) => {
+            if (target === 'restaurant_retail_delivery') {
+                setSelectedTable(null);
+                setPosMode('retail');
+                setActiveTab('pos');
+                if (phone?.trim()) {
+                    setCallerIdDeliveryPhone(phone.trim());
+                    setCallerIdPickRequest({
+                        id: newCallerPickId(),
+                        phone: phone.trim(),
+                        action: 'pick',
+                    });
+                }
+            }
+        };
+        const fromStorage = localStorage.getItem('callerid_context_action');
+        if (fromStorage) {
+            try {
+                const parsed = JSON.parse(fromStorage) as { target?: string; phone?: string };
+                applyAction(parsed?.target, parsed?.phone);
+            } catch {
+                // no-op
+            } finally {
+                localStorage.removeItem('callerid_context_action');
+            }
+        }
+        const onCtx = (ev: Event) => {
+            const custom = ev as CustomEvent<{ target?: string; phone?: string }>;
+            applyAction(custom.detail?.target, custom.detail?.phone);
+        };
+        window.addEventListener('callerid-open-context-action', onCtx);
+        return () => window.removeEventListener('callerid-open-context-action', onCtx);
     }, []);
 
     useEffect(() => {
@@ -170,6 +215,13 @@ export default function RestaurantModule({
         }
     }, [activeTab, isAdmin, currentUser?.id, currentUser?.fullName, currentUser?.username, setCurrentStaff]);
 
+    // POS sekmesine geçildiğinde kategorileri yenile (Excel/ürün tarafında eklenen kategoriler görünsün)
+    useEffect(() => {
+        if (activeTab === 'pos') {
+            loadCategories();
+        }
+    }, [activeTab, loadCategories]);
+
     // Arka planda masa durumlarını ve mutfak siparişlerini periyodik senkronize et (ağ/çoklu cihaz senkronu)
     useEffect(() => {
         const sync = () => {
@@ -190,20 +242,30 @@ export default function RestaurantModule({
         if (!zReportData) return;
         const d = zReportData;
         const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD' }).format(num);
+        const esc = (s: string) =>
+            String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
 
         const win = window.open('', '_blank', 'width=450,height=800');
         if (!win) return;
 
+        const productRows = (d.salesByProduct || []).map((p: any) =>
+            `<tr><td>${esc(p.productName)}</td><td style="text-align:right">${Number(p.quantity ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 3 })}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
+        ).join('');
+
         const categoryRows = (d.salesByCategory || []).map((c: any) =>
-            `<tr><td>${c.category}</td><td style="text-align:right">${c.count}</td><td style="text-align:right">${fmt(c.amount)}</td></tr>`
+            `<tr><td>${esc(String(c.category))}</td><td style="text-align:right">${c.count}</td><td style="text-align:right">${fmt(c.amount)}</td></tr>`
         ).join('');
 
         const paymentRows = (d.paymentsByType || []).map((p: any) =>
-            `<tr><td>${p.type}</td><td style="text-align:right">${p.count}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
+            `<tr><td>${esc(String(p.type))}</td><td style="text-align:right">${p.count}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
         ).join('');
 
         const voidRows = (d.voids || []).map((v: any) =>
-            `<tr><td>${v.reason}</td><td style="text-align:right">${v.count}</td><td style="text-align:right">${fmt(v.amount)}</td></tr>`
+            `<tr><td>${esc(String(v.reason))}</td><td style="text-align:right">${v.count}</td><td style="text-align:right">${fmt(v.amount)}</td></tr>`
         ).join('');
 
         win.document.write(`
@@ -225,6 +287,12 @@ export default function RestaurantModule({
                 <p>SORUMLU: ${d.staffName}</p>
                 <hr/>
                 <h3>TOPLAM SATIŞ: ${fmt(d.totalSales)}</h3>
+                <hr/>
+                <h4 style="margin:12px 0 6px;font-size:14px">Satılan ürünler</h4>
+                <table>
+                    <thead><tr><th>Ürün</th><th style="text-align:right">Miktar</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <tbody>${productRows || '<tr><td colspan="3" style="text-align:center;color:#666">Kayıt yok</td></tr>'}</tbody>
+                </table>
                 <hr/>
                 <table>
                     <thead><tr><th>Kategori</th><th style="text-align:right">Adet</th><th style="text-align:right">Tutar</th></tr></thead>
@@ -450,8 +518,8 @@ export default function RestaurantModule({
                                 {hasPermission('restaurant.settings', 'READ') && (
                                     <DashboardTile icon={<Settings />} label="Ayarlar" color="#0f172a" onClick={() => setActiveTab('settings')} />
                                 )}
-                                {hasPermission('management', 'READ') && (
-                                    <DashboardTile icon={<LayoutGrid />} label="Yönetim" color="#d946ef" onClick={() => setActiveModule?.('backoffice')} />
+                                {hasPermission('management', 'READ') && isMainModuleVisible('management') && (
+                                    <DashboardTile icon={<LayoutGrid />} label="Yönetim" color="#d946ef" onClick={() => setActiveModule?.('management')} />
                                 )}
                             </div>
                         </div>
@@ -461,6 +529,7 @@ export default function RestaurantModule({
                         activeTab={activeTab}
                         setActiveTab={setActiveTab}
                         products={products}
+                        sales={sales}
                         customers={customers}
                         campaigns={campaigns}
                         initialSelectedCustomer={initialSelectedCustomer}
@@ -475,6 +544,10 @@ export default function RestaurantModule({
                         setSelectedTable={setSelectedTable}
                         moveTableSource={moveTableSource}
                         setMoveTableSource={setMoveTableSource}
+                        callerIdPickRequest={callerIdPickRequest}
+                        onCallerIdPickConsumed={() => setCallerIdPickRequest(null)}
+                        callerIdDeliveryPhone={callerIdDeliveryPhone}
+                        onCallerIdDeliveryConsumed={() => setCallerIdDeliveryPhone(null)}
                         onRequestStaffChange={() => {
                             setStaffPickMandatory(false);
                             setShowStaffModalOnFloor(true);
@@ -543,6 +616,7 @@ interface RestaurantContentProps {
     activeTab: string;
     setActiveTab: (tab: any) => void;
     products: Product[];
+    sales: Sale[];
     customers: Customer[];
     campaigns: Campaign[];
     initialSelectedCustomer: Customer | null;
@@ -561,12 +635,17 @@ interface RestaurantContentProps {
     onRequestStaffChange?: () => void;
     /** Mutfak butonuna basıp sipariş gönderildikten sonra masalara dönüp garson seçim açılsın */
     onAfterSendToKitchen?: () => void;
+    callerIdPickRequest: RestaurantCallerIdPickRequest | null;
+    onCallerIdPickConsumed: () => void;
+    callerIdDeliveryPhone?: string | null;
+    onCallerIdDeliveryConsumed?: () => void;
 }
 
 function RestaurantContent({
     activeTab,
     setActiveTab,
     products,
+    sales,
     customers,
     campaigns,
     initialSelectedCustomer,
@@ -582,7 +661,11 @@ function RestaurantContent({
     moveTableSource,
     setMoveTableSource,
     onRequestStaffChange,
-    onAfterSendToKitchen
+    onAfterSendToKitchen,
+    callerIdPickRequest,
+    onCallerIdPickConsumed,
+    callerIdDeliveryPhone,
+    onCallerIdDeliveryConsumed,
 }: RestaurantContentProps) {
     const { tables, moveTable, mergeTables } = useRestaurantStore();
     const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
@@ -637,6 +720,10 @@ function RestaurantContent({
                     posMode={posMode}
                     onRequestMoveTable={selectedTable ? () => { setMoveTableSource(selectedTable); setActiveTab('floor'); } : undefined}
                     onAfterSendToKitchen={onAfterSendToKitchen}
+                    callerIdPickRequest={callerIdPickRequest}
+                    onCallerIdPickConsumed={onCallerIdPickConsumed}
+                    callerIdDeliveryPhone={callerIdDeliveryPhone}
+                    onCallerIdDeliveryConsumed={onCallerIdDeliveryConsumed}
                 />
             )}
             {activeTab === 'recipes' && <RecipeManagement onBack={() => setActiveTab('dashboard')} />}
@@ -654,7 +741,7 @@ function RestaurantContent({
             )}
             {activeTab === 'reports' && (
                 <ModuleWrapper title="Raporlar ve Analiz" onBack={() => setActiveTab('dashboard')}>
-                    <Suspense fallback={<LoadingSpinner />}><ReportsModule sales={[]} products={products} /></Suspense>
+                    <Suspense fallback={<LoadingSpinner />}><ReportsModule sales={sales} products={products} /></Suspense>
                 </ModuleWrapper>
             )}
             {activeTab === 'settings' && (

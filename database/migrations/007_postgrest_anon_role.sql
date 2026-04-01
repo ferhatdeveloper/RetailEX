@@ -1,0 +1,61 @@
+-- ============================================================================
+-- PostgREST — anon rolü ve şema izinleri
+-- PostgREST config'de db-anon-role = "anon" kullanmak için gerekli.
+-- Çalıştırma: psql -U postgres -d retailex_local -f 007_postgrest_anon_role.sql
+-- ============================================================================
+
+-- Anon rolü (PostgREST kimlik doğrulama yokken bu rolü kullanır)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    CREATE ROLE anon NOLOGIN;
+    RAISE NOTICE 'Rol anon oluşturuldu.';
+  END IF;
+END $$;
+
+-- Şemalara USAGE
+GRANT USAGE ON SCHEMA public TO anon;
+GRANT USAGE ON SCHEMA logic TO anon;
+GRANT USAGE ON SCHEMA wms TO anon;
+GRANT USAGE ON SCHEMA rest TO anon;
+GRANT USAGE ON SCHEMA beauty TO anon;
+GRANT USAGE ON SCHEMA pos TO anon;
+
+-- Mevcut tablolar üzerinde CRUD (public)
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- logic, wms, rest, beauty, pos şemaları
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA logic TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA logic TO anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA wms TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA wms TO anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA rest TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA rest TO anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA beauty TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA beauty TO anon;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA pos TO anon;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA pos TO anon;
+
+-- İleride oluşturulacak tablolar için varsayılan ayrıcalıklar (postgres ile oluşturan için)
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA logic GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA logic GRANT USAGE, SELECT ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA wms GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA wms GRANT USAGE, SELECT ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA rest GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA rest GRANT USAGE, SELECT ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA beauty GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA beauty GRANT USAGE, SELECT ON SEQUENCES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA pos GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA pos GRANT USAGE, SELECT ON SEQUENCES TO anon;
+
+-- Not: Authenticator kullanacaksanız (JWT ile):
+-- CREATE ROLE authenticator NOINHERIT LOGIN PASSWORD '...';
+-- GRANT anon TO authenticator;
+-- PostgREST config: db-anon-role = "anon", jwt-secret = "..."

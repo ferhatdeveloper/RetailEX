@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
 import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles } from 'lucide-react';
@@ -18,6 +19,12 @@ import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { VoiceAssistantWeb } from '../modules/VoiceAssistantWeb';
 import { wsService } from '../../services/websocket';
+import { useRestaurantStore } from '../restaurant/store/useRestaurantStore';
+import { useRestaurantCallerId } from '../../hooks/useRestaurantCallerId';
+import { findCustomerByCallerPhone } from '../../services/restaurantCallerIdService';
+import { getBridgeUrl } from '../../utils/env';
+import { toast } from 'sonner';
+import { useCustomerStore } from '../../store/useCustomerStore';
 
 // Lazy load MarketPOS for better initial performance
 import MarketPOS from '../pos/MarketPOS';
@@ -29,6 +36,53 @@ const RestaurantMain = lazy(() => import('../restaurant/index'));
 const BeautyMain = lazy(() => import('../beauty/index'));
 import { AppFooter } from '../shared/AppFooter';
 import { FirmSelector } from './FirmSelector';
+import { cn } from '../ui/utils';
+import { getShellModuleFallbackOrder, isMainModuleVisible } from '../../utils/mainModuleVisibility';
+
+/** Üst çubukta saat/tarih — interval yalnızca bu düğümü yeniler, tüm MainLayout + POS'u değil */
+function MainLayoutClockButton({ onOpenModal }: { onOpenModal: () => void }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={onOpenModal}
+      className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm bg-white/12 hover:bg-white/20 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl border border-white/15 transition-colors flex-shrink-0 whitespace-nowrap font-semibold shadow-inner"
+    >
+      <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 opacity-90" />
+      <span className="hidden md:inline">
+        {now.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+      </span>
+      <span className="hidden md:inline text-blue-200/90">•</span>
+      <Clock className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 opacity-90" />
+      <span className="tabular-nums text-sm sm:text-base">
+        {now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+      </span>
+    </button>
+  );
+}
+
+/** WS durum göstergesi — polling yalnızca bu küçük düğümü yeniler */
+function WsConnectionStatusDot() {
+  const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>(() => wsService.getStatus());
+  useEffect(() => {
+    const id = window.setInterval(() => setStatus(wsService.getStatus()), 2000);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <div
+      className={`w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ${
+        status === 'connected'
+          ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]'
+          : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]'
+      }`}
+      title={status === 'connected' ? 'Server Bağlantısı Aktif' : 'Server Bağlantısı Yok'}
+    />
+  );
+}
 
 interface MainLayoutProps {
   currentUser: UserType;
@@ -62,34 +116,22 @@ export function MainLayout({
 
   const { hasPermission, isAdmin } = usePermission();
 
-  // Module visibility: bayi_seti mode restricts visible modules to the selected list
-  const isModuleVisible = (moduleId: string): boolean => {
-    // management/backoffice is always visible
-    if (moduleId === 'management') return true;
-    const bayiSeti = localStorage.getItem('retailex_bayi_seti') === 'true';
-    if (!bayiSeti) return true; // no restriction
-    try {
-      const enabled: string[] = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]');
-      return enabled.length === 0 || enabled.includes(moduleId);
-    } catch {
-      return true;
-    }
-  };
+  const isModuleVisible = (moduleId: string) => isMainModuleVisible(moduleId);
 
   // Kullanıcı rolüne göre başlangıç modülünü belirle
   const getInitialModule = (): Module => {
-    // 0. Yetki bazlı kesin öncelik:
-    if (isAdmin() || (currentUser?.role && ['admin', 'manager'].includes(currentUser.role))) return 'management';
+    const rawSaved = localStorage.getItem('retailex_active_module');
+    const savedModule = (rawSaved === 'backoffice' ? 'management' : rawSaved) as Module;
+    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
+      if (isMainModuleVisible(savedModule)) return savedModule;
+    }
 
     // 0b. Garson / Waiter rolü — koşulsuz restoran
     const primaryRoleName = (currentUser?.roles?.[0]?.name || currentUser?.role || '').toLowerCase();
     if (primaryRoleName === 'garson' || primaryRoleName === 'waiter') return 'restaurant';
 
-    // 1. Önce localStorage'da kayıtlı modüle bak (Sayfa yenileme durumu)
-    const savedModule = localStorage.getItem('retailex_active_module') as Module;
-    if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
-      return savedModule;
-    }
+    // Yönetici: varsayılan yönetim paneli (yönetim sekmesi her zaman görünür)
+    if (isAdmin() || (currentUser?.role && ['admin', 'manager'].includes(currentUser.role))) return 'management';
 
     // 2. Diğer Yetki bazlı öncelikler:
     if (hasPermission('restaurant', 'READ')) return 'restaurant';
@@ -127,6 +169,26 @@ export function MainLayout({
     }
   }, [currentModule]);
 
+  // Aktif modül görünür değilse ilk görünür modüle düş (geçersiz id — örn. eski 'backoffice' — düzeltilir)
+  const MAIN_MODULE_IDS: Module[] = ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'];
+  useEffect(() => {
+    const cm = currentModule as string;
+    if (cm === 'backoffice') {
+      setCurrentModule('management');
+      return;
+    }
+    if (!MAIN_MODULE_IDS.includes(cm as Module)) {
+      const orderedModules = getShellModuleFallbackOrder() as Module[];
+      const nextVisible = orderedModules.find((m) => isModuleVisible(m));
+      if (nextVisible) setCurrentModule(nextVisible);
+      return;
+    }
+    if (isModuleVisible(currentModule)) return;
+    const orderedModules = getShellModuleFallbackOrder() as Module[];
+    const nextVisible = orderedModules.find((m) => isModuleVisible(m));
+    if (nextVisible) setCurrentModule(nextVisible);
+  }, [currentModule]);
+
   // Check if firma/donem setup is needed on mount - AFTER currentModule is defined
   useEffect(() => {
     // Veriler yüklenirken bekle
@@ -144,7 +206,6 @@ export function MainLayout({
     }
   }, [currentModule, firms, selectedFirm, firmaLoading]);
 
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [showDateModal, setShowDateModal] = useState(false);
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
@@ -163,14 +224,26 @@ export function MainLayout({
     if (!pwd) return false;
     if (currentUser.role === 'admin' || currentUser.role === 'manager') return true;
     try {
-      const { default: postgres, ERP_SETTINGS } = await import('../../services/postgres');
-      const username = (currentUser as any).username || (currentUser as any).email || '';
+      const { postgres, ERP_SETTINGS } = await import('../../services/postgres');
+      const firmNr = String(ERP_SETTINGS.firmNr || '001').trim();
       const { rows } = await postgres.query(
-        `SELECT 1 FROM public.users WHERE LOWER(username) = LOWER($1) AND firm_nr = $2 AND password_hash = crypt($3, password_hash) AND is_active = true LIMIT 1`,
-        [username, ERP_SETTINGS.firmNr, pwd]
+        `SELECT 1
+         FROM public.users u
+         LEFT JOIN public.roles r ON r.id = u.role_id
+         WHERE LPAD(TRIM(COALESCE(u.firm_nr, '')), 3, '0') = LPAD(TRIM($1), 3, '0')
+           AND u.is_active = true
+           AND LOWER(COALESCE(NULLIF(u.role, ''), r.name, '')) IN ('admin', 'manager', 'yonetici', 'yönetici')
+           AND u.password_hash IS NOT NULL
+           AND (
+             u.password_hash = crypt($2, u.password_hash)
+             OR u.password_hash = $2
+           )
+         LIMIT 1`,
+        [firmNr, pwd]
       );
       return rows.length > 0;
-    } catch {
+    } catch (err) {
+      console.error('[MainLayout] verifyManagementPassword failed:', err?.message || String(err));
       return false;
     }
   };
@@ -198,9 +271,8 @@ export function MainLayout({
     setCurrentStaff(currentUser.full_name || currentUser.username || (currentUser as any).fullName);
   }, [currentUser.full_name, currentUser.username, (currentUser as any).fullName]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [customerModalInitialQuery, setCustomerModalInitialQuery] = useState('');
   const [showStaffModal, setShowStaffModal] = useState(false);
-  const [wsStatus, setWsStatus] = useState<'connected' | 'disconnected' | 'connecting'>(wsService.getStatus());
-
   // Database Status Hook
   const { dbStatus } = useDatabaseStatus();
 
@@ -237,9 +309,91 @@ export function MainLayout({
     const saved = localStorage.getItem('retailos_layout_order');
     return (saved as LayoutOrder) || 'cart-numpad-quick';
   });
+  const { callerIdConfig } = useRestaurantStore();
+  const callerIdActive = callerIdConfig.mode !== 'off';
+  const { incomingCall, dismissIncoming, pollError } = useRestaurantCallerId(callerIdConfig, callerIdActive);
+  const lastDesktopNotifyKeyRef = useRef<string | null>(null);
+  const lastPollErrorRef = useRef<string | null>(null);
 
   // Use ThemeContext for dark mode
   const { darkMode, setDarkMode } = useTheme();
+
+  /** Caller ID: önce bellekteki liste, yoksa PG’de gevşek telefon eşlemesi */
+  const [callerIdDbCustomer, setCallerIdDbCustomer] = useState<Customer | null>(null);
+
+  const matchedCallerCustomer = useMemo(() => {
+    if (!incomingCall) return null;
+    return findCustomerByCallerPhone(customers, incomingCall.phone) || callerIdDbCustomer;
+  }, [incomingCall, customers, callerIdDbCustomer]);
+
+  const matchedCustomerSales = useMemo(() => {
+    if (!matchedCallerCustomer?.id) return [];
+    return (sales || [])
+      .filter((s) => s.customerId === matchedCallerCustomer.id)
+      .slice(0, 5);
+  }, [sales, matchedCallerCustomer?.id]);
+
+  const findCustomerByPhoneFromPg = useCallback(async (rawPhone: string) => {
+    const digits = rawPhone.replace(/\D/g, '');
+    const tail10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    const candidates = Array.from(
+      new Set(
+        [rawPhone, digits, tail10, `0${tail10}`, `90${tail10}`, `+90${tail10}`]
+          .map((v) => v.trim())
+          .filter(Boolean)
+      )
+    );
+    const store = useCustomerStore.getState();
+    for (const c of candidates) {
+      const found = await store.findByPhone(c);
+      if (found) return found;
+    }
+    return null;
+  }, []);
+
+  useEffect(() => {
+    if (!incomingCall?.phone) {
+      setCallerIdDbCustomer(null);
+      return;
+    }
+    const fromList = findCustomerByCallerPhone(customers, incomingCall.phone);
+    if (fromList) {
+      setCallerIdDbCustomer(null);
+      return;
+    }
+    let cancelled = false;
+    void findCustomerByPhoneFromPg(incomingCall.phone).then((c) => {
+      if (!cancelled) setCallerIdDbCustomer(c);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [incomingCall?.phone, incomingCall?.receivedAt, customers, findCustomerByPhoneFromPg]);
+
+  const runContextAction = useCallback((phone: string) => {
+    if (currentModule === 'restaurant') {
+      localStorage.setItem('callerid_context_action', JSON.stringify({ target: 'restaurant_retail_delivery', phone }));
+      window.dispatchEvent(
+        new CustomEvent('callerid-open-context-action', {
+          detail: { target: 'restaurant_retail_delivery', phone },
+        })
+      );
+      setCurrentModule('restaurant');
+      return;
+    }
+    if (currentModule === 'beauty') {
+      localStorage.setItem('callerid_context_action', JSON.stringify({ target: 'beauty_calendar' }));
+      window.dispatchEvent(
+        new CustomEvent('callerid-open-context-action', {
+          detail: { target: 'beauty_calendar' },
+        })
+      );
+      setCurrentModule('beauty');
+      return;
+    }
+    void phone;
+    setCurrentModule('pos');
+  }, [currentModule]);
 
   const [rtlMode, setRtlMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('retailos_rtl_mode');
@@ -257,21 +411,112 @@ export function MainLayout({
       wsService.connect(currentUser.id, 'default_store').catch(() => {
         // Backend ws server may not be running (e.g. Tauri without ws on 8000) — ignore
       });
-
-      // Update local status for the UI indicator
-      const checkStatus = setInterval(() => {
-        setWsStatus(wsService.getStatus());
-      }, 2000);
-
-      return () => clearInterval(checkStatus);
     }
   }, [currentUser.id]);
+
+  // Global Caller ID desktop notification (restaurant + beauty + market/store modules).
+  useEffect(() => {
+    if (!incomingCall || !callerIdActive) return;
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+
+    const key = `${incomingCall.phone}|${incomingCall.receivedAt}`;
+    if (lastDesktopNotifyKeyRef.current === key) return;
+    lastDesktopNotifyKeyRef.current = key;
+
+    const show = async () => {
+      try {
+        if (Notification.permission === 'default') {
+          await Notification.requestPermission();
+        }
+        if (Notification.permission !== 'granted') return;
+
+        const title = 'RetailEX Caller ID';
+        const namePart = matchedCallerCustomer?.name ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmedi';
+        const salePart = matchedCustomerSales[0]
+          ? `Son satış: ${matchedCustomerSales[0].receiptNumber || matchedCustomerSales[0].id || '-'}`
+          : 'Geçmiş satış bulunamadı';
+        const body = `${incomingCall.phone}\n${namePart}\n${salePart}`;
+
+        const n = new Notification(title, {
+          body,
+          tag: 'retailex-caller-id-global',
+          renotify: true,
+        });
+        n.onclick = () => {
+          window.focus();
+          setCurrentModule('pos');
+        };
+      } catch {
+        // Notification desteklenmiyorsa sessiz devam.
+      }
+    };
+
+    void show();
+  }, [incomingCall, callerIdActive, matchedCallerCustomer?.name, matchedCustomerSales, setCurrentModule]);
+
+  // Pasif bildirim davranışı: ESC ile kapatma + kısa süre sonra otomatik gizleme.
+  useEffect(() => {
+    if (!incomingCall) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismissIncoming();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const timer = window.setTimeout(() => {
+      dismissIncoming();
+    }, 20000);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.clearTimeout(timer);
+    };
+  }, [incomingCall?.phone, incomingCall?.receivedAt, dismissIncoming]);
+
+  // Poll hatasını da global toast ile görünür yap (ör. mixed-content / CORS / URL hatası).
+  useEffect(() => {
+    if (!pollError) return;
+    if (lastPollErrorRef.current === pollError) return;
+    lastPollErrorRef.current = pollError;
+    toast.error('Caller ID bağlantı uyarısı', {
+      description: pollError,
+      duration: 6000,
+    });
+  }, [pollError]);
+
+  // Eşleşen müşteri bilgisini bridge'e aktar (Android kurye paylaşımı için).
+  useEffect(() => {
+    if (!incomingCall || !matchedCallerCustomer) return;
+    const bridgeUrl = `${getBridgeUrl()}/api/caller_id/customer_context`;
+    const addressLine = [
+      matchedCallerCustomer.address,
+      matchedCallerCustomer.district,
+      matchedCallerCustomer.city,
+      matchedCallerCustomer.postal_code,
+    ].filter(Boolean).join(', ');
+    const locationUrl = addressLine
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLine)}`
+      : '';
+    const payload = {
+      phone: incomingCall.phone,
+      customerName: matchedCallerCustomer.name,
+      address: addressLine,
+      locationUrl,
+      note: 'RetailEX CallerID match',
+      token: callerIdConfig.apiToken || '',
+    };
+    fetch(bridgeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }, [incomingCall?.phone, incomingCall?.receivedAt, matchedCallerCustomer?.id]);
 
   // Responsive hook handles screen size detection
 
   // Listen for customer modal open event from MarketPOS
   useEffect(() => {
-    const handleOpenCustomerModal = () => {
+    const handleOpenCustomerModal = (ev?: Event) => {
+      const custom = ev as CustomEvent<{ query?: string }>;
+      const query = custom?.detail?.query?.trim() || '';
+      setCustomerModalInitialQuery(query);
       setShowCustomerModal(true);
     };
     window.addEventListener('openCustomerModal', handleOpenCustomerModal);
@@ -303,6 +548,38 @@ export function MainLayout({
     };
     window.addEventListener('switchToManagement', handleSwitchToManagement);
     return () => window.removeEventListener('switchToManagement', handleSwitchToManagement);
+  }, []);
+
+  // POS müşteri seçiminden Cari Hesap kart oluşturma modalını aç.
+  useEffect(() => {
+    const handleOpenCariAccountCreateModal = (ev: Event) => {
+      const custom = ev as CustomEvent<{ phone?: string; forceCreate?: boolean }>;
+      const phone = custom?.detail?.phone?.trim() || '';
+      const forceCreate = custom?.detail?.forceCreate === true;
+
+      localStorage.setItem('callerid_customer_phone', phone);
+      setCurrentModule('management');
+
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'suppliers' }));
+      window.dispatchEvent(
+        new CustomEvent('callerid-open-customer', {
+          detail: { phone, forceCreate },
+        })
+      );
+
+      // Management/Supplier modülü mount olurken event kaçırmasını önlemek için tekrar tetikle.
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'suppliers' }));
+        window.dispatchEvent(
+          new CustomEvent('callerid-open-customer', {
+            detail: { phone, forceCreate },
+          })
+        );
+      }, 150);
+    };
+
+    window.addEventListener('open-cari-account-create-modal', handleOpenCariAccountCreateModal);
+    return () => window.removeEventListener('open-cari-account-create-modal', handleOpenCariAccountCreateModal);
   }, []);
 
   // Listen for WMS navigation event
@@ -355,19 +632,11 @@ export function MainLayout({
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [requestManagementAccess]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const handleDateChange = () => {
     // Yönetici şifresi kontrolü (basit örnek)
     if (currentUser.role === 'manager' || currentUser.role === 'admin') {
       const newDateTime = new Date(`${customDate}T${customTime}`);
       if (!isNaN(newDateTime.getTime())) {
-        setCurrentTime(newDateTime);
         setShowDateModal(false);
         setDatePassword('');
       }
@@ -422,107 +691,122 @@ export function MainLayout({
     >
       {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
       {!(isMobile && currentModule === 'pos') && currentModule !== 'restaurant' && (
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white border-b border-blue-800">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 gap-2">
-            {/* Left - Logo */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center p-1 border border-white/20 overflow-hidden shadow-premium">
-                <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain" />
+        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
+            {/* Left — Logo (büyük kutu + başlık) */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 flex items-center justify-center p-1.5 sm:p-2 border border-white/25 overflow-hidden shadow-lg shadow-blue-900/20 ring-1 ring-white/10">
+                <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain drop-shadow-sm" />
               </div>
-              <div className={isSmallMobile ? 'hidden sm:block' : ''}>
-                <h1 className="text-sm font-bold tracking-tight">RetailEx</h1>
-                <p className="text-[8px] text-blue-100 hidden sm:block font-medium uppercase tracking-wider opacity-80">AKILLI AI-NATIVE ERP SİSTEMİ</p>
+              <div className={isSmallMobile ? 'hidden sm:block min-w-0' : 'min-w-0'}>
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">RetailEx</h1>
+                <p className="text-[9px] sm:text-[10px] text-blue-100/95 font-semibold uppercase tracking-[0.12em] mt-0.5 hidden sm:block">
+                  AKILLI AI-NATIVE ERP
+                </p>
               </div>
             </div>
 
-            {/* Center - Module Tabs & Clock */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center flex-1 min-w-0">
-              {/* Module Tabs */}
-              <div className="flex gap-1 sm:gap-1.5 flex-shrink-0">
+            {/* Center — yalnızca modül sekmeleri */}
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+              <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 flex-shrink-0">
                 {hasPermission('pos', 'READ') && isModuleVisible('pos') && (
                   <button
+                    type="button"
                     onClick={() => setCurrentModule('pos')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'pos'
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
+                    title={t.sales}
+                    aria-label={t.sales}
+                    className={cn(
+                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                      'w-9 h-9 sm:w-10 sm:h-10',
+                      currentModule === 'pos'
+                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                    )}
                   >
-                    <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">{t.sales}</span>
+                    <ShoppingCart className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                   </button>
                 )}
 
                 {hasPermission('management', 'READ') && isModuleVisible('management') && (
                   <button
+                    type="button"
                     onClick={requestManagementAccess}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'management'
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
+                    title={t.management}
+                    aria-label={t.management}
+                    className={cn(
+                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                      'w-9 h-9 sm:w-10 sm:h-10',
+                      currentModule === 'management'
+                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                    )}
                   >
-                    <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">{t.management}</span>
+                    <LayoutGrid className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                   </button>
                 )}
 
                 {hasPermission('wms', 'READ') && isModuleVisible('wms') && (
                   <button
+                    type="button"
                     onClick={() => setCurrentModule('wms')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'wms'
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
+                    title="WMS"
+                    aria-label="WMS"
+                    className={cn(
+                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                      'w-9 h-9 sm:w-10 sm:h-10',
+                      currentModule === 'wms'
+                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                    )}
                   >
-                    <Warehouse className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">WMS</span>
+                    <Warehouse className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                   </button>
                 )}
 
                 {hasPermission('restaurant', 'READ') && isModuleVisible('restaurant') && (
                   <button
+                    type="button"
                     onClick={() => setCurrentModule('restaurant')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'restaurant'
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
+                    title={(t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran'}
+                    aria-label={(t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran'}
+                    className={cn(
+                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                      'w-9 h-9 sm:w-10 sm:h-10',
+                      currentModule === 'restaurant'
+                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                    )}
                   >
-                    <UtensilsCrossed className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">{t.menu.restaurant}</span>
+                    <UtensilsCrossed className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                   </button>
                 )}
 
                 {hasPermission('beauty', 'READ') && isModuleVisible('beauty') && (
                   <button
+                    type="button"
                     onClick={() => setCurrentModule('beauty')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-all whitespace-nowrap min-h-[44px] active:scale-95 ${currentModule === 'beauty'
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
+                    title="Beauty"
+                    aria-label="Beauty"
+                    className={cn(
+                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                      'w-9 h-9 sm:w-10 sm:h-10',
+                      currentModule === 'beauty'
+                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                    )}
                   >
-                    <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium hidden xs:inline">Beauty</span>
+                    <Sparkles className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
                   </button>
                 )}
               </div>
-
-              {/* Firma Selector - Enhanced */}
-              <FirmSelector />
-
-              {/* Clock */}
-              <button
-                onClick={() => setShowDateModal(true)}
-                className="flex items-center gap-1 text-xs bg-white/10 px-2 py-1 rounded hover:bg-white/20 transition-colors flex-shrink-0 whitespace-nowrap"
-              >
-                <Calendar className="w-3 h-3 flex-shrink-0" />
-                <span className="hidden sm:inline">{currentTime.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                <span className="hidden sm:inline text-blue-200">•</span>
-                <Clock className="w-3 h-3 flex-shrink-0" />
-                <span className="tabular-nums">{currentTime.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
-              </button>
             </div>
 
-            {/* Right - Customer, User */}
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+            {/* Right — firma, saat, sonra diğer ikonlar */}
+            <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
+              <FirmSelector />
+
+              <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
+
               {/* POS Quick Actions (only in POS mode) */}
               {currentModule === 'pos' && (
                 <>
@@ -593,13 +877,7 @@ export function MainLayout({
               </button>
 
               {/* Server Status Indicator */}
-              <div
-                className={`w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ${wsStatus === 'connected'
-                  ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]'
-                  : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]'
-                  }`}
-                title={wsStatus === 'connected' ? 'Server Bağlantısı Aktif' : 'Server Bağlantısı Yok'}
-              />
+              <WsConnectionStatusDot />
 
               {/* Close Button */}
               {!isSmallMobile && (
@@ -627,8 +905,130 @@ export function MainLayout({
       {/* 🎤 Sesli Asistan - Global */}
       <VoiceAssistantWeb hideFloatingButton={true} />
 
-      {/* Module Content */}
-      <div className="flex-1 overflow-hidden">
+      {/* Global Caller ID quick card */}
+      {incomingCall && typeof document !== 'undefined' && createPortal((
+        <div className="fixed bottom-4 right-4 z-[9999] w-[min(460px,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-xl border border-blue-200 bg-white shadow-2xl overflow-hidden">
+          <div className="bg-blue-600 text-white px-4 py-2.5 flex items-center justify-between">
+            <div className="text-sm font-black tracking-wide">Gelen Arama</div>
+            <button
+              type="button"
+              onClick={dismissIncoming}
+              className="text-white/90 hover:text-white"
+              aria-label="Kapat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="p-4 space-y-2.5">
+            <div className="text-lg font-black text-slate-900">{incomingCall.phone}</div>
+            {incomingCall.name && !matchedCallerCustomer ? (
+              <div className="text-sm text-slate-600">
+                Arayan adı: <span className="font-semibold">{incomingCall.name}</span>
+              </div>
+            ) : null}
+            <div className="text-sm text-slate-700">
+              {matchedCallerCustomer ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmesi bulunamadı'}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Son işlem geçmişi</div>
+              {matchedCustomerSales.length === 0 ? (
+                <div className="text-xs text-slate-500">Satış geçmişi bulunamadı.</div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {matchedCustomerSales.slice(0, 3).map((s) => (
+                    <li key={s.id} className="text-xs text-slate-700 flex items-center justify-between gap-2">
+                      <span className="truncate">{s.receiptNumber || s.id}</span>
+                      <span className="font-bold">
+                        {new Intl.NumberFormat('tr-TR', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        }).format(Number(s.total || 0))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!incomingCall) return;
+                  runContextAction(incomingCall.phone);
+                  if (currentModule === 'restaurant' || currentModule === 'beauty') {
+                    dismissIncoming();
+                    return;
+                  }
+                  const found = await findCustomerByPhoneFromPg(incomingCall.phone);
+                  if (found) {
+                    setSelectedCustomer(found);
+                    toast.success('Müşteri bulundu', {
+                      description: `${found.name} seçildi.`,
+                    });
+                    dismissIncoming();
+                    return;
+                  }
+                  setCustomerModalInitialQuery(incomingCall.phone);
+                  setShowCustomerModal(true);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
+              >
+                {currentModule === 'restaurant'
+                  ? 'Perakende satışa git'
+                  : currentModule === 'beauty'
+                    ? 'Randevuya git'
+                    : "Market POS'a git"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!incomingCall) return;
+                  localStorage.setItem('callerid_customer_phone', incomingCall.phone);
+                  setCurrentModule('management');
+                  window.dispatchEvent(
+                    new CustomEvent('callerid-open-customer', {
+                      detail: { phone: incomingCall.phone },
+                    })
+                  );
+                  dismissIncoming();
+                }}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold"
+              >
+                Müşteri kartı (Yönetim)
+              </button>
+              {!matchedCallerCustomer && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!incomingCall) return;
+                    localStorage.setItem('callerid_customer_phone', incomingCall.phone);
+                    setCurrentModule('management');
+                    window.dispatchEvent(
+                      new CustomEvent('callerid-open-customer', {
+                        detail: { phone: incomingCall.phone, forceCreate: true },
+                      })
+                    );
+                    dismissIncoming();
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold"
+                >
+                  Yeni kişi ekle
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={dismissIncoming}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-bold"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+
+      {/* Module Content — min-h-0: iç flex/grid yüksekliği footer üstünde doğru iletilir */}
+      <div className="flex-1 min-h-0 overflow-hidden">
         {currentModule === 'pos' ? (
           // POS ekranında sadece MarketPOS göster (mobil otomatik geçiş yok)
           <Suspense fallback={
@@ -655,7 +1055,6 @@ export function MainLayout({
               onZoomClick={() => setShowZoomModal(true)}
               cartViewMode={cartViewMode}
               buttonColorStyle={buttonColorStyle}
-              wsStatus={wsStatus}
               rtlMode={rtlMode}
               setRtlMode={setRtlMode}
               layoutOrder={layoutOrder}
@@ -700,6 +1099,7 @@ export function MainLayout({
           }>
             <RestaurantMain
               products={products}
+              sales={sales}
               customers={customers}
               campaigns={campaigns}
               currentUser={currentUser}
@@ -736,7 +1136,7 @@ export function MainLayout({
         )}
       </div>
 
-      <AppFooter />
+      {!incomingCall && <AppFooter />}
 
       {/* Date Modal */}
       {showDateModal && (
@@ -832,6 +1232,7 @@ export function MainLayout({
           selectedCustomer={selectedCustomer}
           onSelect={setSelectedCustomer}
           onClose={() => setShowCustomerModal(false)}
+          initialSearchQuery={customerModalInitialQuery}
         />
       )}
 

@@ -17,7 +17,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { RestaurantService } from '../../services/restaurant';
-import { Layout, Menu, ConfigProvider, theme, Input, Button } from 'antd';
+import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown } from 'antd';
 import {
   RobotOutlined,
   CalendarOutlined,
@@ -710,8 +710,228 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
     };
   };
 
+  const escHtml = (s: string) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  type DailyReportPrintFormat = 'a4' | '80mm';
+
+  /** Günlük rapor — A4 veya 80 mm termal */
+  const printDailySalesReport = (format: DailyReportPrintFormat) => {
+    const dateLabel = new Date(selectedDate + 'T12:00:00').toLocaleDateString('tr-TR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const saleRowsA4 = dailySales
+      .map(
+        (sale) => `
+        <tr>
+          <td>${escHtml(sale.receiptNumber)}</td>
+          <td>${escHtml(new Date(sale.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(sale.cashier || '—')}</td>
+          <td>${escHtml(sale.customerName || '—')}</td>
+          <td style="text-align:right">${formatNumber(sale.total, 2, false)}</td>
+          <td>${sale.paymentMethod === 'cash' ? 'Nakit' : 'Kart'}</td>
+        </tr>`
+      )
+      .join('');
+
+    let restBlockA4 = '';
+    if (businessType === 'restaurant' && restOrders.length > 0) {
+      const oRows = restOrders
+        .map(
+          (o: any) => `
+        <tr>
+          <td>${escHtml(String(o.order_no || o.id || '—'))}</td>
+          <td style="text-align:right">${formatNumber(Number(o.total_amount || 0), 2, false)}</td>
+          <td>${escHtml(String(o.payment_method || '—'))}</td>
+        </tr>`
+        )
+        .join('');
+      restBlockA4 = `
+        <h3 style="margin-top:20px;font-size:14px">Restoran siparişleri (${escHtml(selectedDate)})</h3>
+        <table class="t">
+          <thead><tr><th>Fiş / No</th><th style="text-align:right">Tutar</th><th>Ödeme</th></tr></thead>
+          <tbody>${oRows}</tbody>
+        </table>`;
+    }
+
+    const saleBlocks80 = dailySales
+      .map((sale) => {
+        const pm = sale.paymentMethod === 'cash' ? 'Nakit' : 'Kart';
+        const amt = formatNumber(sale.total, 2, false);
+        return `
+    <div class="sale-block">
+      <div class="row"><span class="wrap">${escHtml(sale.receiptNumber)}</span><span>${escHtml(new Date(sale.date).toLocaleTimeString('tr-TR'))}</span></div>
+      <div class="sub wrap">${escHtml(sale.cashier || '—')} · ${escHtml(sale.customerName || '—')}</div>
+      <div class="row bold"><span>${pm}</span><span>${amt}</span></div>
+    </div>
+    <div class="divider light"></div>`;
+      })
+      .join('');
+
+    let restBlock80 = '';
+    if (businessType === 'restaurant' && restOrders.length > 0) {
+      const oBlocks = restOrders
+        .map((o: any) => {
+          const no = escHtml(String(o.order_no || o.id || '—'));
+          const pay = escHtml(String(o.payment_method || '—'));
+          const tot = formatNumber(Number(o.total_amount || 0), 2, false);
+          return `<div class="row"><span class="wrap">${no}</span><span>${tot}</span></div>
+      <div class="row sub"><span></span><span>${pay}</span></div>
+      <div class="divider light"></div>`;
+        })
+        .join('');
+      restBlock80 = `
+        <div class="divider"></div>
+        <div class="center bold">RESTORAN SİPARİŞLERİ (${escHtml(selectedDate)})</div>
+        ${oBlocks}`;
+    }
+
+    const emptySales80 =
+      dailySales.length === 0
+        ? '<div class="center muted" style="margin:3mm 0">Kayıt yok</div>'
+        : saleBlocks80;
+
+    const htmlA4 = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Günlük Satış — ${selectedDate}</title>
+<style>
+  @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  body { font-family: system-ui, sans-serif; font-size: 12px; color: #111; padding: 16px; max-width: 210mm; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .muted { color: #64748b; font-size: 11px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }
+  .t { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+  .t th, .t td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+  .t thead { background: #f8fafc; }
+</style></head><body>
+  <h1>Günlük satış raporu</h1>
+  <p class="muted">${escHtml(dateLabel)}</p>
+  <div class="grid">
+    <div class="card"><div>İşlem adedi</div><strong>${dailySales.length}</strong></div>
+    <div class="card"><div>Toplam ciro</div><strong>${formatNumber(dailyTotal, 2, false)}</strong></div>
+    <div class="card"><div>Nakit</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
+    <div class="card"><div>Kart</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
+  </div>
+  <h3 style="font-size:14px;margin:0 0 8px">POS satış satırları</h3>
+  <table class="t">
+    <thead><tr><th>Fiş</th><th>Saat</th><th>Kasiyer</th><th>Müşteri</th><th style="text-align:right">Tutar</th><th>Ödeme</th></tr></thead>
+    <tbody>${saleRowsA4 || '<tr><td colspan="6" style="text-align:center;color:#64748b">Kayıt yok</td></tr>'}</tbody>
+  </table>
+  ${restBlockA4}
+  <p class="muted" style="margin-top:20px;font-size:10px;text-align:center">RetailEX · Günlük rapor</p>
+</body></html>`;
+
+    const html80 = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Günlük Satış — ${selectedDate}</title>
+<style>
+  @media print {
+    @page { size: 80mm auto; margin: 0; }
+    body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  body {
+    box-sizing: border-box;
+    width: 80mm;
+    max-width: 80mm;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    padding: 4mm 3mm;
+    margin: 0 auto;
+    color: #000;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .large { font-size: 13px; }
+  .small { font-size: 10px; margin-top: 1mm; }
+  .muted { color: #444; }
+  .wrap { overflow-wrap: anywhere; word-break: break-word; }
+  .divider { border-top: 1px dashed #000; margin: 3mm 0; }
+  .divider.light { border-top: 1px dotted #666; margin: 2mm 0; }
+  .row { display: flex; justify-content: space-between; gap: 2mm; margin: 0.5mm 0; }
+  .row span:first-child { flex: 1; min-width: 0; }
+  .row span:last-child { flex-shrink: 0; text-align: right; }
+  .sub { font-size: 10px; color: #333; margin: 0.5mm 0 1mm; }
+  .sale-block { margin-top: 2mm; }
+  .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
+</style></head><body>
+  <div class="center bold large">GÜNLÜK SATIŞ RAPORU</div>
+  <div class="center small">${escHtml(dateLabel)}</div>
+  <div class="divider"></div>
+  <div class="row"><span>İşlem adedi</span><span class="bold">${dailySales.length}</span></div>
+  <div class="row"><span>Toplam ciro</span><span class="bold">${formatNumber(dailyTotal, 2, false)}</span></div>
+  <div class="row"><span>Nakit</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
+  <div class="row"><span>Kart</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
+  <div class="divider"></div>
+  <div class="section-title">POS SATIŞ DETAYI</div>
+  ${emptySales80}
+  ${restBlock80}
+  <div class="divider"></div>
+  <div class="center small" style="margin-top:2mm">RetailEX · Günlük rapor</div>
+</body></html>`;
+
+    const html = format === 'a4' ? htmlA4 : html80;
+    // window.open Tauri/WebView'da popup engeline takılır; iframe ile Z raporuyla aynı yol
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText =
+      'position:absolute;width:0;height:0;border:0;visibility:hidden;pointer-events:none';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    const win = iframe.contentWindow;
+    const runPrint = () => {
+      setTimeout(() => {
+        win?.focus();
+        win?.print();
+        setTimeout(() => {
+          if (iframe.parentNode) document.body.removeChild(iframe);
+        }, 1000);
+      }, 100);
+    };
+    if (win?.document.readyState === 'complete') {
+      runPrint();
+    } else {
+      win?.addEventListener('load', runPrint, { once: true });
+    }
+  };
+
   // Print Z Report
   const printZReport = () => {
+    const restaurantProductBlock =
+      businessType === 'restaurant' && productSales.length > 0
+        ? `
+        <div class="divider"></div>
+        <div class="center bold">SATILAN URUNLER</div>
+        ${productSales
+          .map((item: any) => {
+            const name = escHtml(item.product?.name || '—');
+            const qty = formatNumber(item.quantity, 2, false);
+            const rev = formatNumber(item.revenue, 2, false);
+            return `<div class="row"><span>${name}</span><span>${qty} / ${rev}</span></div>`;
+          })
+          .join('')}
+        `
+        : '';
+
     const reportHTML = `
       <!DOCTYPE html>
       <html>
@@ -775,7 +995,7 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
         </div>
         
         <div class="divider"></div>
-        
+        ${restaurantProductBlock}
         <div class="center bold">ÖDEME ÖZETİ</div>
         
         <div class="row">
@@ -995,17 +1215,34 @@ export function ReportsModule({ sales, products }: ReportsModuleProps) {
               <div className="space-y-4">
                 {/* Date Selector */}
                 <div className="bg-white rounded-lg border p-4">
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-gray-600" />
-                      <span>Tarih Seçin:</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                    />
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-gray-600" />
+                        <span>Tarih Seçin:</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <Dropdown
+                      menu={{
+                        items: [
+                          { key: 'a4', label: 'A4 sayfa' },
+                          { key: '80mm', label: '80 mm termal fiş' },
+                        ],
+                        onClick: ({ key }) =>
+                          printDailySalesReport(key as 'a4' | '80mm'),
+                      }}
+                      trigger={['click']}
+                    >
+                      <Button type="primary" icon={<PrinterOutlined />}>
+                        Yazdır <CaretDownOutlined />
+                      </Button>
+                    </Dropdown>
                   </div>
                 </div>
 

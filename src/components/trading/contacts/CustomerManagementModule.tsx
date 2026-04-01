@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, Search, Plus, Edit, Trash2, Phone, Mail, MapPin, TrendingUp, Calendar, FileText, Eye, X } from 'lucide-react';
 import type { Customer, Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -41,6 +41,82 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     taxOffice: '',
     company: ''
   });
+
+  const normalizePhoneCandidates = (rawPhone: string): string[] => {
+    const digits = rawPhone.replace(/\D/g, '');
+    const tail10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    return Array.from(
+      new Set(
+        [rawPhone, digits, tail10, `0${tail10}`, `90${tail10}`, `+90${tail10}`]
+          .map((v) => v.trim())
+          .filter(Boolean)
+      )
+    );
+  };
+
+  const openAddModalWithPhone = async (phone: string) => {
+    setSelectedCustomer(null);
+    setFormData({
+      code: '',
+      name: '',
+      phone: phone.trim(),
+      email: '',
+      address: '',
+      taxNumber: '',
+      taxOffice: '',
+      company: ''
+    });
+    setShowAddModal(true);
+    try {
+      const nextCode = await customerAPI.generateCode();
+      setFormData(prev => ({ ...prev, code: nextCode }));
+    } catch {
+      // no-op
+    }
+  };
+
+  const handleCallerIdCustomerOpen = async (rawPhone: string, forceCreate = false) => {
+    const phone = rawPhone.trim();
+    if (!phone) return;
+    setSearchQuery(phone);
+    if (forceCreate) {
+      await openAddModalWithPhone(phone);
+      return;
+    }
+    const candidates = normalizePhoneCandidates(phone);
+    for (const c of candidates) {
+      const found = await customerAPI.getByPhone(c);
+      if (found) {
+        setSelectedCustomer(found);
+        setShowDetailModal(true);
+        toast.success('Müşteri bulundu', {
+          description: `${found.name} kaydı açıldı.`,
+        });
+        return;
+      }
+    }
+    toast.info('Müşteri kaydı bulunamadı', {
+      description: 'Telefonla yeni müşteri formu açıldı.',
+    });
+    await openAddModalWithPhone(phone);
+  };
+
+  useEffect(() => {
+    const fromStorage = localStorage.getItem('callerid_customer_phone')?.trim();
+    if (fromStorage) {
+      localStorage.removeItem('callerid_customer_phone');
+      void handleCallerIdCustomerOpen(fromStorage);
+    }
+    const onCallerId = (ev: Event) => {
+      const custom = ev as CustomEvent<{ phone?: string; forceCreate?: boolean }>;
+      const phone = custom.detail?.phone?.trim();
+      const forceCreate = custom.detail?.forceCreate === true;
+      if (phone) void handleCallerIdCustomerOpen(phone, forceCreate);
+    };
+    window.addEventListener('callerid-open-customer', onCallerId);
+    return () => window.removeEventListener('callerid-open-customer', onCallerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Filter customers
   const filteredCustomers = customers.filter(c =>

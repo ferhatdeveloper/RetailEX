@@ -25,4 +25,4 @@ export * from './roles';
 export * from '../storeApiService';
 export * from '../warehouseAPI';
 export * from './sync';
-
+export * from './postgrestClient';

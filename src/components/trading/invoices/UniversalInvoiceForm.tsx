@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { FileText, Plus, Search, X, Save, User, MoreVertical, Barcode, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink } from 'lucide-react';
+import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
@@ -8,6 +8,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
+import { parseDecimalStringForInput, formatDecimalForTrInput } from '../../../utils/numberFormatter';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
@@ -33,9 +34,17 @@ import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
 import { invoicesAPI } from '../../../services/api/index';
 import { serviceAPI, Service } from '../../../services/serviceAPI';
-import { postgres } from '../../../services/postgres';
+import { postgres, getAppDefaultCurrency } from '../../../services/postgres';
 import { productAPI } from '../../../services/api/products';
-import { currencyAPI, exchangeRateAPI, type Currency, type ExchangeRate } from '../../../services/api/masterData';
+import {
+  currencyAPI,
+  exchangeRateAPI,
+  pickExchangeRateValue,
+  crossRateDocumentToLedgerFromLatest,
+  resolveDocumentCurrencyRateToLedger,
+  type Currency,
+  type ExchangeRate
+} from '../../../services/api/masterData';
 
 // Electron API tip tanımı
 declare global {
@@ -51,6 +60,22 @@ declare global {
       };
     };
   }
+}
+
+/** Karttaki USD alış/satış fiyatını fatura birim fiyatına çevirir; fatura dövizi USD ise kur uygulanmaz. */
+function usdFieldToInvoiceUnitPrice(
+  usdPrice: number,
+  unitMult: number,
+  invoiceCurrency: string,
+  finalRateToLocal: number
+): number {
+  if (usdPrice <= 0) return 0;
+  const m = unitMult > 0 ? unitMult : 1;
+  const doc = (invoiceCurrency || '').trim().toUpperCase();
+  if (doc === 'USD') {
+    return Math.round(usdPrice * m * 100) / 100;
+  }
+  return Math.round(usdPrice * finalRateToLocal * m);
 }
 
 interface InvoiceType {
@@ -113,6 +138,111 @@ const mockProducts = [
   { code: 'GID-005', name: 'Şeker 1Kg', unit: 'Kg', price: 3000, vat: 0, barcode: '8690000000005', lastPurchasePrice: 2800 },
 ];
 
+function canonicalInvoiceLineType(raw: string | undefined): string {
+  const t = (raw || '').trim();
+  if (!t || t === 'Malzeme' || t === 'Material' || t === 'مادة' || t === 'ماددە') return 'Malzeme';
+  if (t === 'Hizmet' || t === 'Service' || t === 'خدمة' || t === 'خزمەتگوزاری') return 'Hizmet';
+  if (t === 'İndirim' || t === 'Discount' || t === 'خصم' || t === 'داشکاندن') return 'İndirim';
+  return 'Malzeme';
+}
+
+/** Düzenleme: satır dövizi IQD değilse birim fiyat unit_price_fc; yerel total_amount/net_amount varsa kura bölünür (getById zaten böldüyse total_amount yok, tekrar bölünmez). */
+function invoiceEditLineToFormAmounts(
+  item: any,
+  headerCurrency: string,
+  headerRate: number
+): { unitPrice: number; amount: number; netAmount: number } {
+  const hdrCur = String(headerCurrency || 'IQD').trim().toUpperCase();
+  const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
+  const rate = headerRate > 0 ? headerRate : 1;
+  const uFCraw = item.unit_price_fc ?? item.unitPriceFC;
+  const uFC =
+    uFCraw != null && uFCraw !== '' && !Number.isNaN(parseFloat(String(uFCraw)))
+      ? parseFloat(String(uFCraw))
+      : NaN;
+  const uLoc = parseFloat(String(item.unitPrice ?? item.unit_price ?? item.price ?? 0));
+  const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
+  const unitPrice = useFc ? uFC : uLoc;
+
+  const hasLedgerGross =
+    item.total_amount != null &&
+    item.total_amount !== '' &&
+    !Number.isNaN(parseFloat(String(item.total_amount)));
+  const hasLedgerNet =
+    item.net_amount != null &&
+    item.net_amount !== '' &&
+    !Number.isNaN(parseFloat(String(item.net_amount)));
+
+  let amount: number;
+  if (useFc && rate !== 0 && hasLedgerGross) {
+    amount = parseFloat(String(item.total_amount)) / rate;
+  } else {
+    amount = parseFloat(
+      String(item.amount ?? item.gross_amount ?? item.total ?? item.total_amount ?? 0)
+    );
+  }
+
+  let netAmount: number;
+  if (useFc && rate !== 0 && hasLedgerNet) {
+    netAmount = parseFloat(String(item.net_amount)) / rate;
+  } else {
+    netAmount = parseFloat(
+      String(item.netAmount ?? item.net_amount ?? item.amount ?? item.total ?? 0)
+    );
+  }
+
+  return { unitPrice, amount, netAmount };
+}
+
+function isInvoiceServiceLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Hizmet';
+}
+
+function isInvoiceDiscountLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'İndirim';
+}
+
+/** Barkod/kod ile doldurulabilir satır */
+function isInvoiceProductBarcodeLineType(type: string | undefined): boolean {
+  return canonicalInvoiceLineType(type) === 'Malzeme';
+}
+
+function barcodeLookupAttempts(raw: string): string[] {
+  const t = raw.trim();
+  if (!t) return [];
+  const out: string[] = [];
+  const add = (s: string) => {
+    const x = s.trim();
+    if (x && !out.includes(x)) out.push(x);
+  };
+  add(t);
+  const noLead = t.replace(/^0+/, '');
+  if (noLead && noLead !== t) add(noLead);
+  if (/^\d+$/.test(t) && t.length < 14) {
+    const pad13 = t.padStart(13, '0');
+    if (pad13 !== t) add(pad13);
+  }
+  return out;
+}
+
+/** Formdaki işlem tarihi (örn. tr-TR dd.MM.yyyy) → exchange_rates sorgusu için YYYY-MM-DD */
+function transactionDateToIsoDateString(transactionDate: string): string {
+  const dateParts = transactionDate.split('.');
+  if (dateParts.length === 3) {
+    const d = parseInt(dateParts[0], 10);
+    const m = parseInt(dateParts[1], 10);
+    const y = parseInt(dateParts[2], 10);
+    if (!Number.isNaN(d) && !Number.isNaN(m) && !Number.isNaN(y)) {
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+  }
+  const dt = new Date(transactionDate);
+  if (!Number.isNaN(dt.getTime())) {
+    return dt.toISOString().slice(0, 10);
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [], products: productsProp = [], onClose, editData }: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
 
@@ -120,6 +250,12 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   // Alias for backward compatibility with existing code
   const selectedFirma = selectedFirm;
   const selectedDonem = selectedPeriod;
+
+  /** Deftere / yerel gösterim: firma ana para veya sistem varsayılanı (IQD sabit değil) */
+  const ledgerCurrency = useMemo(() => {
+    const raw = (selectedFirm?.ana_para_birimi || getAppDefaultCurrency() || 'IQD').trim().toUpperCase();
+    return raw.length >= 2 ? raw.slice(0, 10) : 'IQD';
+  }, [selectedFirm?.ana_para_birimi]);
 
   const firmId = selectedFirm?.logicalref;
   const periodId = selectedPeriod?.logicalref;
@@ -168,6 +304,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   // API fetches for dropdowns
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [latestRates, setLatestRates] = useState<ExchangeRate[]>([]);
+  /** Elle kur girildiyse tarih/master güncellemesi ezmesin; döviz veya kur türü değişince sıfırlanır */
+  const currencyRateUserTouchedRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<'fatura' | 'detaylar' | 'detaylarII' | 'ekliDosyalar'>('fatura');
   const [saving, setSaving] = useState(false);
@@ -242,9 +380,20 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [workplace, setWorkplace] = useState('000, Merkez'); // İşyeri
   const [salespersonCode, setSalespersonCode] = useState(''); // Satış Elemanı Kodu
   const [authorizationCode, setAuthorizationCode] = useState(''); // Yetki Kodu
-  const [currency, setCurrency] = useState(() => (editData as any)?.currency || selectedFirm?.ana_para_birimi || 'IQD'); // Döviz
-  const [currencyRate, setCurrencyRate] = useState(() => parseFloat((editData as any)?.currency_rate) || 1); // Kuru
-  const [reportingCurrency, setReportingCurrency] = useState('USD'); // Raporlama Dövizi
+  const [currency, setCurrency] = useState(() => {
+    const ed = (editData as any)?.currency;
+    if (ed) return String(ed).trim().toUpperCase().slice(0, 10);
+    if (selectedFirm?.ana_para_birimi) return String(selectedFirm.ana_para_birimi).trim().toUpperCase().slice(0, 10);
+    return getAppDefaultCurrency();
+  });
+  const [currencyRate, setCurrencyRate] = useState(() => parseFloat((editData as any)?.currency_rate) || 1); // Kuru (sayı; DB/hesap)
+  const [currencyRateStr, setCurrencyRateStr] = useState(''); // Kur metin kutusu: 1,54 veya 1.54
+  const [reportingCurrency, setReportingCurrency] = useState(() => {
+    const ed = (editData as any)?.reporting_currency;
+    if (ed) return String(ed).trim().toUpperCase().slice(0, 10);
+    const rc = selectedFirm?.raporlama_para_birimi || selectedFirm?.ana_para_birimi || getAppDefaultCurrency();
+    return String(rc).trim().toUpperCase().slice(0, 10);
+  });
   const [reportingCurrencyRate, setReportingCurrencyRate] = useState(1); // Raporlama Döviz Kuru
   const [valuationRate, setValuationRate] = useState(1); // Değerleme Kuru
   const [currencyRateType, setCurrencyRateType] = useState('Satış'); // Kur Türü (Alış, Satış, Efektif Alış, Efektif Satış)
@@ -259,7 +408,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [waybillNo, setWaybillNo] = useState(''); // İrsaliye No
   const [waybillDocumentNo, setWaybillDocumentNo] = useState(''); // İrsaliye Belge No
   const [description, setDescription] = useState(''); // Açıklama
-  const [creditAmount, setCreditAmount] = useState(0); // Alacak/Borç Tutarı
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
   const [isElectronicDoc, setIsElectronicDoc] = useState(false); // Elektronik Belge
@@ -282,26 +430,32 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   // EditData varsa items'ı yükle
   const initializeItems = (): InvoiceItem[] => {
     if (editData?.items && editData.items.length > 0) {
-      return editData.items.map((item: any, index: number) => ({
-        id: item.id || `item-${index}`,
-        type: 'Malzeme',
-        code: item.code || item.productId || '',
-        description: item.description || item.productName || '',
-        description2: '',
-        quantity: item.quantity || 0,
-        unit: item.unit || 'Adet',
-        unitPrice: item.unitPrice || item.price || 0,
-        discountPercent: item.discountPercent || item.discount || 0,
-        discountAmount: item.discountAmount || 0,
-        amount: item.amount || (item.quantity * (item.unitPrice || item.price)) || 0,
-        netAmount: item.netAmount || item.total || 0,
-        lastPurchasePrice: item.lastPurchasePrice,
-        priceDifference: item.priceDifference,
-        priceDifferencePercent: item.priceDifferencePercent,
-        unitsetId: item.unitsetId || item.unitset_id,
-        multiplier: item.multiplier || item.unit_multiplier || 1,
-        baseQuantity: item.baseQuantity || item.base_quantity || item.quantity,
-      }));
+      const hdrCur = String((editData as any)?.currency || 'IQD');
+      const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
+      return editData.items.map((item: any, index: number) => {
+        const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
+        return {
+          id: item.id || `item-${index}`,
+          type: canonicalInvoiceLineType(item.type),
+          code: item.code || item.productId || '',
+          description: item.description || item.productName || '',
+          description2: '',
+          quantity: item.quantity || 0,
+          unit: item.unit || 'Adet',
+          unitPrice: fc.unitPrice,
+          discountPercent: item.discountPercent || item.discount || 0,
+          discountAmount: item.discountAmount || 0,
+          amount: Number.isFinite(fc.amount) ? fc.amount : ((item.quantity || 0) * fc.unitPrice) || 0,
+          netAmount: Number.isFinite(fc.netAmount) ? fc.netAmount : 0,
+          lastPurchasePrice: item.lastPurchasePrice,
+          priceDifference: item.priceDifference,
+          priceDifferencePercent: item.priceDifferencePercent,
+          unitsetId: item.unitsetId || item.unitset_id,
+          multiplier: item.multiplier || item.unit_multiplier || 1,
+          baseQuantity: item.baseQuantity || item.base_quantity || item.quantity,
+          unitPriceFC: item.unitPriceFC ?? item.unit_price_fc,
+        };
+      });
     }
     return [{
       id: '1',
@@ -320,7 +474,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   };
 
   const [items, setItems] = useState<InvoiceItem[]>(initializeItems());
-  const [barcodeInput, setBarcodeInput] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(-1);
@@ -371,13 +524,13 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     if (data.customer_name) setCustomerTitle(data.customer_name);
     if (data.notes) setDescription(data.notes);
 
-    if (data.items && Array.isArray(data.items)) {
+    if (data.items && Array.isArray(data.items) && data.items.length > 0) {
       const newItems = data.items.map((item: any, index: number) => {
         const qty = item.quantity || 1;
         const price = item.price || item.unitPrice || 0;
         return {
           id: `voice-${Date.now()}-${index}`,
-          type: tm('material'),
+          type: 'Malzeme',
           code: item.code || '',
           description: item.name || item.description || '',
           description2: '',
@@ -395,27 +548,32 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   };
 
   useEffect(() => {
+    const editingId = (editData as any)?.id;
+
     const handleVoiceNavigate = (e: any) => {
+      if (editingId) return;
       const { formData } = e.detail;
       if (formData) {
         populateFromVoiceData(formData);
       }
     };
 
-    const savedData = sessionStorage.getItem('voiceCommandFormData');
-    if (savedData) {
-      try {
-        const formData = JSON.parse(savedData);
-        populateFromVoiceData(formData);
-        sessionStorage.removeItem('voiceCommandFormData');
-      } catch (e) {
-        console.error('Error parsing voice data', e);
+    if (!editingId) {
+      const savedData = sessionStorage.getItem('voiceCommandFormData');
+      if (savedData) {
+        try {
+          const formData = JSON.parse(savedData);
+          populateFromVoiceData(formData);
+          sessionStorage.removeItem('voiceCommandFormData');
+        } catch (e) {
+          console.error('Error parsing voice data', e);
+        }
       }
     }
 
     window.addEventListener('voiceCommandNavigate', handleVoiceNavigate as EventListener);
     return () => window.removeEventListener('voiceCommandNavigate', handleVoiceNavigate as EventListener);
-  }, []);
+  }, [editData?.id]);
 
   useEffect(() => {
     const fetchMasterData = async () => {
@@ -433,17 +591,174 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     fetchMasterData();
   }, []);
 
-  // Update rate when currency changes
-  useEffect(() => {
-    if (currency === 'IQD') {
-      setCurrencyRate(1);
-    } else {
-      const rate = latestRates.find(r => r.currency_code === currency);
-      if (rate) {
-        setCurrencyRate(rate.sell_rate || rate.buy_rate || 1);
-      }
+  /** Döviz seçici: ana para + güncel seçim + yaygın kodlar + master */
+  const invoiceCurrencyCodes = useMemo(() => {
+    const s = new Set<string>();
+    [ledgerCurrency, currency, 'TRY', 'USD', 'EUR', 'GBP', 'IQD', 'IRR', 'AED'].forEach(c => {
+      if (c?.trim()) s.add(c.trim().toUpperCase().slice(0, 10));
+    });
+    currencies.forEach(c => {
+      if (c?.code?.trim()) s.add(c.code.trim().toUpperCase().slice(0, 10));
+    });
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [ledgerCurrency, currency, currencies]);
+
+  /** Kart USD fiyatını fatura dövizine çevirmek: 1 USD = ? fatura dövizi (çapraz kur, örn. TRY ≈ 34,5; ham 1312 değil). */
+  const resolveUsdRateForCardPrice = useCallback((): number => {
+    const docCur = (currency || '').trim().toUpperCase();
+    if (!docCur || docCur === 'USD') {
+      const row = latestRates.find(r => String(r.currency_code).trim().toUpperCase() === 'USD');
+      if (row) return pickExchangeRateValue(row, currencyRateType);
+      return currencyRate > 0 ? currencyRate : 1;
     }
-  }, [currency, latestRates]);
+    const cross = crossRateDocumentToLedgerFromLatest('USD', docCur, latestRates, currencyRateType);
+    if (cross != null && cross > 0) return cross;
+    const row = latestRates.find(r => String(r.currency_code).trim().toUpperCase() === 'USD');
+    const r = row ? pickExchangeRateValue(row, currencyRateType) : currencyRate > 0 ? currencyRate : 1;
+    /* Küçük kur (örn. 1,54) artık tabloda gerçek değer; eski *1000 hack kaldırıldı */
+    return r > 0 ? r : 1;
+  }, [currency, latestRates, currencyRate, currencyRateType]);
+
+  // Yeni fatura: firma / sistem ana parasına hizala (düzenlemede dokunma)
+  useEffect(() => {
+    if (editData) return;
+    if (!selectedFirm) return;
+    const ac = (selectedFirm.ana_para_birimi || getAppDefaultCurrency()).trim().toUpperCase().slice(0, 10);
+    setCurrency(ac);
+    const rc = (selectedFirm.raporlama_para_birimi || ac).trim().toUpperCase().slice(0, 10);
+    setReportingCurrency(rc);
+  }, [editData, selectedFirm?.logicalref, selectedFirm?.ana_para_birimi, selectedFirm?.raporlama_para_birimi]);
+
+  useEffect(() => {
+    currencyRateUserTouchedRef.current = false;
+  }, [(editData as any)?.id]);
+
+  /** İşlem tarihi değişince master kur yeniden yüklensin; eski elle/yanlış metin kur alanında kalmasın */
+  useEffect(() => {
+    currencyRateUserTouchedRef.current = false;
+  }, [transactionDate]);
+
+  // Düzenleme: belge dövizi = seçim → DB’deki kayıtlı kur; farklı döviz → işlem tarihine göre kur
+  useEffect(() => {
+    const id = (editData as any)?.id;
+    if (!id) return;
+    const lc = String(ledgerCurrency || '').trim().toUpperCase();
+    const docCur = String((editData as any)?.currency || '').trim().toUpperCase();
+    const loc = String(currency || '').trim().toUpperCase();
+
+    if (loc === lc) {
+      setCurrencyRate(1);
+      return;
+    }
+    if (loc === docCur) {
+      if (currencyRateUserTouchedRef.current) return;
+      const cr = parseFloat(String((editData as any)?.currency_rate ?? ''));
+      if (Number.isFinite(cr) && cr > 0) setCurrencyRate(cr);
+      return;
+    }
+
+    if (currencyRateUserTouchedRef.current) return;
+
+    let cancelled = false;
+    (async () => {
+      const iso = transactionDateToIsoDateString(transactionDate);
+      try {
+        let n: number | null = await resolveDocumentCurrencyRateToLedger(loc, lc, iso, currencyRateType);
+        if (n == null || n <= 0) {
+          n = crossRateDocumentToLedgerFromLatest(loc, lc, latestRates, currencyRateType);
+        }
+        if (n == null || n <= 0) {
+          const row = await exchangeRateAPI.getRateAsOfDate(loc, iso);
+          if (row) n = pickExchangeRateValue(row, currencyRateType);
+        }
+        if (n == null || n <= 0) {
+          const rate = latestRates.find(
+            r => String(r.currency_code).trim().toUpperCase() === loc
+          );
+          if (rate) n = pickExchangeRateValue(rate, currencyRateType);
+        }
+        if (cancelled || currencyRateUserTouchedRef.current) return;
+        if (n != null && n > 0) setCurrencyRate(n);
+      } catch (e) {
+        console.error('[UniversalInvoiceForm] düzenleme kur:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    (editData as any)?.id,
+    (editData as any)?.currency,
+    (editData as any)?.currency_rate,
+    currency,
+    transactionDate,
+    ledgerCurrency,
+    currencyRateType,
+    latestRates
+  ]);
+
+  // Yeni fatura: işlem tarihine göre exchange_rates’ten kur; yoksa son bilinen master kur
+  useEffect(() => {
+    if ((editData as any)?.id) return;
+
+    if (currency === ledgerCurrency) {
+      setCurrencyRate(1);
+      return;
+    }
+
+    if (currencyRateUserTouchedRef.current) return;
+
+    let cancelled = false;
+    (async () => {
+      const iso = transactionDateToIsoDateString(transactionDate);
+      const lc = String(ledgerCurrency || '').trim().toUpperCase();
+      const cur = String(currency || '').trim().toUpperCase();
+      try {
+        let n: number | null = await resolveDocumentCurrencyRateToLedger(cur, lc, iso, currencyRateType);
+        if (n == null || n <= 0) {
+          n = crossRateDocumentToLedgerFromLatest(cur, lc, latestRates, currencyRateType);
+        }
+        if (n == null || n <= 0) {
+          const row = await exchangeRateAPI.getRateAsOfDate(cur, iso);
+          if (row) n = pickExchangeRateValue(row, currencyRateType);
+        }
+        if (n == null || n <= 0) {
+          const rate = latestRates.find(
+            r => String(r.currency_code).trim().toUpperCase() === cur
+          );
+          if (rate) n = pickExchangeRateValue(rate, currencyRateType);
+        }
+        if (cancelled || currencyRateUserTouchedRef.current) return;
+        if (n != null && n > 0) setCurrencyRate(n);
+      } catch (e) {
+        console.error('[UniversalInvoiceForm] tarih bazlı kur yüklenemedi:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currency,
+    transactionDate,
+    ledgerCurrency,
+    currencyRateType,
+    latestRates,
+    (editData as any)?.id
+  ]);
+
+  useEffect(() => {
+    if (currencyRateUserTouchedRef.current) return;
+    if (currency === ledgerCurrency) {
+      setCurrencyRateStr('');
+      return;
+    }
+    if (Number.isFinite(currencyRate) && currencyRate > 0) {
+      setCurrencyRateStr(formatDecimalForTrInput(currencyRate));
+    } else {
+      setCurrencyRateStr('');
+    }
+  }, [currencyRate, currency, ledgerCurrency]);
 
   // Load Services
   useEffect(() => {
@@ -595,7 +910,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showReturnTransactionTypeModal, setShowReturnTransactionTypeModal] = useState(false);
 
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const cashRegisterDropdownRef = useRef<HTMLDivElement>(null);
@@ -663,197 +977,212 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     }
   };
 
-  // Barkod okutma
-  const handleBarcodeSubmit = async () => {
-    if (!barcodeInput.trim()) return;
+  const createEmptyInvoiceLine = (): InvoiceItem => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    type: 'Malzeme',
+    code: '',
+    description: '',
+    description2: '',
+    quantity: 0,
+    unit: 'Brüt',
+    unitPrice: 0,
+    discountPercent: 0,
+    discountAmount: 0,
+    amount: 0,
+    netAmount: 0,
+  });
 
-    const barcode = barcodeInput.trim();
-    try {
-      const result = await productAPI.lookupByBarcode(barcode);
+  const lineIsBlank = (row: InvoiceItem) =>
+    !row.code && row.quantity === 0 && row.unitPrice === 0;
 
-      if (result && result.product) {
-        const product = result.product;
-        const unitInfo = result.unitInfo;
+  const withTrailingEmptyLine = (list: InvoiceItem[]): InvoiceItem[] => {
+    const last = list[list.length - 1];
+    if (!last || !lineIsBlank(last)) {
+      return [...list, createEmptyInvoiceLine()];
+    }
+    return list;
+  };
 
-        if (items.length > 0 && currentRowIndex >= 0) {
-          const updatedItems = [...items];
-          const item = updatedItems[currentRowIndex];
-          item.code = product.code;
-          item.description = product.name;
-          
-          // Birim ve Fiyat Belirleme
-          const isPurchase = invoiceType.category === 'Alis';
-          const systemUsdRate = latestRates.find(r => r.currency_code === 'USD')?.sell_rate || currencyRate || 1;
-          const effectiveRate = product.customExchangeRate || 0;
-          let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
-          
-          // IQD Scaling Logic: If rate is small (e.g., 1.54), scale by 1000
-          if (finalRate > 0 && finalRate < 10) {
-            finalRate = finalRate * 1000;
-          }
-          
-          const isAutoCalc = product.autoCalculateUSD;
+  /** Barkod / ürün kodu ile satırı doldur (lookup sonucu) */
+  const applyLookupResultToInvoiceItem = (baseItem: InvoiceItem, product: Product, unitInfo?: any): InvoiceItem => {
+    const item = { ...baseItem };
+    item.code = product.code || (product as any).id || '';
+    item.description = product.name || '';
+    const isPurchase = invoiceType.category === 'Alis';
+    const docUsd = (currency || '').trim().toUpperCase() === 'USD';
+    const systemUsdRate = resolveUsdRateForCardPrice();
+    let effectiveRate = (product as any).customExchangeRate || (product as any).custom_exchange_rate || 0;
+    let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+    const isAutoCalc = (product as any).autoCalculateUSD || (product as any).auto_calculate_usd;
+    const usdPurchaseCard = Number((product as any).purchasePriceUSD ?? (product as any).purchase_price_usd ?? 0);
+    const usdSaleCard = Number((product as any).salePriceUSD ?? (product as any).sale_price_usd ?? 0);
+    /** Kart USD alanından fiyat kullan: fatura USD ise her zaman (varsa); değilse yalnızca auto USD açıksa */
+    const useUsdPurchase = usdPurchaseCard > 0 && (docUsd || isAutoCalc);
+    const useUsdSale = usdSaleCard > 0 && (docUsd || isAutoCalc);
 
-          if (unitInfo) {
-            item.unit = unitInfo.unit || unitInfo.unit_code;
-            
-            // Birim çarpanını bul
-            let unitMult = unitInfo.multiplier || 1;
-            
-            // Eğer veritabanından çarpan gelmediyse (veya 1 ise) ve birim Adet değilse birim setinden bak
-            const pUnitsetId = product.unitsetId || (product as any).unitset_id;
-            if (unitMult === 1 && item.unit !== 'Adet' && pUnitsetId) {
-              const unitSet = unitSets.find((us: any) => us.id === pUnitsetId);
-              const line = unitSet?.lines?.find((l: any) => l.name === item.unit || l.code === item.unit);
-              if (line) {
-                unitMult = parseFloat(line.conv_fact1) || 1;
-              }
-            }
-            
-            item.multiplier = unitMult;
-
-            // Fiyat Belirleme Mantığı
-            let resolvedPrice = 0;
-            if (isPurchase) {
-              resolvedPrice = (unitInfo.purchase_price > 0) ? unitInfo.purchase_price : 0;
-              if (resolvedPrice === 0 && isAutoCalc) {
-                const usdPurchasePrice = (product as any).purchasePriceUSD || (product as any).purchase_price_usd || 0;
-                if (usdPurchasePrice > 0) {
-                  resolvedPrice = Math.round(usdPurchasePrice * finalRate * unitMult);
-                }
-              }
-              if (resolvedPrice === 0) {
-                resolvedPrice = ((product as any).cost || (product as any).lastPurchasePrice || 0) * unitMult;
-              }
-            } else {
-              resolvedPrice = (unitInfo.sale_price > 0) ? unitInfo.sale_price : 0;
-              if (resolvedPrice === 0 && isAutoCalc) {
-                const usdSalePrice = (product as any).salePriceUSD || (product as any).sale_price_usd || 0;
-                if (usdSalePrice > 0) {
-                  resolvedPrice = Math.round(usdSalePrice * finalRate * unitMult);
-                }
-              }
-              if (resolvedPrice === 0) {
-                resolvedPrice = product.price * unitMult;
-              }
-            }
-            item.unitPrice = resolvedPrice;
-          } else {
-            item.unit = product.unit;
-            item.multiplier = 1;
-            
-            let resolvedPrice = 0;
-            if (isPurchase) {
-              if (isAutoCalc) {
-                const usdPurchasePrice = (product as any).purchasePriceUSD || (product as any).purchase_price_usd || 0;
-                resolvedPrice = usdPurchasePrice > 0 ? Math.round(usdPurchasePrice * finalRate) : 0;
-              }
-              if (resolvedPrice === 0) {
-                resolvedPrice = (product as any).cost || (product as any).lastPurchasePrice || product.price || 0;
-              }
-            } else {
-              if (isAutoCalc) {
-                const usdSalePrice = (product as any).salePriceUSD || (product as any).sale_price_usd || 0;
-                resolvedPrice = usdSalePrice > 0 ? Math.round(usdSalePrice * finalRate) : 0;
-              }
-              if (resolvedPrice === 0) {
-                resolvedPrice = product.price;
-              }
-            }
-            item.unitPrice = resolvedPrice;
-          }
-          
-          item.quantity = item.quantity || 1;
-          item.baseQuantity = item.quantity * (item.multiplier || 1);
-          item.unitsetId = product.unitsetId || (product as any).unitset_id;
-
-          const currentGross = item.quantity * item.unitPrice;
-          const discountAmount = currentGross * (item.discountPercent / 100);
-          const amount = currentGross - discountAmount;
-
-          item.amount = currentGross;
-          item.netAmount = amount;
-
-          setItems(updatedItems);
-          setBarcodeInput('');
-          barcodeInputRef.current?.focus();
-          toast.success(`${product.name} (${item.unit}) eklendi`);
+    if (unitInfo) {
+      item.unit = unitInfo.unit || unitInfo.unit_code || product.unit || 'Adet';
+      let unitMult = unitInfo.multiplier || 1;
+      const pUnitsetId = (product as any).unitsetId || (product as any).unitset_id;
+      if (unitMult === 1 && item.unit !== 'Adet' && pUnitsetId) {
+        const unitSet = unitSets.find((us: any) => us.id === pUnitsetId);
+        const line = unitSet?.lines?.find((l: any) => l.name === item.unit || l.code === item.unit);
+        if (line) unitMult = parseFloat(line.conv_fact1) || parseFloat(line.multiplier1) || 1;
+      }
+      item.multiplier = unitMult;
+      let resolvedPrice = 0;
+      if (isPurchase) {
+        if (useUsdPurchase) {
+          resolvedPrice = usdFieldToInvoiceUnitPrice(usdPurchaseCard, unitMult, currency, finalRate);
         } else {
-          const isPurchase = invoiceType.category === 'Alis';
-          const systemUsdRate = latestRates.find(r => r.currency_code === 'USD')?.sell_rate || currencyRate || 1;
-          const effectiveRate = product.customExchangeRate || 0;
-          let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
-
-          // IQD Scaling Logic
-          if (finalRate > 0 && finalRate < 10) {
-            finalRate = finalRate * 1000;
+          resolvedPrice = (unitInfo.purchase_price > 0) ? unitInfo.purchase_price : 0;
+          if (resolvedPrice === 0) {
+            resolvedPrice = ((product as any).cost || (product as any).lastPurchasePrice || product.price || 0) * unitMult;
           }
-          
-          const isAutoCalc = product.autoCalculateUSD;
-
-          let resolvedPrice = 0;
-          let resolvedUnit = unitInfo ? (unitInfo.unit || unitInfo.unit_code) : product.unit;
-          let resolvedMult = unitInfo ? (unitInfo.multiplier || 1) : 1;
-
-          if (isPurchase) {
-            resolvedPrice = (unitInfo && unitInfo.purchase_price > 0) ? unitInfo.purchase_price : 0;
-            if (resolvedPrice === 0 && isAutoCalc) {
-              const usdPurchasePrice = (product as any).purchasePriceUSD || (product as any).purchase_price_usd || 0;
-              if (usdPurchasePrice > 0) {
-                resolvedPrice = Math.round(usdPurchasePrice * finalRate * resolvedMult);
-              }
-            }
-            if (resolvedPrice === 0) {
-              resolvedPrice = ((product as any).cost || (product as any).lastPurchasePrice || product.price || 0) * resolvedMult;
-            }
-          } else {
-            resolvedPrice = (unitInfo && unitInfo.sale_price > 0) ? unitInfo.sale_price : 0;
-            if (resolvedPrice === 0 && isAutoCalc) {
-              const usdSalePrice = (product as any).salePriceUSD || (product as any).sale_price_usd || 0;
-              if (usdSalePrice > 0) {
-                resolvedPrice = Math.round(usdSalePrice * finalRate * resolvedMult);
-              }
-            }
-            if (resolvedPrice === 0) {
-              resolvedPrice = product.price * resolvedMult;
-            }
-          }
-
-          const newItem: InvoiceItem = {
-            id: Date.now().toString(),
-            type: 'Malzeme',
-            code: product.code,
-            description: product.name,
-            description2: '',
-            quantity: 1,
-            unit: resolvedUnit,
-            unitPrice: resolvedPrice,
-            discountPercent: 0,
-            discountAmount: 0,
-            amount: 0,
-            netAmount: 0,
-            multiplier: resolvedMult,
-            baseQuantity: resolvedMult,
-            unitsetId: product.unitset_id
-          };
-          
-          newItem.amount = newItem.quantity * newItem.unitPrice;
-          newItem.netAmount = newItem.amount;
-          
-          setItems([...items, newItem]);
-          setBarcodeInput('');
-          setCurrentRowIndex(items.length);
-          barcodeInputRef.current?.focus();
-          toast.success(`${product.name} (${newItem.unit}) eklendi`);
         }
       } else {
-        toast.error('Ürün bulunamadı!');
-        setBarcodeInput('');
+        if (useUsdSale) {
+          resolvedPrice = usdFieldToInvoiceUnitPrice(usdSaleCard, unitMult, currency, finalRate);
+        } else {
+          resolvedPrice = (unitInfo.sale_price > 0) ? unitInfo.sale_price : 0;
+          if (resolvedPrice === 0) {
+            resolvedPrice = (product.price || 0) * unitMult;
+          }
+        }
       }
-    } catch (error: any) {
-      console.error('[UniversalInvoice] Barcode lookup error:', error);
-      toast.error('Barkod okuma hatası!');
-      setBarcodeInput('');
+      item.unitPrice = resolvedPrice;
+    } else {
+      item.unit = product.unit || 'Adet';
+      item.multiplier = 1;
+      let resolvedPrice = 0;
+      if (isPurchase) {
+        if (useUsdPurchase) {
+          resolvedPrice = usdFieldToInvoiceUnitPrice(usdPurchaseCard, 1, currency, finalRate);
+        }
+        if (resolvedPrice === 0) {
+          resolvedPrice = (product as any).cost || (product as any).lastPurchasePrice || product.price || 0;
+        }
+      } else {
+        if (useUsdSale) {
+          resolvedPrice = usdFieldToInvoiceUnitPrice(usdSaleCard, 1, currency, finalRate);
+        }
+        if (resolvedPrice === 0) {
+          resolvedPrice = product.price || 0;
+        }
+      }
+      item.unitPrice = resolvedPrice;
+    }
+
+    item.quantity = baseItem.quantity > 0 ? baseItem.quantity : 1;
+    item.baseQuantity = item.quantity * (item.multiplier || 1);
+    item.unitsetId = (product as any).unitsetId || (product as any).unitset_id;
+
+    if (!unitInfo && item.unitsetId) {
+      const unitSet = unitSets.find(us => us.id === item.unitsetId);
+      if (unitSet && unitSet.lines && unitSet.lines.length > 0) {
+        const mainUnit = unitSet.lines.find((l: any) => l.main_unit) || unitSet.lines[0];
+        item.unit = mainUnit.name || mainUnit.code;
+        item.multiplier = parseFloat(mainUnit.conv_fact1) || parseFloat(mainUnit.multiplier1) || 1;
+        item.baseQuantity = item.quantity * (item.multiplier || 1);
+      }
+    }
+
+    if (isPurchase) {
+      const cost = (product as any).lastPurchasePrice ?? (product as any).cost ?? 0;
+      if (docUsd && usdPurchaseCard > 0) {
+        item.lastPurchasePrice = usdPurchaseCard;
+        item.priceDifference = item.unitPrice - usdPurchaseCard;
+        item.priceDifferencePercent = usdPurchaseCard > 0 ? ((item.unitPrice - usdPurchaseCard) / usdPurchaseCard) * 100 : 0;
+      } else {
+        item.lastPurchasePrice = cost;
+        item.priceDifference = item.unitPrice - cost;
+        item.priceDifferencePercent = cost > 0 ? ((item.unitPrice - cost) / cost) * 100 : 0;
+      }
+    }
+
+    const subtotal = item.quantity * item.unitPrice;
+    item.discountAmount = subtotal * ((item.discountPercent || 0) / 100);
+    item.amount = subtotal;
+    item.netAmount = subtotal - item.discountAmount;
+
+    return item;
+  };
+
+  const resolveProductByCodeInput = async (rowIndex: number, codeRaw: string) => {
+    const raw = codeRaw.trim();
+    if (!raw) return;
+
+    try {
+      let resolved: { product: Product; unitInfo?: any } | null = null;
+      const attempts = barcodeLookupAttempts(raw);
+
+      for (const key of attempts) {
+        resolved = await productAPI.lookupByBarcode(key);
+        if (resolved) break;
+        const byCode = await productAPI.getByCode(key);
+        if (byCode) {
+          resolved = { product: byCode };
+          break;
+        }
+      }
+
+      if (!resolved) {
+        const pool: Product[] = [];
+        const seen = new Set<string>();
+        for (const p of [...storeProducts, ...(productsProp.length > 0 ? productsProp : [])]) {
+          const k = (p as Product)?.id || (p as Product)?.code || '';
+          if (k && !seen.has(k)) {
+            seen.add(k);
+            pool.push(p as Product);
+          }
+        }
+        if (pool.length === 0) {
+          for (const p of products) {
+            const k = p?.id || p?.code || '';
+            if (k && !seen.has(k)) {
+              seen.add(k);
+              pool.push(p);
+            }
+          }
+        }
+        for (const key of attempts) {
+          const rawLower = key.toLowerCase();
+          const local = pool.find(pr =>
+            (pr.code && pr.code.trim().toLowerCase() === rawLower) ||
+            (pr.barcode && pr.barcode.trim() === key)
+          );
+          if (local) {
+            resolved = { product: local };
+            break;
+          }
+        }
+      }
+
+      if (!resolved) {
+        toast.error(tm('productNotFound'));
+        return;
+      }
+
+      setItems(prev => {
+        if (rowIndex < 0 || rowIndex >= prev.length) return prev;
+        const row = prev[rowIndex];
+        if (!isInvoiceProductBarcodeLineType(row.type)) return prev;
+        const next = [...prev];
+        next[rowIndex] = applyLookupResultToInvoiceItem(row, resolved.product, resolved.unitInfo);
+        const withEmpty = withTrailingEmptyLine(next);
+        const emptyIdx = withEmpty.length - 1;
+        setTimeout(() => {
+          setCurrentRowIndex(emptyIdx);
+          gridRefs.current[`code-${emptyIdx}`]?.focus();
+        }, 0);
+        return withEmpty;
+      });
+
+      const name = resolved.product.name || '';
+      toast.success(name ? `${name} eklendi` : 'Ürün eklendi');
+    } catch (err: any) {
+      console.error('[UniversalInvoiceForm] resolveProductByCodeInput:', err);
+      toast.error(err?.message || 'Ürün arama hatası');
     }
   };
 
@@ -870,7 +1199,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
     // Check current row type for Service
     const currentItem = items[searchingRowIndex];
-    if (currentItem?.type === 'Hizmet') {
+    if (isInvoiceServiceLineType(currentItem?.type)) {
       return services.filter(s =>
         s.code.toLowerCase().includes(search) ||
         s.name.toLowerCase().includes(search) ||
@@ -939,13 +1268,21 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const updateItem = useCallback((index: number, field: keyof InvoiceItem, value: any) => {
     setItems(prev => {
       const updated = [...prev];
-      const item = { ...updated[index], [field]: value };
+      const prevRow = updated[index];
+      const item = { ...prevRow, [field]: value };
 
-      // Birim değişince multiplier'ı güncelle
+      // Birim değişince çarpan ve birim fiyatı (baz birime göre) güncelle
       if (field === 'unit' && item.unitsetId) {
         const unitSet = unitSets.find((us: any) => us.id === item.unitsetId);
         const line = unitSet?.lines?.find((l: any) => l.name === value || l.code === value);
-        item.multiplier = line ? (parseFloat(line.conv_fact1) || 1) : 1;
+        const oldMult = prevRow.multiplier || 1;
+        const newMult = line
+          ? (parseFloat(line.conv_fact1) || parseFloat(line.multiplier1) || 1)
+          : 1;
+        item.multiplier = newMult;
+        if (oldMult > 0 && newMult !== oldMult && (prevRow.unitPrice || 0) > 0) {
+          item.unitPrice = prevRow.unitPrice * (newMult / oldMult);
+        }
       }
 
       // Miktar veya birim değişince base_quantity'yi güncelle
@@ -953,7 +1290,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         item.baseQuantity = (item.quantity || 0) * (item.multiplier || 1);
       }
 
-      const grossAmount = (field === 'quantity' || field === 'unitPrice')
+      const grossAmount = (field === 'quantity' || field === 'unitPrice' || field === 'unit')
         ? (item.quantity || 0) * (item.unitPrice || 0)
         : (updated[index].quantity || 0) * (updated[index].unitPrice || 0);
 
@@ -962,16 +1299,16 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         item.discountAmount = grossAmount * ((value as number) / 100);
       } else if (field === 'discountAmount') {
         item.discountPercent = grossAmount > 0 ? ((value as number) / grossAmount) * 100 : 0;
-      } else if (field === 'quantity' || field === 'unitPrice') {
-        // Recalculate discountAmount based on existing percent when quantity/price changes
+      } else if (field === 'quantity' || field === 'unitPrice' || field === 'unit') {
         item.discountAmount = grossAmount * ((item.discountPercent || 0) / 100);
       }
 
       // Compute derived fields
-      if (field === 'unitPrice' && invoiceType.category === 'Alis' && item.lastPurchasePrice !== undefined) {
-        item.priceDifference = (value as number) - item.lastPurchasePrice;
+      if ((field === 'unitPrice' || field === 'unit') && invoiceType.category === 'Alis' && item.lastPurchasePrice !== undefined) {
+        const up = field === 'unit' ? (item.unitPrice || 0) : (value as number);
+        item.priceDifference = up - item.lastPurchasePrice;
         item.priceDifferencePercent = item.lastPurchasePrice > 0
-          ? (((value as number) - item.lastPurchasePrice) / item.lastPurchasePrice) * 100
+          ? ((up - item.lastPurchasePrice) / item.lastPurchasePrice) * 100
           : 0;
       }
 
@@ -1059,9 +1396,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
     if (isLastItemEmpty) {
       const updatedItems = [...currentItems.slice(0, -1), ...newItems, lastItem];
-      setItems(updatedItems);
+      setItems(withTrailingEmptyLine(updatedItems));
     } else {
-      setItems([...currentItems, ...newItems]);
+      setItems(withTrailingEmptyLine([...currentItems, ...newItems]));
     }
 
     toast.success(`${newItems.length} ürün geçmişten eklendi`);
@@ -1076,30 +1413,29 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
     if (targetRowIndex < 0 || targetRowIndex >= items.length) return;
 
-    const systemUsdRate = latestRates.find(r => r.currency_code === 'USD')?.sell_rate || currencyRate || 1;
+    const systemUsdRate = resolveUsdRateForCardPrice();
     const effectiveRate = (selProduct as any).customExchangeRate || (selProduct as any).custom_exchange_rate || 0;
-    const finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+    let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+    const docUsd = (currency || '').trim().toUpperCase() === 'USD';
     const isAutoCalc = (selProduct as any).autoCalculateUSD || (selProduct as any).auto_calculate_usd;
+    const usdP = Number((selProduct as any).purchasePriceUSD ?? (selProduct as any).purchase_price_usd ?? 0);
+    const usdS = Number((selProduct as any).salePriceUSD ?? (selProduct as any).sale_price_usd ?? 0);
+    const useUsdPurchase = usdP > 0 && (docUsd || isAutoCalc);
+    const useUsdSale = usdS > 0 && (docUsd || isAutoCalc);
 
     let productPrice = 0;
-    if (isAutoCalc) {
-      if (invoiceType.category === 'Alis') {
-        const usdPurchasePrice = (selProduct as any).purchasePriceUSD || (selProduct as any).purchase_price_usd;
-        if (usdPurchasePrice > 0) {
-          productPrice = Math.round(usdPurchasePrice * finalRate);
-        } else {
-          productPrice = selProduct.cost || (selProduct as any).lastPurchasePrice || 0;
-        }
+    if (invoiceType.category === 'Alis') {
+      if (useUsdPurchase) {
+        productPrice = usdFieldToInvoiceUnitPrice(usdP, 1, currency, finalRate);
       } else {
-        const usdSalePrice = (selProduct as any).salePriceUSD || (selProduct as any).sale_price_usd;
-        if (usdSalePrice > 0) {
-          productPrice = Math.round(usdSalePrice * finalRate);
-        } else {
-          productPrice = variant?.price || selProduct.price || 0;
-        }
+        productPrice = selProduct.cost || (selProduct as any).lastPurchasePrice || 0;
       }
     } else {
-      productPrice = invoiceType.category === 'Alis' ? (selProduct.cost || (selProduct as any).lastPurchasePrice || 0) : (variant?.price || selProduct.price || 0);
+      if (useUsdSale) {
+        productPrice = usdFieldToInvoiceUnitPrice(usdS, 1, currency, finalRate);
+      } else {
+        productPrice = variant?.price || selProduct.price || 0;
+      }
     }
 
     const productCode = variant?.code || selProduct.code || selProduct.barcode || selProduct.id || '';
@@ -1136,51 +1472,62 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       }
     }
 
-    // Alış faturası için son fiyat bilgilerini çek
-    if (invoiceType.category === 'Alis' && (selProduct as any).lastPurchasePrice !== undefined) {
-      item.lastPurchasePrice = (selProduct as any).lastPurchasePrice;
-      item.priceDifference = productPrice - ((selProduct as any).lastPurchasePrice || 0);
-      item.priceDifferencePercent = (selProduct as any).lastPurchasePrice > 0
-        ? ((productPrice - (selProduct as any).lastPurchasePrice) / (selProduct as any).lastPurchasePrice) * 100
-        : 0;
+    // Alış faturası için son fiyat (USD faturada kart USD ile kıyas)
+    if (invoiceType.category === 'Alis') {
+      const costIqd = (selProduct as any).cost ?? (selProduct as any).lastPurchasePrice ?? 0;
+      if (docUsd && usdP > 0) {
+        item.lastPurchasePrice = usdP;
+        item.priceDifference = productPrice - usdP;
+        item.priceDifferencePercent = usdP > 0 ? ((productPrice - usdP) / usdP) * 100 : 0;
+      } else {
+        item.lastPurchasePrice = costIqd;
+        item.priceDifference = productPrice - costIqd;
+        item.priceDifferencePercent = costIqd > 0 ? ((productPrice - costIqd) / costIqd) * 100 : 0;
+      }
     }
 
+    const subtotal = item.quantity * item.unitPrice;
+    item.discountAmount = subtotal * ((item.discountPercent || 0) / 100);
+    item.amount = subtotal;
+    item.netAmount = subtotal - item.discountAmount;
+
     updatedItems[targetRowIndex] = item;
-    setItems(updatedItems);
+    const nextItems = withTrailingEmptyLine(updatedItems);
+    setItems(nextItems);
     setShowProductCatalogModal(false);
     setSelectedRowForProduct(null);
 
-    // Net tutarı hesapla
-    const subtotal = item.quantity * item.unitPrice;
-    const afterDiscount = subtotal * (1 - item.discountPercent / 100);
-    updateItem(targetRowIndex, 'netAmount', afterDiscount);
+    const emptyIdx = nextItems.length - 1;
+    setCurrentRowIndex(emptyIdx);
+    setTimeout(() => {
+      gridRefs.current[`code-${emptyIdx}`]?.focus();
+    }, 50);
   };
 
   const handleProductFromCatalog = (selProduct: Product, variant?: any) => {
-    const systemUsdRate = latestRates.find(r => r.currency_code === 'USD')?.sell_rate || currencyRate || 1;
+    const systemUsdRate = resolveUsdRateForCardPrice();
     const effectiveRate = (selProduct as any).customExchangeRate || (selProduct as any).custom_exchange_rate || 0;
-    const finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+    let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+    const docUsd = (currency || '').trim().toUpperCase() === 'USD';
     const isAutoCalc = (selProduct as any).autoCalculateUSD || (selProduct as any).auto_calculate_usd;
+    const usdP = Number((selProduct as any).purchasePriceUSD ?? (selProduct as any).purchase_price_usd ?? 0);
+    const usdS = Number((selProduct as any).salePriceUSD ?? (selProduct as any).sale_price_usd ?? 0);
+    const useUsdPurchase = usdP > 0 && (docUsd || isAutoCalc);
+    const useUsdSale = usdS > 0 && (docUsd || isAutoCalc);
 
     let productPrice = 0;
-    if (isAutoCalc) {
-      if (invoiceType.category === 'Alis') {
-        const usdPurchasePrice = (selProduct as any).purchasePriceUSD || (selProduct as any).purchase_price_usd;
-        if (usdPurchasePrice > 0) {
-          productPrice = Math.round(usdPurchasePrice * finalRate);
-        } else {
-          productPrice = (selProduct as any).cost || (selProduct as any).lastPurchasePrice || 0;
-        }
+    if (invoiceType.category === 'Alis') {
+      if (useUsdPurchase) {
+        productPrice = usdFieldToInvoiceUnitPrice(usdP, 1, currency, finalRate);
       } else {
-        const usdSalePrice = (selProduct as any).salePriceUSD || (selProduct as any).sale_price_usd;
-        if (usdSalePrice > 0) {
-          productPrice = Math.round(usdSalePrice * finalRate);
-        } else {
-          productPrice = variant?.price || selProduct.price || 0;
-        }
+        productPrice = (selProduct as any).cost || (selProduct as any).lastPurchasePrice || 0;
       }
     } else {
-      productPrice = invoiceType.category === 'Alis' ? ((selProduct as any).cost || (selProduct as any).lastPurchasePrice || 0) : (variant?.price || selProduct.price || 0);
+      if (useUsdSale) {
+        productPrice = usdFieldToInvoiceUnitPrice(usdS, 1, currency, finalRate);
+      } else {
+        productPrice = variant?.price || selProduct.price || 0;
+      }
     }
 
     const productCode = variant?.code || selProduct.barcode || selProduct.id || '';
@@ -1206,14 +1553,18 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       baseQuantity: 1
     };
 
-    // Alış faturası için son fiyat bilgilerini çek (eğer varsa)
+    // Alış faturası için son fiyat (USD faturada kart USD ile kıyas)
     if (invoiceType.category === 'Alis') {
       const cost = (selProduct as any).cost || (selProduct as any).lastPurchasePrice || 0;
-      newItem.lastPurchasePrice = cost;
-      newItem.priceDifference = productPrice - cost;
-      newItem.priceDifferencePercent = cost > 0
-        ? ((productPrice - cost) / cost) * 100
-        : 0;
+      if (docUsd && usdP > 0) {
+        newItem.lastPurchasePrice = usdP;
+        newItem.priceDifference = productPrice - usdP;
+        newItem.priceDifferencePercent = usdP > 0 ? ((productPrice - usdP) / usdP) * 100 : 0;
+      } else {
+        newItem.lastPurchasePrice = cost;
+        newItem.priceDifference = productPrice - cost;
+        newItem.priceDifferencePercent = cost > 0 ? ((productPrice - cost) / cost) * 100 : 0;
+      }
     }
 
     // Set default unit from unitset if available
@@ -1227,44 +1578,15 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       }
     }
 
-    // Boş son kalemi kaldır ve yeni kalemi ekle
     const lastItem = items[items.length - 1];
-    const isEmptyLastItem = !lastItem.code && lastItem.quantity === 0 && lastItem.unitPrice === 0;
-
-    if (isEmptyLastItem) {
-      const updatedItems = [...items.slice(0, -1), newItem, {
-        id: Date.now().toString() + '_new',
-        type: 'Malzeme',
-        code: '',
-        description: '',
-        description2: '',
-        quantity: 0,
-        unit: 'Brüt',
-        unitPrice: 0,
-        discountPercent: 0,
-        discountAmount: 0,
-        amount: 0,
-        netAmount: 0
-      }];
-      setItems(updatedItems);
-      setCurrentRowIndex(updatedItems.length - 2);
-    } else {
-      setItems([...items, newItem, {
-        id: Date.now().toString() + '_new',
-        type: 'Malzeme',
-        code: '',
-        description: '',
-        description2: '',
-        quantity: 0,
-        unit: 'Brüt',
-        unitPrice: 0,
-        discountPercent: 0,
-        discountAmount: 0,
-        amount: 0,
-        netAmount: 0
-      }]);
-      setCurrentRowIndex(items.length);
-    }
+    const isEmptyLastItem = lineIsBlank(lastItem);
+    const baseItems = isEmptyLastItem ? [...items.slice(0, -1), newItem] : [...items, newItem];
+    const nextItems = withTrailingEmptyLine(baseItems);
+    setItems(nextItems);
+    setCurrentRowIndex(nextItems.length - 1);
+    setTimeout(() => {
+      gridRefs.current[`code-${nextItems.length - 1}`]?.focus();
+    }, 50);
 
     setShowProductCatalogModal(false);
     toast.success(`${productName} eklendi`);
@@ -1284,71 +1606,80 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     customExchangeRate?: number;
     unitsetId?: string;
   }, rowIndex: number) => {
-    const updatedItems = [...items];
-    const item = { ...updatedItems[rowIndex] };
+    setItems(prev => {
+      if (rowIndex < 0 || rowIndex >= prev.length) return prev;
+      const next = [...prev];
+      const item = { ...next[rowIndex] };
 
-    const isPurchase = invoiceType.category === 'Alis';
-    let productPrice = isPurchase ? (product.lastPurchasePrice || (product as any).cost || 0) : (product.price || 0);
-    
-    // USD Auto-calculation for manual selection
-    if (product.autoCalculateUSD) {
-      const usdPrice = isPurchase ? (product.purchasePriceUSD || 0) : (product.salePriceUSD || 0);
-      if (usdPrice > 0) {
-        const systemUsdRate = latestRates.find(r => r.currency_code === 'USD')?.sell_rate || currencyRate || 1;
-        const effectiveRate = product.customExchangeRate || 0;
-        let finalRate = effectiveRate > 0 ? effectiveRate : systemUsdRate;
-        
-        // IQD Scaling Logic
-        if (finalRate > 0 && finalRate < 10) finalRate *= 1000;
-        
-        productPrice = Math.round(usdPrice * finalRate);
-        console.log(`[UniversalInvoice] Selected Product USD Calculation: ${usdPrice}$ * ${finalRate} = ${productPrice} IQD`);
-      }
-    }
+      const isPurchase = invoiceType.category === 'Alis';
+      const docUsd = (currency || '').trim().toUpperCase() === 'USD';
+      const autoUsd = product.autoCalculateUSD === true;
+      const usdP = Number(product.purchasePriceUSD || 0);
+      const usdS = Number(product.salePriceUSD || 0);
+      const systemUsdRate = resolveUsdRateForCardPrice();
+      const effectiveRate = product.customExchangeRate || 0;
+      let finalRateSel = effectiveRate > 0 ? effectiveRate : systemUsdRate;
+      const useUsdPurchase = usdP > 0 && (docUsd || autoUsd);
+      const useUsdSale = usdS > 0 && (docUsd || autoUsd);
 
-    const grossAmount = item.quantity * productPrice;
-
-    item.code = product.code;
-    item.description = product.name;
-    item.unit = product.unit;
-    item.unitPrice = productPrice;
-    item.quantity = 1;
-
-    // Birim seti bağla
-    const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
-    if (pUnitsetId) {
-      item.unitsetId = pUnitsetId;
- 
-      // Set default unit from unitset if available
-      const unitSet = unitSets.find(us => us.id === pUnitsetId);
-      if (unitSet && unitSet.lines && unitSet.lines.length > 0) {
-        const mainUnit = unitSet.lines.find((l: any) => l.main_unit) || unitSet.lines[0];
-        item.unit = mainUnit.name || mainUnit.code;
-        item.multiplier = parseFloat(mainUnit.conv_fact1) || parseFloat(mainUnit.multiplier1) || 1;
-        item.baseQuantity = item.quantity * (item.multiplier || 1);
+      let productPrice = 0;
+      if (isPurchase) {
+        if (useUsdPurchase) {
+          productPrice = usdFieldToInvoiceUnitPrice(usdP, 1, currency, finalRateSel);
+        } else {
+          productPrice = product.lastPurchasePrice || (product as any).cost || 0;
+        }
       } else {
-        item.multiplier = 1;
-        item.baseQuantity = item.quantity;
+        if (useUsdSale) {
+          productPrice = usdFieldToInvoiceUnitPrice(usdS, 1, currency, finalRateSel);
+        } else {
+          productPrice = product.price || 0;
+        }
       }
-    }
 
-    // Alış faturası için son fiyat bilgilerini çek
-    if (invoiceType.category === 'Alis') {
-      const cost = product.lastPurchasePrice || (product as any).cost || 0;
-      item.lastPurchasePrice = cost;
-      item.priceDifference = productPrice - cost;
-      item.priceDifferencePercent = cost > 0
-        ? ((productPrice - cost) / cost) * 100
-        : 0;
-    }
+      item.code = product.code;
+      item.description = product.name;
+      item.unit = product.unit;
+      item.unitPrice = productPrice;
+      item.quantity = 1;
 
-    // Synchronize discount based on current percentage
-    item.discountAmount = grossAmount * ((item.discountPercent || 0) / 100);
+      const pUnitsetId = (product as any).unitset_id || (product as any).unitsetId;
+      if (pUnitsetId) {
+        item.unitsetId = pUnitsetId;
+        const unitSet = unitSets.find(us => us.id === pUnitsetId);
+        if (unitSet && unitSet.lines && unitSet.lines.length > 0) {
+          const mainUnit = unitSet.lines.find((l: any) => l.main_unit) || unitSet.lines[0];
+          item.unit = mainUnit.name || mainUnit.code;
+          item.multiplier = parseFloat(mainUnit.conv_fact1) || parseFloat(mainUnit.multiplier1) || 1;
+          item.baseQuantity = item.quantity * (item.multiplier || 1);
+        } else {
+          item.multiplier = 1;
+          item.baseQuantity = item.quantity;
+        }
+      }
 
-    item.amount = grossAmount;
-    item.netAmount = grossAmount - item.discountAmount;
+      if (invoiceType.category === 'Alis') {
+        const cost = product.lastPurchasePrice || (product as any).cost || 0;
+        if (docUsd && usdP > 0) {
+          item.lastPurchasePrice = usdP;
+          item.priceDifference = productPrice - usdP;
+          item.priceDifferencePercent = usdP > 0 ? ((productPrice - usdP) / usdP) * 100 : 0;
+        } else {
+          item.lastPurchasePrice = cost;
+          item.priceDifference = productPrice - cost;
+          item.priceDifferencePercent = cost > 0 ? ((productPrice - cost) / cost) * 100 : 0;
+        }
+      }
 
-    setItems(updatedItems);
+      const grossAmount = item.quantity * item.unitPrice;
+      item.discountAmount = grossAmount * ((item.discountPercent || 0) / 100);
+      item.amount = grossAmount;
+      item.netAmount = grossAmount - item.discountAmount;
+
+      next[rowIndex] = item;
+      return next;
+    });
+
     setShowProductDropdown(false);
     setProductSearch('');
 
@@ -1385,7 +1716,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
     // If typing in a service row, prioritize services
     const currentItem = items[rowIndex];
-    if (currentItem?.type === 'Hizmet' || invoiceType.category === 'Hizmet') {
+    if (isInvoiceServiceLineType(currentItem?.type) || invoiceType.category === 'Hizmet') {
        // Search handled by filteredProducts useMemo
     } else if (value.length >= 8) {
       const product = mockProducts.find(p => p.barcode === value.trim());
@@ -1397,104 +1728,161 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   };
 
   const selectService = (service: Service | any, rowIndex: number) => {
-    const updatedItems = [...items];
-    const item = { ...updatedItems[rowIndex] };
+    setItems(prev => {
+      if (rowIndex < 0 || rowIndex >= prev.length) return prev;
+      const next = [...prev];
+      const item = { ...next[rowIndex] };
 
-    // Determine correct price based on invoice type and currency
-    let servicePrice = 0;
-    if (invoiceType.category === 'Alis') {
-      if (currency === 'USD' && service.purchase_price_usd) {
-        servicePrice = service.purchase_price_usd;
-      } else if (currency === 'EUR' && service.purchase_price_eur) {
-        servicePrice = service.purchase_price_eur;
+      let servicePrice = 0;
+      if (invoiceType.category === 'Alis') {
+        if (currency === 'USD' && service.purchase_price_usd) {
+          servicePrice = service.purchase_price_usd;
+        } else if (currency === 'EUR' && service.purchase_price_eur) {
+          servicePrice = service.purchase_price_eur;
+        } else {
+          servicePrice = service.purchase_price || service.unit_price || 0;
+        }
       } else {
-        servicePrice = service.purchase_price || service.unit_price || 0;
+        if (currency === 'USD' && service.unit_price_usd) {
+          servicePrice = service.unit_price_usd;
+        } else if (currency === 'EUR' && service.unit_price_eur) {
+          servicePrice = service.unit_price_eur;
+        } else {
+          servicePrice = service.unit_price || service.price || 0;
+        }
       }
-    } else {
-      if (currency === 'USD' && service.unit_price_usd) {
-        servicePrice = service.unit_price_usd;
-      } else if (currency === 'EUR' && service.unit_price_eur) {
-        servicePrice = service.unit_price_eur;
-      } else {
-        servicePrice = service.unit_price || service.price || 0;
+
+      item.type = 'Hizmet';
+      item.code = service.code;
+      item.description = service.name;
+      item.unit = service.unit || 'Adet';
+      item.unitPrice = servicePrice;
+      item.quantity = item.quantity || 1;
+
+      if (service.withholding_rate) {
+        (item as any).withholdingRate = service.withholding_rate;
       }
-    }
 
-    item.type = 'Hizmet';
-    item.code = service.code;
-    item.description = service.name;
-    item.unit = service.unit || 'Adet';
-    item.unitPrice = servicePrice;
-    item.quantity = item.quantity || 1;
-    
-    // Set withholding rate if provided and form supports it (future)
-    if (service.withholding_rate) {
-       (item as any).withholdingRate = service.withholding_rate;
-    }
+      const grossAmount = item.quantity * item.unitPrice;
+      item.discountAmount = grossAmount * ((item.discountPercent || 0) / 100);
+      item.amount = grossAmount;
+      item.netAmount = grossAmount - item.discountAmount;
 
-    const grossAmount = item.quantity * item.unitPrice;
-    item.discountAmount = grossAmount * ((item.discountPercent || 0) / 100);
-    item.amount = grossAmount;
-    item.netAmount = grossAmount - item.discountAmount;
+      next[rowIndex] = item;
+      return next;
+    });
 
-    updatedItems[rowIndex] = item;
-    setItems(updatedItems);
     setShowProductDropdown(false);
     setProductSearch('');
 
-    // Focus next row or add new one
     setTimeout(() => {
-        if (rowIndex === items.length - 1) {
-            const newItem: InvoiceItem = {
-              id: Date.now().toString(),
-              type: 'Hizmet',
-              code: '',
-              description: '',
-              description2: '',
-              quantity: 0,
-              unit: 'Brüt',
-              unitPrice: 0,
-              discountPercent: 0,
-              discountAmount: 0,
-              amount: 0,
-              netAmount: 0
-            };
-            setItems(prev => [...prev, newItem]);
-        }
-        setTimeout(() => {
-            setCurrentRowIndex(rowIndex + 1);
-            gridRefs.current[`code-${rowIndex + 1}`]?.focus();
-        }, 50);
+      setItems(prev => {
+        if (rowIndex !== prev.length - 1) return prev;
+        const newItem: InvoiceItem = {
+          id: Date.now().toString(),
+          type: 'Hizmet',
+          code: '',
+          description: '',
+          description2: '',
+          quantity: 0,
+          unit: 'Brüt',
+          unitPrice: 0,
+          discountPercent: 0,
+          discountAmount: 0,
+          amount: 0,
+          netAmount: 0
+        };
+        return [...prev, newItem];
+      });
+      setTimeout(() => {
+        setCurrentRowIndex(rowIndex + 1);
+        gridRefs.current[`code-${rowIndex + 1}`]?.focus();
+      }, 50);
     }, 50);
   };
 
   const handleProductKeyDown = (e: React.KeyboardEvent, rowIndex: number) => {
-    if (!showProductDropdown) return;
-
+    const inputEl = e.currentTarget as HTMLInputElement;
+    const inputVal = inputEl.value.trim();
     const filtered = filteredProducts;
+    const dropdownForThisRow = showProductDropdown && searchingRowIndex === rowIndex;
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedProductIndex(prev =>
-        prev < filtered.length - 1 ? prev + 1 : prev
-      );
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedProductIndex(prev => prev > 0 ? prev - 1 : -1);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (selectedProductIndex >= 0 && filtered[selectedProductIndex]) {
-        const selected = filtered[selectedProductIndex];
-        if (selected.type === 'Hizmet') {
-            selectService(selected, rowIndex);
-        } else {
-            selectProduct(selected, rowIndex);
-        }
+    if (dropdownForThisRow) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedProductIndex(prev =>
+          prev < filtered.length - 1 ? prev + 1 : prev
+        );
+        return;
       }
-    } else if (e.key === 'Escape') {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedProductIndex(prev => (prev > 0 ? prev - 1 : -1));
+        return;
+      }
+      if (e.key === 'Escape') {
+        setShowProductDropdown(false);
+        setProductSearch('');
+        return;
+      }
+    }
+
+    if (e.key !== 'Enter') return;
+
+    // Kod alanında Enter’ın form göndermesi / sonraki hücreye atlama davranışını kes (ilk satırda boş satır oluşmasını önler).
+    e.preventDefault();
+    e.stopPropagation();
+
+    const row = items[rowIndex];
+    if (!row || !isInvoiceProductBarcodeLineType(row.type)) return;
+
+    if (dropdownForThisRow && selectedProductIndex >= 0 && filtered[selectedProductIndex]) {
+      const selected = filtered[selectedProductIndex];
+      if (selected.type === 'Hizmet') {
+        selectService(selected, rowIndex);
+      } else {
+        selectProduct(selected, rowIndex);
+      }
+      return;
+    }
+
+    if (dropdownForThisRow && filtered.length === 1) {
+      const only = filtered[0];
+      const attempts = barcodeLookupAttempts(inputVal);
+      const exact = attempts.some(
+        key =>
+          (only.code && only.code.trim().toLowerCase() === key.toLowerCase()) ||
+          (only.barcode && only.barcode.trim() === key)
+      );
+      if (exact) {
+        if (only.type === 'Hizmet') {
+          selectService(only, rowIndex);
+        } else {
+          selectProduct(only, rowIndex);
+        }
+        return;
+      }
+    }
+
+    const idx = rowIndex;
+    const flushCodeResolve = (raw: string) => {
+      const v = raw.trim();
+      if (!v) return false;
+      updateItem(idx, 'code', v);
       setShowProductDropdown(false);
       setProductSearch('');
-    }
+      void resolveProductByCodeInput(idx, v);
+      return true;
+    };
+
+    // Önce keydown anındaki DOM değeri (inputVal) — çoğu durumda ref/setTimeout’tan güvenilir.
+    if (flushCodeResolve(inputVal)) return;
+
+    // Barkod okuyucu / React onChange batch: Enter, son karakterin state’e işlenmesinden önce gelebilir.
+    window.setTimeout(() => {
+      const el = gridRefs.current[`code-${idx}`] as HTMLInputElement | undefined;
+      flushCodeResolve(el?.value ?? '');
+    }, 0);
   };
 
   // EditData değiştiğinde items'ı güncelle
@@ -1508,6 +1896,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       console.log('[UniversalInvoiceForm] itemsData:', itemsData);
 
       if (itemsData.length > 0) {
+        const hdrCur = String((editData as any)?.currency || 'IQD');
+        const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
         const initializedItems = itemsData.map((item: any, index: number) => {
           // Ürün kodunu bul - product_id ise products listesinden bul
           let productCode = item.code || item.product_code || '';
@@ -1533,25 +1923,28 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
             }
           }
 
+          const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
+          const q = item.quantity || 0;
           return {
             id: item.id || `item-${index}`,
-            type: 'Malzeme',
+            type: canonicalInvoiceLineType(item.type),
             code: productCode,
             description: item.description || item.productName || item.product_name || '',
             description2: item.description2 || '',
-            quantity: item.quantity || 0,
+            quantity: q,
             unit: item.unit || 'Adet',
-            unitPrice: item.unitPrice || item.price || item.unit_price || 0,
+            unitPrice: fc.unitPrice,
             discountPercent: item.discountPercent || item.discount || item.discount_percent || 0,
             discountAmount: item.discountAmount || item.discount_amount || 0,
-            amount: item.amount || item.gross_amount || ((item.quantity || 0) * (item.unitPrice || item.price || item.unit_price || 0)) || 0,
-            netAmount: item.netAmount || item.total || item.net_amount || item.amount || 0,
+            amount: Number.isFinite(fc.amount) ? fc.amount : (q * fc.unitPrice) || 0,
+            netAmount: Number.isFinite(fc.netAmount) ? fc.netAmount : 0,
             lastPurchasePrice: item.lastPurchasePrice || item.last_purchase_price,
             priceDifference: item.priceDifference || item.price_difference,
             priceDifferencePercent: item.priceDifferencePercent || item.price_difference_percent,
             unitsetId: item.unitsetId || item.unitset_id,
             multiplier: item.multiplier || item.unit_multiplier || 1,
             baseQuantity: item.baseQuantity || item.base_quantity || item.quantity,
+            unitPriceFC: item.unitPriceFC ?? item.unit_price_fc,
           };
         });
         console.log('[UniversalInvoiceForm] initializedItems:', initializedItems);
@@ -1575,7 +1968,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         }]);
       }
     }
-  }, [editData]);
+    /* editData?.items?.length: getById sonrası kalem sayısı değişince yeniden doldur */
+  }, [editData, editData?.items?.length]);
 
   // Load suppliers and customers from database
   useEffect(() => {
@@ -1621,6 +2015,19 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     loadCustomers();
   }, [invoiceType.category, customersProp]);
 
+  /* Alış düzenleme: tedarikçi UUID/ünvanı customer_id üzerinde; suppliers async yüklenince kod/ünvanı doldur */
+  useEffect(() => {
+    if (!editData?.id || invoiceType.category !== 'Alis') return;
+    const sid = (editData as any).supplier_id || editData.customer_id;
+    const st = (editData as any).supplier_name || (editData as any).customer_name;
+    if (sid) setSupplierId(String(sid));
+    if (st) setSupplierTitle(String(st));
+    if (sid && suppliers.length > 0) {
+      const sup = suppliers.find((s: any) => String(s.id) === String(sid));
+      if (sup && (sup as any).code) setSupplierCode(String((sup as any).code));
+    }
+  }, [editData?.id, editData?.customer_id, (editData as any)?.supplier_id, invoiceType.category, suppliers]);
+
   // Click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1657,6 +2064,15 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     // UUID değilse direkt kodu döndür
     return itemCode;
   };
+
+  /** Kod hücresine odak: searchingRowIndex + productSearch input ile hizala (Enter’da stale filtre/odak kayması önlenir) */
+  const handleInvoiceCodeFieldFocus = useCallback((rowIndex: number, displayCode: string) => {
+    setSearchingRowIndex(rowIndex);
+    setSelectedProductIndex(-1);
+    const v = displayCode.trim();
+    setProductSearch(displayCode);
+    setShowProductDropdown(v.length >= 1);
+  }, []);
 
   // Müşteri kodunu bul (customer_id ise customers listesinden bul)
   const getCustomerCode = (customerIdOrCode: string): string => {
@@ -1696,6 +2112,18 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     return customerCodeOrId;
   };
 
+  const effectiveInvoiceCurrencyRate = useMemo(() => {
+    if (currency === ledgerCurrency) return 1;
+    const fromStr = parseDecimalStringForInput(currencyRateStr);
+    /* Elle düzenleme: metin kutusu kaynak; aksi halde currencyRate (API/tarih) — str önce parse edilince
+       senkron gecikmesi veya dokunulmuş + eski "1500" metni doğru 1.54 state'ini ezerdi */
+    if (currencyRateUserTouchedRef.current) {
+      if (Number.isFinite(fromStr) && fromStr > 0) return fromStr;
+      return currencyRate > 0 ? currencyRate : 1;
+    }
+    return currencyRate > 0 ? currencyRate : 1;
+  }, [currency, ledgerCurrency, currencyRateStr, currencyRate]);
+
   // Toplam hesaplama
   const totals = useMemo(() => {
     let totalDiscount = 0;
@@ -1712,8 +2140,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       totalNet += itemNet;
     });
 
-    // Döviz kuru uygula: IQD karşılıkları
-    const rate = (currency !== 'IQD' && currencyRate > 0) ? currencyRate : 1;
+    // Döviz kuru: yerel (ledger) para karşılıkları
+    const rate = currency !== ledgerCurrency ? effectiveInvoiceCurrencyRate : 1;
     return {
       totalExpenses: 0,
       totalDiscount,
@@ -1723,9 +2151,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       rate,
       subtotalIQD: totalGross * rate,
       totalDiscountIQD: totalDiscount * rate,
-      netIQD: totalNet * rate,    // IQD karşılığı → DB'ye yazılacak
+      netIQD: totalNet * rate,    // Yerel para karşılığı → DB
     };
-  }, [items, currency, currencyRate]);
+  }, [items, currency, ledgerCurrency, effectiveInvoiceCurrencyRate]);
 
   // Kar hesaplama (satış faturaları için)
   useEffect(() => {
@@ -1930,8 +2358,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       let itemsWithCost: InvoiceItem[] = [];
       let priceChangeItems: any[] = [];
 
-      // Döviz kuru (IQD'ye çevirme katsayısı)
-      const rateToIQD = (currency !== 'IQD' && currencyRate > 0) ? currencyRate : 1;
+      // Döviz kuru (yerel para birimine çevirme)
+      const rateToIQD = currency !== ledgerCurrency ? effectiveInvoiceCurrencyRate : 1;
 
       if (invoiceType.category === 'Alis') {
         itemsWithCost = validItems.map(item => {
@@ -2025,10 +2453,11 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         invoice_date: transactionDate,
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
-        customer_id: customerId || undefined,
+        customer_id: invoiceType.category === 'Alis' ? (supplierId || customerId || undefined) : (customerId || undefined),
         supplier_id: supplierId || undefined,
         supplier_name: supplierTitle || '',
-        customer_name: customerTitle || '',
+        /* Alış: tedarikçi ünvanı sales.customer_name'e de yazılmalı (liste / join) */
+        customer_name: invoiceType.category === 'Alis' ? (supplierTitle || customerTitle || '') : (customerTitle || ''),
         subtotal: totals.subtotalIQD,   // IQD
         discount: totals.totalDiscountIQD,
         tax: 0,
@@ -2045,9 +2474,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         cashier: cashierName,
         status: (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') ? 'completed' : 'unpaid',
         notes: description,
-        currency: currency || 'IQD',
-        currency_rate: currencyRate || 1,
-        credit_amount: creditAmount,
+        currency: currency || ledgerCurrency,
+        currency_rate: effectiveInvoiceCurrencyRate || 1,
+        credit_amount: 0,
         items: itemsWithCost
       };
 
@@ -2061,6 +2490,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       if (!savedInvoice) throw new Error(tm('invoiceSaveError'));
 
       toast.success('✅ ' + tm('invoiceSaved'));
+
+      // Stok DB'de güncellendi; ürün store'unu tazele (liste / katalog / POS stok etiketi)
+      void useProductStore.getState().loadProducts(true);
 
       // Stok ve FIFO Hareketleri (baseQuantity kullan)
       if (!editData?.id) {
@@ -2366,28 +2798,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                     </div>
                   )}
 
-                  {/* Barkod Okutma Alanı */}
-                  <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex items-center gap-3">
-                    <div className="bg-blue-50 p-2 rounded-lg">
-                      <Barcode className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                      <input
-                        ref={barcodeInputRef}
-                        type="text"
-                        value={barcodeInput}
-                        onChange={(e) => setBarcodeInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleBarcodeSubmit()}
-                        placeholder="Ürün barkodunu okutun..."
-                        className="w-full bg-transparent border-none focus:ring-0 text-sm font-medium placeholder:text-gray-400"
-                        autoFocus
-                      />
-                    </div>
-                    <div className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded border border-gray-100 uppercase tracking-wider">
-                      AUTO-UNIT DETECT
-                    </div>
-                  </div>
-
                   <InvoiceItemsGrid
                     items={items}
                     invoiceType={invoiceType}
@@ -2409,7 +2819,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                     getProductCode={getProductCode}
                     unitSets={unitSets}
                     currency={currency}
-                    currencyRate={currencyRate}
+                    currencyRate={effectiveInvoiceCurrencyRate}
+                    ledgerCurrency={ledgerCurrency}
+                    onCodeFieldFocus={handleInvoiceCodeFieldFocus}
                   />
                 </div>
 
@@ -2421,27 +2833,44 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                       <label className="block text-xs font-medium text-gray-500 mb-1">Döviz</label>
                       <select
                         value={currency}
-                        onChange={(e) => { setCurrency(e.target.value); if (e.target.value === 'IQD') setCurrencyRate(1); }}
-                        className="px-2 py-1.5 border border-gray-300 rounded text-sm w-20"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          currencyRateUserTouchedRef.current = false;
+                          setCurrency(v);
+                          if (v === ledgerCurrency) {
+                            setCurrencyRate(1);
+                            setCurrencyRateStr('');
+                          }
+                        }}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm min-w-[4.5rem]"
                       >
-                        <option value="IQD">IQD</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
+                        {invoiceCurrencyCodes.map(code => (
+                          <option key={code} value={code}>{code}</option>
+                        ))}
                       </select>
                     </div>
-                    {currency !== 'IQD' && (
+                    {currency !== ledgerCurrency && (
                       <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">1 {currency} =</label>
+                        <label className="block text-xs font-medium text-gray-500 mb-1" title="Yerel tutar = adet × birim fiyat (döviz) × bu kur">
+                          1 {currency} =
+                        </label>
                         <div className="flex items-center gap-1">
                           <input
-                            type="number"
-                            value={currencyRate}
-                            onChange={(e) => setCurrencyRate(parseFloat(e.target.value) || 1)}
-                            step="0.0001"
-                            min="0.0001"
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            placeholder="1,54"
+                            value={currencyRateStr}
+                            onChange={(e) => {
+                              currencyRateUserTouchedRef.current = true;
+                              const raw = e.target.value;
+                              setCurrencyRateStr(raw);
+                              const n = parseDecimalStringForInput(raw);
+                              if (Number.isFinite(n) && n > 0) setCurrencyRate(n);
+                            }}
                             className="w-28 px-2 py-1.5 border border-orange-300 rounded text-sm text-right font-medium"
                           />
-                          <span className="text-xs text-gray-500">IQD</span>
+                          <span className="text-xs text-gray-500">{ledgerCurrency}</span>
                         </div>
                       </div>
                     )}
@@ -2449,17 +2878,17 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
                   {/* Totals Box */}
                   <div className={`${getCariBorderColor()} border p-4 rounded-lg w-full max-w-sm space-y-2 shadow-sm`}>
-                    {currency !== 'IQD' && (
+                    {currency !== ledgerCurrency && (
                       <div className="flex justify-between text-xs text-gray-500 pb-1 border-b border-gray-100">
                         <span>{tm('grossTotal')} ({currency})</span>
                         <span>{formatNumber(totals.subtotal, 2, true)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-gray-600">{tm('grossTotal')}{currency !== 'IQD' ? ' (IQD)' : ''}</span>
-                      <span>{formatNumber(currency !== 'IQD' ? totals.subtotalIQD : totals.subtotal, 2, false)}</span>
+                      <span className="text-gray-600">{tm('grossTotal')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}</span>
+                      <span>{formatNumber(currency !== ledgerCurrency ? totals.subtotalIQD : totals.subtotal, 2, false)}</span>
                     </div>
-                    {currency !== 'IQD' && totals.totalDiscount > 0 && (
+                    {currency !== ledgerCurrency && totals.totalDiscount > 0 && (
                       <div className="flex justify-between text-xs text-gray-500">
                         <span>{tm('discountTotal')} ({currency})</span>
                         <span className="text-red-400">-{formatNumber(totals.totalDiscount, 2, true)}</span>
@@ -2467,7 +2896,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                     )}
                     <div className="flex justify-between">
                       <span className="text-gray-600">{tm('discountTotal')}</span>
-                      <span className="text-red-500">-{formatNumber(currency !== 'IQD' ? totals.totalDiscountIQD : totals.totalDiscount, 2, false)}</span>
+                      <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.totalDiscountIQD : totals.totalDiscount, 2, false)}</span>
                     </div>
                     {invoiceType.category === 'Satis' && totalCost > 0 && (
                       <>
@@ -2489,27 +2918,13 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                     )}
                     <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
                       <span className="text-gray-900 font-bold text-lg">
-                        {tm('net')}{currency !== 'IQD' ? ' (IQD)' : ''}
+                        {tm('net')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}
                       </span>
                       <span className={`${getCariTextColor()} text-2xl font-bold`}>
-                        {formatNumber(currency !== 'IQD' ? totals.netIQD : totals.net, 2, false)}
+                        {formatNumber(currency !== ledgerCurrency ? totals.netIQD : totals.net, 2, false)}
                       </span>
                     </div>
-                    {invoiceType.category === 'Alis' && (
-                       <div className="flex justify-between items-center pt-2 border-t border-dashed border-gray-200">
-                         <span className="text-gray-600 font-medium">{tm('veresiye')}</span>
-                         <div className="flex items-center gap-2">
-                            <input 
-                              type="number"
-                              value={creditAmount}
-                              onChange={(e) => setCreditAmount(parseFloat(e.target.value) || 0)}
-                              className="w-32 px-2 py-1 border border-red-200 rounded text-right font-bold text-red-600 bg-red-50"
-                            />
-                            <span className="text-xs text-gray-500">IQD</span>
-                         </div>
-                       </div>
-                    )}
-                    {currency !== 'IQD' && (
+                    {currency !== ledgerCurrency && (
                       <div className="flex justify-between text-xs text-gray-400 pt-1">
                         <span>{tm('net')} ({currency})</span>
                         <span>{formatNumber(totals.net, 2, true)} {currency}</span>
@@ -2556,32 +2971,54 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                         <label className="block text-sm font-medium text-gray-700 mb-1">{tm('transactionCurrency')}</label>
                         <select
                           value={currency}
-                          onChange={(e) => setCurrency(e.target.value)}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            currencyRateUserTouchedRef.current = false;
+                            setCurrency(v);
+                            if (v === ledgerCurrency) {
+                              setCurrencyRate(1);
+                              setCurrencyRateStr('');
+                            }
+                          }}
                           className="w-full px-3 py-2 border border-blue-300 bg-blue-50 rounded text-sm font-bold"
                         >
-                          <option value="IQD">IQD</option>
-                          {currencies.filter(c => c.code !== 'IQD').map(c => (
-                            <option key={c.code} value={c.code}>{c.code}</option>
+                          {invoiceCurrencyCodes.map(code => (
+                            <option key={code} value={code}>{code}</option>
                           ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('currencyRateShort')} (1 {currency} = ? IQD)</label>
+                        <label
+                          className="block text-sm font-medium text-gray-700 mb-1"
+                          title={`${ledgerCurrency} tutarı = satır (döviz) × kur. Örn. adet × 6 $ × 1,54`}
+                        >
+                          {tm('currencyRateShort')} (1 {currency} = ? {ledgerCurrency})
+                        </label>
                         <input
-                          type="number"
-                          value={currencyRate}
-                          onChange={(e) => setCurrencyRate(parseFloat(e.target.value) || 1)}
-                          step="0.0001"
-                          min="0.0001"
-                          disabled={currency === 'IQD'}
-                          className={`w-full px-3 py-2 border rounded text-sm ${currency === 'IQD' ? 'border-gray-200 bg-gray-100 text-gray-400' : 'border-orange-300 font-semibold bg-orange-50'}`}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          placeholder="1,54"
+                          value={currency === ledgerCurrency ? '' : currencyRateStr}
+                          onChange={(e) => {
+                            currencyRateUserTouchedRef.current = true;
+                            const raw = e.target.value;
+                            setCurrencyRateStr(raw);
+                            const n = parseDecimalStringForInput(raw);
+                            if (Number.isFinite(n) && n > 0) setCurrencyRate(n);
+                          }}
+                          disabled={currency === ledgerCurrency}
+                          className={`w-full px-3 py-2 border rounded text-sm ${currency === ledgerCurrency ? 'border-gray-200 bg-gray-100 text-gray-400' : 'border-orange-300 font-semibold bg-orange-50'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">{tm('currencyRateType')}</label>
                         <select
                           value={currencyRateType}
-                          onChange={(e) => setCurrencyRateType(e.target.value)}
+                          onChange={(e) => {
+                            currencyRateUserTouchedRef.current = false;
+                            setCurrencyRateType(e.target.value);
+                          }}
                           className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
                         >
                           <option value="Satış">{tm('sales')}</option>
@@ -2619,14 +3056,14 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Toplam (IQD)</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Toplam ({ledgerCurrency})</label>
                         <input
                           type="text"
                           readOnly
                           value={formatNumber(totals.netIQD, 2, false)}
                           className="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-gray-50 font-semibold text-teal-700"
                         />
-                        {currency !== 'IQD' && (
+                        {currency !== ledgerCurrency && (
                           <div className="text-xs text-gray-400 mt-0.5">{formatNumber(totals.net, 2, true)} {currency}</div>
                         )}
                       </div>
@@ -2897,9 +3334,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                           onChange={(e) => setReportingCurrency(e.target.value)}
                           className="w-full px-3 py-2 border border-green-300 bg-green-50 rounded text-sm font-bold"
                         >
-                          <option value="USD">USD</option>
-                          <option value="EUR">EUR</option>
-                          <option value="IQD">IQD</option>
+                          {invoiceCurrencyCodes.map(code => (
+                            <option key={`rep-${code}`} value={code}>{code}</option>
+                          ))}
                         </select>
                       </div>
                       <div>

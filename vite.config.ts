@@ -1,4 +1,4 @@
-﻿
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
@@ -102,7 +102,13 @@ export default defineConfig({
       '/api/pg_query': {
         target: 'http://localhost:3001',
         changeOrigin: true,
-      }
+      },
+      /** whatshapp Next (varsayılan :3000) — tarayıcıda CORS / mixed content olmadan köprü */
+      '/__wa_bridge': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__wa_bridge/, '') || '/',
+      },
     }
   },
 });

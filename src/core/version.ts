@@ -6,7 +6,7 @@
 export const APP_VERSION = {
   major: 0,
   minor: 1,
-  build: 57,
+  build: 60,
 
   // Format: "Version 322"
   get display(): string {

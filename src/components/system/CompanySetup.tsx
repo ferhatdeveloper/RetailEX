@@ -14,12 +14,17 @@ import {
   Copy,
   CheckSquare,
   Square,
-  X
+  X,
+  Image,
+  Receipt
 } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, createCurrentAccount, Store as StoreType, Warehouse as WarehouseType, Period as PeriodType } from '../../services/api';
 import { logger } from '../../services/loggingService';
+import { getReceiptSettings, saveReceiptSettings, type ReceiptSettings } from '../../services/receiptSettingsService';
+import { eTransformService } from '../../services/eTransformService';
+import { nilveraDefaultBaseUrl } from '../../config/gibIntegratorProfiles';
 
 // ===== TYPES =====
 interface Company {
@@ -35,6 +40,16 @@ interface Company {
   email: string;
   ana_para_birimi: string;
   raporlama_para_birimi: string;
+  /** PostgreSQL firms.regulatory_region */
+  regulatory_region?: 'TR' | 'IQ';
+  /** TR: GİB — firms.gib_* */
+  gib_integration_mode?: string;
+  gib_ubl_profile?: string;
+  gib_sender_alias?: string;
+  gib_integrator_base_url?: string;
+  gib_integrator_username?: string;
+  gib_integrator_password?: string;
+  gib_use_test_environment?: boolean;
   created_at: string;
 }
 
@@ -46,6 +61,7 @@ const CURRENCIES = [
   { value: 'AED', label: 'AED — BAE Dirhemi' },
   { value: 'KWD', label: 'KWD — Kuveyt Dinarı' },
   { value: 'GBP', label: 'GBP — İngiliz Sterlini' },
+  { value: 'TRY', label: 'TRY — Türk Lirası' },
 ];
 
 interface Period {
@@ -175,6 +191,26 @@ export function CompanySetup() {
   });
   const [copySourceId, setCopySourceId] = useState<string | null>(null);
 
+  // Fiş / Fatura firma bilgisi (logo, adres vb.) — seçili firma için
+  const [receiptForm, setReceiptForm] = useState<ReceiptSettings>({});
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
+  const [savingReceipt, setSavingReceipt] = useState(false);
+
+  /** GİB: UBL / URN — çoğu kurulumda gerekmez */
+  const [gibAdvancedOpen, setGibAdvancedOpen] = useState(false);
+
+  /** Nilvera: taban URL her zaman test/canlı kutusuna göre otomatik (kullanıcı yazmaz) */
+  useEffect(() => {
+    if (formData.regulatory_region !== 'TR') return;
+    if (formData.gib_integration_mode !== 'nilvera') return;
+    const test = formData.gib_use_test_environment !== false;
+    const url = nilveraDefaultBaseUrl(test);
+    setFormData((prev: Record<string, unknown>) => {
+      if (prev.gib_integrator_base_url === url) return prev;
+      return { ...prev, gib_integrator_base_url: url };
+    });
+  }, [formData.regulatory_region, formData.gib_integration_mode, formData.gib_use_test_environment]);
+
   const handleCopyCompany = async () => {
     if (!copySourceId) return;
     try {
@@ -188,7 +224,8 @@ export function CompanySetup() {
         id: undefined,
         firma_adi: sourceCompany.firma_adi + ' (Kopya)',
         firma_kodu: sourceCompany.firma_kodu + '-CPY',
-        created_at: undefined
+        created_at: undefined,
+        regulatory_region: sourceCompany.regulatory_region || 'IQ',
       };
 
       const newFirmRes = await organizationAPI.saveFirm(newFirmData);
@@ -225,6 +262,32 @@ export function CompanySetup() {
     }
   };
 
+  const handleSaveReceiptInfo = async () => {
+    if (!effectiveFirmNr) {
+      toast.error('Önce firma kodunu kaydedin.');
+      return;
+    }
+    setSavingReceipt(true);
+    try {
+      await saveReceiptSettings(
+        {
+          companyName: receiptForm.companyName || undefined,
+          companyAddress: receiptForm.companyAddress || undefined,
+          companyPhone: receiptForm.companyPhone || undefined,
+          companyTaxOffice: receiptForm.companyTaxOffice || undefined,
+          companyTaxNumber: receiptForm.companyTaxNumber || undefined,
+          logoDataUrl: receiptForm.logoDataUrl || undefined
+        },
+        effectiveFirmNr
+      );
+      toast.success('Fiş ve fatura bilgileri kaydedildi.');
+    } catch (e) {
+      toast.error('Kaydetme başarısız.');
+    } finally {
+      setSavingReceipt(false);
+    }
+  };
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -232,6 +295,22 @@ export function CompanySetup() {
   useEffect(() => {
     buildTree();
   }, [companies, periods, stores, warehouses, expandedNodes]);
+
+  // Firma seçildiğinde fiş/fatura ayarlarını yükle (firma_kodu ile)
+  const effectiveFirmNr = formData.firma_kodu || (selectedNode?.type === 'company' && selectedNode?.data ? (selectedNode.data as Company).firma_kodu : undefined);
+  useEffect(() => {
+    if (selectedNode?.type !== 'company' || !effectiveFirmNr) {
+      setReceiptForm({});
+      return;
+    }
+    let cancelled = false;
+    setLoadingReceipt(true);
+    getReceiptSettings(effectiveFirmNr)
+      .then((s) => { if (!cancelled) setReceiptForm(s); })
+      .catch(() => { if (!cancelled) setReceiptForm({}); })
+      .finally(() => { if (!cancelled) setLoadingReceipt(false); });
+    return () => { cancelled = true; };
+  }, [selectedNode?.id, selectedNode?.type, effectiveFirmNr]);
 
   const loadAllData = async () => {
     try {
@@ -349,7 +428,11 @@ export function CompanySetup() {
   const handleSelectNode = (node: TreeNode) => {
     setSelectedNode(node);
     setMode('view');
-    setFormData(node.data || {});
+    const raw = node.data || {};
+    const d = { ...raw };
+    if (d.gib_integrator_password) d.gib_integrator_password = '';
+    setFormData(d);
+    setGibAdvancedOpen(false);
   };
 
   const handleAddNode = (node: TreeNode) => {
@@ -380,6 +463,7 @@ export function CompanySetup() {
 
       if (selectedNode?.type === 'company' || (selectedNode?.type === 'root' && mode === 'create')) {
         await organizationAPI.saveFirm(formData);
+        eTransformService.resetConfigCache();
         toast.success('Firma başarıyla kaydedildi');
       }
       else if (selectedNode?.type === 'branch' || (selectedNode?.type === 'folder-branch' && mode === 'create')) {
@@ -492,6 +576,7 @@ export function CompanySetup() {
     }
 
     const renderFields = () => {
+      const gibMode = formData.gib_integration_mode || 'mock';
       if (selectedNode.type === 'company' || (selectedNode.label === 'Yeni Firma')) {
         return (
           <>
@@ -508,9 +593,22 @@ export function CompanySetup() {
             <div><label className="block text-sm mb-1">Şehir</label><input className="w-full border p-2 rounded" value={formData.il || ''} onChange={e => setFormData({ ...formData, il: e.target.value })} disabled={mode === 'view'} /></div>
             <div><label className="block text-sm mb-1">İlçe</label><input className="w-full border p-2 rounded" value={formData.ilce || ''} onChange={e => setFormData({ ...formData, ilce: e.target.value })} disabled={mode === 'view'} /></div>
 
-            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Para Birimi</h3></div>
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Supabase</h3></div>
+            <div className="col-span-2">
+              <label className="block text-sm mb-1">Supabase Firma ID</label>
+              <input
+                className="w-full border p-2 rounded"
+                value={formData.supabase_firm_id ?? ''}
+                onChange={e => setFormData({ ...formData, supabase_firm_id: e.target.value })}
+                disabled={mode === 'view'}
+                placeholder="Supabase'deki firma/organization ID (ürün ve resim CRUD için)"
+              />
+              <p className="text-xs text-gray-400 mt-1">Ürün resimlerini CDN'e yükleyip buradan Supabase ile senkron için kullanılır.</p>
+            </div>
+
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Para birimi (firma varsayılanı)</h3></div>
             <div>
-              <label className="block text-sm mb-1">Ana Para Birimi</label>
+              <label className="block text-sm mb-1">Varsayılan ana para birimi</label>
               <select
                 className="w-full border p-2 rounded bg-white"
                 value={formData.ana_para_birimi || 'IQD'}
@@ -519,10 +617,10 @@ export function CompanySetup() {
               >
                 {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
-              <p className="text-xs text-gray-400 mt-1">Fatura ve işlem para birimi</p>
+              <p className="text-xs text-gray-400 mt-1">Satış, POS ve cari işlemlerde ön tanımlı kod (veritabanı: firms.ana_para_birimi)</p>
             </div>
             <div>
-              <label className="block text-sm mb-1">Raporlama Para Birimi</label>
+              <label className="block text-sm mb-1">Raporlama para birimi</label>
               <select
                 className="w-full border p-2 rounded bg-white"
                 value={formData.raporlama_para_birimi || 'IQD'}
@@ -533,6 +631,169 @@ export function CompanySetup() {
               </select>
               <p className="text-xs text-gray-400 mt-1">Konsolide raporlarda kullanılır</p>
             </div>
+
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Mevzuat / e-Belge</h3></div>
+            <div className="col-span-2">
+              <label className="block text-sm mb-1">İşletme bölgesi</label>
+              <select
+                className="w-full border p-2 rounded bg-white max-w-md"
+                value={formData.regulatory_region === 'TR' ? 'TR' : 'IQ'}
+                onChange={e =>
+                  setFormData({
+                    ...formData,
+                    regulatory_region: e.target.value === 'TR' ? 'TR' : 'IQ',
+                  })
+                }
+                disabled={mode === 'view'}
+              >
+                <option value="IQ">Irak ve diğer (IQ) — GİB e-Fatura kapalı</option>
+                <option value="TR">Türkiye (TR) — GİB e-Fatura / e-Arşiv</option>
+              </select>
+              <p className="text-xs text-gray-400 mt-1">TR iken e-dönüşüm modülleri kullanılabilir.</p>
+            </div>
+
+            {formData.regulatory_region === 'TR' && (
+              <>
+                <div className="col-span-2 mt-4">
+                  <h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-1">E-Fatura entegrasyonu</h3>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Portal veya üretici dokümantasyonundan aldığınız bilgileri girin. VKN ve vergi dairesi yukarıdaki firma kartından kullanılır.
+                  </p>
+                </div>
+                <div className="col-span-2 max-w-md">
+                  <label className="block text-sm mb-1">Entegratör</label>
+                  <select
+                    className="w-full border p-2 rounded bg-white"
+                    value={formData.gib_integration_mode || 'mock'}
+                    onChange={e => setFormData({ ...formData, gib_integration_mode: e.target.value })}
+                    disabled={mode === 'view'}
+                  >
+                    <option value="mock">Mock (deneme)</option>
+                    <option value="nilvera">Nilvera</option>
+                    <option value="qnb_esolutions">QNB eSolutions</option>
+                    <option value="integrator">Diğer entegratör</option>
+                    <option value="direct_unconfigured">Doğrudan GİB (henüz yok)</option>
+                  </select>
+                </div>
+
+                {gibMode === 'direct_unconfigured' && (
+                  <p className="col-span-2 text-sm text-gray-500">Bu seçenekte ayrıca yapılandırma gerekir; şimdilik bilgi girilmez.</p>
+                )}
+
+                {gibMode === 'nilvera' && (
+                  <>
+                    <div className="col-span-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="gib-nilvera-test"
+                        checked={formData.gib_use_test_environment !== false}
+                        onChange={e => setFormData({ ...formData, gib_use_test_environment: e.target.checked })}
+                        disabled={mode === 'view'}
+                      />
+                      <label htmlFor="gib-nilvera-test" className="text-sm">Test ortamı (apitest)</label>
+                    </div>
+                    <div className="col-span-2 max-w-xl">
+                      <label className="block text-sm mb-1">API anahtarı</label>
+                      <input
+                        type="password"
+                        className="w-full border p-2 rounded font-mono text-sm"
+                        value={formData.gib_integrator_password || ''}
+                        onChange={e => setFormData({ ...formData, gib_integrator_password: e.target.value })}
+                        disabled={mode === 'view'}
+                        placeholder="Nilvera portaldan üretilen anahtar"
+                        autoComplete="new-password"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Servis adresi test/canlı için otomatik ayarlanır.</p>
+                    </div>
+                  </>
+                )}
+
+                {(gibMode === 'qnb_esolutions' || gibMode === 'integrator') && (
+                  <>
+                    <div className="col-span-2 max-w-xl">
+                      <label className="block text-sm mb-1">Servis adresi (URL)</label>
+                      <input
+                        className="w-full border p-2 rounded font-mono text-sm"
+                        value={formData.gib_integrator_base_url || ''}
+                        onChange={e => setFormData({ ...formData, gib_integrator_base_url: e.target.value })}
+                        disabled={mode === 'view'}
+                        placeholder={gibMode === 'qnb_esolutions' ? 'QNB dokümandaki endpoint' : 'https://...'}
+                      />
+                    </div>
+                    <div className="max-w-md">
+                      <label className="block text-sm mb-1">Kullanıcı</label>
+                      <input
+                        className="w-full border p-2 rounded"
+                        value={formData.gib_integrator_username || ''}
+                        onChange={e => setFormData({ ...formData, gib_integrator_username: e.target.value })}
+                        disabled={mode === 'view'}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="max-w-md">
+                      <label className="block text-sm mb-1">Şifre</label>
+                      <input
+                        type="password"
+                        className="w-full border p-2 rounded"
+                        value={formData.gib_integrator_password || ''}
+                        onChange={e => setFormData({ ...formData, gib_integrator_password: e.target.value })}
+                        disabled={mode === 'view'}
+                        placeholder="Boş bırakırsanız mevcut şifre korunur"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="col-span-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="gib-test-env"
+                        checked={formData.gib_use_test_environment !== false}
+                        onChange={e => setFormData({ ...formData, gib_use_test_environment: e.target.checked })}
+                        disabled={mode === 'view'}
+                      />
+                      <label htmlFor="gib-test-env" className="text-sm">Test ortamı</label>
+                    </div>
+                  </>
+                )}
+
+                <div className="col-span-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setGibAdvancedOpen(o => !o)}
+                    className="text-sm text-gray-600 flex items-center gap-1 hover:text-gray-900"
+                  >
+                    {gibAdvancedOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    Ek ayarlar (UBL profili, posta kutusu URN)
+                  </button>
+                </div>
+                {gibAdvancedOpen && (
+                  <>
+                    <div className="max-w-md">
+                      <label className="block text-sm mb-1">UBL profili</label>
+                      <select
+                        className="w-full border p-2 rounded bg-white"
+                        value={formData.gib_ubl_profile || 'TICARIFATURA'}
+                        onChange={e => setFormData({ ...formData, gib_ubl_profile: e.target.value })}
+                        disabled={mode === 'view'}
+                      >
+                        <option value="TICARIFATURA">TICARIFATURA</option>
+                        <option value="TEMELFATURA">TEMELFATURA</option>
+                        <option value="EARSIVFATURA">EARSIVFATURA</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2 max-w-xl">
+                      <label className="block text-sm mb-1">Posta kutusu (URN)</label>
+                      <input
+                        className="w-full border p-2 rounded font-mono text-sm"
+                        value={formData.gib_sender_alias || ''}
+                        onChange={e => setFormData({ ...formData, gib_sender_alias: e.target.value })}
+                        disabled={mode === 'view'}
+                        placeholder="urn:mail:..."
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </>
         );
       }
@@ -580,6 +841,69 @@ export function CompanySetup() {
       }
 
       return null;
+    };
+
+    const renderReceiptSection = () => {
+      if (selectedNode?.type !== 'company') return null;
+      const firmNr = effectiveFirmNr;
+      if (!firmNr && mode !== 'create') return null;
+      return (
+        <div className="col-span-2 mt-8 pt-6 border-t-2 border-gray-200">
+          <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-4">
+            <Receipt className="w-4 h-4 text-amber-600" />
+            Fiş ve Faturalarda Görünecek Bilgiler
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">Bu firma için hesap fişi, mutfak fişi ve faturalarda logo ile firma bilgileri gösterilir.</p>
+          {loadingReceipt ? (
+            <p className="text-sm text-gray-500">Yükleniyor...</p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Firma logosu</label>
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 w-24 h-24 border border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center">
+                    {receiptForm.logoDataUrl ? (
+                      <img src={receiptForm.logoDataUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <Image className="w-10 h-10 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => setReceiptForm((f) => ({ ...f, logoDataUrl: (reader.result as string) ?? '' }));
+                        reader.readAsDataURL(file);
+                      }}
+                      className="block w-full text-sm text-gray-600 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-amber-50 file:text-amber-700"
+                    />
+                    {receiptForm.logoDataUrl && (
+                      <button type="button" onClick={() => setReceiptForm((f) => ({ ...f, logoDataUrl: '' }))} className="mt-2 text-xs text-red-600 hover:underline">Logoyu kaldır</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Firma / işletme adı (fiş/fatura başlığı)</label><input className="w-full border p-2 rounded" value={receiptForm.companyName ?? ''} onChange={e => setReceiptForm({ ...receiptForm, companyName: e.target.value })} placeholder="Örn: ABC Restoran" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Adres</label><input className="w-full border p-2 rounded" value={receiptForm.companyAddress ?? ''} onChange={e => setReceiptForm({ ...receiptForm, companyAddress: e.target.value })} placeholder="Cadde, mahalle, şehir" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label><input className="w-full border p-2 rounded" value={receiptForm.companyPhone ?? ''} onChange={e => setReceiptForm({ ...receiptForm, companyPhone: e.target.value })} placeholder="+90 212 ..." /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Vergi dairesi</label><input className="w-full border p-2 rounded" value={receiptForm.companyTaxOffice ?? ''} onChange={e => setReceiptForm({ ...receiptForm, companyTaxOffice: e.target.value })} placeholder="Örn: Kadıköy" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Vergi numarası</label><input className="w-full border p-2 rounded" value={receiptForm.companyTaxNumber ?? ''} onChange={e => setReceiptForm({ ...receiptForm, companyTaxNumber: e.target.value })} placeholder="10 haneli" /></div>
+              </div>
+              <div className="pt-2">
+                <button type="button" onClick={handleSaveReceiptInfo} disabled={savingReceipt || !firmNr} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2 text-sm">
+                  <Save className="w-4 h-4" /> {savingReceipt ? 'Kaydediliyor...' : 'Fiş/Fatura Bilgilerini Kaydet'}
+                </button>
+                {!firmNr && <p className="text-xs text-amber-700 mt-1">Firma kodunu kaydettikten sonra fiş bilgilerini kaydedebilirsiniz.</p>}
+              </div>
+            </div>
+          )}
+        </div>
+      );
     };
 
     return (
@@ -631,6 +955,7 @@ export function CompanySetup() {
 
         <div className="grid grid-cols-2 gap-6">
           {renderFields()}
+          {renderReceiptSection()}
         </div>
 
         {showCopyModal && (

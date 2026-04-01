@@ -10,6 +10,7 @@ export interface PrintConfig {
     companyAddress: string;
     companyPhone: string;
     companyTaxNo: string;
+    companyTaxOffice?: string;
     footerText?: string;
 }
 
@@ -51,13 +52,23 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                     ) : (
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900">{config.companyName}</h1>
                     )}
+                    {config.showLogo && config.logoUrl && (
+                        <h2 className="text-xl font-bold text-slate-800 mb-2">{config.companyName}</h2>
+                    )}
                     <div className="text-sm text-slate-600 max-w-xs leading-relaxed">
                         <p>{config.companyAddress}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className="font-semibold text-slate-700">Tel:</span> {config.companyPhone}
-                        </div>
+                        {config.companyPhone && (
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="font-semibold text-slate-700">Tel:</span> {config.companyPhone}
+                            </div>
+                        )}
+                        {config.companyTaxOffice && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className="font-semibold text-slate-700">Vergi Dairesi:</span> {config.companyTaxOffice}
+                            </div>
+                        )}
                         {config.companyTaxNo && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 mt-0.5">
                                 <span className="font-semibold text-slate-700">Vergi No:</span> {config.companyTaxNo}
                             </div>
                         )}

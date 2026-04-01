@@ -1,294 +1,54 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CalendarDays, CheckCircle2, ArrowLeft, Sparkles, Star
+    CheckCircle2,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { BeautyAppointment, AppointmentStatus } from '../../../types/beauty';
+import {
+    BeautyAppointment,
+    AppointmentStatus,
+    BeautySatisfactionQuestion,
+    BeautySatisfactionSurvey,
+    BeautySurveyAnswer,
+} from '../../../types/beauty';
+import type { Language } from '../../../locales/translations';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
-import { WeekView, MonthView } from './WeekMonthViews';
+import { WeekView, MonthView, AgendaView } from './WeekMonthViews';
+import { DaySchedulerGrid } from './DaySchedulerGrid';
+import { ResourceGroupedDayView, ResourceGroupedWeekMatrix } from './ResourceGroupedViews';
 import { StaffTimelineView } from './StaffTimelineView';
 import { AppointmentPOS } from './AppointmentPOS';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { safeInvoke } from '../../../utils/env';
+import {
+    beautyAppointmentDateKey,
+    formatLocalYmd,
+    getWeekRangeLocal,
+    getMonthRangeLocal,
+    getWorkWeekRangeLocal,
+    getAgendaRangeLocal,
+} from '../../../utils/dateLocal';
 import '../ClinicStyles.css';
+import { CLINIC } from '../clinicDesignTokens';
+import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
 
-type ViewType = 'day' | 'week' | 'month' | 'timeline' | 'device' | 'list';
-
-const EMPTY_FORM = {
-    customer_id: '', service_id: '', staff_id: '', device_id: '',
-    date: new Date().toISOString().split('T')[0],
-    time: '09:00', duration: 30, total_price: 0,
-    status: AppointmentStatus.SCHEDULED, notes: '', type: 'regular', is_package_session: false,
-};
-
-// ─── New Appointment Full Page ────────────────────────────────────────────────
-function NewAppointmentPage({
-    prefillDate,
-    prefillTime,
-    onBack,
-    onSaved,
-}: {
-    prefillDate: string;
-    prefillTime: string;
-    onBack: () => void;
-    onSaved: () => void;
-}) {
-    const { specialists, services, customers, devices, createAppointment } = useBeautyStore();
-    const { tm } = useLanguage();
-    const [form, setForm] = useState({ ...EMPTY_FORM, date: prefillDate, time: prefillTime });
-    const [saving, setSaving] = useState(false);
-    const [done, setDone] = useState(false);
-
-    const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-        scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
-        confirmed:   { label: tm('bAppointmentConfirmed'), color: '#0284c7', bg: '#e0f2fe' },
-        in_progress: { label: tm('bAppointmentStarted'),   color: '#d97706', bg: '#fef3c7' },
-        completed:   { label: tm('bAppointmentCompleted'), color: '#059669', bg: '#d1fae5' },
-        cancelled:   { label: tm('bAppointmentCancelled'), color: '#dc2626', bg: '#fee2e2' },
-        no_show:     { label: tm('bAppointmentNoShow'),    color: '#9ca3af', bg: '#f3f4f6' },
-    };
-
-    const selectedService  = services.find(s => s.id === form.service_id);
-    const selectedCustomer = customers.find(c => c.id === form.customer_id);
-    const selectedStaff    = specialists.find(s => s.id === form.staff_id);
-
-    const onServiceChange = (id: string) => {
-        const svc = services.find(s => s.id === id);
-        setForm(p => ({ ...p, service_id: id, duration: svc?.duration_min ?? 30, total_price: svc?.price ?? 0 }));
-    };
-
-    const handleSave = async () => {
-        if (!form.customer_id || !form.service_id) return;
-        setSaving(true);
-        try {
-            await createAppointment({ ...form });
-            setDone(true);
-            setTimeout(() => { onSaved(); }, 1200);
-        } finally { setSaving(false); }
-    };
-
-    const inputStyle: React.CSSProperties = {
-        width: '100%', height: 38, padding: '0 12px',
-        border: '1px solid #e5e7eb', borderRadius: 6,
-        fontSize: 13, fontWeight: 500, color: '#111827',
-        background: '#fafafa', outline: 'none', boxSizing: 'border-box',
-    };
-    const selectStyle: React.CSSProperties = { ...inputStyle, cursor: 'pointer' };
-    const labelStyle: React.CSSProperties = {
-        fontSize: 11, fontWeight: 700, color: '#6b7280',
-        textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5,
-    };
-    const fieldStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column' };
-
-    if (done) return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#f7f6fb' }}>
-            <CheckCircle2 size={56} style={{ color: '#059669' }} />
-            <p style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>{tm('bAppointmentCreated')}</p>
-        </div>
-    );
-
-    return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
-
-            {/* Top bar */}
-            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
-                <button
-                    onClick={onBack}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                >
-                    <ArrowLeft size={14} /> {tm('bBackToCalendar')}
-                </button>
-                <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
-                <div>
-                    <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', lineHeight: 1 }}>{tm('bNewAppointment')}</p>
-                    <p style={{ fontSize: 11, fontWeight: 500, color: '#9ca3af', marginTop: 2 }}>{tm('bFillAppointmentInfo')}</p>
-                </div>
-            </div>
-
-            {/* Body */}
-            <div style={{ flex: 1, overflow: 'auto', padding: 24, display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignContent: 'start' }} className="custom-scrollbar">
-
-                {/* LEFT: Form */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-                    {/* Section: Kişi */}
-                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <User size={13} /> {tm('bCustomerAndStaff')}
-                        </p>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bCustomerLabel')} <span style={{ color: '#ef4444' }}>*</span></label>
-                                <select value={form.customer_id} onChange={e => setForm(p => ({ ...p, customer_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">{tm('bSelect')}</option>
-                                    {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` — ${c.phone}` : ''}</option>)}
-                                </select>
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bSpecialistLabel')}</label>
-                                <select value={form.staff_id} onChange={e => setForm(p => ({ ...p, staff_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">{tm('bSelect')}</option>
-                                    {specialists.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name}{s.specialty ? ` (${s.specialty})` : ''}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section: Hizmet */}
-                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Sparkles size={13} /> {tm('bServiceAndDevice')}
-                        </p>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bServiceLabel')} <span style={{ color: '#ef4444' }}>*</span></label>
-                                <select value={form.service_id} onChange={e => onServiceChange(e.target.value)} style={selectStyle}>
-                                    <option value="">{tm('bSelect')}</option>
-                                    {services.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — {formatMoneyAmount(s.price, { minFrac: 0, maxFrac: 0 })}</option>)}
-                                </select>
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bDeviceOptional')}</label>
-                                <select value={form.device_id} onChange={e => setForm(p => ({ ...p, device_id: e.target.value }))} style={selectStyle}>
-                                    <option value="">{tm('bSelect')}</option>
-                                    {devices.filter(d => d.is_active).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section: Tarih & Zaman */}
-                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
-                        <p style={{ fontSize: 12, fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <CalendarDays size={13} /> {tm('bDateAndTime')}
-                        </p>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14 }}>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bDate')}</label>
-                                <input type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} style={inputStyle} />
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bTime')}</label>
-                                <input type="time" value={form.time} onChange={e => setForm(p => ({ ...p, time: e.target.value }))} style={inputStyle} />
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bDurationMin')}</label>
-                                <input type="number" min={5} step={5} value={form.duration} onChange={e => setForm(p => ({ ...p, duration: Number(e.target.value) }))} style={inputStyle} />
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bPriceLira')}</label>
-                                <input type="number" min={0} value={form.total_price} onChange={e => setForm(p => ({ ...p, total_price: Number(e.target.value) }))} style={inputStyle} />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section: Durum & Notlar */}
-                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, padding: 20 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 14 }}>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bStatus')}</label>
-                                <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as AppointmentStatus }))} style={selectStyle}>
-                                    {Object.entries(STATUS_CFG).map(([v, cfg]) => (
-                                        <option key={v} value={v}>{cfg.label}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div style={fieldStyle}>
-                                <label style={labelStyle}>{tm('bNotes')}</label>
-                                <textarea
-                                    value={form.notes}
-                                    onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
-                                    placeholder={tm('bFillAppointmentInfo')}
-                                    rows={2}
-                                    style={{ ...inputStyle, height: 'auto', padding: '8px 12px', resize: 'none', lineHeight: 1.5 }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* RIGHT: Summary */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-                    {/* Preview card */}
-                    <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
-                        <div style={{ background: selectedService?.color ?? '#7c3aed', padding: '14px 16px' }}>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{tm('bAppointmentSummary')}</p>
-                            <p style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginTop: 4 }}>
-                                {selectedService?.name ?? tm('bServiceNotSelected')}
-                            </p>
-                        </div>
-                        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {[
-                                { label: tm('bCustomerLabel'),    value: selectedCustomer?.name ?? '—' },
-                                { label: tm('bSpecialistLabel'),  value: selectedStaff?.name ?? '—' },
-                                { label: tm('bDate'),             value: form.date ? new Date(form.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—' },
-                                { label: tm('bTime'),             value: form.time },
-                                { label: tm('bDuration'),         value: `${form.duration} ${tm('bMinutes')}` },
-                                { label: tm('bPriceHeader'),      value: form.total_price > 0 ? formatMoneyAmount(form.total_price, { minFrac: 0, maxFrac: 0 }) : '—' },
-                            ].map(({ label, value }) => (
-                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Status badge preview */}
-                    {form.status && (() => {
-                        const cfg = STATUS_CFG[form.status];
-                        return (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 6, background: cfg.bg, border: `1px solid ${cfg.color}20` }}>
-                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color, flexShrink: 0 }} />
-                                <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label}</span>
-                            </div>
-                        );
-                    })()}
-
-                    {/* Save button */}
-                    <button
-                        onClick={handleSave}
-                        disabled={!form.customer_id || !form.service_id || saving}
-                        style={{
-                            width: '100%', height: 44, borderRadius: 6, border: 'none',
-                            background: (!form.customer_id || !form.service_id) ? '#e5e7eb' : '#7c3aed',
-                            color: (!form.customer_id || !form.service_id) ? '#9ca3af' : '#fff',
-                            fontSize: 13, fontWeight: 800, cursor: (!form.customer_id || !form.service_id) ? 'not-allowed' : 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                            transition: 'background 0.12s',
-                        }}
-                        onMouseEnter={e => { if (form.customer_id && form.service_id) e.currentTarget.style.background = '#6d28d9'; }}
-                        onMouseLeave={e => { if (form.customer_id && form.service_id) e.currentTarget.style.background = '#7c3aed'; }}
-                    >
-                        <CalendarDays size={15} />
-                        {saving ? tm('bSaving') : tm('bAppointmentCreate')}
-                    </button>
-
-                    <button
-                        onClick={onBack}
-                        style={{ width: '100%', height: 36, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                        {tm('cancel')}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
+type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list';
+type GroupMode = 'none' | 'staff' | 'device';
+const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
 // ─── Main Scheduler ────────────────────────────────────────────────────────────
 export function SmartScheduler() {
     const {
-        appointments, loadAppointments, updateAppointmentStatus, isLoading,
+        appointments, loadAppointmentsInRange, updateAppointmentStatus, isLoading,
         specialists, services, customers, devices,
         loadSpecialists, loadServices, loadCustomers, loadDevices,
     } = useBeautyStore();
-    const { tm } = useLanguage();
+    const { tm, language } = useLanguage();
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -301,18 +61,64 @@ export function SmartScheduler() {
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view,        setView]        = useState<ViewType>('day');
+    /** DevExpress WPF benzeri kaynak gruplaması (gün / hafta / iş haftası) */
+    const [groupMode,   setGroupMode]   = useState<GroupMode>('none');
     const [searchTerm,  setSearchTerm]  = useState('');
+    const [slotIntervalMin, setSlotIntervalMin] = useState<number>(15);
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
 
     // Full-page new appointment state
-    const [showNewPage,  setShowNewPage]  = useState(false);
-    const [prefillTime,  setPrefillTime]  = useState('09:00');
+    const [showNewPage,     setShowNewPage]     = useState(false);
+    const [prefillTime,     setPrefillTime]     = useState('09:00');
+    const [newPrefillDate,  setNewPrefillDate]  = useState<string | null>(null);
+    const [editingApt,      setEditingApt]      = useState<BeautyAppointment | null>(null);
 
     // Feedback state (shown after marking appointment as completed)
     const [feedbackApt,      setFeedbackApt]      = useState<BeautyAppointment | null>(null);
     const [feedbackRatings,  setFeedbackRatings]  = useState({ service: 5, staff: 5, overall: 5 });
     const [feedbackComment,  setFeedbackComment]  = useState('');
     const [feedbackSaving,   setFeedbackSaving]   = useState(false);
+    const [activeSurvey, setActiveSurvey] = useState<BeautySatisfactionSurvey | null>(null);
+    const [surveyQuestions, setSurveyQuestions] = useState<BeautySatisfactionQuestion[]>([]);
+    const [dynAnswers, setDynAnswers] = useState<Record<string, number | string | boolean>>({});
+
+    const questionLabel = (q: BeautySatisfactionQuestion, lang: Language) => {
+        const j = q.labels_json || {};
+        return j[lang] || j.tr || j.en || j.ar || j.ku || '';
+    };
+
+    useEffect(() => {
+        if (!feedbackApt) {
+            setActiveSurvey(null);
+            setSurveyQuestions([]);
+            setDynAnswers({});
+            return;
+        }
+        let cancelled = false;
+        void beautyService.getActiveSatisfactionSurveyWithQuestions().then(({ survey, questions }) => {
+            if (cancelled) return;
+            setActiveSurvey(survey);
+            setSurveyQuestions(questions);
+            const init: Record<string, number | string | boolean> = {};
+            for (const q of questions) {
+                if (q.question_type === 'rating') {
+                    init[q.id] = Math.min(5, q.scale_max || 5);
+                } else if (q.question_type === 'text') {
+                    init[q.id] = '';
+                } else {
+                    init[q.id] = true;
+                }
+            }
+            setDynAnswers(init);
+        }).catch(() => {
+            if (!cancelled) {
+                setActiveSurvey(null);
+                setSurveyQuestions([]);
+                setDynAnswers({});
+            }
+        });
+        return () => { cancelled = true; };
+    }, [feedbackApt?.id]);
 
     useEffect(() => {
         loadSpecialists();
@@ -322,27 +128,107 @@ export function SmartScheduler() {
     }, []);
 
     useEffect(() => {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        loadAppointments(dateStr);
-    }, [currentDate]);
+        let cancelled = false;
+        void (async () => {
+            try {
+                const cfg: any = await safeInvoke('get_app_config');
+                const v = Number(cfg?.beauty_slot_interval_min ?? 15);
+                if (!cancelled && SLOT_INTERVAL_OPTIONS.includes(v as (typeof SLOT_INTERVAL_OPTIONS)[number])) {
+                    setSlotIntervalMin(v);
+                }
+            } catch {
+                // no-op: fallback to default interval
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
-    const openNewApt = (time?: string) => {
+    useEffect(() => {
+        void (async () => {
+            try {
+                const cfg: any = await safeInvoke('get_app_config');
+                await safeInvoke('save_app_config', {
+                    config: {
+                        ...cfg,
+                        beauty_slot_interval_min: slotIntervalMin,
+                    },
+                });
+            } catch {
+                // no-op in browser mode
+            }
+        })();
+    }, [slotIntervalMin]);
+
+    useEffect(() => {
+        if (view === 'week') {
+            const { start, end } = getWeekRangeLocal(currentDate);
+            void loadAppointmentsInRange(start, end);
+        } else if (view === 'workweek') {
+            const { start, end } = getWorkWeekRangeLocal(currentDate);
+            void loadAppointmentsInRange(start, end);
+        } else if (view === 'month') {
+            const { start, end } = getMonthRangeLocal(currentDate);
+            void loadAppointmentsInRange(start, end);
+        } else if (view === 'agenda') {
+            const { start, end } = getAgendaRangeLocal(currentDate, 7);
+            void loadAppointmentsInRange(start, end);
+        } else {
+            const day = formatLocalYmd(currentDate);
+            void loadAppointmentsInRange(day, day);
+        }
+    }, [currentDate, view, loadAppointmentsInRange]);
+
+    useEffect(() => {
+        if (!showNewPage) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = prev;
+        };
+    }, [showNewPage]);
+
+    const visibleAppointments = useMemo(() => {
+        const q = searchTerm.trim().toLowerCase();
+        if (!q) return appointments;
+        return appointments.filter(a =>
+            (a.customer_name ?? '').toLowerCase().includes(q) ||
+            (a.service_name ?? '').toLowerCase().includes(q) ||
+            (a.specialist_name ?? a.staff_name ?? '').toLowerCase().includes(q)
+        );
+    }, [appointments, searchTerm]);
+
+    const openNewApt = (time?: string, dateYmd?: string) => {
         setPrefillTime(time ?? '09:00');
+        setNewPrefillDate(dateYmd ?? null);
+        setEditingApt(null);
+        setSelectedApt(null);
+        setShowNewPage(true);
+    };
+
+    const openExistingAptInPos = (apt: BeautyAppointment) => {
+        setPrefillTime((apt.appointment_time ?? apt.time ?? '09:00').slice(0, 5));
+        setNewPrefillDate(beautyAppointmentDateKey(apt) || null);
+        setEditingApt(apt);
+        setSelectedApt(null);
         setShowNewPage(true);
     };
 
     const handlePrevious = () => {
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() - 1);
-        else if (view === 'week') d.setDate(d.getDate() - 7);
+        else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() - 7);
         else if (view === 'month') d.setMonth(d.getMonth() - 1);
+        else if (view === 'agenda') d.setDate(d.getDate() - 7);
+        else d.setDate(d.getDate() - 1);
         setCurrentDate(d);
     };
     const handleNext = () => {
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() + 1);
-        else if (view === 'week') d.setDate(d.getDate() + 7);
+        else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() + 7);
         else if (view === 'month') d.setMonth(d.getMonth() + 1);
+        else if (view === 'agenda') d.setDate(d.getDate() + 7);
+        else d.setDate(d.getDate() + 1);
         setCurrentDate(d);
     };
 
@@ -360,16 +246,64 @@ export function SmartScheduler() {
         if (!feedbackApt) return;
         setFeedbackSaving(true);
         try {
-            await beautyService.addFeedback({
-                appointment_id:     feedbackApt.id,
-                customer_id:        feedbackApt.customer_id ?? feedbackApt.client_id,
-                service_rating:     feedbackRatings.service,
-                staff_rating:       feedbackRatings.staff,
-                cleanliness_rating: 5,
-                overall_rating:     feedbackRatings.overall,
-                comment:            feedbackComment || null,
-                would_recommend:    feedbackRatings.overall >= 4,
-            });
+            let payload: Parameters<typeof beautyService.addFeedback>[0];
+            if (activeSurvey && surveyQuestions.length > 0) {
+                const answers: BeautySurveyAnswer[] = [];
+                for (const q of surveyQuestions) {
+                    const v = dynAnswers[q.id];
+                    const label_snapshot = questionLabel(q, language);
+                    if (q.question_type === 'rating') {
+                        const rating = typeof v === 'number' ? v : Math.min(5, q.scale_max || 5);
+                        answers.push({ question_id: q.id, rating, label_snapshot });
+                    } else if (q.question_type === 'text') {
+                        answers.push({
+                            question_id: q.id,
+                            text: typeof v === 'string' ? v : '',
+                            label_snapshot,
+                        });
+                    } else {
+                        answers.push({
+                            question_id: q.id,
+                            yes_no: typeof v === 'boolean' ? v : true,
+                            label_snapshot,
+                        });
+                    }
+                }
+                const ratingVals = surveyQuestions
+                    .filter(q => q.question_type === 'rating')
+                    .map(q => dynAnswers[q.id] as number)
+                    .filter(v => typeof v === 'number');
+                const avg = ratingVals.length
+                    ? Math.round(ratingVals.reduce((a, b) => a + b, 0) / ratingVals.length)
+                    : 5;
+                const r1 = ratingVals[0] ?? avg;
+                const r2 = ratingVals[1] ?? avg;
+                const r3 = ratingVals[2] ?? avg;
+                payload = {
+                    appointment_id: feedbackApt.id,
+                    customer_id: feedbackApt.customer_id ?? feedbackApt.client_id,
+                    service_rating: r1,
+                    staff_rating: r2,
+                    cleanliness_rating: r3,
+                    overall_rating: avg,
+                    comment: feedbackComment || null,
+                    would_recommend: avg >= 4,
+                    survey_id: activeSurvey.id,
+                    survey_answers: answers,
+                };
+            } else {
+                payload = {
+                    appointment_id: feedbackApt.id,
+                    customer_id: feedbackApt.customer_id ?? feedbackApt.client_id,
+                    service_rating: feedbackRatings.service,
+                    staff_rating: feedbackRatings.staff,
+                    cleanliness_rating: 5,
+                    overall_rating: feedbackRatings.overall,
+                    comment: feedbackComment || null,
+                    would_recommend: feedbackRatings.overall >= 4,
+                };
+            }
+            await beautyService.addFeedback(payload);
         } catch (e) { logger.crudError('SmartScheduler', 'saveFeedback', e); }
         finally {
             setFeedbackSaving(false);
@@ -377,9 +311,50 @@ export function SmartScheduler() {
         }
     };
 
-    const timeSlots = Array.from({ length: 13 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`);
+    const timeSlots = useMemo(() => {
+        const startMin = 9 * 60;
+        const endMin = 21 * 60;
+        const slots: string[] = [];
+        for (let m = startMin; m <= endMin; m += slotIntervalMin) {
+            const hh = Math.floor(m / 60).toString().padStart(2, '0');
+            const mm = (m % 60).toString().padStart(2, '0');
+            slots.push(`${hh}:${mm}`);
+        }
+        return slots;
+    }, [slotIntervalMin]);
 
-    const formatDate = (d: Date) => d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const slotBucket = useCallback((raw: string, interval: number): string => {
+        const s = String(raw ?? '').trim();
+        const m = s.match(/^(\d{1,2}):(\d{2})/);
+        if (!m) return '';
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (Number.isNaN(hh) || Number.isNaN(mm)) return '';
+        const total = hh * 60 + mm;
+        const buck = Math.floor(total / interval) * interval;
+        const bh = Math.floor(buck / 60).toString().padStart(2, '0');
+        const bm = (buck % 60).toString().padStart(2, '0');
+        return `${bh}:${bm}`;
+    }, []);
+
+    const toolbarDateLabel = useMemo(() => {
+        if (view === 'agenda') {
+            const end = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+            end.setDate(end.getDate() + 6);
+            const a = currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+            const b = end.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+            return `${a} – ${b}`;
+        }
+        if (view === 'workweek') {
+            const { start, end } = getWorkWeekRangeLocal(currentDate);
+            const [ys, ms, ds] = start.split('-').map(Number);
+            const [ye, me, de] = end.split('-').map(Number);
+            const da = new Date(ys, ms - 1, ds);
+            const db = new Date(ye, me - 1, de);
+            return `${da.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – ${db.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+        }
+        return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }, [view, currentDate]);
 
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
@@ -387,7 +362,7 @@ export function SmartScheduler() {
         return (
             <div
                 key={apt.id}
-                onClick={() => setSelectedApt(apt)}
+                onClick={() => openExistingAptInPos(apt)}
                 style={{
                     background: '#fff', border: '1px solid #e8e4f0',
                     borderLeft: `3px solid ${color}`,
@@ -413,19 +388,44 @@ export function SmartScheduler() {
         );
     };
 
-    // ── Render new appointment full page ──────────────────────────────────
+    // ── Yeni randevu: uygulama penceresini kaplayan tam ekran (güzellik modülü çerçevesi dışında) ──
     if (showNewPage) {
-        return (
-            <AppointmentPOS
-                prefillDate={currentDate.toISOString().split('T')[0]}
-                prefillTime={prefillTime}
-                onBack={() => {
-                    setShowNewPage(false);
-                    loadAppointments(currentDate.toISOString().split('T')[0]);
+        const prefillDateStr = newPrefillDate ?? formatLocalYmd(currentDate);
+        return createPortal(
+            <div
+                style={{
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 100000,
+                    background: '#f7f6fb',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100dvh',
+                    width: '100vw',
+                    maxWidth: '100vw',
+                    overflow: 'hidden',
                 }}
-            />
+            >
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <AppointmentPOS
+                        prefillDate={prefillDateStr}
+                        prefillTime={prefillTime}
+                        existingAppointment={editingApt}
+                        onBack={() => {
+                            setShowNewPage(false);
+                            setNewPrefillDate(null);
+                            setEditingApt(null);
+                            const r = useBeautyStore.getState().lastAppointmentRange;
+                            if (r) void loadAppointmentsInRange(r.start, r.end);
+                        }}
+                    />
+                </div>
+            </div>,
+            document.body
         );
     }
+
+    const showGroupBar = view === 'day' || view === 'week' || view === 'workweek';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f7f6fb', overflow: 'hidden' }}>
@@ -438,7 +438,7 @@ export function SmartScheduler() {
                     <button onClick={handlePrevious} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
                         <ChevronLeft size={14} />
                     </button>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 200, textAlign: 'center' }}>{formatDate(currentDate)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 220, textAlign: 'center' }}>{toolbarDateLabel}</span>
                     <button onClick={handleNext} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
                         <ChevronRight size={14} />
                     </button>
@@ -451,14 +451,16 @@ export function SmartScheduler() {
                 </div>
 
                 {/* View tabs */}
-                <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2, maxWidth: 560 }}>
                     {([
-                        { id: 'day',      label: tm('bDay')       },
-                        { id: 'week',     label: tm('bWeek')      },
-                        { id: 'month',    label: tm('bMonth')     },
+                        { id: 'day',      label: tm('bDay') },
+                        { id: 'workweek', label: tm('bWorkWeek') },
+                        { id: 'week',     label: tm('bWeek') },
+                        { id: 'month',    label: tm('bMonth') },
+                        { id: 'agenda',   label: tm('bAgendaView') },
                         { id: 'timeline', label: tm('bStaffView') },
-                        { id: 'device',   label: tm('bDeviceView')},
-                        { id: 'list',     label: tm('bListView')  },
+                        { id: 'device',   label: tm('bDeviceView') },
+                        { id: 'list',     label: tm('bListView') },
                     ] as { id: ViewType; label: string }[]).map(({ id: v, label }) => (
                         <button
                             key={v}
@@ -477,6 +479,19 @@ export function SmartScheduler() {
 
                 {/* Right actions */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 5, padding: '0 8px', height: 30 }}>
+                        <Clock size={12} color="#9ca3af" />
+                        <select
+                            value={slotIntervalMin}
+                            onChange={e => setSlotIntervalMin(Number(e.target.value))}
+                            title="Dakika aralığı"
+                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 11, fontWeight: 700, color: '#6b7280', cursor: 'pointer' }}
+                        >
+                            {SLOT_INTERVAL_OPTIONS.map(min => (
+                                <option key={min} value={min}>{min} dk</option>
+                            ))}
+                        </select>
+                    </div>
                     <div style={{ position: 'relative' }}>
                         <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                         <input
@@ -502,6 +517,50 @@ export function SmartScheduler() {
                 </div>
             </div>
 
+            {/* ── Gruplama (WPF Scheduler Group by Resource) ───────── */}
+            {showGroupBar && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 20px',
+                        borderBottom: `1px solid ${CLINIC.border}`,
+                        background: CLINIC.bg,
+                        flexShrink: 0,
+                        flexWrap: 'wrap',
+                    }}
+                >
+                    <span style={{ fontSize: 11, fontWeight: 800, color: CLINIC.textSub, letterSpacing: '0.02em' }}>{tm('bGroupByLabel')}</span>
+                    <div style={{ display: 'flex', background: CLINIC.borderMuted, borderRadius: 8, padding: 3, gap: 2 }}>
+                        {([
+                            { id: 'none' as const, label: tm('bGroupNone') },
+                            { id: 'staff' as const, label: tm('bGroupByStaffCol') },
+                            { id: 'device' as const, label: tm('bGroupByDeviceCol') },
+                        ]).map(({ id: g, label }) => (
+                            <button
+                                key={g}
+                                type="button"
+                                onClick={() => setGroupMode(g)}
+                                style={{
+                                    padding: '5px 12px',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    background: groupMode === g ? CLINIC.surface : 'transparent',
+                                    color: groupMode === g ? CLINIC.violet : CLINIC.textSub,
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: groupMode === g ? CLINIC.shadowSm : 'none',
+                                }}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* ── CALENDAR BODY ─────────────────────────────────────── */}
             <div style={{ flex: 1, overflow: 'auto', padding: 16 }} className="custom-scrollbar">
                 {isLoading ? (
@@ -510,38 +569,144 @@ export function SmartScheduler() {
                     </div>
                 ) : (
                     <>
-                        {/* ── DAY VIEW ──────────────────────────────────── */}
-                        {view === 'day' && (
-                            <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                {timeSlots.map(time => {
-                                    const slotApts = appointments.filter(a => (a.appointment_time ?? a.time ?? '').startsWith(time.split(':')[0]));
-                                    return (
-                                        <div key={time} style={{ display: 'flex', gap: 12, minHeight: 72 }}>
-                                            <div style={{ width: 48, paddingTop: 8, flexShrink: 0, textAlign: 'right' }}>
-                                                <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
-                                            </div>
-                                            <div style={{ width: 1, background: '#e8e4f0', flexShrink: 0, marginTop: 12 }} />
-                                            <div style={{ flex: 1, paddingTop: 4, paddingBottom: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                                {slotApts.length === 0 ? (
-                                                    <div
-                                                        onClick={() => openNewApt(time)}
-                                                        style={{ flex: 1, border: '1px dashed #e5e7eb', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', minHeight: 56, color: '#d1d5db', transition: 'border-color 0.1s, color 0.1s' }}
-                                                        onMouseEnter={e => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.color = '#a78bfa'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#d1d5db'; }}
-                                                    >
-                                                        <Plus size={16} />
-                                                    </div>
-                                                ) : slotApts.map(renderAptCard)}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                        {/* ── DAY VIEW ─ */}
+                        {view === 'day' && groupMode === 'none' && (
+                            <DaySchedulerGrid
+                                currentDate={currentDate}
+                                appointments={visibleAppointments}
+                                renderAppointment={renderAptCard}
+                                onEmptySlotClick={(timeHHmm, dateYmd) => {
+                                    if (dateYmd) {
+                                        const [y, mo, day] = dateYmd.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(timeHHmm, dateYmd);
+                                }}
+                            />
+                        )}
+                        {view === 'day' && groupMode !== 'none' && (
+                            <ResourceGroupedDayView
+                                currentDate={currentDate}
+                                appointments={visibleAppointments}
+                                specialists={specialists}
+                                devices={devices}
+                                mode={groupMode}
+                                unassignedLabel={tm('bUnassignedResource')}
+                                emptyResourcesMessage={tm('bNoResourcesForGroup')}
+                                timeColumnLabel={tm('bSchedulerTimeColumn')}
+                                renderAppointment={renderAptCard}
+                                onEmptySlotClick={(timeHHmm, dateYmd) => {
+                                    if (dateYmd) {
+                                        const [y, mo, day] = dateYmd.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(timeHHmm, dateYmd);
+                                }}
+                            />
                         )}
 
-                        {view === 'week'  && <WeekView currentDate={currentDate} appointments={appointments} onAppointmentClick={setSelectedApt} />}
-                        {view === 'month' && <MonthView currentDate={currentDate} appointments={appointments} onDayClick={d => { setCurrentDate(d); setView('day'); }} />}
-                        {view === 'timeline' && <StaffTimelineView currentDate={currentDate} appointments={appointments} />}
+                        {view === 'workweek' && groupMode === 'none' && (
+                            <WeekView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                workWeekOnly
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={openExistingAptInPos}
+                                onNewAppointment={(t, d) => {
+                                    if (d) {
+                                        const [y, mo, day] = d.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(t, d);
+                                }}
+                            />
+                        )}
+                        {view === 'workweek' && groupMode !== 'none' && (
+                            <ResourceGroupedWeekMatrix
+                                currentDate={currentDate}
+                                appointments={visibleAppointments}
+                                specialists={specialists}
+                                devices={devices}
+                                mode={groupMode}
+                                workWeekOnly
+                                unassignedLabel={tm('bUnassignedResource')}
+                                resourceColumnLabel={tm('bSchedulerResourceColumn')}
+                                emptyResourcesMessage={tm('bNoResourcesForGroup')}
+                                onAppointmentClick={openExistingAptInPos}
+                                onCellNew={(dateYmd, _resourceId) => {
+                                    const [y, mo, day] = dateYmd.split('-').map(Number);
+                                    setCurrentDate(new Date(y, mo - 1, day));
+                                    openNewApt(undefined, dateYmd);
+                                }}
+                            />
+                        )}
+
+                        {view === 'week' && groupMode === 'none' && (
+                            <WeekView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={openExistingAptInPos}
+                                onNewAppointment={(t, d) => {
+                                    if (d) {
+                                        const [y, mo, day] = d.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(t, d);
+                                }}
+                            />
+                        )}
+                        {view === 'week' && groupMode !== 'none' && (
+                            <ResourceGroupedWeekMatrix
+                                currentDate={currentDate}
+                                appointments={visibleAppointments}
+                                specialists={specialists}
+                                devices={devices}
+                                mode={groupMode}
+                                workWeekOnly={false}
+                                unassignedLabel={tm('bUnassignedResource')}
+                                resourceColumnLabel={tm('bSchedulerResourceColumn')}
+                                emptyResourcesMessage={tm('bNoResourcesForGroup')}
+                                onAppointmentClick={openExistingAptInPos}
+                                onCellNew={(dateYmd) => {
+                                    const [y, mo, day] = dateYmd.split('-').map(Number);
+                                    setCurrentDate(new Date(y, mo - 1, day));
+                                    openNewApt(undefined, dateYmd);
+                                }}
+                            />
+                        )}
+                        {view === 'month' && (
+                            <MonthView
+                                currentDate={currentDate}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={openExistingAptInPos}
+                                onDayNavigate={day => { setCurrentDate(day); setView('day'); }}
+                                onNewAppointment={(_t, d) => { if (d) openNewApt(undefined, d); }}
+                            />
+                        )}
+                        {view === 'agenda' && (
+                            <AgendaView
+                                currentDate={currentDate}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={openExistingAptInPos}
+                                onDayNavigate={day => { setCurrentDate(day); setView('day'); }}
+                            />
+                        )}
+                        {view === 'timeline' && (
+                            <StaffTimelineView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                appointmentsOverride={visibleAppointments}
+                                onAppointmentClick={openExistingAptInPos}
+                                onNewAppointment={(t, d) => {
+                                    if (d) {
+                                        const [y, mo, day] = d.split('-').map(Number);
+                                        setCurrentDate(new Date(y, mo - 1, day));
+                                    }
+                                    openNewApt(t, d);
+                                }}
+                            />
+                        )}
 
                         {/* ── DEVICE VIEW ───────────────────────────────── */}
                         {view === 'device' && (
@@ -551,8 +716,14 @@ export function SmartScheduler() {
                                         <Cpu size={36} />
                                         <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoDevicesDefined')}</p>
                                     </div>
-                                ) : devices.map(device => {
-                                    const devApts = appointments.filter(a => a.device_id === device.id);
+                                ) : [...devices, { id: '__unassigned__', name: tm('bUnassignedResource'), is_active: true } as any].map(device => {
+                                    const dayStr = formatLocalYmd(currentDate);
+                                    const devApts = visibleAppointments.filter(a =>
+                                        beautyAppointmentDateKey(a) === dayStr &&
+                                        (device.id === '__unassigned__'
+                                            ? !a.device_id
+                                            : String(a.device_id ?? '') === String(device.id))
+                                    );
                                     return (
                                         <div key={device.id} style={{ flexShrink: 0, width: 260, background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                             <div style={{ padding: '10px 14px', borderBottom: '1px solid #e8e4f0', background: '#f5f3ff', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -565,29 +736,109 @@ export function SmartScheduler() {
                                                 </div>
                                             </div>
                                             <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
-                                                {timeSlots.map(time => {
-                                                    const slot = devApts.filter(a => (a.appointment_time ?? a.time ?? '').startsWith(time.split(':')[0]));
+                                                {(() => {
+                                                    const SLOT_H = 52;
+                                                    const spanPlacements = buildBeautySpanPlacements(devApts, timeSlots, slotIntervalMin, slotBucket);
                                                     return (
-                                                        <div key={time} style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', minHeight: 52 }}>
-                                                            <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 8 }}>
-                                                                <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
-                                                            </div>
-                                                            <div style={{ flex: 1, padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                                                {slot.map(apt => (
-                                                                    <div key={apt.id} style={{ padding: '4px 8px', borderRadius: 4, background: '#ede9fe', borderLeft: `3px solid ${apt.service_color ?? '#7c3aed'}`, fontSize: 11 }}>
-                                                                        <p style={{ fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
-                                                                        <p style={{ color: '#6b7280' }}>{apt.service_name ?? '—'}</p>
+                                                        <div style={{ display: 'flex', minHeight: timeSlots.length * SLOT_H }}>
+                                                            <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6' }}>
+                                                                {timeSlots.map(time => (
+                                                                    <div
+                                                                        key={time}
+                                                                        style={{
+                                                                            minHeight: SLOT_H,
+                                                                            borderBottom: '1px solid #f3f4f6',
+                                                                            display: 'flex',
+                                                                            alignItems: 'flex-start',
+                                                                            justifyContent: 'center',
+                                                                            paddingTop: 8,
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
                                                                     </div>
                                                                 ))}
-                                                                {slot.length === 0 && (
-                                                                    <div onClick={() => openNewApt(time)} style={{ height: 36, borderRadius: 4, border: '1px dashed #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#d1d5db' }}>
-                                                                        <Plus size={12} />
-                                                                    </div>
-                                                                )}
+                                                            </div>
+                                                            <div
+                                                                style={{
+                                                                    flex: 1,
+                                                                    display: 'grid',
+                                                                    gridTemplateRows: `repeat(${timeSlots.length}, minmax(${SLOT_H}px, auto))`,
+                                                                    alignContent: 'start',
+                                                                }}
+                                                            >
+                                                                {timeSlots.map((time, i) => {
+                                                                    const p = spanPlacements.find(pl => pl.startIdx === i);
+                                                                    if (p) {
+                                                                        return (
+                                                                            <div
+                                                                                key={p.apt.id}
+                                                                                style={{
+                                                                                    gridRow: `${i + 1} / span ${p.span}`,
+                                                                                    padding: '2px 4px',
+                                                                                    minHeight: 0,
+                                                                                    boxSizing: 'border-box',
+                                                                                }}
+                                                                            >
+                                                                                <div
+                                                                                    onClick={() => openExistingAptInPos(p.apt)}
+                                                                                    style={{
+                                                                                        height: '100%',
+                                                                                        minHeight: p.span * SLOT_H - 8,
+                                                                                        boxSizing: 'border-box',
+                                                                                        padding: '6px 8px',
+                                                                                        borderRadius: 4,
+                                                                                        background: '#ede9fe',
+                                                                                        borderLeft: `3px solid ${p.apt.service_color ?? '#7c3aed'}`,
+                                                                                        fontSize: 11,
+                                                                                        cursor: 'pointer',
+                                                                                        display: 'flex',
+                                                                                        flexDirection: 'column',
+                                                                                        justifyContent: 'flex-start',
+                                                                                        overflow: 'hidden',
+                                                                                    }}
+                                                                                >
+                                                                                    <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>{p.apt.customer_name ?? '—'}</p>
+                                                                                    <p style={{ color: '#6b7280', margin: 0, flex: 1 }}>{p.apt.service_name ?? '—'}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    if (isBeautySpanContinuation(i, spanPlacements)) return null;
+                                                                    return (
+                                                                        <div
+                                                                            key={`add-${time}`}
+                                                                            style={{
+                                                                                gridRow: i + 1,
+                                                                                padding: '4px 6px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                borderBottom: '1px solid #f3f4f6',
+                                                                                boxSizing: 'border-box',
+                                                                            }}
+                                                                        >
+                                                                            <div
+                                                                                onClick={() => openNewApt(time)}
+                                                                                style={{
+                                                                                    height: 36,
+                                                                                    width: '100%',
+                                                                                    borderRadius: 4,
+                                                                                    border: '1px dashed #e5e7eb',
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    justifyContent: 'center',
+                                                                                    cursor: 'pointer',
+                                                                                    color: '#d1d5db',
+                                                                                }}
+                                                                            >
+                                                                                <Plus size={12} />
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     );
-                                                })}
+                                                })()}
                                             </div>
                                         </div>
                                     );
@@ -604,20 +855,19 @@ export function SmartScheduler() {
                                         <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
                                     ))}
                                 </div>
-                                {appointments.length === 0 ? (
+                                {visibleAppointments.length === 0 ? (
                                     <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#d1d5db', gap: 8 }}>
                                         <List size={32} />
                                         <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointments')}</p>
                                     </div>
-                                ) : [...appointments]
-                                    .sort((a, b) => (a.appointment_time ?? '').localeCompare(b.appointment_time ?? ''))
-                                    .filter(a => !searchTerm || (a.customer_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) || (a.service_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()))
+                                ) : [...visibleAppointments]
+                                    .sort((a, b) => (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? ''))
                                     .map(apt => {
                                         const cfg = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
                                         return (
                                             <div
                                                 key={apt.id}
-                                                onClick={() => setSelectedApt(apt)}
+                                                onClick={() => openExistingAptInPos(apt)}
                                                 style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '11px 16px', borderBottom: '1px solid #f3f4f6', alignItems: 'center', cursor: 'pointer', transition: 'background 0.08s' }}
                                                 onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
                                                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -720,7 +970,17 @@ export function SmartScheduler() {
             {/* ── FEEDBACK MODAL (after completion) ───────────────────── */}
             {feedbackApt && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-                    <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+                    <div style={{
+                        background: '#fff',
+                        borderRadius: 14,
+                        width: '100%',
+                        maxWidth: activeSurvey && surveyQuestions.length ? 520 : 400,
+                        maxHeight: '90vh',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+                    }}>
                         <div style={{ padding: '16px 20px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 10 }}>
                             <CheckCircle2 size={20} color="#059669" />
                             <div>
@@ -728,37 +988,150 @@ export function SmartScheduler() {
                                 <p style={{ fontSize: 11, color: '#6b7280' }}>{feedbackApt.customer_name} — {feedbackApt.service_name}</p>
                             </div>
                         </div>
-                        <div style={{ padding: 20 }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>{tm('bFeedbackOptional')}</p>
-                            {([
-                                { key: 'service' as const, label: tm('bFeedbackService')    },
-                                { key: 'staff'   as const, label: tm('bFeedbackSpecialist') },
-                                { key: 'overall' as const, label: tm('bFeedbackGeneral')    },
-                            ]).map(({ key, label }) => (
-                                <div key={key} style={{ marginBottom: 12 }}>
-                                    <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                        {[1, 2, 3, 4, 5].map(star => (
-                                            <button
-                                                key={star}
-                                                onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
-                                                style={{
-                                                    width: 32, height: 32, borderRadius: 6, border: 'none', cursor: 'pointer',
-                                                    background: star <= feedbackRatings[key] ? '#fbbf24' : '#f3f4f6',
-                                                    color: star <= feedbackRatings[key] ? '#fff' : '#9ca3af',
-                                                    fontSize: 14, fontWeight: 800, transition: 'all 0.1s',
-                                                }}
-                                            >★</button>
-                                        ))}
+                        <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
+                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
+                                {activeSurvey && surveyQuestions.length ? tm('bSurveyFillDynamic') : tm('bFeedbackOptional')}
+                            </p>
+                            {activeSurvey && surveyQuestions.length > 0
+                                ? surveyQuestions.map(q => {
+                                    const label = questionLabel(q, language);
+                                    if (q.question_type === 'rating') {
+                                        const max = Math.min(10, Math.max(2, q.scale_max || 5));
+                                        const cur = (dynAnswers[q.id] as number) ?? max;
+                                        return (
+                                            <div key={q.id} style={{ marginBottom: 12 }}>
+                                                <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                                    {Array.from({ length: max }, (_, i) => i + 1).map(star => (
+                                                        <button
+                                                            key={star}
+                                                            type="button"
+                                                            onClick={() => setDynAnswers(r => ({ ...r, [q.id]: star }))}
+                                                            style={{
+                                                                width: 30,
+                                                                height: 30,
+                                                                borderRadius: 6,
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                background: star <= cur ? '#fbbf24' : '#f3f4f6',
+                                                                color: star <= cur ? '#fff' : '#9ca3af',
+                                                                fontSize: 12,
+                                                                fontWeight: 800,
+                                                                transition: 'all 0.1s',
+                                                            }}
+                                                        >{star}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    if (q.question_type === 'text') {
+                                        return (
+                                            <div key={q.id} style={{ marginBottom: 12 }}>
+                                                <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
+                                                <textarea
+                                                    value={(dynAnswers[q.id] as string) ?? ''}
+                                                    onChange={e => setDynAnswers(r => ({ ...r, [q.id]: e.target.value }))}
+                                                    rows={2}
+                                                    style={{
+                                                        width: '100%',
+                                                        border: '1px solid #e5e7eb',
+                                                        borderRadius: 6,
+                                                        padding: '8px 10px',
+                                                        fontSize: 12,
+                                                        resize: 'none',
+                                                        outline: 'none',
+                                                        boxSizing: 'border-box',
+                                                    }}
+                                                />
+                                            </div>
+                                        );
+                                    }
+                                    const yn = dynAnswers[q.id] as boolean;
+                                    return (
+                                        <div key={q.id} style={{ marginBottom: 12 }}>
+                                            <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
+                                            <div style={{ display: 'flex', gap: 8 }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDynAnswers(r => ({ ...r, [q.id]: true }))}
+                                                    style={{
+                                                        flex: 1,
+                                                        height: 34,
+                                                        borderRadius: 6,
+                                                        border: yn === true ? '2px solid #059669' : '1px solid #e5e7eb',
+                                                        background: yn === true ? '#ecfdf5' : '#f9fafb',
+                                                        fontSize: 12,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        color: '#374151',
+                                                    }}
+                                                >{tm('bSurveyYes')}</button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDynAnswers(r => ({ ...r, [q.id]: false }))}
+                                                    style={{
+                                                        flex: 1,
+                                                        height: 34,
+                                                        borderRadius: 6,
+                                                        border: yn === false ? '2px solid #dc2626' : '1px solid #e5e7eb',
+                                                        background: yn === false ? '#fef2f2' : '#f9fafb',
+                                                        fontSize: 12,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        color: '#374151',
+                                                    }}
+                                                >{tm('bSurveyNo')}</button>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                                : ([
+                                    { key: 'service' as const, label: tm('bFeedbackService') },
+                                    { key: 'staff' as const, label: tm('bFeedbackSpecialist') },
+                                    { key: 'overall' as const, label: tm('bFeedbackGeneral') },
+                                ]).map(({ key, label }) => (
+                                    <div key={key} style={{ marginBottom: 12 }}>
+                                        <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            {[1, 2, 3, 4, 5].map(star => (
+                                                <button
+                                                    key={star}
+                                                    type="button"
+                                                    onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
+                                                    style={{
+                                                        width: 32,
+                                                        height: 32,
+                                                        borderRadius: 6,
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        background: star <= feedbackRatings[key] ? '#fbbf24' : '#f3f4f6',
+                                                        color: star <= feedbackRatings[key] ? '#fff' : '#9ca3af',
+                                                        fontSize: 14,
+                                                        fontWeight: 800,
+                                                        transition: 'all 0.1s',
+                                                    }}
+                                                >★</button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
                             <textarea
                                 value={feedbackComment}
                                 onChange={e => setFeedbackComment(e.target.value)}
                                 placeholder={tm('bFeedbackComment')}
                                 rows={2}
-                                style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 10px', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', marginTop: 8 }}
+                                style={{
+                                    width: '100%',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: 6,
+                                    padding: '8px 10px',
+                                    fontSize: 12,
+                                    resize: 'none',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    marginTop: 8,
+                                }}
                             />
                         </div>
                         <div style={{ padding: '0 20px 20px', display: 'flex', gap: 10 }}>

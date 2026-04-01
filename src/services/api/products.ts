@@ -43,6 +43,24 @@ export const productAPI = {
   },
 
   /**
+   * Get product by code (for upsert / Excel import)
+   */
+  async getByCode(code: string): Promise<Product | null> {
+    if (!code?.trim()) return null;
+    try {
+      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
+        [code.trim(), ERP_SETTINGS.firmNr]
+      );
+      return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
+    } catch (error) {
+      console.error('[ProductAPI] getByCode failed:', error);
+      return null;
+    }
+  },
+
+  /**
    * Get product by barcode
    */
   async getByBarcode(barcode: string): Promise<Product | null> {
@@ -173,6 +191,7 @@ export const productAPI = {
         is_active: true,
         firm_nr: ERP_SETTINGS.firmNr,
         image_url: product.image_url || '',
+        image_url_cdn: (product as any).image_url_cdn || '',
         description: product.description || '',
         description_tr: product.description_tr || '',
         description_en: product.description_en || '',
@@ -196,6 +215,14 @@ export const productAPI = {
         unit2: (product as any).unit2 || '',
         unit3: (product as any).unit3 || '',
         has_variants: (product as any).hasVariants || (product as any).has_variants || false,
+        // Yeni ürün INSERT'inde eksikti; USD/EUR ve kur alanları kayda hiç yazılmıyordu
+        currency: (product as any).currency || 'IQD',
+        purchase_price_usd: parseFloat(String((product as any).purchasePriceUSD ?? (product as any).purchase_price_usd ?? 0)) || 0,
+        sale_price_usd: parseFloat(String((product as any).salePriceUSD ?? (product as any).sale_price_usd ?? 0)) || 0,
+        purchase_price_eur: parseFloat(String((product as any).purchasePriceEUR ?? (product as any).purchase_price_eur ?? 0)) || 0,
+        sale_price_eur: parseFloat(String((product as any).salePriceEUR ?? (product as any).sale_price_eur ?? 0)) || 0,
+        custom_exchange_rate: parseFloat(String((product as any).customExchangeRate ?? (product as any).custom_exchange_rate ?? 0)) || 0,
+        auto_calculate_usd: Boolean((product as any).autoCalculateUSD ?? (product as any).auto_calculate_usd ?? false),
       };
 
       const columns = Object.keys(productData);
@@ -206,9 +233,16 @@ export const productAPI = {
       const { rows } = await postgres.query(query, values);
 
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ProductAPI] create failed:', error);
-      return null;
+      const errCode = error?.code;
+      const detail = String(error?.detail ?? error?.message ?? '');
+      if (errCode === '23505' || /23505|unique|tekil|duplicate/i.test(detail || '')) {
+        const match = detail.match(/\(code\)=\(([^)]+)\)/) || detail.match(/key is "([^"]+)"/);
+        const codeValue = match ? match[1] : 'bu kod';
+        throw new Error(`Bu ürün kodu zaten mevcut: ${codeValue}. Excel aktarımında aynı kod varsa kayıt güncellenir.`);
+      }
+      throw new Error(error?.message || 'Ürün kaydedilemedi.');
     }
   },
 
@@ -256,7 +290,10 @@ export const productAPI = {
         autoCalculateUSD: 'auto_calculate_usd',
         salePriceUSD: 'sale_price_usd',
         purchasePriceUSD: 'purchase_price_usd',
+        salePriceEUR: 'sale_price_eur',
+        purchasePriceEUR: 'purchase_price_eur',
         unitsetId: 'unitset_id',
+        image_url_cdn: 'image_url_cdn',
       };
 
       const finalData: Record<string, any> = {};
@@ -325,10 +362,13 @@ export const productAPI = {
         isActive: 'is_active',
         hasVariants: 'has_variants',
         unitsetId: 'unitset_id',
+        image_url_cdn: 'image_url_cdn',
         customExchangeRate: 'custom_exchange_rate',
         autoCalculateUSD: 'auto_calculate_usd',
         salePriceUSD: 'sale_price_usd',
         purchasePriceUSD: 'purchase_price_usd',
+        salePriceEUR: 'sale_price_eur',
+        purchasePriceEUR: 'purchase_price_eur',
       };
 
       const fieldValues = new Map<string, any>();
@@ -516,6 +556,7 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     description_ar: dbProduct.description_ar,
     description_ku: dbProduct.description_ku,
     image_url: dbProduct.image_url,
+    image_url_cdn: dbProduct.image_url_cdn,
     taxRate: parseFloat(dbProduct.vat_rate || 0),
     categoryCode: dbProduct.category_code,
     groupCode: dbProduct.group_code,
@@ -538,8 +579,11 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     priceList4: parseFloat(dbProduct.price_list_4 || 0),
     priceList5: parseFloat(dbProduct.price_list_5 || 0),
     priceList6: parseFloat(dbProduct.price_list_6 || 0),
+    currency: dbProduct.currency || 'IQD',
     salePriceUSD: parseFloat(dbProduct.sale_price_usd || 0),
     purchasePriceUSD: parseFloat(dbProduct.purchase_price_usd || 0),
+    salePriceEUR: parseFloat(dbProduct.sale_price_eur || 0),
+    purchasePriceEUR: parseFloat(dbProduct.purchase_price_eur || 0),
     customExchangeRate: parseFloat(dbProduct.custom_exchange_rate || 0),
     autoCalculateUSD: dbProduct.auto_calculate_usd === true,
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,

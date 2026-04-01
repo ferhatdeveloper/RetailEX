@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Supplier API - Direct PostgreSQL Implementation
  * Note: Uses rex_{firm}_customers table (Logo ERP CLCARD equivalent)
  */
@@ -18,18 +18,21 @@ export const supplierAPI = {
 
       const sql = `
         WITH account_balances AS (
-          -- Customer balances from sales (debit) and cash_lines (credit)
-          SELECT 
-            customer_id as id,
-            SUM(CASE 
-              WHEN fiche_type IN ('CH_TAHSILAT', 'return_invoice') THEN -net_amount 
-              ELSE net_amount 
-            END) as calculated_balance
+          /* Müşteri bakiyesi = ekstre (getAccountStatement) ile aynı kaynaklar ve SupplierModule işaret kuralları:
+             - sales: iade hariç tüm fiş türleri (alış, satış, irsaliye, sipariş, hizmet…) +net_amount; iade -net_amount
+             - kasa: CH_ODEME ve CH_TAHSILAT her ikisi de cari alacağı artırır → -amount */
+          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
           FROM (
-            SELECT customer_id, net_amount, fiche_type FROM sales WHERE fiche_type IN ('sales_invoice', 'return_invoice')
+            SELECT customer_id,
+              CASE WHEN fiche_type = 'return_invoice' THEN -net_amount ELSE net_amount END AS line_contrib
+            FROM sales
+            WHERE customer_id IS NOT NULL
+              AND COALESCE(is_cancelled, false) = false
             UNION ALL
-            SELECT customer_id, amount as net_amount, transaction_type as fiche_type FROM cash_lines WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-          ) transactions
+            SELECT customer_id, -amount AS line_contrib
+            FROM cash_lines
+            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          ) customer_tx
           GROUP BY customer_id
         )
         SELECT 
@@ -48,20 +51,19 @@ export const supplierAPI = {
           s.is_active, s.created_at, 'supplier' as card_type 
         FROM ${suppTable} s
         LEFT JOIN (
-          -- Supplier balances: 
-          -- Borç (+): Ödeme (CH_ODEME), Alış İadeleri (return_invoice)
-          -- Alacak (-): Alışlar (purchase_invoice), Tahsilatlar/İadeler (CH_TAHSILAT)
-          SELECT 
-            customer_id as id,
-            SUM(CASE 
-              WHEN transaction_type IN ('CH_ODEME', 'return_invoice') THEN amount 
-              ELSE -amount 
-            END) as calculated_balance
+          /* Tedarikçi: ekstre ile uyum — alış/irsaliye/sipariş vb. -net; iade +net; kasa CH ikisi +amount */
+          SELECT customer_id AS id, SUM(line_contrib) AS calculated_balance
           FROM (
-            SELECT customer_id, net_amount as amount, fiche_type as transaction_type FROM sales WHERE fiche_type IN ('purchase_invoice', 'return_invoice')
+            SELECT customer_id,
+              CASE WHEN fiche_type = 'return_invoice' THEN net_amount ELSE -net_amount END AS line_contrib
+            FROM sales
+            WHERE customer_id IS NOT NULL
+              AND COALESCE(is_cancelled, false) = false
             UNION ALL
-            SELECT customer_id, amount, transaction_type FROM cash_lines WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-          ) supp_trans
+            SELECT customer_id, amount AS line_contrib
+            FROM cash_lines
+            WHERE transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+          ) supplier_tx
           GROUP BY customer_id
         ) b ON s.id = b.id
         WHERE s.is_active = true

@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { LanguageProvider } from './contexts/LanguageContext';
 import { Login } from './components/system/Login';
 import { VersionProvider } from './contexts/VersionContext';
 import { FirmaDonemProvider } from './contexts/FirmaDonemContext';
@@ -35,8 +34,10 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
       retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000, // 5 dk — aynı veri için tekrar sorgu azalır
+      gcTime: 2 * 60 * 1000, // kullanılmayan sorgu önbelleği 2 dk sonra serbest (düşük RAM)
     },
   },
 });
@@ -47,32 +48,38 @@ function App() {
   const [isPgReady, setIsPgReady] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
-  const [version, setVersion] = useState<string>('0.1.46');
+  const [version, setVersion] = useState<string>('0.1.60');
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
   const [elevationReason, setElevationReason] = useState('');
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    let raf = 0;
+    const handleResize = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setWindowWidth(window.innerWidth));
+    };
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
-  // HTML loader'ı kaldır: React logo+spinner çizildikten sonra, böylece arada boş ekran olmaz
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if ((window as any).removeLoader) (window as any).removeLoader();
-    }, 120);
-    return () => clearTimeout(t);
-  }, []);
+  // HTML loader yalnızca ana arayüz (Login/MainLayout/SetupWizard) gösterilmeden önce kaldırılır — arada siyah ekran olmasın
+  // (removeLoader startupFlow ve aşağıdaki isConfigured/isPgReady effect'inde çağrılıyor)
 
   // Unified Infrastructure & Config Check
   useEffect(() => {
     const applyConfig = (config: any) => {
       if (config?.is_configured === true) {
         setIsConfigured(true);
-        localStorage.setItem('exretail_selected_firma_id', config.erp_firm_nr);
-        localStorage.setItem('exretail_selected_donem_id', config.erp_period_nr || '01');
+        const dF = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
+        const dP = String(config.erp_period_nr ?? '').replace(/\D/g, '');
+        const fn = !dF ? '' : (dF.length <= 3 ? dF.padStart(3, '0') : dF);
+        const pn = !dP ? '01' : (dP.length <= 2 ? dP.padStart(2, '0') : dP);
+        if (fn) localStorage.setItem('exretail_selected_firma_id', fn);
+        localStorage.setItem('exretail_selected_donem_id', pn);
         localStorage.setItem('exretail_firma_donem_configured', 'true');
         localStorage.setItem('retailex_web_config', JSON.stringify(config));
       } else {
@@ -274,17 +281,18 @@ function App() {
     localStorage.removeItem('exretail_firma_donem_configured');
   }, [logout]);
 
-  // Load + Neon logo tek ekranda: logo ile spinner birlikte
+  // Yükleme ekranı: siyah yerine gradient arka plan, böylece ekran boş görünmez
   if (isConfigured === null || !isPgReady || installingPg) {
     return (
-      <div className="fixed inset-0 bg-[#0f1113] flex items-center justify-center animate-in fade-in duration-300">
+      <div className="fixed inset-0 flex items-center justify-center animate-in fade-in duration-300 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center flex flex-col items-center gap-6">
           <NeonLogo size="lg" className="animate-pulse" />
-          <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+          <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
           {installingPg && (
-            <p className="text-gray-300 text-sm animate-pulse">Veritabanı hazırlanıyor, lütfen bekleyin.</p>
+            <p className="text-slate-300 text-sm animate-pulse">Veritabanı hazırlanıyor, lütfen bekleyin.</p>
           )}
-          <div className="text-blue-300 text-xs font-mono tracking-widest uppercase">v{version}</div>
+          <p className="text-slate-400 text-sm">RetailEX başlatılıyor...</p>
+          <div className="text-blue-400/80 text-xs font-mono tracking-widest uppercase">v{version}</div>
         </div>
       </div>
     );
@@ -301,10 +309,11 @@ function App() {
           />
           {/* Global Loading / Setup Wizard Check */}
           {isConfigured === null || authLoading ? (
-            <div className="min-h-screen bg-[#0f1113] flex items-center justify-center">
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div className="text-center flex flex-col items-center gap-6">
                 <NeonLogo size="lg" className="animate-pulse" />
-                <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+                <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+                <p className="text-slate-400 text-sm">Yükleniyor...</p>
               </div>
             </div>
           ) : (windowWidth >= 1024 && !isConfigured) ? (

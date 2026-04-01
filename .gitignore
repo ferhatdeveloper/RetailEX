@@ -94,6 +94,9 @@ target/
 src-tauri/target/
 **/*.rs.bk
 
+# SumatraPDF portable (npm run sumatra:fetch — kurulum paketine dahil edilir)
+DeskApp/resources/sumatra/SumatraPDF.exe
+
 # Large binary dependencies (downloaded separately)
 src-tauri/dependencies/*.exe
 src-tauri/dependencies/*.msi

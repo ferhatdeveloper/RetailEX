@@ -7,21 +7,24 @@ import {
   Share2, Trash2, Plus, X, Search, Database, LayoutGrid, Save, MoreVertical,
   Barcode as BarcodeIcon, Tag, Calculator, Check, Download,
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
-  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, DollarSign
+  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, DollarSign, Cloud, Link
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/api/masterData';
 import { MasterDataSelectionModal, type MasterDataItem } from '../../shared/MasterDataSelectionModal';
 import { TreeSelectionModal, type TreeDataItem } from '../../shared/TreeSelectionModal';
 import { ImageSearchModal } from '../../shared/ImageSearchModal';
+import { CdnGalleryModal } from '../../shared/CdnGalleryModal';
 import { translate, type Language } from '../../../shared/i18n/translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import type { Product, ProductVariant, Invoice } from '../../../core/types';
 import { ProductLabelPrint } from './ProductLabelPrint';
 import { translateToAllLanguages } from '../../../services/translationService';
-import { compressImage, formatBytes, getBase64Size } from '../../../utils/imageUtils';
+import { compressImageToWebP, formatBytes, getBase64Size } from '../../../utils/imageUtils';
 import { imageSearchService } from '../../../services/imageSearchService';
+import { supabaseProductImageService } from '../../../services/supabaseProductImageService';
+import { supabaseMenuSyncService, type MenuItem } from '../../../services/supabaseMenuSyncService';
 
 // BARKOD VE VARYANT KOD ÜRETİCİ UTILITY FONKSIYONLARI
 const generateEAN13 = (baseCode: string, index: number): string => {
@@ -412,6 +415,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     seoDescription: '',
     metaKeywords: '',
     image_url: '',
+    image_url_cdn: '',
 
     // Durum
     isActive: true,
@@ -441,6 +445,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const [isTranslating, setIsTranslating] = useState(false);
   const translationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
+  const [uploadingToSupabase, setUploadingToSupabase] = useState(false);
+  const [downloadingCdnToLocal, setDownloadingCdnToLocal] = useState(false);
+  const [menuImageSuggestions, setMenuImageSuggestions] = useState<{ image_url: string | null; gallery_urls: string[]; menu_item: MenuItem }[]>([]);
+  const [cdnGalleryImages, setCdnGalleryImages] = useState<{ url: string; label?: string }[]>([]);
+  const [loadingMenuSuggestions, setLoadingMenuSuggestions] = useState(false);
+  const [showCdnGalleryModal, setShowCdnGalleryModal] = useState(false);
 
   // Master data states
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -693,6 +703,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           groupCode: product.groupCode || '',
           subGroupCode: product.subGroupCode || '',
           image_url: product.image_url || '',
+          image_url_cdn: (product as any).image_url_cdn || '',
           specialCode1: product.specialCode1 || '',
           specialCode2: product.specialCode2 || '',
           specialCode3: product.specialCode3 || '',
@@ -707,8 +718,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           priceList6: product.priceList6 || 0,
           salePriceUSD: product.salePriceUSD || 0,
           purchasePriceUSD: product.purchasePriceUSD || 0,
+          salePriceEUR: (product as any).salePriceEUR || 0,
+          purchasePriceEUR: (product as any).purchasePriceEUR || 0,
           customExchangeRate: product.customExchangeRate || usdExchangeRate || 0,
           autoCalculateUSD: product.autoCalculateUSD || false,
+          currency: (product as any).currency || prev.currency || 'IQD',
         }));
 
         // Restore unitset selection
@@ -937,11 +951,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     if (!file) return;
 
     try {
-      // Use the utility to compress and convert to Base64
-      // Max 800x800, 70% quality as requested for "best compressed but quality"
-      const base64 = await compressImage(file, 800, 800, 0.7);
+      // WebP formatında optimize (max 1024px, kalite 0.82)
+      const base64 = await compressImageToWebP(file, 1024, 1024, 0.82);
       handleInputChange('image_url', base64);
-      toast.success('Resim yüklendi ve optimize edildi');
+      toast.success('Resim WebP olarak optimize edildi ve yüklendi');
     } catch (error) {
       console.error('Image upload error:', error);
       toast.error('Resim işlenirken bir hata oluştu');
@@ -1418,6 +1431,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       groupCode: formData.groupCode,
       subGroupCode: formData.subGroupCode,
       image_url: formData.image_url,
+      image_url_cdn: formData.image_url_cdn,
       specialCode1: formData.specialCode1,
       specialCode2: formData.specialCode2,
       specialCode3: formData.specialCode3,
@@ -1432,8 +1446,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       priceList6: formData.priceList6,
       salePriceUSD: formData.salePriceUSD,
       purchasePriceUSD: formData.purchasePriceUSD,
+      salePriceEUR: formData.salePriceEUR,
+      purchasePriceEUR: formData.purchasePriceEUR,
       customExchangeRate: formData.customExchangeRate,
       autoCalculateUSD: formData.autoCalculateUSD,
+      currency: formData.currency,
       unitsetId: selectedUnitSetId || undefined,
     } as any;
 
@@ -1489,6 +1506,18 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       }
 
       toast.success(productId ? tm('materialCardUpdated') : tm('materialCardCreated'));
+
+      // Supabase menu_items'a yansıt (firma Supabase Firma ID tanımlıysa)
+      try {
+        const result = await supabaseMenuSyncService.upsertMenuItem(savedProduct);
+        if (result.ok) {
+          toast.success('Supabase menüye yansıtıldı.');
+        } else if (result.error && !result.error.includes('tanımlı değil')) {
+          toast.warning('Menü senkronu: ' + result.error);
+        }
+      } catch (_) {
+        // Sessizce geç; ana işlem başarılı
+      }
 
       if (closeAfter) {
         if (onSave && savedProduct) {
@@ -3465,10 +3494,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     id="product-image-upload"
                   />
 
-                  {formData.image_url ? (
+                  {(formData.image_url_cdn || formData.image_url) ? (
                     <div className="relative">
                       <img
-                        src={formData.image_url}
+                        src={formData.image_url_cdn || formData.image_url}
                         alt={tm('product')}
                         className="max-h-64 object-contain rounded-md shadow-sm"
                       />
@@ -3476,6 +3505,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         onClick={(e) => {
                           e.preventDefault();
                           handleInputChange('image_url', '');
+                          handleInputChange('image_url_cdn', '');
                         }}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"
                       >
@@ -3504,6 +3534,46 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
                 <div className="bg-white p-4 rounded-lg border border-gray-200">
                   <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Database className="w-4 h-4 text-amber-600" />
+                    CDN galerisi
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-3">Tüm menü resimleri listelenir; arama ve öner ile seçebilirsiniz.</p>
+                  <button
+                    type="button"
+                    disabled={loadingMenuSuggestions}
+                    onClick={async () => {
+                      const companyId = await supabaseMenuSyncService.getCompanyId();
+                      if (!companyId) {
+                        toast.error('Supabase Firma ID tanımlı değil. Kurulum > Firma düzenle.');
+                        return;
+                      }
+                      setLoadingMenuSuggestions(true);
+                      try {
+                        const { images: allImages } = await supabaseMenuSyncService.getAllImagesForGallery(companyId);
+                        setCdnGalleryImages(allImages);
+                        setShowCdnGalleryModal(true);
+                        if (allImages.length === 0) toast.info('Menüde resim bulunamadı.');
+                      } finally {
+                        setLoadingMenuSuggestions(false);
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-amber-100 text-amber-800 rounded-lg text-sm font-medium hover:bg-amber-200 flex items-center justify-center gap-2"
+                  >
+                    {loadingMenuSuggestions ? 'Yükleniyor...' : 'CDN galerisini aç'}
+                  </button>
+                  {cdnGalleryImages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCdnGalleryModal(true)}
+                      className="mt-3 w-full px-4 py-2 border border-amber-300 text-amber-800 rounded-lg text-sm hover:bg-amber-50"
+                    >
+                      Galeriyi tekrar aç ({cdnGalleryImages.length} resim)
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border border-gray-200 mt-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
                     <Globe className="w-4 h-4 text-blue-500" />
                     {tm('searchImageOnline')}
                   </h3>
@@ -3519,6 +3589,82 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <p className="text-xs text-gray-500 text-center mt-2">
                     {tm('unsplashHint')}
                   </p>
+                </div>
+
+                <div className="flex items-center gap-4 my-6">
+                  <div className="h-px bg-gray-300 flex-1"></div>
+                  <span className="text-xs text-gray-500 font-medium">Supabase CDN</span>
+                  <div className="h-px bg-gray-300 flex-1"></div>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4">
+                  <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <Link className="w-4 h-4 text-emerald-600" />
+                    CDN resim URL
+                  </h3>
+                  <input
+                    type="url"
+                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    placeholder="https://...supabase.co/storage/.../resim.jpg"
+                    value={formData.image_url_cdn || ''}
+                    onChange={(e) => handleInputChange('image_url_cdn', e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500">Supabase Storage veya başka bir CDN linki yapıştırabilirsiniz.</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={uploadingToSupabase || !formData.image_url || !productId}
+                      onClick={async () => {
+                        if (!formData.image_url || !productId) {
+                          toast.error('Önce resim ekleyin ve ürünü kaydedin.');
+                          return;
+                        }
+                        setUploadingToSupabase(true);
+                        try {
+                          const result = await supabaseProductImageService.uploadProductImageFromDataUrl(formData.image_url, productId);
+                          if ('url' in result) {
+                            handleInputChange('image_url_cdn', result.url);
+                            toast.success('Resim Supabase CDN\'e yüklendi.');
+                          } else {
+                            toast.error(result.error);
+                          }
+                        } finally {
+                          setUploadingToSupabase(false);
+                        }
+                      }}
+                      className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Cloud className="w-4 h-4" />
+                      {uploadingToSupabase ? 'Yükleniyor...' : "Supabase'e yükle"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingCdnToLocal || !formData.image_url_cdn}
+                      onClick={async () => {
+                        if (!formData.image_url_cdn) {
+                          toast.error('CDN URL girin veya önce Supabase\'e yükleyin.');
+                          return;
+                        }
+                        setDownloadingCdnToLocal(true);
+                        try {
+                          const base64 = await supabaseProductImageService.downloadCdnImageAsBase64(formData.image_url_cdn);
+                          if (base64) {
+                            handleInputChange('image_url', base64);
+                            toast.success('CDN resmi locale alındı.');
+                          } else {
+                            toast.error('Resim indirilemedi (CORS veya URL kontrol edin).');
+                          }
+                        } finally {
+                          setDownloadingCdnToLocal(false);
+                        }
+                      }}
+                      className="px-3 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" />
+                      {downloadingCdnToLocal ? 'İndiriliyor...' : "CDN'deki resmi locale al"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3587,6 +3733,80 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           />
         )
       }
+
+      {/* CDN Galerisi Modal — tümü listele, ara, öner */}
+      <CdnGalleryModal
+        open={showCdnGalleryModal}
+        onClose={() => setShowCdnGalleryModal(false)}
+        images={cdnGalleryImages}
+        onSelect={(url) => handleInputChange('image_url_cdn', url)}
+        loading={loadingMenuSuggestions}
+        onLoadAll={async () => {
+          const companyId = await supabaseMenuSyncService.getCompanyId();
+          if (!companyId) {
+            toast.error('Supabase Firma ID tanımlı değil. Kurulum > Firma düzenle > Supabase Firma ID alanını doldurun.');
+            return;
+          }
+          setLoadingMenuSuggestions(true);
+          try {
+            const { images: allImages, storageError } = await supabaseMenuSyncService.getAllImagesForGallery(companyId);
+            setCdnGalleryImages(allImages);
+            if (allImages.length === 0) {
+              const detail = storageError
+                ? `Storage: ${storageError}`
+                : 'Menü ve Storage\'da resim yok.';
+              toast.info(
+                `${detail} Kullanılan Firma ID: ${companyId}. Supabase Storage'da "product-images" bucket'ında bu isimde klasör olmalı.`,
+                { duration: 7000 }
+              );
+            }
+          } finally {
+            setLoadingMenuSuggestions(false);
+          }
+        }}
+        onRefresh={async () => {
+          const companyId = await supabaseMenuSyncService.getCompanyId();
+          if (!companyId) {
+            toast.error('Supabase Firma ID tanımlı değil.');
+            return;
+          }
+          setLoadingMenuSuggestions(true);
+          try {
+            const { images: allImages } = await supabaseMenuSyncService.getAllImagesForGallery(companyId);
+            setCdnGalleryImages(allImages);
+          } finally {
+            setLoadingMenuSuggestions(false);
+          }
+        }}
+        onSuggest={async () => {
+          const companyId = await supabaseMenuSyncService.getCompanyId();
+          if (!companyId) {
+            toast.error('Supabase Firma ID tanımlı değil.');
+            return;
+          }
+          setLoadingMenuSuggestions(true);
+          try {
+            const suggestions = await supabaseMenuSyncService.suggestImageForProduct(
+              companyId,
+              formData.name || '',
+              formData.code || ''
+            );
+            const flat: { url: string; label: string }[] = [];
+            suggestions.forEach((s) => {
+              const label = [s.menu_item.name_tr, s.menu_item.name_en, s.menu_item.product_code].filter(Boolean).join(' ') || '';
+              if (s.image_url) flat.push({ url: s.image_url, label });
+              (s.gallery_urls || []).forEach((url) => url && flat.push({ url, label }));
+            });
+            setCdnGalleryImages(flat);
+            if (flat.length === 0) toast.info('Bu ürün adı/kodu ile eşleşen menü resmi bulunamadı.');
+          } finally {
+            setLoadingMenuSuggestions(false);
+          }
+        }}
+        loadAllLabel="Tümünü listele"
+        suggestLabel="Öner"
+        title="CDN Galerisi"
+      />
     </div >
   );
 });

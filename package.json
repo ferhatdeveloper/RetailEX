@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.57",
+      "version": "0.1.60",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -125,10 +125,12 @@
             "deploy:preview": "vercel",
             "vercel:build": "npm run build",
             "tauri": "tauri",
+            "sumatra:fetch": "powershell -NoProfile -ExecutionPolicy Bypass -File DeskApp/scripts/fetch-sumatra-portable.ps1",
             "tauri:dev": "cd DeskApp && tauri dev",
-            "tauri:build": "cd DeskApp && tauri build",
+            "tauri:build": "npm run sumatra:fetch && cd DeskApp && tauri build",
             "electron:dev": "electron ./src/electron/main.js --dev",
             "bridge": "npx tsx src/services/pg_bridge.ts",
+            "postgrest": "postgrest config/postgrest.conf",
             "db:migrate": "node database/scripts/run-pending-migrations.mjs",
             "db:migrate:dry": "node database/scripts/run-pending-migrations.mjs --dry-run",
             "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only"

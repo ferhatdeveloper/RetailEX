@@ -94,7 +94,6 @@ interface MarketPOSProps {
   onZoomClick?: () => void;
   cartViewMode?: 'table' | 'cards';
   buttonColorStyle?: 'filled' | 'outline';
-  wsStatus?: 'connected' | 'disconnected' | 'connecting';
   rtlMode?: boolean;
   setRtlMode?: (value: boolean) => void;
   layoutOrder?: LayoutOrder;
@@ -116,7 +115,6 @@ export default function MarketPOS({
   onZoomClick,
   cartViewMode = 'cards',
   buttonColorStyle = 'filled',
-  wsStatus = 'disconnected',
   rtlMode = false,
   setRtlMode,
   layoutOrder = 'cart-numpad-quick',
@@ -746,20 +744,21 @@ export default function MarketPOS({
     const quantity = customQuantity || 1;
     const itemUnit = unit || product.unit || t.pcs;
 
-    const existingItem = cart.find(item =>
-      variant
-        ? item.product.id === product.id && item.variant?.id === variant.id
-        : item.product.id === product.id && !item.variant && (item.unit === itemUnit)
-    );
+    setCart(prev => {
+      const existingItem = prev.find(item =>
+        variant
+          ? item.product.id === product.id && item.variant?.id === variant.id
+          : item.product.id === product.id && !item.variant && (item.unit === itemUnit)
+      );
 
-    if (existingItem) {
-      setCart(cart.map(item =>
-        (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
-          ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * price * (1 - item.discount / 100) }
-          : item
-      ));
-    } else {
-      setCart([...cart, {
+      if (existingItem) {
+        return prev.map(item =>
+          (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
+            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * price * (1 - item.discount / 100) }
+            : item
+        );
+      }
+      return [...prev, {
         product,
         variant,
         quantity,
@@ -768,8 +767,8 @@ export default function MarketPOS({
         discount: 0,
         subtotal: price * quantity,
         price
-      }]);
-    }
+      }];
+    });
 
     showNotif(t.productAddedToCart.replace('{productName}', product.name), 'success');
   };
@@ -823,7 +822,7 @@ export default function MarketPOS({
     }));
   };
 
-  // Update cart item price (Admin only)
+  // Sepet satırı birim fiyatı (kart görünümünde tutara tıklayarak da düzenlenebilir)
   const updateCartItemPrice = (index: number, newPrice: number) => {
     setCart(cart.map((item, i) => {
       if (i === index) {
@@ -1014,14 +1013,8 @@ export default function MarketPOS({
       setCompletedSale(sale);
       setCompletedPaymentData(paymentData);
 
-      // Automatic Printing Logic
-      if (paymentData.autoPrint) {
-        const companyName = t.companyName || 'RetailOS';
-        printThermalReceipt(sale, companyName, { 
-          autoPrint: true, 
-          language: paymentData.language || 'tr' 
-        });
-      }
+      // Yazdırma yalnızca fiş (Receipt80mm) ekranındaki «Yazdır» ile — satışta otomatik yazdırma
+      // WebView/Tauri çift diyalog ve ikinci ekran önizlemesini önler.
 
       // Sepeti temizle
       setCart([]);
@@ -1460,7 +1453,6 @@ export default function MarketPOS({
               updateCartItemVariant={updateCartItemVariant}
               onVariantPanelOpen={(index) => setVariantSelectionCartIndex(index)}
               onApplyItemDiscount={handleApplyItemDiscountByIndex}
-              isAdmin={currentUser.role === 'admin'}
               updateCartItemPrice={updateCartItemPrice}
               updateCartItemUnit={updateCartItemUnit}
               unitSets={unitSets}
@@ -2030,6 +2022,8 @@ export default function MarketPOS({
           campaignDiscount={campaignDiscount}
           selectedCampaign={selectedCampaign}
           selectedCustomer={selectedCustomer}
+          receiptNumber={receiptNumber}
+          showAutoPrintOption={false}
           onClose={() => setShowPaymentModal(false)}
           onComplete={handlePaymentComplete}
         />

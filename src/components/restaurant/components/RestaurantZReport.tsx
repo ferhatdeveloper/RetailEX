@@ -14,6 +14,8 @@ interface ZReportData {
     complements: { amount: number; count: number };
     totalSales: number;
     netCash: number;
+    /** Mali gün içinde satılan ürün kalemleri (adet + tutar) */
+    salesByProduct?: { productName: string; quantity: number; amount: number }[];
 }
 
 interface RestaurantZReportProps {
@@ -45,6 +47,18 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         lines.push('--------------------------------');
         lines.push(padLine('TOPLAM SATIS', fmt(d.totalSales)));
         lines.push(padLine('NET NAKIT', fmt(d.netCash)));
+        lines.push('--------------------------------');
+        lines.push('  SATILAN URUNLER');
+        const byProd = d.salesByProduct || [];
+        if (byProd.length === 0) {
+            lines.push('  (kalem yok)');
+        } else {
+            byProd.forEach((row) => {
+                const label = (row.productName || '—').slice(0, 22);
+                const qty = Number(row.quantity) || 0;
+                lines.push(padLine(label + ' x' + qty, fmt(row.amount)));
+            });
+        }
         lines.push('--------------------------------');
         lines.push('  ODEME TIPLERI');
         (d.paymentsByType || []).forEach((p: any) => {
@@ -145,6 +159,22 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
 
                 {/* Detay */}
                 <div className="flex-1 overflow-auto px-6 py-4 space-y-4 text-sm">
+                    <section>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Satılan ürünler</h3>
+                        <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+                            {(data.salesByProduct || []).length === 0 ? (
+                                <li className="text-slate-400 text-sm">Bu gün için kalem yok</li>
+                            ) : (
+                                (data.salesByProduct || []).map((row, i) => (
+                                    <li key={i} className="flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0 gap-2">
+                                        <span className="text-slate-700 truncate flex-1" title={row.productName}>{row.productName}</span>
+                                        <span className="text-slate-500 shrink-0">×{Number(row.quantity).toLocaleString('tr-TR', { maximumFractionDigits: 3 })}</span>
+                                        <span className="font-semibold text-slate-900 shrink-0">{fmt(row.amount)}</span>
+                                    </li>
+                                ))
+                            )}
+                        </ul>
+                    </section>
                     <section>
                         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ödeme tipleri</h3>
                         <ul className="space-y-1.5">

@@ -49,13 +49,18 @@ class ExchangeRateService {
   async getLatestRate(currencyCode: string): Promise<ExchangeRate | null> {
     try {
       const result = await postgres.query<ExchangeRate>(`
-                SELECT * FROM public.exchange_rates 
-                WHERE currency_code = $1 
-                ORDER BY date DESC, updated_at DESC 
+                SELECT * FROM public.exchange_rates
+                WHERE UPPER(TRIM(currency_code::text)) = UPPER(TRIM($1::text))
+                ORDER BY date DESC, updated_at DESC
                 LIMIT 1
             `, [currencyCode]);
 
-      return result.rows[0] || null;
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        ...row,
+        currency_code: String(row.currency_code ?? '').trim().toUpperCase()
+      };
     } catch (error) {
       logger.error('Failed to fetch latest rate:', error);
       return null;

@@ -14,6 +14,15 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
 
+/** 001_demo_data.sql ile gelen demo ürün kodları — toplu silmede kullanılır */
+const DEMO_PRODUCT_CODES = new Set([
+  'PHONE-001', 'PHONE-002', 'PHONE-003', 'PC-001', 'PC-002',
+  'SNACK-001', 'SNACK-002', 'SNACK-003', 'DRINK-001', 'DRINK-002',
+  'BEAUTY-001', 'BEAUTY-002', 'CLOTH-001', 'CLOTH-002', 'CLOTH-003',
+  'TSHIRT-VAR', 'PHONE-VAR',
+  'MENU-001', 'MENU-002', 'MENU-003', 'MENU-004', 'MENU-005', 'MENU-006', 'MENU-007'
+]);
+
 interface ProductManagementProps {
   products: Product[];
   setProducts: (products: Product[]) => void;
@@ -116,6 +125,11 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       return matchesSearch && matchesCategory && matchesService;
     });
   }, [displayProducts, searchQuery, categoryFilter]);
+
+  /** Listede bulunan demo ürünler — sağ tık menüsünde "Demo ürünleri toplu sil" sadece bunlar varken gösterilir */
+  const demoProductsInList = useMemo(() => {
+    return displayProducts.filter(p => p.code && DEMO_PRODUCT_CODES.has(String(p.code).trim()));
+  }, [displayProducts]);
 
   const openProductForm = (productId?: string) => {
     setEditingProductId(productId);
@@ -423,16 +437,58 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               label: t.deleteAction,
               icon: Trash2,
               variant: 'danger',
-              onClick: () => {
+              divider: demoProductsInList.length > 0,
+              onClick: async () => {
+                const product = contextMenu.product;
                 const message = t.confirmItemDelete
-                  ? t.confirmItemDelete.replace('{item}', contextMenu.product.name)
-                  : `${contextMenu.product.name} ${t.deleteAction}?`;
-
-                if (window.confirm(message)) {
-                  deleteProduct(contextMenu.product.id);
+                  ? t.confirmItemDelete.replace('{item}', product.name)
+                  : `${product.name} silinsin mi? Emin misiniz?`;
+                if (!window.confirm(message)) return;
+                setContextMenu(null);
+                try {
+                  await deleteProduct(product.id);
+                  toast.success('Ürün silindi.');
+                } catch (err: any) {
+                  toast.error(err?.message || 'Ürün silinemedi.');
                 }
               }
-            }
+            },
+            ...(demoProductsInList.length > 0
+              ? [
+                  {
+                    id: 'delete-demo',
+                    label: `Demo ürünleri toplu sil (${demoProductsInList.length} adet)`,
+                    icon: Trash2,
+                    variant: 'danger' as const,
+                    onClick: () => {
+                      const message = `${demoProductsInList.length} demo ürünü silinecek. Emin misiniz?`;
+                      if (!window.confirm(message)) {
+                        setContextMenu(null);
+                        return;
+                      }
+                      (async () => {
+                        setContextMenu(null);
+                        let ok = 0;
+                        let fail = 0;
+                        for (const p of demoProductsInList) {
+                          try {
+                            await deleteProduct(p.id);
+                            ok++;
+                          } catch {
+                            fail++;
+                          }
+                        }
+                        await loadProducts(true);
+                        if (fail > 0) {
+                          toast.success(`${ok} demo ürün silindi. ${fail} ürün silinemedi.`);
+                        } else {
+                          toast.success(`${ok} demo ürün silindi.`);
+                        }
+                      })();
+                    }
+                  }
+                ]
+              : [])
           ]}
         />
       )}

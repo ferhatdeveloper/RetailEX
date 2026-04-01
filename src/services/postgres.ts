@@ -1,10 +1,12 @@
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
 import { logger } from './loggingService';
+import { setGlobalCurrency } from '../utils/currency';
 
 const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname === 'retailex.app';
 const BRIDGE_URL = getBridgeUrl();
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
+export type ConnectionProvider = 'db' | 'rest_api';
 
 // Remote PostgreSQL (Global/Main Server)
 export let REMOTE_CONFIG = {
@@ -29,6 +31,10 @@ export let LOCAL_CONFIG = {
 export let DB_SETTINGS = {
   activeMode: 'hybrid' as ConnectionMode,
   systemType: 'retail' as 'retail' | 'market' | 'wms',
+  // Remote tarafı DB mi yoksa PostgREST mü kullanacak?
+  connectionProvider: 'db' as ConnectionProvider,
+  // PostgREST base URL (örn: http://172.20.0.10:3002)
+  remoteRestUrl: '' as string,
   lastSync: null as string | null,
 };
 
@@ -38,6 +44,22 @@ export let ERP_SETTINGS = {
   periodNr: '01',
   selected_cash_registers: [] as string[]
 };
+
+/** Kurulum / config.db varsayılan para (firma yokken ve başlangıç) */
+export let APP_DEFAULT_CURRENCY = 'IQD';
+
+export function getAppDefaultCurrency(): string {
+  const c = (APP_DEFAULT_CURRENCY || 'IQD').trim().toUpperCase();
+  return c.length >= 3 ? c.slice(0, 10) : 'IQD';
+}
+
+function applyDefaultCurrencyFromConfig(config: any): void {
+  const raw = config?.default_currency ?? config?.base_currency;
+  if (raw != null && String(raw).trim() !== '') {
+    APP_DEFAULT_CURRENCY = String(raw).trim().toUpperCase().slice(0, 10);
+  }
+  setGlobalCurrency(getAppDefaultCurrency(), getAppDefaultCurrency());
+}
 
 /**
  * Initialize all configurations from SQLite backend.
@@ -55,6 +77,9 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         const config = JSON.parse(savedConfig);
         // We still keep activeMode as 'online' for web, ignoring saved db_mode
         DB_SETTINGS.activeMode = 'online'; 
+        DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
+        DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+
         LOCAL_CONFIG.host = config.local_host || '127.0.0.1';
         LOCAL_CONFIG.port = config.local_port || 5432;
         LOCAL_CONFIG.database = config.local_db || 'retailex_local';
@@ -63,12 +88,17 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
         LOCAL_CONFIG.isConfigured = config.is_configured === true;
 
         REMOTE_CONFIG.host = config.remote_host || '127.0.0.1';
+        REMOTE_CONFIG.port = config.remote_port || 5432;
         REMOTE_CONFIG.user = config.pg_remote_user || 'postgres';
         REMOTE_CONFIG.password = config.pg_remote_pass || 'Yq7xwQpt6c';
-        REMOTE_CONFIG.database = 'retailex_local'; // Forced as requested
+        REMOTE_CONFIG.database = config.remote_db || 'retailex_local';
 
-        ERP_SETTINGS.firmNr = config.erp_firm_nr || '001';
-        ERP_SETTINGS.periodNr = config.erp_period_nr || '01';
+        const dFw = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
+        const dPw = String(config.erp_period_nr ?? '').replace(/\D/g, '');
+        ERP_SETTINGS.firmNr = !dFw ? '001' : (dFw.length <= 3 ? dFw.padStart(3, '0') : dFw);
+        ERP_SETTINGS.periodNr = !dPw ? '01' : (dPw.length <= 2 ? dPw.padStart(2, '0') : dPw);
+
+        applyDefaultCurrencyFromConfig(config);
         
         console.log('🌐 Web Config Loaded from localStorage');
       } catch (e) {
@@ -77,6 +107,8 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
     } else {
       // Default Online Mode for Web when no config exists
       DB_SETTINGS.activeMode = 'online';
+      DB_SETTINGS.connectionProvider = 'db';
+      DB_SETTINGS.remoteRestUrl = '';
       console.log('🌐 Web Mode: Defaulting to Online (127.0.0.1)');
     }
     return;
@@ -88,10 +120,14 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       // Load System Settings
       DB_SETTINGS.activeMode = config.db_mode as ConnectionMode;
       DB_SETTINGS.systemType = config.system_type || 'retail';
+      DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
+      DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
 
-      // Load ERP Settings
-      ERP_SETTINGS.firmNr = config.erp_firm_nr || '001';
-      ERP_SETTINGS.periodNr = config.erp_period_nr || '01';
+      // Load ERP Settings — firma/dönem biçimi Logo/SQLite ile aynı (2 ↔ 002; cari tablo rex_{nr}_customers)
+      const dF = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
+      const dP = String(config.erp_period_nr ?? '').replace(/\D/g, '');
+      ERP_SETTINGS.firmNr = !dF ? '001' : (dF.length <= 3 ? dF.padStart(3, '0') : dF);
+      ERP_SETTINGS.periodNr = !dP ? '01' : (dP.length <= 2 ? dP.padStart(2, '0') : dP);
       ERP_SETTINGS.selected_cash_registers = config.selected_cash_registers || [];
 
       console.log('📦 SQLite Config Loaded:', JSON.stringify(config, null, 2));
@@ -112,18 +148,30 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
 
       // Load Remote DB Settings
       if (config.remote_db && typeof config.remote_db === 'string') {
-          REMOTE_CONFIG.host = config.remote_db.split(':')[0] || '26.154.3.237';
+          // Format: host:port/dbname
+          const host = config.remote_db.split(':')[0] || '26.154.3.237';
+          REMOTE_CONFIG.host = host;
+          if (config.remote_db.includes(':')) {
+            const portPart = config.remote_db.split(':')[1] || '';
+            const portStr = portPart.split('/')[0];
+            if (portStr) REMOTE_CONFIG.port = parseInt(portStr, 10) || 5432;
+            const dbPart = config.remote_db.split('/').slice(1).join('/');
+            if (dbPart) REMOTE_CONFIG.database = dbPart;
+          }
       }
       if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
       if (config.pg_remote_pass) REMOTE_CONFIG.password = config.pg_remote_pass;
 
       LOCAL_CONFIG.isConfigured = config.is_configured === true;
 
+      applyDefaultCurrencyFromConfig(config);
+
       console.log('✅ Configurations Loaded from SQLite:', {
         mode: DB_SETTINGS.activeMode,
         firm: ERP_SETTINGS.firmNr,
         local_db: LOCAL_CONFIG.host,
-        local_user: LOCAL_CONFIG.user
+        local_user: LOCAL_CONFIG.user,
+        default_currency: getAppDefaultCurrency(),
       });
     }
   } catch (err) {
@@ -150,8 +198,11 @@ export async function updateConfigs(updates: {
     const webConfig = {
       db_mode: DB_SETTINGS.activeMode,
       system_type: DB_SETTINGS.systemType,
+      connection_provider: DB_SETTINGS.connectionProvider,
+      remote_rest_url: DB_SETTINGS.remoteRestUrl,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
+      default_currency: getAppDefaultCurrency(),
       is_configured: LOCAL_CONFIG.isConfigured,
       local_host: LOCAL_CONFIG.host,
       local_port: LOCAL_CONFIG.port,
@@ -159,8 +210,10 @@ export async function updateConfigs(updates: {
       pg_local_user: LOCAL_CONFIG.user,
       pg_local_pass: LOCAL_CONFIG.password,
       remote_host: REMOTE_CONFIG.host,
+      remote_port: REMOTE_CONFIG.port,
       pg_remote_user: REMOTE_CONFIG.user,
-      pg_remote_pass: REMOTE_CONFIG.password
+      pg_remote_pass: REMOTE_CONFIG.password,
+      remote_db: REMOTE_CONFIG.database
     };
     localStorage.setItem('exretail_pg_config', JSON.stringify(webConfig));
     console.log('🌐 Web Config Saved to localStorage');
@@ -170,16 +223,31 @@ export async function updateConfigs(updates: {
   // Sync back to SQLite
   try {
     const currentConfig: any = await safeInvoke('get_app_config');
+    const localDbStr = `${LOCAL_CONFIG.host}:${LOCAL_CONFIG.port}/${LOCAL_CONFIG.database}`;
+    const remoteDbStr = `${REMOTE_CONFIG.host}:${REMOTE_CONFIG.port}/${REMOTE_CONFIG.database}`;
     const newConfig = {
       ...currentConfig,
       db_mode: DB_SETTINGS.activeMode,
       system_type: DB_SETTINGS.systemType,
+      connection_provider: DB_SETTINGS.connectionProvider,
+      remote_rest_url: DB_SETTINGS.remoteRestUrl,
+      local_db: localDbStr,
+      remote_db: remoteDbStr,
+      pg_local_user: LOCAL_CONFIG.user,
+      pg_local_pass: LOCAL_CONFIG.password,
+      pg_remote_user: REMOTE_CONFIG.user,
+      pg_remote_pass: REMOTE_CONFIG.password,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       selected_cash_registers: ERP_SETTINGS.selected_cash_registers,
       is_configured: LOCAL_CONFIG.isConfigured
     };
-    await safeInvoke('save_app_config', { config: newConfig });
+    await safeInvoke('save_app_config', {
+      config: {
+        ...newConfig,
+        default_currency: getAppDefaultCurrency(),
+      },
+    });
   } catch (err) {
     console.error('Failed to sync config to SQLite:', err);
   }
@@ -265,6 +333,74 @@ export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_C
   }
 }
 
+export type PostgrestStatus = {
+  connected: boolean;
+  baseUrl: string;
+  error?: string;
+  httpStatus?: number;
+};
+
+function normalizeBaseUrl(input: string): string {
+  const raw = (input || '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+}
+
+/**
+ * PostgREST için basit erişilebilirlik testi.
+ * Not: PostgREST root yolunda 404 dönebilir; bu durumda da bağlantı “var” sayıyoruz.
+ */
+export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus> {
+  const url = normalizeBaseUrl(baseUrl);
+  if (!url) return { connected: false, baseUrl, error: 'PostgREST URL boş' };
+  try {
+    // root açık değilse 404 da dönebilir; fetch'in hata vermemesi önemli.
+    const res = await fetch(`${url}/`, { method: 'GET', headers: { Accept: 'application/json' } });
+    return { connected: true, baseUrl: url, httpStatus: res.status };
+  } catch (e: any) {
+    return { connected: false, baseUrl: url, error: e?.message || String(e) };
+  }
+}
+
+/**
+ * Web / çok istemci: `public.system_settings` (tek satır) üzerinden açılış varsayılanlarını PG’den alır,
+ * çalışma zamanına ve (web’de) localStorage’a yazar. PostgREST-only modda atlanır.
+ */
+async function syncRuntimeSettingsFromPostgres(): Promise<void> {
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return;
+
+  const pg = PostgresConnection.getInstance();
+  let rows: { default_currency?: string; primary_firm_nr?: string | null; primary_period_nr?: string | null }[];
+  try {
+    const res = await pg.query(
+      `SELECT default_currency, primary_firm_nr, primary_period_nr FROM public.system_settings WHERE id = 1`,
+      []
+    );
+    rows = res.rows as typeof rows;
+  } catch (e: any) {
+    const msg = String(e?.message || e || '');
+    if (e?.code === '42P01' || msg.includes('system_settings') || msg.includes('does not exist')) {
+      console.warn('[syncRuntimeSettingsFromPostgres] system_settings tablosu yok; migration 010 çalıştırın.');
+      return;
+    }
+    throw e;
+  }
+
+  const row = rows[0];
+  if (!row) return;
+
+  const cur = String(row.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD';
+  APP_DEFAULT_CURRENCY = cur;
+  setGlobalCurrency(getAppDefaultCurrency(), getAppDefaultCurrency());
+
+  const fn = String(row.primary_firm_nr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+  const pn = String(row.primary_period_nr || ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+  ERP_SETTINGS = { ...ERP_SETTINGS, firmNr: fn, periodNr: pn };
+
+  await updateConfigs({ erp: { firmNr: fn, periodNr: pn } });
+  console.log('[syncRuntimeSettingsFromPostgres] PG → runtime:', { default_currency: cur, firmNr: fn, periodNr: pn });
+}
+
 export class PostgresConnection {
   private static instance: PostgresConnection;
   private status: PostgresStatus = {
@@ -288,9 +424,33 @@ export class PostgresConnection {
     // Ensure we have latest config before connecting
     await initializeFromSQLite();
 
+    // Rest API modunda (PostgREST) DB üzerinden SQL bağlantısı kurmaya çalışma.
+    // Şimdilik bu mod, PostgREST endpoint'inin erişilebilirliğini doğrular.
+    if (DB_SETTINGS.connectionProvider === 'rest_api' && DB_SETTINGS.activeMode !== 'offline') {
+      const pr = await testPostgrestUrl(DB_SETTINGS.remoteRestUrl);
+      this.status = {
+        connected: pr.connected,
+        host: pr.baseUrl,
+        port: 0,
+        database: 'postgrest',
+        mode: DB_SETTINGS.activeMode,
+        error: pr.error
+      };
+      console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to PostgREST: ${pr.baseUrl}`);
+      return this.status;
+    }
+
     const targetConfig = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
     this.status = await testDbConfig(targetConfig);
     console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to ${this.status.host}`);
+
+    if (this.status.connected && DB_SETTINGS.connectionProvider === 'db') {
+      try {
+        await syncRuntimeSettingsFromPostgres();
+      } catch (e: any) {
+        console.warn('[connect] syncRuntimeSettingsFromPostgres:', e?.message || String(e));
+      }
+    }
 
     return this.status;
   }
@@ -302,10 +462,15 @@ export class PostgresConnection {
     'categories', 'brands', 'units', 'tax_rates', 'special_codes',
     'unitsets', 'unitsetl',
     'campaigns', 'product_variants', 'product_barcodes', 'product_unit_conversions', 'lots', 'bank_registers', 'expense_cards',
+    'services',
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
     // Beauty card tables (beauty schema)
-    'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices', 'beauty_leads'
+    'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices', 'beauty_leads',
+    'beauty_satisfaction_surveys', 'beauty_satisfaction_questions',
+    'beauty_branches', 'beauty_rooms', 'beauty_portal_settings', 'beauty_corporate_accounts',
+    'beauty_consent_templates', 'beauty_memberships', 'beauty_service_consumables', 'beauty_customer_health',
+    'beauty_product_batches', 'beauty_marketing_campaigns', 'beauty_integration_settings'
   ];
   private static MOVEMENT_TABLES = [
     'sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines',
@@ -315,7 +480,10 @@ export class PostgresConnection {
     // Beauty movement tables (beauty schema)
     'beauty_appointments', 'beauty_sessions', 'beauty_session_logs',
     'beauty_package_purchases', 'beauty_package_sales', 'beauty_device_usage',
-    'beauty_device_alerts', 'beauty_customer_feedback', 'beauty_sales', 'beauty_sale_items'
+    'beauty_device_alerts', 'beauty_customer_feedback', 'beauty_sales', 'beauty_sale_items',
+    'beauty_waitlist', 'beauty_booking_requests', 'beauty_notification_queue', 'beauty_consent_submissions',
+    'beauty_clinical_notes', 'beauty_patient_photos', 'beauty_membership_subscriptions', 'beauty_audit_log',
+    'beauty_consumable_usage_log'
   ];
 
   // Tables that live in a dedicated schema (not public)
@@ -325,8 +493,16 @@ export class PostgresConnection {
     'beauty_specialists': 'beauty', 'beauty_services': 'beauty', 'beauty_packages': 'beauty', 'beauty_devices': 'beauty',
     'beauty_appointments': 'beauty', 'beauty_sessions': 'beauty', 'beauty_session_logs': 'beauty',
     'beauty_package_purchases': 'beauty', 'beauty_package_sales': 'beauty', 'beauty_device_usage': 'beauty',
-    'beauty_leads': 'beauty', 'beauty_device_alerts': 'beauty', 'beauty_customer_feedback': 'beauty',
+    'beauty_leads': 'beauty', 'beauty_satisfaction_surveys': 'beauty', 'beauty_satisfaction_questions': 'beauty',
+    'beauty_device_alerts': 'beauty', 'beauty_customer_feedback': 'beauty',
     'beauty_sales': 'beauty', 'beauty_sale_items': 'beauty',
+    'beauty_branches': 'beauty', 'beauty_rooms': 'beauty', 'beauty_portal_settings': 'beauty',
+    'beauty_corporate_accounts': 'beauty', 'beauty_consent_templates': 'beauty', 'beauty_memberships': 'beauty',
+    'beauty_service_consumables': 'beauty', 'beauty_customer_health': 'beauty', 'beauty_product_batches': 'beauty',
+    'beauty_marketing_campaigns': 'beauty', 'beauty_integration_settings': 'beauty',
+    'beauty_waitlist': 'beauty', 'beauty_booking_requests': 'beauty', 'beauty_notification_queue': 'beauty',
+    'beauty_consent_submissions': 'beauty', 'beauty_clinical_notes': 'beauty', 'beauty_patient_photos': 'beauty',
+    'beauty_membership_subscriptions': 'beauty', 'beauty_audit_log': 'beauty', 'beauty_consumable_usage_log': 'beauty',
     'products': 'public', 'customers': 'public', 'suppliers': 'public', 'categories': 'public'
   };
 
@@ -334,7 +510,8 @@ export class PostgresConnection {
    *  e.g. getCardTableName('rest_tables', 'rest') → 'rest.rex_001_rest_tables'
    */
   getCardTableName(table: string, schema = 'public'): string {
-    const firm = ERP_SETTINGS.firmNr || '001';
+    const firmRaw = String(ERP_SETTINGS.firmNr || '001').trim();
+    const firm = firmRaw.padStart(3, '0').slice(0, 10);
     const prefixed = `rex_${firm}_${table}`;
     return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
   }
@@ -343,13 +520,18 @@ export class PostgresConnection {
    *  e.g. getMovementTableName('beauty_appointments', 'beauty') → 'beauty.rex_001_01_beauty_appointments'
    */
   getMovementTableName(table: string, schema = 'public'): string {
-    const firm = ERP_SETTINGS.firmNr || '001';
-    const period = ERP_SETTINGS.periodNr || '01';
+    const firmRaw = String(ERP_SETTINGS.firmNr || '001').trim();
+    const firm = firmRaw.padStart(3, '0').slice(0, 10);
+    const periodRaw = String(ERP_SETTINGS.periodNr || '01').trim();
+    const period = periodRaw.padStart(2, '0').slice(0, 10);
     const prefixed = `rex_${firm}_${period}_${table}`;
     return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
   }
 
   async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string }): Promise<{ rows: T[]; rowCount: number }> {
+    // rest_api modunda bile bu method çağrılabilir (legacy akışlar).
+    // Şimdilik burada hard-stop yapmıyoruz; SQL tarafı erişilebilir değilse hata dönecektir.
+
     // 1. Resolve Dynamic Table Names (Query Rewriting)
     let resolvedSql = sql;
 
@@ -502,10 +684,10 @@ export class PostgresConnection {
   }
 
   /**
-   * Legacy wrapper for database initialization
+   * Şema migrasyonları (demo verisi değil). Örnek veri yalnızca açıkça `runMigrations(true)` veya Demo Veri ekranından istenir.
    */
   async initializeDatabase(): Promise<{ success: boolean; message: string }> {
-    return this.runMigrations(true);
+    return this.runMigrations(false);
   }
 
   /**

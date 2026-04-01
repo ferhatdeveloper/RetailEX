@@ -33,10 +33,14 @@ import {
     REMOTE_CONFIG,
     DB_SETTINGS,
     testDbConfig,
-    ConnectionMode
+    ConnectionMode,
+    ConnectionProvider,
+    testPostgrestUrl
 } from '../../services/postgres';
+import { organizationAPI } from '../../services/api/organization';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
+import { IS_TAURI } from '../../utils/env';
 
 type TabType = 'database' | 'users' | 'firms';
 
@@ -61,8 +65,10 @@ interface Firm {
 export function DatabaseSettings() {
     const [activeTab, setActiveTab] = useState<TabType>('database');
     const [activeMode, setActiveMode] = useState<ConnectionMode>(DB_SETTINGS.activeMode);
+    const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>(DB_SETTINGS.connectionProvider);
     const [local, setLocal] = useState(LOCAL_CONFIG);
     const [remote, setRemote] = useState(REMOTE_CONFIG);
+    const [remoteRestUrl, setRemoteRestUrl] = useState<string>(DB_SETTINGS.remoteRestUrl);
     const [isTesting, setIsTesting] = useState(false);
     const [isInitializing, setIsInitializing] = useState(false);
     const [testResults, setTestResults] = useState<{
@@ -91,6 +97,14 @@ export function DatabaseSettings() {
     const [firmaAdi, setFirmaAdi] = useState('');
     const [vergiNo, setVergiNo] = useState('');
     const [loadingFirm, setLoadingFirm] = useState(false);
+
+    /** PostgreSQL `system_settings` — web açılışında tek doğruluk kaynağı */
+    const [sysSettings, setSysSettings] = useState({
+        default_currency: 'IQD',
+        primary_firm_nr: '001',
+        primary_period_nr: '01'
+    });
+    const [loadingSys, setLoadingSys] = useState(false);
 
     const fetchUsers = async () => {
         setLoadingData(true);
@@ -132,11 +146,35 @@ export function DatabaseSettings() {
         if (activeTab === 'firms') fetchFirms();
     }, [activeTab]);
 
+    React.useEffect(() => {
+        if (activeTab !== 'database' || connectionProvider !== 'db') return;
+        let cancelled = false;
+        (async () => {
+            setLoadingSys(true);
+            try {
+                const row = await organizationAPI.getSystemSettings();
+                if (cancelled || !row) return;
+                setSysSettings({
+                    default_currency: row.default_currency,
+                    primary_firm_nr: row.primary_firm_nr || '001',
+                    primary_period_nr: row.primary_period_nr || '01'
+                });
+            } catch {
+                /* tablo yok veya bağlantı yok */
+            } finally {
+                if (!cancelled) setLoadingSys(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [activeTab, connectionProvider]);
+
     const handleSave = () => {
         updateConfigs({
             local,
             remote,
-            settings: { activeMode }
+            settings: { activeMode, connectionProvider, remoteRestUrl }
         });
         toast.success('Veritabanı ayarları kaydedildi ve uygulandı.');
         postgres.connect();
@@ -145,7 +183,9 @@ export function DatabaseSettings() {
     const handleTest = async () => {
         setIsTesting(true);
         const localRes = await testDbConfig(local);
-        const remoteRes = await testDbConfig(remote);
+        const remoteRes = connectionProvider === 'rest_api'
+            ? await testPostgrestUrl(remoteRestUrl)
+            : await testDbConfig(remote);
 
         setTestResults({
             local: localRes.connected,
@@ -163,8 +203,34 @@ export function DatabaseSettings() {
         }
     };
 
+    const handleSaveSystemSettings = async () => {
+        try {
+            setLoadingSys(true);
+            await organizationAPI.saveSystemSettings({
+                default_currency: sysSettings.default_currency,
+                primary_firm_nr: sysSettings.primary_firm_nr.trim() || null,
+                primary_period_nr: sysSettings.primary_period_nr.trim() || null
+            });
+            await postgres.connect();
+            toast.success('Sunucu varsayılanları PostgreSQL’e kaydedildi ve oturuma uygulandı.');
+        } catch (e: any) {
+            toast.error('Kayıt başarısız: ' + (e?.message || String(e)));
+        } finally {
+            setLoadingSys(false);
+        }
+    };
+
     const handleInitialize = async () => {
-        const confirmMsg = 'Veritabanı tabloları sıfırdan oluşturulacak. Devam edilsin mi?';
+        if (!IS_TAURI) {
+            toast.info(
+                'Tarayıcı (web) ortamında şema güncellemesi bu ekrandan çalışmaz. Yönetici, PostgreSQL’e erişebildiği makinede proje kökünde `npm run db:migrate` çalıştırmalıdır (`npm run db:migrate:dry` ile önce listeyi görebilir).',
+                { duration: 14000 }
+            );
+            return;
+        }
+
+        const confirmMsg =
+            'Henüz uygulanmamış migration SQL dosyaları veritabanına işlenecek. Var olan tablolar silinmez; çoğunlukla yeni kolon/indeks eklenir. Devam edilsin mi?';
 
         if (!window.confirm(confirmMsg)) return;
 
@@ -419,6 +485,100 @@ export function DatabaseSettings() {
                         />
                     </div>
 
+                    {connectionProvider === 'db' && (
+                        <div
+                            className={`rounded-3xl p-8 shadow-2xl backdrop-blur-xl border-2 space-y-6 ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'
+                                }`}
+                        >
+                            <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4" style={{
+                                borderColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'
+                            }}>
+                                <div>
+                                    <h2 className={`text-lg font-black tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        Sunucu varsayılanları (PostgreSQL)
+                                    </h2>
+                                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        Web ve diğer istemciler bağlantı kurulunca bu değerler yüklenir; tarayıcı önbelleği yerine veritabanı tek kaynak olur.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveSystemSettings}
+                                    disabled={loadingSys}
+                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50 border-2 ${darkMode
+                                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30'
+                                        : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                                        }`}
+                                >
+                                    {loadingSys ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    Kaydet ve oturuma uygula
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        Varsayılan para birimi
+                                    </label>
+                                    <select
+                                        value={sysSettings.default_currency}
+                                        onChange={e => setSysSettings(s => ({ ...s, default_currency: e.target.value }))}
+                                        disabled={loadingSys}
+                                        className={`w-full px-4 py-3 rounded-xl text-sm border-2 ${darkMode
+                                            ? 'bg-white/5 border-white/10 text-white'
+                                            : 'bg-gray-50 border-gray-200 text-gray-900'
+                                            }`}
+                                    >
+                                        <option value="IQD">Irak Dinarı (IQD)</option>
+                                        <option value="TRY">Türk Lirası (TRY)</option>
+                                        <option value="USD">Amerikan Doları (USD)</option>
+                                        <option value="EUR">Euro (EUR)</option>
+                                        <option value="GBP">İngiliz Sterlini (GBP)</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        Birincil firma no
+                                    </label>
+                                    <input
+                                        value={sysSettings.primary_firm_nr}
+                                        onChange={e =>
+                                            setSysSettings(s => ({
+                                                ...s,
+                                                primary_firm_nr: e.target.value.replace(/\D/g, '').slice(0, 6)
+                                            }))
+                                        }
+                                        placeholder="001"
+                                        disabled={loadingSys}
+                                        className={`w-full px-4 py-3 rounded-xl font-mono text-sm border-2 ${darkMode
+                                            ? 'bg-white/5 border-white/10 text-white'
+                                            : 'bg-gray-50 border-gray-200 text-gray-900'
+                                            }`}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        Birincil dönem no
+                                    </label>
+                                    <input
+                                        value={sysSettings.primary_period_nr}
+                                        onChange={e =>
+                                            setSysSettings(s => ({
+                                                ...s,
+                                                primary_period_nr: e.target.value.replace(/\D/g, '').slice(0, 4)
+                                            }))
+                                        }
+                                        placeholder="01"
+                                        disabled={loadingSys}
+                                        className={`w-full px-4 py-3 rounded-xl font-mono text-sm border-2 ${darkMode
+                                            ? 'bg-white/5 border-white/10 text-white'
+                                            : 'bg-gray-50 border-gray-200 text-gray-900'
+                                            }`}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Database Configuration Cards */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Remote Settings */}
@@ -465,79 +625,112 @@ export function DatabaseSettings() {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-5">
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                        }`}>
-                                        Sunucu (Host)
-                                    </label>
-                                    <input
-                                        value={remote.host}
-                                        onChange={e => setRemote({ ...remote, host: e.target.value })}
-                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
-                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
-                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
-                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                        }`}>
-                                        Port
-                                    </label>
-                                    <input
-                                        value={remote.port}
-                                        onChange={e => setRemote({ ...remote, port: parseInt(e.target.value) })}
-                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
-                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
-                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
-                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
-                                    />
-                                </div>
-                                <div className="col-span-2 space-y-2">
-                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                        }`}>
-                                        Veritabanı
-                                    </label>
-                                    <input
-                                        value={remote.database}
-                                        onChange={e => setRemote({ ...remote, database: e.target.value })}
-                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
-                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
-                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
-                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                        }`}>
-                                        Kullanıcı
-                                    </label>
-                                    <input
-                                        value={remote.user}
-                                        onChange={e => setRemote({ ...remote, user: e.target.value })}
-                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
-                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
-                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
-                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'
-                                        }`}>
-                                        Şifre
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={remote.password}
-                                        onChange={e => setRemote({ ...remote, password: e.target.value })}
-                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
-                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
-                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
-                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
-                                    />
-                                </div>
+                            {/* Remote provider selection */}
+                            <div className="space-y-2">
+                                <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    Bağlantı Sağlayıcı
+                                </label>
+                                <select
+                                    value={connectionProvider}
+                                    onChange={(e) => setConnectionProvider(e.target.value as ConnectionProvider)}
+                                    className={`w-full px-5 py-3.5 rounded-xl text-sm transition-all border-2 ${darkMode
+                                        ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                        } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                >
+                                    <option value="db">DB Connection</option>
+                                    <option value="rest_api">Rest API (PostgREST)</option>
+                                </select>
                             </div>
+
+                            {connectionProvider === 'rest_api' ? (
+                                <div className="space-y-2">
+                                    <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        PostgREST API URL
+                                    </label>
+                                    <input
+                                        value={remoteRestUrl}
+                                        onChange={(e) => setRemoteRestUrl(e.target.value)}
+                                        placeholder="http://IP:3002"
+                                        className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                            ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                            : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                            } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                    />
+                                    <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                        VPN olmadan doğrudan IP üzerinden PostgREST'e bağlanmak için kullanılır.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-5">
+                                    <div className="space-y-2">
+                                        <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            Sunucu (Host)
+                                        </label>
+                                        <input
+                                            value={remote.host}
+                                            onChange={e => setRemote({ ...remote, host: e.target.value })}
+                                            className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                                ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                                } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            Port
+                                        </label>
+                                        <input
+                                            value={remote.port}
+                                            onChange={e => setRemote({ ...remote, port: parseInt(e.target.value) })}
+                                            className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                                ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                                } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                        />
+                                    </div>
+                                    <div className="col-span-2 space-y-2">
+                                        <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            Veritabanı
+                                        </label>
+                                        <input
+                                            value={remote.database}
+                                            onChange={e => setRemote({ ...remote, database: e.target.value })}
+                                            className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                                ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                                } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            Kullanıcı
+                                        </label>
+                                        <input
+                                            value={remote.user}
+                                            onChange={e => setRemote({ ...remote, user: e.target.value })}
+                                            className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                                ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                                } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                            Şifre
+                                        </label>
+                                        <input
+                                            type="password"
+                                            value={remote.password}
+                                            onChange={e => setRemote({ ...remote, password: e.target.value })}
+                                            className={`w-full px-5 py-3.5 rounded-xl font-mono text-sm transition-all border-2 ${darkMode
+                                                ? 'bg-white/5 border-white/10 text-white focus:border-blue-500 focus:bg-white/10'
+                                                : 'bg-gray-50 border-gray-200 text-gray-900 focus:border-blue-500 focus:bg-white'
+                                                } focus:ring-4 focus:ring-blue-500/20 focus:outline-none`}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Local Settings */}
@@ -681,29 +874,44 @@ export function DatabaseSettings() {
                                 </div>
 
                                 <p className="text-white/80 text-base leading-relaxed max-w-2xl">
-                                    Ver itabanı şemasını sıfırdan kurmak veya tabloları güncellemek için sistemi başlatma aracını kullanın.
-                                    Bu işlem <code className="px-2 py-1 bg-black/30 rounded font-mono text-sm">schema.sql</code> dosyasındaki tanımları aktif veritabanına uygular.
+                                    {IS_TAURI ? (
+                                        <>
+                                            Masaüstü uygulaması, paketlenmiş <code className="px-2 py-1 bg-black/30 rounded font-mono text-sm">database/migrations</code> dosyalarını okur;
+                                            daha önce işlenmemiş olanları PostgreSQL’e uygular (Node veya terminal gerekmez).
+                                        </>
+                                    ) : (
+                                        <>
+                                            Web istemcisi migration çalıştıramaz. Şema güncellemesi sunucuda{' '}
+                                            <code className="px-2 py-1 bg-black/30 rounded font-mono text-sm">npm run db:migrate</code> ile yapılır.
+                                        </>
+                                    )}
                                 </p>
 
                                 <div className="flex flex-wrap items-center gap-6 justify-center lg:justify-start">
-                                    <button
-                                        onClick={handleInitialize}
-                                        disabled={isInitializing}
-                                        className="flex items-center gap-3 px-10 py-4 bg-white text-indigo-900 rounded-2xl font-black text-sm uppercase tracking-wider hover:bg-blue-50 transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:shadow-[0_0_40px_rgba(255,255,255,0.5)]"
-                                    >
-                                        {isInitializing ? (
-                                            <>
-                                                <RefreshCw className="w-6 h-6 animate-spin" />
-                                                SİSTEM KURULUYOR...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Play className="w-6 h-6" />
-                                                SİSTEMİ ŞİMDİ KUR (MIGRATION)
-                                            </>
-                                        )}
-                                    </button>
-
+                                    {IS_TAURI ? (
+                                        <button
+                                            onClick={handleInitialize}
+                                            disabled={isInitializing}
+                                            className="flex items-center gap-3 px-10 py-4 bg-white text-indigo-900 rounded-2xl font-black text-sm uppercase tracking-wider hover:bg-blue-50 transition-all active:scale-95 disabled:opacity-50 shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:shadow-[0_0_40px_rgba(255,255,255,0.5)]"
+                                        >
+                                            {isInitializing ? (
+                                                <>
+                                                    <RefreshCw className="w-6 h-6 animate-spin" />
+                                                    MİGRATİON ÇALIŞIYOR...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Play className="w-6 h-6" />
+                                                    BEKLEYEN ŞEMA GÜNCELLEMESİNİ UYGULA
+                                                </>
+                                            )}
+                                        </button>
+                                    ) : (
+                                        <p className="text-white/90 text-sm font-medium max-w-xl">
+                                            Bu ekranı tarayıcıda açtıysanız güncellemeyi sunucu yöneticisi yapmalıdır. Log: <code className="px-1 bg-black/30 rounded">migration_log.json</code> yalnızca
+                                            masaüstü uygulamasında oluşur.
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Device Registration */}

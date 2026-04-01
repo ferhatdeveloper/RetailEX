@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -14,6 +14,9 @@ import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
+import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
 
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
@@ -79,6 +82,8 @@ interface Invoice {
 
 export function InvoiceListModule({ customers = [], products = [], defaultInvoiceTypeFilter, defaultCategory, title, description }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
 
   const INVOICE_TYPES: InvoiceType[] = [
     { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
@@ -147,6 +152,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory || 'all');
   const [hoveredInvoiceType, setHoveredInvoiceType] = useState<InvoiceType | null>(null);
   const [editInvoiceData, setEditInvoiceData] = useState<Invoice | null>(null);
+  /** Yeni fatura formu her seferinde remount olsun (önceki taslak state kalmasın) */
+  const [newFormCounter, setNewFormCounter] = useState(0);
   const [showDesigner, setShowDesigner] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<ReportTemplate | null>(null);
@@ -199,7 +206,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   // Faturaları yükle (sayfalama ile)
   useEffect(() => {
     loadInvoices();
-  }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter]);
+  }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory]);
 
   // Arama için debounce
   useEffect(() => {
@@ -259,18 +266,9 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         });
       }
 
-      // Kategori filtresi (eğer defaultCategory varsa)
+      /* Kategori: API ile aynı Logo trcode grupları (INVOICE_TYPES tek kod=tek kategori değil; 4,13,6 çakışıyor) */
       if (defaultCategory) {
-        filteredData = filteredData.filter(inv => {
-          // invoice_category varsa onu kullan, yoksa invoice_type/trcode'a göre kategori belirle
-          if (inv.invoice_category) {
-            return inv.invoice_category === defaultCategory;
-          }
-          // invoice_type/trcode'a göre kategori belirle
-          const invoiceType = inv.invoice_type || inv.trcode || 0;
-          const invoiceTypeObj = INVOICE_TYPES.find(t => t.code === invoiceType);
-          return invoiceTypeObj?.category === defaultCategory;
-        });
+        filteredData = filteredData.filter((inv) => invoiceMatchesModuleCategory(inv, defaultCategory));
       }
 
       setInvoices(filteredData);
@@ -300,34 +298,60 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     setShowDetailModal(true);
   };
 
-  const handleEditInvoice = async (invoice: Invoice) => {
-    // Fatura türünü belirle
-    const invoiceTypeCode = invoice.invoice_type || 0;
-    const invoiceType = INVOICE_TYPES.find(t => t.code === invoiceTypeCode) || INVOICE_TYPES[0];
+  const resolveInvoiceTypeForEdit = (inv: Invoice): InvoiceType => {
+    const code = Number(inv.invoice_type ?? inv.trcode ?? 0);
+    let t = INVOICE_TYPES.find(x => x.code === code);
+    if (t) return t;
+    /* Logo trcode (4,5,13…) listede yoksa kategori / fiche ile en uygun form türü */
+    const cat = inv.invoice_category;
+    if (cat === 'Alis') return INVOICE_TYPES.find(x => x.code === 1) || INVOICE_TYPES.find(x => x.category === 'Alis') || INVOICE_TYPES[0];
+    if (cat === 'Satis') return INVOICE_TYPES.find(x => x.code === 8) || INVOICE_TYPES.find(x => x.category === 'Satis') || INVOICE_TYPES[0];
+    if (cat === 'Iade') return INVOICE_TYPES.find(x => x.code === 3) || INVOICE_TYPES.find(x => x.category === 'Iade') || INVOICE_TYPES[0];
+    if (cat === 'Irsaliye') return INVOICE_TYPES.find(x => x.code === 10) || INVOICE_TYPES.find(x => x.category === 'Irsaliye') || INVOICE_TYPES[0];
+    if (cat === 'Siparis') return INVOICE_TYPES.find(x => x.code === 20) || INVOICE_TYPES.find(x => x.category === 'Siparis') || INVOICE_TYPES[0];
+    if (cat === 'Teklif') return INVOICE_TYPES.find(x => x.code === 30) || INVOICE_TYPES.find(x => x.category === 'Teklif') || INVOICE_TYPES[0];
+    if (cat === 'Hizmet') return INVOICE_TYPES.find(x => x.code === 9) || INVOICE_TYPES.find(x => x.category === 'Hizmet') || INVOICE_TYPES[0];
+    return INVOICE_TYPES.find(x => x.code === 8) || INVOICE_TYPES[0];
+  };
 
-    // Fatura detaylarını yükle
+  const handleEditInvoice = async (invoice: Invoice) => {
+    if (!invoice.id) {
+      toast.error(tm('invoiceSaveError'));
+      return;
+    }
+
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
       const fullInvoice = await invoicesAPI.getById(invoice.id);
-
-      if (fullInvoice) {
-        setEditInvoiceData(fullInvoice);
-        setSelectedInvoiceType(invoiceType);
-      }
+      const raw = fullInvoice ?? invoice;
+      /* Yeni referans: useEffect(items) tetiklensin; kalemler kopyalanmış olsun */
+      const data = {
+        ...raw,
+        items: Array.isArray(raw.items) ? raw.items.map((it: any) => ({ ...it })) : []
+      };
+      const invoiceType = resolveInvoiceTypeForEdit(data);
+      setEditInvoiceData(data);
+      setSelectedInvoiceType(invoiceType);
     } catch (error) {
       console.error('Fatura detayları yüklenirken hata:', error);
-      // Hata durumunda da aç
-      setEditInvoiceData(invoice);
+      const data = {
+        ...invoice,
+        items: Array.isArray(invoice.items) ? invoice.items.map((it: any) => ({ ...it })) : []
+      };
+      const invoiceType = resolveInvoiceTypeForEdit(data);
+      setEditInvoiceData(data);
       setSelectedInvoiceType(invoiceType);
     }
   };
 
   const handleCreateInvoice = () => {
+    setEditInvoiceData(null);
     // Eğer varsayılan fatura türü filtresi varsa, direkt o türle form aç
     if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
       const invoiceTypeCode = parseInt(defaultInvoiceTypeFilter);
       const invoiceType = INVOICE_TYPES.find(t => t.code === invoiceTypeCode);
       if (invoiceType) {
+        setNewFormCounter((c) => c + 1);
         setSelectedInvoiceType(invoiceType);
         return;
       }
@@ -338,6 +362,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   };
 
   const handleSelectInvoiceType = (type: InvoiceType) => {
+    setEditInvoiceData(null);
+    setNewFormCounter((c) => c + 1);
     setSelectedInvoiceType(type);
     setShowInvoiceTypeModal(false);
   };
@@ -368,6 +394,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   if (selectedInvoiceType) {
     return (
       <UniversalInvoiceForm
+        key={editInvoiceData?.id ?? `draft-${newFormCounter}`}
         invoiceType={selectedInvoiceType}
         customers={customers}
         products={products}
@@ -766,6 +793,23 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
                 }
               }
             },
+            ...(showGibQueueAction
+              ? [
+                  {
+                    id: 'gib-queue',
+                    label: 'GİB kuyruğuna ekle (E-Dönüşüm)',
+                    icon: Send,
+                    onClick: async () => {
+                      const inv = contextMenu.invoice;
+                      setContextMenu(null);
+                      if (!inv?.id) return;
+                      const r = await enqueueSaleInvoice(inv.id);
+                      if (r.ok) toast.success(r.message);
+                      else toast.error(r.message);
+                    }
+                  }
+                ]
+              : []),
             {
               id: 'design',
               label: tm('design'),

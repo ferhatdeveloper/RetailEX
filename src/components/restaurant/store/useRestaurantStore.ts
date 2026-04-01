@@ -3,8 +3,10 @@ import { persist } from 'zustand/middleware';
 import {
     Table, KitchenOrder, MenuItem, Recipe, OrderItem,
     Region, PrinterRouting, CourseType, PrinterProfile,
-    Staff, LoginResult, Reservation, MergedOrderRef
+    Staff, LoginResult, Reservation, MergedOrderRef,
+    RestaurantCallerIdConfig
 } from '../types';
+import { defaultRestaurantCallerIdConfig } from '../../../services/restaurantCallerIdService';
 import { useProductStore } from '../../../store/useProductStore';
 import { useSaleStore } from '../../../store/useSaleStore';
 import { useCustomerStore } from '../../../store/useCustomerStore';
@@ -33,10 +35,12 @@ interface RestaurantState {
     isDayActive: boolean;
     systemPrinters: any[];
     reservations: Reservation[];
+    callerIdConfig: RestaurantCallerIdConfig;
+    setCallerIdConfig: (partial: Partial<RestaurantCallerIdConfig>) => void;
 
     // Table Actions
     openTable: (tableId: string, waiter: string) => Promise<void>;
-    addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => Promise<void>;
+    addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => Promise<string | undefined>;
     requestBill: (tableId: string) => Promise<void>;
     closeBill: (tableId: string, paymentData: any) => Promise<void>;
     markAsClean: (tableId: string) => Promise<void>;
@@ -59,6 +63,8 @@ interface RestaurantState {
 
     // Load (DB sync) Actions
     loadTables: (floorId?: string) => Promise<void>;
+    /** Tek masanın siparişlerini API'den çekip store'u günceller (mutfak sonrası sepet boş gelme düzeltmesi) */
+    refreshTableOrders: (tableId: string) => Promise<void>;
     /** Arka plan: sadece masa durumlarını senkronize eder; değişiklik varsa gerekirse tam yükleme yapar */
     syncTableStatuses: (floorId?: string) => Promise<void>;
     loadMenu: () => Promise<void>;
@@ -82,6 +88,8 @@ interface RestaurantState {
     setCourseForItem: (tableId: string, itemId: string, course: CourseType) => void;
     splitOrder: (orderId: string, itemIds: string[], targetTableId?: string) => Promise<void>;
     updateOrderItemOptions: (itemId: string, options: any) => Promise<void>;
+    /** Sipariş kalemi miktarını güncelle (DB + store) — sepette adet değişince tutarlılık için */
+    updateOrderItemQuantity: (tableId: string, itemId: string, quantity: number) => Promise<void>;
 
     // Phase 2: Void & Complementary
     voidOrderItem: (tableId: string, itemId: string, reason: string, voidQuantity?: number) => Promise<void>;
@@ -131,6 +139,12 @@ export const useRestaurantStore = create<RestaurantState>()(
             systemPrinters: [],
             reservations: [],
             categories: [],
+            callerIdConfig: defaultRestaurantCallerIdConfig(),
+
+            setCallerIdConfig: (partial) =>
+                set((state) => ({
+                    callerIdConfig: { ...state.callerIdConfig, ...partial },
+                })),
 
             openTable: async (tableId, waiter) => {
                 try {
@@ -247,6 +261,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         return { ...t, orders: updatedOrders, total: updatedTotal };
                     })
                 }));
+                return dbItem?.id;
             },
 
             requestBill: async (tableId) => {
@@ -361,9 +376,10 @@ export const useRestaurantStore = create<RestaurantState>()(
                     if (!orderId) throw new Error('Order selection failed');
                     const linkedOrderIds = (table.mergedOrders || []).map(m => m.orderId);
                     const paymentMethod = paymentData.payments?.[0]?.method || 'cash';
+                    const discountAmount = Number(paymentData.discountAmount ?? 0);
 
                     // ✅ CRITICAL: Close order + reset table status (must block payment)
-                    await RestaurantService.completeTablePayment({ tableId, orderId, linkedOrderIds, paymentMethod });
+                    await RestaurantService.completeTablePayment({ tableId, orderId, linkedOrderIds, paymentMethod, discountAmount });
 
                     // ✅ Update local state immediately (unblocks UI)
                     set(state => ({
@@ -374,6 +390,8 @@ export const useRestaurantStore = create<RestaurantState>()(
 
                     // 🔄 Secondary operations in background (non-blocking)
                     const tableSnapshot = { ...table };
+                    const orderDiscountAmount = Number(paymentData.discountAmount ?? 0);
+                    const effectiveTotal = (tableSnapshot.total || 0) - orderDiscountAmount;
                     Promise.resolve().then(async () => {
                         try {
                             const salesStore = useSaleStore.getState();
@@ -381,9 +399,9 @@ export const useRestaurantStore = create<RestaurantState>()(
                                 id: uuidv4(),
                                 receiptNumber: `REST-${tableSnapshot.number}-${Date.now()}`,
                                 date: new Date().toISOString(),
-                                total: tableSnapshot.total || 0,
+                                total: effectiveTotal,
                                 subtotal: tableSnapshot.total || 0,
-                                discount: 0,
+                                discount: orderDiscountAmount,
                                 items: tableSnapshot.orders.map(o => ({
                                     productId: o.menuItemId,
                                     productName: o.name,
@@ -401,11 +419,11 @@ export const useRestaurantStore = create<RestaurantState>()(
                         try {
                             if (tableSnapshot.customerId) {
                                 const customerStore = useCustomerStore.getState();
-                                await customerStore.updatePurchaseHistory(tableSnapshot.customerId, tableSnapshot.total || 0);
+                                await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
                                 const accountPayments = paymentData.payments?.filter((p: any) => p.method === 'account') || [];
                                 const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
                                 if (totalAccountAmount > 0) await customerStore.updateBalance(tableSnapshot.customerId, totalAccountAmount);
-                                const points = Math.floor((tableSnapshot.total || 0) / 100);
+                                const points = Math.floor(effectiveTotal / 100);
                                 if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
                             }
                         } catch (e) { console.error('[closeBill bg] customer update failed:', e); }
@@ -525,6 +543,37 @@ export const useRestaurantStore = create<RestaurantState>()(
                 }
             },
 
+            refreshTableOrders: async (tableId) => {
+                const state = get();
+                const table = state.tables.find(t => t.id === tableId);
+                if (!table) return;
+                const activeOrder = await RestaurantService.getActiveOrder(tableId);
+                const mainTableNum = (activeOrder as any)?.table_number ?? table.number;
+                const orders = (activeOrder?.items || []).map((i: any) => ({
+                    id: i.id, menuItemId: i.product_id, name: i.product_name,
+                    quantity: Number(i.quantity), price: Number(i.unit_price),
+                    status: i.status || 'cooking', course: i.course, options: i.note,
+                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
+                    sourceTableId: table.id, sourceTableNumber: mainTableNum
+                }));
+                const total = orders.filter(o => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0);
+                const orderDiscountPct = Number((activeOrder as any)?.order_discount_pct ?? 0);
+                set(state => ({
+                    tables: state.tables.map(t =>
+                        t.id === tableId
+                            ? {
+                                ...t,
+                                orders,
+                                activeOrderId: activeOrder?.id ?? t.activeOrderId,
+                                faturaNo: (activeOrder as any)?.order_no ?? t.faturaNo,
+                                total,
+                                orderDiscountPct: Number.isFinite(orderDiscountPct) ? orderDiscountPct : 0,
+                            }
+                            : t
+                    )
+                }));
+            },
+
             loadTables: async (floorId) => {
                 const rows = await RestaurantService.getTables(floorId);
                 const tablesWithOrders = await Promise.all(rows.map(async (r: any) => {
@@ -541,6 +590,8 @@ export const useRestaurantStore = create<RestaurantState>()(
                         if (activeOrder) {
                             baseTable.activeOrderId = activeOrder.id;
                             baseTable.faturaNo = activeOrder.order_no;
+                            const odPct = Number((activeOrder as any).order_discount_pct ?? 0);
+                            baseTable.orderDiscountPct = Number.isFinite(odPct) ? odPct : 0;
                             const mainTableNum = (activeOrder as any).table_number ?? baseTable.number;
                             baseTable.orders = (activeOrder.items || []).map((i: any) => ({
                                 id: i.id, menuItemId: i.product_id, name: i.product_name,
@@ -665,6 +716,18 @@ export const useRestaurantStore = create<RestaurantState>()(
             updateOrderItemOptions: async (itemId, options) => {
                 await RestaurantService.updateOrderItemOptions(itemId, options);
                 set(state => ({ tables: state.tables.map(t => ({ ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, options } : o) })) }));
+            },
+            updateOrderItemQuantity: async (tableId, itemId, quantity) => {
+                await RestaurantService.updateOrderItem(itemId, { quantity });
+                set(state => {
+                    const tables = state.tables.map(t => {
+                        if (t.id !== tableId) return t;
+                        const orders = t.orders.map(o => o.id === itemId ? { ...o, quantity, subtotal: o.price * quantity } : o);
+                        const total = orders.filter(o => !o.isVoid).reduce((s, o) => s + o.price * o.quantity, 0);
+                        return { ...t, orders, total };
+                    });
+                    return { tables };
+                });
             },
             voidOrderItem: async (tableId, itemId, reason, voidQuantity) => {
                 const state = get();
@@ -802,8 +865,20 @@ export const useRestaurantStore = create<RestaurantState>()(
                 registerOpeningCash: state.registerOpeningCash,
                 registerOpeningNote: state.registerOpeningNote,
                 workDayDate: state.workDayDate,
-                isDayActive: state.isDayActive
-            })
+                isDayActive: state.isDayActive,
+                callerIdConfig: state.callerIdConfig,
+            }),
+            merge: (persisted, current) => {
+                const p = persisted as Partial<RestaurantState> | undefined;
+                return {
+                    ...current,
+                    ...p,
+                    callerIdConfig: {
+                        ...defaultRestaurantCallerIdConfig(),
+                        ...(p?.callerIdConfig ?? {}),
+                    },
+                } as RestaurantState;
+            },
         }
     )
 );

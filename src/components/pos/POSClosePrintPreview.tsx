@@ -1,4 +1,4 @@
-﻿import { X, Printer } from 'lucide-react';
+import { X, Printer } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
 
@@ -388,7 +388,7 @@ export function POSClosePrintPreview({
               width: 100%;
             }
             @page {
-              size: ${printFormat === '80mm' ? '80mm auto' : 'A4 portrait'};
+              size: ${printFormat === '80mm' ? '80mm 297mm' : 'A4 portrait'};
               margin: ${printFormat === '80mm' ? '5mm' : '10mm'};
             }
             body {

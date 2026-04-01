@@ -17,6 +17,7 @@ mod device_fingerprint;
 mod vpn_keys;
 mod bank_ops;
 mod license;
+mod caller_id_serial;
 
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
@@ -206,7 +207,7 @@ async fn pg_query(
     use std::time::Duration;
     use tokio::time::timeout;
     use uuid::Uuid;
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, NaiveTime, Utc};
     use rust_decimal::prelude::ToPrimitive;
 
     // Helper enum for heterogeneous parameters to avoid global stringification
@@ -319,6 +320,17 @@ async fn pg_query(
                                 utc.to_sql(ty, out)
                             } else {
                                 s.to_sql(&Type::TEXT, out)
+                            }
+                        },
+                        // Time without timezone
+                        Type::TIME => {
+                            if let Ok(t) = NaiveTime::parse_from_str(s, "%H:%M:%S%.f") {
+                                t.to_sql(ty, out)
+                            } else if let Ok(t) = NaiveTime::parse_from_str(s, "%H:%M") {
+                                t.to_sql(ty, out)
+                            } else {
+                                // Güvenli fallback: geçersiz/bozuk zamanın 22008 üretmesini engelle
+                                NaiveTime::from_hms_opt(9, 0, 0).unwrap().to_sql(ty, out)
                             }
                         },
                         // JSONB / JSON
@@ -449,6 +461,11 @@ async fn pg_query(
                 match v { Some(u) => serde_json::Value::String(u.to_string()), None => serde_json::Value::Null }
             } else if let Ok(v) = row.try_get::<_, Option<chrono::NaiveDate>>(i) {
                 match v { Some(d) => serde_json::Value::String(d.to_string()), None => serde_json::Value::Null }
+            } else if let Ok(v) = row.try_get::<_, Option<chrono::NaiveTime>>(i) {
+                match v {
+                    Some(t) => serde_json::Value::String(t.format("%H:%M:%S").to_string()),
+                    None => serde_json::Value::Null,
+                }
             } else if let Ok(v) = row.try_get::<_, Option<chrono::NaiveDateTime>>(i) {
                 match v { Some(dt) => serde_json::Value::String(dt.to_string()), None => serde_json::Value::Null }
             } else if let Ok(v) = row.try_get::<_, Option<DateTime<Utc>>>(i) {
@@ -1301,31 +1318,79 @@ async fn list_system_printers() -> Result<Vec<serde_json::Value>, String> {
     }
 }
 
-#[tauri::command]
-async fn print_html_silent(html: String, printer_name: Option<String>) -> Result<(), String> {
-    use std::io::Write;
-    use std::fs::File;
+/// Windows: Edge headless ile PDF üret; ardından SumatraPDF varsa sessiz yazdır (cmd/WebView önizlemesi yok).
+/// Sumatra yoksa PDF için sistem yazdırma iletişim kutusu açılır (WebView2 önizleme hatasından kaçınır).
+fn print_html_via_edge_windows(
+    html: String,
+    printer_name: Option<String>,
+    bundled_sumatra: Option<std::path::PathBuf>,
+) -> Result<(), String> {
     use std::env;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::PathBuf;
     use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    // 1. Find msedge.exe
-    let mut edge_path = "msedge.exe".to_string();
-    let common_paths = [
-        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-    ];
-
-    let edge_exists = Command::new("where").arg("msedge").output().map(|o| o.status.success()).unwrap_or(false);
-    if !edge_exists {
-        for path in common_paths {
-            if std::path::Path::new(path).exists() {
-                edge_path = path.to_string();
-                break;
+    fn find_edge() -> Option<PathBuf> {
+        let candidates = [
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ];
+        for p in candidates {
+            let pb = PathBuf::from(p);
+            if pb.is_file() {
+                return Some(pb);
             }
+        }
+        let mut w = Command::new("where");
+        w.arg("msedge.exe");
+        w.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(out) = w.output() {
+            if out.status.success() {
+                let line = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
+                if !line.is_empty() {
+                    return Some(PathBuf::from(line));
+                }
+            }
+        }
+        None
+    }
+
+    fn find_sumatra(bundled: Option<PathBuf>) -> Option<PathBuf> {
+        if let Some(ref p) = bundled {
+            if p.is_file() {
+                return Some(p.clone());
+            }
+        }
+        let candidates = [
+            r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
+            r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
+        ];
+        for p in candidates {
+            let pb = PathBuf::from(p);
+            if pb.is_file() {
+                return Some(pb);
+            }
+        }
+        None
+    }
+
+    fn path_to_file_url(path: &std::path::Path) -> Result<String, String> {
+        let s = path.to_str().ok_or("Geçersiz dosya yolu")?;
+        let u = s.replace('\\', "/");
+        if u.len() >= 2 && u.chars().nth(1) == Some(':') {
+            Ok(format!("file:///{}", u))
+        } else {
+            Ok(format!("file:///{}", u))
         }
     }
 
-    // 2. Create temporary HTML file
+    let edge = find_edge().ok_or(
+        "Microsoft Edge bulunamadı. Fiş PDF için Edge gerekir.\n\
+         Kurulum: https://www.microsoft.com/edge",
+    )?;
+
     let temp_dir = env::temp_dir();
     let file_id = uuid::Uuid::new_v4();
     let html_path = temp_dir.join(format!("receipt_{}.html", file_id));
@@ -1334,71 +1399,110 @@ async fn print_html_silent(html: String, printer_name: Option<String>) -> Result
     let mut file = File::create(&html_path).map_err(|e| e.to_string())?;
     file.write_all(html.as_bytes()).map_err(|e| e.to_string())?;
 
-    let html_path_str = html_path.to_str().ok_or("Invalid HTML path")?;
-    let pdf_path_str = pdf_path.to_str().ok_or("Invalid PDF path")?;
+    let pdf_path_str = pdf_path.to_str().ok_or("Geçersiz PDF yolu")?;
+    let file_url = path_to_file_url(&html_path)?;
 
-    // 3. PowerShell script to convert to PDF and Print
-    let printer_logic = match &printer_name {
-        Some(name) => format!(
-            r#"
-            $printer = '{}'
-            # Note: PowerShell doesn't have a built-in silent PDF printer that takes a name easily 
-            # without external tools or complex COM objects. 
-            # We'll use the 'Print' verb on the default printer for now as it's the most compatible.
-            # If a specific printer is needed, we'd ideally use a CLI tool like SumatraPDF or PDFtoPrinter.
-            Start-Process -FilePath $pdfPath -Verb Print -Wait
-            "#,
-            name.replace("'", "''")
-        ),
-        None => r#"Start-Process -FilePath $pdfPath -Verb Print -Wait"#.to_string(),
-    };
+    let mut edge_cmd = Command::new(&edge);
+    edge_cmd.args([
+        "--headless=new",
+        "--disable-gpu",
+        "--no-first-run",
+        "--disable-extensions",
+        "--no-sandbox",
+    ]);
+    edge_cmd.arg(format!("--print-to-pdf={}", pdf_path_str));
+    edge_cmd.arg("--no-pdf-header-footer");
+    edge_cmd.arg(&file_url);
+    edge_cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let ps_script = format!(
-        r#"
-        $edgePath = '{}'
-        $htmlPath = '{}'
-        $pdfPath = '{}'
-        
-        # 1. Convert HTML to PDF using Edge (Headless)
-        # We use --no-pdf-header-footer to get a clean receipt
-        $process = Start-Process $edgePath -ArgumentList "--headless", "--disable-gpu", "--print-to-pdf=$pdfPath", "--no-pdf-header-footer", $htmlPath -PassThru -Wait
-        
-        if (Test-Path $pdfPath) {{
-            # 2. Print the PDF
-            {}
-        }} else {{
-            throw "Failed to generate PDF from HTML. Edge might have failed or input was invalid."
-        }}
-        "#,
-        edge_path.replace("'", "''"),
-        html_path_str.replace("'", "''"),
-        pdf_path_str.replace("'", "''"),
-        printer_logic
-    );
+    let edge_out = edge_cmd.output().map_err(|e| format!("Edge çalıştırılamadı: {}", e))?;
+    if !edge_out.status.success() {
+        let err = String::from_utf8_lossy(&edge_out.stderr);
+        let out = String::from_utf8_lossy(&edge_out.stdout);
+        return Err(format!(
+            "Edge PDF oluşturamadı. stderr: {}\nstdout: {}",
+            err.trim(),
+            out.trim()
+        ));
+    }
+    if !pdf_path.exists() {
+        return Err("PDF dosyası oluşturulmadı (Edge çıktı vermedi).".into());
+    }
 
-    let output = Command::new("powershell")
-        .args(["-Command", &ps_script])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    // Cleanup
     let _ = std::fs::remove_file(&html_path);
-    // We don't remove the PDF immediately because the print process might still be reading it
+
+    if let Some(sumatra) = find_sumatra(bundled_sumatra) {
+        let mut s = Command::new(&sumatra);
+        s.creation_flags(CREATE_NO_WINDOW);
+        if let Some(ref name) = printer_name {
+            if !name.is_empty() {
+                s.args(["-print-to", name.as_str(), "-silent", pdf_path_str]);
+            } else {
+                s.args(["-print-to-default", "-silent", pdf_path_str]);
+            }
+        } else {
+            s.args(["-print-to-default", "-silent", pdf_path_str]);
+        }
+        let pr = s.output().map_err(|e| e.to_string())?;
+        if !pr.status.success() {
+            let e = String::from_utf8_lossy(&pr.stderr);
+            return Err(format!("SumatraPDF yazdırma hatası: {}", e.trim()));
+        }
+    } else {
+        let pdf_esc = pdf_path_str.replace('\'', "''");
+        let ps = format!(
+            "Start-Process -FilePath '{}' -Verb Print -WindowStyle Normal -ErrorAction Stop",
+            pdf_esc
+        );
+        let mut ps_cmd = Command::new("powershell");
+        ps_cmd.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &ps,
+        ]);
+        ps_cmd.creation_flags(CREATE_NO_WINDOW);
+        let out = ps_cmd.output().map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).to_string());
+        }
+    }
+
+    let pdf_path_clone = pdf_path.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-        let _ = std::fs::remove_file(pdf_path);
+        let _ = std::fs::remove_file(pdf_path_clone);
     });
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if stderr.is_empty() {
-             Err("PowerShell script failed without error output. Check if Microsoft Edge is installed correctly.".to_string())
-        } else {
-             Err(stderr)
-        }
+    Ok(())
+}
+
+#[tauri::command]
+async fn print_html_silent(
+    app: tauri::AppHandle,
+    html: String,
+    printer_name: Option<String>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let bundled_sumatra = app
+            .path()
+            .resource_dir()
+            .ok()
+            .map(|d| d.join("sumatra").join("SumatraPDF.exe"))
+            .filter(|p| p.is_file());
+        tokio::task::spawn_blocking(move || {
+            print_html_via_edge_windows(html, printer_name, bundled_sumatra)
+        })
+        .await
+        .map_err(|e| format!("Yazdırma görevi: {}", e))?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Err("Fiş yazdırma bu platformda desteklenmiyor.".into())
     }
 }
 
@@ -1460,6 +1564,7 @@ fn main() {
             client: None,
             conn_str: None,
         }))));
+        app.manage(caller_id_serial::CallerSerialHandle::default());
         
         check_bootstrap_config(&handle);
 
@@ -1514,7 +1619,10 @@ fn main() {
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction,
         request_elevation,
-        show_touch_keyboard
+        show_touch_keyboard,
+        caller_id_serial::list_caller_serial_ports,
+        caller_id_serial::caller_serial_start,
+        caller_id_serial::caller_serial_stop
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

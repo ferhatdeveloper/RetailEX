@@ -1,5 +1,12 @@
 import { PostgresConnection, ERP_SETTINGS } from './postgres';
 import { Table, Staff, LoginResult } from '../components/restaurant/types';
+import type { FoodDeliveryChannelId } from '../config/foodDeliveryChannels';
+import { normalizeFoodDeliveryChannel } from '../config/foodDeliveryChannels';
+import { fetchKasalar, createKasaIslemi } from './api/kasa';
+import { fetchBankalar, createBankaIslemi } from './api/banka';
+
+/** Paket servis siparişinde beklenen ödeme türü (teslimde kasa/bankaya işlenir). */
+export type DeliveryExpectedPaymentMethod = 'cash' | 'card' | 'transfer';
 
 export class RestaurantService {
     public static get db() { return PostgresConnection.getInstance(); }
@@ -338,6 +345,17 @@ export class RestaurantService {
         }
     }
 
+    /** Açık adisyonda sipariş düzeyi indirim (%) — ön fiş / senkron sonrası korunur; masa ödemeyle kapanınca satır kapanır */
+    static async updateOpenOrderDiscountPct(orderId: string, pct: number) {
+        if (!orderId) return;
+        const p = Math.min(100, Math.max(0, Number(pct) || 0));
+        await this.db.query(
+            `UPDATE rest_orders SET order_discount_pct = $2, updated_at = NOW()
+             WHERE id = $1 AND status = 'open'`,
+            [orderId, p]
+        );
+    }
+
     static async closeOrder(orderId: string, params?: {
         discountAmount?: number;
         taxAmount?: number;
@@ -650,6 +668,8 @@ export class RestaurantService {
         toDate?: string;
         status?: string;
         tableId?: string;
+        /** Müşteri kartı eşleşmesi (Caller ID vb.) */
+        customerId?: string;
         limit?: number;
         offset?: number;
     }) {
@@ -668,6 +688,7 @@ export class RestaurantService {
         if (params?.toDate) { sql += ` AND o.opened_at <  $${idx++}`; vals.push(params.toDate); }
         if (params?.status) { sql += ` AND o.status = $${idx++}`; vals.push(params.status); }
         if (params?.tableId) { sql += ` AND o.table_id = $${idx++}`; vals.push(params.tableId); }
+        if (params?.customerId) { sql += ` AND o.customer_id = $${idx++}::uuid`; vals.push(params.customerId); }
         sql += ' GROUP BY o.id, t.number ORDER BY o.opened_at DESC';
         if (params?.limit) { sql += ` LIMIT $${idx++}`; vals.push(params.limit); }
         if (params?.offset) { sql += ` OFFSET $${idx++}`; vals.push(params.offset); }
@@ -1117,20 +1138,37 @@ export class RestaurantService {
             ORDER BY o.opened_at DESC
         `;
         const { rows } = await this.db.query(sql);
-        return rows.map((r: any) => ({
-            id: r.id,
-            orderNo: r.order_no,
-            status: r.note_data?.delivery_status ?? 'pending',
-            customerName: r.note_data?.customer_name ?? r.note?.match(/"customer_name":"([^"]+)"/)?.[1] ?? '—',
-            address: (() => { try { return JSON.parse(r.note)?.address ?? ''; } catch { return ''; } })(),
-            phone: (() => { try { return JSON.parse(r.note)?.phone ?? ''; } catch { return ''; } })(),
-            courier: (() => { try { return JSON.parse(r.note)?.courier ?? ''; } catch { return ''; } })(),
-            deliveryStatus: (() => { try { return JSON.parse(r.note)?.delivery_status ?? 'pending'; } catch { return 'pending'; } })(),
-            total: Number(r.total_amount ?? 0),
-            startTime: r.opened_at,
-            itemCount: (r.items ?? []).length,
-            rawNote: r.note,
-        }));
+        return rows.map((r: any) => {
+            let noteObj: Record<string, unknown> = {};
+            try {
+                noteObj = JSON.parse(r.note ?? '{}');
+            } catch { /* ignore */ }
+            const ch = normalizeFoodDeliveryChannel(
+                typeof noteObj.channel === 'string' ? noteObj.channel : undefined
+            );
+            const payRaw = noteObj.expected_payment_method;
+            const paymentMethod: DeliveryExpectedPaymentMethod =
+                payRaw === 'card' || payRaw === 'transfer' ? payRaw : 'cash';
+            return {
+                id: r.id,
+                orderNo: r.order_no,
+                status: (noteObj.delivery_status as string) ?? 'pending',
+                customerName: (noteObj.customer_name as string) ?? '—',
+                address: (noteObj.address as string) ?? '',
+                phone: (noteObj.phone as string) ?? '',
+                courier: (noteObj.courier as string) ?? '',
+                deliveryStatus: (noteObj.delivery_status as string) ?? 'pending',
+                channel: ch,
+                externalOrderId: (noteObj.external_order_id as string) ?? '',
+                itemsSummary: (noteObj.items_summary as string) ?? '',
+                total: Number(r.total_amount ?? 0),
+                startTime: r.opened_at,
+                itemCount: (r.items ?? []).length,
+                rawNote: r.note,
+                paymentMethod,
+                paymentPosted: Boolean(noteObj.payment_posted_at),
+            };
+        });
     }
 
     static async createDeliveryOrder(params: {
@@ -1139,6 +1177,11 @@ export class RestaurantService {
         address: string;
         waiter?: string;
         customerId?: string;
+        channel?: FoodDeliveryChannelId;
+        externalOrderId?: string;
+        itemsSummary?: string;
+        totalAmount?: number;
+        expectedPaymentMethod?: DeliveryExpectedPaymentMethod;
     }) {
         const year = new Date().getFullYear();
         const { rows: seqRows } = await this.db.query(
@@ -1147,22 +1190,115 @@ export class RestaurantService {
         );
         const seq = String(seqRows[0]?.seq ?? 1).padStart(4, '0');
         const orderNo = `DLV-${year}-${seq}`;
+        const channel = params.channel ?? 'manual';
+        const pay: DeliveryExpectedPaymentMethod =
+            params.expectedPaymentMethod === 'card' || params.expectedPaymentMethod === 'transfer'
+                ? params.expectedPaymentMethod
+                : 'cash';
         const note = JSON.stringify({
             type: 'delivery',
             customer_name: params.customerName,
             phone: params.phone,
             address: params.address,
             delivery_status: 'pending',
+            channel,
+            expected_payment_method: pay,
+            ...(params.externalOrderId?.trim()
+                ? { external_order_id: params.externalOrderId.trim() }
+                : {}),
+            ...(params.itemsSummary?.trim() ? { items_summary: params.itemsSummary.trim() } : {}),
         });
+        const total =
+            typeof params.totalAmount === 'number' && !Number.isNaN(params.totalAmount)
+                ? params.totalAmount
+                : 0;
         const sql = `
-            INSERT INTO rest_orders (order_no, table_id, waiter, customer_id, status, note)
-            VALUES ($1, NULL, $2, $3, 'open', $4)
+            INSERT INTO rest_orders (order_no, table_id, waiter, customer_id, status, note, total_amount)
+            VALUES ($1, NULL, $2, $3, 'open', $4, $5)
             RETURNING *
         `;
         const { rows } = await this.db.query(sql, [
-            orderNo, params.waiter ?? null, params.customerId ?? null, note
+            orderNo, params.waiter ?? null, params.customerId ?? null, note, total
         ]);
         return rows[0];
+    }
+
+    /**
+     * Paket siparişinde teslim anında: tutarı ilk aktif kasaya (nakit/kart) veya ilk banka hesabına (havale) işler.
+     * Çift kayıt önlenir: note.payment_posted_at
+     */
+    private static async postDeliveryLedgerEntry(
+        orderId: string,
+        orderNo: string,
+        totalAmount: number,
+        noteObj: Record<string, unknown>
+    ): Promise<void> {
+        if (noteObj.payment_posted_at) return;
+        const amt = Number(totalAmount) || 0;
+        if (amt <= 0) {
+            noteObj.payment_posted_at = new Date().toISOString();
+            noteObj.payment_posted_skip = 'zero_amount';
+            return;
+        }
+        const raw = noteObj.expected_payment_method;
+        const method: DeliveryExpectedPaymentMethod =
+            raw === 'card' || raw === 'transfer' ? raw : 'cash';
+        const descBase = `Paket servis teslim: ${orderNo}`;
+        const today = new Date().toISOString().slice(0, 10);
+
+        if (method === 'transfer') {
+            const banks = await fetchBankalar({ aktif: true });
+            if (!banks.length) {
+                throw new Error('Aktif banka hesabı tanımlı değil. Havale yansıtılamadı.');
+            }
+            await createBankaIslemi({
+                firma_id: String(this.firmNr),
+                banka_id: banks[0].id,
+                islem_tarihi: today,
+                islem_tipi: 'BANKA_GIRIS',
+                tutar: amt,
+                islem_aciklamasi: `${descBase} (Havale/EFT)`,
+            });
+        } else {
+            const kasalar = await fetchKasalar({ aktif: true });
+            if (!kasalar.length) {
+                throw new Error('Aktif kasa tanımlı değil. Tahsilat yansıtılamadı.');
+            }
+            const label = method === 'card' ? 'Kart' : 'Nakit';
+            await createKasaIslemi({
+                firma_id: String(this.firmNr),
+                kasa_id: kasalar[0].id,
+                islem_tarihi: today,
+                islem_tipi: 'KASA_GIRIS',
+                tutar: amt,
+                islem_aciklamasi: `${descBase} (${label})`,
+            });
+        }
+
+        noteObj.payment_posted_at = new Date().toISOString();
+        noteObj.payment_posted_method = method;
+    }
+
+    static async updateDeliveryExpectedPaymentMethod(
+        orderId: string,
+        method: DeliveryExpectedPaymentMethod
+    ) {
+        const { rows } = await this.db.query('SELECT note FROM rest_orders WHERE id=$1', [orderId]);
+        if (!rows[0]) throw new Error('Sipariş bulunamadı');
+        let noteObj: Record<string, unknown> = {};
+        try {
+            noteObj = JSON.parse(rows[0]?.note ?? '{}');
+        } catch {
+            noteObj = {};
+        }
+        if (noteObj.payment_posted_at) {
+            throw new Error('Ödeme zaten işlendi; ödeme türü değiştirilemez.');
+        }
+        noteObj.expected_payment_method = method;
+        await this.db.query(
+            'UPDATE rest_orders SET note=$2, updated_at=NOW() WHERE id=$1',
+            [orderId, JSON.stringify(noteObj)]
+        );
     }
 
     static async updateDeliveryStatus(
@@ -1170,12 +1306,31 @@ export class RestaurantService {
         deliveryStatus: 'pending' | 'preparing' | 'on_way' | 'delivered',
         extra?: { courier?: string }
     ) {
-        // Read current note, patch delivery_status, write back
-        const { rows } = await this.db.query('SELECT note FROM rest_orders WHERE id=$1', [orderId]);
-        let noteObj: any = {};
-        try { noteObj = JSON.parse(rows[0]?.note ?? '{}'); } catch { /**/ }
+        const { rows } = await this.db.query(
+            'SELECT note, total_amount, order_no FROM rest_orders WHERE id=$1',
+            [orderId]
+        );
+        if (!rows[0]) throw new Error('Sipariş bulunamadı');
+
+        let noteObj: Record<string, unknown> = {};
+        try {
+            noteObj = JSON.parse(rows[0]?.note ?? '{}');
+        } catch {
+            noteObj = {};
+        }
+
+        if (deliveryStatus === 'delivered') {
+            await this.postDeliveryLedgerEntry(
+                orderId,
+                rows[0].order_no as string,
+                Number(rows[0].total_amount ?? 0),
+                noteObj
+            );
+        }
+
         noteObj.delivery_status = deliveryStatus;
         if (extra?.courier) noteObj.courier = extra.courier;
+
         const newNote = JSON.stringify(noteObj);
         await this.db.query(
             'UPDATE rest_orders SET note=$2, updated_at=NOW() WHERE id=$1',
@@ -1528,6 +1683,21 @@ export class RestaurantService {
                   AND oi.is_complimentary = TRUE
             `, [normalizedDate]);
 
+            // 5. Ürün bazlı satış (yazdırmada satılan ürün listesi)
+            const { rows: productRows } = await this.db.query(`
+                SELECT
+                    oi.product_name AS product_name,
+                    SUM(oi.quantity) AS qty,
+                    SUM(oi.subtotal) AS amount
+                FROM rest_order_items oi
+                JOIN rest_orders o ON oi.order_id = o.id
+                WHERE o.status = 'closed'
+                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (oi.is_void IS NOT TRUE)
+                GROUP BY oi.product_name
+                ORDER BY SUM(oi.subtotal) DESC
+            `, [normalizedDate]);
+
             return {
                 totalSales,
                 netCash,
@@ -1550,6 +1720,11 @@ export class RestaurantService {
                     amount: parseFloat(compRows?.[0]?.amount) || 0,
                     count: parseInt(compRows?.[0]?.count) || 0,
                 },
+                salesByProduct: (productRows || []).map((r: any) => ({
+                    productName: String(r.product_name ?? ''),
+                    quantity: Number(r.qty) || 0,
+                    amount: parseFloat(r.amount) || 0,
+                })),
             };
         } catch (err: any) {
             const msg = err?.message || String(err);

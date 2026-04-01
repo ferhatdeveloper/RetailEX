@@ -38,7 +38,11 @@
       "Bash(powershell.exe -File:*)",
       "Bash(cmd /c \"echo \\(Get-Content ''d:\\\\RetailEX\\\\src\\\\locales\\\\module-translations.ts''\\) ^| ForEach-Object { if \\($_-match ''^\\\\s+\\(\\\\w+\\)''\\) { $Matches[1] } } ^| Sort-Object ^| Group-Object ^| Where-Object { $_Count -gt 1 } ^| Select-Object -ExpandProperty Name > C:\\\\Temp\\\\fd.ps1 && powershell.exe -File C:\\\\Temp\\\\fd.ps1\")",
       "Bash(cmd /c:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(grep -A 1 \"#\\\\[tauri::command\\\\]\" /d/RetailEX/DeskApp/src/*.rs)",
+      "Bash(sort -t'[' -k2 -n)",
+      "Bash(/tmp/summary.txt:*)",
+      "Read(//tmp/**)"
     ]
   }
 }

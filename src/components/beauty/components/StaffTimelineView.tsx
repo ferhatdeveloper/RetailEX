@@ -1,8 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
-import { Clock, User, DollarSign, Activity } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Plus, User } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { BeautyAppointment } from '../../../types/beauty';
+import { BeautyAppointment, BeautySpecialist } from '../../../types/beauty';
+import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
 import '../ClinicStyles.css';
 
 interface StaffTimelineViewProps {
@@ -10,171 +13,278 @@ interface StaffTimelineViewProps {
     onAppointmentClick: (apt: BeautyAppointment) => void;
     timeSlots?: string[];
     onNewAppointment?: (time?: string, date?: string) => void;
+    appointmentsOverride?: BeautyAppointment[];
 }
 
-export function StaffTimelineView({ currentDate, onAppointmentClick, timeSlots, onNewAppointment }: StaffTimelineViewProps) {
-    const { appointments, specialists } = useBeautyStore();
-    const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
+const UNASSIGNED_ID = '__unassigned__';
 
-    const dateStr = currentDate.toISOString().split('T')[0];
-    const dayAppointments = appointments.filter(a => a.date === dateStr);
+export function StaffTimelineView({
+    currentDate,
+    onAppointmentClick,
+    timeSlots,
+    onNewAppointment,
+    appointmentsOverride,
+}: StaffTimelineViewProps) {
+    const { tm } = useLanguage();
+    const { appointments: storeApts, specialists } = useBeautyStore();
+    const appointments = appointmentsOverride ?? storeApts;
 
-    const toggleStaffStats = (staffId: string) => {
-        setExpandedStaff(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(staffId)) newSet.delete(staffId);
-            else newSet.add(staffId);
-            return newSet;
-        });
+    const dateStr = formatLocalYmd(currentDate);
+    const dayAppointments = appointments.filter(a => beautyAppointmentDateKey(a) === dateStr);
+
+    const slots = (timeSlots && timeSlots.length > 0)
+        ? timeSlots
+        : Array.from({ length: 13 }, (_, i) => `${(i + 9).toString().padStart(2, '0')}:00`);
+
+    const slotBucket = (raw: string, interval: number): string => {
+        const s = String(raw ?? '').trim();
+        const m = s.match(/^(\d{1,2}):(\d{2})/);
+        if (!m) return '';
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (Number.isNaN(hh) || Number.isNaN(mm)) return '';
+        const total = hh * 60 + mm;
+        const buck = Math.floor(total / interval) * interval;
+        const bh = Math.floor(buck / 60).toString().padStart(2, '0');
+        const bm = (buck % 60).toString().padStart(2, '0');
+        return `${bh}:${bm}`;
     };
 
-    const staffData = useMemo(() => {
-        return specialists.map(staff => {
-            const staffAppointments = dayAppointments
-                .filter(a => a.staff_id === staff.id)
-                .sort((a, b) => a.time.localeCompare(b.time));
+    const inferredInterval = useMemo(() => {
+        if (!slots || slots.length < 2) return 60;
+        const p = (t: string) => {
+            const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+            return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+        };
+        const a = p(slots[0]);
+        const b = p(slots[1]);
+        const d = b - a;
+        return d > 0 ? d : 60;
+    }, [slots]);
+    const activeStaff = useMemo(
+        () => specialists.filter(s => s.is_active),
+        [specialists]
+    );
 
-            const revenue = staffAppointments
-                .filter(a => a.status === 'completed')
-                .reduce((sum, a) => sum + a.total_price, 0);
+    const columns: (BeautySpecialist | { id: string; name: string; is_active: boolean; specialty?: string; color?: string; commission_rate?: number })[] = useMemo(
+        () => [
+            ...activeStaff,
+            {
+                id: UNASSIGNED_ID,
+                name: tm('bUnassignedResource'),
+                is_active: true,
+                specialty: undefined,
+                color: '#9ca3af',
+                commission_rate: 0,
+            },
+        ],
+        [activeStaff, tm]
+    );
 
-            const commission = (revenue * staff.commission_rate) / 100;
+    const columnData = useMemo(() => {
+        return columns.map(col => {
+            const isUnassigned = col.id === UNASSIGNED_ID;
+            const colApts = dayAppointments.filter(a => {
+                if (isUnassigned) return !(String(a.staff_id ?? a.specialist_id ?? '').trim());
+                return String(a.staff_id ?? a.specialist_id ?? '') === String(col.id);
+            });
+
+            const revenue = isUnassigned
+                ? 0
+                : colApts
+                    .filter(a => a.status !== 'cancelled' && a.status !== 'no_show')
+                    .reduce((sum, a) => sum + Number(a.total_price ?? 0), 0);
+            const rate = !isUnassigned && 'commission_rate' in col ? Number(col.commission_rate ?? 0) : 0;
+            const commission = (revenue * rate) / 100;
 
             return {
-                ...staff,
-                appointments: staffAppointments,
+                col,
+                isUnassigned,
+                appointments: colApts,
                 revenue,
-                commission
+                commission,
+                rate,
             };
         });
-    }, [specialists, dayAppointments]);
+    }, [columns, dayAppointments]);
 
     const formatCurrency = (amount: number) =>
         new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
 
-    if (staffData.length === 0) {
+    if (specialists.length === 0) {
         return (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500 text-lg font-medium">Bu tarihte randevusu olan personel bulunamadı.</p>
+            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: 48, textAlign: 'center' }}>
+                <User size={48} color="#d1d5db" style={{ margin: '0 auto 16px' }} />
+                <p style={{ color: '#6b7280', fontSize: 14, fontWeight: 600 }}>{tm('bBookingModalTitleNoSpecialists')}</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full bg-gray-100/50">
-            <div className="flex-1 overflow-x-auto overflow-y-hidden">
-                <div className="inline-flex min-w-full h-full gap-4 p-4">
-                    {staffData.map((staff) => {
-                        const isExpanded = expandedStaff.has(staff.id);
-
-                        return (
+        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', height: '100%' }} className="custom-scrollbar">
+            {columnData.map(({ col, isUnassigned, appointments: colApts, revenue, commission, rate }) => {
+                const accent = (col as BeautySpecialist).color ?? '#7c3aed';
+                return (
+                    <div
+                        key={col.id}
+                        style={{
+                            flexShrink: 0,
+                            width: 260,
+                            background: '#fff',
+                            border: '1px solid #e8e4f0',
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                        }}
+                    >
+                        {/* Cihaz görünümü ile aynı başlık düzeni */}
+                        <div
+                            style={{
+                                padding: '10px 14px',
+                                borderBottom: '1px solid #e8e4f0',
+                                background: '#f5f3ff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                            }}
+                        >
                             <div
-                                key={staff.id}
-                                className="flex-shrink-0 w-80 bg-white border border-gray-200 rounded-2xl flex flex-col h-full shadow-sm overflow-hidden"
+                                style={{
+                                    width: 28,
+                                    height: 28,
+                                    background: isUnassigned ? '#9ca3af' : accent,
+                                    borderRadius: 5,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
                             >
-                                {/* Staff Header */}
-                                <div
-                                    onClick={() => toggleStaffStats(staff.id)}
-                                    className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 cursor-pointer hover:brightness-110 transition-all border-b border-purple-700"
-                                >
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
-                                                <User size={20} className="text-white" />
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-white uppercase tracking-tight">{staff.name}</div>
-                                                <div className="text-[10px] text-white/70 font-bold uppercase tracking-widest">{staff.specialty || 'UZMAN'}</div>
-                                            </div>
+                                <User size={13} color="#fff" />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 12, fontWeight: 800, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {col.name}
+                                </p>
+                                <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, margin: 0 }}>
+                                    {colApts.length} {tm('bAppointmentWord')}
+                                </p>
+                                {!isUnassigned && (
+                                    <p style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, margin: '4px 0 0', lineHeight: 1.3 }}>
+                                        {tm('bTotalRevenueShort')}: {formatCurrency(revenue)} · {tm('bCommissionShort')} (%{rate}): {formatCurrency(commission)}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                            {(() => {
+                                const SLOT_H = 52;
+                                const spanPlacements = buildBeautySpanPlacements(colApts, slots, inferredInterval, slotBucket);
+                                return (
+                                    <div style={{ display: 'flex', minHeight: slots.length * SLOT_H }}>
+                                        <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6' }}>
+                                            {slots.map(time => (
+                                                <div
+                                                    key={time}
+                                                    style={{
+                                                        minHeight: SLOT_H,
+                                                        borderBottom: '1px solid #f3f4f6',
+                                                        display: 'flex',
+                                                        alignItems: 'flex-start',
+                                                        justifyContent: 'center',
+                                                        paddingTop: 8,
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace' }}>{time}</span>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <div className="bg-white/20 px-2 py-1 rounded text-xs font-bold">
-                                            {staff.appointments.length}
+                                        <div
+                                            style={{
+                                                flex: 1,
+                                                display: 'grid',
+                                                gridTemplateRows: `repeat(${slots.length}, minmax(${SLOT_H}px, auto))`,
+                                                alignContent: 'start',
+                                            }}
+                                        >
+                                            {slots.map((time, i) => {
+                                                const p = spanPlacements.find(pl => pl.startIdx === i);
+                                                if (p) {
+                                                    return (
+                                                        <div
+                                                            key={p.apt.id}
+                                                            style={{
+                                                                gridRow: `${i + 1} / span ${p.span}`,
+                                                                padding: '2px 4px',
+                                                                minHeight: 0,
+                                                                boxSizing: 'border-box',
+                                                            }}
+                                                        >
+                                                            <div
+                                                                onClick={() => onAppointmentClick(p.apt)}
+                                                                style={{
+                                                                    height: '100%',
+                                                                    minHeight: p.span * SLOT_H - 8,
+                                                                    boxSizing: 'border-box',
+                                                                    padding: '6px 8px',
+                                                                    borderRadius: 4,
+                                                                    background: '#ede9fe',
+                                                                    borderLeft: `3px solid ${p.apt.service_color ?? accent}`,
+                                                                    fontSize: 11,
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    flexDirection: 'column',
+                                                                    justifyContent: 'flex-start',
+                                                                    overflow: 'hidden',
+                                                                }}
+                                                            >
+                                                                <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>{p.apt.customer_name ?? '—'}</p>
+                                                                <p style={{ color: '#6b7280', margin: 0, flex: 1 }}>{p.apt.service_name ?? '—'}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                if (isBeautySpanContinuation(i, spanPlacements)) return null;
+                                                return (
+                                                    <div
+                                                        key={`add-${col.id}_${time}`}
+                                                        style={{
+                                                            gridRow: i + 1,
+                                                            padding: '4px 6px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            borderBottom: '1px solid #f3f4f6',
+                                                            boxSizing: 'border-box',
+                                                        }}
+                                                    >
+                                                        <div
+                                                            onClick={() => onNewAppointment?.(time, dateStr)}
+                                                            style={{
+                                                                height: 36,
+                                                                width: '100%',
+                                                                borderRadius: 4,
+                                                                border: '1px dashed #e5e7eb',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                cursor: 'pointer',
+                                                                color: '#d1d5db',
+                                                            }}
+                                                        >
+                                                            <Plus size={12} />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-
-                                    {isExpanded && (
-                                        <div className="text-xs space-y-1 mt-3 pt-3 border-t border-white/20 animate-in fade-in slide-in-from-top-2 duration-300">
-                                            <div className="flex justify-between items-center">
-                                                <span className="opacity-90">Toplam Ciro:</span>
-                                                <span className="font-bold">{formatCurrency(staff.revenue)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="opacity-90">Hakediş (%{staff.commission_rate}):</span>
-                                                <span className="font-bold text-purple-200">{formatCurrency(staff.commission)}</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Appointments List */}
-                                <div className="p-3 space-y-3 bg-gray-50 flex-1 overflow-y-auto custom-scrollbar">
-                                    {staff.appointments.map((apt) => {
-                                        const [hours, minutes] = apt.time.split(':').map(Number);
-                                        const endMinutes = hours * 60 + minutes + apt.duration;
-                                        const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
-
-                                        return (
-                                            <div
-                                                key={apt.id}
-                                                onClick={() => onAppointmentClick(apt)}
-                                                className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer border border-gray-200 group"
-                                            >
-                                                <div className="flex">
-                                                    {/* Time Block */}
-                                                    <div className="bg-teal-600 text-white p-3 flex flex-col items-center justify-center min-w-[70px]">
-                                                        <div className="text-[10px] font-bold">{apt.time}</div>
-                                                        <div className="text-[8px] opacity-75 my-0.5">-</div>
-                                                        <div className="text-[10px] font-bold">{endTime}</div>
-                                                    </div>
-
-                                                    {/* Details Block */}
-                                                    <div className="flex-1 bg-purple-500 text-white p-3 relative">
-                                                        <div className="font-bold text-sm mb-1 uppercase truncate pr-8">{apt.customer_name}</div>
-                                                        <div className="text-[10px] opacity-90 mb-2 truncate uppercase font-medium">{apt.service_name}</div>
-                                                        <div className="flex items-center justify-between text-[10px] font-bold">
-                                                            <span>{apt.duration} DK</span>
-                                                            <span className="bg-white/20 px-1.5 py-0.5 rounded uppercase tracking-tighter">{apt.status}</span>
-                                                        </div>
-
-                                                        {/* Commission Info */}
-                                                        <div className="mt-2 pt-2 border-t border-white/10 flex justify-between items-center text-[9px] font-black">
-                                                            <span className="opacity-80">HAKEDİŞ:</span>
-                                                            <span>{formatCurrency((apt.total_price * staff.commission_rate) / 100)}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                {/* Status bar */}
-                                                <div className={`h-1 ${apt.status === 'completed' ? 'bg-green-500' :
-                                                    apt.status === 'cancelled' ? 'bg-red-500' :
-                                                        apt.status === 'in_progress' ? 'bg-blue-400' :
-                                                            'bg-yellow-400'
-                                                    }`} />
-                                            </div>
-                                        );
-                                    })}
-
-                                    {staff.appointments.length === 0 && (
-                                        <div className="flex flex-col items-center justify-center h-40 opacity-20">
-                                            <Activity className="w-10 h-10 text-gray-400 mb-2" />
-                                            <span className="text-[10px] font-bold uppercase tracking-widest">Randevu Yok</span>
-                                        </div>
-                                    )}
-
-                                    <button
-                                        onClick={() => onNewAppointment?.(undefined, dateStr)}
-                                        className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-all text-xs font-bold uppercase tracking-widest"
-                                    >
-                                        + YENİ RANDEVU
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
-
-

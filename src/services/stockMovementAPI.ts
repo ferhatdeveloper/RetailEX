@@ -147,6 +147,7 @@ class StockMovementAPI {
         // Query 2: Invoice-based movements (satış/alış faturaları)
         let invoiceRows: any[] = [];
         try {
+            // sale_items şemasında created_at yok; tarih sales başlığından alınır
             const { rows } = await postgres.query(
                 `SELECT
                     si.id,
@@ -154,7 +155,7 @@ class StockMovementAPI {
                     si.item_code as product_id,
                     si.quantity,
                     si.unit_price,
-                    si.created_at,
+                    sl.date as created_at,
                     sl.fiche_no as document_no,
                     CASE
                         WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'

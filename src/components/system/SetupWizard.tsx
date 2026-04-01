@@ -19,6 +19,10 @@ interface AppConfig {
     db_mode: string;
     local_db: string;
     remote_db: string;
+    // Remote tarafı: klasik PostgreSQL mi, yoksa PostgREST üzerinden mi kullanılacak?
+    connection_provider?: 'db' | 'rest_api';
+    // PostgREST base URL (örn: http://1.2.3.4:3002)
+    remote_rest_url?: string;
     terminal_name: string;
     store_id: string;
     erp_firm_nr: string;
@@ -56,7 +60,10 @@ interface AppConfig {
     max_users?: number;
     enabled_modules: string[];
     bayi_seti: boolean;
-    base_currency: string;
+    /** Uygulama varsayılan para kodu (config.db / POS öncesi) */
+    default_currency: string;
+    /** IQ: Irak mevzuatı; TR: GİB e-belge ve TR entegrasyonları */
+    regulatory_region: 'TR' | 'IQ';
 }
 
 interface Company {
@@ -150,6 +157,8 @@ const SetupWizard: React.FC = () => {
         db_mode: 'local', // Default 'local'
         local_db: 'localhost:5432/retailex_local',
         remote_db: '',
+        connection_provider: 'db',
+        remote_rest_url: 'http://172.20.0.10:3002',
         terminal_name: 'TERMINAL-01',
         store_id: '',
         erp_firm_nr: '',
@@ -167,6 +176,8 @@ const SetupWizard: React.FC = () => {
         skip_integration: false,
         system_type: 'retail', // Changed default to retail so it doesn't look like Bayi Seti
         role: 'client',
+        central_api_url: '',
+        central_ws_url: '',
         selected_firms: [],
         enable_mesh: false,
         device_id: '', // Hardware fingerprint
@@ -197,10 +208,25 @@ const SetupWizard: React.FC = () => {
         },
         enabled_modules: ['pos', 'wms'], // Only default retail modules
         bayi_seti: false,
-        base_currency: 'IQD',
+        default_currency: 'IQD',
+        regulatory_region: 'IQ',
     };
 
     const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
+
+    /** Logo/Nebim gibi gerçek ERP verisi kullanılacaksa demo seed çalıştırılmamalı. */
+    const logoIntegrationReady =
+        !config.skip_integration &&
+        Boolean(String(config.erp_firm_nr || '').trim()) &&
+        Boolean(String(config.erp_period_nr || '').trim());
+
+    useEffect(() => {
+        if (logoIntegrationReady && loadDemoData) setLoadDemoData(false);
+    }, [logoIntegrationReady, loadDemoData]);
+
+    /** Bağımsız mod + terminal + merkez DB: yeni firma formu atlanır; doğrudan uzak PostgreSQL ayarları. */
+    const skipStandaloneFirmStep =
+        config.skip_integration && config.role === 'client' && config.db_mode === 'online';
 
     const [availableCashRegisters, setAvailableCashRegisters] = useState<any[]>([]);
 
@@ -466,6 +492,19 @@ const SetupWizard: React.FC = () => {
         setDbStatus('CHECKING');
         try {
             if (isTauri) {
+                // Rest API modunda PostgreSQL port/kimlik doğrulama yerine PostgREST erişilebilirliğini test et.
+                if (config.connection_provider === 'rest_api') {
+                    const { testPostgrestUrl } = await import('../../services/postgres');
+                    const pr = await testPostgrestUrl(config.remote_rest_url || '');
+                    if (pr.connected) {
+                        setDbStatus('RUNNING');
+                        setDbErrorMessage('');
+                    } else {
+                        setDbStatus('NOT_FOUND');
+                        setDbErrorMessage(pr.error || 'PostgREST erişilemedi');
+                    }
+                    return;
+                }
                 
                 const status = await safeInvoke<string>('check_db_status', { config });
                 if (status.startsWith('ERROR')) {
@@ -509,9 +548,17 @@ const SetupWizard: React.FC = () => {
             }
 
             if (config.role !== 'center' && (config.db_mode === 'hybrid' || config.db_mode === 'online')) {
-                if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
-                    toast.error('Bu rol için geçerli bir uzak sunucu adresi girilmelidir.');
-                    return;
+                const provider = config.connection_provider || 'db';
+                if (provider === 'rest_api') {
+                    if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
+                        toast.error('PostgREST API URL girilmelidir.');
+                        return;
+                    }
+                } else {
+                    if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
+                        toast.error('Bu rol için geçerli bir uzak sunucu adresi girilmelidir.');
+                        return;
+                    }
                 }
             }
         }
@@ -551,6 +598,23 @@ const SetupWizard: React.FC = () => {
                     setLoading(false);
                 }
                 return;
+            } else if (skipStandaloneFirmStep) {
+                const provider = config.connection_provider || 'db';
+                if (provider === 'rest_api') {
+                    if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
+                        toast.error('PostgREST API URL girilmelidir.');
+                        return;
+                    }
+                } else {
+                    if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
+                        toast.error('Merkez sunucu için geçerli bir uzak PostgreSQL adresi girilmelidir (host:port/veritabanı).');
+                        return;
+                    }
+                    if (!config.pg_remote_user?.trim()) {
+                        toast.error('Merkez PostgreSQL kullanıcı adı girilmelidir.');
+                        return;
+                    }
+                }
             } else {
                 // Standalone Mode: firma numarasını doğrula ve normalize et
                 const normalizedFirmNr = (config.erp_firm_nr || '001').padStart(3, '0');
@@ -590,11 +654,19 @@ const SetupWizard: React.FC = () => {
             return;
         }
 
+        // Entegrasyondan sonra firma adımı yerine doğrudan merkez veritabanı ayarları
+        if (step === 2 && skipStandaloneFirmStep) {
+            setStep(4);
+            return;
+        }
+
         setStep(prev => prev + 1);
     };
     const prevStep = () => {
         if (step === 5 && config.is_nebim_migration) {
             setStep(3);
+        } else if (step === 4 && skipStandaloneFirmStep) {
+            setStep(2);
         } else {
             setStep(prev => prev - 1);
         }
@@ -626,6 +698,12 @@ const SetupWizard: React.FC = () => {
                         setConfig(prev => ({
                             ...prev,
                             ...existing,
+                            regulatory_region: (existing.regulatory_region as 'TR' | 'IQ') || prev.regulatory_region || 'IQ',
+                            default_currency:
+                                (existing.default_currency as string) ||
+                                (existing.base_currency as string) ||
+                                prev.default_currency ||
+                                'IQD',
                             // Ensure password fields are kept secure or re-filled if needed
                             pg_local_user: existing.pg_local_user || 'postgres',
                             pg_remote_user: existing.pg_remote_user || 'postgres',
@@ -1095,8 +1173,14 @@ const SetupWizard: React.FC = () => {
                     setInstallationStep('DATABASE');
                     await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
                     const target = config.db_mode === 'online' ? 'remote' : 'local';
-                    await safeInvoke('create_database', { config, target });
-                    await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+                    const provider = config.connection_provider || 'db';
+                    if (provider === 'rest_api' && target === 'remote') {
+                        await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak veritabanı oluşturma/migrations atlandı (zaten hazır varsayılır).');
+                        setDbInitialized(true);
+                    } else {
+                        await safeInvoke('create_database', { config, target });
+                        await emit('sync-event', `✅ ${target === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+                    }
                 }
             }
 
@@ -1109,9 +1193,27 @@ const SetupWizard: React.FC = () => {
                     const { emit } = await import('@tauri-apps/api/event');
 
                     await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
-                    const migrationResult = await safeInvoke('run_migrations', { config, target, loadDemoData });
-                    await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
-                    setDbInitialized(true);
+                    const provider = config.connection_provider || 'db';
+                    if (provider === 'rest_api' && target === 'remote') {
+                        await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak migrations atlandı.');
+                        setDbInitialized(true);
+                    } else {
+                        // Demo seed (001_demo_data.sql) yalnızca kutu işaretliyse; Logo/Nebim gerçek ERP verisi kullanır
+                        const migrationLoadDemo =
+                            loadDemoData === true &&
+                            !logoIntegrationReady &&
+                            !config.is_nebim_migration;
+                        if (loadDemoData && !migrationLoadDemo) {
+                            await emit('sync-event', 'ℹ️ Logo seçili: örnek (demo) veri yüklenmedi. Stok/cari vb. gerçek veriler bir sonraki adımda Logo ERP (MSSQL) veritabanından aktarılacak.');
+                        }
+                        const migrationResult = await safeInvoke('run_migrations', {
+                            config,
+                            target,
+                            loadDemoData: migrationLoadDemo
+                        });
+                        await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
+                        setDbInitialized(true);
+                    }
                 }
             } catch (migErr) {
                 const migErrStr = String(migErr);
@@ -1419,13 +1521,39 @@ const SetupWizard: React.FC = () => {
                 }
             }
 
-            // 5. Initial Data Sync from Logo (Only when Logo/ERP integration is active)
+            // 5. Logo ERP (MSSQL) → PostgreSQL: seçilen firma/dönem için gerçek kart ve hareket verileri (demo değil)
             if (!config.skip_integration) {
                 setInstallationStep('SYNC');
-                toast.info('ERP verileri senkronize ediliyor...');
+                toast.info('Logo ERP veritabanından gerçek firma verileri aktarılıyor...');
                 if (isTauri) {
-                    
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `📡 Logo ERP (MSSQL) → PostgreSQL: firma ${config.erp_firm_nr} / dönem ${config.erp_period_nr} gerçek verileri okunuyor...`);
                     await safeInvoke('sync_logo_data', { config: config });
+                    await emit('sync-event', '✅ Logo ERP aktarımı tamamlandı (kaynak: canlı ERP veritabanı, demo seed değil).');
+                    toast.success('Logo ERP verileri PostgreSQL\'e aktarıldı.');
+
+                    // 000_master_schema "RetailEx OS" şablon firması (001) — Logo'da 002 vb. seçildiyse gereksiz ikinci kayıt oluşur
+                    const logoFirmNr = String(config.erp_firm_nr || '').padStart(3, '0');
+                    if (logoFirmNr !== '001') {
+                        try {
+                            await postgres.query(
+                                `DELETE FROM periods WHERE firm_id IN (SELECT id FROM firms WHERE firm_nr = $1 AND name = $2)`,
+                                ['001', 'RetailEx OS']
+                            );
+                            await postgres.query(`DELETE FROM stores WHERE firm_nr = $1`, ['001']);
+                            const delTpl = await postgres.query<{ id: string }>(
+                                `DELETE FROM firms WHERE firm_nr = $1 AND name = $2 RETURNING id`,
+                                ['001', 'RetailEx OS']
+                            );
+                            if (delTpl.rowCount > 0) {
+                                await emit('sync-event', 'ℹ️ Şablon firma 001 (RetailEx OS) kaldırıldı — yalnızca Logo\'dan seçtiğiniz firma listelenir.');
+                                await postgres.query(`UPDATE firms SET "default" = false`);
+                                await postgres.query(`UPDATE firms SET "default" = true WHERE firm_nr = $1`, [logoFirmNr]);
+                            }
+                        } catch (cleanErr) {
+                            console.warn('[SetupWizard] Şablon firma 001 temizliği:', cleanErr);
+                        }
+                    }
                 } else {
                     console.log('Web Modu: Veri senkronizasyonu simüle ediliyor...');
                     await new Promise(r => setTimeout(r, 1000));
@@ -1457,6 +1585,20 @@ const SetupWizard: React.FC = () => {
             // Update localStorage cache ONLY after full successful install, so App.tsx fast-path
             // reads is_configured:true on redirect and skips the wizard.
             localStorage.setItem('retailex_web_config', JSON.stringify(finalDbConfig));
+
+            const shellOrder = ['pos', 'restaurant', 'wms', 'beauty'] as const;
+            const preferredShell =
+                config.system_type === 'restaurant' ? 'restaurant' :
+                    config.system_type === 'beauty' ? 'beauty' :
+                        config.system_type === 'wms' ? 'wms' :
+                            'pos';
+            let primaryShell = preferredShell;
+            if (!config.enabled_modules.includes(preferredShell)) {
+                primaryShell = shellOrder.find((id) => config.enabled_modules.includes(id))
+                    || config.enabled_modules[0]
+                    || 'pos';
+            }
+            localStorage.setItem('retailex_active_module', primaryShell);
 
             toast.success(isUpdateMode ? 'Güncelleme başarıyla tamamlandı!' : 'Kurulum başarıyla tamamlandı!');
             setTimeout(() => {
@@ -1646,7 +1788,7 @@ const SetupWizard: React.FC = () => {
                                             { id: 'retail', label: 'Mağazacılık', desc: 'Tekstil, Ayakkabı', icon: Layout },
                                             { id: 'market', label: 'Market', desc: 'Süpermarket, Büfe', icon: CheckCircle },
                                             { id: 'wms', label: 'Depo', desc: 'WMS Entegre', icon: Building2 },
-                                            { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
+                                            { id: 'restaurant', label: 'Restoran', desc: 'Cafe & Restoran', icon: UtensilsCrossed },
                                             { id: 'beauty', label: 'Güzellik', desc: 'Klinik & Bakım', icon: Sparkles },
                                             { id: 'bayi', label: 'Bayi Seti', desc: 'Tüm Modüller', icon: Shield },
                                         ].map((sys) => (
@@ -1662,7 +1804,7 @@ const SetupWizard: React.FC = () => {
                                                     let isBayiSeti = false;
                                                     if (sys.id === 'retail' || sys.id === 'market') newModules = ['pos', 'wms'];
                                                     else if (sys.id === 'wms') newModules = ['wms'];
-                                                    else if (sys.id === 'restaurant') newModules = ['restaurant'];
+                                                    else if (sys.id === 'restaurant') newModules = ['pos', 'restaurant'];
                                                     else if (sys.id === 'beauty') newModules = ['beauty'];
                                                     else if (sys.id === 'bayi') {
                                                         newModules = ['pos', 'wms', 'restaurant', 'beauty'];
@@ -1828,7 +1970,72 @@ const SetupWizard: React.FC = () => {
                                 {/* Section Separator */}
                                 <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
 
-                                {/* Section 2: Infrastructure Mode */}
+                                {/* Section 1.6: Terminal Veritabanı (sadece Terminal seçiliyse) */}
+                                {config.role === 'client' && (
+                                    <>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Terminal Veritabanı</h2>
+                                                <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Yerel kurulum mu, merkez DB’ye bağlantı mı?</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-3">
+                                                <button
+                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid' })}
+                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode !== 'online'
+                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-4 relative z-10 text-left">
+                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode !== 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                            <Database className="w-6 h-6" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode !== 'online' ? 'text-white' : 'text-slate-200'}`}>Yerel veritabanı kur</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode !== 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Bu bilgisayarda veritabanı kurulur veya mevcut yerel PostgreSQL kullanılır.</div>
+                                                        </div>
+                                                        {config.db_mode !== 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfig({ ...config, db_mode: 'online' })}
+                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode === 'online'
+                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-4 relative z-10 text-left">
+                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode === 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                            <Globe className="w-6 h-6" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode === 'online' ? 'text-white' : 'text-slate-200'}`}>Merkez veritabanına bağlan</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Veriler merkez sunucuda tutulur. Aşağıda merkez IP veya adresini girin.</div>
+                                                        </div>
+                                                        {config.db_mode === 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                                                    </div>
+                                                </button>
+                                            </div>
+                                            {config.role === 'client' && config.db_mode === 'online' && (
+                                                <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez sunucu adresi (IP veya domain)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={config.central_api_url || ''}
+                                                        placeholder="https://merkez.example.com veya https://192.168.1.100"
+                                                        onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
+                                                        className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none focus:border-blue-500/50"
+                                                    />
+                                                    <p className="text-[9px] text-slate-500">Terminal, bu adres üzerinden merkez veritabanına online bağlanacaktır.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
+                                    </>
+                                )}
+
+                                {/* Section 2: Infrastructure Mode — sadece Merkez seçiliyken göster (Terminal için yukarıdaki "Terminal Veritabanı" kullanılır) */}
+                                {config.role === 'center' && (
                                 <div className="space-y-4">
                                     <div>
                                         <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Çalışma Modu</h2>
@@ -1862,6 +2069,7 @@ const SetupWizard: React.FC = () => {
                                         ))}
                                     </div>
                                 </div>
+                                )}
 
                                 {/* Section: Module Visibility (Removed from here, moved up) */}
                             </div>
@@ -1989,6 +2197,17 @@ const SetupWizard: React.FC = () => {
 
                         {((step === 4 && config.skip_integration) || (step === 6 && !config.skip_integration)) && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                {skipStandaloneFirmStep && (
+                                    <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex gap-3 items-start">
+                                        <Globe className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-xs font-bold text-white">Merkez veritabanı bağlantısı</p>
+                                            <p className="text-[10px] text-emerald-200/75 mt-1 leading-relaxed">
+                                                Yerel yeni firma kurulumu atlandı. Aşağıya merkez sunucu PostgreSQL (veya PostgREST) bilgilerini girin; uygulama açıldığında mevcut veriler bu bağlantı üzerinden kullanılır. Firma/dönem zaten veritabanındaysa ek ünvan girmeniz gerekmez.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <h2 className="text-3xl font-bold mb-1 text-white tracking-tight">Veritabanı Ayarları</h2>
@@ -2113,7 +2332,8 @@ const SetupWizard: React.FC = () => {
                                             </div>
                                         )}
 
-                                        {/* Local Server Section */}
+                                        {/* Local Server Section — terminal merkez DB modunda gizli (yalnız uzak PG) */}
+                                        {!skipStandaloneFirmStep && (
                                         <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
                                             dbStatus === 'AUTH_FAILED' ? 'bg-amber-600/5 border-amber-500/30' :
                                                 'bg-white/[0.03] border-white/5'
@@ -2172,22 +2392,25 @@ const SetupWizard: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* Demo Data Checkbox */}
+                                                {/* Demo seed: yalnızca kutu işaretliyse 001_demo_data.sql — Logo ile karıştırma; Logo verisi ayrıca MSSQL'den gelir */}
                                                 <div className="pt-4 border-t border-white/5">
-                                                    <label className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 cursor-pointer hover:border-purple-500/40 transition-all group">
+                                                    <label className={`flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 transition-all group ${logoIntegrationReady ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-500/40'}`}>
                                                         <input
                                                             type="checkbox"
                                                             checked={loadDemoData}
+                                                            disabled={logoIntegrationReady}
                                                             onChange={(e) => setLoadDemoData(e.target.checked)}
-                                                            className="w-5 h-5 rounded border-2 border-purple-500/50 bg-slate-900/60 checked:bg-purple-600 checked:border-purple-600 focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer"
+                                                            className="w-5 h-5 rounded border-2 border-purple-500/50 bg-slate-900/60 checked:bg-purple-600 checked:border-purple-600 focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer disabled:cursor-not-allowed"
                                                         />
                                                         <div className="flex-1">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-sm font-bold text-white">Demo Veriler Yükle</span>
-                                                                <span className="px-2 py-0.5 bg-purple-600/20 text-purple-400 text-[9px] font-black uppercase tracking-wider rounded-full">Opsiyonel</span>
+                                                                <span className="text-sm font-bold text-white">Demo bilgileri yükle</span>
+                                                                <span className="px-2 py-0.5 bg-purple-600/20 text-purple-400 text-[9px] font-black uppercase tracking-wider rounded-full">Opsiyonel test verisi</span>
                                                             </div>
                                                             <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                                                                13 ürün, 8 müşteri, 3 fatura ve örnek kasa hareketleri ile test ortamı oluştur
+                                                                {logoIntegrationReady
+                                                                    ? 'Logo ile firma seçtiniz: cari/stok vb. gerçek veriler Logo ERP (MSSQL) veritabanından senkronize edilir; bu kutu sadece RetailEX içi örnek veri içindir ve Logo kurulumunda kapalıdır.'
+                                                                    : 'Logo kullanmıyorsanız: sadece bu kutuyu işaretlerseniz örnek ürün/cari yüklenir. Logo kullanacaksanız önce ERP bağlantısında firma seçin — gerçek veri oradan gelir.'}
                                                             </p>
                                                         </div>
                                                         <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center group-hover:bg-purple-600/30 transition-all">
@@ -2235,6 +2458,7 @@ const SetupWizard: React.FC = () => {
                                                 </div>
                                             </div>
                                         </div>
+                                        )}
 
                                         {/* Remote Server Section - HIDDEN for Center Role */}
                                         {config.role !== 'center' && (
@@ -2249,46 +2473,83 @@ const SetupWizard: React.FC = () => {
                                                 </div>
 
                                                 <div className="space-y-6 relative z-10">
+                                                    {/* Connection Provider */}
                                                     <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Bağlantı Adresi</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
-                                                            value={config.remote_db}
-                                                            onChange={(e) => setConfig({ ...config, remote_db: e.target.value })}
-                                                            placeholder="91.205.41.130:5432/retailos_db"
-                                                        />
+                                                        <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
+                                                            Bağlantı Sağlayıcı
+                                                        </label>
+                                                        <select
+                                                            value={config.connection_provider || 'db'}
+                                                            onChange={(e) => setConfig({ ...config, connection_provider: e.target.value as any })}
+                                                            className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                        >
+                                                            <option value="db">DB Connection (PostgreSQL)</option>
+                                                            <option value="rest_api">Rest API (PostgREST)</option>
+                                                        </select>
                                                     </div>
 
-                                                    <div className="space-y-2 pt-2 border-t border-white/5">
-                                                        <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Kimlik Doğrulama (PostgreSQL)</label>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <div className="relative">
-                                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
-                                                                    <User className="w-4 h-4" />
-                                                                </span>
+                                                    <div className="space-y-2">
+                                                        {config.connection_provider === 'rest_api' ? (
+                                                            <>
+                                                                <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
+                                                                    PostgREST API URL
+                                                                </label>
                                                                 <input
                                                                     type="text"
-                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
-                                                                    value={config.pg_remote_user}
-                                                                    onChange={(e) => setConfig({ ...config, pg_remote_user: e.target.value })}
-                                                                    placeholder="Kullanıcı Adı"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
+                                                                    value={config.remote_rest_url || ''}
+                                                                    onChange={(e) => setConfig({ ...config, remote_rest_url: e.target.value })}
+                                                                    placeholder="http://IP:3002"
                                                                 />
-                                                            </div>
-                                                            <div className="relative">
-                                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
-                                                                    <Lock className="w-4 h-4" />
-                                                                </span>
+                                                                <p className="text-[9px] text-slate-400 mt-2">
+                                                                    VPN olmadan doğrudan IP ile PostgREST üzerinden veri okunur.
+                                                                </p>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Bağlantı Adresi</label>
                                                                 <input
-                                                                    type="password"
-                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
-                                                                    value={config.pg_remote_pass}
-                                                                    onChange={(e) => setConfig({ ...config, pg_remote_pass: e.target.value })}
-                                                                    placeholder="Parola"
+                                                                    type="text"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
+                                                                    value={config.remote_db}
+                                                                    onChange={(e) => setConfig({ ...config, remote_db: e.target.value })}
+                                                                    placeholder="91.205.41.130:5432/retailos_db"
                                                                 />
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {config.connection_provider !== 'rest_api' && (
+                                                        <div className="space-y-2 pt-2 border-t border-white/5">
+                                                            <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Kimlik Doğrulama (PostgreSQL)</label>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="relative">
+                                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
+                                                                        <User className="w-4 h-4" />
+                                                                    </span>
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                                        value={config.pg_remote_user}
+                                                                        onChange={(e) => setConfig({ ...config, pg_remote_user: e.target.value })}
+                                                                        placeholder="Kullanıcı Adı"
+                                                                    />
+                                                                </div>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
+                                                                        <Lock className="w-4 h-4" />
+                                                                    </span>
+                                                                    <input
+                                                                        type="password"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                                        value={config.pg_remote_pass}
+                                                                        onChange={(e) => setConfig({ ...config, pg_remote_pass: e.target.value })}
+                                                                        placeholder="Parola"
+                                                                    />
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -2949,6 +3210,29 @@ const SetupWizard: React.FC = () => {
                                         <div className="grid grid-cols-2 gap-6">
                                             <div className="space-y-4">
                                                 <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-amber-400/50 uppercase tracking-widest pl-1">İşletme bölgesi (mevzuat)</label>
+                                                    <div className="relative group">
+                                                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500/40 group-focus-within:text-amber-500 transition-colors" />
+                                                        <select
+                                                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-amber-500 transition-all font-bold appearance-none cursor-pointer"
+                                                            value={config.regulatory_region}
+                                                            onChange={(e) =>
+                                                                setConfig({
+                                                                    ...config,
+                                                                    regulatory_region: e.target.value as 'TR' | 'IQ',
+                                                                })
+                                                            }
+                                                        >
+                                                            <option value="IQ" className="bg-slate-900">Irak (IQ) — GİB e-belge yok</option>
+                                                            <option value="TR" className="bg-slate-900">Türkiye (TR) — e-Fatura / e-Arşiv</option>
+                                                        </select>
+                                                        <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none rotate-90" />
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-500 font-medium pl-1">
+                                                        TR seçildiğinde e-dönüşüm modülleri açılır; IQ’da yalnızca yerel/yemek platformu entegrasyonları (Talabat vb.) kullanılır.
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1.5">
                                                     <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Firma Ünvanı & No</label>
                                                     <div className="flex gap-2">
                                                         <div className="relative group flex-1">
@@ -2976,15 +3260,17 @@ const SetupWizard: React.FC = () => {
 
                                             <div className="space-y-4">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Raporlama Para Birimi</label>
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Varsayılan para birimi</label>
+                                                    <p className="text-[9px] text-slate-500 pl-1">Firma kartındaki ana para biriminden önce; config.db ile saklanır.</p>
                                                     <div className="relative group">
                                                         <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
                                                         <select
                                                             className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-bold appearance-none cursor-pointer"
-                                                            value={config.base_currency}
-                                                            onChange={(e) => setConfig({ ...config, base_currency: e.target.value })}
+                                                            value={config.default_currency}
+                                                            onChange={(e) => setConfig({ ...config, default_currency: e.target.value })}
                                                         >
                                                             <option value="IQD" className="bg-slate-900">Irak Dinarı (IQD)</option>
+                                                            <option value="TRY" className="bg-slate-900">Türk Lirası (TRY)</option>
                                                             <option value="USD" className="bg-slate-900">Amerikan Doları (USD)</option>
                                                             <option value="EUR" className="bg-slate-900">Euro (EUR)</option>
                                                             <option value="GBP" className="bg-slate-900">İngiliz Sterlini (GBP)</option>
@@ -3568,6 +3854,11 @@ const SetupWizard: React.FC = () => {
                                                 </div>
                                             ) : (
                                                 <div className="space-y-4 animate-in zoom-in-95 duration-300">
+                                                    {config.role === 'client' && config.db_mode === 'online' && (
+                                                        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                                            <p className="text-[9px] text-emerald-200/80 font-medium">Terminal merkez veritabanına bağlanacak. Adresi 1. adımda girdiyseniz aşağıdan kontrol edin veya güncelleyin.</p>
+                                                        </div>
+                                                    )}
                                                     <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
                                                         <p className="text-[9px] text-blue-200/50 font-medium">Klasik TCP/IP bağlantısı. Merkez sunucunun sabit bir IP adresi olmalıdır.</p>
                                                     </div>

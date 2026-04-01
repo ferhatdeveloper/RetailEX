@@ -27,11 +27,27 @@ export interface ReturnReceipt {
   returnReason?: string;
 }
 
-function generateReceiptHTML(sale: any, companyName: string, language: string): string {
+export interface ReceiptSettingsForPrint {
+  companyName?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  logoDataUrl?: string;
+}
+
+function generateReceiptHTML(sale: any, companyName: string, language: string, receiptSettings?: ReceiptSettingsForPrint | null): string {
   const dateStr = new Date(sale.date).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+
+  const displayName = receiptSettings?.companyName || companyName;
+  const logoHtml = receiptSettings?.logoDataUrl
+    ? `<div class="center" style="margin-bottom: 2mm;"><img src="${receiptSettings.logoDataUrl}" alt="" style="max-height: 12mm; width: auto; display: block; margin: 0 auto;" /></div>`
+    : '';
+  const companyLines = [receiptSettings?.companyAddress, receiptSettings?.companyPhone].filter(Boolean);
+  const companyLinesHtml = companyLines.length
+    ? `<div class="center" style="font-size: 9px; margin-bottom: 2mm;">${companyLines.join(' | ')}</div>`
+    : '';
 
   const labels = language === 'ar' ? {
     receiptNo: 'رقم الإيصال', date: 'التاريخ', cashier: 'أمين الصندوق',
@@ -67,22 +83,24 @@ function generateReceiptHTML(sale: any, companyName: string, language: string): 
     <head>
       <meta charset="UTF-8">
       <style>
-        @media print { @page { size: 80mm auto; margin: 0; } body { margin: 0; padding: 0; } }
+        @media print { @page { size: 80mm auto; margin: 2mm; } body { margin: 0; padding: 0; } }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; font-size: 11px; line-height: 1.3; width: 80mm; padding: 5mm; background: white; }
-        .center { text-align: center; } .bold { font-weight: bold; } .large { font-size: 14px; }
-        .divider { border-top: 1px dashed #000; margin: 3mm 0; } .double-divider { border-top: 2px solid #000; margin: 3mm 0; }
-        table { width: 100%; border-collapse: collapse; }
-        .item-row td { padding: 1mm 0; vertical-align: top; }
-        .item-name { width: 55%; text-align: ${isRTL ? 'right' : 'left'}; }
-        .item-qty { width: 15%; text-align: center; }
-        .item-price { width: 30%; text-align: ${isRTL ? 'left' : 'right'}; }
-        .info-row { display: flex; justify-content: space-between; margin: 1mm 0; }
-        .barcode { text-align: center; font-size: 10px; letter-spacing: 2px; margin: 3mm 0; }
+        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; font-size: 9px; line-height: 1.25; width: 80mm; max-width: 80mm; padding: 3mm; background: white; color: #000; font-weight: 500; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+        .center { text-align: center; } .bold { font-weight: bold; } .large { font-size: 11px; }
+        .divider { border-top: 1px dashed #000; margin: 2mm 0; } .double-divider { border-top: 2px solid #000; margin: 2mm 0; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
+        .item-row td { padding: 0.5mm 1mm; vertical-align: top; word-wrap: break-word; }
+        .item-name { width: 48%; text-align: ${isRTL ? 'right' : 'left'}; font-size: 9px; word-break: break-word; }
+        .item-qty { width: 12%; text-align: center; }
+        .item-price { width: 40%; text-align: ${isRTL ? 'left' : 'right'}; font-weight: bold; white-space: nowrap; min-width: 0; }
+        .info-row { display: flex; justify-content: space-between; margin: 0.5mm 0; }
+        .barcode { text-align: center; font-size: 8px; letter-spacing: 1px; margin: 2mm 0; }
       </style>
     </head>
     <body>
-      <div class="center bold large">${companyName}</div>
+      ${logoHtml}
+      <div class="center bold large">${displayName}</div>
+      ${companyLinesHtml}
       <div class="double-divider"></div>
       <div class="info-row"><span>${labels.receiptNo}:</span><span class="bold">${sale.receiptNumber}</span></div>
       <div class="info-row"><span>${labels.date}:</span><span>${dateStr}</span></div>
@@ -92,13 +110,11 @@ function generateReceiptHTML(sale: any, companyName: string, language: string): 
       <table>
         <thead><tr class="bold"><td class="item-name">${labels.product}</td><td class="item-qty">${labels.qty}</td><td class="item-price">${labels.amount}</td></tr></thead>
         <tbody>
-          ${(sale.items as any[]).map(item => `
-            <tr class="item-row">
-              <td class="item-name">${item.productName}</td>
-              <td class="item-qty">${item.quantity}</td>
-              <td class="item-price">${(item.price * item.quantity).toFixed(2)}</td>
-            </tr>
-          `).join('')}
+          ${(sale.items as any[]).map((item: any) => {
+        const name = (item.productName || '').slice(0, 24);
+        const total = (item.price * item.quantity);
+        return `<tr class="item-row"><td class="item-name">${name}</td><td class="item-qty">${item.quantity}</td><td class="item-price">${total.toFixed(2)}</td></tr>`;
+      }).join('')}
         </tbody>
       </table>
       <div class="divider"></div>
@@ -111,22 +127,31 @@ function generateReceiptHTML(sale: any, companyName: string, language: string): 
       <div class="info-row"><span>${labels.paymentMethod}:</span><span class="bold">${sale.paymentMethod === 'cash' ? labels.cash : labels.card}</span></div>
       ${sale.paymentMethod === 'cash' ? `<div class="info-row"><span>${labels.change}:</span><span class="bold">${sale.change?.toFixed(2) || '0.00'}</span></div>` : ''}
       <div class="double-divider"></div>
-      <div class="center" style="margin: 3mm 0; font-size: 10px;">${labels.thanks}</div>
-      <div class="barcode">* ${sale.receiptNumber} *</div>
-      <div class="center" style="font-size: 8px; margin-top: 3mm; color: #666;">RetailOS - Professional POS System</div>
+      <div class="center" style="margin: 3mm 0; font-size: 10px; color: #000; font-weight: 600;">${labels.thanks}</div>
+      <div class="barcode" style="color: #000;">* ${sale.receiptNumber} *</div>
+      <div class="center" style="font-size: 8px; margin-top: 3mm; color: #000; font-weight: 500;">RetailOS - Professional POS System</div>
     </body>
     </html>
   `;
 }
 
-export async function printThermalReceipt(sale: any, companyName: string = 'RetailOS', options?: { autoPrint?: boolean, language?: string }) {
+export async function printThermalReceipt(sale: any, companyName: string = 'RetailOS', options?: { autoPrint?: boolean, language?: string; receiptSettings?: ReceiptSettingsForPrint | null }) {
   const finalLanguage = options?.language || 'tr';
+  let receiptSettings = options?.receiptSettings;
+  if (receiptSettings === undefined) {
+    try {
+      const { getReceiptSettings } = await import('../services/receiptSettingsService');
+      receiptSettings = await getReceiptSettings();
+    } catch {
+      receiptSettings = null;
+    }
+  }
   if (Capacitor.getPlatform() === 'android') {
-    try { await printSunmiReceipt(sale, companyName, finalLanguage); return; }
+    try { await printSunmiReceipt(sale, receiptSettings?.companyName || companyName, finalLanguage); return; }
     catch (e) { console.error('Sunmi failed', e); }
   }
 
-  const receiptHTML = generateReceiptHTML(sale, companyName, finalLanguage);
+  const receiptHTML = generateReceiptHTML(sale, companyName, finalLanguage, receiptSettings);
 
   if (options?.autoPrint && (window as any).__TAURI_INTERNALS__) {
     try {

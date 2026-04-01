@@ -12,6 +12,18 @@ export interface Firm {
     tax_office?: string;
     city?: string;
     is_active: boolean;
+    /** TR: GİB e-belge; IQ: Irak vb. — `firms.regulatory_region` */
+    regulatory_region?: 'TR' | 'IQ';
+    /** Supabase tarafındaki firma/organization ID; ürün ve resim senkronu için */
+    supabase_firm_id?: string;
+    /** TR: GİB — `mock` | `nilvera` | `qnb_esolutions` | `integrator` | `direct_unconfigured` */
+    gib_integration_mode?: string;
+    gib_ubl_profile?: string;
+    gib_sender_alias?: string;
+    gib_integrator_base_url?: string;
+    gib_integrator_username?: string;
+    gib_integrator_password?: string;
+    gib_use_test_environment?: boolean;
 }
 
 export interface Period {
@@ -24,7 +36,40 @@ export interface Period {
     is_active: boolean;
 }
 
+/** `public.system_settings` tek satır (id=1); web açılış varsayılanları */
+export interface SystemSettingsRow {
+    id: number;
+    default_currency: string;
+    primary_firm_nr: string | null;
+    primary_period_nr: string | null;
+}
+
 export const organizationAPI = {
+    /**
+     * Get firm by firm_nr (örn. aktif firma için Supabase ID almak için)
+     */
+    async getFirmByFirmNr(firmNr: string): Promise<Firm | null> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM firms WHERE firm_nr = $1 LIMIT 1`,
+                [firmNr]
+            );
+            if (!rows[0]) return null;
+            const r = rows[0];
+            return {
+                ...r,
+                id: r.id?.toString?.() ?? r.id,
+                firma_adi: r.name,
+                firma_kodu: r.firm_nr,
+                supabase_firm_id: r.supabase_firm_id,
+                regulatory_region: (String(r.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ') as 'TR' | 'IQ',
+            } as Firm & { firma_adi: string; firma_kodu: string };
+        } catch (error) {
+            console.error('[OrganizationAPI] getFirmByFirmNr failed:', error);
+            return null;
+        }
+    },
+
     /**
      * Get all firms
      */
@@ -38,7 +83,9 @@ export const organizationAPI = {
                 ...r,
                 id: r.id.toString(),
                 firma_adi: r.name,
-                firma_kodu: r.firm_nr
+                firma_kodu: r.firm_nr,
+                supabase_firm_id: r.supabase_firm_id,
+                regulatory_region: (String(r.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ') as 'TR' | 'IQ',
             }));
         } catch (error) {
             console.error('[OrganizationAPI] getFirms failed:', error);
@@ -49,24 +96,110 @@ export const organizationAPI = {
     /**
      * Create/Update firm
      */
+    /**
+     * Aktif firma için mevzuat bölgesi (e-belge). Sütun yoksa null.
+     */
+    async getRegulatoryRegionForFirmNr(firmNr: string): Promise<'TR' | 'IQ' | null> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT regulatory_region FROM firms WHERE firm_nr = $1 LIMIT 1`,
+                [firmNr]
+            );
+            if (!rows?.[0]) return null;
+            const v = String((rows[0] as { regulatory_region?: string }).regulatory_region ?? 'IQ').toUpperCase();
+            return v === 'TR' ? 'TR' : 'IQ';
+        } catch {
+            return null;
+        }
+    },
+
     async saveFirm(firm: any): Promise<Firm | null> {
         try {
             const isUpdate = !!firm.id;
             const anaPara = firm.ana_para_birimi || 'IQD';
             const raporPara = firm.raporlama_para_birimi || 'IQD';
+            const reg =
+                firm.regulatory_region === 'TR' || String(firm.regulatory_region || '').toUpperCase() === 'TR'
+                    ? 'TR'
+                    : 'IQ';
+            const gibMode = String(firm.gib_integration_mode || 'mock').slice(0, 20);
+            const gibUbl = String(firm.gib_ubl_profile || 'TICARIFATURA').slice(0, 40);
+            const gibAlias = firm.gib_sender_alias != null ? String(firm.gib_sender_alias).slice(0, 255) : '';
+            const gibUrl = firm.gib_integrator_base_url != null ? String(firm.gib_integrator_base_url).slice(0, 512) : '';
+            const gibUser = firm.gib_integrator_username != null ? String(firm.gib_integrator_username).slice(0, 255) : '';
+            const gibPass = firm.gib_integrator_password != null ? String(firm.gib_integrator_password) : '';
+            const gibTest = firm.gib_use_test_environment !== false;
+            let saved: any;
             if (isUpdate) {
                 const { rows } = await postgres.query(
-                    `UPDATE firms SET name = $1, tax_nr = $2, tax_office = $3, city = $4, ana_para_birimi = $5, raporlama_para_birimi = $6 WHERE id = $7::text::uuid RETURNING *`,
-                    [firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, anaPara, raporPara, firm.id]
+                    `UPDATE firms SET
+                       name = $1, tax_nr = $2, tax_office = $3, city = $4,
+                       ana_para_birimi = $5, raporlama_para_birimi = $6, regulatory_region = $7,
+                       gib_integration_mode = $9, gib_ubl_profile = $10, gib_sender_alias = NULLIF($11, ''),
+                       gib_integrator_base_url = NULLIF($12, ''), gib_integrator_username = NULLIF($13, ''),
+                       gib_integrator_password = COALESCE(NULLIF($14, ''), firms.gib_integrator_password),
+                       gib_use_test_environment = $15
+                     WHERE id = $8::text::uuid RETURNING *`,
+                    [
+                        firm.firma_adi || firm.name,
+                        firm.tax_nr ?? '',
+                        firm.tax_office ?? '',
+                        firm.city ?? '',
+                        anaPara,
+                        raporPara,
+                        reg,
+                        firm.id,
+                        gibMode,
+                        gibUbl,
+                        gibAlias,
+                        gibUrl,
+                        gibUser,
+                        gibPass,
+                        gibTest,
+                    ]
                 );
-                return rows[0];
+                saved = rows[0];
             } else {
                 const { rows } = await postgres.query(
-                    `INSERT INTO firms (firm_nr, name, tax_nr, tax_office, city, ana_para_birimi, raporlama_para_birimi) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-                    [firm.firma_kodu || firm.firm_nr, firm.firma_adi || firm.name, firm.tax_nr, firm.tax_office, firm.city, anaPara, raporPara]
+                    `INSERT INTO firms (
+                       firm_nr, name, tax_nr, tax_office, city, ana_para_birimi, raporlama_para_birimi, regulatory_region,
+                       gib_integration_mode, gib_ubl_profile, gib_sender_alias, gib_integrator_base_url,
+                       gib_integrator_username, gib_integrator_password, gib_use_test_environment
+                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), $15) RETURNING *`,
+                    [
+                        firm.firma_kodu || firm.firm_nr,
+                        firm.firma_adi || firm.name,
+                        firm.tax_nr ?? '',
+                        firm.tax_office ?? '',
+                        firm.city ?? '',
+                        anaPara,
+                        raporPara,
+                        reg,
+                        gibMode,
+                        gibUbl,
+                        gibAlias,
+                        gibUrl,
+                        gibUser,
+                        gibPass,
+                        gibTest,
+                    ]
                 );
-                return rows[0];
+                saved = rows[0];
             }
+            const sid = firm.supabase_firm_id?.trim?.() || firm.supabase_firm_id;
+            if (sid && saved?.id) {
+                try {
+                    await postgres.query(
+                        `UPDATE firms SET supabase_firm_id = $1 WHERE id = $2::text::uuid`,
+                        [sid, saved.id]
+                    );
+                    const { rows } = await postgres.query(`SELECT * FROM firms WHERE id = $1::text::uuid`, [saved.id]);
+                    if (rows[0]) saved = rows[0];
+                } catch {
+                    /* firms.supabase_firm_id sütunu yoksa (eski kurulum) ana kayıt yine başarılı */
+                }
+            }
+            return saved;
         } catch (error) {
             console.error('[OrganizationAPI] saveFirm failed:', error);
             throw error;
@@ -190,6 +323,51 @@ export const organizationAPI = {
             console.error('[OrganizationAPI] savePeriod failed:', error);
             throw error;
         }
+    },
+
+    async getSystemSettings(): Promise<SystemSettingsRow | null> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT id, default_currency, primary_firm_nr, primary_period_nr FROM public.system_settings WHERE id = 1`,
+                []
+            );
+            const r = rows[0] as {
+                id?: number;
+                default_currency?: string;
+                primary_firm_nr?: string | null;
+                primary_period_nr?: string | null;
+            } | undefined;
+            if (!r) return null;
+            return {
+                id: 1,
+                default_currency: String(r.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
+                primary_firm_nr: r.primary_firm_nr != null ? String(r.primary_firm_nr) : null,
+                primary_period_nr: r.primary_period_nr != null ? String(r.primary_period_nr) : null,
+            };
+        } catch (error) {
+            console.warn('[OrganizationAPI] getSystemSettings:', error);
+            return null;
+        }
+    },
+
+    async saveSystemSettings(data: {
+        default_currency: string;
+        primary_firm_nr: string | null;
+        primary_period_nr: string | null;
+    }): Promise<void> {
+        const dc = String(data.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD';
+        const fn = data.primary_firm_nr?.trim() || null;
+        const pn = data.primary_period_nr?.trim() || null;
+        await postgres.query(
+            `INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr)
+             VALUES (1, $1, $2, $3)
+             ON CONFLICT (id) DO UPDATE SET
+               default_currency = EXCLUDED.default_currency,
+               primary_firm_nr = EXCLUDED.primary_firm_nr,
+               primary_period_nr = EXCLUDED.primary_period_nr,
+               updated_at = CURRENT_TIMESTAMP`,
+            [dc, fn, pn]
+        );
     }
 };
 

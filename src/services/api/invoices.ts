@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Invoices API - Direct PostgreSQL Implementation
  */
 
@@ -13,6 +13,67 @@ const isValidUuid = (uuid: any): boolean => {
   return uuidRegex.test(uuid);
 };
 
+function isNonEmptyScalar(v: string | number | undefined | null): boolean {
+  if (v === undefined || v === null) return false;
+  return String(v).trim() !== '';
+}
+
+/**
+ * Firma kodu: önce faturadan gelen değer (seçili firma), yoksa oturumdaki ERP_SETTINGS.
+ * `v ?? ERP_SETTINGS` zincirinde `''` atlanmazdı → yanlışlıkla boş string ile '001'e düşmez;
+ * firma değişince fatura `firma_id` güncellenmediyse en azından aktif oturum firması kullanılır.
+ */
+function normalizeFirmNrForRow(v: string | number | undefined | null): string {
+  const fromInvoice = isNonEmptyScalar(v) ? String(v).trim() : '';
+  const fromSession = String(ERP_SETTINGS.firmNr ?? '').trim();
+  const raw = fromInvoice || fromSession;
+  if (!raw) {
+    console.warn(
+      '[InvoicesAPI] Firma numarası yok: fatura firma_id ve ERP_SETTINGS.firmNr boş. rex_* eşleşmesi için 001 kullanılıyor — config kontrol edin.'
+    );
+    return '001';
+  }
+  return raw.padStart(3, '0').slice(0, 10);
+}
+
+function normalizePeriodNrForRow(v: string | number | undefined | null): string {
+  const fromInvoice = isNonEmptyScalar(v) ? String(v).trim() : '';
+  const fromSession = String(ERP_SETTINGS.periodNr ?? '').trim();
+  const raw = fromInvoice || fromSession;
+  if (!raw) {
+    console.warn(
+      '[InvoicesAPI] Dönem numarası yok: fatura donem_id ve ERP_SETTINGS.periodNr boş. 01 kullanılıyor.'
+    );
+    return '01';
+  }
+  return raw.padStart(2, '0').slice(0, 10);
+}
+
+/** Logo trcode grupları — getPaginated SQL ile birebir; liste ekranı istemci filtresi burayı kullanmalı (INVOICE_TYPES ile değil). */
+export const TRCODES_BY_INVOICE_CATEGORY: Record<string, readonly number[]> = {
+  Alis: [1, 4, 5, 6, 13, 26, 41, 42],
+  Satis: [7, 8, 9, 14, 29, 30, 31, 32],
+  Iade: [2, 3, 6],
+  Irsaliye: [10, 11, 12, 13, 25],
+  Siparis: [20, 21],
+  Teklif: [30, 31],
+  Hizmet: [4, 9, 21, 24]
+};
+
+/** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
+export function invoiceMatchesModuleCategory(
+  inv: { invoice_category?: string; invoice_type?: number; trcode?: number },
+  moduleCategory: string
+): boolean {
+  if (!moduleCategory) return true;
+  if (inv.invoice_category) {
+    return inv.invoice_category === moduleCategory;
+  }
+  const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
+  const set = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
+  return set ? set.includes(tc) : true;
+}
+
 export const invoicesAPI = {
   /**
    * Create new invoice
@@ -21,9 +82,9 @@ export const invoicesAPI = {
     try {
       console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
 
-      // Resolve Dynamic Table Names - prioritize invoice data for dynamic synchronization
-      const firmNr = (invoice as any).firma_id || ERP_SETTINGS.firmNr;
-      const periodNr = (invoice as any).donem_id || ERP_SETTINGS.periodNr;
+      // Firma/dönem: fatura logicalref "1" iken ürünler firm_nr "001" — stok UPDATE eşleşmesi için normalize et
+      const firmNr = normalizeFirmNrForRow((invoice as any).firma_id ?? ERP_SETTINGS.firmNr);
+      const periodNr = normalizePeriodNrForRow((invoice as any).donem_id ?? ERP_SETTINGS.periodNr);
 
       const queryOptions = { firmNr, periodNr };
 
@@ -212,11 +273,45 @@ export const invoicesAPI = {
             }
 
             if (stockModifier !== 0) {
-              await postgres.query(
-                `UPDATE products SET stock = stock + $1::text::numeric WHERE (code = $2 OR id::text = $3)`,
-                [stockModifier, productId, productId],
+              const pid = String(productId).trim();
+              // firm_nr: DB'de "1" / "001" karışıklığı; code: ana kod, barkod tablosu ve UUID
+              const stkRes = await postgres.query<{ id: string; code: string; stock: string }>(
+                `UPDATE products AS p
+                 SET stock = COALESCE(p.stock::numeric, 0) + $1::numeric
+                 FROM (
+                   SELECT p2.id
+                   FROM products p2
+                   LEFT JOIN product_barcodes pb ON pb.product_id = p2.id
+                   WHERE (
+                     btrim(COALESCE(p2.code, '')) = btrim($2::text)
+                     OR btrim(COALESCE(p2.barcode, '')) = btrim($2::text)
+                     OR p2.id::text = btrim($2::text)
+                     OR btrim(COALESCE(pb.barcode_code, '')) = btrim($2::text)
+                   )
+                   AND (
+                     btrim(p2.firm_nr::text) = btrim($3::text)
+                     OR (
+                       btrim(p2.firm_nr::text) ~ '^[0-9]+$'
+                       AND btrim($3::text) ~ '^[0-9]+$'
+                       AND btrim(p2.firm_nr::text)::bigint = btrim($3::text)::bigint
+                     )
+                   )
+                   LIMIT 1
+                 ) AS sub
+                 WHERE p.id = sub.id
+                 RETURNING p.id, p.code, p.stock`,
+                [stockModifier, pid, firmNr],
                 queryOptions
               );
+              if (!stkRes.rows?.length) {
+                console.warn('[InvoicesAPI] Stok güncellenemedi — ürün veya firma eşleşmedi', {
+                  item_code: pid,
+                  firmNr,
+                  stockModifier,
+                  invoice_no: invoice.invoice_no,
+                  category: invoice.invoice_category
+                });
+              }
             }
           }
         }
@@ -318,15 +413,7 @@ export const invoicesAPI = {
         params.push(String(invoiceType));
         paramIndex++;
       } else if (invoiceCategory) {
-        // Logo Standard TRCODE Groups
-        let trcodes: number[] = [];
-        if (invoiceCategory === 'Alis') trcodes = [1, 4, 5, 6, 13, 26, 41, 42];
-        else if (invoiceCategory === 'Satis') trcodes = [7, 8, 9, 14, 29, 30, 31, 32];
-        else if (invoiceCategory === 'Iade') trcodes = [2, 3, 6]; // Added 6 (Purchase Return)
-        else if (invoiceCategory === 'Irsaliye') trcodes = [10, 11, 12, 13, 25]; // Fixed: Waybills are 10-13, not 8
-        else if (invoiceCategory === 'Siparis') trcodes = [20, 21];
-        else if (invoiceCategory === 'Teklif') trcodes = [30, 31];
-        else if (invoiceCategory === 'Hizmet') trcodes = [4, 9, 21, 24];
+        const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[invoiceCategory] || [])];
 
         if (trcodes.length > 0) {
           sql += ` AND trcode::int IN (${trcodes.join(',')})`;
@@ -401,55 +488,219 @@ export const invoicesAPI = {
    * Get invoice by ID
    */
   async getById(id: string): Promise<Invoice | null> {
+    const firmNr = ERP_SETTINGS.firmNr;
+    const cleanId = String(id || '').trim();
+    if (!cleanId) return null;
+
+    const firmNrStr = String(firmNr ?? '').trim();
+    const parsedFirm = firmNrStr ? parseInt(firmNrStr, 10) : NaN;
+    const firmFromInt = Number.isFinite(parsedFirm) ? String(parsedFirm).padStart(3, '0') : '';
+    const firmVariants = Array.from(
+      new Set(
+        [firmNrStr, firmNrStr ? firmNrStr.padStart(3, '0') : '', firmFromInt].filter((x) => Boolean(x))
+      )
+    );
+    if (firmVariants.length === 0) {
+      firmVariants.push(String(ERP_SETTINGS.firmNr || '001').padStart(3, '0'));
+    }
+
+    let rows: any[];
     try {
-      const firmNr = ERP_SETTINGS.firmNr;
-      const { rows } = await postgres.query(
-        `SELECT s.*, c.name as customer_name, sup.name as supplier_name 
-         FROM sales s 
-         LEFT JOIN customers c ON s.customer_id = c.id 
-         LEFT JOIN suppliers sup ON s.customer_id = sup.id 
+      /* join_* ile s.customer_name çakışması yok; tedarikçi adı her zaman join'den gelir */
+      let res = await postgres.query(
+        `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+         FROM sales s
+         LEFT JOIN customers c ON s.customer_id = c.id
+         LEFT JOIN suppliers sup ON s.customer_id = sup.id
          WHERE s.id::text = $1 AND s.firm_nr::text = $2`,
-        [id, String(firmNr)]
+        [cleanId, firmVariants[0] || firmNrStr]
       );
+      rows = res.rows;
+      if (rows.length === 0 && firmVariants.length > 1) {
+        for (let i = 1; i < firmVariants.length; i++) {
+          res = await postgres.query(
+            `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+             FROM sales s
+             LEFT JOIN customers c ON s.customer_id = c.id
+             LEFT JOIN suppliers sup ON s.customer_id = sup.id
+             WHERE s.id::text = $1 AND s.firm_nr::text = $2`,
+            [cleanId, firmVariants[i]]
+          );
+          if (res.rows.length > 0) {
+            rows = res.rows;
+            break;
+          }
+        }
+      }
+      /* firm_nr 1 vs 001 uyuşmazlığı: id UUID yeterli (tekil) */
+      if (rows.length === 0) {
+        res = await postgres.query(
+          `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
+           FROM sales s
+           LEFT JOIN customers c ON s.customer_id = c.id
+           LEFT JOIN suppliers sup ON s.customer_id = sup.id
+           WHERE s.id::text = $1`,
+          [cleanId]
+        );
+        rows = res.rows;
+      }
+    } catch (error) {
+      console.error('[InvoicesAPI] getById header failed:', error);
+      return null;
+    }
 
-      if (rows.length === 0) return null;
+    if (rows.length === 0) return null;
 
-      const invoice = mapDatabaseInvoiceToInvoice(rows[0]);
+    const header = rows[0];
+    const invoice = mapDatabaseInvoiceToInvoice(header);
 
-      // Get items
-      const { rows: itemRows } = await postgres.query(
-        `SELECT * FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`,
-        [id]
-      );
+    /* Satırlar: sales + sale_items aynı firma/dönem önekine çözülsün diye JOIN; başlıktaki period_nr öncelikli */
+    const itemTableOpts = {
+      firmNr: header.firm_nr != null && header.firm_nr !== '' ? String(header.firm_nr) : String(firmNr),
+      periodNr:
+        header.period_nr != null && header.period_nr !== ''
+          ? String(header.period_nr)
+          : String(ERP_SETTINGS.periodNr || '01')
+    };
 
-      invoice.items = itemRows.map(item => ({
+    /** Düzenleme: fatura dövizi USD vb. ise gridde unit_price_fc + satır currency; tutarlar yerelden kura bölünür */
+    const mapSaleItemRow = (item: any, inv: Invoice) => {
+      const codeRaw = item.item_code ?? item.product_id;
+      const code = codeRaw != null && codeRaw !== '' ? String(codeRaw) : '';
+      const hdrCur = String(inv.currency || 'IQD').trim().toUpperCase();
+      const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
+      const rate = Number(inv.currency_rate) > 0 ? Number(inv.currency_rate) : 1;
+      const uFCraw = item.unit_price_fc;
+      const uFC =
+        uFCraw != null && uFCraw !== '' && !Number.isNaN(parseFloat(String(uFCraw)))
+          ? parseFloat(String(uFCraw))
+          : NaN;
+      const uLoc = parseFloat(item.unit_price || 0);
+      const grossIQD = parseFloat(item.total_amount || 0);
+      const netIQD = parseFloat(item.net_amount || 0);
+      const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
+      const unitPrice = useFc ? uFC : uLoc;
+      const netAmount = useFc ? netIQD / rate : netIQD;
+      const total = useFc ? grossIQD / rate : grossIQD;
+      return {
         id: item.id,
-        productId: item.item_code,
-        code: item.item_code,
-        description: item.item_name,
-        productName: item.item_name,
+        productId: item.product_id != null ? String(item.product_id) : code,
+        code,
+        description: item.item_name || '',
+        productName: item.item_name || '',
         quantity: parseFloat(item.quantity),
         unit: item.unit || 'Adet',
-        unitPrice: parseFloat(item.unit_price),
-        price: parseFloat(item.unit_price),
+        unitPrice,
+        price: unitPrice,
         discount: parseFloat(item.discount_rate || 0),
         tax: 0,
-        netAmount: parseFloat(item.net_amount || 0),
-        total: parseFloat(item.total_amount || 0),
+        netAmount,
+        total,
         unitCost: parseFloat(item.unit_cost || 0),
         totalCost: parseFloat(item.total_cost || 0),
         grossProfit: parseFloat(item.gross_profit || 0),
         multiplier: parseFloat(item.unit_multiplier || 1),
-        baseQuantity: parseFloat(item.base_quantity || item.quantity),
-        unitPriceFC: parseFloat(item.unit_price_fc || item.unit_price),
-        currency: item.currency || 'IQD',
-      }));
+        baseQuantity: parseFloat(item.base_quantity ?? item.quantity),
+        unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
+        currency: item.currency || inv.currency || 'IQD'
+      };
+    };
 
-      return invoice;
-    } catch (error) {
-      console.error('[InvoicesAPI] getById failed:', error);
-      return null;
+    let itemRows: any[] = [];
+
+    const tryJoinItems = async (opts?: { firmNr: string; periodNr: string }) => {
+      const q = `
+        SELECT si.*
+        FROM sale_items si
+        INNER JOIN sales s ON s.id = si.invoice_id
+        WHERE s.id::text = $1
+      `;
+      const r = await postgres.query(q, [cleanId], opts);
+      return r.rows || [];
+    };
+
+    const tryDirectItems = async (opts?: { firmNr: string; periodNr: string }) => {
+      const q = `SELECT * FROM sale_items WHERE invoice_id = $1::uuid`;
+      const r = await postgres.query(q, [cleanId], opts);
+      return r.rows || [];
+    };
+
+    try {
+      itemRows = await tryJoinItems(itemTableOpts);
+    } catch (e) {
+      console.warn('[InvoicesAPI] getById sale_items JOIN (header period) failed:', e);
     }
+
+    if (itemRows.length === 0) {
+      try {
+        itemRows = await tryDirectItems(itemTableOpts);
+      } catch (e) {
+        console.warn('[InvoicesAPI] getById sale_items direct (header period) failed:', e);
+      }
+    }
+
+    if (itemRows.length === 0) {
+      try {
+        itemRows = await tryJoinItems();
+      } catch (e) {
+        console.warn('[InvoicesAPI] getById sale_items JOIN (ERP period) failed:', e);
+      }
+    }
+
+    if (itemRows.length === 0) {
+      try {
+        itemRows = await tryDirectItems();
+      } catch (e) {
+        console.warn('[InvoicesAPI] getById sale_items direct (ERP period) failed:', e);
+      }
+    }
+
+    if (itemRows.length === 0) {
+      try {
+        const r = await postgres.query(
+          `SELECT * FROM sale_items WHERE invoice_id::text = $1`,
+          [cleanId],
+          itemTableOpts
+        );
+        itemRows = r.rows || [];
+      } catch (e) {
+        console.warn('[InvoicesAPI] getById sale_items text match failed:', e);
+      }
+    }
+
+    if (itemRows.length === 0) {
+      try {
+        const r = await postgres.query(
+          `SELECT * FROM sale_items WHERE invoice_id::text = $1`,
+          [cleanId]
+        );
+        itemRows = r.rows || [];
+      } catch (e) {
+        console.warn('[InvoicesAPI] getById sale_items text (ERP period) failed:', e);
+      }
+    }
+
+    /* Eski şemada sale_id kullanılmış olabilir */
+    if (itemRows.length === 0) {
+      try {
+        const r = await postgres.query(
+          `SELECT * FROM sale_items WHERE sale_id = $1::uuid OR sale_id::text = $1`,
+          [cleanId],
+          itemTableOpts
+        );
+        itemRows = r.rows || [];
+      } catch {
+        /* sale_id kolonu yoksa normal */
+      }
+    }
+
+    invoice.items = itemRows.map((row) => mapSaleItemRow(row, invoice));
+
+    if (itemRows.length === 0) {
+      console.warn('[InvoicesAPI] getById: no sale_items for invoice', cleanId, itemTableOpts);
+    }
+
+    return invoice;
   },
 
   /**
@@ -469,6 +720,14 @@ export const invoicesAPI = {
       if (invoice.notes !== undefined) { fields.push(`notes = $${i++}`); values.push(invoice.notes); }
       if (invoice.total_amount !== undefined) { fields.push(`net_amount = $${i++}`); values.push(invoice.total_amount); }
       if (invoice.customer_name !== undefined) { fields.push(`customer_name = $${i++}`); values.push(invoice.customer_name); }
+      const partnerId = invoice.customer_id || invoice.supplier_id;
+      if (partnerId !== undefined && isValidUuid(String(partnerId))) {
+        fields.push(`customer_id = $${i++}::uuid`);
+        values.push(String(partnerId));
+      }
+      if (invoice.subtotal !== undefined) { fields.push(`total_net = $${i++}`); values.push(invoice.subtotal); }
+      if (invoice.tax !== undefined) { fields.push(`total_vat = $${i++}`); values.push(invoice.tax); }
+      if (invoice.discount !== undefined) { fields.push(`total_discount = $${i++}`); values.push(invoice.discount); }
       if (invoice.total_cost !== undefined) { fields.push(`total_cost = $${i++}`); values.push(invoice.total_cost); }
       if (invoice.gross_profit !== undefined) { fields.push(`gross_profit = $${i++}`); values.push(invoice.gross_profit); }
       if (invoice.currency !== undefined) { fields.push(`currency = $${i++}`); values.push(invoice.currency); }
@@ -629,14 +888,21 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   else if (dbInv.fiche_type === 'waybill') category = 'Irsaliye';
   else if (dbInv.fiche_type === 'order') category = 'Siparis';
 
+  const joinCust = dbInv.join_customer_name;
+  const joinSup = dbInv.join_supplier_name;
+  /* Alış: customer_id tedarikçi UUID; customers join boş — ünvan suppliers veya sales.customer_name */
+  const partnerNameAlis = joinSup || dbInv.customer_name || '';
+  const partnerNameSatis = joinCust || dbInv.customer_name || '';
+
   return {
     id: dbInv.id || '',
     invoice_no: dbInv.fiche_no || dbInv.document_no,
     invoice_date: dbInv.created_at || dbInv.date,
     customer_id: dbInv.customer_id,
-    customer_name: dbInv.customer_name,
+    customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,
     supplier_id: dbInv.customer_id,
-    supplier_name: dbInv.supplier_name,
+    supplier_name: category === 'Alis' ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
+    trcode: dbInv.trcode != null ? Number(dbInv.trcode) : undefined,
     subtotal: parseFloat(dbInv.total_net || 0),
     tax: parseFloat(dbInv.total_vat || 0),
     discount: parseFloat(dbInv.total_discount || 0),
@@ -648,7 +914,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     created_at: dbInv.created_at || dbInv.date,
     items: [],
     source: 'invoice',
-    invoice_type: dbInv.trcode || 0,
+    invoice_type: dbInv.trcode != null ? Number(dbInv.trcode) : 0,
     firma_id: dbInv.firm_nr,
     firma_name: '',
     donem_id: dbInv.period_nr,

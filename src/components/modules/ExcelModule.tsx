@@ -21,7 +21,11 @@ import { supplierAPI } from '../../services/api/suppliers';
 import { productVariantAPI } from '../../services/api/productVariants';
 import { fetchCurrentAccounts, createCurrentAccount } from '../../services/api/currentAccounts';
 import { serviceAPI } from '../../services/serviceAPI';
+import { categoryAPI } from '../../services/api/masterData';
 import { postgres, ERP_SETTINGS } from '../../services/postgres';
+import { useProductStore } from '../../store/useProductStore';
+import { useCustomerStore } from '../../store/useCustomerStore';
+import { useRestaurantStore } from '../restaurant/store/useRestaurantStore';
 
 // ─── Tip tanımları ────────────────────────────────────────────────────────────
 
@@ -232,6 +236,47 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
 
 // ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
 
+/** Excel sütun başlıklarını şablonla eşleşecek şekilde normalize eder (boşluk, BOM, * farkları) */
+function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Record<string, any> {
+  const keyMap: Record<string, string> = {};
+  if (entityType === 'products') {
+    keyMap['Ürün Kodu'] = 'Ürün Kodu*';
+    keyMap['Ürün Adı'] = 'Ürün Adı*';
+    keyMap['Satış Fiyatı'] = 'Satış Fiyatı*';
+  } else if (entityType === 'current-accounts') {
+    keyMap['Hesap Kodu'] = 'Hesap Kodu*';
+    keyMap['Ünvan'] = 'Ünvan*';
+  } else if (entityType === 'variants') {
+    keyMap['Ürün Kodu'] = 'Ürün Kodu*';
+  } else if (entityType === 'services') {
+    keyMap['Hizmet Kodu'] = 'Hizmet Kodu*';
+    keyMap['Hizmet Adı'] = 'Hizmet Adı*';
+    keyMap['Birim Fiyat'] = 'Birim Fiyat*';
+  } else if (entityType === 'suppliers') {
+    keyMap['Tedarikçi Kodu'] = 'Tedarikçi Kodu*';
+    keyMap['Tedarikçi Adı'] = 'Tedarikçi Adı*';
+  } else if (entityType === 'categories') {
+    keyMap['Kategori Kodu'] = 'Kategori Kodu*';
+    keyMap['Kategori Adı'] = 'Kategori Adı*';
+  }
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    const trimmed = String(k).replace(/\uFEFF/g, '').trim();
+    const base = trimmed.replace(/\*\s*$/, '').trim();
+    const canonical = keyMap[base] ?? trimmed;
+    out[canonical] = v;
+  }
+  return out;
+}
+
+/** Varlık tipine göre doğru sayfayı döndürür (sayfa adı eşleşmesi) */
+function getSheetForImport(workbook: XLSX.WorkBook, entityType: EntityType): XLSX.WorkSheet | null {
+  const wanted = TEMPLATES[entityType].sheetName;
+  const sheet = workbook.SheetNames.find(n => n.trim() === wanted);
+  const ws = sheet ? workbook.Sheets[sheet] : workbook.Sheets[workbook.SheetNames[0]];
+  return ws || null;
+}
+
 function boolFromExcel(val: any): boolean {
   if (typeof val === 'boolean') return val;
   const s = String(val ?? '').trim().toUpperCase();
@@ -399,41 +444,119 @@ async function exportCategories(): Promise<void> {
 
 // ─── İçe aktarım fonksiyonları ────────────────────────────────────────────────
 
+/** Excel'deki ürün satırlarından benzersiz kategori adlarını toplar (boş hariç) */
+function getUniqueCategoryNamesFromProductRows(rows: any[]): string[] {
+  const set = new Set<string>();
+  for (const row of rows) {
+    const cat = strFromExcel(row['Kategori'] ?? row['Kategori*']);
+    if (cat) set.add(cat);
+  }
+  return Array.from(set);
+}
+
+/** Kategori adından tekil kod üretir (aynı isim her zaman aynı kodu verir) */
+function categoryNameToCode(name: string): string {
+  const n = name.trim();
+  const code = n.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_ĞÜŞÖÇİ]/gi, (ch) => {
+    const map: Record<string, string> = { 'Ğ': 'G', 'Ü': 'U', 'Ş': 'S', 'Ö': 'O', 'Ç': 'C', 'İ': 'I' };
+    return map[ch] || '';
+  }).slice(0, 50);
+  return code || `KAT_${Date.now().toString(36)}`;
+}
+
+/** Sistemde olmayan kategorileri oluşturur. Aynı isim/kod bir kez eklenir, sonraki aktarımlarda modal çıkmaz. */
+async function ensureCategoriesByNames(names: string[]): Promise<void> {
+  const existing = await categoryAPI.getAll();
+  const existingNames = new Set((existing as any[]).map((c: any) => (c.name || '').trim().toLowerCase()));
+  const existingCodes = new Set((existing as any[]).map((c: any) => (c.code || '').trim().toUpperCase()));
+
+  for (const name of names) {
+    const n = name.trim();
+    if (!n) continue;
+    if (existingNames.has(n.toLowerCase())) continue;
+    const code = categoryNameToCode(n);
+    if (existingCodes.has(code)) continue; // Aynı kodla kayıt varsa ekleme (isim farklı yazılmış olabilir)
+    existingCodes.add(code);
+    try {
+      await postgres.query(
+        `INSERT INTO categories (code, name, description, is_active) VALUES ($1, $2, $3, true)
+         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description`,
+        [code, n, '']
+      );
+    } catch (e) {
+      console.warn('[ExcelModule] Kategori eklenemedi:', code, n, e);
+      try {
+        await postgres.query(
+          `INSERT INTO categories (code, name, description, firm_nr, is_active) VALUES ($1, $2, $3, $4, true)
+           ON CONFLICT (code, firm_nr) DO UPDATE SET name = EXCLUDED.name`,
+          [code, n, '', ERP_SETTINGS.firmNr]
+        );
+      } catch (e2) {
+        console.warn('[ExcelModule] Kategori (firm_nr ile) eklenemedi:', e2);
+      }
+    }
+  }
+}
+
 async function importProducts(rows: any[]): Promise<ImportResult> {
   const result: ImportResult = { total: rows.length, success: 0, failed: 0, errors: [] };
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowNum = i + 2; // Excel satırı (başlık = 1)
-    const code = strFromExcel(row['Ürün Kodu*']);
-    const name = strFromExcel(row['Ürün Adı*']);
+    const code = strFromExcel(row['Ürün Kodu*'] ?? row['Ürün Kodu']);
+    const name = strFromExcel(row['Ürün Adı*'] ?? row['Ürün Adı']);
     if (!code || !name) {
       result.failed++;
       result.errors.push({ row: rowNum, message: 'Ürün Kodu ve Ürün Adı zorunludur.' });
       continue;
     }
+    const payload = {
+      code,
+      name,
+      barcode: strFromExcel(row['Barkod']),
+      category: strFromExcel(row['Kategori']),
+      group_code: strFromExcel(row['Grup Kodu']),
+      brand: strFromExcel(row['Marka']),
+      unit: strFromExcel(row['Birim']) || 'Adet',
+      cost: numFromExcel(row['Alış Fiyatı']),
+      price: numFromExcel(row['Satış Fiyatı*'] ?? row['Satış Fiyatı']),
+      vat_rate: numFromExcel(row['KDV Oranı (%)'], 18),
+      min_stock: numFromExcel(row['Min Stok']),
+      max_stock: numFromExcel(row['Max Stok']),
+      special_code_1: strFromExcel(row['Özel Kod 1']),
+      special_code_2: strFromExcel(row['Özel Kod 2']),
+      special_code_3: strFromExcel(row['Özel Kod 3']),
+      description: strFromExcel(row['Açıklama']),
+      is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
+      firm_nr: ERP_SETTINGS.firmNr,
+      stock: 0,
+    } as any;
     try {
-      await productAPI.create({
-        code,
-        name,
-        barcode: strFromExcel(row['Barkod']),
-        category: strFromExcel(row['Kategori']),
-        group_code: strFromExcel(row['Grup Kodu']),
-        brand: strFromExcel(row['Marka']),
-        unit: strFromExcel(row['Birim']) || 'Adet',
-        cost: numFromExcel(row['Alış Fiyatı']),
-        price: numFromExcel(row['Satış Fiyatı*']),
-        vat_rate: numFromExcel(row['KDV Oranı (%)'], 18),
-        min_stock: numFromExcel(row['Min Stok']),
-        max_stock: numFromExcel(row['Max Stok']),
-        special_code_1: strFromExcel(row['Özel Kod 1']),
-        special_code_2: strFromExcel(row['Özel Kod 2']),
-        special_code_3: strFromExcel(row['Özel Kod 3']),
-        description: strFromExcel(row['Açıklama']),
-        is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
-        firm_nr: ERP_SETTINGS.firmNr,
-        stock: 0,
-      } as any);
-      result.success++;
+      const existing = await productAPI.getByCode(code);
+      if (existing) {
+        await productAPI.update(existing.id, {
+          name: payload.name,
+          barcode: payload.barcode,
+          category: payload.category,
+          group_code: payload.group_code,
+          brand: payload.brand,
+          unit: payload.unit,
+          cost: payload.cost,
+          price: payload.price,
+          taxRate: payload.vat_rate,
+          min_stock: payload.min_stock,
+          max_stock: payload.max_stock,
+          specialCode1: payload.special_code_1,
+          specialCode2: payload.special_code_2,
+          specialCode3: payload.special_code_3,
+          description: payload.description,
+          isActive: payload.is_active,
+        } as any);
+        result.success++;
+      } else {
+        await productAPI.create(payload);
+        result.success++;
+      }
     } catch (err: any) {
       result.failed++;
       result.errors.push({ row: rowNum, message: err?.message || 'Kayıt oluşturulamadı.' });
@@ -535,18 +658,33 @@ async function importServices(rows: any[]): Promise<ImportResult> {
       result.errors.push({ row: rowNum, message: 'Hizmet Kodu ve Hizmet Adı zorunludur.' });
       continue;
     }
+    const payload = {
+      code,
+      name,
+      category: strFromExcel(row['Kategori']),
+      unit: strFromExcel(row['Birim']) || 'Adet',
+      unit_price: numFromExcel(row['Birim Fiyat*']),
+      tax_rate: numFromExcel(row['KDV Oranı (%)'], 18),
+      description: strFromExcel(row['Açıklama']),
+      is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
+    };
     try {
-      await serviceAPI.create({
-        code,
-        name,
-        category: strFromExcel(row['Kategori']),
-        unit: strFromExcel(row['Birim']) || 'Adet',
-        unit_price: numFromExcel(row['Birim Fiyat*']),
-        tax_rate: numFromExcel(row['KDV Oranı (%)'], 18),
-        description: strFromExcel(row['Açıklama']),
-        is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
-      });
-      result.success++;
+      const existing = await serviceAPI.getByCode(code);
+      if (existing) {
+        await serviceAPI.update(existing.id, {
+          name: payload.name,
+          category: payload.category,
+          unit: payload.unit,
+          unit_price: payload.unit_price,
+          tax_rate: payload.tax_rate,
+          description: payload.description,
+          is_active: payload.is_active,
+        });
+        result.success++;
+      } else {
+        await serviceAPI.create(payload);
+        result.success++;
+      }
     } catch (err: any) {
       result.failed++;
       result.errors.push({ row: rowNum, message: err?.message || 'Kayıt oluşturulamadı.' });
@@ -710,10 +848,17 @@ const TABS: TabConfig[] = [
 
 export function ExcelModule() {
   const { tm } = useLanguage();
+  const loadProducts = useProductStore((s) => s.loadProducts);
+  const loadCustomers = useCustomerStore((s) => s.loadCustomers);
   const [activeTab, setActiveTab] = useState<EntityType>('products');
   const [notification, setNotification] = useState<Notification | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [categoryPreviewModal, setCategoryPreviewModal] = useState<{
+    open: true;
+    newCategories: string[];
+    pendingRows: any[];
+  } | { open: false }>({ open: false });
 
   const tab = TABS.find(t => t.id === activeTab)!;
   const template = TEMPLATES[activeTab];
@@ -755,22 +900,52 @@ export function ExcelModule() {
   }, [tab, showNotification]);
 
   // İçe aktar
+  const runImportWithRows = useCallback(async (rows: any[]) => {
+    if (!tab.importFn) return;
+    setImportResult(null);
+    showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} içe aktarılıyor...` }, false);
+    try {
+      const result = await tab.importFn(rows);
+      setImportResult(result);
+      if (result.failed === 0) {
+        showNotification({ type: 'success', message: `${result.success} kayıt başarıyla içe aktarıldı.` });
+      } else if (result.success > 0) {
+        showNotification({ type: 'info', message: `${result.success} başarılı, ${result.failed} başarısız.` });
+      } else {
+        showNotification({ type: 'error', message: `Hiçbir kayıt içe aktarılamadı. ${result.failed} hata.` });
+      }
+      // Aktarılan varlığa göre listeyi yenile — Ürün Yönetimi / Cari vb. güncel veriyi göstersin
+      if (result.success > 0) {
+        if (tab.id === 'products') loadProducts(true);
+        else if (tab.id === 'current-accounts') loadCustomers();
+      }
+    } catch (err: any) {
+      showNotification({ type: 'error', message: 'İçe aktarım hatası: ' + (err?.message || 'Bilinmeyen hata') });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [tab, showNotification, loadProducts, loadCustomers]);
+
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !tab.importFn) return;
 
     setIsLoading(true);
     setImportResult(null);
-    showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} içe aktarılıyor...` }, false);
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+        const worksheet = getSheetForImport(workbook, tab.id);
+        if (!worksheet) {
+          showNotification({ type: 'error', message: 'Excel sayfası bulunamadı.' });
+          setIsLoading(false);
+          return;
+        }
+        const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' }) as Record<string, any>[];
+        const rows = rawRows.map(r => normalizeRowKeys(r, tab.id));
 
         if (rows.length === 0) {
           showNotification({ type: 'error', message: 'Excel dosyası boş veya okunamadı.' });
@@ -778,25 +953,54 @@ export function ExcelModule() {
           return;
         }
 
-        const result = await tab.importFn!(rows);
-        setImportResult(result);
-
-        if (result.failed === 0) {
-          showNotification({ type: 'success', message: `${result.success} kayıt başarıyla içe aktarıldı.` });
-        } else if (result.success > 0) {
-          showNotification({ type: 'info', message: `${result.success} başarılı, ${result.failed} başarısız.` });
-        } else {
-          showNotification({ type: 'error', message: `Hiçbir kayıt içe aktarılamadı. ${result.failed} hata.` });
+        if (tab.id === 'products') {
+          const uniqueNames = getUniqueCategoryNamesFromProductRows(rows);
+          const existing = await categoryAPI.getAll();
+          const existingNamesLower = new Set((existing as any[]).map((c: any) => (c.name || '').trim().toLowerCase()));
+          const existingCodesUpper = new Set((existing as any[]).map((c: any) => (c.code || '').trim().toUpperCase()));
+          const newCategories = uniqueNames.filter(n => {
+            const t = n.trim();
+            if (!t) return false;
+            if (existingNamesLower.has(t.toLowerCase())) return false;
+            if (existingCodesUpper.has(categoryNameToCode(t))) return false;
+            return true;
+          });
+          if (newCategories.length > 0) {
+            setCategoryPreviewModal({ open: true, newCategories, pendingRows: rows });
+            setIsLoading(false);
+            return;
+          }
         }
+
+        await runImportWithRows(rows);
       } catch (err: any) {
-        showNotification({ type: 'error', message: 'Dosya okunamadı: ' + (err.message || 'Bilinmeyen hata') });
-      } finally {
+        showNotification({ type: 'error', message: 'Dosya okunamadı: ' + (err?.message || 'Bilinmeyen hata') });
         setIsLoading(false);
       }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
-  }, [tab, showNotification]);
+  }, [tab, runImportWithRows, showNotification]);
+
+  const handleCategoryPreviewConfirm = useCallback(async () => {
+    if (!categoryPreviewModal.open || categoryPreviewModal.newCategories.length === 0) {
+      setCategoryPreviewModal({ open: false });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await ensureCategoriesByNames(categoryPreviewModal.newCategories);
+      // Restaurant POS kategorileri güncellensin (eklenen kategoriler sağda görünsün)
+      useRestaurantStore.getState().loadCategories().catch(() => {});
+      await runImportWithRows(categoryPreviewModal.pendingRows);
+    } finally {
+      setCategoryPreviewModal({ open: false });
+    }
+  }, [categoryPreviewModal, runImportWithRows]);
+
+  const handleCategoryPreviewCancel = useCallback(() => {
+    setCategoryPreviewModal({ open: false });
+  }, []);
 
   const Icon = tab.icon;
 
@@ -860,6 +1064,50 @@ export function ExcelModule() {
                   notification.type === 'loading' ? 'text-blue-800 dark:text-blue-200' :
                     'text-amber-800 dark:text-amber-200'
                 }`}>{notification.message}</p>
+            </div>
+          )}
+
+          {/* Kategori önizleme modalı (ürün aktarımında sistemde olmayan kategoriler) */}
+          {categoryPreviewModal.open && categoryPreviewModal.newCategories.length > 0 && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full max-h-[80vh] flex flex-col">
+                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Aktarım öncesi oluşturulacak kategoriler
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Aşağıdaki kategoriler sistemde bulunmuyor; aktarım sırasında oluşturulacak.
+                  </p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-5">
+                  <ul className="space-y-2">
+                    {categoryPreviewModal.newCategories.map((name, idx) => (
+                      <li key={idx} className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                        <Tag className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <span>{name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCategoryPreviewCancel}
+                    className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCategoryPreviewConfirm}
+                    disabled={isLoading}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Devam et ve aktar
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

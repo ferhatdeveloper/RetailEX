@@ -320,23 +320,42 @@ pub async fn sync_logo_data(window: tauri::Window, config: AppConfig) -> Result<
 
     let _ = window.emit("sync-event", "Bağlantılar kuruluyor...");
 
-    // 1. Establish Connections
+    // 1. Establish Connections — kaynak: Logo'nun canlı MSSQL veritabanı (RetailEX içi demo seed ile ilgisi yok)
     let mut mssql_client = get_client(&config).await.map_err(|e| format!("MSSQL Connection Error: {}", e))?;
+    let _ = window.emit(
+        "sync-event",
+        "Logo ERP (MSSQL) bağlandı — seçili firma/dönem için gerçek stok, cari ve hareket verileri okunacak.",
+    );
     
-    // Postgres Connection logic
-    let host_part = config.local_db.split(':').next().unwrap_or("localhost");
-    let host_port_str = config.local_db.split('/').next().unwrap_or("localhost:5432");
+    // PostgreSQL: migrations ile aynı hedef (yerel / uzak). Eski kod yalnızca local_db kullanıyordu;
+    // db_mode=online iken senkron yanlış veritabanına yazılıyordu.
+    let is_remote_pg = config.db_mode == "online";
+    let (db_path, pg_user, pg_pass) = if is_remote_pg {
+        (&config.remote_db, &config.pg_remote_user, &config.pg_remote_pass)
+    } else {
+        (&config.local_db, &config.pg_local_user, &config.pg_local_pass)
+    };
+    let host_part = db_path.split(':').next().unwrap_or("localhost");
+    let host_port_str = db_path.split('/').next().unwrap_or("localhost:5432");
     let port = if let Some(p) = host_port_str.split(':').nth(1) {
         p.parse::<u16>().unwrap_or(5432)
     } else {
         5432
     };
-    let db_name = config.local_db.split('/').last().unwrap_or("retailex_local");
+    let db_name = db_path.split('/').last().unwrap_or("retailex_local");
+    let _ = window.emit(
+        "sync-event",
+        format!(
+            "PostgreSQL hedefi: {} ({})",
+            db_name,
+            if is_remote_pg { "uzak sunucu" } else { "yerel" }
+        ),
+    );
     let mut pg_config = tokio_postgres::Config::new();
     pg_config.host(host_part)
              .port(port)
-             .user(&config.pg_local_user)
-             .password(&config.pg_local_pass)
+             .user(pg_user.as_str())
+             .password(pg_pass.as_str())
              .dbname(db_name)
              .connect_timeout(std::time::Duration::from_secs(5));
 

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
+import type { ConnectionProvider } from '../../services/postgres';
 
 interface LoginProps {
   onLogin: (user: UserType) => void;
@@ -49,6 +50,8 @@ export function Login({ onLogin }: LoginProps) {
     user: 'postgres',
     password: ''
   });
+  const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
+  const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
 
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
@@ -129,7 +132,7 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     // Load DB Settings for the quick modal
-    import('../../services/postgres').then(({ LOCAL_CONFIG }) => {
+    import('../../services/postgres').then(({ LOCAL_CONFIG, DB_SETTINGS }) => {
       setDbConfig({
         host: LOCAL_CONFIG.host,
         port: LOCAL_CONFIG.port,
@@ -137,6 +140,8 @@ export function Login({ onLogin }: LoginProps) {
         user: LOCAL_CONFIG.user,
         password: LOCAL_CONFIG.password
       });
+      setConnectionProvider(DB_SETTINGS.connectionProvider);
+      setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
     });
   }, [isTauri]);
 
@@ -150,14 +155,26 @@ export function Login({ onLogin }: LoginProps) {
   const loadFirms = async () => {
     try {
       setLoadingFirms(true);
+
+      if (connectionProvider === 'rest_api') {
+        const { postgrest } = await import('../../services/api/postgrestClient');
+        const rows = await postgrest.get(
+          '/firms',
+          { select: '*', order: 'firm_nr.asc' },
+          { schema: 'public' }
+        );
+        const safeRows: any[] = Array.isArray(rows) ? rows : [];
+        setFirms(safeRows);
+        if (safeRows.length > 0) {
+          const lastFirm = localStorage.getItem('exretail_selected_firma_id');
+          const next = (lastFirm && safeRows.find(f => f.firm_nr === lastFirm)) ? lastFirm : safeRows[0].firm_nr;
+          if (next) setSelectedFirmNr(next);
+        }
+        return;
+      }
+
       const { postgres } = await import('../../services/postgres');
-      
-      // Fetch ALL firms - works on both Tauri and Web (via bridge)
-      const result = await postgres.query(
-        `SELECT * FROM firms ORDER BY firm_nr ASC`,
-        []
-      );
-      
+      const result = await postgres.query(`SELECT * FROM firms ORDER BY firm_nr ASC`, []);
       const rows = result.rows || [];
       setFirms(rows);
       
@@ -369,9 +386,13 @@ export function Login({ onLogin }: LoginProps) {
           user: dbConfig.user,
           password: dbConfig.password,
           isConfigured: true
+        },
+        settings: {
+          connectionProvider,
+          remoteRestUrl
         }
       });
-      toast.success('Veritabanı bağlantı ayarları güncellendi.');
+      toast.success(connectionProvider === 'rest_api' ? 'PostgREST bağlantı ayarları güncellendi.' : 'Veritabanı bağlantı ayarları güncellendi.');
       setShowDbSettings(false);
       // Re-load firms to verify connection
       loadFirms();
@@ -383,6 +404,25 @@ export function Login({ onLogin }: LoginProps) {
   const loadStores = async (firmNr: string) => {
     try {
       setLoadingStores(true);
+
+      if (connectionProvider === 'rest_api') {
+        const { postgrest } = await import('../../services/api/postgrestClient');
+        const rows = await postgrest.get(
+          '/stores',
+          {
+            select: '*',
+            firm_nr: `eq.${firmNr}`,
+            is_active: 'eq.true',
+            order: 'name.asc'
+          },
+          { schema: 'public' }
+        );
+        const safeRows: any[] = Array.isArray(rows) ? rows : [];
+        setStores(safeRows);
+        if (safeRows.length > 0) setStore(safeRows[0].name);
+        return;
+      }
+
       const { postgres } = await import('../../services/postgres');
       const { rows } = await postgres.query(
         `SELECT * FROM stores WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
@@ -403,6 +443,22 @@ export function Login({ onLogin }: LoginProps) {
     if (trimmedPassword === INFRA_PASS || trimmedPassword === IT_PASS) return true;
 
     try {
+      if (connectionProvider === 'rest_api') {
+        const { postgrest } = await import('../../services/api/postgrestClient');
+        const rpcRes: any = await postgrest.post(
+          '/rpc/verify_login',
+          {
+            username: trimmedUsername,
+            password: trimmedPassword,
+            // Credentials aşamasında firmayı henüz bilmiyoruz: tüm firmalarda kabul et.
+            firm_nr: ''
+          },
+          { schema: 'logic' }
+        );
+        const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
+        return !!row;
+      }
+
       const { postgres } = await import('../../services/postgres');
       const sqlAuth = `
         SELECT id, raw_user_meta_data->>'username' as username
@@ -1129,58 +1185,92 @@ export function Login({ onLogin }: LoginProps) {
             </div>
 
             <div className="p-8 space-y-4">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2 space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">HOST (Localhost)</label>
-                  <input
-                    type="text"
-                    value={dbConfig.host}
-                    onChange={e => setDbConfig({ ...dbConfig, host: e.target.value })}
-                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">PORT</label>
-                  <input
-                    type="number"
-                    value={dbConfig.port}
-                    onChange={e => setDbConfig({ ...dbConfig, port: parseInt(e.target.value) || 5432 })}
-                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                  />
-                </div>
-              </div>
-
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">VERİTABANI</label>
-                <input
-                  type="text"
-                  value={dbConfig.database}
-                  onChange={e => setDbConfig({ ...dbConfig, database: e.target.value })}
-                  className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                />
+                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">
+                  Bağlantı Sağlayıcı
+                </label>
+                <select
+                  value={connectionProvider}
+                  onChange={(e) => setConnectionProvider(e.target.value as ConnectionProvider)}
+                  className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-gray-800 border-gray-700 text-blue-200' : 'bg-white border-gray-200 text-gray-900'}`}
+                >
+                  <option value="db">DB Connection</option>
+                  <option value="rest_api">Rest API (PostgREST)</option>
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">KULLANICI</label>
+              {connectionProvider === 'rest_api' ? (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">
+                    PostgREST API URL
+                  </label>
                   <input
                     type="text"
-                    value={dbConfig.user}
-                    onChange={e => setDbConfig({ ...dbConfig, user: e.target.value })}
-                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                    value={remoteRestUrl}
+                    onChange={(e) => setRemoteRestUrl(e.target.value)}
+                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-200' : 'bg-white border-gray-200 text-gray-900'}`}
+                    placeholder="http://IP:3002"
                   />
+                  <p className={`text-[9px] ${darkMode ? 'text-slate-500' : 'text-slate-600'} font-bold`}>
+                    VPN olmadan IP üzerinden PostgREST erişimi için.
+                  </p>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">ŞİFRE</label>
-                  <input
-                    type="password"
-                    value={dbConfig.password}
-                    onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })}
-                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                    placeholder="••••••••"
-                  />
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">HOST (Localhost)</label>
+                      <input
+                        type="text"
+                        value={dbConfig.host}
+                        onChange={e => setDbConfig({ ...dbConfig, host: e.target.value })}
+                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">PORT</label>
+                      <input
+                        type="number"
+                        value={dbConfig.port}
+                        onChange={e => setDbConfig({ ...dbConfig, port: parseInt(e.target.value) || 5432 })}
+                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">VERİTABANI</label>
+                    <input
+                      type="text"
+                      value={dbConfig.database}
+                      onChange={e => setDbConfig({ ...dbConfig, database: e.target.value })}
+                      className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">KULLANICI</label>
+                      <input
+                        type="text"
+                        value={dbConfig.user}
+                        onChange={e => setDbConfig({ ...dbConfig, user: e.target.value })}
+                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">ŞİFRE</label>
+                      <input
+                        type="password"
+                        value={dbConfig.password}
+                        onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })}
+                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="pt-4 space-y-3">
                 <button

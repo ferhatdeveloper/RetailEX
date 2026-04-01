@@ -4,7 +4,7 @@ import { cn } from '../../ui/utils';
 import { Table } from '../types';
 import { translate } from '../../../shared/i18n';
 
-export type MoveOrMergeMode = 'move' | 'merge' | 'moveItem';
+export type MoveOrMergeMode = 'move' | 'merge' | 'moveItem' | 'moveItems';
 /** Taşıma kapsamı: tümü veya işlem numarasına göre (belirli sipariş) */
 export type MoveScope = 'all' | { tableId: string };
 
@@ -16,7 +16,9 @@ interface RestaurantMoveTableModalProps {
     onClose: () => void;
     /** Tek ürün taşıma modu: sadece hedef masa seçimi + Taşı */
     moveSingleItem?: { itemId: string; itemName: string };
-    /** onConfirm(mode, targetTableId, moveScope?) — moveItem için sadece (mode, targetTableId) */
+    /** Çoklu ürün taşıma: seçilen kalemlerin id'leri — moveItemIds kullanılırsa moveSingleItem yok sayılır */
+    moveItemIds?: string[];
+    /** onConfirm(mode, targetTableId, moveScope?) — moveItem/moveItems için sadece (mode, targetTableId) */
     onConfirm: (mode: MoveOrMergeMode, targetTableId: string | null, moveScope?: MoveScope) => void;
     /** Tam ekran (masalar ekranında açıldığında z-[5010], geniş grid) */
     fullScreen?: boolean;
@@ -30,11 +32,14 @@ export function RestaurantMoveTableModal({
     onClose,
     onConfirm,
     moveSingleItem,
+    moveItemIds,
     fullScreen = false
 }: RestaurantMoveTableModalProps) {
-    const [mode, setMode] = React.useState<MoveOrMergeMode>(moveSingleItem ? 'moveItem' : 'move');
+    const hasMultipleItems = Array.isArray(moveItemIds) && moveItemIds.length > 0;
+    const [mode, setMode] = React.useState<MoveOrMergeMode>(hasMultipleItems ? 'moveItems' : moveSingleItem ? 'moveItem' : 'move');
     const [moveScope, setMoveScope] = React.useState<MoveScope>('all');
-    const isMoveItem = !!moveSingleItem;
+    const isMoveItems = hasMultipleItems;
+    const isMoveItem = !!moveSingleItem && !hasMultipleItems;
     const isMove = mode === 'move';
     const isMerge = mode === 'merge';
 
@@ -51,6 +56,10 @@ export function RestaurantMoveTableModal({
     const hasMultipleOrders = ordersList.length > 1;
 
     const handleConfirm = () => {
+        if (isMoveItems) {
+            onConfirm('moveItems', targetTableId);
+            return;
+        }
         if (isMoveItem) {
             onConfirm('moveItem', targetTableId);
             return;
@@ -82,10 +91,10 @@ export function RestaurantMoveTableModal({
                             </div>
                             <div>
                                 <h3 className="text-xl font-black uppercase tracking-tight">
-                                    {isMoveItem ? 'Ürünü başka masaya taşı' : 'Masa taşı / birleştir'}
+                                    {isMoveItems ? 'Ürünleri başka masaya taşı' : isMoveItem ? 'Ürünü başka masaya taşı' : 'Masa taşı / birleştir'}
                                 </h3>
                                 <p className="text-[10px] text-amber-100 font-bold uppercase tracking-widest mt-0.5">
-                                    {isMoveItem ? (moveSingleItem?.itemName ?? '') : translate('selectTargetTable')}
+                                    {isMoveItems ? `${moveItemIds!.length} ürün seçilen masaya taşınacak` : isMoveItem ? (moveSingleItem?.itemName ?? '') : translate('selectTargetTable')}
                                 </p>
                             </div>
                         </div>
@@ -99,8 +108,8 @@ export function RestaurantMoveTableModal({
                 </div>
 
                 <div className="p-8 space-y-6 flex-1 flex flex-col min-h-0">
-                    {/* Taşı / Birleştir seçimi — tek ürün taşımada gizle */}
-                    {!isMoveItem && (
+                    {/* Taşı / Birleştir seçimi — tek/çoklu ürün taşımada gizle */}
+                    {!isMoveItem && !isMoveItems && (
                     <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
                         <button
                             type="button"
@@ -128,7 +137,7 @@ export function RestaurantMoveTableModal({
                     )}
 
                     {/* Birleştirilmiş masada taşıma: tümünü veya işlem numarasına göre */}
-                    {!isMoveItem && isMove && hasMultipleOrders && (
+                    {!isMoveItem && !isMoveItems && isMove && hasMultipleOrders && (
                         <div className="space-y-2">
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Taşıma kapsamı</p>
                             <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
@@ -173,7 +182,9 @@ export function RestaurantMoveTableModal({
                             <Info className="w-4 h-4" />
                         </div>
                         <p className="text-[11px] font-bold text-amber-700 leading-tight uppercase tracking-wider">
-                            {isMoveItem
+                            {isMoveItems
+                                ? `${moveItemIds!.length} ürün seçilen masaya taşınacak.`
+                                : isMoveItem
                                 ? `"${moveSingleItem?.itemName}" seçilen masaya taşınacak.`
                                 : currentTable
                                     ? (isMove
@@ -221,12 +232,12 @@ export function RestaurantMoveTableModal({
                         {translate('cancel')}
                     </button>
                     <button
-                        disabled={!targetTableId || (!isMoveItem && isMove && hasMultipleOrders && moveScope !== 'all' && (!(typeof moveScope === 'object') || !moveScope.tableId))}
+                        disabled={!targetTableId || (!isMoveItem && !isMoveItems && isMove && hasMultipleOrders && moveScope !== 'all' && (!(typeof moveScope === 'object') || !moveScope.tableId))}
                         onClick={handleConfirm}
                         className="flex-1 py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black uppercase text-[12px] transition-all shadow-xl shadow-amber-200 disabled:opacity-50 disabled:shadow-none active:scale-95 flex items-center justify-center gap-2"
                     >
-                        {isMoveItem ? <ArrowRightLeft className="w-4 h-4" /> : isMove ? <ArrowRightLeft className="w-4 h-4" /> : <Merge className="w-4 h-4" />}
-                        {isMoveItem ? 'Taşı' : isMove ? translate('confirmMove') : 'Birleştir'}
+                        {isMoveItems || isMoveItem ? <ArrowRightLeft className="w-4 h-4" /> : isMove ? <ArrowRightLeft className="w-4 h-4" /> : <Merge className="w-4 h-4" />}
+                        {isMoveItems || isMoveItem ? 'Taşı' : isMove ? translate('confirmMove') : 'Birleştir'}
                     </button>
                 </div>
             </div>

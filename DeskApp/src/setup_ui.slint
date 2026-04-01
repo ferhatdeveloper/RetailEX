@@ -10,6 +10,9 @@ export component SetupWindow inherits Window {
     callback select-folder();
     callback install-local();
     callback test-connection();
+    callback install-services();
+    callback check-services();
+    callback browse-logo-dll();
 
     in-out property <string> terminal-name: "";
     in-out property <string> store-id: "001";
@@ -18,6 +21,12 @@ export component SetupWindow inherits Window {
     in-out property <string> setup-path: "";
     in-out property <string> status-msg: "Ready";
     in-out property <bool> is-ready: false;
+    in-out property <string> logo-user: "";
+    in-out property <string> logo-pass: "";
+    in-out property <string> logo-path: "C:\\LOGO\\LObjects.dll";
+    in-out property <bool> logo-active: false;
+    in-out property <bool> backup-enabled: false;
+    in-out property <string> backup-period-min: "30";
 
     VerticalBox {
         padding: 30px;
@@ -88,6 +97,11 @@ export component SetupWindow inherits Window {
                     primary: root.db-mode == "online";
                     clicked => { root.db-mode = "online"; }
                 }
+                Button { 
+                    text: "OFFLINE"; 
+                    primary: root.db-mode == "offline";
+                    clicked => { root.db-mode = "offline"; }
+                }
             }
         }
 
@@ -98,6 +112,36 @@ export component SetupWindow inherits Window {
                 spacing: 10px;
                 LineEdit { text <=> root.terminal-name; placeholder-text: "Name (e.g. KASA-1)"; height: 35px; }
                 LineEdit { text <=> root.store-id; width: 60px; height: 35px; }
+            }
+        }
+
+        VerticalBox {
+            spacing: 8px;
+            Text { text: "LOGO OBJECTS"; font-size: 10px; font-weight: 800; color: #555555; }
+            CheckBox { text: "Logo Objects aktif"; checked <=> root.logo-active; }
+            HorizontalBox {
+                spacing: 10px;
+                LineEdit { text <=> root.logo-user; placeholder-text: "Logo User"; height: 35px; }
+                LineEdit { text <=> root.logo-pass; placeholder-text: "Logo Pass"; height: 35px; }
+            }
+            HorizontalBox {
+                spacing: 10px;
+                LineEdit { text <=> root.logo-path; placeholder-text: "LObjects.dll yolu"; height: 35px; }
+                Button {
+                    text: "...";
+                    width: 40px;
+                    clicked => { root.browse-logo-dll(); }
+                }
+            }
+        }
+
+        VerticalBox {
+            spacing: 8px;
+            Text { text: "BACKUP"; font-size: 10px; font-weight: 800; color: #555555; }
+            HorizontalBox {
+                spacing: 10px;
+                CheckBox { text: "Periyodik yedek aktif"; checked <=> root.backup-enabled; }
+                LineEdit { text <=> root.backup-period-min; width: 70px; height: 35px; }
             }
         }
 
@@ -115,6 +159,17 @@ export component SetupWindow inherits Window {
                 text: "APPLY & INITIALIZE";
                 primary: true;
                 clicked => { root.save-config(); }
+            }
+            HorizontalBox {
+                spacing: 10px;
+                Button {
+                    text: "SERVIS KUR";
+                    clicked => { root.install-services(); }
+                }
+                Button {
+                    text: "SERVIS SAGLIGI";
+                    clicked => { root.check-services(); }
+                }
             }
         }
 

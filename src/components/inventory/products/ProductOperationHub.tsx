@@ -235,9 +235,9 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                         <h3 className="text-xs font-bold text-gray-700 uppercase">Ürün Görseli</h3>
                                     </div>
                                     <div className="p-4 flex items-center justify-center min-h-[160px] bg-gray-50">
-                                        {product.image_url ? (
+                                        {(product.image_url_cdn || product.image_url) ? (
                                             <img
-                                                src={product.image_url}
+                                                src={product.image_url_cdn || product.image_url}
                                                 alt={product.name}
                                                 className="max-h-40 max-w-full object-contain rounded shadow-sm"
                                                 onError={(e) => {

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Search, Grid3x3, List, Package } from 'lucide-react';
 import type { Product } from '../../core/types';
 import { POSProductDetailModal } from './POSProductDetailModal';
@@ -24,7 +24,7 @@ export function POSProductCatalogModal({
   onClose,
   onAddToCart
 }: POSProductCatalogModalProps) {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { darkMode } = useTheme();
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const ALL_CAT = t.allBtn || 'Tümü';
@@ -212,7 +212,7 @@ export function POSProductCatalogModal({
                               ? 'bg-yellow-100 text-yellow-700'
                               : 'bg-red-100 text-red-700'
                             }`}>
-                            {product.stock || 0}
+                            {product.stock || 0} {tm('pieceUnitShort')}
                           </span>
                         </div>
                         <p className="text-sm font-medium text-blue-700 mt-1">
@@ -255,10 +255,10 @@ export function POSProductCatalogModal({
                       )}
 
                       {/* Product Image */}
-                      {product.image_url ? (
+                      {(product.image_url_cdn || product.image_url) ? (
                         <div className="w-16 h-16 bg-gray-50 rounded overflow-hidden flex items-center justify-center flex-shrink-0">
                           <img
-                            src={product.image_url}
+                            src={product.image_url_cdn || product.image_url}
                             alt={product.name}
                             className="max-h-full max-w-full object-contain"
                             onError={(e) => {
@@ -289,7 +289,7 @@ export function POSProductCatalogModal({
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700'
                           }`}>
-                          {t.stock}: {product.stock || 0}
+                          {t.stock}: {product.stock || 0} {tm('pieceUnitShort')}
                         </span>
                       </div>
 

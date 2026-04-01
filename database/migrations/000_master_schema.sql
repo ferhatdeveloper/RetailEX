@@ -7,6 +7,9 @@
 -- Çalıştırma: psql -U postgres -d retailex_local -f 000_master_schema.sql
 -- ============================================================================
 
+-- Sunucu UTF-8; Windows psql ile WIN1254 karışıklığını önlemek için
+SET client_encoding = 'UTF8';
+
 -- ============================================================================
 -- 0. EXTENSIONS & SCHEMAS
 -- ============================================================================
@@ -14,6 +17,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE SCHEMA IF NOT EXISTS auth;
+
+-- Supabase kullanılmayan ortamlarda FK'ların çalışması için minimal auth.users
+CREATE TABLE IF NOT EXISTS auth.users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+);
 CREATE SCHEMA IF NOT EXISTS logic;
 CREATE SCHEMA IF NOT EXISTS wms;
 CREATE SCHEMA IF NOT EXISTS rest;
@@ -38,10 +46,61 @@ CREATE TABLE IF NOT EXISTS firms (
   phone                 VARCHAR(50),
   ana_para_birimi       VARCHAR(10) DEFAULT 'IQD',
   raporlama_para_birimi VARCHAR(10) DEFAULT 'IQD',
+  regulatory_region     VARCHAR(2) NOT NULL DEFAULT 'IQ',
+  gib_integration_mode   VARCHAR(20) NOT NULL DEFAULT 'mock',
+  gib_ubl_profile       VARCHAR(40) DEFAULT 'TICARIFATURA',
+  gib_sender_alias      VARCHAR(255),
+  gib_integrator_base_url VARCHAR(512),
+  gib_integrator_username VARCHAR(255),
+  gib_integrator_password VARCHAR(255),
+  gib_use_test_environment BOOLEAN DEFAULT true,
   "default"             BOOLEAN DEFAULT false,
   is_active             BOOLEAN DEFAULT true,
   created_at            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- İsteğe bağlı: Supabase senkronu (006 ile de eklenebilir; sıfır kurulumda tek script yeter)
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS supabase_firm_id VARCHAR(255);
+
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS regulatory_region VARCHAR(2) NOT NULL DEFAULT 'IQ';
+
+-- Web / çok istemci: açılış varsayılanları (tek satır)
+CREATE TABLE IF NOT EXISTS public.system_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1,
+  CONSTRAINT system_settings_singleton CHECK (id = 1),
+  default_currency VARCHAR(10) NOT NULL DEFAULT 'IQD',
+  primary_firm_nr VARCHAR(10),
+  primary_period_nr VARCHAR(10),
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr)
+VALUES (1, 'IQD', '001', '01')
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS public.gib_edocument_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr VARCHAR(10) NOT NULL,
+  period_nr VARCHAR(10) NOT NULL,
+  source_type VARCHAR(32) NOT NULL DEFAULT 'sales_fiche',
+  source_id UUID NOT NULL,
+  document_no VARCHAR(100),
+  doc_type VARCHAR(32) NOT NULL DEFAULT 'E-Fatura',
+  customer_name TEXT,
+  doc_date DATE,
+  amount NUMERIC(18,4) DEFAULT 0,
+  tax_amount NUMERIC(18,4) DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'Taslak',
+  gib_uuid UUID,
+  payload_json JSONB,
+  xml_snapshot TEXT,
+  gib_response_json JSONB,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  sent_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT gib_edocument_queue_unique_source UNIQUE (firm_nr, period_nr, source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gib_edoc_firm_period ON public.gib_edocument_queue (firm_nr, period_nr, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS periods (
   id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -242,7 +301,7 @@ CREATE TABLE IF NOT EXISTS wms.bins (
 
 CREATE TABLE IF NOT EXISTS wms.personnel (
   id        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id   UUID REFERENCES auth.users(id),
+  user_id   UUID REFERENCES public.users(id),
   store_id  UUID REFERENCES public.stores(id),
   role      VARCHAR(50),
   is_active BOOLEAN DEFAULT true
@@ -416,7 +475,7 @@ CREATE TABLE IF NOT EXISTS wms.yard_locations (
 CREATE TABLE IF NOT EXISTS wms.labor_productivity (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   firm_nr         VARCHAR(10),
-  user_id         UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  user_id         UUID REFERENCES public.users(id) ON DELETE SET NULL,
   username        VARCHAR(255),
   task_type       VARCHAR(50),
   reference_id    UUID,
@@ -683,7 +742,7 @@ CREATE TABLE IF NOT EXISTS public.menu_items (
 -- Barcode Templates for automatic generation
 CREATE TABLE IF NOT EXISTS public.barcode_templates (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name          VARCHAR(100) NOT NULL DEFAULT 'Varsayılan Şablon',
+    name          VARCHAR(100) NOT NULL DEFAULT 'Varsayilan Sablon',
     prefix        VARCHAR(20) DEFAULT '869',
     current_value BIGINT DEFAULT 1000000,
     length        INTEGER DEFAULT 13,
@@ -694,7 +753,7 @@ CREATE TABLE IF NOT EXISTS public.barcode_templates (
 
 -- Seed initial barcode template
 INSERT INTO public.barcode_templates (name, prefix, current_value, length)
-SELECT 'Varsayılan Şablon', '869', 1000000, 13
+SELECT 'Varsayilan Sablon', '869', 1000000, 13
 WHERE NOT EXISTS (SELECT 1 FROM public.barcode_templates);
 
 -- History table for tracking product exchange rate changes
@@ -850,6 +909,7 @@ BEGIN
       name              VARCHAR(255) NOT NULL,
       name2             VARCHAR(255),
       image_url         TEXT,
+      image_url_cdn     TEXT,
       description       TEXT,
       description_tr    TEXT,
       description_en    TEXT,
@@ -984,6 +1044,61 @@ BEGIN
     );
   ', v_prefix || '_suppliers');
 
+  -- 3b. Services (hizmet kartları — fatura / Excel / kasa)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      firm_nr VARCHAR(10) NOT NULL,
+      code VARCHAR(100) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      description_tr TEXT,
+      description_en TEXT,
+      description_ar TEXT,
+      description_ku TEXT,
+      category VARCHAR(255),
+      category_id UUID,
+      category_code VARCHAR(50),
+      brand VARCHAR(100),
+      model VARCHAR(100),
+      manufacturer VARCHAR(100),
+      supplier VARCHAR(100),
+      origin VARCHAR(50),
+      group_code VARCHAR(50),
+      sub_group_code VARCHAR(50),
+      special_code_1 VARCHAR(50),
+      special_code_2 VARCHAR(50),
+      special_code_3 VARCHAR(50),
+      special_code_4 VARCHAR(50),
+      special_code_5 VARCHAR(50),
+      special_code_6 VARCHAR(50),
+      unit VARCHAR(50) DEFAULT ''Adet'',
+      unit_price DECIMAL(15,2) DEFAULT 0,
+      unit_price_usd DECIMAL(15,2) DEFAULT 0,
+      unit_price_eur DECIMAL(15,2) DEFAULT 0,
+      purchase_price DECIMAL(15,2) DEFAULT 0,
+      purchase_price_usd DECIMAL(15,2) DEFAULT 0,
+      purchase_price_eur DECIMAL(15,2) DEFAULT 0,
+      tax_rate DECIMAL(5,2) DEFAULT 18,
+      tax_type VARCHAR(20),
+      withholding_rate DECIMAL(5,2) DEFAULT 0,
+      discount1 DECIMAL(15,2) DEFAULT 0,
+      discount2 DECIMAL(15,2) DEFAULT 0,
+      discount3 DECIMAL(15,2) DEFAULT 0,
+      image_url TEXT,
+      price_list_1 DECIMAL(15,2) DEFAULT 0,
+      price_list_2 DECIMAL(15,2) DEFAULT 0,
+      price_list_3 DECIMAL(15,2) DEFAULT 0,
+      price_list_4 DECIMAL(15,2) DEFAULT 0,
+      price_list_5 DECIMAL(15,2) DEFAULT 0,
+      price_list_6 DECIMAL(15,2) DEFAULT 0,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT %I UNIQUE (firm_nr, code)
+    );
+  ', v_prefix || '_services', v_prefix || '_services_firm_code_uq');
+
   -- 4. Definitions (Categories, Brands, Units)
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS %I (
@@ -1008,7 +1123,7 @@ BEGIN
     (''METRE'', ''Metre''), (''TOP'', ''Top''), (''LITRE'', ''Litre''), (''ML'', ''Mililitre''),
     (''PAKET'', ''Paket''), (''KOLI'', ''Koli''), (''PALET'', ''Palet''), (''DUZINE'', ''Düzine''),
     (''M2'', ''Metrekare''), (''SAAT'', ''Saat''), (''DAK'', ''Dakika''), (''KUTU'', ''Kutu''),
-    (''SET'', ''Set''), (''PARCA'', ''Parça''), (''SISE'', ''Şişe''), (''KASA'', ''Kasa'')
+    (''SET'', ''Set''), (''PARCA'', ''Parca''), (''SISE'', ''Sise''), (''KASA'', ''Kasa'')
     ON CONFLICT (code) DO NOTHING;', v_prefix || '_units');
 
   -- 5. Unit Sets & Lines (tam şema — code, name, main_unit, conv_fact1, conv_fact2)
@@ -1090,6 +1205,7 @@ BEGIN
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_products');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_customers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_suppliers');
+  PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_services');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_registers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_bank_registers');
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_expense_cards');
@@ -1190,9 +1306,9 @@ BEGIN
   EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''KUTU'', ''KUTU'', ''Kutu'', false, 10, 1 FROM %I WHERE code = ''17-KUTU'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
 
   -- 18 · Set (Takım) — mobilya / spor ekipmanı
-  EXECUTE format('INSERT INTO %I (code, name) VALUES (''18-SET'', ''Set / Parça'') ON CONFLICT (code) DO NOTHING;', v_prefix || '_unitsets');
+  EXECUTE format('INSERT INTO %I (code, name) VALUES (''18-SET'', ''Set / Parca'') ON CONFLICT (code) DO NOTHING;', v_prefix || '_unitsets');
   EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''SET'',   ''SET'',   ''Set'',   true,  1, 1 FROM %I WHERE code = ''18-SET'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
-  EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''PARCA'', ''PARCA'', ''Parça'', false, 1, 1 FROM %I WHERE code = ''18-SET'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
+  EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''PARCA'', ''PARCA'', ''Parca'', false, 1, 1 FROM %I WHERE code = ''18-SET'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
 
   -- Varsayılan Kasa
   EXECUTE format('INSERT INTO %I (id, firm_nr, code, name, is_active) VALUES (''00000000-0000-0000-0000-000000000001'', %L, ''KASA.001'', ''MERKEZ KASA'', true) ON CONFLICT DO NOTHING;', v_prefix || '_cash_registers', p_firm_nr);
@@ -1471,6 +1587,7 @@ BEGIN
       status          VARCHAR(20) DEFAULT ''open'',
       total_amount    DECIMAL(15,2) DEFAULT 0,
       discount_amount DECIMAL(15,2) DEFAULT 0,
+      order_discount_pct DECIMAL(5,2) DEFAULT 0,
       tax_amount      DECIMAL(15,2) DEFAULT 0,
       note            TEXT,
       parent_order_id UUID,
@@ -1525,6 +1642,20 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, description TEXT, service_id UUID, total_sessions INTEGER DEFAULT 1, price DECIMAL(15,2) DEFAULT 0, cost_price DECIMAL(15,2) DEFAULT 0, discount_pct DECIMAL(5,2) DEFAULT 0, validity_days INTEGER DEFAULT 365, color VARCHAR(20) DEFAULT ''#6366f1'', is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_packages');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, device_type VARCHAR(50) DEFAULT ''laser'', serial_number VARCHAR(100), manufacturer VARCHAR(100), model VARCHAR(100), total_shots BIGINT DEFAULT 0, max_shots BIGINT DEFAULT 500000, maintenance_due DATE, last_maintenance DATE, purchase_date DATE, warranty_expiry DATE, status VARCHAR(20) DEFAULT ''active'', notes TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_devices');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), source VARCHAR(30) DEFAULT ''other'', status VARCHAR(30) DEFAULT ''new'', interested_services JSONB DEFAULT ''[]'', notes TEXT, assigned_to UUID, first_contact_date DATE DEFAULT CURRENT_DATE, last_contact_date DATE, converted_customer_id UUID, lost_reason TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_leads');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, is_active BOOLEAN DEFAULT false, sort_order INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_satisfaction_surveys');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), survey_id UUID NOT NULL REFERENCES beauty.%I(id) ON DELETE CASCADE, sort_order INTEGER DEFAULT 0, question_type VARCHAR(30) DEFAULT ''rating'', scale_max SMALLINT DEFAULT 5, is_required BOOLEAN DEFAULT true, labels_json JSONB NOT NULL DEFAULT ''{}''::jsonb, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_satisfaction_questions', v_prefix || '_beauty_satisfaction_surveys');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, address TEXT, phone VARCHAR(50), is_active BOOLEAN DEFAULT true, sort_order INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_branches');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), branch_id UUID, name VARCHAR(255) NOT NULL, capacity INTEGER DEFAULT 1, is_active BOOLEAN DEFAULT true, sort_order INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_rooms');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), online_booking_enabled BOOLEAN DEFAULT false, public_slug VARCHAR(120), public_token VARCHAR(128) NOT NULL DEFAULT encode(gen_random_bytes(24), ''hex''), reminder_hours_before SMALLINT DEFAULT 24, sms_template TEXT, whatsapp_template TEXT, sms_user VARCHAR(255), sms_password VARCHAR(255), sms_sender VARCHAR(80), whatsapp_provider VARCHAR(30) DEFAULT ''NONE'', whatsapp_base_url TEXT, whatsapp_token TEXT, whatsapp_instance_id VARCHAR(255), whatsapp_phone_id VARCHAR(80), default_reminder_channel VARCHAR(20) DEFAULT ''sms'', created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_portal_settings');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, tax_nr VARCHAR(50), discount_pct DECIMAL(5,2) DEFAULT 0, notes TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_corporate_accounts');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), title VARCHAR(255) NOT NULL, body_html TEXT, is_active BOOLEAN DEFAULT true, sort_order INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_consent_templates');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, monthly_price DECIMAL(15,2) DEFAULT 0, session_credit INTEGER DEFAULT 0, benefits_json JSONB DEFAULT ''{}''::jsonb, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_memberships');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), service_id UUID NOT NULL, product_id UUID NOT NULL, qty_per_service DECIMAL(15,4) NOT NULL DEFAULT 1, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_service_consumables');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (customer_id UUID PRIMARY KEY, allergies TEXT, medications TEXT, pregnancy BOOLEAN DEFAULT false, chronic_notes TEXT, warnings_banner TEXT, kvkk_consent_at TIMESTAMPTZ, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_customer_health');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), product_id UUID NOT NULL, lot_code VARCHAR(80), expiry_date DATE, qty DECIMAL(15,3) DEFAULT 0, barcode VARCHAR(80), created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_product_batches');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, channel VARCHAR(30) DEFAULT ''sms'', segment_filter_json JSONB DEFAULT ''{}''::jsonb, message_template TEXT, scheduled_at TIMESTAMPTZ, status VARCHAR(20) DEFAULT ''draft'', sent_count INTEGER DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_marketing_campaigns');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1), google_calendar_id TEXT, external_calendar_json JSONB DEFAULT ''{}''::jsonb, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_integration_settings');
+  EXECUTE format('INSERT INTO beauty.%I (id) VALUES (1) ON CONFLICT (id) DO NOTHING', v_prefix || '_beauty_integration_settings');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1532,16 +1663,25 @@ CREATE OR REPLACE FUNCTION INIT_BEAUTY_PERIOD_TABLES(p_firm_nr VARCHAR, p_period
 RETURNS void AS $$
 DECLARE v_prefix TEXT := lower('rex_' || p_firm_nr || '_' || p_period_nr);
 BEGIN
-  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), client_id UUID, service_id UUID, specialist_id UUID, device_id UUID, body_region_id UUID, appointment_date DATE, appointment_time TIME, duration INTEGER DEFAULT 30, status VARCHAR(20) DEFAULT ''scheduled'', type VARCHAR(20) DEFAULT ''regular'', notes TEXT, total_price DECIMAL(15,2) DEFAULT 0, commission_amount DECIMAL(15,2) DEFAULT 0, is_package_session BOOLEAN DEFAULT false, package_purchase_id UUID, reminder_sent BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_appointments');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), client_id UUID, service_id UUID, specialist_id UUID, device_id UUID, body_region_id UUID, appointment_date DATE, appointment_time TIME, duration INTEGER DEFAULT 30, status VARCHAR(20) DEFAULT ''scheduled'', type VARCHAR(20) DEFAULT ''regular'', notes TEXT, total_price DECIMAL(15,2) DEFAULT 0, commission_amount DECIMAL(15,2) DEFAULT 0, is_package_session BOOLEAN DEFAULT false, package_purchase_id UUID, reminder_sent BOOLEAN DEFAULT false, branch_id UUID, room_id UUID, tele_meeting_url TEXT, booking_channel VARCHAR(40) DEFAULT ''staff'', corporate_account_id UUID, reminder_sent_at TIMESTAMPTZ, last_notification_channel VARCHAR(30), created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_appointments');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID, specialist_id UUID, service_id UUID, appointment_id UUID, session_date DATE DEFAULT CURRENT_DATE, shots_used INTEGER DEFAULT 0, skin_type VARCHAR(20), before_photo TEXT, after_photo TEXT, notes TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_sessions');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), package_purchase_id UUID, appointment_id UUID, session_number INTEGER, recorded_at TIMESTAMPTZ DEFAULT NOW())', v_prefix || '_beauty_session_logs');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID, package_id UUID, total_sessions INTEGER DEFAULT 1, used_sessions INTEGER DEFAULT 0, remaining_sessions INTEGER DEFAULT 1, sale_price DECIMAL(15,2) DEFAULT 0, purchase_date DATE DEFAULT CURRENT_DATE, expiry_date DATE, status VARCHAR(20) DEFAULT ''active'', created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_package_purchases');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID, package_id UUID, total_sessions INTEGER, sale_price DECIMAL(15,2), sale_date DATE, expiry_date DATE, status VARCHAR(20))', v_prefix || '_beauty_package_sales');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), device_id UUID, appointment_id UUID, customer_id UUID, specialist_id UUID, body_region_id UUID, shots_used INTEGER DEFAULT 0, expected_shots INTEGER DEFAULT 0, is_excessive BOOLEAN DEFAULT false, usage_date DATE DEFAULT CURRENT_DATE, notes TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_device_usage');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), device_id UUID, usage_id UUID, alert_type VARCHAR(50), message TEXT, severity VARCHAR(20) DEFAULT ''warning'', acknowledged BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_device_alerts');
-  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), appointment_id UUID, customer_id UUID, service_rating SMALLINT DEFAULT 5, staff_rating SMALLINT DEFAULT 5, cleanliness_rating SMALLINT DEFAULT 5, overall_rating SMALLINT DEFAULT 5, comment TEXT, would_recommend BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_customer_feedback');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), appointment_id UUID, customer_id UUID, service_rating SMALLINT DEFAULT 5, staff_rating SMALLINT DEFAULT 5, cleanliness_rating SMALLINT DEFAULT 5, overall_rating SMALLINT DEFAULT 5, comment TEXT, would_recommend BOOLEAN DEFAULT true, survey_id UUID, survey_answers JSONB, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_customer_feedback');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), invoice_number VARCHAR(30), customer_id UUID, subtotal DECIMAL(15,2) DEFAULT 0, discount DECIMAL(15,2) DEFAULT 0, tax DECIMAL(15,2) DEFAULT 0, total DECIMAL(15,2) DEFAULT 0, payment_method VARCHAR(30) DEFAULT ''cash'', payment_status VARCHAR(20) DEFAULT ''paid'', paid_amount DECIMAL(15,2) DEFAULT 0, remaining_amount DECIMAL(15,2) DEFAULT 0, notes TEXT, created_by UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_sales');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), sale_id UUID, item_type VARCHAR(20) DEFAULT ''service'', item_id UUID, name VARCHAR(255), quantity INTEGER DEFAULT 1, unit_price DECIMAL(15,2) DEFAULT 0, discount DECIMAL(15,2) DEFAULT 0, total DECIMAL(15,2) DEFAULT 0, staff_id UUID, commission_amount DECIMAL(15,2) DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_sale_items');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID, service_id UUID, specialist_id UUID, preferred_date_from DATE, preferred_date_to DATE, notes TEXT, status VARCHAR(20) DEFAULT ''active'', created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_waitlist');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, email VARCHAR(255), service_id UUID, requested_date DATE, requested_time TIME, notes TEXT, status VARCHAR(20) DEFAULT ''pending'', public_token_used VARCHAR(128), processed_appointment_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_booking_requests');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), appointment_id UUID, channel VARCHAR(30) NOT NULL, payload_json JSONB DEFAULT ''{}''::jsonb, status VARCHAR(20) DEFAULT ''pending'', scheduled_at TIMESTAMPTZ, sent_at TIMESTAMPTZ, error_text TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_notification_queue');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID, appointment_id UUID, template_id UUID, signed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, signature_data TEXT, meta_json JSONB DEFAULT ''{}''::jsonb, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_consent_submissions');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), appointment_id UUID, customer_id UUID, subjective TEXT, objective TEXT, assessment TEXT, plan TEXT, extra_json JSONB DEFAULT ''{}''::jsonb, created_by UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_clinical_notes');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID NOT NULL, appointment_id UUID, kind VARCHAR(20) DEFAULT ''before'', storage_url TEXT NOT NULL, caption TEXT, taken_at DATE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_patient_photos');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), customer_id UUID NOT NULL, membership_id UUID NOT NULL, start_date DATE, end_date DATE, status VARCHAR(20) DEFAULT ''active'', auto_renew BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_membership_subscriptions');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), table_name VARCHAR(80) NOT NULL, record_id UUID, action VARCHAR(40) NOT NULL, user_id UUID, payload_json JSONB DEFAULT ''{}''::jsonb, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_audit_log');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), appointment_id UUID, product_id UUID NOT NULL, qty DECIMAL(15,4) NOT NULL, batch_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_consumable_usage_log');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1670,6 +1810,8 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- 18. BOOTSTRAP — Birincil Firma (001) Kurulumu
+-- Not: "RetailEx OS" şablon kaydıdır; Logo ile 002+ firma kullanıldığında kurulum
+-- sonunda kaldırılabilir (015_remove_template_firm_001_retailex_os.sql ve SetupWizard).
 -- ============================================================================
 
 INSERT INTO firms (id, firm_nr, name, "default", ana_para_birimi, raporlama_para_birimi)

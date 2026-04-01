@@ -40,6 +40,8 @@ export interface Product {
   min_stock?: number;
   max_stock?: number;
   image_url?: string;
+  /** Supabase Storage / CDN public URL; öncelikli gösterim için kullanılır */
+  image_url_cdn?: string;
   sku?: string;
   description?: string;
   // Multilingual descriptions

@@ -47,6 +47,9 @@ export function FloorTableManagement() {
 
     const selectedRegion = regions.find(r => r.id === selectedRegionId);
     const regionTables = tables.filter(t => t.floorId === selectedRegionId);
+    const regionTablesSorted = [...regionTables].sort((a, b) =>
+        a.number.localeCompare(b.number, undefined, { numeric: true })
+    );
 
     const handleAddRegion = async () => {
         if (!newRegionName.trim()) return;
@@ -83,8 +86,10 @@ export function FloorTableManagement() {
         setTableError(null);
         try {
             if (isBulkMode) {
+                const padLen = Math.max(2, String(bulkCount).length);
                 for (let i = 1; i <= bulkCount; i++) {
-                    await addTable({ id: uuidv4(), number: `${bulkPrefix}${i}`, seats: newTableSeats, floorId: selectedRegionId, isLarge: false });
+                    const num = String(i).padStart(padLen, '0');
+                    await addTable({ id: uuidv4(), number: `${bulkPrefix}-${num}`, seats: newTableSeats, floorId: selectedRegionId, isLarge: false });
                 }
                 setBulkPrefix('M'); setBulkCount(5);
             } else {
@@ -225,7 +230,7 @@ export function FloorTableManagement() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 xl:grid-cols-8 gap-2">
-                                {regionTables.map(t => (
+                                {regionTablesSorted.map(t => (
                                     <div
                                         key={t.id}
                                         className="border border-slate-200 rounded-lg p-2 flex flex-col gap-0.5 group relative hover:border-slate-300 transition-colors"

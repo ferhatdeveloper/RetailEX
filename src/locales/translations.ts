@@ -16,6 +16,7 @@ export interface MenuTranslations {
   brandDefinitions: string;
   campaignDefinitions: string;
   cards: string;
+  categoryGroupSalesProfitReport: string;
   cashAccounts: string;
   cashCards: string;
   cashOperations: string;
@@ -39,6 +40,7 @@ export interface MenuTranslations {
   definitionsParameters: string;
   demoDataManagement: string;
   designCenter: string;
+  eInvoiceArchive: string;
   emailCampaigns: string;
   exSecureGateSecurity: string;
   excelOperations: string;
@@ -241,6 +243,18 @@ export interface Translations {
   totalPaid: string;
   okLabel: string;
   autoPrintReceipt: string;
+  /** Fiş önizleme: yazdırmadan kapat */
+  closeWithoutPrinting: string;
+  /** Market POS ödeme: otomatik yazdırma yok, fiş ekranında yazdır */
+  posReceiptDeferredPrintHint: string;
+  /** Ödeme modalı: hesabı kapatmadan yazdır (Restoran) */
+  posPrintDraftHint: string;
+  /** Fiş ekranı yazdır butonu */
+  printReceiptLabel: string;
+  /** Yazdırma işlemi sürerken buton metni */
+  printingReceiptStatus: string;
+  /** Ödeme modalı: yazdır nerede (kısa) */
+  printReceiptLocationShort: string;
   abcAnalysis: string;
   accountAdded: string;
   accountCode: string;
@@ -1802,6 +1816,7 @@ export const translations: any = {
       brandDefinitions: 'Marka Tanımları',
       campaignDefinitions: 'Kampanya Tanımları',
       cards: 'Kartlar',
+      categoryGroupSalesProfitReport: 'Kategori grubu satış ve kar',
       cashAccounts: 'Kasa Hesapları',
       cashCards: 'Kasa Kartları',
       cashOperations: 'Kasa İşlemleri',
@@ -1825,6 +1840,7 @@ export const translations: any = {
       definitionsParameters: 'Tanımlar/Parametreler',
       demoDataManagement: 'Demo Veri Yönetimi',
       designCenter: 'Dizayn Merkezi',
+      eInvoiceArchive: 'E-Dönüşüm (GİB)',
       emailCampaigns: 'E-posta Kampanyaları',
       exSecureGateSecurity: 'ExSecureGate (Güvenlik)',
       excelOperations: 'Excel İşlemleri',
@@ -1892,6 +1908,7 @@ export const translations: any = {
       salesReturn: 'Satış İade',
       salesWaybill: 'Satış İrsaliyesi',
       scaleAndWeighedSales: 'Terazi & Tartılı Satış',
+      serviceCards: 'Hizmet Kartları',
       serviceInvoiceIssued: 'Verilen Hizmet Faturası',
       serviceInvoiceReceived: 'Alınan Hizmet Faturası',
       serviceInvoices: 'Hizmet Faturaları',
@@ -1949,6 +1966,13 @@ export const translations: any = {
     totalPaid: 'Toplam Ödenen',
     okLabel: 'Tamam',
     autoPrintReceipt: 'Fişi Otomatik Yazdır',
+    closeWithoutPrinting: 'Yazdırmadan kapat',
+    posReceiptDeferredPrintHint:
+      'Fiş yazdırma satıştan sonra açılan fiş ekranındaki «Yazdır» ile yapılır; çift yazdırma ve ekstra WebView penceresi oluşmaz.',
+    posPrintDraftHint: 'Hesabı kapatmadan adisyon: alttaki «Yazdır» doğrudan yazıcıya gönderir (ekranda önizleme yok).',
+    printReceiptLabel: 'Yazdır',
+    printingReceiptStatus: 'Yazdırılıyor...',
+    printReceiptLocationShort: '«Ödemeyi Tamamla» sonrası açılan fiş penceresinin altında.',
     receiptTitle: 'Fiş',
     presents: 'Hediyeler',
     profit: 'Kâr',
@@ -3237,6 +3261,7 @@ export const translations: any = {
       serviceCards: 'Service Cards',
       campaignDefinitions: 'Campaign Definitions',
       cards: 'Cards',
+      categoryGroupSalesProfitReport: 'Category group sales & profit',
       cashAccounts: 'Cash Accounts',
       cashCards: 'Cash Cards',
       cashOperations: 'Cash Operations',
@@ -3260,6 +3285,7 @@ export const translations: any = {
       definitionsParameters: 'Definitions/Parameters',
       demoDataManagement: 'Demo Data Management',
       designCenter: 'Design Center',
+      eInvoiceArchive: 'E-Invoicing (GIB)',
       emailCampaigns: 'Email Campaigns',
       exSecureGateSecurity: 'ExSecureGate (Security)',
       excelOperations: 'Excel Operations',
@@ -4047,6 +4073,13 @@ export const translations: any = {
     totalPaid: 'Total Paid',
     okLabel: 'OK',
     autoPrintReceipt: 'Auto Print Receipt',
+    closeWithoutPrinting: 'Close without printing',
+    posReceiptDeferredPrintHint:
+      'Print the receipt from the «Print» button on the receipt screen after the sale; this avoids duplicate printing and extra WebView dialogs.',
+    posPrintDraftHint: '«Print» below sends the bill directly to the printer (no on-screen preview).',
+    printReceiptLabel: 'Print',
+    printingReceiptStatus: 'Printing...',
+    printReceiptLocationShort: 'After «Complete Payment», use the button at the bottom of the receipt window.',
   },
   ar: {
     abcAnalysis: 'ABC Analizi',
@@ -4547,8 +4580,10 @@ export const translations: any = {
       banks: 'البنوك',
       biDashboardAi: 'لوحة BI والذكاء الاصطناعي',
       brandDefinitions: 'تعريفات العلامات التجارية',
+      serviceCards: 'بطاقات الخدمة',
       campaignDefinitions: 'تعريفات الحملات',
       cards: 'البطاقات',
+      categoryGroupSalesProfitReport: 'مبيعات وربح المجموعة',
       cashAccounts: 'حسابات الصندوق',
       cashCards: 'بطاقات الخزينة',
       cashOperations: 'عمليات الصندوق',
@@ -4572,6 +4607,7 @@ export const translations: any = {
       definitionsParameters: 'التعريفات/المعاملات',
       demoDataManagement: 'إدارة البيانات التجريبية',
       designCenter: 'مركز التصميم',
+      eInvoiceArchive: 'الفوترة الإلكترونية',
       emailCampaigns: 'حملات البريد الإلكتروني',
       exSecureGateSecurity: 'ExSecureGate (الأمن)',
       excelOperations: 'عمليات إكسل',
@@ -5362,6 +5398,13 @@ export const translations: any = {
     totalPaid: 'إجمالي المدفوع',
     okLabel: 'تم',
     autoPrintReceipt: 'طباعة الإيصال تلقائياً',
+    closeWithoutPrinting: 'إغلاق بدون طباعة',
+    posReceiptDeferredPrintHint:
+      'اطبع الإيصال من زر «طباعة» في شاشة الإيصال بعد البيع؛ يمنع الطباعة المزدوجة ونوافذ WebView الإضافية.',
+    posPrintDraftHint: '«طباعة» في الأسفل ترسل مباشرة للطابعة دون معاينة على الشاشة.',
+    printReceiptLabel: 'طباعة',
+    printingReceiptStatus: 'جاري الطباعة...',
+    printReceiptLocationShort: 'بعد «إتمام الدفع»، يظهر زر الطباعة أسفل نافذة الإيصال.',
   },
   ku: {
     abcAnalysis: 'ABC Analizi',
@@ -5862,8 +5905,10 @@ export const translations: any = {
       banks: 'بانکەکان',
       biDashboardAi: 'BI Dashboard & AI',
       brandDefinitions: 'پێناسەی براندەکان',
+      serviceCards: 'کارتەکانی خزمەتگوزاری',
       campaignDefinitions: 'پێناسەی کەمپەینەکان',
       cards: 'کارتەکان',
+      categoryGroupSalesProfitReport: 'فرۆشتن و قازانجی گروپ',
       cashAccounts: 'حیسابەکانی نەقد',
       cashCards: 'کارتەکانی کۆگا',
       cashOperations: 'کردارەکانی نەقد',
@@ -5887,6 +5932,7 @@ export const translations: any = {
       definitionsParameters: 'پێناسە/پارامێتەرەکان',
       demoDataManagement: 'بەڕێوەبردنی داتای تاقikari',
       designCenter: 'سەنتەري ديزاين',
+      eInvoiceArchive: 'وەسڵی ئەلیکترۆنی (GIB)',
       emailCampaigns: 'کەمپەینەکانی ئیمەیڵ',
       exSecureGateSecurity: 'ExSecureGate (ئاسایش)',
       excelOperations: 'کردارەکانی ئێکسڵ',
@@ -6725,5 +6771,12 @@ export const translations: any = {
     totalPaid: 'کۆی گشتی دراو',
     okLabel: 'باشە',
     autoPrintReceipt: 'چاپکردنی وەسڵ بە خۆکار',
+    closeWithoutPrinting: 'داخستن بەبێ چاپ',
+    posReceiptDeferredPrintHint:
+      'چاپکردنی وەسڵ لە دوای فرۆشتن لە شاشەی وەسڵ بە دوگمەی «چاپ»؛ دووبارە چاپ و پەنجەرەی زیادەی WebView ڕێگە دەگرێت.',
+    posPrintDraftHint: '«چاپ» ڕاستەوخۆ بۆ چاپکەر دەنێرێت (بێ پێشبینین لەسەر شاشە).',
+    printReceiptLabel: 'چاپ',
+    printingReceiptStatus: 'چاپ دەکرێت...',
+    printReceiptLocationShort: 'دوای «تەواوکردنی پارەدان»، لە خوارەوەی پەنجەرەی وەسڵ دوگمەی چاپ هەیە.',
   },
 };

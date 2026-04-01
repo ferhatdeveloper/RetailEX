@@ -14,14 +14,10 @@
  */
 
 export const supabaseConfig = {
-  // Your Supabase Project URL
-  // Get from: https://app.supabase.com/project/_/settings/api
-  // Example: https://abcdefghijklmnop.supabase.co
-  url: 'https://iryqbqxvwsvksfhakkzz.supabase.co',
-
-  // Your Supabase Anonymous Key (safe to use in frontend)
-  // Get from: https://app.supabase.com/project/_/settings/api
-  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlyeXFicXh2d3N2a3NmaGFra3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5MzMyODIsImV4cCI6MjA3NDUwOTI4Mn0.u6L7YJ9G2gGNngdZpkrHTfDG_EfBhw9P34Gz7fSh_ek',
+  // Supabase Project URL (zdkudbhzxbhjgskczhzt)
+  url: 'https://zdkudbhzxbhjgskczhzt.supabase.co',
+  // Anonymous Key — sadece bu anahtar frontend'de kullanılır. service_role key asla buraya yazılmamalı.
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpka3VkYmh6eGJoamdza2N6aHp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODcxNzksImV4cCI6MjA4NzQ2MzE3OX0.FPIIlU63MCbMoH7Yyv6QaaF6v_cS-plnV04x3Gyunds',
 };
 
 // Helper to check if configured

@@ -1,6 +1,6 @@
 [package]
 name = "retailex"
-version = "0.1.55"
+version = "0.1.60"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -71,6 +71,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15"
 thiserror = "1.0"
 futures-lite = "2.1"
+serialport = "4.6"
 
 
 [[bin]]
@@ -86,12 +87,16 @@ name = "RetailEX_VPN"
 path = "src/vpn_tray.rs"
 
 [[bin]]
-name = "RetailEX_Setup"
+name = "RetailEX_Config"
 path = "src/setup_main.rs"
 
 [[bin]]
 name = "RetailEX_Logo"
 path = "src/logo_main.rs"
+
+[[bin]]
+name = "RetailEX_SQL_Bridge"
+path = "src/sql_bridge_main.rs"
 
 [dependencies.windows-service]
 version = "0.7"

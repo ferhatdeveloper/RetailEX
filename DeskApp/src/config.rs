@@ -30,6 +30,10 @@ pub struct AppConfig {
     pub db_mode: String, // online, offline, hybrid
     pub local_db: String,
     pub remote_db: String,
+    #[serde(default = "default_connection_provider")]
+    pub connection_provider: String, // db | rest_api
+    #[serde(default = "default_remote_rest_url")]
+    pub remote_rest_url: String,
     pub terminal_name: String,
     pub store_id: String,
     pub erp_firm_nr: String,
@@ -83,11 +87,34 @@ pub struct AppConfig {
     pub update_source: String, // "central" or "github"
     #[serde(default = "default_hidden_modules")]
     pub hidden_modules: Vec<String>,
+    /// TR: GİB e-fatura / e-arşiv; IQ: kapalı (yemek agregatörleri ayrı profil)
+    #[serde(default = "default_regulatory_region")]
+    pub regulatory_region: String,
+    /// POS/ekran varsayılan para kodu (firma seçilene kadar ve uygulama geneli)
+    #[serde(default = "default_currency")]
+    pub default_currency: String,
+    /// Beauty takviminde slot aralığı (dakika)
+    #[serde(default = "default_beauty_slot_interval_min")]
+    pub beauty_slot_interval_min: i32,
 }
 
 fn default_true() -> bool { true }
 fn default_menu_mode() -> i32 { 1 }
 fn default_update_source() -> String { "central".to_string() }
+fn default_connection_provider() -> String { "db".to_string() }
+fn default_remote_rest_url() -> String { "http://localhost:3002".to_string() }
+fn default_regulatory_region() -> String {
+    "IQ".to_string()
+}
+
+fn default_currency() -> String {
+    "IQD".to_string()
+}
+
+fn default_beauty_slot_interval_min() -> i32 {
+    15
+}
+
 fn default_hidden_modules() -> Vec<String> {
     vec![
         "retail".to_string(),
@@ -135,6 +162,8 @@ impl Default for AppConfig {
             db_mode: "hybrid".to_string(),
             local_db: "localhost:5432/retailex_local".to_string(),
             remote_db: "91.205.41.130:5432/retailos_db".to_string(),
+            connection_provider: default_connection_provider(),
+            remote_rest_url: default_remote_rest_url(),
             terminal_name: "".to_string(),
             store_id: "001".to_string(),
             erp_firm_nr: "001".to_string(),
@@ -169,6 +198,9 @@ impl Default for AppConfig {
             use_fixed_vpn_ip: true,
             update_source: "central".to_string(),
             hidden_modules: default_hidden_modules(),
+            regulatory_region: default_regulatory_region(),
+            default_currency: default_currency(),
+            beauty_slot_interval_min: default_beauty_slot_interval_min(),
         }
     }
 }

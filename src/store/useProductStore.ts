@@ -96,11 +96,12 @@ export const useProductStore = create<ProductState>()(
               lastSync: Date.now()
             }));
           } else {
-            throw new Error('Failed to delete product');
+            throw new Error('Ürün silinemedi.');
           }
         } catch (error) {
           console.error('[ProductStore] Error deleting product:', error);
           set({ isLoading: false, error: 'Failed to delete product' });
+          throw error;
         }
       },
 

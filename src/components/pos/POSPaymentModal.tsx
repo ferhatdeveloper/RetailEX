@@ -1,4 +1,4 @@
-import { X, CreditCard, DollarSign, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Banknote, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent } from 'lucide-react';
+import { X, CreditCard, DollarSign, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Banknote, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
@@ -56,13 +56,26 @@ const parseFormattedNumber = (value: string): number => {
   return parseFloat(normalized) || 0;
 };
 
-interface Payment {
+export interface POSPaymentModalPaymentRow {
   method: 'cash' | 'card' | 'gateway' | 'veresiye';
   amount: number;
   currency: 'IQD' | 'USD' | 'EUR';
   gatewayProvider?: string;
   transactionId?: string;
 }
+
+/** Hesabı kapatmadan ön fiş / adisyon yazdırırken modal içi özet */
+export type POSPaymentModalDraftContext = {
+  payments: POSPaymentModalPaymentRow[];
+  totalPaid: number;
+  change: number;
+  remaining: number;
+  finalTotal: number;
+  discount: number;
+  receiptLanguage: string;
+};
+
+type Payment = POSPaymentModalPaymentRow;
 
 interface POSPaymentModalProps {
   total: number;
@@ -72,6 +85,10 @@ interface POSPaymentModalProps {
   selectedCampaign?: Campaign | null;  // Kampanya bilgisi
   selectedCustomer?: Customer | null;
   receiptNumber?: string;
+  /** false: Market POS — satışta otomatik yazdırma yok; fiş sonraki ekranda */
+  showAutoPrintOption?: boolean;
+  /** Restoran: ödeme modalından hesabı kapatmadan yazdır (Promise ile yükleme göstergesi) */
+  onPrintDraftReceipt?: (ctx: POSPaymentModalDraftContext) => void | Promise<void>;
   onClose: () => void;
   onComplete: (paymentData: any, options?: { autoPrint?: boolean; language?: string }) => Promise<void> | void;
 }
@@ -84,6 +101,8 @@ export function POSPaymentModal({
   selectedCampaign,
   selectedCustomer,
   receiptNumber = '',
+  showAutoPrintOption = false,
+  onPrintDraftReceipt,
   onClose,
   onComplete
 }: POSPaymentModalProps) {
@@ -100,8 +119,8 @@ export function POSPaymentModal({
   const [qrGatewayName, setQrGatewayName] = useState('');
   const [processing, setProcessing] = useState(false);
   
-  // Receipt Settings
-  const [autoPrint, setAutoPrint] = useState(true);
+  // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
+  const [autoPrint, setAutoPrint] = useState(false);
   const [receiptLanguage, setReceiptLanguage] = useState<string>(useLanguage().language);
 
   useEffect(() => {
@@ -117,6 +136,7 @@ export function POSPaymentModal({
     }
   }, []);
   const [isLoading, setIsLoading] = useState(false);
+  const [draftPrintLoading, setDraftPrintLoading] = useState(false);
 
   const { t } = useLanguage();
   const { darkMode } = useTheme();
@@ -216,6 +236,27 @@ export function POSPaymentModal({
     setPayments(payments.filter((_, i) => i !== index));
   };
 
+  const handlePrintDraftReceipt = async () => {
+    if (!onPrintDraftReceipt || draftPrintLoading) return;
+    const ctx: POSPaymentModalDraftContext = {
+      payments: payments.map(p => ({ ...p })),
+      totalPaid,
+      change,
+      remaining,
+      finalTotal,
+      discount: calculatedDiscount,
+      receiptLanguage,
+    };
+    setDraftPrintLoading(true);
+    try {
+      await Promise.resolve(onPrintDraftReceipt(ctx));
+    } catch (e) {
+      console.error('[POSPaymentModal] onPrintDraftReceipt', e);
+    } finally {
+      setDraftPrintLoading(false);
+    }
+  };
+
   const handleConfirmPayment = async () => {
     if (remaining > 0.01) {
       alert(t.insufficientPayment || 'Ödeme tutarı yetersiz!');
@@ -230,7 +271,7 @@ export function POSPaymentModal({
         change: change,
         discount: calculatedDiscount,
         finalTotal: finalTotal,
-        autoPrint: autoPrint,
+        autoPrint: showAutoPrintOption ? autoPrint : false,
         language: receiptLanguage
       });
     } catch (error) {
@@ -811,24 +852,41 @@ export function POSPaymentModal({
           </div>
         </div>
 
-        {/* Printing Options */}
-        <div className={`px-4 py-3 border-t flex items-center justify-between gap-4 ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'}`}>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={autoPrint}
-                onChange={(e) => setAutoPrint(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
-              />
-              <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
-                {t.autoPrintReceipt || 'Otomatik Yazdır'}
-              </span>
-            </label>
-            
-            <div className={`h-6 w-px ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`}></div>
-            
-            <div className="flex items-center gap-2">
+        {/* Fiş dili + (isteğe) otomatik yazdır — Market POS’ta sadece bilgi metni */}
+        <div className={`px-4 py-3 border-t flex flex-wrap items-center justify-between gap-4 ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'}`}>
+          <div className="flex flex-wrap items-center gap-4 min-w-0">
+            {showAutoPrintOption ? (
+              <label className="flex items-center gap-2 cursor-pointer group shrink-0">
+                <input
+                  type="checkbox"
+                  checked={autoPrint}
+                  onChange={(e) => setAutoPrint(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                />
+                <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                  {t.autoPrintReceipt || 'Otomatik Yazdır'}
+                </span>
+              </label>
+            ) : onPrintDraftReceipt ? null : (
+              <div
+                className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 max-w-2xl ${darkMode ? 'border-blue-500/40 bg-blue-950/40' : 'border-blue-200 bg-blue-50/80'
+                  }`}
+              >
+                <Printer className={`w-5 h-5 shrink-0 mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} aria-hidden />
+                <div className="min-w-0 space-y-1">
+                  <p className={`text-sm font-bold ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
+                    {t.printReceiptLabel}: {t.printReceiptLocationShort}
+                  </p>
+                  <p className={`text-xs leading-snug ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {t.posReceiptDeferredPrintHint}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className={`h-6 w-px shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+
+            <div className="flex items-center gap-2 shrink-0">
               <Globe className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
               <select
                 value={receiptLanguage}
@@ -842,15 +900,16 @@ export function POSPaymentModal({
               </select>
             </div>
           </div>
-          
-          <div className={`text-[10px] px-2 py-1 rounded-full ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+
+          <div className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
             POS ID: {receiptNumber.split('-').pop()}
           </div>
         </div>
 
         {/* Footer */}
-        <div className={`p-4 border-t flex gap-2 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+        <div className={`p-4 border-t flex flex-col sm:flex-row gap-2 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
           <button
+            type="button"
             onClick={onClose}
             className={`flex-1 px-4 py-3 rounded transition-colors ${darkMode
               ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
@@ -859,10 +918,39 @@ export function POSPaymentModal({
           >
             {t.cancel || 'İptal'}
           </button>
+          {onPrintDraftReceipt && (
+            <button
+              type="button"
+              onClick={() => void handlePrintDraftReceipt()}
+              disabled={draftPrintLoading}
+              aria-busy={draftPrintLoading}
+              className={`flex-1 px-4 py-3 rounded font-medium flex items-center justify-center gap-2 border-2 transition-colors min-h-[3rem] ${draftPrintLoading
+                ? darkMode
+                  ? 'border-blue-400 bg-blue-950/40 text-blue-100'
+                  : 'border-blue-500 bg-blue-50 text-blue-800'
+                : darkMode
+                  ? 'border-blue-500 text-blue-200 hover:bg-blue-950/50'
+                  : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                } disabled:cursor-wait`}
+            >
+              {draftPrintLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 shrink-0 animate-spin text-current" aria-hidden />
+                  <span className="font-semibold">{t.printingReceiptStatus}</span>
+                </>
+              ) : (
+                <>
+                  <Printer className="w-5 h-5 shrink-0" aria-hidden />
+                  <span>{t.printReceiptLabel}</span>
+                </>
+              )}
+            </button>
+          )}
           <button
+            type="button"
             onClick={handleConfirmPayment}
-            disabled={remaining > 0.01 || isLoading}
-            className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2`}
+            disabled={remaining > 0.01 || isLoading || draftPrintLoading}
+            className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 sm:min-w-[11rem]`}
           >
             {isLoading ? (
               <>

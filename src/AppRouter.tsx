@@ -15,6 +15,7 @@ import { Login } from './components/system/Login';
 import { InfrastructureSettingsPage } from './components/system/InfrastructureSettingsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import App from './App';
+import PublicBeautyBooking from './components/beauty/components/PublicBeautyBooking';
 import { Toaster } from 'sonner';
 import { RoleManagement } from './components/system/RoleManagement';
 import { RoleForm } from './components/system/RoleForm';
@@ -33,25 +34,26 @@ export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <LanguageProvider>
-          <Toaster
-            richColors
-            position="bottom-right"
-            expand={true}
-            visibleToasts={5}
-            toastOptions={{
-              style: {
-                marginBottom: '8px',
-              },
-              className: 'toast-item',
-            }}
-          />
-          <Router>
-            <AuthProvider>
+        <Toaster
+          richColors
+          position="bottom-right"
+          expand={true}
+          visibleToasts={5}
+          toastOptions={{
+            style: {
+              marginBottom: '8px',
+            },
+            className: 'toast-item',
+          }}
+        />
+        <Router>
+          <AuthProvider>
+            <LanguageProvider>
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<Login onLogin={() => { }} />} />
                 <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
+                <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
 
                 {/* Protected routes */}
                 <Route
@@ -83,9 +85,9 @@ export function AppRouter() {
                   element={<App />}
                 />
               </Routes>
-            </AuthProvider>
-          </Router>
-        </LanguageProvider>
+            </LanguageProvider>
+          </AuthProvider>
+        </Router>
       </ThemeProvider>
     </QueryClientProvider>
   );

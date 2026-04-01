@@ -30,6 +30,47 @@ export interface ExchangeRate {
     created_at?: string;
 }
 
+/** Kur türüne göre satırdan sayısal kur (fatura formu ile uyumlu). */
+export function pickExchangeRateValue(row: ExchangeRate, rateType: string): number {
+    const t = (rateType || 'Satış').trim();
+    const num = (v: unknown) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : NaN;
+    };
+    if (t === 'Alış') {
+        return num(row.buy_rate) || num(row.sell_rate) || 1;
+    }
+    if (t === 'Efektif Satış') {
+        return num(row.effective_sell) || num(row.sell_rate) || num(row.buy_rate) || 1;
+    }
+    if (t === 'Efektif Alış') {
+        return num(row.effective_buy) || num(row.buy_rate) || num(row.sell_rate) || 1;
+    }
+    return num(row.sell_rate) || num(row.buy_rate) || 1;
+}
+
+/**
+ * Fatura dövizi → firma ana para (ledger): 1 birim döviz = kaç birim ledger.
+ * exchange_rates satırları aynı pivot cinsinden olmalı (örn. hepsi IQD karşılığı).
+ */
+export function crossRateDocumentToLedgerFromLatest(
+    documentCurrency: string,
+    ledgerCurrency: string,
+    latestRates: ExchangeRate[],
+    rateType: string
+): number | null {
+    const dc = documentCurrency.trim().toUpperCase();
+    const lc = ledgerCurrency.trim().toUpperCase();
+    if (!dc || !lc || dc === lc) return 1;
+    const rowD = latestRates.find(r => String(r.currency_code).trim().toUpperCase() === dc);
+    const rowL = latestRates.find(r => String(r.currency_code).trim().toUpperCase() === lc);
+    const vD = rowD ? pickExchangeRateValue(rowD, rateType) : NaN;
+    const vL = rowL ? pickExchangeRateValue(rowL, rateType) : NaN;
+    const denom = Number.isFinite(vL) && vL > 0 ? vL : 1;
+    if (!Number.isFinite(vD) || vD <= 0) return null;
+    return vD / denom;
+}
+
 // ============================================================================
 // CURRENCY API
 // ============================================================================
@@ -125,19 +166,92 @@ export const exchangeRateAPI = {
     async getLatestRates(): Promise<ExchangeRate[]> {
         try {
             const { rows } = await postgres.query(
-                `SELECT DISTINCT ON (currency_code) * 
-                 FROM exchange_rates 
-                 WHERE is_active = true 
-                 ORDER BY currency_code, date DESC, created_at DESC`
+                `SELECT DISTINCT ON (UPPER(TRIM(currency_code::text))) *
+                 FROM exchange_rates
+                 WHERE is_active = true
+                 ORDER BY UPPER(TRIM(currency_code::text)), date DESC, created_at DESC NULLS LAST`
             );
-            return rows;
+            return rows.map((r: ExchangeRate) => ({
+                ...r,
+                currency_code: String(r.currency_code ?? '').trim().toUpperCase()
+            }));
         } catch (error) {
             console.error('[ExchangeRateAPI] getLatestRates failed:', error);
             return [];
         }
     },
 
+    /**
+     * İşlem tarihi için geçerli kur: o güne kadar (dahil) kayıtlı en son kur.
+     * as_of_date: YYYY-MM-DD
+     */
+    async getRateAsOfDate(currency_code: string, as_of_date: string): Promise<ExchangeRate | null> {
+        if (!currency_code?.trim() || !as_of_date?.trim()) return null;
+        try {
+            const { rows } = await postgres.query(
+                `SELECT * FROM exchange_rates
+                 WHERE is_active = true
+                   AND UPPER(TRIM(currency_code::text)) = UPPER(TRIM($1::text))
+                   AND date <= $2::date
+                 ORDER BY date DESC, created_at DESC NULLS LAST
+                 LIMIT 1`,
+                [currency_code.trim(), as_of_date.trim().slice(0, 10)]
+            );
+            const row = rows[0] as ExchangeRate | undefined;
+            if (!row) return null;
+            return {
+                ...row,
+                currency_code: String(row.currency_code ?? '').trim().toUpperCase()
+            };
+        } catch (error) {
+            console.error('[ExchangeRateAPI] getRateAsOfDate failed:', error);
+            return null;
+        }
+    },
+
+    /** Tarih aralığı ve isteğe bağlı para birimine göre tüm kur kayıtları (geçmiş). */
+    async getHistory(filters: {
+        currency_code?: string | null;
+        date_from?: string | null;
+        date_to?: string | null;
+        limit?: number;
+    }): Promise<ExchangeRate[]> {
+        try {
+            const limit = Math.min(Math.max(filters.limit ?? 500, 1), 2000);
+            const parts: string[] = ['is_active = true'];
+            const params: unknown[] = [];
+            let n = 1;
+            if (filters.currency_code) {
+                parts.push(`UPPER(TRIM(currency_code::text)) = UPPER(TRIM($${n++}::text))`);
+                params.push(String(filters.currency_code));
+            }
+            if (filters.date_from) {
+                parts.push(`date >= $${n++}::date`);
+                params.push(filters.date_from);
+            }
+            if (filters.date_to) {
+                parts.push(`date <= $${n++}::date`);
+                params.push(filters.date_to);
+            }
+            params.push(limit);
+            const sql = `
+                SELECT * FROM exchange_rates
+                WHERE ${parts.join(' AND ')}
+                ORDER BY date DESC, currency_code ASC, created_at DESC NULLS LAST
+                LIMIT $${n}`;
+            const { rows } = await postgres.query(sql, params);
+            return rows.map((r: ExchangeRate) => ({
+                ...r,
+                currency_code: String(r.currency_code ?? '').trim().toUpperCase()
+            }));
+        } catch (error) {
+            console.error('[ExchangeRateAPI] getHistory failed:', error);
+            return [];
+        }
+    },
+
     async save(rate: Omit<ExchangeRate, 'id'>): Promise<ExchangeRate | null> {
+        const code = String(rate.currency_code ?? '').trim().toUpperCase();
         try {
             const { rows } = await postgres.query(
                 `INSERT INTO exchange_rates (currency_code, date, buy_rate, sell_rate, source, is_active)
@@ -148,9 +262,11 @@ export const exchangeRateAPI = {
                     sell_rate = EXCLUDED.sell_rate,
                     updated_at = CURRENT_TIMESTAMP
                  RETURNING *`,
-                [rate.currency_code, rate.date, rate.buy_rate, rate.sell_rate, rate.source || 'manual', rate.is_active ?? true]
+                [code, rate.date, rate.buy_rate, rate.sell_rate, rate.source || 'manual', rate.is_active ?? true]
             );
-            return rows[0];
+            const row = rows[0] as ExchangeRate | undefined;
+            if (!row) return null;
+            return { ...row, currency_code: String(row.currency_code ?? '').trim().toUpperCase() };
         } catch (error) {
             console.error('[ExchangeRateAPI] save failed:', error);
             return null;
@@ -185,6 +301,27 @@ export const exchangeRateAPI = {
         }
     }
 };
+
+/** Tarih bazlı çapraz kur: 1 docCurrency = ? ledgerCurrency (pivot tablosu, örn. IQD). */
+export async function resolveDocumentCurrencyRateToLedger(
+    documentCurrency: string,
+    ledgerCurrency: string,
+    as_of_date: string,
+    rateType: string
+): Promise<number | null> {
+    const dc = documentCurrency.trim().toUpperCase();
+    const lc = ledgerCurrency.trim().toUpperCase();
+    if (!dc || !lc || dc === lc) return 1;
+    const [rowDoc, rowLed] = await Promise.all([
+        exchangeRateAPI.getRateAsOfDate(dc, as_of_date),
+        exchangeRateAPI.getRateAsOfDate(lc, as_of_date),
+    ]);
+    const vD = rowDoc ? pickExchangeRateValue(rowDoc, rateType) : NaN;
+    const vL = rowLed ? pickExchangeRateValue(rowLed, rateType) : NaN;
+    const denom = Number.isFinite(vL) && vL > 0 ? vL : 1;
+    if (!Number.isFinite(vD) || vD <= 0) return null;
+    return vD / denom;
+}
 
 export interface Category {
     id: string;

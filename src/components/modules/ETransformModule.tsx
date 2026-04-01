@@ -1,19 +1,41 @@
-import { Send, CheckCircle, XCircle, Clock, Download, Maximize2, Minimize2, Upload, FileText, RefreshCw, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Send, CheckCircle, XCircle, Clock, Download, Maximize2, Minimize2, FileText, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import { eTransformService, type EDocument, type EInvoiceData } from '../../services/eTransformService';
+import { getEInvoiceResolvedConfig, type EInvoiceResolvedConfig } from '../../config/eInvoice.config';
+import { listGibQueueAsDocuments, sendAllDrafts, persistManualTestDocument } from '../../services/gibEdocumentQueueService';
 import { toast } from 'sonner';
 
 export function ETransformModule() {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [documents, setDocuments] = useState<EDocument[]>([
-    { id: 'EFAT-2025-0001', type: 'E-Fatura', customer: 'Mohammed Hassan A.Ş.', date: '2025-12-04', amount: 14750.00, taxAmount: 2655, status: 'Gönderildi', uuid: 'a1b2c3d4-e5f6-7890', createdAt: '2025-12-04T10:00:00Z' },
-    { id: 'EARS-2025-0001', type: 'E-Arşiv', customer: 'Layla Hassan', date: '2025-12-03', amount: 10325.59, taxAmount: 1858.6, status: 'Onaylandı', uuid: 'b2c3d4e5-f6g7-8901', createdAt: '2025-12-03T10:00:00Z' },
-    { id: 'EFAT-2025-0002', type: 'E-Fatura', customer: 'Kareem Al-Basri Tic.', date: '2025-11-30', amount: 4956.00, taxAmount: 892, status: 'Beklemede', uuid: 'c3d4e5f6-g7h8-9012', createdAt: '2025-11-30T10:00:00Z' },
-    { id: 'EIRS-2025-0001', type: 'E-İrsaliye', customer: 'Bashar Al-Mosuli A.Ş.', date: '2025-12-01', amount: 21476.00, taxAmount: 3865, status: 'Gönderildi', uuid: 'd4e5f6g7-h8i9-0123', createdAt: '2025-12-01T10:00:00Z' },
-    { id: 'EFAT-2025-0003', type: 'E-Fatura', customer: 'Esra Yıldız', date: '2025-11-29', amount: 11623.00, taxAmount: 2092, status: 'Reddedildi', uuid: 'e5f6g7h8-i9j0-1234', createdAt: '2025-11-29T10:00:00Z' },
-  ]);
+  const [invCfg, setInvCfg] = useState<EInvoiceResolvedConfig | null>(null);
+  const [documents, setDocuments] = useState<EDocument[]>([]);
+
+  const reloadQueue = useCallback(async () => {
+    try {
+      const docs = await listGibQueueAsDocuments();
+      setDocuments(docs);
+    } catch (e) {
+      console.warn('[ETransform] kuyruk okunamadı', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      eTransformService.resetConfigCache();
+      const c = await getEInvoiceResolvedConfig();
+      if (!cancelled) {
+        setInvCfg(c);
+        if (c.eInvoiceFeaturesEnabled) {
+          await reloadQueue();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadQueue]);
   const [loading, setLoading] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Test e-Invoice oluştur
   const handleTestInvoice = async () => {
@@ -24,16 +46,16 @@ export function ETransformModule() {
       invoiceNumber: `EFAT-2025-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       invoiceDate: new Date().toISOString().split('T')[0],
       seller: {
-        name: 'ExRetailOS Iraq LLC',
+        name: 'RetailEX Demo A.Ş.',
         taxNumber: '1234567890',
-        taxOffice: 'Baghdad',
-        address: 'Baghdad, Iraq'
+        taxOffice: 'Kadıköy',
+        address: 'İstanbul'
       },
       buyer: {
-        name: 'Test Müşteri Ltd.',
+        name: 'Test Alıcı Ltd.',
         taxNumber: '0987654321',
-        taxOffice: 'Erbil',
-        address: 'Erbil, Kurdistan'
+        taxOffice: 'Beşiktaş',
+        address: 'İstanbul'
       },
       items: [
         { name: 'Ürün 1', quantity: 2, unitPrice: 100, taxRate: 18, amount: 200 },
@@ -46,10 +68,15 @@ export function ETransformModule() {
 
     try {
       const result = await eTransformService.createAndSendEInvoice(testData);
-      setDocuments(prev => [result, ...prev]);
-      
+      try {
+        await persistManualTestDocument(result, testData);
+      } catch (persistErr) {
+        console.warn('[ETransform] test kaydı yazılamadı', persistErr);
+      }
+      await reloadQueue();
+
       if (result.status === 'Gönderildi') {
-        toast.success(`e-Fatura başarıyla gönderildi: ${result.id}`);
+        toast.success(`Mock GİB: e-Fatura kaydedildi (${result.id})`);
       } else {
         toast.error(`e-Fatura reddedildi: ${result.errorMessage}`);
       }
@@ -123,28 +150,23 @@ export function ETransformModule() {
     toast.success('XML indirildi');
   };
 
-  // Toplu gönder
   const handleBulkSend = async () => {
     const pendingDocs = documents.filter(d => d.status === 'Taslak');
-    
     if (pendingDocs.length === 0) {
-      toast.warning('Gönderilecek taslak belge yok');
+      toast.warning('Gönderilecek taslak yok (fatura listesinden kuyruğa ekleyin)');
       return;
     }
-
     setLoading(true);
-    toast.info(`${pendingDocs.length} belge gönderiliyor...`);
-
-    // Mock bulk send (gerçekte createAndSendEInvoice çağrılır)
-    setTimeout(() => {
-      setDocuments(prev => prev.map(doc => 
-        doc.status === 'Taslak' 
-          ? { ...doc, status: 'Gönderildi', sentAt: new Date().toISOString() }
-          : doc
-      ));
+    toast.info(`${pendingDocs.length} taslak mock GİB ile gönderiliyor...`);
+    try {
+      await sendAllDrafts();
+      await reloadQueue();
+      toast.success('Taslaklar işlendi (mock GİB yanıtı veritabanına yazıldı)');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
       setLoading(false);
-      toast.success(`${pendingDocs.length} belge başarıyla gönderildi`);
-    }, 2000);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -172,16 +194,56 @@ export function ETransformModule() {
     }
   };
 
+  if (!invCfg) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50 text-sm text-gray-600">
+        e-Dönüşüm yapılandırması yükleniyor…
+      </div>
+    );
+  }
+
+  if (!invCfg.eInvoiceFeaturesEnabled) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-gray-50 p-8 text-center max-w-lg mx-auto">
+        <FileText className="w-12 h-12 text-gray-400 mb-4" />
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">e-Dönüşüm bu kurulumda kapalı</h2>
+        <p className="text-sm text-gray-600">
+          Aktif firma için <strong>İşletme bölgesi</strong> <strong>TR</strong> değil. Bunu{' '}
+          <strong>Sistem Yönetimi → Firma / Dönem / Şube</strong> ekranında ilgili <strong>firma kartı</strong>ndan
+          &quot;Mevzuat / e-Belge&quot; alanında <strong>Türkiye (TR)</strong> yapıp kaydedin (veritabanı:
+          <code className="text-xs bg-gray-200 px-1 rounded">firms.regulatory_region</code>).
+          Yedek olarak masaüstü kurulumda veya <code className="text-xs bg-gray-200 px-1 rounded">VITE_REGULATORY_REGION=TR</code> kullanılabilir.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-white' : 'h-full'} flex flex-col`}>
       {/* Header - Minimal */}
-      <div className="bg-purple-600 text-white px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="bg-purple-600 text-white px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Send className="w-4 h-4" />
           <h2 className="text-sm">E-Dönüşüm Merkezi</h2>
-          <span className="text-purple-200 text-[10px] ml-2">• E-Fatura, E-Arşiv, E-İrsaliye, E-Defter</span>
+          <span className="text-purple-200 text-[10px] ml-2">• Kuyruk: PostgreSQL · GİB yanıtı mock</span>
+          <span
+            className="text-[10px] bg-purple-800/80 px-2 py-0.5 rounded border border-purple-400/40"
+            title={`${invCfg.environmentLabel} — kaynak: ${invCfg.source === 'database' ? 'Veritabanı (firma)' : invCfg.source === 'tauri' ? 'config.db (kurulum)' : 'Vite env'}`}
+          >
+            {invCfg.environmentLabel}
+            {invCfg.source === 'database' ? ' · DB' : invCfg.source === 'tauri' ? ' · cfg' : ' · env'}
+          </span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleTestInvoice()}
+            disabled={loading}
+            className="flex items-center gap-1 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-purple-950 text-[10px] font-semibold rounded border border-amber-300 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+            Test e-Fatura (mock)
+          </button>
           <button className="flex items-center gap-1 px-2 py-1 bg-purple-700 hover:bg-purple-800 text-[10px] border border-purple-500">
             <Download className="w-3 h-3" />
             Toplu İndir
@@ -256,9 +318,10 @@ export function ETransformModule() {
               {documents.map(doc => {
                 const statusBadge = getStatusBadge(doc.status);
                 const StatusIcon = statusBadge.icon;
-                
+                const rowKey = doc.queueRecordId || `${doc.id}-${doc.uuid}`;
+
                 return (
-                  <tr key={doc.id} className="border-b border-gray-200 hover:bg-gray-50">
+                  <tr key={rowKey} className="border-b border-gray-200 hover:bg-gray-50">
                     <td className="px-2 py-0.5 text-[10px] font-mono border-r border-gray-200">{doc.id}</td>
                     <td className="px-2 py-0.5 text-center border-r border-gray-200">
                       <span className={`px-2 py-0.5 rounded text-[9px] ${getTypeColor(doc.type)}`}>
@@ -276,7 +339,16 @@ export function ETransformModule() {
                     </td>
                     <td className="px-2 py-0.5 text-[9px] font-mono text-gray-500 border-r border-gray-200">{doc.uuid}</td>
                     <td className="px-2 py-0.5 text-center">
-                      <button className="p-0.5 text-blue-600 hover:bg-blue-50 rounded" title="İndir">
+                      <button
+                        type="button"
+                        className="p-0.5 text-blue-600 hover:bg-blue-50 rounded disabled:opacity-40"
+                        title="XML indir"
+                        disabled={!doc.xmlContent}
+                        onClick={() => {
+                          if (doc.xmlContent) handleDownloadXML(doc);
+                          else toast.warning('Önce gönderim yapın veya XML üretilmemiş');
+                        }}
+                      >
                         <Download className="w-3 h-3" />
                       </button>
                     </td>

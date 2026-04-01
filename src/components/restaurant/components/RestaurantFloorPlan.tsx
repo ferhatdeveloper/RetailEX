@@ -95,6 +95,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
         regions,
         addRegion,
         updateRegion,
+        removeRegion,
         addTable,
         updateTable,
         removeTable,
@@ -120,6 +121,11 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
     const [regionEditName, setRegionEditName] = useState('');
     const [regionEditSaving, setRegionEditSaving] = useState(false);
     const [regionEditError, setRegionEditError] = useState<string | null>(null);
+    /** Bölge silme modalı — yönetici bölge ekleyebiliyorsa silebilir */
+    const [showRegionDeleteModal, setShowRegionDeleteModal] = useState(false);
+    const [regionDeleteSelectedId, setRegionDeleteSelectedId] = useState('');
+    const [regionDeleteSaving, setRegionDeleteSaving] = useState(false);
+    const [regionDeleteError, setRegionDeleteError] = useState<string | null>(null);
     const [editTableSaving, setEditTableSaving] = useState(false);
     const [editTableError, setEditTableError] = useState<string | null>(null);
     /** Siparişler sekmesinde hangi masanın kalem detayı açık */
@@ -169,9 +175,12 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
         ? tables
         : tables.filter(t => t.floorId === activeFloor || t.location === activeFloor || t.location === activeFloorName);
 
-    const floorTables = searchTerm.trim()
+    const filteredBySearch = searchTerm.trim()
         ? byFloor.filter(t => t.number.toLowerCase().includes(searchTerm.toLowerCase()))
         : byFloor;
+    const floorTables = [...filteredBySearch].sort((a, b) =>
+        a.number.localeCompare(b.number, undefined, { numeric: true })
+    );
 
     return (
         <div className="flex flex-col h-full" style={{ backgroundColor: '#f1f3f5' }}>
@@ -271,6 +280,14 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             >
                                 <Plus className="w-4 h-4" />
                                 <span>Bölge Ekle</span>
+                            </button>
+                            <button
+                                onClick={() => { setRegionDeleteError(null); setRegionDeleteSelectedId(regions[0]?.id ?? ''); setShowRegionDeleteModal(true); }}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-rose-100/90 text-[11px] font-black uppercase text-white/90 hover:text-rose-700 transition-all rounded-xl border border-white/15"
+                                title="Bölge sil (içinde masa varsa önce masaları kaldırın)"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                <span>Bölge Sil</span>
                             </button>
                             <button
                                 onClick={() => {
@@ -808,6 +825,105 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                 </div>
             )}
 
+            {/* Bölge silme modalı — yönetici bölge ekleyebiliyorsa silebilir */}
+            {showRegionDeleteModal && (
+                <div
+                    className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+                    onClick={() => !regionDeleteSaving && setShowRegionDeleteModal(false)}
+                >
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
+                    <div
+                        className="relative bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200"
+                        style={{ zIndex: 10 }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="bg-gradient-to-r from-rose-600 to-red-600 px-8 py-6 text-white shrink-0">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-xl font-black uppercase tracking-tight">Bölge Sil</h2>
+                                    <p className="text-rose-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                                        Silmek istediğiniz bölgeyi seçin
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => !regionDeleteSaving && setShowRegionDeleteModal(false)}
+                                    className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors touch-manipulation"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            {regionDeleteError && (
+                                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold">
+                                    {regionDeleteError}
+                                </div>
+                            )}
+                            {regions.length === 0 ? (
+                                <p className="text-slate-500 text-sm">Silinecek bölge yok.</p>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Bölge</label>
+                                        <select
+                                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl font-medium text-slate-800 bg-white appearance-none outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-400"
+                                            value={regionDeleteSelectedId}
+                                            onChange={e => { setRegionDeleteSelectedId(e.target.value); setRegionDeleteError(null); }}
+                                        >
+                                            {regions.map(r => (
+                                                <option key={r.id} value={r.id}>{r.name} — {tables.filter(t => t.floorId === r.id).length} masa</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {regionDeleteSelectedId && (() => {
+                                        const count = tables.filter(t => t.floorId === regionDeleteSelectedId).length;
+                                        return count > 0 ? (
+                                            <p className="text-amber-700 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                                Bu bölgede {count} masa var. Silmek için önce masaları silin veya başka bölgeye taşıyın.
+                                            </p>
+                                        ) : null;
+                                    })()}
+                                </>
+                            )}
+                        </div>
+                        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-4 shrink-0">
+                            <button
+                                type="button"
+                                disabled={regionDeleteSaving}
+                                className="w-full flex items-center justify-center gap-2 min-h-[56px] py-5 px-5 rounded-2xl text-slate-500 hover:text-blue-600 hover:bg-slate-50 font-black uppercase tracking-widest text-[13px] transition-all border border-slate-200 touch-manipulation cursor-pointer select-none disabled:opacity-50"
+                                onClick={() => setShowRegionDeleteModal(false)}
+                            >
+                                Vazgeç
+                            </button>
+                            <button
+                                type="button"
+                                disabled={regionDeleteSaving || !regionDeleteSelectedId || regions.length === 0 || tables.filter(t => t.floorId === regionDeleteSelectedId).length > 0}
+                                className="w-full flex items-center justify-center gap-3 min-h-[64px] py-6 px-5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-[1.5rem] font-black uppercase tracking-tighter text-[15px] transition-all shadow-lg active:scale-[0.97] border border-rose-700 touch-manipulation cursor-pointer select-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={async () => {
+                                    if (!regionDeleteSelectedId) return;
+                                    setRegionDeleteError(null);
+                                    setRegionDeleteSaving(true);
+                                    try {
+                                        await removeRegion(regionDeleteSelectedId);
+                                        if (activeFloor === regionDeleteSelectedId)
+                                            setActiveFloor(regions.find(r => r.id !== regionDeleteSelectedId)?.id ?? 'Tümü');
+                                        setShowRegionDeleteModal(false);
+                                    } catch (e: any) {
+                                        setRegionDeleteError(e?.message || 'Bölge silinemedi');
+                                    } finally {
+                                        setRegionDeleteSaving(false);
+                                    }
+                                }}
+                            >
+                                {regionDeleteSaving ? '…' : 'Bölgeyi Sil'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Masa düzenleme modalı (standart modal, z-index masa açılışı ile aynı) */}
             {tableAdminEdit && (
                 <div
@@ -967,10 +1083,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                     onSaveTable={async (data) => {
                         if (data.isBulk) {
                             const regionName = regions.find(r => r.id === data.regionId)?.name || '';
-                            for (let i = 1; i <= (data.bulkCount || 1); i++) {
+                            const count = data.bulkCount || 1;
+                            const padLen = Math.max(2, String(count).length);
+                            for (let i = 1; i <= count; i++) {
+                                const num = String(i).padStart(padLen, '0');
                                 await addTable({
                                     id: uuidv4(),
-                                    number: `${data.bulkPrefix}-${i}`,
+                                    number: `${data.bulkPrefix}-${num}`,
                                     seats: data.seats,
                                     floorId: data.regionId,
                                     location: regionName

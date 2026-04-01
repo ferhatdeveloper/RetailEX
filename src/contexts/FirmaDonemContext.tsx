@@ -8,9 +8,22 @@
  * - Warehouse (ROS_CAPIWHOUSE)
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { setGlobalCurrency } from '../utils/currency';
-import { postgres, ERP_SETTINGS } from '../services/postgres';
+import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../services/postgres';
+import {
+  clearFirmScopedCachesOnly,
+  refreshFirmScopedStores,
+  refreshPeriodScopedStores,
+} from '../store/refreshFirmScopedStores';
+
+/** firms.firm_nr ile SQLite erp_firm_nr aynı biçimde eşlensin (2 ↔ 002); rex_{nr}_customers için şart */
+function normalizeFirmNr(v: string | number | undefined | null): string {
+  const d = String(v ?? '').replace(/\D/g, '');
+  if (!d) return '';
+  return d.length <= 3 ? d.padStart(3, '0') : d;
+}
+import { eTransformService } from '../services/eTransformService';
 
 // Types matching ROS tables
 export interface Firm {
@@ -23,6 +36,8 @@ export interface Firm {
   firma_kodu?: string; // Alias for backward compatibility
   ana_para_birimi?: string;
   raporlama_para_birimi?: string;
+  /** firms.regulatory_region — e-belge mevzuatı */
+  regulatory_region?: 'TR' | 'IQ';
   default?: boolean;
 }
 
@@ -108,6 +123,8 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  /** Firma değişti mi (dönem değişiminde yalnızca satış yenilenir) */
+  const lastRefreshFirmNrRef = useRef<string | undefined>(undefined);
 
   // --- Initial Load ---
   useEffect(() => {
@@ -121,11 +138,14 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
     if (selectedFirm) {
       fetchPeriods(selectedFirm.id || selectedFirm.logicalref.toString());
       fetchBranches(selectedFirm.logicalref);
-      setGlobalCurrency(selectedFirm.ana_para_birimi || 'IQD', selectedFirm.raporlama_para_birimi || 'IQD');
+      setGlobalCurrency(
+        selectedFirm.ana_para_birimi || getAppDefaultCurrency(),
+        selectedFirm.raporlama_para_birimi || selectedFirm.ana_para_birimi || getAppDefaultCurrency()
+      );
 
-      // Sync ERP_SETTINGS
+      // Sync ERP_SETTINGS — cari/stok rex_{firmNr}_* tabloları için normalize kod gerekli
       if (selectedFirm.firm_nr) {
-        ERP_SETTINGS.firmNr = selectedFirm.firm_nr;
+        ERP_SETTINGS.firmNr = normalizeFirmNr(selectedFirm.firm_nr) || String(selectedFirm.firm_nr);
         console.log('[FirmaDonemContext] ERP_SETTINGS.firmNr updated to:', ERP_SETTINGS.firmNr);
       }
     } else {
@@ -133,8 +153,14 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       setBranches([]);
       setSelectedPeriod(null);
       setSelectedBranch(null);
+      const fb = getAppDefaultCurrency();
+      setGlobalCurrency(fb, fb);
     }
   }, [selectedFirm]);
+
+  useEffect(() => {
+    eTransformService.resetConfigCache();
+  }, [selectedFirm?.firm_nr]);
 
   // When Period changes -> Sync ERP_SETTINGS
   useEffect(() => {
@@ -143,6 +169,39 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       console.log('[FirmaDonemContext] ERP_SETTINGS.periodNr synced to:', ERP_SETTINGS.periodNr);
     }
   }, [selectedPeriod]);
+
+  // Firma veya dönem değişince önbellek: firma değişiminde tam yenileme; yalnızca dönem değişiminde satışlar (period_nr)
+  useEffect(() => {
+    if (!selectedFirm?.firm_nr) {
+      lastRefreshFirmNrRef.current = undefined;
+      clearFirmScopedCachesOnly();
+      return;
+    }
+
+    const fn = normalizeFirmNr(selectedFirm.firm_nr) || String(selectedFirm.firm_nr);
+    if (selectedPeriod?.nr != null && selectedPeriod.nr !== undefined) {
+      ERP_SETTINGS.periodNr = String(selectedPeriod.nr).padStart(2, '0');
+    }
+
+    const firmChanged = lastRefreshFirmNrRef.current !== fn;
+    lastRefreshFirmNrRef.current = fn;
+
+    let cancelled = false;
+    const run = firmChanged ? refreshFirmScopedStores() : refreshPeriodScopedStores();
+
+    run.then(() => {
+      if (!cancelled) {
+        console.log(
+          '[FirmaDonemContext] Önbellek yenilendi:',
+          firmChanged ? 'firma+dönem (tam)' : 'dönem (satış)',
+          { firm: fn, period: selectedPeriod?.nr }
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
   // When Branch changes -> Load Warehouses
   useEffect(() => {
@@ -167,7 +226,9 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         firma_kodu: f.firm_nr, // Alias
         name: f.name,
         ana_para_birimi: f.ana_para_birimi || 'IQD',
-        raporlama_para_birimi: f.raporlama_para_birimi || 'IQD'
+        raporlama_para_birimi: f.raporlama_para_birimi || 'IQD',
+        regulatory_region:
+          String(f.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ',
       }));
 
       try {
@@ -183,12 +244,41 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       setFirms(mappedFirms);
 
       if (mappedFirms.length > 0) {
-        const storedId = localStorage.getItem('exretail_selected_firma_id');
-        const defaultFirma = mappedFirms.find((f: any) => f.firm_nr === storedId) ||
-          mappedFirms.find((f: any) => f.default) ||
-          mappedFirms[0];
+        let cfgPreferredNr = '';
+        try {
+          const { IS_TAURI, safeInvoke } = await import('../utils/env');
+          if (IS_TAURI) {
+            const cfg: any = await safeInvoke('get_app_config');
+            if (cfg?.erp_firm_nr != null && String(cfg.erp_firm_nr).trim() !== '') {
+              cfgPreferredNr = normalizeFirmNr(cfg.erp_firm_nr);
+            }
+          } else {
+            const w = localStorage.getItem('retailex_web_config');
+            if (w) {
+              const cfg = JSON.parse(w);
+              if (cfg?.erp_firm_nr != null && String(cfg.erp_firm_nr).trim() !== '') {
+                cfgPreferredNr = normalizeFirmNr(cfg.erp_firm_nr);
+              }
+            }
+          }
+        } catch (_) { /* ignore */ }
+
+        const storedNr = normalizeFirmNr(localStorage.getItem('exretail_selected_firma_id'));
+        const matchNr = (nr: string) => nr && mappedFirms.find((f: any) => normalizeFirmNr(f.firm_nr) === nr);
+
+        const isTemplateRetailEx = (f: any) => String(f.firm_nr) === '001' && f.name === 'RetailEx OS';
+        const nonTemplate = mappedFirms.filter((f: any) => !isTemplateRetailEx(f));
+
+        const defaultFirma =
+          (cfgPreferredNr && matchNr(cfgPreferredNr)) ||
+          (storedNr && matchNr(storedNr)) ||
+          (nonTemplate.length > 0 ? nonTemplate.find((f: any) => f.default) : mappedFirms.find((f: any) => f.default)) ||
+          (nonTemplate.length > 0 ? nonTemplate[0] : mappedFirms[0]);
 
         if (defaultFirma) {
+          const nr = normalizeFirmNr(defaultFirma.firm_nr) || String(defaultFirma.firm_nr);
+          ERP_SETTINGS.firmNr = nr || ERP_SETTINGS.firmNr;
+          localStorage.setItem('exretail_selected_firma_id', nr);
           setSelectedFirm(defaultFirma);
         }
       }
@@ -387,11 +477,12 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
       // Immediate sync
       if (found.firm_nr) {
-        ERP_SETTINGS.firmNr = found.firm_nr;
+        const nr = normalizeFirmNr(found.firm_nr) || String(found.firm_nr);
+        ERP_SETTINGS.firmNr = nr;
+        localStorage.setItem('exretail_selected_firma_id', nr);
+      } else if (found.id) {
+        localStorage.setItem('exretail_selected_firma_id', String(found.id));
       }
-
-      const firmIdToStore = found.firm_nr || found.id;
-      if (firmIdToStore) localStorage.setItem('exretail_selected_firma_id', firmIdToStore);
     }
   };
 

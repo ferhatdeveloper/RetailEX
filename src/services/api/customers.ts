@@ -75,9 +75,29 @@ export const customerAPI = {
   async getByPhone(phone: string): Promise<Customer | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
-      const { rows } = await postgres.query(
+      const { rows: exactRows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE phone = $1 AND firm_nr = $2 AND is_active = true`,
         [phone, ERP_SETTINGS.firmNr]
+      );
+      if (exactRows[0]) return mapDatabaseCustomerToCustomer(exactRows[0]);
+
+      const digits = phone.replace(/\D/g, '');
+      if (digits.length < 7) return null;
+
+      const tail10 = digits.length >= 10 ? digits.slice(-10) : digits;
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName}
+         WHERE firm_nr = $1 AND is_active = true
+           AND (
+             REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g') = $2
+             OR (
+               LENGTH(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')) >= 10
+               AND RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $3
+             )
+           )
+         ORDER BY name ASC
+         LIMIT 1`,
+        [ERP_SETTINGS.firmNr, digits, tail10]
       );
       return rows[0] ? mapDatabaseCustomerToCustomer(rows[0]) : null;
     } catch (error) {

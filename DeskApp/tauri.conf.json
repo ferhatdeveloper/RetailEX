@@ -29,7 +29,7 @@
       "allowDowngrades": true,
       "nsis": {
         "displayLanguageSelector": false,
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "installerIcon": "icons/icon.ico",
         "headerImage": "branding/header.bmp",
         "sidebarImage": "branding/sidebar.bmp",
@@ -49,7 +49,8 @@
       "../database/migrations/**/*",
       "../database/sys/**/*",
       "resources/bridge.cjs",
-      "resources/install-bridge.ps1"
+      "resources/install-bridge.ps1",
+      "resources/sumatra/**/*"
     ],
     "shortDescription": "",
     "linux": {
@@ -61,7 +62,7 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.57",
+  "version": "0.1.61",
   "identifier": "com.retailex.app",
   "plugins": {
     "updater": {

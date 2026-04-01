@@ -8,6 +8,7 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import '../ClinicStyles.css';
 
 // ─── Design tokens (flat) ────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ function KpiCard({ label, value, sub, accent, icon: Icon }: {
 export function ClinicDashboard() {
     const { appointments, services, specialists, loadAppointments, loadServices, loadSpecialists } = useBeautyStore();
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalYmd(new Date());
 
     useEffect(() => {
         loadAppointments(todayStr);
@@ -80,7 +81,7 @@ export function ClinicDashboard() {
     }, []);
 
     const stats = useMemo(() => {
-        const todayApts = appointments.filter(a => (a.appointment_date ?? a.date) === todayStr);
+        const todayApts = appointments.filter(a => beautyAppointmentDateKey(a) === todayStr);
         const completed = todayApts.filter(a => a.status === AppointmentStatus.COMPLETED);
         const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);

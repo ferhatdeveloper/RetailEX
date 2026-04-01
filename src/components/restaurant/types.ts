@@ -1,3 +1,5 @@
+import type { Customer } from '../../core/types';
+
 export type TableStatus = 'empty' | 'occupied' | 'kitchen' | 'served' | 'billing' | 'cleaning' | 'reserved';
 export type OrderItemStatus = 'pending' | 'cooking' | 'ready' | 'served' | 'cancelled';
 export type CourseType = 'başlangıç' | 'ara sıcak' | 'ana yemek' | 'tatlı' | 'içecek' | 'meyve';
@@ -74,6 +76,8 @@ export interface Table {
     lockedAt?: string;
     /** Özel masa rengi — null ise durum rengini kullan */
     color?: string | null;
+    /** Açık adisyon sipariş indirimi (%) — DB `order_discount_pct` ile senkron */
+    orderDiscountPct?: number;
 }
 
 export interface KitchenOrder {
@@ -144,6 +148,36 @@ export interface LoginResult {
     success: boolean;
     staff?: Staff;
     error?: string;
+}
+
+/** Caller ID: sanal santral (webhook → köprü) veya fiziksel cihaz (yerel poll URL). */
+export type RestaurantCallerIdMode = 'off' | 'virtual_pbx' | 'physical_device' | 'physical_serial';
+
+export interface RestaurantCallerIdEvent {
+    phone: string;
+    name?: string;
+    receivedAt: string;
+}
+
+export interface RestaurantCallerIdConfig {
+    mode: RestaurantCallerIdMode;
+    /** Sanal modda boş bırakılırsa pg_bridge `/api/caller_id/last` kullanılır */
+    pollUrl: string;
+    pollIntervalMs: number;
+    /** Köprü veya özel endpoint için token (?token=); pg_bridge’de CALLER_ID_PUSH_TOKEN ile aynı */
+    apiToken: string;
+    /** DeskApp (Tauri): COM port, örn. COM3 */
+    serialPort: string;
+    serialBaud: number;
+}
+
+/** Caller ID bandından POS müşteri akışı */
+export interface RestaurantCallerIdPickRequest {
+    id: string;
+    phone: string;
+    /** assign: doğrudan seç; pick: müşteri modalı (telefon ön doldurmalı) */
+    action: 'assign' | 'pick';
+    customer?: Customer;
 }
 
 export interface Reservation {

@@ -7,7 +7,7 @@ import {
     ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
     Briefcase, GitBranch, Calendar, Award, Wallet, CreditCard, Database,
-    Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
+    Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
     Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, DollarSign, Mic, Landmark, Layout
@@ -136,6 +136,11 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.serviceInvoiceIssued, screen: 'serviceinvoice-given', icon: FileText },
                     { label: t.menu.serviceInvoiceReceived, screen: 'serviceinvoice-received', icon: FileCheck }
                 ]
+            },
+            {
+                label: t.menu.eInvoiceArchive,
+                screen: 'etransform',
+                icon: Send,
             },
             {
                 label: t.menu.waybills,
@@ -270,6 +275,11 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileSpreadsheet
             },
             {
+                label: t.menu.categoryGroupSalesProfitReport,
+                screen: 'category-group-profit-report',
+                icon: Layers
+            },
+            {
                 label: t.menu.designCenter,
                 screen: 'report-designer',
                 icon: Layout,
@@ -364,6 +374,7 @@ export const staticMenuSections = getStaticMenuSections({
         supplierCards: 'Tedarikçi Kartları',
         serviceInvoiceIssued: 'Verilen Hizmet Faturası',
         serviceInvoiceReceived: 'Alınan Hizmet Faturası',
+        eInvoiceArchive: 'E-Dönüşüm (GİB)',
         salesWaybill: 'Satış İrsaliyesi',
         purchaseWaybill: 'Alış İrsaliyesi',
         warehouseTransferWaybill: 'Depo Transfer İrsaliyesi',
@@ -410,6 +421,8 @@ export const staticMenuSections = getStaticMenuSections({
         customerAnalysis: 'Müşteri Analizi',
         advancedReports100: 'Gelişmiş Raporlar',
         customReports: 'Özel Raporlar',
+        categoryGroupSalesProfitReport: 'Kategori grubu satış ve kar',
+        generalReport: 'Genel Rapor',
         firmPeriodDefinitions: 'Firma/Dönem Tanımları',
         workflowAutomation: 'Workflow Otomasyonu',
         demoDataManagement: 'Demo Veri Yönetimi',

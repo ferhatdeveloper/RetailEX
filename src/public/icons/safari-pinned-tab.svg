@@ -1,4 +1,6 @@
-<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-  <path d="M0 0h16v16H0z" fill="#2563eb"/>
-  <text x="8" y="12" font-family="system-ui,-apple-system,sans-serif" font-size="11" font-weight="bold" fill="white" text-anchor="middle">R</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 512 512" role="img" aria-label="RetailEX">
+  <path fill="#000" d="M138 36h236c56 0 102 46 102 102v236c0 56-46 102-102 102H138c-56 0-102-46-102-102V138c0-56 46-102 102-102z"/>
+  <path fill="#000" d="M96 200Q256 108 416 200v36H96V200z"/>
+  <path fill="#000" d="M152 268h56v188h-56zm76 0h56v188h-56zm76 0h56v188h-56z"/>
+  <circle fill="#000" cx="400" cy="132" r="40"/>
 </svg>

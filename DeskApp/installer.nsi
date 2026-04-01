@@ -445,7 +445,15 @@ Function PageLogoObjects
 FunctionEnd
 
 Function OnBrowseLObjects
-  nsDialogs::SelectFileDialog open "$LogoObjPath" "DLL Dosyaları|*.dll|Tüm Dosyalar|*.*"
+  ; Use folder as initial path (not missing filename) to avoid
+  ; repeated "dosya oluşturulsun mu?" prompts while browsing.
+  StrCpy $1 "$LogoObjPath"
+  IfFileExists "$1" path_ready 0
+  ${GetParent} "$1" $1
+  StrCmp $1 "" 0 path_ready
+  StrCpy $1 "C:\"
+  path_ready:
+  nsDialogs::SelectFileDialog open "$1" "DLL Dosyaları|*.dll|Tüm Dosyalar|*.*"
   Pop $0
   ${If} $0 != ""
     StrCpy $LogoObjPath $0
@@ -869,7 +877,12 @@ Section Install
     File /a "/oname=RetailEX_Service.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Service.exe"
     File /a "/oname=RetailEX_VPN.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_VPN.exe"
     File /a "/oname=RetailEX_Logo.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Logo.exe"
-    File /a "/oname=RetailEX_Setup.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Setup.exe"
+    File /a "/oname=RetailEX_SQL_Bridge.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
+    File /a "/oname=RetailEX_Config.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Config.exe"
+    File /a "/oname=bridge.cjs" "D:\RetailEX\DeskApp\resources\bridge.cjs"
+    File /a "/oname=install-bridge.ps1" "D:\RetailEX\DeskApp\resources\install-bridge.ps1"
+    File /a "/oname=install-services-manual.ps1" "D:\RetailEX\DeskApp\resources\install-services-manual.ps1"
+    File /a "/oname=retailex-admin.ps1" "D:\RetailEX\DeskApp\resources\retailex-admin.ps1"
     
     
 
@@ -882,6 +895,11 @@ Section Install
   ; Start services
   Exec 'net start RetailEX_Service'
   Exec 'net start RetailEX_VPN'
+
+  ; Install SQL bridge as native Windows service (auto-start)
+  DetailPrint "Installing RetailEX SQL Bridge service..."
+  ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --install'
+  Exec 'net start RetailEX_SQL_Bridge'
   
     
 
@@ -915,6 +933,7 @@ Section Install
   FileWrite $9 "$\r$\nServis Durumları:$\r$\n"
   FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
   FileWrite $9 "- RetailEX VPN (Wintun): KURULDU & ÇALIŞIYOR$\r$\n"
+  FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
   ${If} $InstallRole == 1
     FileWrite $9 "- Redis (Memory Cache): KURULDU$\r$\n"
     FileWrite $9 "- RabbitMQ (Messaging): KURULDU$\r$\n"
@@ -931,6 +950,8 @@ Section Install
   FileWrite $9 "1. Eğer Logo bağlantısı aktifse, LObjects.dll yolunun doğruluğunu kontrol edin.$\r$\n"
   FileWrite $9 "2. Güvenlik duvarından (Firewall) 8000, 5432 ve 6379 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "3. Wintun VPN IP adresi ($WSUrl) üzerinden terminaller merkeze bağlanabilir.$\r$\n"
+  FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.ps1' dosyasını Yönetici olarak çalıştırın.$\r$\n"
+  FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.ps1' dosyasını Yönetici olarak çalıştırın.$\r$\n"
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
 
@@ -1062,16 +1083,26 @@ Section Uninstall
   ; Stop and Uninstall Services
   ExecWait 'net stop RetailEX_Service'
   ExecWait 'net stop RetailEX_VPN'
+  ExecWait 'net stop RetailEX_SQL_Bridge'
   ExecWait 'net stop RetailEXLogoConnector'
   ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
   ExecWait '"$INSTDIR\RetailEX_VPN.exe" --uninstall'
+  ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --uninstall'
   IfFileExists "$INSTDIR\RetailEX_Logo_Connector.exe" 0 +2
     ExecWait '"$INSTDIR\RetailEX_Logo_Connector.exe" --uninstall'
 
   ; Delete external binaries
     Delete "$INSTDIR\RetailEX_Service.exe"
     Delete "$INSTDIR\RetailEX_VPN.exe"
+    Delete "$INSTDIR\RetailEX_SQL_Bridge.exe"
+    Delete "$INSTDIR\RetailEX_Config.exe"
     Delete "$INSTDIR\RetailEX_Logo_Connector.exe"
+    ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
+    ExecWait 'sc.exe delete RetailEX_SQL_Bridge'
+    Delete "$INSTDIR\bridge.cjs"
+    Delete "$INSTDIR\install-bridge.ps1"
+    Delete "$INSTDIR\install-services-manual.ps1"
+    Delete "$INSTDIR\retailex-admin.ps1"
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
