@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Monitor, LifeBuoy, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save } from 'lucide-react';
 import { logger, LogEntry } from '../../services/loggingService';
@@ -10,7 +11,7 @@ import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
-import type { ConnectionProvider } from '../../services/postgres';
+import type { ConnectionProvider, ConnectionMode } from '../../services/postgres';
 
 interface LoginProps {
   onLogin: (user: UserType) => void;
@@ -52,6 +53,20 @@ export function Login({ onLogin }: LoginProps) {
   });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
+  /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya VPN) */
+  const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
+  const [isDbTestLoading, setIsDbTestLoading] = useState(false);
+  /** Veritabanı modalında test sonucu (toast’a ek; ekranda kalıcı) */
+  const [dbTestFeedback, setDbTestFeedback] = useState<
+    | null
+    | {
+        phase: 'loading' | 'ok' | 'err';
+        title: string;
+        detail?: string;
+        /** Hangi hedef denendi (örn. uzak host:port/db) */
+        target: string;
+      }
+  >(null);
 
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
@@ -62,6 +77,9 @@ export function Login({ onLogin }: LoginProps) {
   const [vpnIp, setVpnIp] = useState<string>('');
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
+  const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
+  /** Varsayılan kapalı: C:\RetailEX silinsin mi */
+  const [factoryResetDeleteCRetailex, setFactoryResetDeleteCRetailex] = useState(false);
 
   const [firms, setFirms] = useState<any[]>([]);
   const [selectedFirmNr, setSelectedFirmNr] = useState<string>('');
@@ -142,8 +160,27 @@ export function Login({ onLogin }: LoginProps) {
       });
       setConnectionProvider(DB_SETTINGS.connectionProvider);
       setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
+      setDbConnectionMode(DB_SETTINGS.activeMode);
     });
   }, [isTauri]);
+
+  // Modal açılınca güncel modu tekrar oku (Yönetim’den değişmiş olabilir)
+  useEffect(() => {
+    if (!showDbSettings) return;
+    import('../../services/postgres').then(({ LOCAL_CONFIG, DB_SETTINGS }) => {
+      setDbConnectionMode(DB_SETTINGS.activeMode);
+      setConnectionProvider(DB_SETTINGS.connectionProvider);
+      setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
+      setDbConfig({
+        host: LOCAL_CONFIG.host,
+        port: LOCAL_CONFIG.port,
+        database: LOCAL_CONFIG.database,
+        user: LOCAL_CONFIG.user,
+        password: LOCAL_CONFIG.password
+      });
+      setDbTestFeedback(null);
+    });
+  }, [showDbSettings]);
 
   useEffect(() => {
     if (selectedFirmNr) {
@@ -311,10 +348,23 @@ export function Login({ onLogin }: LoginProps) {
     }
   };
 
-  const handleFactoryReset = async () => {
-    if (!confirm('DİKKAT: Uygulama fabrika ayarlarına döndürülecek!\n\n- Tüm yerel ayarlar silinecek.\n- Setup Sihirbazı tekrar açılacak.\n- Veritabanı verileri KORUNACAK.\n\nOnaylıyor musunuz?')) return;
-
+  const executeFactoryReset = async (deleteCRetailexFolder: boolean) => {
     try {
+      if (isTauri) {
+        const { removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } = await import('../../utils/env');
+        const svc = await removeRetailexWindowsServicesIfTauri();
+        if (!svc.ok) {
+          console.warn('[Fabrika sıfırlama] Windows hizmetleri kaldırılamadı:', svc.detail);
+        }
+        if (deleteCRetailexFolder) {
+          const del = await deleteCRetailexFolderIfTauri();
+          if (!del.ok) {
+            toast.error('C:\\RetailEX silinemedi: ' + (del.detail || ''));
+          } else if (del.detail) {
+            toast.success(del.detail);
+          }
+        }
+      }
       // 1. Reset Backend Config
       const defaultConfig = {
         is_configured: false,
@@ -375,6 +425,94 @@ export function Login({ onLogin }: LoginProps) {
 
   // handleMigrateUsers removed - public.users is gone.
 
+  /** Kaydetmeden önce: PostgREST URL veya bu modal formundaki PostgreSQL alanları (kayıtlı uzak/online ayrımı yok). */
+  const handleTestDbConnection = async () => {
+    setIsDbTestLoading(true);
+    const { testPostgresEndpoint, testPostgrestUrl } = await import('../../services/postgres');
+
+    const fmtTarget = (h: string, p: number, d: string) => `${h}:${p}/${d}`;
+
+    try {
+      if (connectionProvider === 'rest_api') {
+        const url = (remoteRestUrl || '').trim() || '(boş URL)';
+        setDbTestFeedback({
+          phase: 'loading',
+          title: 'PostgREST deneniyor…',
+          target: url,
+        });
+        const pr = await testPostgrestUrl(remoteRestUrl);
+        if (pr.connected) {
+          const msg = `Erişilebilir (HTTP ${pr.httpStatus ?? '—'})`;
+          setDbTestFeedback({ phase: 'ok', title: msg, detail: pr.baseUrl, target: pr.baseUrl });
+          toast.success('PostgREST: ' + msg, { description: pr.baseUrl });
+        } else {
+          setDbTestFeedback({
+            phase: 'err',
+            title: pr.error || 'PostgREST yanıt vermiyor',
+            target: pr.baseUrl || url,
+          });
+          toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl });
+        }
+        return;
+      }
+
+      const cfg = {
+        host: dbConfig.host,
+        port: dbConfig.port,
+        database: dbConfig.database,
+        user: dbConfig.user,
+        password: dbConfig.password,
+      };
+
+      const targetStr = fmtTarget(cfg.host, cfg.port, cfg.database);
+      setDbTestFeedback({
+        phase: 'loading',
+        title: 'Formdaki sunucu bilgileri deneniyor…',
+        target: targetStr,
+      });
+
+      const res = await testPostgresEndpoint(cfg);
+      if (res.connected) {
+        const ver = (res.version || '').slice(0, 200);
+        const onlineHint =
+          isTauri && dbConnectionMode === 'online'
+            ? ' Online modda oturum açıkken sorgular hâlâ Yönetim → Veritabanı’ndaki kayıtlı uzak sunucuya gidebilir; aynı adresi orada da güncelleyin veya Hybrid/Offline kullanın.'
+            : '';
+        setDbTestFeedback({
+          phase: 'ok',
+          title: 'Bağlantı başarılı (form adresi)',
+          detail: ver ? `${ver}${onlineHint}` : onlineHint || undefined,
+          target: targetStr,
+        });
+        toast.success('PostgreSQL (form): bağlantı başarılı.', {
+          description: ver || targetStr,
+        });
+      } else {
+        setDbTestFeedback({
+          phase: 'err',
+          title: res.error || 'Bağlantı kurulamadı',
+          detail:
+            isTauri && dbConnectionMode === 'online'
+              ? 'Online modda giriş sonrası uygulama kayıtlı uzak sunucuyu kullanır; bu formu merkez adresiyle doldurup Kaydet veya Yönetim’de uzak satırı bu adresle eşitleyin.'
+              : undefined,
+          target: targetStr,
+        });
+        toast.error(res.error || 'Bağlantı kurulamadı', { description: targetStr });
+      }
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      setDbTestFeedback({
+        phase: 'err',
+        title: 'Test hatası',
+        detail: msg,
+        target: connectionProvider === 'rest_api' ? remoteRestUrl : fmtTarget(dbConfig.host, dbConfig.port, dbConfig.database),
+      });
+      toast.error('Test başarısız: ' + msg);
+    } finally {
+      setIsDbTestLoading(false);
+    }
+  };
+
   const handleSaveDbSettings = async () => {
     try {
       const { updateConfigs } = await import('../../services/postgres');
@@ -388,6 +526,7 @@ export function Login({ onLogin }: LoginProps) {
           isConfigured: true
         },
         settings: {
+          ...(isTauri ? { activeMode: dbConnectionMode } : {}),
           connectionProvider,
           remoteRestUrl
         }
@@ -765,11 +904,12 @@ export function Login({ onLogin }: LoginProps) {
                     <div className="space-y-4 p-4 bg-black/5 rounded-sm border border-white/5">
                       <div className="grid grid-cols-4 gap-2">
                         <div className="col-span-3 space-y-1">
-                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host</label>
+                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host (sunucu / VPN IP)</label>
                           <input
                             type="text"
                             value={dbConfig.host}
                             onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
+                            placeholder="Örn. 10.x veya 26.x sunucu IP"
                             className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
                           />
                         </div>
@@ -785,7 +925,7 @@ export function Login({ onLogin }: LoginProps) {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">Veritabanı adı</label>
                         <input
                           type="text"
                           value={dbConfig.database}
@@ -796,7 +936,7 @@ export function Login({ onLogin }: LoginProps) {
 
                       <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.username}</label>
                           <input
                             type="text"
                             value={dbConfig.user}
@@ -805,7 +945,7 @@ export function Login({ onLogin }: LoginProps) {
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.password}</label>
                           <input
                             type="password"
                             value={dbConfig.password}
@@ -815,13 +955,23 @@ export function Login({ onLogin }: LoginProps) {
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleSaveDbSettings}
-                        className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center justify-center gap-2 mt-2"
-                      >
-                        <Save className="w-3 h-3" /> Bağlantıyı Kaydet & Test Et
-                      </button>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          disabled={isDbTestLoading}
+                          onClick={() => void handleTestDbConnection()}
+                          className={`flex w-full items-center justify-center gap-2 rounded-sm border-2 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] transition-all disabled:opacity-50 ${darkMode ? 'border-slate-500 bg-slate-800 text-white hover:bg-slate-700' : 'border-slate-400 bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
+                        >
+                          <Activity className={`h-3.5 w-3.5 shrink-0 ${isDbTestLoading ? 'animate-spin' : ''}`} /> Bağlantıyı test et
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveDbSettings()}
+                          className="flex w-full items-center justify-center gap-2 rounded-sm bg-blue-600 py-2.5 text-[9px] font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-blue-500"
+                        >
+                          <Save className="h-3.5 w-3.5 shrink-0" /> Kaydet
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1051,13 +1201,66 @@ export function Login({ onLogin }: LoginProps) {
               <div className="mt-6 pt-6 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={handleFactoryReset}
+                  onClick={() => {
+                    setFactoryResetDeleteCRetailex(false);
+                    setShowFactoryResetModal(true);
+                  }}
                   className="w-full py-2.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:border-red-200 hover:text-red-600 transition-all flex items-center justify-center gap-2"
                 >
                   <RotateCcw className="w-4 h-4" />
                   Fabrika ayarlarına döndür
                 </button>
               </div>
+
+              {showFactoryResetModal && (
+                <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                  <div
+                    className={`w-full max-w-md rounded-2xl border p-6 shadow-xl ${darkMode ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-800'}`}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="factory-reset-title"
+                  >
+                    <h3 id="factory-reset-title" className="text-lg font-black mb-2">
+                      Fabrika ayarlarına dön
+                    </h3>
+                    <p className="text-sm leading-relaxed opacity-90 mb-4">
+                      Tüm yerel ayarlar silinecek; Windows RetailEX hizmetleri kaldırılacak; kurulum sihirbazı tekrar açılacak.
+                      Veritabanı sunucunuzdaki veriler bu işlemle silinmez.
+                    </p>
+                    <label className="flex items-start gap-3 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1 rounded border-slate-300"
+                        checked={factoryResetDeleteCRetailex}
+                        onChange={(e) => setFactoryResetDeleteCRetailex(e.target.checked)}
+                      />
+                      <span>
+                        <span className="font-semibold">C:\RetailEX</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
+                      </span>
+                    </label>
+                    <div className="flex gap-3 mt-6 justify-end">
+                      <button
+                        type="button"
+                        className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold hover:bg-slate-100 dark:hover:bg-white/10"
+                        onClick={() => setShowFactoryResetModal(false)}
+                      >
+                        İptal
+                      </button>
+                      <button
+                        type="button"
+                        className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700"
+                        onClick={async () => {
+                          const delFolder = factoryResetDeleteCRetailex;
+                          setShowFactoryResetModal(false);
+                          await executeFactoryReset(delFolder);
+                        }}
+                      >
+                        Onayla ve sıfırla
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1173,120 +1376,235 @@ export function Login({ onLogin }: LoginProps) {
           </div>
         </div>
       )}
-      {/* Database Settings Modal */}
-      {showDbSettings && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[1000] p-4">
-          <div className={`w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border shadow-3xl rounded-sm`}>
-            <div className="p-6 bg-blue-800 flex items-center justify-between border-b border-white/10">
-              <div className="flex items-center gap-3 text-white">
-                <Database className="w-5 h-5" />
-              </div>
-              <CloseIcon className="w-5 h-5 text-white cursor-pointer" onClick={() => setShowDbSettings(false)} />
-            </div>
-
-            <div className="p-8 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">
-                  Bağlantı Sağlayıcı
-                </label>
-                <select
-                  value={connectionProvider}
-                  onChange={(e) => setConnectionProvider(e.target.value as ConnectionProvider)}
-                  className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-gray-800 border-gray-700 text-blue-200' : 'bg-white border-gray-200 text-gray-900'}`}
-                >
-                  <option value="db">DB Connection</option>
-                  <option value="rest_api">Rest API (PostgREST)</option>
-                </select>
-              </div>
-
-              {connectionProvider === 'rest_api' ? (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">
-                    PostgREST API URL
-                  </label>
-                  <input
-                    type="text"
-                    value={remoteRestUrl}
-                    onChange={(e) => setRemoteRestUrl(e.target.value)}
-                    className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-200' : 'bg-white border-gray-200 text-gray-900'}`}
-                    placeholder="http://IP:3002"
-                  />
-                  <p className={`text-[9px] ${darkMode ? 'text-slate-500' : 'text-slate-600'} font-bold`}>
-                    VPN olmadan IP üzerinden PostgREST erişimi için.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2 space-y-1">
-                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">HOST (Localhost)</label>
-                      <input
-                        type="text"
-                        value={dbConfig.host}
-                        onChange={e => setDbConfig({ ...dbConfig, host: e.target.value })}
-                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">PORT</label>
-                      <input
-                        type="number"
-                        value={dbConfig.port}
-                        onChange={e => setDbConfig({ ...dbConfig, port: parseInt(e.target.value) || 5432 })}
-                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                      />
-                    </div>
+      {/* Veritabanı modalı: body portal + max z-index — giriş kartı/zoom stacking altında kalmaz */}
+      {showDbSettings &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 overflow-y-auto overflow-x-hidden animate-in fade-in duration-200 bg-black/80 backdrop-blur-md"
+            style={{
+              zIndex: 2147483646,
+              isolation: 'isolate',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Veritabanı bağlantı ayarları"
+            onClick={() => {
+              if (!isDbTestLoading) setShowDbSettings(false);
+            }}
+          >
+            <div className="flex min-h-[100dvh] w-full items-center justify-center p-4">
+              <div
+                className={`relative mx-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md min-h-0 flex-col overflow-hidden rounded-[24px] border shadow-2xl animate-in zoom-in-95 duration-200 ${darkMode ? 'border-gray-600 bg-gray-900' : 'border-slate-200 bg-white'}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-gradient-to-r from-blue-700 to-blue-800 px-4 py-3 sm:px-5 sm:py-4">
+                <div className="flex min-w-0 items-center gap-2 text-white sm:gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/15 sm:h-10 sm:w-10">
+                    <Database className="h-5 w-5" />
                   </div>
+                  <span className="truncate text-[9px] font-black uppercase tracking-[0.15em] sm:text-[10px] sm:tracking-[0.2em]">
+                    Veritabanı bağlantısı
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={isDbTestLoading}
+                    onClick={() => void handleTestDbConnection()}
+                    className="rounded-lg px-2.5 py-2 text-[9px] font-black uppercase tracking-wide text-white/95 ring-1 ring-white/30 transition-colors hover:bg-white/15 disabled:opacity-50"
+                  >
+                    {isDbTestLoading ? '…' : 'Test'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl p-2 text-white transition-colors hover:bg-white/10"
+                    aria-label="Kapat"
+                    onClick={() => setShowDbSettings(false)}
+                  >
+                    <CloseIcon className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 pb-4 pt-6">
+                <div className="space-y-4">
+                  {isTauri && (
+                    <div className="space-y-1">
+                      <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">
+                        Bağlantı modu
+                      </label>
+                      <select
+                        value={dbConnectionMode}
+                        onChange={(e) => setDbConnectionMode(e.target.value as ConnectionMode)}
+                        className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                      >
+                        <option value="online">Online — merkezi (uzak) sunucu</option>
+                        <option value="hybrid">Hybrid — yerel/VPN host + senkron</option>
+                        <option value="offline">Offline — yalnızca bu ekrandaki host</option>
+                      </select>
+                      <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                        <strong>Online</strong> seçiliyken SQL, Yönetim → Veritabanı’ndaki <strong>uzak sunucu</strong> bilgisine gider. VPN’li şube için genelde <strong>Hybrid</strong> veya <strong>Offline</strong> + aşağıdaki host.
+                      </p>
+                      {dbConnectionMode === 'online' && connectionProvider === 'db' && (
+                        <div
+                          className={`rounded-lg border-2 px-3 py-2 text-[9px] font-bold leading-snug ${darkMode ? 'border-amber-500/50 bg-amber-950/40 text-amber-100' : 'border-amber-400 bg-amber-50 text-amber-950'}`}
+                        >
+                          <strong>Merkeze bağlanmak için:</strong> Aşağıdaki HOST alanı <em>online modda oturum sırasında kullanılmaz</em> (sorgular kayıtlı uzak sunucuya gider).{' '}
+                          <strong>Bağlantıyı test et</strong> her zaman <em>bu formdaki</em> adresi dener. Merkez adresini kalıcı yapmak için{' '}
+                          <strong>Yönetim → Veritabanı → uzak (Ana sunucu)</strong> satırına yazıp kaydedin veya modu <strong>Hybrid / Offline</strong> yapıp HOST’a merkez VPN IP’sini girin.
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">VERİTABANI</label>
-                    <input
-                      type="text"
-                      value={dbConfig.database}
-                      onChange={e => setDbConfig({ ...dbConfig, database: e.target.value })}
-                      className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                    />
+                    <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">Bağlantı Sağlayıcı</label>
+                    <select
+                      value={connectionProvider}
+                      onChange={(e) => setConnectionProvider(e.target.value as ConnectionProvider)}
+                      className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                    >
+                      <option value="db">DB Connection</option>
+                      <option value="rest_api">Rest API (PostgREST)</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-1">KULLANICI</label>
+                  {connectionProvider === 'rest_api' ? (
+                    <div className="space-y-2">
+                      <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">PostgREST API URL</label>
                       <input
                         type="text"
-                        value={dbConfig.user}
-                        onChange={e => setDbConfig({ ...dbConfig, user: e.target.value })}
-                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
+                        value={remoteRestUrl}
+                        onChange={(e) => setRemoteRestUrl(e.target.value)}
+                        className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                        placeholder="http://IP:3002"
                       />
+                      <p className={`text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                        VPN olmadan IP üzerinden PostgREST erişimi için.
+                      </p>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">ŞİFRE</label>
-                      <input
-                        type="password"
-                        value={dbConfig.password}
-                        onChange={e => setDbConfig({ ...dbConfig, password: e.target.value })}
-                        className={`w-full px-4 py-3 border-2 focus:outline-none focus:border-blue-600 transition-all rounded-sm font-bold text-xs ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200'}`}
-                        placeholder="••••••••"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2 space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST (Sunucu IP / hostname)</label>
+                          <input
+                            type="text"
+                            value={dbConfig.host}
+                            onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
+                            placeholder="127.0.0.1 veya VPN/LAN sunucu IP"
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
+                          <input
+                            type="number"
+                            value={dbConfig.port}
+                            onChange={(e) => setDbConfig({ ...dbConfig, port: parseInt(e.target.value, 10) || 5432 })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                      </div>
 
-              <div className="pt-4 space-y-3">
-                <button
-                  onClick={handleSaveDbSettings}
-                  className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-[0.2em] transition-all rounded-sm flex items-center justify-center gap-3"
-                >
-                  AYARLARI KAYDET
-                </button>
-                <p className="text-[9px] text-gray-500 font-bold text-center uppercase tracking-tighter">
-                  Kaydet butonuna bastığınızda uygulama yeni bağlantı ile firmaları tekrar tarayacaktır.
+                      <div className="space-y-1">
+                        <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                        <input
+                          type="text"
+                          value={dbConfig.database}
+                          onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
+                          <input
+                            type="text"
+                            value={dbConfig.user}
+                            onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
+                          <input
+                            type="password"
+                            value={dbConfig.password}
+                            onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
+                            placeholder="••••••••"
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                      </div>
+                      <p className={`px-1 text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                        VPN veya uzak sunucu: PostgreSQL’in kurulu olduğu makinenin adresini girin. PG bu bilgisayardaysa 127.0.0.1 kullanın.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`shrink-0 space-y-2 border-t px-4 py-3 sm:px-6 sm:py-4 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-slate-200 bg-white'}`}
+              >
+                {dbTestFeedback && (
+                  <div
+                    role="status"
+                    className={`rounded-lg border-2 px-3 py-2.5 ${dbTestFeedback.phase === 'loading'
+                      ? darkMode
+                        ? 'border-blue-500/40 bg-blue-950/50 text-blue-100'
+                        : 'border-blue-300 bg-blue-50 text-blue-950'
+                      : dbTestFeedback.phase === 'ok'
+                        ? darkMode
+                          ? 'border-emerald-500/50 bg-emerald-950/40 text-emerald-100'
+                          : 'border-emerald-400 bg-emerald-50 text-emerald-950'
+                        : darkMode
+                          ? 'border-red-500/50 bg-red-950/40 text-red-100'
+                          : 'border-red-300 bg-red-50 text-red-950'}`}
+                  >
+                    <p className="text-[9px] font-black uppercase tracking-wider opacity-80">Test durumu</p>
+                    <p className="mt-1 text-[11px] font-bold leading-snug">{dbTestFeedback.title}</p>
+                    <p className={`mt-0.5 font-mono text-[9px] opacity-90 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                      Hedef: {dbTestFeedback.target}
+                    </p>
+                    {dbTestFeedback.detail && (
+                      <p className={`mt-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
+                        {dbTestFeedback.detail}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {/* Her zaman tam genişlik dikey — iki sütun dar ekranda sol düğümü kırpabiliyordu */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={isDbTestLoading}
+                    onClick={() => void handleTestDbConnection()}
+                    className={`flex w-full items-center justify-center gap-2 rounded-lg border-2 py-3.5 text-[10px] font-black uppercase tracking-[0.12em] transition-all disabled:opacity-50 ${darkMode ? 'border-slate-500 bg-slate-800 text-white hover:bg-slate-700' : 'border-slate-400 bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
+                  >
+                    <Activity className={`h-4 w-4 shrink-0 ${isDbTestLoading ? 'animate-spin' : ''}`} />
+                    Bağlantıyı test et
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveDbSettings()}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3.5 text-[10px] font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-blue-500"
+                  >
+                    AYARLARI KAYDET
+                  </button>
+                </div>
+                <p className="text-center text-[8px] font-bold uppercase leading-relaxed tracking-tighter text-gray-500">
+                  Test daima bu formdaki PG bilgisini dener. Online modda çalışma zamanı uzak kaydı kullanır — aynı adresi Kaydet veya Yönetim’den eşitleyin.
                 </p>
               </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

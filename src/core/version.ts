@@ -1,31 +1,42 @@
 /**
- * ExRetailOS Version Management
- * Auto-incremented version system
+ * Sürüm: kök package.json "version" alanından gelir (tek kaynak).
+ * DeskApp (Tauri/Cargo) sürümü npm run build öncesi scripts/sync-app-version.mjs ile eşitlenir.
  */
+import pkg from '../../package.json';
+
+function parseSemver(s: string): { major: number; minor: number; patch: number } {
+  const parts = s.split('.').map((x) => parseInt(x, 10));
+  const [a, b, c] = parts;
+  return {
+    major: Number.isFinite(a) ? a : 0,
+    minor: Number.isFinite(b) ? b : 0,
+    patch: Number.isFinite(c) ? c : 0,
+  };
+}
+
+const semver = parseSemver(pkg.version);
+
+/** npm semver string (örn. "0.1.62") */
+export const APP_SEMVER = pkg.version;
 
 export const APP_VERSION = {
-  major: 0,
-  minor: 1,
-  build: 60,
+  major: semver.major,
+  minor: semver.minor,
+  /** Üçüncü semver segmenti; geçmişte "build" adı kullanılıyor */
+  build: semver.patch,
 
-  // Format: "Version 322"
   get display(): string {
     return `Version ${this.build}`;
   },
 
-  // Format: "1.3.322"
   get full(): string {
     return `${this.major}.${this.minor}.${this.build}`;
   },
 
-  // Increment build number
   increment(): void {
     this.build++;
     console.log(`🔄 Version updated to ${this.display}`);
-  }
+  },
 };
 
-// Log current version on load
-console.log(`🚀 ExRetailOS ${APP_VERSION.display} (${APP_VERSION.full})`);
-
-
+console.log(`🚀 ExRetailOS ${APP_VERSION.display} (${APP_SEMVER})`);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { APP_VERSION } from '../../core/version';
 import {
     Wifi, WifiOff, Database, Clock, Globe, CheckCircle2, XCircle, Loader2,
     ArrowLeft, ArrowRight
@@ -201,7 +202,7 @@ export const AppFooter: React.FC<AppFooterProps> = ({
                 {/* System Version */}
                 <div className="flex flex-col items-end">
                     <span className="text-white/50 font-bold uppercase tracking-wider text-[8px]">RetailEX ERP</span>
-                    <span className="text-slate-600 font-semibold text-[7px] tracking-wide">v0.1.12</span>
+                    <span className="text-slate-600 font-semibold text-[7px] tracking-wide">v{APP_VERSION.full}</span>
                 </div>
             </div>
         </div>

@@ -1,9 +1,9 @@
-﻿/**
+/**
  * Commission Management Module - Komisyon Yönetimi
  */
 
 import { useState } from 'react';
-import { Percent, Users, TrendingUp, DollarSign } from 'lucide-react';
+import { Percent, Users, TrendingUp, Banknote } from 'lucide-react';
 
 export function CommissionModule() {
   const [employees] = useState([
@@ -36,7 +36,7 @@ export function CommissionModule() {
           <p className="text-2xl font-bold text-blue-900">{employees.length}</p>
         </div>
         <div className="bg-green-50 rounded-lg p-4">
-          <DollarSign className="w-8 h-8 text-green-600 mb-2" />
+          <Banknote className="w-8 h-8 text-green-600 mb-2" />
           <p className="text-sm text-green-700">Toplam Satış</p>
           <p className="text-xl font-bold text-green-900">{(totalSales / 1000000).toFixed(1)}M</p>
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { Login } from './components/system/Login';
@@ -19,6 +19,8 @@ import { supabase } from './utils/supabase/client';
 import { AdminElevationPrompt } from './components/system/AdminElevationPrompt';
 import { listen } from '@tauri-apps/api/event';
 import { IS_TAURI, safeInvoke } from './utils/env';
+import { mergeRustIntoStoredWebConfig } from './utils/retailexWebConfigMerge';
+import { APP_VERSION } from './core/version';
 
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
 import './services/websocketPatch';
@@ -48,10 +50,11 @@ function App() {
   const [isPgReady, setIsPgReady] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [installingPg, setInstallingPg] = useState(false);
-  const [version, setVersion] = useState<string>('0.1.60');
+  const [version, setVersion] = useState<string>(() => APP_VERSION.full);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
   const [elevationReason, setElevationReason] = useState('');
+  const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     let raf = 0;
@@ -81,7 +84,7 @@ function App() {
         if (fn) localStorage.setItem('exretail_selected_firma_id', fn);
         localStorage.setItem('exretail_selected_donem_id', pn);
         localStorage.setItem('exretail_firma_donem_configured', 'true');
-        localStorage.setItem('retailex_web_config', JSON.stringify(config));
+        localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
       } else {
         setIsConfigured(false);
         // Clear ghost flags if backend says not configured
@@ -110,7 +113,9 @@ function App() {
           const config = results[0].status === 'fulfilled' ? results[0].value : null;
           const ver = results[1].status === 'fulfilled' ? results[1].value : null;
           if (ver) setVersion(String(ver));
-          if (config) localStorage.setItem('retailex_web_config', JSON.stringify(config));
+          if (config) {
+            localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
+          }
 
           await initializeFromSQLite(config).catch(() => { });
           if (config) {
@@ -226,6 +231,25 @@ function App() {
 
   const handleSaleComplete = useCallback(async (sale: any) => {
     console.log('[App] handleSaleComplete called with:', sale);
+    const receipt = String(sale?.receiptNumber ?? '').trim();
+    if (receipt) {
+      // Aynı fiş numarası zaten store'da varsa ikinci kez yazma.
+      if ((sales || []).some(s => String(s?.receiptNumber ?? '').trim() === receipt)) {
+        console.warn('[App] Duplicate sale ignored (already in store):', receipt);
+        return;
+      }
+      // Kısa aralıkta tekrarlayan submit'i yut (double-click / modal tekrar tetiklenmesi).
+      const nowMs = Date.now();
+      const lastMs = recentSaleReceiptsRef.current.get(receipt) ?? 0;
+      if (nowMs - lastMs < 15000) {
+        console.warn('[App] Duplicate sale ignored (recent submit guard):', receipt);
+        return;
+      }
+      recentSaleReceiptsRef.current.set(receipt, nowMs);
+      for (const [k, ts] of recentSaleReceiptsRef.current.entries()) {
+        if (nowMs - ts > 10 * 60 * 1000) recentSaleReceiptsRef.current.delete(k);
+      }
+    }
     try {
       await addSale(sale);
 
@@ -274,7 +298,7 @@ function App() {
       logger.error('Satış kaydedilirken hata oluştu', error);
       alert(`Satış kaydedilemedi! Hata: ${(error as any).message || error}`);
     }
-  }, [addSale, products, updateProductStock, updateCustomerPurchaseHistory]);
+  }, [addSale, products, sales, updateProductStock, updateCustomerPurchaseHistory]);
 
   const handleLogout = useCallback(() => {
     logout();

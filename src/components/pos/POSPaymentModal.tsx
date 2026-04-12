@@ -1,4 +1,4 @@
-import { X, CreditCard, DollarSign, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Banknote, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer } from 'lucide-react';
+import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { formatCurrency, formatNumber } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
+import { roundPosDiscountAmountUp } from '../../utils/discountRounding';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -87,6 +88,8 @@ interface POSPaymentModalProps {
   receiptNumber?: string;
   /** false: Market POS — satışta otomatik yazdırma yok; fiş sonraki ekranda */
   showAutoPrintOption?: boolean;
+  /** Ödeme sonrası fiş önizlemesi varsayılanı (Restoran: genelde false = doğrudan yazdır) */
+  defaultShowReceiptPreview?: boolean;
   /** Restoran: ödeme modalından hesabı kapatmadan yazdır (Promise ile yükleme göstergesi) */
   onPrintDraftReceipt?: (ctx: POSPaymentModalDraftContext) => void | Promise<void>;
   onClose: () => void;
@@ -102,6 +105,7 @@ export function POSPaymentModal({
   selectedCustomer,
   receiptNumber = '',
   showAutoPrintOption = false,
+  defaultShowReceiptPreview = true,
   onPrintDraftReceipt,
   onClose,
   onComplete
@@ -122,6 +126,7 @@ export function POSPaymentModal({
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
   const [receiptLanguage, setReceiptLanguage] = useState<string>(useLanguage().language);
+  const [showReceiptPreview, setShowReceiptPreview] = useState(defaultShowReceiptPreview);
 
   useEffect(() => {
     const savedPrinter = localStorage.getItem('retailos-printer-settings');
@@ -157,13 +162,16 @@ export function POSPaymentModal({
     EUR: 1450,
   };
 
-  // Calculate additional discount
+  // Calculate additional discount (tutar 250’lik kademeye yukarı; toplamı aşmaz)
   let calculatedDiscount = 0;
   if (discountValue) {
     if (discountType === 'percentage') {
       calculatedDiscount = (total * parseFloat(discountValue)) / 100;
     } else {
       calculatedDiscount = parseFloat(discountValue);
+    }
+    if (calculatedDiscount > 0) {
+      calculatedDiscount = Math.min(roundPosDiscountAmountUp(calculatedDiscount), Math.max(0, total));
     }
   }
 
@@ -258,6 +266,7 @@ export function POSPaymentModal({
   };
 
   const handleConfirmPayment = async () => {
+    if (isLoading) return;
     if (remaining > 0.01) {
       alert(t.insufficientPayment || 'Ödeme tutarı yetersiz!');
       return;
@@ -272,7 +281,8 @@ export function POSPaymentModal({
         discount: calculatedDiscount,
         finalTotal: finalTotal,
         autoPrint: showAutoPrintOption ? autoPrint : false,
-        language: receiptLanguage
+        language: receiptLanguage,
+        showReceiptPreview,
       });
     } catch (error) {
       console.error('Payment confirmation error:', error);
@@ -393,7 +403,7 @@ export function POSPaymentModal({
                         : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                       }`}
                   >
-                    <DollarSign className="w-3.5 h-3.5 inline mr-1" />
+                    <Banknote className="w-3.5 h-3.5 inline mr-1" />
                     IQD
                   </button>
                 </div>
@@ -532,11 +542,10 @@ export function POSPaymentModal({
                           ) : (
                             <Smartphone className="w-4 h-4 text-purple-600" />
                           )}
-                          <span className="text-sm">
-                            {payment.amount} {payment.currency}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            (≈ {formatNumber(payment.amount * exchangeRates[payment.currency])} IQD)
+                          <span className="text-sm font-medium font-mono">
+                            {payment.currency === 'IQD'
+                              ? `${formatNumber(payment.amount)} IQD`
+                              : `${formatNumberTR(payment.amount, 2, true)} ${payment.currency}`}
                           </span>
                           {payment.gatewayProvider && (
                             <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
@@ -867,21 +876,20 @@ export function POSPaymentModal({
                   {t.autoPrintReceipt || 'Otomatik Yazdır'}
                 </span>
               </label>
-            ) : onPrintDraftReceipt ? null : (
-              <div
-                className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 max-w-2xl ${darkMode ? 'border-blue-500/40 bg-blue-950/40' : 'border-blue-200 bg-blue-50/80'
-                  }`}
-              >
-                <Printer className={`w-5 h-5 shrink-0 mt-0.5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} aria-hidden />
-                <div className="min-w-0 space-y-1">
-                  <p className={`text-sm font-bold ${darkMode ? 'text-blue-100' : 'text-blue-900'}`}>
-                    {t.printReceiptLabel}: {t.printReceiptLocationShort}
-                  </p>
-                  <p className={`text-xs leading-snug ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {t.posReceiptDeferredPrintHint}
-                  </p>
-                </div>
-              </div>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 cursor-pointer group shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={showReceiptPreview}
+                    onChange={(e) => setShowReceiptPreview(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
+                  />
+                  <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
+                    Fiş önizlemesi göster
+                  </span>
+                </label>
+              </>
             )}
 
             <div className={`h-6 w-px shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />

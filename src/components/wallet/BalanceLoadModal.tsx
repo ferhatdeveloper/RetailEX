@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Search, CreditCard, Banknote, Smartphone, Check, Plus, Loader2, Globe, Wifi, MessageSquare, Briefcase, DollarSign } from 'lucide-react';
+import { X, Search, CreditCard, Banknote, Smartphone, Check, Plus, Loader2, Globe, Wifi, MessageSquare, Briefcase } from 'lucide-react';
 import { paymentGateway } from '../../services/paymentGateway';
 import { customerAPI } from '../../services/api/customers';
 import { serviceTransactions } from '../../services/api/serviceTransactions';
@@ -248,7 +248,7 @@ export function BalanceLoadModal({ onClose }: BalanceLoadModalProps) {
                 {/* Header - POS Style */}
                 <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-700 bg-gradient-to-r from-gray-700 to-gray-600' : 'border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700'}`}>
                     <h3 className="text-xl text-white flex items-center gap-2 font-bold">
-                        <DollarSign className="w-6 h-6" />
+                        <Banknote className="w-6 h-6" />
                         Cüzdan ve Hizmet Yükleme
                     </h3>
                     <button onClick={onClose} className="text-white hover:text-gray-200 p-2 rounded-full hover:bg-white/10 transition-colors">

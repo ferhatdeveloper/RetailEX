@@ -75,9 +75,13 @@ class LoggingService {
         this.notifyListeners(log);
         this.saveLogs();
 
-        // Also log to console for development
+        // Konsol: SQL satırları varsayılan olarak gürültülü; DevTools’ta "Verbose" açıkken görünür
         const color = level === 'ERROR' ? 'color: #ff5555' : level === 'WARN' ? 'color: #ffaa00' : level === 'SQL' ? 'color: #55aaff' : 'color: #55ff55';
-        console.log(`%c[${level}] [${module}] %c${message}`, color, 'color: inherit', details || '');
+        if (level === 'SQL') {
+            console.debug(`%c[${level}] [${module}] %c${message}`, color, 'color: inherit', details || '');
+        } else {
+            console.log(`%c[${level}] [${module}] %c${message}`, color, 'color: inherit', details || '');
+        }
 
         return log;
     }

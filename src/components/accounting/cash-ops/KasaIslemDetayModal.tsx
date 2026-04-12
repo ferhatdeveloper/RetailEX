@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Kasa İşlem Detay Modal
  * 
  * Sağ tık menüsünden açılan detay modal'ı
@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { X, Eye, FileText, TrendingUp, TrendingDown, DollarSign, Calendar, User, Building, AlertTriangle } from 'lucide-react';
+import { X, Eye, FileText, TrendingUp, TrendingDown, Banknote, Calendar, User, Building, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { type KasaIslemi } from '../../../services/api/kasa';
 
@@ -134,7 +134,7 @@ export function KasaIslemDetayModal({
             {/* Para Birimi ve Tutar */}
             <div className="bg-green-50 rounded-lg p-4">
               <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
+                <Banknote className="w-4 h-4" />
                 Para Birimi ve Tutar
               </h4>
               <div className="grid grid-cols-2 gap-3 text-sm">

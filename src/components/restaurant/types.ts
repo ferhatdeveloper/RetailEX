@@ -196,4 +196,6 @@ export interface Reservation {
     updatedAt?: string;
 }
 
+/** Masa planı «Tümü» sekmesi — bölge ID’leriyle karışmaması için dil bağımsız anahtar */
+export const RESTAURANT_FLOOR_ALL_ID = '__floor_all__';
 

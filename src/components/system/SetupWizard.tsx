@@ -12,7 +12,8 @@ import { AppFooter } from '../shared/AppFooter';
 import { postgres, initializeFromSQLite } from '../../services/postgres';
 import { nebimMigrationService } from '../../services/migration/NebimV3MigrationService';
 import { SupabaseMigrationService } from '../../services/api/supabaseMigrationService';
-import { IS_TAURI, safeInvoke } from '../../utils/env';
+import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } from '../../utils/env';
+import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
 
 interface AppConfig {
     is_configured: boolean;
@@ -147,6 +148,9 @@ const SetupWizard: React.FC = () => {
     const [supabaseToken, setSupabaseToken] = useState('');
     const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
     const [hasExistingConfig, setHasExistingConfig] = useState(false);
+    const [showReinstallModal, setShowReinstallModal] = useState(false);
+    /** Varsayılan kapalı: C:\RetailEX silinsin mi */
+    const [reinstallDeleteCRetailex, setReinstallDeleteCRetailex] = useState(false);
     const [isUpdateMode, setIsUpdateMode] = useState(false);
     const [osUsername, setOsUsername] = useState<string>('');
     const [downloadedSqlPath, setDownloadedSqlPath] = useState<string | null>(null);
@@ -695,19 +699,24 @@ const SetupWizard: React.FC = () => {
                     const existing: any = await safeInvoke('get_app_config');
                     if (existing && existing.is_configured) {
                         setHasExistingConfig(true);
+                        const merged = mergeRustIntoStoredWebConfig(existing) as any;
+                        try {
+                            localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+                        } catch {
+                            /* ignore */
+                        }
                         setConfig(prev => ({
                             ...prev,
-                            ...existing,
-                            regulatory_region: (existing.regulatory_region as 'TR' | 'IQ') || prev.regulatory_region || 'IQ',
+                            ...merged,
+                            regulatory_region: (merged.regulatory_region as 'TR' | 'IQ') || prev.regulatory_region || 'IQ',
                             default_currency:
-                                (existing.default_currency as string) ||
-                                (existing.base_currency as string) ||
+                                (merged.default_currency as string) ||
+                                (merged.base_currency as string) ||
                                 prev.default_currency ||
                                 'IQD',
-                            // Ensure password fields are kept secure or re-filled if needed
-                            pg_local_user: existing.pg_local_user || 'postgres',
-                            pg_remote_user: existing.pg_remote_user || 'postgres',
-                            logo_objects_path: existing.logo_objects_path || 'C:\\LOGO\\LObjects.dll',
+                            pg_local_user: merged.pg_local_user || 'postgres',
+                            pg_remote_user: merged.pg_remote_user || 'postgres',
+                            logo_objects_path: merged.logo_objects_path || 'C:\\LOGO\\LObjects.dll',
                         }));
                     }
 
@@ -1693,7 +1702,9 @@ const SetupWizard: React.FC = () => {
                                     <s.icon className="w-4 h-4" />
                                 </div>
                                 <span className={`text-xs font-bold tracking-wide ${step === s.id ? 'text-blue-50' : ''}`}>{s.label}</span>
-                                {step > s.id && <CheckCircle className="w-3.5 h-3.5 ml-auto text-blue-400" />}
+                                {step > s.id && !isUpdateMode && (
+                                    <CheckCircle className="w-3.5 h-3.5 ml-auto text-blue-400" />
+                                )}
                             </div>
                         ))}
                     </div>
@@ -1767,7 +1778,10 @@ const SetupWizard: React.FC = () => {
                                                     <Activity className="w-4 h-4" /> PANELE GİT (ATLA)
                                                 </button>
                                                 <button
-                                                    onClick={() => setHasExistingConfig(false)}
+                                                    onClick={() => {
+                                                        setReinstallDeleteCRetailex(false);
+                                                        setShowReinstallModal(true);
+                                                    }}
                                                     className="px-8 py-4 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
                                                 >
                                                     Yeniden Kurulum Yap
@@ -4109,6 +4123,71 @@ const SetupWizard: React.FC = () => {
                     />
                 </div>
             </div>
+
+            {showReinstallModal && (
+                <div className="fixed inset-0 z-[50001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div
+                        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1e293b] p-6 shadow-2xl text-white"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="reinstall-modal-title"
+                    >
+                        <h3 id="reinstall-modal-title" className="text-lg font-black mb-2">
+                            Yeniden kurulum
+                        </h3>
+                        <p className="text-sm text-slate-300 leading-relaxed mb-4">
+                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows RetailEX hizmetleri (arka plan, VPN, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
+                        </p>
+                        <label className="flex items-start gap-3 cursor-pointer text-sm text-slate-200">
+                            <input
+                                type="checkbox"
+                                className="mt-1 rounded border-white/20 bg-white/5"
+                                checked={reinstallDeleteCRetailex}
+                                onChange={(e) => setReinstallDeleteCRetailex(e.target.checked)}
+                            />
+                            <span>
+                                <span className="font-semibold text-white">C:\RetailEX</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
+                            </span>
+                        </label>
+                        <div className="flex gap-3 mt-6 justify-end">
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-xl border border-white/10 text-sm font-bold text-slate-300 hover:bg-white/10"
+                                onClick={() => setShowReinstallModal(false)}
+                            >
+                                İptal
+                            </button>
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700"
+                                onClick={async () => {
+                                    const delFolder = reinstallDeleteCRetailex;
+                                    setShowReinstallModal(false);
+                                    if (IS_TAURI) {
+                                        const r = await removeRetailexWindowsServicesIfTauri();
+                                        if (!r.ok) {
+                                            toast.error('Windows hizmetleri kaldırılamadı (gerekirse uygulamayı Yönetici olarak açın). ' + (r.detail || ''));
+                                        } else if (r.detail) {
+                                            console.info('[Yeniden kurulum]', r.detail);
+                                        }
+                                        if (delFolder) {
+                                            const d = await deleteCRetailexFolderIfTauri();
+                                            if (!d.ok) {
+                                                toast.error('C:\\RetailEX silinemedi: ' + (d.detail || ''));
+                                            } else if (d.detail) {
+                                                toast.success(d.detail);
+                                            }
+                                        }
+                                    }
+                                    setHasExistingConfig(false);
+                                }}
+                            >
+                                Onayla
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div >
     );

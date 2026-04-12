@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Lock, Unlock, Save, RotateCcw, Users, Move, Maximize2, X, Circle, Square, RectangleHorizontal, History, Clock, List, ChevronRight, Settings2, Eye, EyeOff, Plus, Minus, UtensilsCrossed } from 'lucide-react';
 import { cn } from '@/components/ui/utils';
 import { useRestaurantStore } from '../store/useRestaurantStore';
-import { Table } from '../types';
+import { Table, RESTAURANT_FLOOR_ALL_ID } from '../types';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 import { RestaurantService } from '@/services/restaurant';
 
 const fmt = (num: number) => {
@@ -129,24 +130,34 @@ function autoPushNeighbors(layout: LayoutMap, changedId: string, oldW: number, o
     return result;
 }
 
-// ─── Shape presets ────────────────────────────────────────────────────────────
-const SHAPE_OPTIONS: { type: ShapeType; label: string; icon: React.ReactNode }[] = [
-    { type: 'square', label: 'Kare', icon: <Square className="w-5 h-5" /> },
-    { type: 'rect', label: 'Dikdörtgen', icon: <RectangleHorizontal className="w-5 h-5" /> },
-    { type: 'oval', label: 'Oval', icon: <Circle className="w-5 h-5" style={{ transform: 'scaleX(1.4)' }} /> },
-    { type: 'circle', label: 'Yuvarlak', icon: <Circle className="w-5 h-5" /> },
+// ─── Shape presets (etiketler dil ile KrokiView içinde bağlanır) ───────────────
+const SHAPE_OPTIONS: { type: ShapeType; icon: React.ReactNode }[] = [
+    { type: 'square', icon: <Square className="w-5 h-5" /> },
+    { type: 'rect', icon: <RectangleHorizontal className="w-5 h-5" /> },
+    { type: 'oval', icon: <Circle className="w-5 h-5" style={{ transform: 'scaleX(1.4)' }} /> },
+    { type: 'circle', icon: <Circle className="w-5 h-5" /> },
 ];
 
-const SIZE_PRESETS = [
+function krokiShapeLabel(tmR: (k: string) => string, type: ShapeType | undefined): string {
+    switch (type) {
+        case 'rect': return tmR('resKrokiShapeRect');
+        case 'oval': return tmR('resKrokiShapeOval');
+        case 'circle': return tmR('resKrokiShapeCircle');
+        default: return tmR('resKrokiShapeSquare');
+    }
+}
+
+const SIZE_PRESETS: { label?: string; labelKey?: 'resKrokiSizeWide'; w: number; h: number }[] = [
     { label: 'S', w: 90, h: 90 },
     { label: 'M', w: 120, h: 120 },
     { label: 'L', w: 160, h: 160 },
     { label: 'XL', w: 210, h: 210 },
-    { label: 'Geniş', w: 240, h: 120 },
+    { labelKey: 'resKrokiSizeWide', w: 240, h: 120 },
 ];
 
 // ─── PIN Modal ───────────────────────────────────────────────────────────────
 function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+    const tmR = useRestaurantModuleTm();
     const [pin, setPin] = useState('');
     const [error, setError] = useState(false);
 
@@ -178,8 +189,8 @@ function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () =
                     </div>
 
                     <div className="relative z-10 flex-1">
-                        <h3 className="text-2xl font-black uppercase tracking-tighter leading-tight mb-1">Yetki Kontrolü</h3>
-                        <p className="text-[10px] text-blue-100 font-black uppercase tracking-[0.3em] opacity-70">ERİŞİM İÇİN PIN GİRİN</p>
+                        <h3 className="text-2xl font-black uppercase tracking-tighter leading-tight mb-1">{tmR('resKrokiPinTitle')}</h3>
+                        <p className="text-[10px] text-blue-100 font-black uppercase tracking-[0.3em] opacity-70">{tmR('resKrokiPinSubtitle')}</p>
                     </div>
                 </div>
 
@@ -230,7 +241,7 @@ function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () =
                         onClick={onClose}
                         className="text-slate-400 hover:text-red-500 font-black text-[10px] uppercase tracking-[0.3em] transition-all hover:tracking-[0.4em] active:scale-95"
                     >
-                        ✕ İPTAL ET
+                        {tmR('resKrokiPinCancel')}
                     </button>
                 </div>
 
@@ -253,13 +264,14 @@ function TableSettingsPopup({
     onChangeShape: (shape: ShapeType) => void;
     onChangeSize: (w: number, h: number) => void;
 }) {
+    const tmR = useRestaurantModuleTm();
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-slate-900 rounded-[32px] p-8 w-[400px] border border-white/10 shadow-2xl shadow-black/50">
                 <div className="flex justify-between items-start mb-8">
                     <div>
-                        <h3 className="text-white font-black text-xl tracking-tight">Masa {table.number}</h3>
-                        <p className="text-white/40 font-bold text-[11px] uppercase tracking-widest mt-1">Konfigürasyon Ayarları</p>
+                        <h3 className="text-white font-black text-xl tracking-tight">{tmR('resKrokiTablePrefix').replace('{n}', String(table.number))}</h3>
+                        <p className="text-white/40 font-bold text-[11px] uppercase tracking-widest mt-1">{tmR('resKrokiConfigSubtitle')}</p>
                     </div>
                     <button onClick={onClose} className="w-10 h-10 rounded-2xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
                         <X className="w-5 h-5 text-white/50" />
@@ -268,7 +280,7 @@ function TableSettingsPopup({
 
                 {/* Shape */}
                 <div className="mb-8 p-6 bg-white/5 rounded-[24px] border border-white/5">
-                    <span className="text-white/30 font-black text-[10px] uppercase tracking-[0.2em] mb-4 block">GEOMETRİK FORM</span>
+                    <span className="text-white/30 font-black text-[10px] uppercase tracking-[0.2em] mb-4 block">{tmR('resKrokiGeomForm')}</span>
                     <div className="grid grid-cols-4 gap-3">
                         {SHAPE_OPTIONS.map(opt => (
                             <button
@@ -284,7 +296,7 @@ function TableSettingsPopup({
                                 <div className={cn("transition-transform", position.shape === opt.type ? "scale-110" : "")}>
                                     {opt.icon}
                                 </div>
-                                <span className="text-[9px] font-black uppercase tracking-tight">{opt.label}</span>
+                                <span className="text-[9px] font-black uppercase tracking-tight">{krokiShapeLabel(tmR, opt.type)}</span>
                             </button>
                         ))}
                     </div>
@@ -292,13 +304,14 @@ function TableSettingsPopup({
 
                 {/* Size */}
                 <div className="p-6 bg-white/5 rounded-[24px] border border-white/5">
-                    <span className="text-white/30 font-black text-[10px] uppercase tracking-[0.2em] mb-4 block">BOYUT ÖLÇEĞİ</span>
+                    <span className="text-white/30 font-black text-[10px] uppercase tracking-[0.2em] mb-4 block">{tmR('resKrokiSizeScale')}</span>
                     <div className="grid grid-cols-5 gap-2.5">
-                        {SIZE_PRESETS.map(preset => {
+                        {SIZE_PRESETS.map((preset, idx) => {
+                            const presetLabel = preset.labelKey ? tmR(preset.labelKey) : preset.label ?? '';
                             const isActive = Math.abs(position.w - preset.w) < 15 && Math.abs(position.h - preset.h) < 15;
                             return (
                                 <button
-                                    key={preset.label}
+                                    key={`${preset.w}-${preset.h}-${idx}`}
                                     onClick={() => onChangeSize(preset.w, preset.h)}
                                     className={cn(
                                         "flex flex-col items-center justify-center p-3 rounded-2xl transition-all border-2 active:scale-95",
@@ -307,7 +320,7 @@ function TableSettingsPopup({
                                             : "bg-white/5 border-transparent text-white/30 hover:bg-white/10"
                                     )}
                                 >
-                                    <span className="text-[14px] font-black">{preset.label}</span>
+                                    <span className="text-[14px] font-black">{presetLabel}</span>
                                     <span className="text-[8px] font-bold opacity-60 tracking-tighter mt-1">{preset.w}×{preset.h}</span>
                                 </button>
                             );
@@ -319,7 +332,7 @@ function TableSettingsPopup({
                     onClick={onClose}
                     className="w-full mt-8 py-4 bg-white text-slate-900 font-black text-[13px] uppercase tracking-[0.1em] rounded-2xl hover:bg-blue-50 transition-colors shadow-lg active:scale-95"
                 >
-                    Tamam
+                    {tmR('resKrokiOk')}
                 </button>
             </div>
         </div>
@@ -335,10 +348,6 @@ const STATUS_CONFIG: Record<string, { bg: string; shadow: string }> = {
     cleaning: { bg: '#64748b', shadow: 'shadow-slate-500/20' },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-    empty: 'Boş', occupied: 'Dolu', billing: 'Hesap', reserved: 'Rezerve', cleaning: 'Temizlik',
-};
-
 function getShapeRadius(shape: ShapeType): string {
     switch (shape) {
         case 'oval': return '50%';
@@ -351,18 +360,20 @@ function getShapeRadius(shape: ShapeType): string {
 
 // ─── Timer ────────────────────────────────────────────────────────────────────
 function TableTimer({ startTime }: { startTime: string }) {
+    const tmR = useRestaurantModuleTm();
     const [elapsed, setElapsed] = React.useState('');
+    const suf = tmR('resKrokiTimeMinSuffix');
     React.useEffect(() => {
         const update = () => {
             const diff = Math.max(0, Date.now() - new Date(startTime).getTime());
             const m = Math.floor(diff / 60000);
             const h = Math.floor(m / 60);
-            setElapsed(h > 0 ? `${h}:${(m % 60).toString().padStart(2, '0')}` : `${m}dk`);
+            setElapsed(h > 0 ? `${h}:${(m % 60).toString().padStart(2, '0')}` : `${m}${suf}`);
         };
         update();
         const iv = setInterval(update, 30000);
         return () => clearInterval(iv);
-    }, [startTime]);
+    }, [startTime, suf]);
     return <span className="text-[10px] font-black">{elapsed}</span>;
 }
 
@@ -378,6 +389,7 @@ function DraggableTableCard({
     onDoubleClick: (table: Table) => void;
     isSelected?: boolean;
 }) {
+    const tmR = useRestaurantModuleTm();
     const cardRef = useRef<HTMLDivElement>(null);
     const dragging = useRef(false);
     const resizing = useRef(false);
@@ -399,17 +411,17 @@ function DraggableTableCard({
 
             if (table.status === 'occupied') {
                 if (!table.total || table.total === 0) {
-                    if (elapsedMin > 10) setHint('SİPARİŞ ALINMADI');
+                    if (elapsedMin > 10) setHint(tmR('resKrokiHintNoOrder'));
                     else setHint(null);
                 } else if (table.orders.some(o => o.status === 'pending')) {
-                    setHint('MUTFAĞA GÖNDER!');
+                    setHint(tmR('resKrokiHintSendKitchen'));
                 } else if (elapsedMin > 45) {
-                    setHint('UZUN SÜRELİ OTURUM');
+                    setHint(tmR('resKrokiHintLongSession'));
                 } else {
                     setHint(null);
                 }
             } else if (table.status === 'billing') {
-                if (elapsedMin > 5) setHint('ÖDEME BEKLİYOR');
+                if (elapsedMin > 5) setHint(tmR('resKrokiHintAwaitPayment'));
                 else setHint(null);
             } else {
                 setHint(null);
@@ -419,7 +431,7 @@ function DraggableTableCard({
         updateHint();
         const id = setInterval(updateHint, 10000);
         return () => clearInterval(id);
-    }, [table.status, table.total, table.orders, table.startTime]);
+    }, [table.status, table.total, table.orders, table.startTime, tmR]);
 
     const onPointerDown = (e: React.PointerEvent) => {
         if (!unlocked) return;
@@ -634,6 +646,7 @@ function TableListPanel({
     onToggleHidden: (id: string) => void;
     onClose: () => void;
 }) {
+    const tmR = useRestaurantModuleTm();
     const visibleTables = tables.filter(t => !hiddenIds.has(t.id));
     const hiddenTables = tables.filter(t => hiddenIds.has(t.id));
 
@@ -645,7 +658,7 @@ function TableListPanel({
             {/* Panel header */}
             <div className="flex items-center justify-between p-6 border-b border-white/5 relative z-10">
                 <div>
-                    <span className="text-white font-black text-[13px] uppercase tracking-[0.15em]">Masa Listesi</span>
+                    <span className="text-white font-black text-[13px] uppercase tracking-[0.15em]">{tmR('resKrokiTableListTitle')}</span>
                     <div className="flex items-center gap-2 mt-1">
                         <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 rounded-full">
                             <Eye className="w-3 h-3 text-emerald-500" />
@@ -672,13 +685,13 @@ function TableListPanel({
                     <div className="mb-6 space-y-2">
                         <div className="px-2 mb-3 flex items-center gap-2">
                             <div className="h-[1px] flex-1 bg-emerald-500/20" />
-                            <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest whitespace-nowrap">Krokidekiler</span>
+                            <span className="text-[9px] font-black text-emerald-500/60 uppercase tracking-widest whitespace-nowrap">{tmR('resKrokiOnCanvas')}</span>
                             <div className="h-[1px] flex-1 bg-emerald-500/20" />
                         </div>
                         {visibleTables.map(table => {
                             const config = STATUS_CONFIG[table.status] || STATUS_CONFIG.empty;
                             const pos = layout[table.id];
-                            const shapeLabel = SHAPE_OPTIONS.find(o => o.type === pos?.shape)?.label || 'Kare';
+                            const shapeLabel = krokiShapeLabel(tmR, pos?.shape);
                             const isActive = selectedId === table.id;
 
                             return (
@@ -704,7 +717,7 @@ function TableListPanel({
                                     />
 
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-black text-[14px]">Masa {table.number}</div>
+                                        <div className="text-white font-black text-[14px]">{tmR('resKrokiTablePrefix').replace('{n}', String(table.number))}</div>
                                         <div className="flex items-center gap-2 mt-0.5 opacity-40">
                                             <span className="text-[9px] font-bold uppercase">{shapeLabel}</span>
                                             <span className="w-1 h-1 rounded-full bg-white/50" />
@@ -729,7 +742,7 @@ function TableListPanel({
                     <div className="space-y-2">
                         <div className="px-2 mb-3 flex items-center gap-2">
                             <div className="h-[1px] flex-1 bg-white/5" />
-                            <span className="text-[9px] font-black text-white/20 uppercase tracking-widest whitespace-nowrap">Gizli Masalar</span>
+                            <span className="text-[9px] font-black text-white/20 uppercase tracking-widest whitespace-nowrap">{tmR('resKrokiHiddenTables')}</span>
                             <div className="h-[1px] flex-1 bg-white/5" />
                         </div>
                         {hiddenTables.map(table => {
@@ -741,8 +754,8 @@ function TableListPanel({
                                 >
                                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: config.bg }} />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-white font-black text-[14px]">Masa {table.number}</div>
-                                        <div className="text-[9px] font-bold uppercase opacity-60">Beklemede</div>
+                                        <div className="text-white font-black text-[14px]">{tmR('resKrokiTablePrefix').replace('{n}', String(table.number))}</div>
+                                        <div className="text-[9px] font-bold uppercase opacity-60">{tmR('resKrokiWaiting')}</div>
                                     </div>
 
                                     <button
@@ -769,6 +782,7 @@ interface KrokiViewProps {
     activeFloor: string;
 }
 export function KrokiView({ activeFloor }: KrokiViewProps) {
+    const tmR = useRestaurantModuleTm();
     const { tables, mergeTables, moveTable } = useRestaurantStore();
     const [selectionMode, setSelectionMode] = useState<'merge' | 'transfer' | null>(null);
     const [sourceTableId, setSourceTableId] = useState<string | null>(null);
@@ -815,7 +829,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
         });
     }, []);
 
-    const floorTables = activeFloor === 'Tümü' ? tables : tables.filter(t => t.location === activeFloor);
+    const floorTables = activeFloor === RESTAURANT_FLOOR_ALL_ID ? tables : tables.filter(t => t.location === activeFloor);
 
     // Load layout: try DB first, fallback to localStorage
     useEffect(() => {
@@ -1006,8 +1020,13 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                         <Maximize2 className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <span className="text-white font-black text-[14px] tracking-tight block">KROKİ DÜZENİ</span>
-                        <span className="text-white/40 font-bold text-[10px] uppercase tracking-widest">{activeFloor} Yerleşimi</span>
+                        <span className="text-white font-black text-[14px] tracking-tight block">{tmR('resKrokiToolbarTitle')}</span>
+                        <span className="text-white/40 font-bold text-[10px] uppercase tracking-widest">
+                            {tmR('resKrokiFloorLayout').replace(
+                                '{name}',
+                                activeFloor === RESTAURANT_FLOOR_ALL_ID ? tmR('resPosAllShort') : activeFloor
+                            )}
+                        </span>
                     </div>
                 </div>
 
@@ -1025,7 +1044,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                             )}
                         >
                             <List className="w-4 h-4" />
-                            Liste
+                            {tmR('resKrokiList')}
                         </button>
 
                         <button
@@ -1038,7 +1057,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                             )}
                         >
                             <Users className="w-4 h-4" />
-                            Izgara
+                            {tmR('resKrokiGrid')}
                         </button>
 
                         <button
@@ -1046,7 +1065,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                             className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-black text-[11px] uppercase transition-all bg-white/5 text-white/80 border border-white/10 hover:bg-white/15 hover:text-white active:scale-90"
                         >
                             <Maximize2 className="w-4 h-4" />
-                            Hizala
+                            {tmR('resKrokiAlign')}
                         </button>
 
                         <button
@@ -1054,7 +1073,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                             className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl font-black text-[11px] uppercase transition-all bg-white/5 text-white/60 border border-white/10 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 active:scale-90"
                         >
                             <RotateCcw className="w-4 h-4" />
-                            Sıfırla
+                            {tmR('resKrokiReset')}
                         </button>
 
                         <button
@@ -1066,7 +1085,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                             )}
                         >
                             {saving ? <RotateCcw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            {saving ? 'Kaydediliyor...' : saved ? 'Kaydedildi!' : 'Değişiklikleri Kaydet'}
+                            {saving ? tmR('resKrokiSaveSaving') : saved ? tmR('resKrokiSaveSaved') : tmR('resKrokiSaveBtn')}
                         </button>
                     </div>
                 )}
@@ -1082,7 +1101,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                                     selectionMode === 'merge' ? "bg-amber-500 text-white shadow-lg mx-1" : "text-white/60 hover:text-white"
                                 )}
                             >
-                                <UtensilsCrossed className="w-4 h-4" /> BİRLEŞTİR
+                                <UtensilsCrossed className="w-4 h-4" /> {tmR('resKrokiMergeBtn')}
                             </button>
                             <button
                                 onClick={() => { setSelectionMode(selectionMode === 'transfer' ? null : 'transfer'); setSourceTableId(null); }}
@@ -1091,7 +1110,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                                     selectionMode === 'transfer' ? "bg-blue-500 text-white shadow-lg mx-1" : "text-white/60 hover:text-white"
                                 )}
                             >
-                                <Move className="w-4 h-4" /> TAŞI
+                                <Move className="w-4 h-4" /> {tmR('resKrokiMoveBtn')}
                             </button>
                         </div>
                     </div>
@@ -1101,7 +1120,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                     <div className="mx-4 flex items-center gap-3 px-6 py-2.5 bg-amber-500 text-white rounded-2xl animate-bounce shadow-xl shadow-amber-500/20 relative z-20">
                         <div className="w-2 h-2 rounded-full bg-white animate-ping" />
                         <span className="text-[11px] font-black uppercase tracking-wider">
-                            {!sourceTableId ? "KAYNAK MASAYI SEÇİN" : "HEDEF MASAYI SEÇİN"}
+                            {!sourceTableId ? tmR('resKrokiPickSourceTable') : tmR('resKrokiPickTargetTable')}
                         </span>
                         <button onClick={() => { setSelectionMode(null); setSourceTableId(null); }} className="ml-2 hover:rotate-90 transition-transform"><X className="w-4 h-4" /></button>
                     </div>
@@ -1117,18 +1136,18 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                     )}
                 >
                     {unlocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                    {unlocked ? "Düzenlemeyi Bitir" : "Düzeni Düzenle"}
+                    {unlocked ? tmR('resKrokiEditFinish') : tmR('resKrokiEditStart')}
                 </button>
             </div>
 
             {/* Legend */}
             <div className="flex items-center gap-6 px-6 py-2.5 bg-white border-b border-slate-100 shrink-0 overflow-x-auto no-scrollbar shadow-sm">
                 {[
-                    { color: '#10b981', label: 'Boş' },
-                    { color: '#3b82f6', label: 'Dolu' },
-                    { color: '#ef4444', label: 'Hesap' },
-                    { color: '#f59e0b', label: 'Rezerve' },
-                    { color: '#94a3b8', label: 'Temizlik' },
+                    { color: '#10b981', label: tmR('resTableStatusEmpty') },
+                    { color: '#3b82f6', label: tmR('resTableStatusOccupied') },
+                    { color: '#ef4444', label: tmR('resTableStatusBilling') },
+                    { color: '#f59e0b', label: tmR('resTableStatusReserved') },
+                    { color: '#94a3b8', label: tmR('resTableStatusCleaning') },
                 ].map(item => (
                     <div key={item.label} className="flex items-center gap-2.5 whitespace-nowrap">
                         <div
@@ -1144,14 +1163,14 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
                 <div className="flex items-center gap-2.5 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
                     {unlocked ? (
                         <div className="flex items-center gap-4 bg-amber-50 px-4 py-1.5 rounded-full border border-amber-100/50 text-amber-700">
-                            <span className="flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> SÜRÜKLE</span>
+                            <span className="flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> {tmR('resKrokiDragHint')}</span>
                             <span className="w-1 h-1 rounded-full bg-amber-300" />
-                            <span className="flex items-center gap-1.5"><Maximize2 className="w-3.5 h-3.5" /> SHIFT + SÜRÜKLE BÜYÜT</span>
+                            <span className="flex items-center gap-1.5"><Maximize2 className="w-3.5 h-3.5" /> {tmR('resKrokiResizeHint')}</span>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2">
                             <Lock className="w-3.5 h-3.5 opacity-50" />
-                            DÜZENLEMEK İÇİN KİLİDİ AÇIN
+                            {tmR('resKrokiUnlockBanner')}
                         </div>
                     )}
                 </div>

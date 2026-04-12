@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-    Building2, DollarSign, TrendingUp, AlertTriangle, Clock,
+    Building2, Banknote, TrendingUp, AlertTriangle, Clock,
     CheckCircle, Plus, RefreshCw, CreditCard
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -235,7 +235,7 @@ export function BankRegisterManagement() {
                                 {formatCurrency(stats.totalBalance)} {tm('currencyCode')}
                             </p>
                         </div>
-                        <DollarSign className="w-8 h-8 text-green-600" />
+                        <Banknote className="w-8 h-8 text-green-600" />
                     </div>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4">

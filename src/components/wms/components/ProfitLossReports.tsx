@@ -1,9 +1,9 @@
-﻿// ğŸ“Š Profit & Loss Reports - Kar-Zarar Raporları
+// ğŸ“Š Profit & Loss Reports - Kar-Zarar Raporları
 // Detailed financial reports with discounts, returns, damages
 
 import { useState, useEffect } from 'react';
 import {
-  TrendingUp, TrendingDown, DollarSign, Package, RotateCcw,
+  TrendingUp, TrendingDown, Banknote, Package, RotateCcw,
   AlertCircle, Download, Calendar, BarChart3, PieChart,
   Filter, X, ChevronRight, Eye
 } from 'lucide-react';
@@ -205,7 +205,7 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div className={`${cardClass} border rounded-xl p-4`}>
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-5 h-5 text-blue-500" />
+            <Banknote className="w-5 h-5 text-blue-500" />
             <span className="text-sm text-gray-500">Toplam Gelir</span>
           </div>
           <div className={`text-2xl font-bold ${textClass}`}>

@@ -26,7 +26,7 @@ function Start-AdminSession {
 }
 
 function Test-RequiredFile($path, $label) {
-    if (-not (Test-Path $path)) {
+    if (-not (Test-Path -LiteralPath $path)) {
         throw "$label not found: $path"
     }
 }
@@ -35,7 +35,12 @@ function Install-AppService($exePath, $serviceName) {
     Test-RequiredFile $exePath $serviceName
 
     Write-Info "Installing $serviceName from $exePath"
-    & $exePath --install
+    # GUI-subsystem EXE'lerde & ile calistirmada $LASTEXITCODE guvenilir degil; Start-Process kullan.
+    $p = Start-Process -FilePath $exePath -ArgumentList @("--install") -Wait -PassThru -NoNewWindow
+    $code = if ($null -ne $p -and $null -ne $p.ExitCode) { [int]$p.ExitCode } else { -1 }
+    if ($code -ne 0) {
+        throw "$serviceName --install failed with exit code $code (yonetici haklari gerekir veya ProgramData loguna bakin: C:\ProgramData\RetailEX\${serviceName}_install_last_error.txt)."
+    }
 
     Start-Sleep -Seconds 1
     $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
@@ -67,8 +72,28 @@ try {
     elseif (Test-Path $bridgeScript) {
         Write-Info "Installing SQL Bridge service with legacy script..."
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bridgeScript
-    } else {
+    }     else {
         Write-WarnMsg "RetailEX_SQL_Bridge.exe/install-bridge.ps1 not found, SQL Bridge skipped."
+    }
+
+    # PostgreSQL: tum agdan erisim (listen_addresses + pg_hba + firewall 5432)
+    $exposeCandidates = @(
+        (Join-Path $baseDir "pg-windows-expose-remote.ps1")
+        (Join-Path $baseDir "..\..\database\scripts\pg-windows-expose-remote.ps1")
+        (Join-Path (Split-Path $baseDir -Parent) "database\scripts\pg-windows-expose-remote.ps1")
+    )
+    $exposePs1 = $exposeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($exposePs1) {
+        Write-Info "Configuring PostgreSQL for remote access: $exposePs1"
+        try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $exposePs1 -AllowAllNetworks
+        }
+        catch {
+            Write-WarnMsg "PostgreSQL expose script failed (run elevated?): $($_.Exception.Message)"
+        }
+    }
+    else {
+        Write-WarnMsg "pg-windows-expose-remote.ps1 not found; PostgreSQL may only listen on localhost."
     }
 
     Write-Info "Manual service installation completed."

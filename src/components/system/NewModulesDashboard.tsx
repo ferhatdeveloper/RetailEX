@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../utils/supabase/client';
 import {
   Sparkles,
-  DollarSign,
+  Banknote,
   Zap,
   Mic,
   Database,
@@ -28,7 +28,9 @@ interface NewModule {
 }
 
 const iconMap: Record<string, React.ElementType> = {
-  DollarSign,
+  Banknote,
+  /** Eski kayıtlarda icon_name: DollarSign */
+  DollarSign: Banknote,
   Zap,
   Mic,
   Database,

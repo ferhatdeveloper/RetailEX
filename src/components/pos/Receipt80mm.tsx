@@ -1,25 +1,45 @@
 import { X, Printer, Download, Languages } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import type { Sale } from '../../core/types';
+import type { Sale, SaleItem } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import type { ReceiptSettings } from '../../services/receiptSettingsService';
+import { useProductStore } from '../../store/useProductStore';
+import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
+import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
+import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 
 interface Receipt80mmProps {
   sale: Sale;
   paymentData: any;
   onClose: () => void;
+  /** Ödeme ekranında seçilen dil ile önizleme göstermeden doğrudan yazdır; sonra onClose */
+  printImmediately?: boolean;
+  /** printImmediately ile: fiş metinleri bu dilde (tr | en | ar | ku) */
+  initialPrintLanguage?: string;
+  /** Üst bilgi altı kesik çizgili bant (örn. randevu — ödeme alınmadı) */
+  headerBanner?: string;
 }
 
-export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
+const RECEIPT_LANGS = ['tr', 'en', 'ar', 'ku'] as const;
+type ReceiptLang = (typeof RECEIPT_LANGS)[number];
+
+function isReceiptLang(s: string | undefined): s is ReceiptLang {
+  return !!s && (RECEIPT_LANGS as readonly string[]).includes(s);
+}
+
+export function Receipt80mm({ sale, paymentData, onClose, printImmediately = false, initialPrintLanguage, headerBanner }: Receipt80mmProps) {
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
   const { language: currentSystemLang, translations: allTranslations, t: tUi } = useLanguage();
-  const [selectedLang, setSelectedLang] = useState(currentSystemLang);
+  const [selectedLang, setSelectedLang] = useState<ReceiptLang>(() =>
+    isReceiptLang(initialPrintLanguage) ? initialPrintLanguage : (currentSystemLang as ReceiptLang)
+  );
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const silentPrintStartedRef = useRef(false);
 
   const receiptFirmNr = useMemo(() => {
     const f = selectedFirm;
@@ -36,6 +56,35 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
     ).catch(() => { if (!cancelled) setReceiptSettings({}); });
     return () => { cancelled = true; };
   }, [receiptFirmNr]);
+
+  const defaultReceiptLangAppliedRef = useRef(false);
+  /** Ayarlardaki varsayılan fiş dili — parent `initialPrintLanguage` vermediyse bir kez uygulanır */
+  useEffect(() => {
+    if (printImmediately || defaultReceiptLangAppliedRef.current) return;
+    if (isReceiptLang(initialPrintLanguage)) {
+      defaultReceiptLangAppliedRef.current = true;
+      return;
+    }
+    const def = receiptSettings?.defaultReceiptLanguage;
+    if (isReceiptLang(def)) {
+      setSelectedLang(def);
+      defaultReceiptLangAppliedRef.current = true;
+    }
+  }, [receiptSettings?.defaultReceiptLanguage, printImmediately, initialPrintLanguage]);
+
+  const products = useProductStore((s) => s.products);
+  const lineProductName = useCallback(
+    (item: SaleItem) => {
+      const p = products.find((x) => x.id === item.productId);
+      const resolved = resolveProductNameForReceipt(
+        p ?? { id: item.productId, name: item.productName },
+        selectedLang,
+        receiptSettings ?? {}
+      );
+      return (resolved || item.productName || '').slice(0, 28);
+    },
+    [products, selectedLang, receiptSettings]
+  );
 
   // Get active translations for the selected receipt language
   const t = useMemo(() => {
@@ -66,20 +115,36 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
     );
   }
 
-  const handlePrint = async () => {
+  /** Tauri Edge PDF + tarayıcı yazdır: innerHTML sarmalayıcıyı atladığı için 80mm kayboluyordu — tam fiş DOM'u kullan */
+  const getReceiptPrintFragmentHtml = (): string => {
+    const block = document.querySelector('.receipt-80mm') as HTMLElement | null;
+    const inner = document.getElementById('receipt-content');
+    if (block?.outerHTML) return block.outerHTML;
+    if (inner?.outerHTML) return inner.outerHTML;
+    return inner?.innerHTML ?? '';
+  };
+
+  const runPrint = async (onFinished?: () => void) => {
     setIsPrinting(true);
     try {
-      const receiptContent = document.getElementById('receipt-content');
-      if (!receiptContent) {
-        window.print();
-        setTimeout(() => setIsPrinting(false), 1500);
+      let fragment = getReceiptPrintFragmentHtml();
+      if (!fragment?.trim()) {
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        fragment = getReceiptPrintFragmentHtml();
+      }
+      if (!fragment?.trim()) {
+        setIsPrinting(false);
+        onFinished?.();
         return;
       }
-      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
-      /* 80mm auto: içerik yüksekliği kadar sayfa — alt boş kağıt azalır */
+      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
+      /* 80mm termal: sayfa ve gövde aynı genişlik — Edge PDF / Sumatra ile A4’e yayılma önlenir */
       @page { size: 80mm auto; margin: 0; }
-      @media print { @page { size: 80mm auto; margin: 0; } }
-      body { margin: 0; padding: 8mm; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 600; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      @media print { @page { size: 80mm auto; margin: 0; } html, body { width: 80mm !important; max-width: 80mm !important; margin: 0 !important; padding: 0 !important; } }
+      html, body { margin: 0; padding: 0; width: 80mm; max-width: 80mm; box-sizing: border-box; }
+      body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+      .receipt-80mm, #receipt-content { width: 80mm !important; max-width: 80mm !important; box-sizing: border-box; }
+      * { box-sizing: border-box; }
       .flex { display: flex; }
       .justify-between { justify-content: space-between; }
       .text-center { text-align: center; }
@@ -87,45 +152,83 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
       .border-b { border-bottom: 1px solid #000; }
       .border-t { border-top: 1px solid #000; }
       .border-dashed { border-style: dashed; }
-    </style></head><body>${receiptContent.innerHTML}</body></html>`;
+    </style></head><body>${fragment}</body></html>`;
 
       if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' || (window as any).__TAURI__) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          await invoke('print_html_silent', { html: fullHtml, printerName: null });
+          const printerName = getAccountReceiptSystemPrinterName();
+          await invoke('print_html_silent', { html: fullHtml, printerName: printerName ?? null });
           setIsPrinting(false);
+          onFinished?.();
           return;
         } catch (e) {
           console.warn('Tauri Edge/Sumatra yazdırma başarısız, WebView yazdırma penceresine geçiliyor:', e);
         }
       }
-      const onAfterPrint = () => {
-        window.onafterprint = null;
-        setIsPrinting(false);
-      };
-      if (typeof window.onafterprint !== 'undefined') {
-        window.onafterprint = onAfterPrint;
+      /* Ana pencerede window.print(): SPA print stilleri yüzünden boş önizleme — tam HTML iframe’de yazdır */
+      try {
+        await printHtmlInHiddenIframe(fullHtml);
+      } catch (e) {
+        console.warn('[Receipt80mm] iframe print:', e);
+        const onAfterPrint = () => {
+          window.onafterprint = null;
+          setIsPrinting(false);
+          onFinished?.();
+        };
+        if (typeof window.onafterprint !== 'undefined') {
+          window.onafterprint = onAfterPrint;
+        }
+        window.print();
+        if (typeof window.onafterprint === 'undefined') setTimeout(onAfterPrint, 1500);
+        return;
       }
-      window.print();
-      if (typeof window.onafterprint === 'undefined') setTimeout(onAfterPrint, 1500);
+      setIsPrinting(false);
+      onFinished?.();
     } catch {
       setIsPrinting(false);
+      onFinished?.();
     }
   };
 
+  const handlePrint = () => void runPrint();
+
+  useEffect(() => {
+    if (!printImmediately) return;
+    if (receiptSettings === null) return;
+    if (silentPrintStartedRef.current) return;
+    silentPrintStartedRef.current = true;
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        void runPrint(() => {
+          if (!cancelled) onClose();
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tek seferlik sessiz yazdır; sale/receipt değişiminde yeniden tetiklenme
+  }, [printImmediately, receiptSettings]);
+
   const handleDownload = () => {
-    const receiptContent = document.getElementById('receipt-content');
-    if (receiptContent) {
+    const fragment = getReceiptPrintFragmentHtml();
+    if (fragment) {
       const printWindow = window.open('', '', 'width=800,height=600');
       if (printWindow) {
         printWindow.document.write(`
-          <html>
+          <html dir="${isRTL ? 'rtl' : 'ltr'}">
             <head>
               <title>${t.receipt.title} - ${sale.receiptNumber}</title>
               <style>
                 @page { size: 80mm auto; margin: 0; }
-                body { margin: 0; padding: 10mm; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
-                * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+                html, body { margin: 0; padding: 0; width: 80mm; max-width: 80mm; box-sizing: border-box; }
+                body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
+                .receipt-80mm, #receipt-content { width: 80mm !important; max-width: 80mm !important; box-sizing: border-box; }
+                * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-sizing: border-box; }
                 .flex { display: flex; }
                 .justify-between { justify-content: space-between; }
                 .text-center { text-align: center; }
@@ -136,7 +239,7 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
               </style>
             </head>
             <body>
-              ${receiptContent.innerHTML}
+              ${fragment}
             </body>
           </html>
         `);
@@ -160,13 +263,23 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-3 overflow-hidden">
+    <div
+      className={`fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-3 overflow-hidden ${printImmediately ? 'bg-black/50' : 'bg-black/80 backdrop-blur-sm'}`}
+    >
+      {printImmediately && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-6 py-4 shadow-xl dark:bg-gray-800">
+            <span className="inline-block h-8 w-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Yazdırılıyor...</span>
+          </div>
+        </div>
+      )}
       {/*
         Tauri WebView: Tailwind min()/grid bazen yükseklik üretmez → modal içerikle uzar, scrollbar çıkmaz.
         Sabit yükseklik + flex column + flex:1;minHeight:0;overflow inline ile zorlanır.
       */}
       <div
-        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}
+        className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? 'fixed left-[-9999px] top-0 opacity-0 pointer-events-none w-[min(94vw,400px)] h-[min(90vh,800px)]' : ''}`}
         style={{
           /* ~400px üst sınır: eski max-w-md (448) kadar geniş değil, dar sütun da değil */
           width: 'min(94vw, 400px)',
@@ -174,10 +287,11 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
           height: 'min(90vh, 800px)',
           maxHeight: 'min(90vh, 800px)',
         }}
+        aria-hidden={printImmediately}
       >
         {/* Header — yazdır sırasında "Yazdırılıyor" + butonlar pasif */}
         <div className={`shrink-0 px-3 sm:px-4 py-3 border-b flex items-center justify-between gap-2 print:hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'
-          }`}>
+          } ${printImmediately ? 'hidden' : ''}`}>
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {isPrinting ? (
               <span className="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
@@ -240,7 +354,7 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
           }}
         >
           <div
-            className="receipt-80mm mx-auto font-mono origin-top max-w-[min(100%,80mm)] text-[13px] font-semibold leading-snug text-gray-950 antialiased print:text-[10px] print:font-medium print:leading-tight"
+            className="receipt-80mm mx-auto font-mono origin-top max-w-[min(100%,80mm)] text-[14px] font-bold leading-snug text-gray-950 antialiased print:text-[11px] print:font-bold print:leading-tight"
             style={{ transformOrigin: 'top center', direction: isRTL ? 'rtl' : 'ltr' }}
           >
           <div
@@ -249,45 +363,51 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
             style={{ width: '80mm', maxWidth: '80mm', direction: isRTL ? 'rtl' : 'ltr' }}
           >
             {/* Store Header - fiş ayarlarından logo ve firma bilgisi */}
-            <div className="text-center border-b-2 border-dashed border-gray-800 pb-2 mb-2 receipt-print-dark">
+            <div className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
               {receiptSettings?.logoDataUrl && (
                 <div className="flex justify-center mb-1">
                   <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto max-w-[60mm] object-contain" />
                 </div>
               )}
-              <div className="text-xl font-extrabold mb-0.5 text-gray-900 leading-tight print:text-lg print:font-bold">
+              <div className="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black">
                 {receiptSettings?.companyName || selectedFirm?.name || 'RetailEX'}
               </div>
               {(receiptSettings?.companyAddress || receiptSettings?.companyPhone) && (
-                <div className="text-[12px] font-semibold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[9px] print:font-medium">
+                <div className="text-[12px] font-bold text-gray-900 space-y-0 leading-tight mt-0.5 print:text-[10px] print:font-bold">
                   {receiptSettings.companyAddress && <div className="break-words">{receiptSettings.companyAddress}</div>}
                   {receiptSettings.companyPhone && <div>{receiptSettings.companyPhone}</div>}
                 </div>
               )}
               {!receiptSettings?.companyAddress && !receiptSettings?.companyPhone && (
-                <div className="text-[12px] font-semibold text-gray-900 print:text-[9px]">{t.receipt.footer}</div>
+                <div className="text-[12px] font-bold text-gray-900 print:text-[10px] print:font-bold">{t.receipt.footer}</div>
               )}
-              <div className="text-[12px] font-semibold text-gray-900 mt-0.5 print:text-[9px]">{receiptSettings?.companyName ? (selectedFirm?.title || '') : (selectedFirm?.title || '')}</div>
+              <div className="text-[12px] font-bold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">{receiptSettings?.companyName ? (selectedFirm?.title || '') : (selectedFirm?.title || '')}</div>
             </div>
 
+            {headerBanner?.trim() && (
+              <div className="text-center border-[3px] border-dashed border-gray-900 rounded-md px-2 py-2 mb-2 text-[12px] font-black tracking-wide text-gray-950 print:text-[11px] print:font-black receipt-print-dark">
+                {headerBanner.trim()}
+              </div>
+            )}
+
             {/* Receipt Info - yazdırmada koyu */}
-            <div className="text-[13px] mb-2 space-y-0.5 text-gray-900 font-semibold print:text-[10px]">
+            <div className="text-[14px] mb-2 space-y-0.5 text-gray-950 font-bold print:text-[11px]">
               <div className="flex justify-between">
-                <span className="font-bold">{t.receipt.receiptNo}:</span>
-                <span className="font-extrabold">{sale.receiptNumber}</span>
+                <span className="font-extrabold">{t.receipt.receiptNo}:</span>
+                <span className="font-black">{sale.receiptNumber}</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">{t.receipt.date}:</span>
-                <span>{formatDate(sale.date)}</span>
+                <span className="font-extrabold">{t.receipt.date}:</span>
+                <span className="font-bold">{formatDate(sale.date)}</span>
               </div>
               <div className="flex justify-between">
-                <span>{t.receipt.cashier}:</span>
-                <span>{sale.cashier}</span>
+                <span className="font-extrabold">{t.receipt.cashier}:</span>
+                <span className="font-bold">{sale.cashier}</span>
               </div>
               {sale.customerName && sale.customerName !== 'Perakende Müşteri' && (
                 <div className="flex justify-between">
-                  <span>{t.receipt.customer}:</span>
-                  <span>{sale.customerName}</span>
+                  <span className="font-extrabold">{t.receipt.customer}:</span>
+                  <span className="font-bold">{sale.customerName}</span>
                 </div>
               )}
               {sale.table && (
@@ -296,25 +416,54 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
                   <span className="font-bold">{sale.table}</span>
                 </div>
               )}
+              {sale.beautyDeviceName?.trim() && (
+                <div className="flex justify-between gap-2">
+                  <span className="font-extrabold shrink-0">{t.receipt.device}:</span>
+                  <span className="font-bold text-end break-words min-w-0">{sale.beautyDeviceName.trim()}</span>
+                </div>
+              )}
             </div>
 
-            <div className="border-t-2 border-dashed border-gray-800 my-3"></div>
+            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Ürün / Adet / Tutar — sütunlar 80mm içinde kırpılmaz */}
-            <div className="text-[11px] mb-1 font-extrabold text-gray-900 flex gap-1 border-b-2 border-gray-900 pb-1 print:text-[9px] print:font-bold print:border-gray-800">
+            <div className="text-[12px] mb-1 font-black text-gray-950 flex gap-1 border-b-[3px] border-black pb-1 print:text-[10px] print:font-black">
               <span className="min-w-0 flex-1">{(t.receipt as any).productLabel ?? (selectedLang === 'en' ? 'Item' : 'Ürün')}</span>
               <span className="w-9 shrink-0 text-center">{((t.receipt as any).qtyLabel ?? (selectedLang === 'en' ? 'Qty' : 'Adet'))}</span>
               <span className="w-[4.75rem] shrink-0 text-end tabular-nums">{((t.receipt as any).amountLabel ?? (selectedLang === 'en' ? 'Amt' : 'Tutar'))}</span>
             </div>
-            <div className="text-[13px] mb-2 w-full font-semibold print:text-[10px] print:font-medium">
+            <div className="text-[14px] mb-2 w-full font-bold print:text-[11px]">
               {sale.items.map((item, index) => (
-                <div key={index} className="flex gap-1 mb-1 items-start border-b border-gray-200 pb-0.5 text-gray-900">
+                <div key={index} className="flex gap-1 mb-1 items-start border-b-2 border-gray-500 pb-1 text-gray-950">
                   <div className={`min-w-0 flex-1 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
-                    <span className="font-bold break-words block" style={{ wordBreak: 'break-word' }}>{(item.productName || '').slice(0, 28)}</span>
+                    {(() => {
+                      const si = item as SaleItem;
+                      const beautyCtx = !!(si.beautyStaffName?.trim() || sale.beautyDeviceName?.trim());
+                      if (beautyCtx) {
+                        return (
+                          <>
+                            <div className="break-words" style={{ wordBreak: 'break-word' }}>
+                              <span className="text-[10px] font-black text-gray-600">{t.receipt.operation}: </span>
+                              <span className="font-extrabold break-words align-top">{lineProductName(item)}</span>
+                            </div>
+                            {si.beautyStaffName?.trim() ? (
+                              <div className="text-[11px] font-extrabold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
+                                {t.receipt.staff}: {si.beautyStaffName.trim()}
+                              </div>
+                            ) : null}
+                          </>
+                        );
+                      }
+                      return (
+                        <span className="font-extrabold break-words block" style={{ wordBreak: 'break-word' }}>
+                          {lineProductName(item)}
+                        </span>
+                      );
+                    })()}
                     {item.variant && (item.variant.color || item.variant.size) && (
-                      <div className="text-[11px] font-bold text-gray-700 print:text-[9px] print:font-medium">{(item.variant as any).color} {(item.variant as any).size}</div>
+                      <div className="text-[11px] font-extrabold text-gray-800 print:text-[10px] print:font-bold">{(item.variant as any).color} {(item.variant as any).size}</div>
                     )}
-                    <span className="text-[11px] font-bold text-gray-700 block print:text-[9px] print:font-medium">
+                    <span className="text-[11px] font-extrabold text-gray-800 block print:text-[10px] print:font-bold">
                       {(() => {
                         const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
                         const unit = (item as any).unit || 'Adet';
@@ -323,21 +472,21 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
                       })()}
                     </span>
                   </div>
-                  <span className="w-9 shrink-0 text-center text-[12px] font-extrabold text-gray-900 pt-0.5 tabular-nums print:text-[9px] print:font-bold">{item.quantity}</span>
-                  <span className="w-[4.75rem] shrink-0 text-end font-extrabold whitespace-nowrap text-[13px] tabular-nums pt-0.5 print:text-[10px] print:font-bold">
+                  <span className="w-9 shrink-0 text-center text-[12px] font-black text-gray-950 pt-0.5 tabular-nums print:text-[10px] print:font-black">{item.quantity}</span>
+                  <span className="w-[4.75rem] shrink-0 text-end font-black whitespace-nowrap text-[14px] tabular-nums pt-0.5 print:text-[11px] print:font-black">
                     {formatNumber(item.total, 0, true)} IQD
                   </span>
                 </div>
               ))}
             </div>
 
-            <div className="border-t-2 border-dashed border-gray-800 my-3"></div>
+            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Totals */}
-            <div className="text-[13px] space-y-0.5 mb-2 font-semibold print:text-[10px]">
+            <div className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
               <div className="flex justify-between">
-                <span className="font-bold">{t.receipt.subtotal}:</span>
-                <span className="font-bold tabular-nums">{formatNumber(sale.subtotal, 0, true)} IQD</span>
+                <span className="font-extrabold">{t.receipt.subtotal}:</span>
+                <span className="font-extrabold tabular-nums">{formatNumber(sale.subtotal, 0, true)} IQD</span>
               </div>
 
               {sale.discount > 0 && (
@@ -365,19 +514,19 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
                 </div>
               ) : null}
 
-              <div className="border-t border-gray-800 my-2"></div>
+              <div className="border-t-2 border-gray-950 my-2"></div>
 
-              <div className="flex justify-between text-base font-extrabold text-gray-900 pt-1 print:text-sm print:font-bold">
+              <div className="flex justify-between text-[1.05rem] font-black text-gray-950 pt-1 print:text-base print:font-black">
                 <span>{t.receipt.total}:</span>
                 <span className="tabular-nums">{formatNumber(sale.total, 0, true)} IQD</span>
               </div>
             </div>
 
-            <div className="border-t-2 border-dashed border-gray-800 my-3"></div>
+            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Payment Details */}
-            <div className="text-[13px] space-y-0.5 mb-2 font-semibold print:text-[10px]">
-              <div className="font-extrabold mb-2 text-gray-900 print:font-bold">{t.receipt.paymentDetails}:</div>
+            <div className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
+              <div className="font-black mb-2 text-gray-950 print:font-black">{t.receipt.paymentDetails}:</div>
               {paymentData.payments?.map((payment: any, index: number) => (
                 <div key={index} className={`flex justify-between ${isRTL ? 'mr-2' : 'ml-2'}`}>
                   <span>
@@ -395,50 +544,50 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
                 </div>
               ))}
 
-              <div className="border-t border-gray-800 my-2"></div>
+              <div className="border-t-2 border-gray-950 my-2"></div>
 
-              <div className="flex justify-between font-bold text-gray-900">
+              <div className="flex justify-between font-extrabold text-gray-950">
                 <span>{t.receipt.paid}:</span>
-                <span className="tabular-nums">{formatNumber(paymentData.totalPaid || 0, 0, true)} IQD</span>
+                <span className="tabular-nums font-black">{formatNumber(paymentData.totalPaid || 0, 0, true)} IQD</span>
               </div>
 
               {paymentData.change > 0 && (
-                <div className="flex justify-between text-green-700 font-extrabold text-base mt-2 print:text-sm print:font-bold">
+                <div className="flex justify-between text-green-800 font-black text-base mt-2 print:text-sm print:font-black">
                   <span>{t.receipt.change}:</span>
                   <span>{formatNumber(paymentData.change, 0, true)} IQD</span>
                 </div>
               )}
             </div>
 
-            <div className="border-t-2 border-dashed border-gray-800 my-3"></div>
+            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Barcode */}
             <div className="text-center my-2">
-              <div className="inline-block px-2 py-1 bg-white border border-gray-300">
-                <svg className="mx-auto" width="160" height="32">
+              <div className="inline-block px-2 py-1 bg-white border-2 border-gray-600">
+                <svg className="mx-auto" width="160" height="36" viewBox="0 0 160 36">
                   {[...Array(20)].map((_, i) => (
                     <rect
                       key={i}
-                      x={i * 10}
+                      x={i * 8}
                       y="0"
-                      width={6}
-                      height="40"
+                      width={7}
+                      height="36"
                       fill="black"
                     />
                   ))}
                 </svg>
-                <div className="text-[12px] mt-1 font-sans font-extrabold text-gray-900 print:text-[10px] print:font-bold">{sale.receiptNumber}</div>
+                <div className="text-[12px] mt-1 font-sans font-black text-gray-950 print:text-[11px] print:font-black">{sale.receiptNumber}</div>
               </div>
             </div>
 
             {/* Footer — iade uyarısı yazdırılmıyor; alt boşluk minimum */}
-            <div className="text-center text-[12px] text-gray-900 mt-2 font-semibold print:text-[9px] print:mt-1 print:mb-0">
-              <div className="flex items-center justify-center gap-1 font-extrabold text-gray-900 print:font-bold">
+            <div className="text-center text-[12px] text-gray-950 mt-2 font-bold print:text-[11px] print:mt-1 print:mb-0">
+              <div className="flex items-center justify-center gap-1 font-black text-gray-950 print:font-black">
                 <span>*** {t.receipt.thanks} ***</span>
               </div>
             </div>
 
-            <div className="border-t-2 border-dashed border-gray-800 mt-2 print:mt-1 print:mb-0"></div>
+            <div className="border-t-[3px] border-dashed border-gray-900 mt-2 print:mt-1 print:mb-0"></div>
           </div>
           </div>
         </div>
@@ -446,7 +595,7 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
         {/* Tek yazdırma noktası: WebView ikinci önizleme / çift diyalog riskini azaltır */}
         <div
           className={`print:hidden shrink-0 relative z-10 px-3 sm:px-4 py-3 border-t flex flex-col sm:flex-row gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'
-            }`}
+          } ${printImmediately ? 'hidden' : ''}`}
         >
           <button
             type="button"
@@ -504,7 +653,7 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
           #receipt-content, #receipt-content * {
             visibility: visible;
             color: #000 !important;
-            font-weight: 600;
+            font-weight: 700;
           }
           #receipt-content {
             position: absolute;
@@ -513,8 +662,8 @@ export function Receipt80mm({ sale, paymentData, onClose }: Receipt80mmProps) {
             width: 80mm !important;
             max-width: 80mm !important;
             direction: ${isRTL ? 'rtl' : 'ltr'};
-            font-size: 10px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 700;
             overflow: visible;
             min-height: auto !important;
             page-break-after: avoid;

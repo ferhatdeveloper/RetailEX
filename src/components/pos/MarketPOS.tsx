@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../utils/logger';
 import {
@@ -21,7 +21,6 @@ import {
   FileText,
   Scale,
   Percent,
-  DollarSign,
   Grid3x3,
   ArrowRightLeft,
   Globe,
@@ -75,6 +74,7 @@ import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
 import type { CartItem, ParkedReceipt, SaleRecord, PaymentType } from './types';
 import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
+import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 // import type { LayoutOrder } from './ScreenSettingsModal';
 export type LayoutOrder = 'cart-numpad-quick' | 'cart-fullscreen' | 'cart-wide-quick' | 'quick-dominant' | 'numpad-dominant' | 'cart-top-actions-bottom' | 'quick-top-cart-bottom' | 'quick-with-detail-sidebar' | 'quick-sidebar-numpad' | 'cart-quick-numpad-float' | string;
 
@@ -273,6 +273,7 @@ export default function MarketPOS({
 
   // Modal states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const paymentSubmitRef = useRef(false);
   const [showManagerAuthModal, setShowManagerAuthModal] = useState(false);
   const [showParkedReceiptsModal, setShowParkedReceiptsModal] = useState(false);
   const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
@@ -289,6 +290,7 @@ export default function MarketPOS({
   const [showOpenCashRegisterModal, setShowOpenCashRegisterModal] = useState(false);
   const [showPageSelectorModal, setShowPageSelectorModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptPrintImmediately, setReceiptPrintImmediately] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [completedPaymentData, setCompletedPaymentData] = useState<any>(null);
   const [catalogMode, setCatalogMode] = useState<'add-to-cart' | 'assign-to-slot'>('add-to-cart');
@@ -427,7 +429,7 @@ export default function MarketPOS({
     return cart.reduce((sum, item) => {
       const price = item.price || item.variant?.price || item.product.price;
       const itemTotal = item.quantity * price;
-      return sum + (itemTotal * item.discount / 100);
+      return sum + lineDiscountMoneyFromPercent(itemTotal, item.discount);
     }, 0);
   }, [cart]);
 
@@ -453,7 +455,7 @@ export default function MarketPOS({
       const salePrice = item.price || item.variant?.price || item.product.price;
       const purchasePrice = item.variant?.cost || item.product.cost || 0;
       const itemSubtotal = item.quantity * salePrice;
-      const itemDiscount = itemSubtotal * (item.discount / 100);
+      const itemDiscount = lineDiscountMoneyFromPercent(itemSubtotal, item.discount);
       const itemNetProfit = (itemSubtotal - itemDiscount) - (item.quantity * purchasePrice);
       profit += itemNetProfit;
     });
@@ -754,7 +756,7 @@ export default function MarketPOS({
       if (existingItem) {
         return prev.map(item =>
           (variant ? item.product.id === product.id && item.variant?.id === variant.id : item.product.id === product.id && !item.variant && item.unit === itemUnit)
-            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * price * (1 - item.discount / 100) }
+            ? { ...item, quantity: item.quantity + quantity, subtotal: lineNetAfterPercentDiscount((item.quantity + quantity) * price, item.discount) }
             : item
         );
       }
@@ -815,7 +817,7 @@ export default function MarketPOS({
         return {
           ...item,
           quantity: newQuantity,
-          subtotal: newQuantity * price * (1 - item.discount / 100)
+          subtotal: lineNetAfterPercentDiscount(newQuantity * price, item.discount)
         };
       }
       return item;
@@ -829,7 +831,7 @@ export default function MarketPOS({
         return {
           ...item,
           price: newPrice,
-          subtotal: item.quantity * newPrice * (1 - item.discount / 100)
+          subtotal: lineNetAfterPercentDiscount(item.quantity * newPrice, item.discount)
         };
       }
       return item;
@@ -845,7 +847,7 @@ export default function MarketPOS({
   const updateCartItemVariant = (index: number, variant: any) => {
     const item = cart[index];
     const newPrice = variant.price;
-    const newSubtotal = newPrice * item.quantity * (1 - item.discount / 100);
+    const newSubtotal = lineNetAfterPercentDiscount(newPrice * item.quantity, item.discount);
 
     setCart(cart.map((cartItem, i) =>
       i === index
@@ -865,7 +867,7 @@ export default function MarketPOS({
           ...item,
           unit: unit,
           multiplier: multiplier,
-          subtotal: item.quantity * price * (1 - item.discount / 100)
+          subtotal: lineNetAfterPercentDiscount(item.quantity * price, item.discount)
         };
       }
       return item;
@@ -951,6 +953,8 @@ export default function MarketPOS({
   };
 
   const handlePaymentComplete = async (paymentData: any) => {
+    if (paymentSubmitRef.current) return;
+    paymentSubmitRef.current = true;
     // Determine payment method from paymentData
     // If payments array exists (V2 modal), use the primary payment method
     // Otherwise use the method field directly (V1 modal)
@@ -1028,7 +1032,8 @@ export default function MarketPOS({
         window.dispatchEvent(event);
       }
 
-      // Show receipt modal
+      setReceiptPrintImmediately(paymentData.showReceiptPreview === false);
+      // Show receipt modal (veya doğrudan yazdırma — Receipt80mm printImmediately)
       setShowReceiptModal(true);
 
       showNotif(t.saleCompleted, 'success');
@@ -1036,6 +1041,8 @@ export default function MarketPOS({
       console.error('Sale save failed:', error);
       showNotif(`Satış kaydedilemedi: ${error.message || 'Bilinmeyen hata'}`, 'error');
       // Do NOT clear cart on error so user can retry
+    } finally {
+      paymentSubmitRef.current = false;
     }
   };
 
@@ -1068,7 +1075,7 @@ export default function MarketPOS({
         return {
           ...item,
           discount: discountPercent,
-          subtotal: item.quantity * price * (1 - discountPercent / 100)
+          subtotal: lineNetAfterPercentDiscount(item.quantity * price, discountPercent)
         };
       }
       return item;
@@ -2308,8 +2315,11 @@ export default function MarketPOS({
         <Receipt80mm
           sale={completedSale}
           paymentData={completedPaymentData}
+          printImmediately={receiptPrintImmediately}
+          initialPrintLanguage={typeof completedPaymentData.language === 'string' ? completedPaymentData.language : 'tr'}
           onClose={() => {
             setShowReceiptModal(false);
+            setReceiptPrintImmediately(false);
             setCompletedSale(null);
             setCompletedPaymentData(null);
           }}

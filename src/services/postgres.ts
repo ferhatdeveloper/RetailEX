@@ -3,7 +3,6 @@ import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
 
 const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname === 'retailex.app';
-const BRIDGE_URL = getBridgeUrl();
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
 export type ConnectionProvider = 'db' | 'rest_api';
@@ -62,54 +61,94 @@ function applyDefaultCurrencyFromConfig(config: any): void {
 }
 
 /**
+ * `host:port/dbname` biçimi (Tauri + Login web — `remote_db` tek alanda).
+ */
+function applyRemoteFromHostPortDbString(remoteDb: string): void {
+  if (!remoteDb || typeof remoteDb !== 'string' || !remoteDb.includes(':') || !remoteDb.includes('/')) return;
+  const host = remoteDb.split(':')[0] || '127.0.0.1';
+  REMOTE_CONFIG.host = host;
+  const portPart = remoteDb.split(':')[1] || '';
+  const portStr = portPart.split('/')[0];
+  if (portStr) REMOTE_CONFIG.port = parseInt(portStr, 10) || 5432;
+  const dbPart = remoteDb.split('/').slice(1).join('/');
+  if (dbPart) REMOTE_CONFIG.database = dbPart;
+}
+
+/**
+ * Web: `exretail_pg_config` ve/veya `retailex_web_config` nesnesini uygular (ikinci kaynak birincinin üzerine yazar).
+ */
+function applyWebLocalStorageConfig(config: any): void {
+  if (!config || typeof config !== 'object') return;
+  DB_SETTINGS.activeMode = 'online';
+  DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
+  DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+
+  if (config.local_host) {
+    LOCAL_CONFIG.host = config.local_host;
+  } else if (config.local_db && typeof config.local_db === 'string' && config.local_db.includes(':')) {
+    LOCAL_CONFIG.host = config.local_db.split(':')[0] || '127.0.0.1';
+    const portPart = config.local_db.split(':')[1] || '';
+    if (portPart) LOCAL_CONFIG.port = parseInt(portPart.split('/')[0], 10) || 5432;
+    if (config.local_db.includes('/')) {
+      LOCAL_CONFIG.database = config.local_db.split('/').slice(1).join('/') || LOCAL_CONFIG.database;
+    }
+  }
+  if (config.local_port != null) LOCAL_CONFIG.port = Number(config.local_port) || LOCAL_CONFIG.port;
+  if (config.local_db && typeof config.local_db === 'string' && !config.local_db.includes(':')) {
+    LOCAL_CONFIG.database = config.local_db;
+  }
+  if (config.pg_local_user) LOCAL_CONFIG.user = config.pg_local_user;
+  if (config.pg_local_pass != null && config.pg_local_pass !== '') LOCAL_CONFIG.password = config.pg_local_pass;
+  if (config.is_configured === true) LOCAL_CONFIG.isConfigured = true;
+
+  if (config.remote_host) {
+    REMOTE_CONFIG.host = config.remote_host;
+    if (config.remote_port != null) REMOTE_CONFIG.port = Number(config.remote_port) || REMOTE_CONFIG.port;
+    if (config.remote_db && typeof config.remote_db === 'string' && !config.remote_db.includes(':')) {
+      REMOTE_CONFIG.database = config.remote_db;
+    }
+  } else if (config.remote_db && typeof config.remote_db === 'string') {
+    if (config.remote_db.includes(':') && config.remote_db.includes('/')) {
+      applyRemoteFromHostPortDbString(config.remote_db);
+    } else {
+      REMOTE_CONFIG.database = config.remote_db;
+    }
+  }
+  if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
+  if (config.pg_remote_pass != null && config.pg_remote_pass !== '') REMOTE_CONFIG.password = config.pg_remote_pass;
+
+  const dFw = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
+  const dPw = String(config.erp_period_nr ?? '').replace(/\D/g, '');
+  if (dFw) ERP_SETTINGS.firmNr = dFw.length <= 3 ? dFw.padStart(3, '0') : dFw;
+  if (dPw) ERP_SETTINGS.periodNr = dPw.length <= 2 ? dPw.padStart(2, '0') : dPw;
+
+  applyDefaultCurrencyFromConfig(config);
+}
+
+/**
  * Initialize all configurations from SQLite backend.
  * @param preloadedConfig - Optional config from App startup (Tauri); avoids duplicate get_app_config call.
  */
 export async function initializeFromSQLite(preloadedConfig?: any) {
   if (!IS_TAURI) {
-    // Web environment: Always use 'online' mode by default
-    DB_SETTINGS.activeMode = 'online';
-    
-    // Load other credentials from localStorage
-    const savedConfig = localStorage.getItem('exretail_pg_config');
-    if (savedConfig) {
-      try {
-        const config = JSON.parse(savedConfig);
-        // We still keep activeMode as 'online' for web, ignoring saved db_mode
-        DB_SETTINGS.activeMode = 'online'; 
-        DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
-        DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
-
-        LOCAL_CONFIG.host = config.local_host || '127.0.0.1';
-        LOCAL_CONFIG.port = config.local_port || 5432;
-        LOCAL_CONFIG.database = config.local_db || 'retailex_local';
-        LOCAL_CONFIG.user = config.pg_local_user || 'postgres';
-        LOCAL_CONFIG.password = config.pg_local_pass || 'Yq7xwQpt6c';
-        LOCAL_CONFIG.isConfigured = config.is_configured === true;
-
-        REMOTE_CONFIG.host = config.remote_host || '127.0.0.1';
-        REMOTE_CONFIG.port = config.remote_port || 5432;
-        REMOTE_CONFIG.user = config.pg_remote_user || 'postgres';
-        REMOTE_CONFIG.password = config.pg_remote_pass || 'Yq7xwQpt6c';
-        REMOTE_CONFIG.database = config.remote_db || 'retailex_local';
-
-        const dFw = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
-        const dPw = String(config.erp_period_nr ?? '').replace(/\D/g, '');
-        ERP_SETTINGS.firmNr = !dFw ? '001' : (dFw.length <= 3 ? dFw.padStart(3, '0') : dFw);
-        ERP_SETTINGS.periodNr = !dPw ? '01' : (dPw.length <= 2 ? dPw.padStart(2, '0') : dPw);
-
-        applyDefaultCurrencyFromConfig(config);
-        
-        console.log('🌐 Web Config Loaded from localStorage');
-      } catch (e) {
-        console.warn('Failed to parse web config', e);
+    const pgFlat = localStorage.getItem('exretail_pg_config');
+    const webFull = localStorage.getItem('retailex_web_config');
+    try {
+      if (pgFlat) {
+        applyWebLocalStorageConfig(JSON.parse(pgFlat));
+      } else {
+        DB_SETTINGS.activeMode = 'online';
+        DB_SETTINGS.connectionProvider = 'db';
+        DB_SETTINGS.remoteRestUrl = '';
       }
-    } else {
-      // Default Online Mode for Web when no config exists
-      DB_SETTINGS.activeMode = 'online';
-      DB_SETTINGS.connectionProvider = 'db';
-      DB_SETTINGS.remoteRestUrl = '';
-      console.log('🌐 Web Mode: Defaulting to Online (127.0.0.1)');
+      if (webFull) applyWebLocalStorageConfig(JSON.parse(webFull));
+      if (pgFlat || webFull) {
+        console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
+      } else {
+        console.log('🌐 Web Mode: Defaulting to Online (127.0.0.1)');
+      }
+    } catch (e) {
+      console.warn('Failed to parse web localStorage config', e);
     }
     return;
   }
@@ -271,17 +310,19 @@ export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_C
     if (!IS_TAURI) {
       // Browser: Check bridge status first
       try {
-        const bridgeStatus = await fetch(`${BRIDGE_URL}/api/status`).then(r => r.json());
+        const bridgeStatus = await fetch(`${getBridgeUrl()}/api/status`).then(r => r.json());
         if (bridgeStatus.status !== 'RUNNING') throw new Error('Bridge is not running');
       } catch (e) {
-        throw new Error('PostgreSQL Bridge bağlantısı kurulamadı. Lütfen bridge servisini başlatın.');
+        throw new Error(
+          'PostgreSQL Bridge yanıt vermiyor (port 3001). Proje kökünde ayrı terminalde `npm run bridge` çalıştırın veya `npm run dev:with-bridge` kullanın.'
+        );
       }
 
       // Connectivity test via bridge (try a simple query)
       const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
       const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
       
-      const response = await fetch(`${BRIDGE_URL}/api/pg_query`, {
+      const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connStr, sql: 'SELECT version()', params: [] })
@@ -321,6 +362,82 @@ export async function testDbConfig(config: typeof LOCAL_CONFIG | typeof REMOTE_C
     } else {
       throw new Error(status);
     }
+  } catch (error: any) {
+    return {
+      connected: false,
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      mode: DB_SETTINGS.activeMode,
+      error: error.message || 'Bağlantı başarısız',
+    };
+  }
+}
+
+/**
+ * Kayıt etmeden önce: verilen host/kimlik bilgileriyle doğrudan `SELECT version()` çalıştırır.
+ * Tauri: `pg_query`; tarayıcı: bridge. (Mevcut `testDbConfig` Tauri’de yalnızca kayıtlı local_db’ye bakıyordu.)
+ */
+export async function testPostgresEndpoint(config: {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+}): Promise<PostgresStatus> {
+  const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
+  const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+
+  try {
+    if (!IS_TAURI) {
+      try {
+        const bridgeStatus = await fetch(`${getBridgeUrl()}/api/status`).then((r) => r.json());
+        if (bridgeStatus.status !== 'RUNNING') throw new Error('Bridge is not running');
+      } catch (e) {
+        throw new Error(
+          'PostgreSQL Bridge yanıt vermiyor (port 3001). Proje kökünde ayrı terminalde `npm run bridge` çalıştırın veya `npm run dev:with-bridge` kullanın.'
+        );
+      }
+
+      const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connStr, sql: 'SELECT version() AS version', params: [] }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any).error || 'Bağlantı hatası');
+      }
+
+      const res = await response.json();
+      const row = res.rows?.[0];
+      const version = row?.version != null ? String(row.version) : undefined;
+      return {
+        connected: true,
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        mode: DB_SETTINGS.activeMode,
+        version,
+      };
+    }
+
+    const resultJson: string = await safeInvoke('pg_query', {
+      connStr,
+      sql: 'SELECT version() AS version',
+      params: [],
+    });
+    const rows = JSON.parse(resultJson) as { version?: string }[];
+    const version = rows[0]?.version != null ? String(rows[0].version) : undefined;
+    return {
+      connected: true,
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      mode: DB_SETTINGS.activeMode,
+      version,
+    };
   } catch (error: any) {
     return {
       connected: false,
@@ -535,12 +652,6 @@ export class PostgresConnection {
     // 1. Resolve Dynamic Table Names (Query Rewriting)
     let resolvedSql = sql;
 
-    // Diagnostik log (Orijinal tipler)
-    if (params.length > 0) {
-      const types = params.map(p => p === null ? 'null' : typeof p);
-      console.log(`[PG Params Types Original]`, types);
-    }
-
     // Normalizasyon: Postgres bridge için tipleri koru (booleans/numbers ham iletilir).
     // Dizileri stringify etme — ANY($1) ve array parametreleri için gerçek dizi gönderilmeli (Tauri/Rust tarafında doğru bind edilsin).
     const normalizedParams = params.map((p: any) => {
@@ -557,13 +668,6 @@ export class PostgresConnection {
 
       return String(p);
     });
-
-    // Diagnostik log (Normalize edilmiş tipler ve DEĞERLER)
-    if (normalizedParams.length > 0) {
-      const types = normalizedParams.map((p: any) => p === null ? 'null' : typeof p);
-      console.log(`[PG Params Types Normalized]`, types);
-      console.log(`[PG Params VALUES]`, JSON.stringify(normalizedParams, null, 2));
-    }
 
     const effectiveFirmNr = (options?.firmNr || ERP_SETTINGS.firmNr || '001')
       .toString().padStart(3, '0');
@@ -596,8 +700,6 @@ export class PostgresConnection {
       }
     });
 
-    console.log(`[PG Query] [${DB_SETTINGS.activeMode}]`, resolvedSql, JSON.parse(JSON.stringify(normalizedParams)));
-
     // Attempt to log to a file for AI to read (no-op if Tauri backend has no log_to_file command)
     if (IS_TAURI) {
       void safeInvoke('log_to_file', {
@@ -619,7 +721,7 @@ export class PostgresConnection {
         rows = JSON.parse(resultJson);
       } else {
         // Web Environment: Use Bridge
-        const response = await fetch(`${BRIDGE_URL}/api/pg_query`, {
+        const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams })
@@ -740,7 +842,7 @@ export class PostgresConnection {
   async getFirmDetails(firmNr: string): Promise<any> {
     try {
       const result = await this.query(
-        'SELECT * FROM firms WHERE nr = $1 AND is_active = true',
+        'SELECT * FROM firms WHERE firm_nr = $1 AND is_active = true',
         [firmNr]
       );
       if (result.rows.length > 0) {

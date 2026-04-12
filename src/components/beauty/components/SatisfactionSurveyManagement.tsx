@@ -1,7 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Plus, Trash2, Save, ClipboardList, ToggleLeft, ToggleRight, GripVertical } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+    Card,
+    Button,
+    Input,
+    InputNumber,
+    Select,
+    Switch,
+    Typography,
+    Space,
+    Tag,
+    List,
+    Spin,
+    Empty,
+    Popconfirm,
+    Checkbox,
+} from 'antd';
+import {
+    PlusOutlined,
+    DeleteOutlined,
+    SaveOutlined,
+    HolderOutlined,
+} from '@ant-design/icons';
+import { ClipboardList } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -12,14 +32,20 @@ import type {
     SatisfactionLangCode,
     SatisfactionQuestionType,
 } from '../../../types/beauty';
-import '../ClinicStyles.css';
+import {
+    RETAILEX_BORDER_SUBTLE,
+    RETAILEX_PAGE_BG,
+    RETAILEX_PRIMARY,
+    RETAILEX_TEXT_PRIMARY,
+} from '../../../theme/retailexAntdTheme';
+import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 
 const LANGS: SatisfactionLangCode[] = ['tr', 'en', 'ar', 'ku'];
 
 const EMPTY_LABELS = (): BeautySatisfactionLabels => ({ tr: '', en: '', ar: '', ku: '' });
 
 export function SatisfactionSurveyManagement() {
-    const { tm } = useLanguage();
+    const { tm, t } = useLanguage();
     const [surveys, setSurveys] = useState<BeautySatisfactionSurvey[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -46,7 +72,9 @@ export function SatisfactionSurveyManagement() {
         }
     }, []);
 
-    useEffect(() => { void load(); }, [load]);
+    useEffect(() => {
+        void load();
+    }, [load]);
 
     useEffect(() => {
         if (!selectedId) {
@@ -105,7 +133,6 @@ export function SatisfactionSurveyManagement() {
     };
 
     const handleDeleteSurvey = async (id: string) => {
-        if (!window.confirm(tm('bSurveyDeleteConfirm'))) return;
         try {
             await beautyService.deleteSatisfactionSurvey(id);
             if (selectedId === id) setSelectedId(null);
@@ -176,7 +203,7 @@ export function SatisfactionSurveyManagement() {
             prev.map(x => {
                 if (x.id !== qid) return x;
                 return { ...x, labels_json: { ...x.labels_json, [lang]: value } };
-            })
+            }),
         );
     };
 
@@ -190,229 +217,306 @@ export function SatisfactionSurveyManagement() {
         return m[code];
     };
 
+    const questionTypeOptions = [
+        { value: 'rating' as const, label: tm('bSurveyTypeRating') },
+        { value: 'text' as const, label: tm('bSurveyTypeText') },
+        { value: 'yes_no' as const, label: tm('bSurveyTypeYesNo') },
+    ];
+
     return (
-        <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-                        <ClipboardList className="text-purple-600" size={26} />
-                        {tm('bSatisfactionSurveysTitle')}
-                    </h1>
-                    <p className="text-sm text-gray-500 mt-1">{tm('bSatisfactionSurveysSubtitle')}</p>
-                </div>
-                <Button
-                    onClick={handleCreateSurvey}
-                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-2xl"
-                >
-                    <Plus size={18} className="mr-2" />
-                    {tm('bSurveyNew')}
-                </Button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div className="lg:col-span-4 space-y-2">
-                    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                        <div className="px-4 py-3 border-b border-gray-100 font-bold text-sm text-gray-700">
-                            {tm('bSurveyList')}
-                        </div>
-                        {loading ? (
-                            <div className="p-6 text-center text-gray-400 text-sm">{tm('bLoading')}</div>
-                        ) : surveys.length === 0 ? (
-                            <div className="p-6 text-center text-gray-400 text-sm">{tm('bSurveyEmpty')}</div>
-                        ) : (
-                            <ul className="divide-y divide-gray-50 max-h-[60vh] overflow-y-auto">
-                                {surveys.map(s => (
-                                    <li key={s.id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedId(s.id)}
-                                            className={`w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors ${
-                                                selectedId === s.id ? 'bg-purple-50' : 'hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            <span className="font-semibold text-gray-900 truncate">{s.name}</span>
-                                            {s.is_active ? (
-                                                <span className="text-[10px] font-black uppercase text-green-700 bg-green-100 px-2 py-0.5 rounded">
-                                                    {tm('bSurveyActive')}
-                                                </span>
-                                            ) : (
-                                                <span className="text-[10px] text-gray-400">{tm('bSurveyInactive')}</span>
-                                            )}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
+        <div className="flex min-h-0 w-full flex-col" style={{ backgroundColor: RETAILEX_PAGE_BG }}>
+            <div className="w-full px-4 pb-4 pt-2">
+                <Card bordered className="!shadow-none" styles={{ body: { padding: 0 } }}>
+                    <div
+                        className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
+                        style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
+                    >
+                        <Space align="start" size={12}>
+                            <div
+                                className="flex h-12 w-12 items-center justify-center rounded-xl border"
+                                style={{
+                                    background: '#f9f0ff',
+                                    borderColor: '#d3adf7',
+                                    color: RETAILEX_PRIMARY,
+                                }}
+                                aria-hidden
+                            >
+                                <ClipboardList className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <Typography.Title
+                                    level={5}
+                                    className="!mb-0.5 !text-base !font-semibold"
+                                    style={{ color: RETAILEX_PRIMARY }}
+                                >
+                                    {tm('bSatisfactionSurveysTitle')}
+                                </Typography.Title>
+                                <Typography.Text type="secondary" className="text-xs">
+                                    {tm('bSatisfactionSurveysSubtitle')}
+                                </Typography.Text>
+                            </div>
+                        </Space>
+                        <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
+                            {tm('bSurveyNew')}
+                        </Button>
                     </div>
-                </div>
 
-                <div className="lg:col-span-8 space-y-4">
-                    {!selectedId ? (
-                        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center text-gray-400">
-                            {tm('bSurveySelectOrCreate')}
-                        </div>
-                    ) : (
-                        <>
-                            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <h2 className="text-lg font-bold text-gray-900">{tm('bSurveySettings')}</h2>
-                                    <Button
-                                        variant="outline"
-                                        className="text-red-600 border-red-200"
-                                        onClick={() => handleDeleteSurvey(selectedId)}
-                                    >
-                                        <Trash2 size={16} className="mr-1" />
-                                        {tm('bSurveyDelete')}
-                                    </Button>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">
-                                            {tm('bSurveyName')}
-                                        </label>
-                                        <Input
-                                            value={surveyName}
-                                            onChange={e => setSurveyName(e.target.value)}
-                                            className="mt-1 rounded-xl"
-                                        />
+                    <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-12">
+                        <div className="lg:col-span-4">
+                            <Card
+                                bordered
+                                size="small"
+                                className="!shadow-none h-full min-h-[200px]"
+                                style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                                title={
+                                    <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
+                                        {tm('bSurveyList')}
+                                    </Typography.Text>
+                                }
+                                styles={{ body: { padding: 0 } }}
+                            >
+                                {loading ? (
+                                    <div className="flex justify-center py-12">
+                                        <Spin />
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">
-                                            {tm('bSurveySortOrder')}
-                                        </label>
-                                        <Input
-                                            type="number"
-                                            value={surveyOrder}
-                                            onChange={e => setSurveyOrder(Number(e.target.value) || 0)}
-                                            className="mt-1 rounded-xl"
-                                        />
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setSurveyActive(a => !a)}
-                                    className="flex items-center gap-2 text-sm font-bold text-gray-700"
-                                >
-                                    {surveyActive ? <ToggleRight className="text-green-600" size={28} /> : <ToggleLeft className="text-gray-400" size={28} />}
-                                    {surveyActive ? tm('bSurveyActiveHint') : tm('bSurveyInactiveHint')}
-                                </button>
-                                <Button
-                                    onClick={handleSaveSurvey}
-                                    disabled={savingSurvey || !surveyName.trim()}
-                                    className="bg-purple-600 hover:bg-purple-700"
-                                >
-                                    <Save size={16} className="mr-2" />
-                                    {savingSurvey ? tm('bSaving') : tm('save')}
-                                </Button>
-                            </div>
-
-                            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                                    <div className="flex items-center gap-2 font-bold text-gray-800">
-                                        <GripVertical size={18} className="text-gray-400" />
-                                        {tm('bSurveyQuestions')}
-                                    </div>
-                                    <Button size="sm" onClick={handleAddQuestion} disabled={!!savingQ} className="bg-purple-600">
-                                        <Plus size={14} className="mr-1" />
-                                        {tm('bSurveyAddQuestion')}
-                                    </Button>
-                                </div>
-                                <div className="divide-y divide-gray-50 max-h-[min(70vh,900px)] overflow-y-auto">
-                                    {questions.map(q => (
-                                        <div key={q.id} className="p-5 space-y-4 bg-white">
-                                            <div className="flex flex-wrap gap-3 items-end">
-                                                <div>
-                                                    <label className="text-[10px] font-black text-gray-500 uppercase">
-                                                        {tm('bSurveyQuestionType')}
-                                                    </label>
-                                                    <select
-                                                        value={q.question_type}
-                                                        onChange={e =>
-                                                            updateQuestionLocal(q.id, {
-                                                                question_type: e.target.value as SatisfactionQuestionType,
-                                                            })
-                                                        }
-                                                        className="mt-1 block h-10 rounded-xl border border-gray-200 px-3 text-sm"
-                                                    >
-                                                        <option value="rating">{tm('bSurveyTypeRating')}</option>
-                                                        <option value="text">{tm('bSurveyTypeText')}</option>
-                                                        <option value="yes_no">{tm('bSurveyTypeYesNo')}</option>
-                                                    </select>
+                                ) : surveys.length === 0 ? (
+                                    <Empty className="py-8" description={tm('bSurveyEmpty')} />
+                                ) : (
+                                    <List
+                                        dataSource={surveys}
+                                        split
+                                        renderItem={s => (
+                                            <List.Item
+                                                className="!cursor-pointer !px-4 transition-colors hover:bg-slate-50"
+                                                style={{
+                                                    backgroundColor:
+                                                        selectedId === s.id ? 'rgba(114, 46, 209, 0.06)' : undefined,
+                                                    borderBlockColor: RETAILEX_BORDER_SUBTLE,
+                                                }}
+                                                onClick={() => setSelectedId(s.id)}
+                                            >
+                                                <div className="flex w-full min-w-0 items-center justify-between gap-2">
+                                                    <Typography.Text strong className="truncate !text-[#262626]">
+                                                        {s.name}
+                                                    </Typography.Text>
+                                                    {s.is_active ? (
+                                                        <Tag color="success" className="!m-0 shrink-0">
+                                                            {tm('bSurveyActive')}
+                                                        </Tag>
+                                                    ) : (
+                                                        <Typography.Text type="secondary" className="!text-[10px] shrink-0">
+                                                            {tm('bSurveyInactive')}
+                                                        </Typography.Text>
+                                                    )}
                                                 </div>
-                                                {q.question_type === 'rating' && (
-                                                    <div>
-                                                        <label className="text-[10px] font-black text-gray-500 uppercase">
-                                                            {tm('bSurveyScaleMax')}
-                                                        </label>
-                                                        <Input
-                                                            type="number"
-                                                            min={2}
-                                                            max={10}
-                                                            value={q.scale_max}
-                                                            onChange={e =>
-                                                                updateQuestionLocal(q.id, {
-                                                                    scale_max: Number(e.target.value) || 5,
-                                                                })
-                                                            }
-                                                            className="mt-1 w-24 rounded-xl"
-                                                        />
-                                                    </div>
-                                                )}
-                                                <label className="flex items-center gap-2 text-sm cursor-pointer pb-1">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={q.is_required}
-                                                        onChange={e =>
-                                                            updateQuestionLocal(q.id, { is_required: e.target.checked })
-                                                        }
-                                                    />
-                                                    {tm('bSurveyRequired')}
-                                                </label>
-                                                <div className="flex-1" />
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="text-red-600"
-                                                    onClick={() => handleDeleteQuestion(q.id)}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    onClick={() => handleSaveQuestion(q)}
-                                                    disabled={savingQ === q.id}
-                                                    className="bg-purple-600"
-                                                >
-                                                    {savingQ === q.id ? tm('bSaving') : tm('save')}
-                                                </Button>
-                                            </div>
+                                            </List.Item>
+                                        )}
+                                    />
+                                )}
+                            </Card>
+                        </div>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                {LANGS.map(lang => (
-                                                    <div key={lang}>
-                                                        <label className="text-[10px] font-black text-gray-500 uppercase">
-                                                            {tm('bSurveyQuestionText')} ({langLabel(lang)})
-                                                        </label>
-                                                        <Input
-                                                            value={q.labels_json[lang] ?? ''}
-                                                            onChange={e => updateLabel(q.id, lang, e.target.value)}
-                                                            dir={lang === 'ar' || lang === 'ku' ? 'rtl' : 'ltr'}
-                                                            className="mt-1 rounded-xl"
-                                                            placeholder=""
-                                                        />
-                                                    </div>
-                                                ))}
+                        <div className="flex min-h-0 flex-col gap-4 lg:col-span-8">
+                            {!selectedId ? (
+                                <Card
+                                    bordered
+                                    className="!shadow-none flex min-h-[320px] flex-1 items-center justify-center"
+                                    style={{
+                                        borderStyle: 'dashed',
+                                        borderColor: RETAILEX_BORDER_SUBTLE,
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                                    }}
+                                >
+                                    <Empty description={tm('bSurveySelectOrCreate')} />
+                                </Card>
+                            ) : (
+                                <>
+                                    <Card
+                                        bordered
+                                        className="!shadow-none"
+                                        style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                                        title={
+                                            <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
+                                                {tm('bSurveySettings')}
+                                            </Typography.Text>
+                                        }
+                                        extra={
+                                            <Popconfirm
+                                                title={tm('bSurveyDeleteConfirm')}
+                                                okText={tm('delete')}
+                                                cancelText={tm('cancel')}
+                                                onConfirm={() => void handleDeleteSurvey(selectedId)}
+                                            >
+                                                <Button danger type="default" icon={<DeleteOutlined />}>
+                                                    {tm('bSurveyDelete')}
+                                                </Button>
+                                            </Popconfirm>
+                                        }
+                                    >
+                                        <Space direction="vertical" size="middle" className="w-full">
+                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <div>
+                                                    <RetailExFlatFieldLabel>{tm('bSurveyName')}</RetailExFlatFieldLabel>
+                                                    <Input
+                                                        className="!rounded-2xl !px-4 !py-2.5"
+                                                        value={surveyName}
+                                                        onChange={e => setSurveyName(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <RetailExFlatFieldLabel>{tm('bSurveySortOrder')}</RetailExFlatFieldLabel>
+                                                    <InputNumber
+                                                        className="w-full !rounded-2xl"
+                                                        min={0}
+                                                        value={surveyOrder}
+                                                        onChange={v => setSurveyOrder(Number(v) || 0)}
+                                                    />
+                                                </div>
                                             </div>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <Switch checked={surveyActive} onChange={setSurveyActive} />
+                                                <Typography.Text type="secondary" className="text-sm">
+                                                    {surveyActive ? tm('bSurveyActiveHint') : tm('bSurveyInactiveHint')}
+                                                </Typography.Text>
+                                            </div>
+                                            <Button
+                                                type="primary"
+                                                icon={<SaveOutlined />}
+                                                onClick={() => void handleSaveSurvey()}
+                                                disabled={savingSurvey || !surveyName.trim()}
+                                                loading={savingSurvey}
+                                            >
+                                                {savingSurvey ? tm('bSaving') : tm('save')}
+                                            </Button>
+                                        </Space>
+                                    </Card>
+
+                                    <Card
+                                        bordered
+                                        className="!shadow-none flex min-h-0 flex-1 flex-col overflow-hidden"
+                                        style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                                        styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 } }}
+                                        title={
+                                            <Space>
+                                                <HolderOutlined className="text-slate-400" />
+                                                <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
+                                                    {tm('bSurveyQuestions')}
+                                                </Typography.Text>
+                                            </Space>
+                                        }
+                                        extra={
+                                            <Button
+                                                type="primary"
+                                                size="small"
+                                                icon={<PlusOutlined />}
+                                                onClick={() => void handleAddQuestion()}
+                                                disabled={!!savingQ}
+                                                loading={savingQ === 'new'}
+                                            >
+                                                {tm('bSurveyAddQuestion')}
+                                            </Button>
+                                        }
+                                    >
+                                        <div className="min-h-0 flex-1 overflow-y-auto">
+                                            {questions.length === 0 ? (
+                                                <Empty className="py-10" description={tm('bSurveyNoQuestions')} />
+                                            ) : (
+                                                questions.map(q => (
+                                                    <div
+                                                        key={q.id}
+                                                        className="space-y-4 border-b p-5 last:border-b-0"
+                                                        style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
+                                                    >
+                                                        <div className="flex flex-wrap items-end gap-3">
+                                                            <div className="min-w-[140px]">
+                                                                <RetailExFlatFieldLabel>
+                                                                    {tm('bSurveyQuestionType')}
+                                                                </RetailExFlatFieldLabel>
+                                                                <Select
+                                                                    className="w-full [&_.ant-select-selector]:!rounded-xl"
+                                                                    value={q.question_type}
+                                                                    onChange={v =>
+                                                                        updateQuestionLocal(q.id, {
+                                                                            question_type: v as SatisfactionQuestionType,
+                                                                        })
+                                                                    }
+                                                                    options={questionTypeOptions}
+                                                                />
+                                                            </div>
+                                                            {q.question_type === 'rating' && (
+                                                                <div>
+                                                                    <RetailExFlatFieldLabel>
+                                                                        {tm('bSurveyScaleMax')}
+                                                                    </RetailExFlatFieldLabel>
+                                                                    <InputNumber
+                                                                        className="!rounded-xl"
+                                                                        min={2}
+                                                                        max={10}
+                                                                        value={q.scale_max}
+                                                                        onChange={v =>
+                                                                            updateQuestionLocal(q.id, {
+                                                                                scale_max: Number(v) || 5,
+                                                                            })
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            <Checkbox
+                                                                checked={q.is_required}
+                                                                onChange={e =>
+                                                                    updateQuestionLocal(q.id, {
+                                                                        is_required: e.target.checked,
+                                                                    })
+                                                                }
+                                                            >
+                                                                {tm('bSurveyRequired')}
+                                                            </Checkbox>
+                                                            <div className="flex flex-1 flex-wrap justify-end gap-2">
+                                                                <Popconfirm
+                                                                    title={t.confirmDelete}
+                                                                    okText={tm('delete')}
+                                                                    cancelText={tm('cancel')}
+                                                                    onConfirm={() => void handleDeleteQuestion(q.id)}
+                                                                >
+                                                                    <Button danger size="small" icon={<DeleteOutlined />} />
+                                                                </Popconfirm>
+                                                                <Button
+                                                                    type="primary"
+                                                                    size="small"
+                                                                    onClick={() => void handleSaveQuestion(q)}
+                                                                    loading={savingQ === q.id}
+                                                                >
+                                                                    {savingQ === q.id ? tm('bSaving') : tm('save')}
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                            {LANGS.map(lang => (
+                                                                <div key={lang}>
+                                                                    <RetailExFlatFieldLabel>
+                                                                        {tm('bSurveyQuestionText')} ({langLabel(lang)})
+                                                                    </RetailExFlatFieldLabel>
+                                                                    <Input
+                                                                        className="!rounded-xl !px-4 !py-2"
+                                                                        value={q.labels_json[lang] ?? ''}
+                                                                        onChange={e =>
+                                                                            updateLabel(q.id, lang, e.target.value)
+                                                                        }
+                                                                        dir={lang === 'ar' || lang === 'ku' ? 'rtl' : 'ltr'}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
                                         </div>
-                                    ))}
-                                    {questions.length === 0 && (
-                                        <div className="p-8 text-center text-gray-400 text-sm">{tm('bSurveyNoQuestions')}</div>
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
+                                    </Card>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </Card>
             </div>
         </div>
     );

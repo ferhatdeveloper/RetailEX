@@ -6,7 +6,7 @@
 
 import { ReactNode } from 'react';
 import {
-  TrendingUp, DollarSign, Package, Users, ShoppingCart,
+  TrendingUp, Banknote, Package, Users, ShoppingCart,
   AlertTriangle, BarChart3, PieChart, Activity, Clock
 } from 'lucide-react';
 
@@ -113,7 +113,7 @@ export class RevenueWidget extends Widget {
     return (
       <WidgetCard
         title={this.config.title}
-        icon={<DollarSign className="w-5 h-5" />}
+        icon={<Banknote className="w-5 h-5" />}
         size={this.config.size}
       >
         <div className="p-4">

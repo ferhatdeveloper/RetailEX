@@ -1,9 +1,9 @@
-﻿// ğŸ‘¤ Personnel Management - Personel Yönetim Sistemi
+// ğŸ‘¤ Personnel Management - Personel Yönetim Sistemi
 // Employee accounts, performance tracking, daily reports, shift management
 
 import { useState, useEffect } from 'react';
 import {
-  Users, TrendingUp, DollarSign, Clock, Award, AlertCircle,
+  Users, TrendingUp, Banknote, Clock, Award, AlertCircle,
   Plus, Edit, X, Save, Eye, BarChart3, Download, Calendar,
   CheckCircle, XCircle, CreditCard, Smartphone, QrCode, MapPin,
   Navigation, Radio
@@ -196,7 +196,7 @@ export function CashierManagement({ darkMode, onBack }: CashierManagementProps) 
       {
         id: '1',
         name: 'Nakit',
-        icon: DollarSign,
+        icon: Banknote,
         color: 'text-green-600',
         enabled: true,
         total_today: 3700000,
@@ -494,7 +494,7 @@ export function CashierManagement({ darkMode, onBack }: CashierManagementProps) 
         <div className={`${cardClass} border rounded-xl p-4`}>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-white" />
+              <Banknote className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="text-sm text-gray-500">Bugünkü Satış</div>

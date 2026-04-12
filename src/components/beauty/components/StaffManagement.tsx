@@ -228,14 +228,18 @@ export function StaffManagement() {
                         <div className="p-6 text-white flex items-center justify-between" style={{ backgroundColor: editing.color ?? '#9333ea' }}>
                             <div>
                                 <h2 className="text-lg font-black">{isEdit ? 'Personel Düzenle' : 'Yeni Personel'}</h2>
-                                <p className="text-white/70 text-xs mt-1">beauty.rex_firma_beauty_specialists</p>
+                                <p className="text-white/70 text-xs mt-1">
+                                    {isEdit
+                                        ? 'Kullanıcı Yönetimi ile aynı kayıt; prim ve uzmanlık burada güncellenir.'
+                                        : 'Yeni kart yalnızca güzellikte kullanılır; asıl personel Kullanıcı Yönetimi’nden eklenir.'}
+                                </p>
                             </div>
                             <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/20 rounded-xl transition"><X size={20} /></button>
                         </div>
                         <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
                             <div>
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Tam Ad <span className="text-red-500">*</span></label>
-                                <Input value={editing.name ?? ''} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))} placeholder="Ayşe Kaya" className="border-slate-200 rounded-xl focus:border-purple-400" />
+                                <Input value={editing.name ?? ''} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))} placeholder="Zahra" className="border-slate-200 rounded-xl focus:border-purple-400" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>

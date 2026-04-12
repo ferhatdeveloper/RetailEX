@@ -16,6 +16,7 @@ import {
   refreshFirmScopedStores,
   refreshPeriodScopedStores,
 } from '../store/refreshFirmScopedStores';
+import { toSqlDateInputString } from '../utils/localCalendarDate';
 
 /** firms.firm_nr ile SQLite erp_firm_nr aynı biçimde eşlensin (2 ↔ 002); rex_{nr}_customers için şart */
 function normalizeFirmNr(v: string | number | undefined | null): string {
@@ -316,18 +317,6 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         console.log('[FirmaDonemContext] is_active type:', typeof rows[0].is_active);
       }
 
-      // Date formatting function
-      const formatDate = (dateInput: any) => {
-        if (!dateInput) return '';
-        try {
-          const date = new Date(dateInput);
-          if (isNaN(date.getTime())) return dateInput.toString();
-          return date.toLocaleDateString('tr-TR');
-        } catch (e) {
-          return dateInput.toString();
-        }
-      };
-
       let mappedPeriods = (rows || []).map((p: any) => {
         const isActive = p.is_active === true || p.is_active === 1 || p.is_active === 'true';
 
@@ -337,8 +326,9 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
           nr: p.nr,
           donem_no: p.nr, // Alias
           active: isActive,
-          beg_date: formatDate(p.beg_date),
-          end_date: formatDate(p.end_date)
+          // Her zaman YYYY-MM-DD: input[type=date], SQL $n::date ve raporlar için (tr-TR kısa format kullanma)
+          beg_date: toSqlDateInputString(p.beg_date) || '',
+          end_date: toSqlDateInputString(p.end_date) || ''
         };
 
         console.log('[FirmaDonemContext] Mapped period:', {

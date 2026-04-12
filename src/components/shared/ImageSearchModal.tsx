@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Search, Loader2, AlertCircle, Download } from 'lucide-react';
 import { imageSearchService, type ImageSearchResult } from '../../services/imageSearchService';
 import { toast } from 'sonner';
@@ -95,7 +95,9 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <div>
                         <h2 className="text-lg font-bold text-gray-900">İnternetten Resim Ara</h2>
-                        <p className="text-xs text-gray-500 mt-0.5">Unsplash üzerinden ücretsiz, yüksek kaliteli resimler</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            Önce Unsplash; limit veya boş sonuçta Wikimedia Commons ve Openverse yedek kaynakları
+                        </p>
                     </div>
                     <button
                         onClick={onClose}
@@ -242,8 +244,8 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
 
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
-                    <p className="text-xs text-gray-500 text-center">
-                        Resimler{' '}
+                    <p className="text-xs text-gray-500 text-center leading-relaxed">
+                        Kaynaklar:{' '}
                         <a
                             href="https://unsplash.com"
                             target="_blank"
@@ -252,7 +254,26 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                         >
                             Unsplash
                         </a>
-                        {' '}tarafından sağlanmaktadır • Seçilen resimler 800x800 boyutunda optimize edilir
+                        {' '}
+                        (öncelik),{' '}
+                        <a
+                            href="https://commons.wikimedia.org"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline font-medium"
+                        >
+                            Wikimedia Commons
+                        </a>
+                        ,{' '}
+                        <a
+                            href="https://openverse.org"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline font-medium"
+                        >
+                            Openverse
+                        </a>
+                        . Lisanslar kaynak sitelerde. Seçilen resimler 800×800’e yakın optimize edilir.
                     </p>
                 </div>
             </div>

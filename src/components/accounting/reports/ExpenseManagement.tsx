@@ -14,7 +14,7 @@
 import { useState, useEffect } from 'react';
 import {
   Receipt, Plus, Edit, Trash2, Search, Calendar, Building2,
-  DollarSign, TrendingUp, Download, Filter, X, FileText, Upload
+  Banknote, TrendingUp, Download, Filter, X, FileText, Upload
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -402,7 +402,7 @@ export function ExpenseManagement() {
               <p className="text-sm text-red-600 mb-1">Toplam Gider</p>
               <p className="text-2xl font-bold text-red-900">{formatCurrency(totalExpenses)}</p>
             </div>
-            <DollarSign className="w-8 h-8 text-red-600" />
+            <Banknote className="w-8 h-8 text-red-600" />
           </div>
         </div>
         <div className="bg-orange-50 rounded-lg p-4">

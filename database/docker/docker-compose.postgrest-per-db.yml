@@ -1,0 +1,86 @@
+# Berqenas: her PostgreSQL veritabanı için ayrı PostgREST örneği ve ayrı host portu.
+# Kullanım (ana compose ile birlikte):
+#   cd /opt/berqenas-cloud
+#   docker compose -f docker-compose.yml -f database/docker/docker-compose.postgrest-per-db.yml up -d
+# Sunucuda dosya yolu farklıysa bu dosyayı /opt/berqenas-cloud/ altına kopyalayın.
+#
+# Ön koşul: Her hedef DB'de 007_postgrest_anon_role.sql çalışmış olmalı (anon rolü).
+# Şifre: Ana compose ile aynı — .env içinde POSTGRES_PASSWORD veya varsayılan.
+
+x-postgrest-env: &postgrest-env
+  PGRST_DB_ANON_ROLE: anon
+  PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos"
+  PGRST_SERVER_HOST: "0.0.0.0"
+  PGRST_SERVER_PORT: "3000"
+  PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
+
+services:
+  postgrest_merkez:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_merkez
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/merkez_db
+    ports:
+      - "0.0.0.0:3002:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_aqua_beauty:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_aqua_beauty
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/aqua_beauty_db
+    ports:
+      - "0.0.0.0:3003:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_qubocoffe:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_qubocoffe
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/qubocoffe_db
+    ports:
+      - "0.0.0.0:3004:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_dismarco:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_dismarco
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/dismarco_db
+    ports:
+      - "0.0.0.0:3005:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_bestcom:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_bestcom
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/bestcom_db
+    ports:
+      - "0.0.0.0:3006:3000"
+    networks:
+      berqenas_net: {}

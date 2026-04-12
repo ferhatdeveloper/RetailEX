@@ -99,7 +99,20 @@ export default defineConfig({
     port: 6173,
     open: false,
     proxy: {
+      /** pg_bridge — tarayıcı aynı origin (Vite) üzerinden; köprü yine :3001'de çalışmalı */
+      '/api/status': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/api/pg_query': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/caller_id': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      '/api/delivery_order': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },

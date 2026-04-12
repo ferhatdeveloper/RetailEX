@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, CalendarDays, X } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { BeautyAppointment } from '../../../types/beauty';
+import { AppointmentStatus, BeautyAppointment } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { CLINIC } from '../clinicDesignTokens';
@@ -97,21 +97,25 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                                     >
                                         {dayAppointments.length > 0 ? (
                                             <div className="space-y-1">
-                                                {dayAppointments.map(apt => (
+                                                {dayAppointments.map(apt => {
+                                                    const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                    const accent = apt.service_color || '#9333ea';
+                                                    return (
                                                     <div
                                                         key={apt.id}
                                                         onClick={(e) => { e.stopPropagation(); onAppointmentClick(apt); }}
                                                         className="p-2 rounded-lg border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-all text-[10px]"
                                                         style={{
-                                                            borderLeftColor: apt.service_color || '#9333ea',
-                                                            backgroundColor: `${apt.service_color || '#9333ea'}10`
+                                                            borderLeftColor: done ? '#059669' : accent,
+                                                            backgroundColor: done ? 'rgba(5, 150, 105, 0.16)' : `${accent}10`,
                                                         }}
                                                     >
-                                                        <div className="font-bold text-gray-900 truncate uppercase">{apt.customer_name}</div>
-                                                        <div className="text-gray-600 truncate mt-0.5">{apt.service_name}</div>
-                                                        <div className="text-[8px] text-gray-400 mt-0.5 font-medium">{apt.specialist_name ?? apt.staff_name}</div>
+                                                        <div className="font-bold text-gray-900 truncate uppercase">{apt.customer_name ?? '—'}</div>
+                                                        <div className="text-gray-600 truncate mt-0.5">{apt.service_name ?? '—'}</div>
+                                                        <div className="text-[8px] text-gray-400 mt-0.5 font-medium">{apt.specialist_name ?? apt.staff_name ?? '—'}</div>
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         ) : (
                                             <div className="h-full w-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -209,6 +213,11 @@ export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, o
         return monthPopover.day.toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     }, [monthPopover, language]);
 
+    const weekDayShortLabels = useMemo(
+        () => [tm('bWeekdayMonShort'), tm('bWeekdayTueShort'), tm('bWeekdayWedShort'), tm('bWeekdayThuShort'), tm('bWeekdayFriShort'), tm('bWeekdaySatShort'), tm('bWeekdaySunShort')],
+        [language],
+    );
+
     return (
         <>
         <div
@@ -240,9 +249,9 @@ export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, o
 
             {/* Hafta günleri — Pazartesi başlangıç */}
             <div className="grid grid-cols-7 border-b" style={{ borderColor: CLINIC.border, background: CLINIC.surfaceMuted }}>
-                {['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((day, i) => (
+                {weekDayShortLabels.map((day, i) => (
                     <div
-                        key={day}
+                        key={`wd-${i}`}
                         className={`p-2.5 text-center border-r last:border-r-0 ${i >= 5 ? 'bg-[#faf9fd]' : ''}`}
                         style={{ borderColor: CLINIC.border }}
                     >

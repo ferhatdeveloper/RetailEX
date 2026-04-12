@@ -18,6 +18,7 @@ import { cn } from '@/components/ui/utils';
 import { RestaurantService } from '../../../services/restaurant';
 import { POSSalesHistoryModal } from '../../pos/POSSalesHistoryModal';
 import { Sale } from '@/core/types/models';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface TicketHistoryProps {
     onClose?: () => void;
@@ -40,6 +41,7 @@ function fmt(dateStr: string | null | undefined) {
 }
 
 export function TicketHistory({ onClose }: TicketHistoryProps) {
+    const tmR = useRestaurantModuleTm();
     const [searchQuery, setSearchQuery] = useState('');
     const [showFilter, setShowFilter] = useState(false);
     const [fromDate, setFromDate] = useState('');
@@ -61,8 +63,8 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                 id: r.id,
                 orderNo: r.order_no ?? `#${r.id.slice(0, 8)}`,
                 receiptNumber: r.order_no ?? `#${r.id.slice(0, 8)}`,
-                customer: r.customer_name ?? 'Peşin Satış',
-                customerName: r.customer_name ?? 'Peşin Satış',
+                customer: r.customer_name ?? '',
+                customerName: r.customer_name ?? '',
                 table: r.table_number ?? '—',
                 openTime: fmt(r.opened_at),
                 closeTime: fmt(r.closed_at),
@@ -116,15 +118,15 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                         className="flex items-center gap-2.5 px-6 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[12px] group shrink-0 shadow-inner"
                     >
                         <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                        <span>Geri</span>
+                        <span>{tmR('resNavBackShort')}</span>
                     </button>
                     <div className="flex items-center gap-4 ml-4">
                         <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
                             <History className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none">Geçmiş Adisyonlar</h2>
-                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-1">Ticket & Sales History</p>
+                            <h2 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none">{tmR('resTicketHistTitle')}</h2>
+                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-1">{tmR('resTicketHistSubtitle')}</p>
                         </div>
                     </div>
                 </div>
@@ -143,7 +145,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors font-bold" />
                         <input
                             type="text"
-                            placeholder="Adisyon, müşteri veya masa ara..."
+                            placeholder={tmR('resTicketSearchPh')}
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 pl-12 pr-4 text-xs font-bold focus:ring-4 focus:ring-blue-500/5 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-inner"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -160,16 +162,16 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                             )}
                         >
                             <Filter className="w-4 h-4" />
-                            <span>FİLTRE{showFilter ? 'Yİ KAPAT' : 'LE'}</span>
+                            <span>{showFilter ? tmR('resTicketFilterClose') : tmR('resTicketFilterOpen')}</span>
                         </button>
                     </div>
                 </div>
 
                 <div className="flex items-center justify-between border-t border-slate-50 pt-3">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sütun gruplama için sürükleyip bırakın</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColDragHint')}</p>
                     <div className="flex items-center gap-4">
-                        {loading && <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest animate-pulse">Yükleniyor...</span>}
-                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Toplam Kayıt: {filtered.length}</span>
+                        {loading && <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest animate-pulse">{tmR('resTicketLoading')}</span>}
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{tmR('resTicketTotalRecords').replace('{n}', String(filtered.length))}</span>
                     </div>
                 </div>
             </div>
@@ -181,21 +183,21 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                         <tr>
                             <th className="p-4 w-12"></th>
                             <th className="p-4 w-12 text-center"><ArrowUpDown className="w-3.5 h-3.5 text-blue-600" /></th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-20">ID</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Müşteri</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Masa</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Açılış</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kapanış</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Garson</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Kişi</th>
-                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-8">Tutar</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-20">{tmR('resTicketColId')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColCustomer')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColTable')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColOpen')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColClose')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{tmR('resTicketColWaiter')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">{tmR('resTicketColGuests')}</th>
+                            <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right pr-8">{tmR('resTicketColAmount')}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                         {filtered.length === 0 && !loading && (
                             <tr>
                                 <td colSpan={9} className="p-12 text-center text-[11px] font-black text-slate-300 uppercase tracking-widest">
-                                    Kayıt bulunamadı
+                                    {tmR('resTicketNoRecords')}
                                 </td>
                             </tr>
                         )}
@@ -218,7 +220,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                                     </button>
                                 </td>
                                 <td className="p-4 text-[12px] font-black text-slate-400">{t.orderNo}</td>
-                                <td className="p-4 text-[12px] font-black text-slate-700 uppercase">{t.customer}</td>
+                                <td className="p-4 text-[12px] font-black text-slate-700 uppercase">{(t.customer || tmR('resTicketWalkIn'))}</td>
                                 <td className="p-4 text-[12px] font-black text-blue-600 uppercase">
                                     <span className="bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">{t.table}</span>
                                 </td>
@@ -240,7 +242,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase">Sistem Aktif</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase">{tmR('resTicketSystemActive')}</span>
                     </div>
                 </div>
             </div>
@@ -253,13 +255,13 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                             <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
                                 <Filter className="w-4 h-4 text-blue-600" />
                             </div>
-                            <h3 className="text-sm font-black uppercase text-slate-700 tracking-tight">Filtreleme</h3>
+                            <h3 className="text-sm font-black uppercase text-slate-700 tracking-tight">{tmR('resTicketFilterTitle')}</h3>
                         </div>
-                        <button onClick={() => setShowFilter(false)} className="text-[10px] font-black text-blue-600 border-b border-blue-600/30 hover:text-blue-800 transition-colors uppercase">Kapat</button>
+                        <button onClick={() => setShowFilter(false)} className="text-[10px] font-black text-blue-600 border-b border-blue-600/30 hover:text-blue-800 transition-colors uppercase">{tmR('resTicketClose')}</button>
                     </div>
                     <div className="p-8 space-y-8">
                         <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Başlangıç Tarihi</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{tmR('resTicketDateFrom')}</label>
                             <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl hover:border-blue-400 transition-all">
                                 <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
                                 <input
@@ -271,7 +273,7 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                             </div>
                         </div>
                         <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Bitiş Tarihi</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">{tmR('resTicketDateTo')}</label>
                             <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl hover:border-blue-400 transition-all">
                                 <Calendar className="w-4 h-4 text-red-500 shrink-0" />
                                 <input
@@ -288,9 +290,9 @@ export function TicketHistory({ onClose }: TicketHistoryProps) {
                                 onClick={() => { loadTickets(); setShowFilter(false); }}
                                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black uppercase text-xs tracking-[0.2em] h-14 rounded-2xl shadow-xl shadow-blue-200 active:scale-95 transition-all"
                             >
-                                Uygula
+                                {tmR('resTicketApply')}
                             </Button>
-                            <p className="text-center text-[9px] font-bold text-slate-300 mt-4 uppercase">Tarih seçip uygulayın</p>
+                            <p className="text-center text-[9px] font-bold text-slate-300 mt-4 uppercase">{tmR('resTicketApplyHint')}</p>
                         </div>
                     </div>
                 </div>

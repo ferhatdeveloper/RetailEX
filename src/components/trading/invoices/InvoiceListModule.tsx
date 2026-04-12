@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, DollarSign, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -117,6 +117,9 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
       await invoicesAPI.delete(id);
+      const { useSaleStore } = await import('../../../store');
+      useSaleStore.getState().removeSaleById(id);
+      void useSaleStore.getState().loadSales(500);
       toast.success(tm('invoiceDeleteSuccess'));
       loadInvoices();
     } catch (error: any) {

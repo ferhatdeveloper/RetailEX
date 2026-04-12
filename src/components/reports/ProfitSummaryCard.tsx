@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Profit Summary Card
  * 
  * Fatura oluştururken anlık kar özeti gösterir
@@ -6,7 +6,7 @@
  * @created 2024-12-18
  */
 
-import { TrendingUp, DollarSign, Percent, AlertTriangle } from 'lucide-react';
+import { TrendingUp, Banknote, Percent, AlertTriangle } from 'lucide-react';
 
 interface ProfitSummaryCardProps {
   totalRevenue: number;
@@ -44,7 +44,7 @@ export function ProfitSummaryCard({
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-white rounded-lg p-3 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
-            <DollarSign className="w-4 h-4 text-blue-600" />
+            <Banknote className="w-4 h-4 text-blue-600" />
             <div className="text-xs text-gray-600">Satış Tutarı</div>
           </div>
           <div className="text-xl font-bold text-blue-600">
@@ -54,7 +54,7 @@ export function ProfitSummaryCard({
         
         <div className="bg-white rounded-lg p-3 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
-            <DollarSign className="w-4 h-4 text-orange-600" />
+            <Banknote className="w-4 h-4 text-orange-600" />
             <div className="text-xs text-gray-600">Maliyet (FIFO)</div>
           </div>
           <div className="text-xl font-bold text-orange-600">

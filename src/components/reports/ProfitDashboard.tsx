@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Profit Dashboard
  * 
  * Karlılık analizleri için ana dashboard
@@ -13,7 +13,7 @@ import { useState, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  Banknote,
   Package,
   Users,
   ShoppingCart,
@@ -222,7 +222,7 @@ export function ProfitDashboard() {
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="p-2 bg-green-500 rounded-lg">
-                      <DollarSign className="w-6 h-6 text-white" />
+                      <Banknote className="w-6 h-6 text-white" />
                     </div>
                     {trends.revenueChange > 0 && (
                       <div className="flex items-center gap-1 text-xs text-green-700">
@@ -240,7 +240,7 @@ export function ProfitDashboard() {
                 <div className="bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="p-2 bg-orange-500 rounded-lg">
-                      <DollarSign className="w-6 h-6 text-white" />
+                      <Banknote className="w-6 h-6 text-white" />
                     </div>
                   </div>
                   <div className="text-sm text-gray-600 mb-1">Toplam Maliyet</div>
@@ -322,7 +322,7 @@ export function ProfitDashboard() {
 
                 <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
-                    <DollarSign className="w-5 h-5 text-cyan-600" />
+                    <Banknote className="w-5 h-5 text-cyan-600" />
                     <div className="text-sm text-gray-600">Ort. İşlem Değeri</div>
                   </div>
                   <div className="text-lg font-bold text-gray-900">

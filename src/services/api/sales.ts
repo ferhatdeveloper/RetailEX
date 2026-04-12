@@ -7,7 +7,6 @@ import { postgres, ERP_SETTINGS } from '../postgres';
 import type { Sale, SaleItem } from '../../core/types/models';
 
 import { invoicesAPI } from './invoices';
-import { customerAPI } from './customers';
 import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
 import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
 
@@ -159,6 +158,9 @@ export const salesAPI = {
           }
 
           if (targetKasaId) {
+            const kasaAciklama = String(sale.notes || '').includes('GüzellikPOS')
+              ? `Güzellik Satışı - ${sale.receiptNumber}`
+              : `Market Satışı - ${sale.receiptNumber}`;
             const islem: KasaIslemi = {
               firma_id: String(firmNr),
               kasa_id: targetKasaId,
@@ -166,7 +168,7 @@ export const salesAPI = {
               islem_tarihi: sale.date || new Date().toISOString(),
               islem_tipi: 'KASA_GIRIS', // Cash In
               tutar: sale.total,
-              islem_aciklamasi: `Market Satışı - ${sale.receiptNumber}`,
+              islem_aciklamasi: kasaAciklama,
               cari_hesap_id: sale.customerId || undefined,
               cari_hesap_unvani: sale.customerName || 'Peşin Müşteri',
               doviz_kodu: 'YEREL', // Local Currency for now
@@ -186,19 +188,7 @@ export const salesAPI = {
         console.timeEnd('[SalesAPI] KasaIslemi_Create');
       }
 
-      // 7. Handle 'Veresiye' (Open Account) - Update Customer Balance
-      if (sale.paymentMethod === 'veresiye' && sale.customerId) {
-        try {
-          console.log('[SalesAPI] Processing Veresiye for customer:', sale.customerId);
-          // Add to customer balance (Debt/Borç)
-          // Note: In most systems, positive balance means customer owes us.
-          await customerAPI.addBalance(sale.customerId, sale.total);
-          console.log('[SalesAPI] Customer balance updated for veresiye sale:', sale.receiptNumber);
-        } catch (veresiyeError) {
-          console.error('[SalesAPI] Failed to update customer balance for veresiye:', veresiyeError);
-          // Non-fatal, but should be logged/alerted
-        }
-      }
+      // Veresiye cari borcu: invoicesAPI.create içinde (paymentMethodImpliesCustomerDebt) tek kez güncellenir — burada tekrarlanmaz.
 
       // 5. Map back to Sale
       return {
@@ -218,10 +208,11 @@ export const salesAPI = {
    */
   async getAll(limit: number = 100): Promise<Sale[]> {
     try {
-      // Use invoicesAPI.getPaginated which is more robust
+      // Satış faturası listesi (InvoiceListModule, Satis + tür Tümü) ile aynı kapsam: trcode 7,8,9,… — yalnızca 7 değil
       const result = await invoicesAPI.getPaginated({
+        page: 1,
         pageSize: limit,
-        invoiceType: 7 // Retail Sales Invoice
+        invoiceCategory: 'Satis'
       });
 
       // Map Invoice[] to Sale[]
@@ -252,9 +243,10 @@ export const salesAPI = {
   async getByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
     try {
       const result = await invoicesAPI.getPaginated({
+        page: 1,
         startDate,
         endDate,
-        invoiceType: 7, // Retail Sales
+        invoiceCategory: 'Satis',
         pageSize: 1000 // Large limit for range
       });
       return result.data.map(mapInvoiceToSale);

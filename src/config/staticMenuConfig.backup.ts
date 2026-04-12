@@ -1,4 +1,4 @@
-﻿// Statik Menü Yapısı - Otomatik Oluşturuldu
+// Statik Menü Yapısı - Otomatik Oluşturuldu
 // Bu dosya MenuManagementPanel'den dışa aktarılmıştır
 
 import {
@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, DollarSign, Mic
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -199,7 +199,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 screen: 'finance-other',
                 icon: MoreVertical,
                 children: [
-                    { label: 'Muhasebe Yönetimi', screen: 'accounting-mgmt', icon: DollarSign, badge: 'YENİ' },
+                    { label: 'Muhasebe Yönetimi', screen: 'accounting-mgmt', icon: Banknote, badge: 'YENİ' },
                     { label: 'Gider Yönetimi', screen: 'revenueexpense', icon: Receipt },
                     { label: 'Çek/Senet', screen: 'checkpromissory', icon: Receipt },
                     { label: 'Tahsilat/Ödeme', screen: 'collectionpayment', icon: CreditCard },
@@ -256,7 +256,7 @@ export const getStaticMenuSections = (t: Translations) => [
             {
                 label: 'Finansal Raporlar',
                 screen: 'finance-reps-group',
-                icon: DollarSign,
+                icon: Banknote,
                 children: [
                     { label: 'Mizan (Trial Balance)', screen: 'mizan', icon: FileSpreadsheet },
                     { label: 'Gelir Tablosu (Income Statement)', screen: 'income-statement', icon: TrendingUp },

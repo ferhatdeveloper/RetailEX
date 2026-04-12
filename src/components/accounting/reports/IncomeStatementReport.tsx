@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Gelir Tablosu (Income Statement)
  * 
  * Kar/Zarar tablosu - Logo muhasebe formatında
@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, Download, Printer, Calendar, RefreshCw, DollarSign, TrendingDown } from 'lucide-react';
+import { TrendingUp, Download, Printer, Calendar, RefreshCw, Banknote, TrendingDown } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { FinancialReportsService, type IncomeStatementData, formatMoney, formatPercent } from '../../../services/financialReportsService';
 import { toast } from 'sonner';
@@ -160,7 +160,7 @@ export function IncomeStatementReport() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg border p-4">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5 text-blue-600" />
+              <Banknote className="w-5 h-5 text-blue-600" />
               <div className="text-sm text-gray-600">Net Satışlar</div>
             </div>
             <div className="text-2xl">{formatMoney(data.net_satislar)} IQD</div>

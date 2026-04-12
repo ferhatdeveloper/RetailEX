@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Bank Account Management Module
  * 
  * Complete bank account features:
@@ -22,7 +22,7 @@ import {
   TrendingDown,
   ArrowRightLeft,
   CreditCard,
-  DollarSign,
+  Banknote,
   Calendar,
   Download,
   Eye,

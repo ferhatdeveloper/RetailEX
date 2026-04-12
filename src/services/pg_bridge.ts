@@ -296,14 +296,47 @@ app.post('/api/pg_query', async (c) => {
     }
 });
 
-// Port can be configured via env
-const port = 3001;
+// Port: BRIDGE_PORT (tercih) veya PORT; varsayılan 3001
+const port = (() => {
+    const raw = (process.env.BRIDGE_PORT || process.env.PORT || '3001').trim();
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1 || n > 65535) {
+        console.error(`[PG Bridge] Geçersiz port: ${raw}`);
+        process.exit(1);
+    }
+    return n;
+})();
 
-serve({
-    fetch: app.fetch,
-    port
-}, (info) => {
-    console.log(`🚀 SQL Bridge started on http://localhost:${info.port}`);
+const server = serve(
+    {
+        fetch: app.fetch,
+        port,
+    },
+    () => {
+        console.log(`🚀 SQL Bridge started on http://localhost:${port}`);
+    }
+);
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(
+            `[PG Bridge] Port ${port} zaten kullanımda (EADDRINUSE). Muhtemelen bridge zaten çalışıyor.`
+        );
+        console.error(
+            '  → Yeni örnek açmayın; http://localhost:' +
+                port +
+                '/api/status ile kontrol edin.'
+        );
+        console.error(
+            '  → Kapatmak için: netstat -ano | findstr :' +
+                port +
+                '  (LISTENING satırındaki PID’yi Görev Yöneticisi veya Stop-Process ile sonlandırın)'
+        );
+        console.error('  → Farklı port: PowerShell’de $env:BRIDGE_PORT=3002; npm run bridge');
+    } else {
+        console.error('[PG Bridge] Sunucu hatası:', err);
+    }
+    process.exit(1);
 });
 
 

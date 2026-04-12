@@ -67,6 +67,7 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Özel Kod 2': '',
         'Özel Kod 3': '',
         'Açıklama': 'Ürün açıklaması',
+        'Görsel URL': '',
         'Aktif (E/H)': 'E',
       },
       {
@@ -86,6 +87,7 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Özel Kod 2': '',
         'Özel Kod 3': '',
         'Açıklama': '',
+        'Görsel URL': '',
         'Aktif (E/H)': 'E',
       },
     ],
@@ -243,6 +245,12 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
     keyMap['Ürün Kodu'] = 'Ürün Kodu*';
     keyMap['Ürün Adı'] = 'Ürün Adı*';
     keyMap['Satış Fiyatı'] = 'Satış Fiyatı*';
+    /** DB: rex_*_products.image_url — alternatif sütun başlıkları */
+    keyMap['Ürün Resmi URL'] = 'Görsel URL';
+    keyMap['Resim URL'] = 'Görsel URL';
+    keyMap['Ürün Görsel URL'] = 'Görsel URL';
+    keyMap['image_url'] = 'Görsel URL';
+    keyMap['Image URL'] = 'Görsel URL';
   } else if (entityType === 'current-accounts') {
     keyMap['Hesap Kodu'] = 'Hesap Kodu*';
     keyMap['Ünvan'] = 'Ünvan*';
@@ -283,13 +291,60 @@ function boolFromExcel(val: any): boolean {
   return s === 'E' || s === 'EVET' || s === 'TRUE' || s === '1' || s === 'YES';
 }
 
+/**
+ * Excel / TR sayı biçimi: 5.000 veya 1.250.000 (binlik nokta), ondalık virgül (1.234,56).
+ * Saf JS parseFloat("5.000") → 5 hatasını önler.
+ */
+function parseLocaleNumberTR(val: any): number {
+  if (val === null || val === undefined || val === '') return NaN;
+  if (typeof val === 'number' && !Number.isNaN(val)) return val;
+  let s = String(val).trim().replace(/\s/g, '').replace(/\u00A0/g, '');
+  if (!s) return NaN;
+  if (s.includes(',')) {
+    const idx = s.lastIndexOf(',');
+    const intPart = s.slice(0, idx).replace(/\./g, '');
+    const decPart = s.slice(idx + 1).replace(/[^\d]/g, '');
+    return parseFloat(`${intPart}.${decPart}`);
+  }
+  if (s.includes('.')) {
+    const parts = s.split('.');
+    const last = parts[parts.length - 1] ?? '';
+    if (/^\d{3}$/.test(last) && parts.length >= 2) {
+      return parseFloat(s.replace(/\./g, ''));
+    }
+    if (parts.length === 2 && last.length <= 2) {
+      return parseFloat(s);
+    }
+    return parseFloat(s.replace(/\./g, ''));
+  }
+  return parseFloat(s);
+}
+
 function numFromExcel(val: any, fallback = 0): number {
-  const n = parseFloat(String(val ?? '').replace(',', '.'));
-  return isNaN(n) ? fallback : n;
+  const n = parseLocaleNumberTR(val);
+  return Number.isNaN(n) ? fallback : n;
 }
 
 function strFromExcel(val: any): string {
   return String(val ?? '').trim();
+}
+
+/** Excel satırından ürün görsel adresi — `rex_{firma}_products.image_url` alanına yazılır (POS/restoran önce image_url_cdn kullanır). */
+function productImageUrlFromExcelRow(row: Record<string, any>): string {
+  const keys = [
+    'Görsel URL',
+    'Görsel URL*',
+    'Ürün Resmi URL',
+    'Resim URL',
+    'Ürün Görsel URL',
+    'image_url',
+    'Image URL',
+  ];
+  for (const k of keys) {
+    const v = strFromExcel(row[k]);
+    if (v) return v;
+  }
+  return '';
 }
 
 async function downloadExcel(sheetName: string, data: any[], fileName: string) {
@@ -333,6 +388,7 @@ async function exportProducts(): Promise<void> {
     'Özel Kod 2': (p as any).special_code_2 || '',
     'Özel Kod 3': (p as any).special_code_3 || '',
     'Açıklama': p.description || '',
+    'Görsel URL': (p as any).image_url || '',
     'Aktif (E/H)': p.is_active !== false ? 'E' : 'H',
   }));
   await downloadExcel('Ürünler', data, `Ürünler_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -520,13 +576,14 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
       unit: strFromExcel(row['Birim']) || 'Adet',
       cost: numFromExcel(row['Alış Fiyatı']),
       price: numFromExcel(row['Satış Fiyatı*'] ?? row['Satış Fiyatı']),
-      vat_rate: numFromExcel(row['KDV Oranı (%)'], 18),
+      taxRate: numFromExcel(row['KDV Oranı (%)'], 18),
       min_stock: numFromExcel(row['Min Stok']),
       max_stock: numFromExcel(row['Max Stok']),
       special_code_1: strFromExcel(row['Özel Kod 1']),
       special_code_2: strFromExcel(row['Özel Kod 2']),
       special_code_3: strFromExcel(row['Özel Kod 3']),
       description: strFromExcel(row['Açıklama']),
+      image_url: productImageUrlFromExcelRow(row),
       is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
       firm_nr: ERP_SETTINGS.firmNr,
       stock: 0,
@@ -534,7 +591,7 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
     try {
       const existing = await productAPI.getByCode(code);
       if (existing) {
-        await productAPI.update(existing.id, {
+        const upd: Record<string, any> = {
           name: payload.name,
           barcode: payload.barcode,
           category: payload.category,
@@ -543,7 +600,7 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
           unit: payload.unit,
           cost: payload.cost,
           price: payload.price,
-          taxRate: payload.vat_rate,
+          taxRate: payload.taxRate,
           min_stock: payload.min_stock,
           max_stock: payload.max_stock,
           specialCode1: payload.special_code_1,
@@ -551,15 +608,25 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
           specialCode3: payload.special_code_3,
           description: payload.description,
           isActive: payload.is_active,
-        } as any);
+        };
+        if (payload.image_url) {
+          upd.image_url = payload.image_url;
+        }
+        await productAPI.update(existing.id, upd as any);
         result.success++;
       } else {
-        await productAPI.create(payload);
+        await productAPI.create(payload as any);
         result.success++;
       }
     } catch (err: any) {
       result.failed++;
-      result.errors.push({ row: rowNum, message: err?.message || 'Kayıt oluşturulamadı.' });
+      const msg =
+        typeof err?.message === 'string' && err.message.trim()
+          ? err.message.trim()
+          : err != null
+            ? String(err)
+            : 'Kayıt oluşturulamadı.';
+      result.errors.push({ row: rowNum, message: msg });
     }
   }
   return result;
@@ -791,6 +858,8 @@ const TABS: TabConfig[] = [
     borderColor: 'border-blue-200',
     exportFn: exportProducts,
     importFn: importProducts,
+    importNote:
+      '"Görsel URL" → image_url. Fiyatlar Türkçe biçimde olabilir: binlik ayırıcı nokta (örn. 5.000 veya 125.000), ondalık virgül (örn. 99,90). Sayfa adı "Ürünler" olmalı.',
   },
   {
     id: 'current-accounts',

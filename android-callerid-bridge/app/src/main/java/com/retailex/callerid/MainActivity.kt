@@ -166,7 +166,8 @@ class MainActivity : ComponentActivity() {
                     context = applicationContext,
                     phone = "905555555555",
                     name = "Test Call",
-                    eventType = "manual_test",
+                    // "Arama" geçmiş filtresi eventType içinde "call" arar; manual_test görünmezdi.
+                    eventType = "call_manual_test",
                 )
                 runOnUiThread {
                     if (ok) {

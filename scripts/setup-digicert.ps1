@@ -89,19 +89,15 @@ $thumbprint = $cert.Thumbprint
 Write-Host "Thumbprint bulundu: $thumbprint" -ForegroundColor Green
 Write-Host "Gecerlilik suresi: $($cert.NotAfter)" -ForegroundColor Gray
 
-# ── 7. tauri.conf.json guncelle ───────────────────────────────
-$confPath = Join-Path $PSScriptRoot "..\src-tauri\tauri.conf.json"
-$conf     = Get-Content $confPath -Raw | ConvertFrom-Json
-
-$conf.bundle.windows | Add-Member -Force -MemberType NoteProperty -Name "certificateThumbprint" -Value $thumbprint
-$conf.bundle.windows | Add-Member -Force -MemberType NoteProperty -Name "digestAlgorithm"       -Value "sha256"
-$conf.bundle.windows | Add-Member -Force -MemberType NoteProperty -Name "timestampUrl"          -Value "http://timestamp.digicert.com"
-
-$conf | ConvertTo-Json -Depth 10 | Set-Content $confPath -Encoding UTF8
+# ── 7. Tauri Windows imza dosyasini uret (birlestirme) ───────
+$root = Split-Path $PSScriptRoot -Parent
+Push-Location $root
+try {
+    node "$PSScriptRoot\tauri-windows-signing-prep.mjs"
+} finally {
+    Pop-Location
+}
 
 Write-Host ""
-Write-Host "tauri.conf.json guncellendi:" -ForegroundColor Green
-Write-Host "  certificateThumbprint = $thumbprint" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Imzali build icin:" -ForegroundColor Green
-Write-Host "  .\scripts\build-signed.ps1" -ForegroundColor Cyan
+Write-Host "DeskApp\tauri.windows.conf.json guncellendi (varsa)." -ForegroundColor Green
+Write-Host "Imzali build: npm run tauri:build  veya  .\scripts\build-signed.ps1" -ForegroundColor Cyan

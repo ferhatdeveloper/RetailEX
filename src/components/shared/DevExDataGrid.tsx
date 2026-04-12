@@ -259,16 +259,29 @@ export function DevExDataGrid<T>({
 
     const selectionColumn: ColumnDef<T, any> = {
       id: 'select',
-      header: ({ table }) => (
-        <div className="px-1">
-          <input
-            type="checkbox"
-            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            checked={table.getIsAllPageRowsSelected()}
-            onChange={table.getToggleAllPageRowsSelectedHandler()}
-          />
-        </div>
-      ),
+      header: ({ table }) => {
+        const filtered = table.getFilteredRowModel().rows;
+        const allSelected = filtered.length > 0 && filtered.every((row) => row.getIsSelected());
+        return (
+          <div className="px-1">
+            <input
+              type="checkbox"
+              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              title="Tümü (Ctrl+A)"
+              checked={allSelected}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setRowSelection(
+                    Object.fromEntries(filtered.map((row) => [row.id, true]))
+                  );
+                } else {
+                  setRowSelection({});
+                }
+              }}
+            />
+          </div>
+        );
+      },
       cell: ({ row }) => (
         <div className="px-1" onClick={e => e.stopPropagation()}>
           <input
@@ -284,7 +297,7 @@ export function DevExDataGrid<T>({
     };
 
     return [selectionColumn, ...columns];
-  }, [columns, enableSelection]);
+  }, [columns, enableSelection, setRowSelection]);
 
   const table = useReactTable({
     data,
@@ -377,7 +390,23 @@ export function DevExDataGrid<T>({
 
   // Desktop Table View
   return (
-    <div className="flex flex-col h-full" style={{ height: height }}>
+    <div
+      className="flex flex-col h-full outline-none"
+      style={{ height: height }}
+      data-datagrid-root
+      tabIndex={enableSelection ? 0 : undefined}
+      onKeyDown={
+        enableSelection
+          ? (e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                const rows = table.getFilteredRowModel().rows;
+                setRowSelection(Object.fromEntries(rows.map((row) => [row.id, true])));
+              }
+            }
+          : undefined
+      }
+    >
       {/* Table Container */}
       <div className="flex-1 overflow-auto border border-gray-300 bg-white">
         <table className="w-full border-collapse">

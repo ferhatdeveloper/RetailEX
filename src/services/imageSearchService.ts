@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Image Search Service using Unsplash API
  * Uses public demo access - no API key registration needed!
  * Documentation: https://unsplash.com/documentation
@@ -34,12 +34,16 @@ export interface UnsplashSearchResponse {
     results: UnsplashPhoto[];
 }
 
+/** Kaynak: UI’da atıf / debug için */
+export type ImageSearchSource = 'unsplash' | 'wikimedia' | 'openverse';
+
 export interface ImageSearchResult {
     id: string;
     thumbnailUrl: string;
     fullUrl: string;
     photographer: string;
     alt: string;
+    source?: ImageSearchSource;
 }
 
 class ImageSearchService {
@@ -48,11 +52,105 @@ class ImageSearchService {
     private readonly baseUrl = 'https://api.unsplash.com';
 
     /**
-     * Search for images using Unsplash API
-     * @param query Search query (works with Turkish and English)
-     * @param perPage Number of results per page (default: 20, max: 30)
-     * @param page Page number (default: 1)
-     * @returns Array of image search results
+     * Wikimedia Commons — API anahtarı gerekmez; Unsplash limitinde yedek kaynak.
+     */
+    private async searchWikimediaCommons(query: string, limit: number): Promise<ImageSearchResult[]> {
+        const q = query.trim().slice(0, 200);
+        if (!q) return [];
+
+        const apiUrl = new URL('https://commons.wikimedia.org/w/api.php');
+        apiUrl.searchParams.set('action', 'query');
+        apiUrl.searchParams.set('format', 'json');
+        apiUrl.searchParams.set('origin', '*');
+        apiUrl.searchParams.set('formatversion', '2');
+        apiUrl.searchParams.set('generator', 'search');
+        apiUrl.searchParams.set('gsrsearch', q);
+        apiUrl.searchParams.set('gsrnamespace', '6');
+        apiUrl.searchParams.set('gsrlimit', String(Math.min(Math.max(limit, 1), 50)));
+        apiUrl.searchParams.set('prop', 'imageinfo');
+        apiUrl.searchParams.set('iiprop', 'url|thumburl');
+        apiUrl.searchParams.set('iiurlwidth', '800');
+
+        const response = await fetch(apiUrl.toString());
+        if (!response.ok) return [];
+
+        const data = await response.json();
+        const pages: Array<{
+            pageid: number;
+            title?: string;
+            imageinfo?: Array<{ url?: string; thumburl?: string }>;
+        }> = data.query?.pages ?? [];
+
+        const out: ImageSearchResult[] = [];
+        for (const p of pages) {
+            const ii = p.imageinfo?.[0];
+            if (!ii) continue;
+            const fullUrl = ii.url || ii.thumburl;
+            const thumb = ii.thumburl || ii.url;
+            if (!fullUrl) continue;
+            if (/\.svg(\?|$)/i.test(fullUrl)) continue;
+
+            out.push({
+                id: `wm-${p.pageid}`,
+                thumbnailUrl: thumb,
+                fullUrl,
+                photographer: 'Wikimedia Commons',
+                alt: (p.title || '').replace(/^File:/i, '') || q,
+                source: 'wikimedia',
+            });
+        }
+        return out;
+    }
+
+    /**
+     * Openverse (CC lisanslı görseller) — anahtarsız genel API.
+     */
+    private async searchOpenverse(query: string, perPage: number): Promise<ImageSearchResult[]> {
+        const q = query.trim().slice(0, 200);
+        if (!q) return [];
+
+        const url = new URL('https://api.openverse.org/v1/images/');
+        url.searchParams.set('q', q);
+        url.searchParams.set('page_size', String(Math.min(Math.max(perPage, 1), 30)));
+        url.searchParams.set('page', '1');
+
+        const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+        if (!response.ok) return [];
+
+        const data = await response.json();
+        const results: Array<{
+            id?: string;
+            title?: string;
+            url?: string;
+            thumbnail?: string;
+            creator?: string;
+        }> = data.results ?? [];
+
+        return results
+            .filter((r) => r.url && !/\.svg(\?|$)/i.test(r.url))
+            .map((r, i) => ({
+                id: `ov-${r.id ?? i}-${i}`,
+                thumbnailUrl: r.thumbnail || r.url!,
+                fullUrl: r.url!,
+                photographer: r.creator || 'Openverse',
+                alt: r.title || q,
+                source: 'openverse' as const,
+            }));
+    }
+
+    /** Arama sorgusunu ikinci deneme için sadeleştirir (ör. İngilizce anahtar kelimeler). */
+    private simplifyQueryForFallback(query: string): string {
+        const cleaned = query
+            .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const parts = cleaned.split(' ').filter(Boolean);
+        if (parts.length <= 3) return cleaned;
+        return parts.slice(0, 4).join(' ');
+    }
+
+    /**
+     * Önce Unsplash; limit / hata / boş sonuçta Wikimedia Commons ve Openverse.
      */
     async searchImages(
         query: string,
@@ -63,40 +161,50 @@ class ImageSearchService {
             throw new Error('Arama terimi boş olamaz.');
         }
 
+        const cap = Math.min(perPage, 30);
+
         try {
-            const url = `${this.baseUrl}/search/photos?query=${encodeURIComponent(query)}&per_page=${Math.min(perPage, 30)}&page=${page}&client_id=${this.accessKey}`;
+            const url = `${this.baseUrl}/search/photos?query=${encodeURIComponent(query)}&per_page=${cap}&page=${page}&client_id=${this.accessKey}`;
 
             const response = await fetch(url);
 
-            if (!response.ok) {
-                if (response.status === 401) {
-                    throw new Error('API erişim hatası. Lütfen daha sonra tekrar deneyin.');
-                } else if (response.status === 403) {
-                    throw new Error('API limit aşıldı. Lütfen daha sonra tekrar deneyin.');
+            if (response.ok) {
+                const data: UnsplashSearchResponse = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    return data.results.map((photo) => ({
+                        id: photo.id,
+                        thumbnailUrl: photo.urls.small,
+                        fullUrl: photo.urls.regular,
+                        photographer: photo.user.name,
+                        alt: photo.alt_description || photo.description || query,
+                        source: 'unsplash' as const,
+                    }));
                 }
-                throw new Error(`API hatası: ${response.status} ${response.statusText}`);
             }
-
-            const data: UnsplashSearchResponse = await response.json();
-
-            if (!data.results || data.results.length === 0) {
-                return [];
-            }
-
-            // Convert to our simplified format
-            return data.results.map((photo) => ({
-                id: photo.id,
-                thumbnailUrl: photo.urls.small, // 400px width
-                fullUrl: photo.urls.regular, // 1080px width
-                photographer: photo.user.name,
-                alt: photo.alt_description || photo.description || query,
-            }));
-        } catch (error) {
-            if (error instanceof Error) {
-                throw error;
-            }
-            throw new Error('Resim arama sırasında bir hata oluştu.');
+        } catch {
+            // Unsplash hata — yedek kaynaklara düş
         }
+
+        const tryWm = await this.searchWikimediaCommons(query, cap).catch(() => []);
+        if (tryWm.length > 0) {
+            return tryWm.slice(0, cap);
+        }
+
+        const tryOv = await this.searchOpenverse(query, cap).catch(() => []);
+        if (tryOv.length > 0) {
+            return tryOv.slice(0, cap);
+        }
+
+        const simple = this.simplifyQueryForFallback(query);
+        if (simple && simple !== query.trim()) {
+            const tryWm2 = await this.searchWikimediaCommons(simple, cap).catch(() => []);
+            if (tryWm2.length > 0) return tryWm2.slice(0, cap);
+            const tryOv2 = await this.searchOpenverse(simple, cap).catch(() => []);
+            if (tryOv2.length > 0) return tryOv2.slice(0, cap);
+        }
+
+        return [];
     }
 
     /**

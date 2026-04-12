@@ -1,10 +1,10 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
     Search, Plus, Trash2, User, UserPlus, X,
     Banknote, CreditCard, ArrowLeftRight,
     CheckCircle2, ChevronDown, Scissors, Package, Box,
-    ShoppingCart, Receipt, Minus
+    ShoppingCart, Receipt, Minus, PanelLeft,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../types/beauty';
@@ -12,7 +12,19 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
 import '../ClinicStyles.css';
+
+const BEAUTY_CATEGORY_RAIL_KEY = 'retailex_beauty_pos_category_rail';
+type BeautyCategoryRailMode = 'chips' | 'sidebar';
+function readBeautyCategoryRailMode(): BeautyCategoryRailMode {
+    try {
+        if (typeof localStorage === 'undefined') return 'chips';
+        return localStorage.getItem(BEAUTY_CATEGORY_RAIL_KEY) === 'sidebar' ? 'sidebar' : 'chips';
+    } catch {
+        return 'chips';
+    }
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface CartItem {
@@ -58,6 +70,15 @@ export function BeautyPOS() {
     const [tab,         setTab]         = useState<'services' | 'packages'>('services');
     const [category,    setCategory]    = useState<string>('all');
     const [svcSearch,   setSvcSearch]   = useState('');
+    const [categoryRailMode, setCategoryRailMode] = useState<BeautyCategoryRailMode>(readBeautyCategoryRailMode);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(BEAUTY_CATEGORY_RAIL_KEY, categoryRailMode);
+        } catch { /* ignore */ }
+    }, [categoryRailMode]);
+
+    const useCategorySidebar = tab === 'services' && categoryRailMode === 'sidebar';
 
     const [cart,        setCart]        = useState<CartItem[]>([]);
     const [discount,    setDiscount]    = useState(0);
@@ -70,6 +91,7 @@ export function BeautyPOS() {
 
     const [showPayModal, setShowPayModal] = useState(false);
     const [done,         setDone]        = useState(false);
+    const checkoutSubmitRef = useRef(false);
 
     useEffect(() => {
         loadServices();
@@ -138,24 +160,29 @@ export function BeautyPOS() {
     const clearCart = () => { setCart([]); setCustomer(null); setDiscount(0); setPaidInput(''); };
 
     const handleComplete = async () => {
+        if (checkoutSubmitRef.current) return;
+        checkoutSubmitRef.current = true;
         const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
         const discAmt  = subtotal * (discount / 100);
         const total    = subtotal - discAmt;
 
         try {
-            const saleItems = cart.map(item => ({
+            const lineGrosses = cart.map((i) => i.price * i.qty);
+            const lineSplits = splitProportionalLineDiscount(lineGrosses, discAmt);
+            const saleItems = cart.map((item, idx) => ({
                 item_type:         item.type,
                 item_id:           item.item_id,
                 name:              item.name,
                 quantity:          item.qty,
                 unit_price:        item.price,
-                discount:          0,
-                total:             item.price * item.qty,
+                discount:          lineSplits[idx]?.discount ?? 0,
+                total:             lineSplits[idx]?.total ?? item.price * item.qty,
                 staff_id:          item.staff_id ?? null,
                 commission_amount: 0,
             }));
             await beautyService.createSale({
                 customer_id:      customer?.id ?? null,
+                customer_name:    customer?.name,
                 subtotal,
                 discount:         discAmt,
                 tax:              0,
@@ -167,6 +194,8 @@ export function BeautyPOS() {
             }, saleItems);
         } catch (e) {
             logger.crudError('BeautyPOS', 'createSale', e);
+        } finally {
+            checkoutSubmitRef.current = false;
         }
 
         setDone(true);
@@ -192,46 +221,70 @@ export function BeautyPOS() {
 
                 {/* Tab + Search */}
                 <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        {(['services', 'packages'] as const).map(t => (
-                            <button
-                                key={t}
-                                onClick={() => setTab(t)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 6,
-                                    padding: '6px 14px', borderRadius: 6,
-                                    border: tab === t ? 'none' : '1px solid #e5e7eb',
-                                    background: tab === t ? '#7c3aed' : '#fff',
-                                    color: tab === t ? '#fff' : '#6b7280',
-                                    fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                                }}
-                            >
-                                {t === 'services' ? <Scissors size={13} /> : <Package size={13} />}
-                                {t === 'services' ? 'Hizmetler' : 'Paketler'}
-                            </button>
-                        ))}
-                        <div style={{ flex: 1, position: 'relative' }}>
-                            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ flex: '1 1 220px', minWidth: 200, maxWidth: 480, position: 'relative' }}>
+                            <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
                             <input
                                 value={svcSearch} onChange={e => setSvcSearch(e.target.value)}
                                 placeholder="Ara..."
-                                style={{ width: '100%', height: 32, paddingLeft: 28, paddingRight: 12, border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, fontWeight: 500, background: '#f9fafb', outline: 'none' }}
+                                style={{
+                                    width: '100%', height: 42, minHeight: 44, paddingLeft: 40, paddingRight: 12,
+                                    border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontWeight: 500, background: '#f9fafb', outline: 'none', boxSizing: 'border-box',
+                                }}
                             />
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {(['services', 'packages'] as const).map(t => (
+                                <button
+                                    key={t}
+                                    onClick={() => setTab(t)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '8px 14px', borderRadius: 8,
+                                        border: tab === t ? 'none' : '1px solid #e5e7eb',
+                                        background: tab === t ? '#7c3aed' : '#fff',
+                                        color: tab === t ? '#fff' : '#6b7280',
+                                        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                                        minHeight: 44, touchAction: 'manipulation',
+                                    }}
+                                >
+                                    {t === 'services' ? <Scissors size={18} /> : <Package size={18} />}
+                                    {t === 'services' ? 'Hizmetler' : 'Paketler'}
+                                </button>
+                            ))}
+                            {tab === 'services' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setCategoryRailMode(m => (m === 'chips' ? 'sidebar' : 'chips'))}
+                                    title={categoryRailMode === 'chips' ? tm('bCategoryRailUseSidebar') : tm('bCategoryRailUseChips')}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        width: 44, height: 44, padding: 0, borderRadius: 8,
+                                        border: categoryRailMode === 'sidebar' ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                                        background: categoryRailMode === 'sidebar' ? '#ede9fe' : '#fff',
+                                        color: '#7c3aed', cursor: 'pointer', flexShrink: 0,
+                                        touchAction: 'manipulation',
+                                    }}
+                                >
+                                    <PanelLeft size={20} strokeWidth={2.25} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    {tab === 'services' && (
+                    {tab === 'services' && !useCategorySidebar && (
                         <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
                             {['all', ...categories].map(cat => (
                                 <button
                                     key={cat}
                                     onClick={() => setCategory(cat)}
                                     style={{
-                                        flexShrink: 0, padding: '4px 10px', borderRadius: 4,
+                                        flexShrink: 0, padding: '8px 14px', borderRadius: 8,
                                         border: category === cat ? 'none' : '1px solid #e5e7eb',
                                         background: category === cat ? '#ede9fe' : '#f9fafb',
                                         color: category === cat ? '#7c3aed' : '#6b7280',
-                                        fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        minHeight: 40, touchAction: 'manipulation',
                                     }}
                                 >
                                     {cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat)}
@@ -241,8 +294,66 @@ export function BeautyPOS() {
                     )}
                 </div>
 
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0, minWidth: 0 }}>
+                    {useCategorySidebar && (
+                        <aside
+                            className="custom-scrollbar"
+                            style={{
+                                width: 200,
+                                flexShrink: 0,
+                                background: '#f8fafc',
+                                borderRight: '1px solid #e2e8f0',
+                                overflowY: 'auto',
+                                overflowX: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                padding: '12px 10px 16px',
+                                gap: 8,
+                                alignItems: 'stretch',
+                                boxShadow: 'inset -1px 0 0 rgba(148, 163, 184, 0.12)',
+                            }}
+                        >
+                            <div style={{
+                                fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                letterSpacing: '0.14em', padding: '4px 8px 2px',
+                            }}>
+                                {tm('bCategorySidebarHeading')}
+                            </div>
+                            {['all', ...categories].map(cat => {
+                                const sel = category === cat;
+                                const label = cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat);
+                                return (
+                                    <button
+                                        key={cat}
+                                        type="button"
+                                        onClick={() => setCategory(cat)}
+                                        style={{
+                                            width: '100%',
+                                            textAlign: 'left',
+                                            padding: '12px 14px',
+                                            borderRadius: 14,
+                                            border: sel ? '2px solid #7c3aed' : '2px solid transparent',
+                                            background: sel ? '#ede9fe' : '#fff',
+                                            color: sel ? '#5b21b6' : '#64748b',
+                                            fontSize: 13,
+                                            fontWeight: sel ? 800 : 600,
+                                            cursor: 'pointer',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.04em',
+                                            lineHeight: 1.25,
+                                            wordBreak: 'break-word',
+                                            touchAction: 'manipulation',
+                                            boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                        }}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
+                        </aside>
+                    )}
                 {/* Grid */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, alignContent: 'start' }} className="custom-scrollbar">
+                <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, alignContent: 'start' }} className="custom-scrollbar">
                     {tab === 'services' && filteredSvcs.map(svc => (
                         <button
                             key={svc.id}
@@ -293,6 +404,7 @@ export function BeautyPOS() {
                             <p style={{ fontSize: 12, fontWeight: 600 }}>Hizmet bulunamadı</p>
                         </div>
                     )}
+                </div>
                 </div>
             </div>
 

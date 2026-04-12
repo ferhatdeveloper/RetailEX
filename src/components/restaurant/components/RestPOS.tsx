@@ -26,7 +26,9 @@ import {
     CalendarDays,
     Users,
     Printer,
+    Languages,
     CheckCircle,
+    AlertTriangle,
     X,
     Tag,
     FileText,
@@ -43,7 +45,13 @@ import {
 } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
-import { buildRestaurantAdisyonHtml, printRestaurantHtmlNoPreview } from '../../../utils/restaurantReceiptPrint';
+import {
+    buildRestaurantAdisyonHtml,
+    buildRestaurantKitchenTicketHtml,
+    printRestaurantHtmlNoPreview,
+    type KitchenReceiptLocale,
+} from '../../../utils/restaurantReceiptPrint';
+import { printKitchenTicketsFromLines } from '../../../utils/restaurantKitchenPrint';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { POSSalesHistoryModal } from '../../pos/POSSalesHistoryModal';
 import { salesAPI } from '../../../services/api/sales';
@@ -63,11 +71,17 @@ import type { Product, Customer, Campaign, User as UserType, Sale } from '../../
 import type { CartItem } from '../../pos/types';
 import type { Table, Staff, RestaurantCallerIdPickRequest } from '../types';
 import { RestaurantService, type DeliveryExpectedPaymentMethod } from '../../../services/restaurant';
-import { getReceiptSettings, invalidateReceiptSettingsCache } from '../../../services/receiptSettingsService';
+import { getReceiptSettings, invalidateReceiptSettingsCache, type ReceiptSettings } from '../../../services/receiptSettingsService';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { useRestaurantStore } from '../store/useRestaurantStore';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { useRestaurantStore, type CloseBillSaleOverride } from '../store/useRestaurantStore';
 import { useProductStore } from '../../../store/useProductStore';
 import { usePermission } from '../../../shared/hooks/usePermission';
+import { formatCurrency } from '../../../utils/currency';
+import { resolveProductNameForReceipt } from '../../../utils/receiptProductName';
+import { lineNetAfterPercentDiscount, roundPosDiscountAmountUp } from '../../../utils/discountRounding';
+import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
 
 interface RestPOSProps {
     products: Product[];
@@ -96,14 +110,6 @@ interface RestPOSProps {
     onCallerIdDeliveryConsumed?: () => void;
 }
 
-const fmt = (num: number) => {
-    return new Intl.NumberFormat('tr-TR', {
-        style: 'decimal',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    }).format(num);
-};
-
 function rawCategoryString(p: Product): string {
     const c = p.category as unknown;
     if (Array.isArray(c) && c.length) return String(c[0] ?? '');
@@ -131,6 +137,55 @@ const PLATE_PALETTE = [
     { bg: '#ECFDF5', text: '#065F46', border: '#A7F3D0' },  // emerald
 ];
 
+/** Aynı ürünün birden fazla rest_order_items satırı tek sepet satırında birleşince: +/- adet farkını satırlara yay */
+function applyQuantityDeltaToMergedRows(
+    rows: { id: string; quantity: number }[],
+    delta: number
+): { id: string; quantity: number }[] {
+    if (rows.length === 0) return [];
+    const out = rows.map((r) => ({ ...r }));
+    if (delta === 0) return out;
+    if (delta > 0) {
+        const last = out[out.length - 1];
+        out[out.length - 1] = { ...last, quantity: last.quantity + delta };
+        return out;
+    }
+    let rem = -delta;
+    for (let i = out.length - 1; i >= 0 && rem > 0; i--) {
+        const dec = Math.min(out[i].quantity, rem);
+        out[i] = { ...out[i], quantity: out[i].quantity - dec };
+        rem -= dec;
+    }
+    return out.filter((r) => r.quantity > 0);
+}
+
+/** Masaya taşındıktan sonra birleşik sepet satırlarından ilgili order item id'lerini düşürür */
+function cartLinesAfterRemovingOrderItemIds(prev: CartItem[], removedIds: Set<string>): CartItem[] {
+    const out: CartItem[] = [];
+    for (const c of prev) {
+        const merged = (c as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+        const singleId = (c as any).id as string | undefined;
+        if (Array.isArray(merged) && merged.length > 0) {
+            const kept = merged.filter(m => m.id && !removedIds.has(m.id));
+            if (kept.length === 0) continue;
+            const newQty = kept.reduce((s, m) => s + m.quantity, 0);
+            const basePrice = c.price ?? c.product?.price ?? 0;
+            const pct = Number(c.discount) || 0;
+            out.push({
+                ...c,
+                id: kept[0].id,
+                quantity: newQty,
+                subtotal: lineNetAfterPercentDiscount(newQty * basePrice, pct),
+                mergedOrderItemIds: kept,
+            } as CartItem);
+            continue;
+        }
+        if (singleId && removedIds.has(singleId)) continue;
+        out.push(c);
+    }
+    return out;
+}
+
 export const RestPOS: React.FC<RestPOSProps> = ({
     products,
     customers,
@@ -150,6 +205,12 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 }) => {
     const { isAdmin: isRestAdmin } = usePermission();
     const { selectedFirm } = useFirmaDonem();
+    const { language: uiLanguage } = useLanguage();
+    const tmR = useRestaurantModuleTm();
+    const fmt = useCallback((n: number) => formatCurrency(n, 2, false), []);
+
+    const isKitchenReceiptLang = (s: string): s is KitchenReceiptLocale =>
+        s === 'tr' || s === 'en' || s === 'ar' || s === 'ku';
     /** Fiş ayarları `app_settings` anahtarı firma no ile eşleşmeli (ERP / seçili firma) */
     const receiptFirmNr = useMemo(() => {
         const f = selectedFirm;
@@ -159,9 +220,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         return s || undefined;
     }, [selectedFirm]);
     const [query, setQuery] = useState('');
-    /** null,null = tüm ürünler; main dolu = o ana grupta; sub dolu = alt kategori filtresi */
+    /** null,null = tüm ürünler; main dolu = alt gruplu ana kategoride iç görünüm; sub dolu = alt kategori filtresi */
     const [catMain, setCatMain] = useState<string | null>(null);
     const [catSub, setCatSub] = useState<string | null>(null);
+    /** Alt grup yokken ana listede kalıp sadece ürün filtrelemek için (iç görünüme girilmez) */
+    const [catMainSolo, setCatMainSolo] = useState<string | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [expandedCartItem, setExpandedCartItem] = useState<number | null>(null);
     const [cartView, setCartView] = useState<'table' | 'card'>('card');
@@ -214,6 +277,36 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const [parkedOrders, setParkedOrders] = useState<ParkedOrder[]>(loadParked);
     const [showParkedModal, setShowParkedModal] = useState(false);
     const [showPrintPreview, setShowPrintPreview] = useState(false);
+    const [showPrint80ChoiceModal, setShowPrint80ChoiceModal] = useState(false);
+    const [print80ReceiptType, setPrint80ReceiptType] = useState<'bill' | 'kitchen'>('bill');
+    const [print80Lang, setPrint80Lang] = useState<KitchenReceiptLocale>('tr');
+    const [previewReceiptLang, setPreviewReceiptLang] = useState<KitchenReceiptLocale>('tr');
+
+    const openPrint80ChoiceModal = () => {
+        if (cart.length === 0) return;
+        setPrint80ReceiptType('bill');
+        void (async () => {
+            try {
+                const rs = await getReceiptSettings(receiptFirmNr);
+                const def = rs.defaultReceiptLanguage;
+                if (def && isKitchenReceiptLang(def)) {
+                    setPrint80Lang(def);
+                } else {
+                    setPrint80Lang(isKitchenReceiptLang(uiLanguage) ? uiLanguage : 'tr');
+                }
+            } catch {
+                setPrint80Lang(isKitchenReceiptLang(uiLanguage) ? uiLanguage : 'tr');
+            }
+            setShowPrint80ChoiceModal(true);
+        })();
+    };
+
+    const resolveTableLabelForPrint = (): string => {
+        if (table?.number !== undefined && String(table.number).trim() !== '') return String(table.number);
+        if (posMode === 'retail') return tmR('resPosRetailBadge');
+        if (posMode === 'selfservice') return tmR('resPosSelfServiceBadge');
+        return '—';
+    };
 
     const updateItemNote = (idx: number, note: string) => {
         const next = [...cart];
@@ -251,7 +344,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         const item = next[idx];
         item.discount = pct;
         const basePrice = item.price || item.product.price;
-        item.subtotal = item.quantity * basePrice * (1 - pct / 100);
+        item.subtotal = lineNetAfterPercentDiscount(item.quantity * basePrice, pct);
         setCart(next);
     };
 
@@ -287,7 +380,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 ).catch(() => {});
             }
         }
-        notify(`Sipariş beklemeye alındı (${id})`);
+        notify(tmR('resPosParkedOrder').replace('{id}', String(id)));
     };
     const resumeParked = (p: ParkedOrder) => {
         // Not: Bekletilen kalemlerin order item id'leri eski masaya aittir. Aynı masaya geri yüklerseniz mutfağa gönderim doğru çalışır; farklı masaya yüklerseniz önce bu masaya ürün ekleyip mutfağa gönderin veya aynı masayı açın.
@@ -309,7 +402,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 ).catch(() => {});
             }
         }
-        notify('Sipariş geri yüklendi');
+        notify(tmR('resPosParkedRestored'));
     };
 
     const [salesHistory, setSalesHistory] = useState<Sale[]>([]);
@@ -412,7 +505,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
         // Kilidi başka garson tutuyorsa engelle
         if (holder && holder !== myName) {
-            notify(`Bu masada şu an "${holder}" aktif, giremezsiniz!`, 'error');
+            notify(tmR('resPosTableBusy').replace('{holder}', holder), 'error');
             setTimeout(() => onBack?.(), 2000);
             return;
         }
@@ -564,6 +657,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     /** Ödeme tamamlandıktan sonra fiş (Yazdır / Yazdırmadan kapat) — Market POS ile aynı */
     const [showPostPaymentReceipt, setShowPostPaymentReceipt] = useState(false);
+    const [postPaymentDirectPrint, setPostPaymentDirectPrint] = useState(false);
     const [postPaymentSale, setPostPaymentSale] = useState<Sale | null>(null);
     const [postPaymentData, setPostPaymentData] = useState<any>(null);
     const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -584,11 +678,48 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     } | null>(null);
     const [voidReason, setVoidReason] = useState('');
     const [discountInput, setDiscountInput] = useState('');
-    const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+    const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
-    const notify = (msg: string, type: 'success' | 'error' = 'success') => {
+    const notify = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
         setNotification({ msg, type });
         setTimeout(() => setNotification(null), 3000);
+    };
+
+    const confirmPrint80Choice = async () => {
+        setShowPrint80ChoiceModal(false);
+        if (print80ReceiptType === 'bill') {
+            setPreviewReceiptLang(print80Lang);
+            setShowPrintPreview(true);
+            return;
+        }
+        try {
+            const rs = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const waiterName =
+                typeof currentStaff === 'object' ? (currentStaff as { name?: string })?.name : (currentStaff || waiter || '');
+            const html = buildRestaurantKitchenTicketHtml({
+                tableNumber: resolveTableLabelForPrint(),
+                floorName: table?.location ?? (posMode === 'retail' ? tmR('resPosRetailFloor') : undefined),
+                waiter: waiterName?.trim() || undefined,
+                orderNote: orderNote?.trim() || undefined,
+                locale: print80Lang,
+                items: cart.map((ci) => ({
+                    name:
+                        resolveProductNameForReceipt(ci.product ?? null, print80Lang, rs) ||
+                        ci.product?.name ||
+                        (ci as { name?: string }).name ||
+                        tmR('resPosProductFallback'),
+                    quantity: ci.quantity,
+                    course: (ci as { course?: string }).course,
+                    notes: typeof (ci as { note?: string }).note === 'string' ? (ci as { note?: string }).note : undefined,
+                    options: typeof (ci as { options?: string }).options === 'string' ? (ci as { options?: string }).options : undefined,
+                })),
+            });
+            await printRestaurantHtmlNoPreview(html);
+            notify(tmR('resPosKitchenPrinted'));
+        } catch (e) {
+            console.error('[RestPOS] mutfak fişi:', e);
+            notify(tmR('resPosPrintFailed'), 'error');
+        }
     };
 
     const persistOrderDiscountToDb = useCallback(
@@ -708,24 +839,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         const fromStore = (categories ?? []).map(c => (c as { name?: string }).name).filter(Boolean) as string[];
         if (fromStore.length) return [...fromStore].sort((a, b) => a.localeCompare(b, 'tr'));
         return [
-            'Kırmızı Etler', 'Beyaz Etler', 'Deniz Ürünleri', 'Pide',
-            'Tatlılar', 'Fast Food', 'Kahvaltı', 'Çorbalar', 'Menüler', 'Pizza',
-            'Soğuk İçecekler', 'Sıcak İçecekler',
-        ];
-    }, [categories, productsForList]);
+            'resPosDefCatRedMeat', 'resPosDefCatWhiteMeat', 'resPosDefCatSeafood', 'resPosDefCatPide',
+            'resPosDefCatDesserts', 'resPosDefCatFastFood', 'resPosDefCatBreakfast', 'resPosDefCatSoups', 'resPosDefCatMenus', 'resPosDefCatPizza',
+            'resPosDefCatColdDrinks', 'resPosDefCatHotDrinks',
+        ].map((k) => tmR(k));
+    }, [categories, productsForList, tmR]);
 
-    const subsForMain = useMemo(() => {
-        if (!catMain) return [] as string[];
-        const subs = new Set<string>();
+    const subsByMain = useMemo(() => {
+        const map = new Map<string, Set<string>>();
         for (const p of productsForList) {
             const { main, sub } = parseMainSub(p);
-            if (main === catMain && sub) subs.add(sub);
+            if (!map.has(main)) map.set(main, new Set());
+            if (sub) map.get(main)!.add(sub);
         }
-        return Array.from(subs).sort((a, b) => a.localeCompare(b, 'tr'));
-    }, [productsForList, catMain]);
+        const out: Record<string, string[]> = {};
+        map.forEach((subs, main) => {
+            out[main] = Array.from(subs).sort((a, b) => a.localeCompare(b, 'tr'));
+        });
+        return out;
+    }, [productsForList]);
+
+    const subsForMain = catMain ? (subsByMain[catMain] ?? []) : [];
 
     /* ---------- cart ---------- */
-    const addToCart = async (product: Product) => {
+    const addToCart = async (product: Product, addQty: number = 1) => {
+        const dq = Math.max(1, Math.min(999, Math.floor(Number(addQty) || 1)));
         // Önce sepete anında ekle — setCart(prev=>...) kullan ki art arda tıklamalarda 1,2,3... doğru artsın (closure'daki eski cart'a göre silinmesin)
         let rollbackCart: CartItem[] | null = null;
         setCart(prev => {
@@ -736,10 +874,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             );
             if (idx > -1) {
                 const next = [...prev];
-                next[idx] = { ...next[idx], quantity: next[idx].quantity + 1, subtotal: (next[idx].quantity + 1) * product.price };
+                const nq = next[idx].quantity + dq;
+                next[idx] = { ...next[idx], quantity: nq, subtotal: nq * product.price };
                 return next;
             }
-            const newItem = { product, quantity: 1, price: product.price, subtotal: product.price, discount: 0, taxAmount: 0 } as CartItem;
+            const newItem = { product, quantity: dq, price: product.price, subtotal: product.price * dq, discount: 0, taxAmount: 0 } as CartItem;
             if (activePlate) (newItem as any).plate = activePlate;
             return [...prev, newItem];
         });
@@ -756,8 +895,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             };
             (async () => {
                 try {
-                    if (needOpen) await openTable(table!.id, waiter || currentStaff?.name || 'Garson');
-                    const newId = await addItemToTable(table!.id, itemPayload, 1);
+                    if (needOpen) await openTable(table!.id, waiter || currentStaff?.name || tmR('resPosWaiterDefault'));
+                    const newId = await addItemToTable(table!.id, itemPayload, dq);
                     // Yeni eklenen kaleme DB id'sini yaz (iptal / masaya taşı için); merge ise mergedOrderItemIds'e ekle
                     if (newId) {
                         setCart(c => c.map(it => {
@@ -766,35 +905,79 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             const ex = it as any;
                             if (!ex.id) return { ...it, id: newId };
                             const merged = ex.mergedOrderItemIds ?? [{ id: ex.id, quantity: 1 }];
-                            return { ...it, mergedOrderItemIds: [...merged, { id: newId, quantity: 1 }] };
+                            return { ...it, mergedOrderItemIds: [...merged, { id: newId, quantity: dq }] };
                         }));
                     }
                 } catch (err: any) {
                     console.error('[RestPOS] addToCart db error:', err);
                     if (rollbackCart != null) setCart(rollbackCart);
-                    notify('Ürün eklenirken hata oluştu: ' + (err.message || 'Bilinmeyen hata'), 'error');
+                    notify(tmR('resPosErrAddProduct') + (err.message || tmR('resPosErrUnknown')), 'error');
                 }
             })();
         }
     };
 
     const updateQty = (idx: number, delta: number) => {
+        const item = cart[idx];
+        if (!item) return;
+        const prevQty = item.quantity;
+        const newQty = prevQty + delta;
+        if (newQty <= 0) {
+            setCart(cart.filter((_, i) => i !== idx));
+            return;
+        }
         const next = [...cart];
-        const item = next[idx];
-        const newQty = item.quantity + delta;
-        if (newQty <= 0) { setCart(cart.filter((_, i) => i !== idx)); return; }
-        item.quantity = newQty;
-        item.subtotal = newQty * item.product.price;
+        const cur = next[idx];
+        cur.quantity = newQty;
+        cur.subtotal = newQty * cur.product.price;
+
+        if (posMode === 'table' && table?.id && (cur as any).id) {
+            const merged = (cur as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+            if (Array.isArray(merged) && merged.length > 1) {
+                let newMerged = applyQuantityDeltaToMergedRows(merged, newQty - prevQty);
+                const sumM = () => newMerged.reduce((acc, m) => acc + m.quantity, 0);
+                let s = sumM();
+                if (newMerged.length > 0 && s !== newQty) {
+                    const last = newMerged[newMerged.length - 1];
+                    newMerged = [...newMerged.slice(0, -1), { ...last, quantity: last.quantity + (newQty - s) }];
+                }
+                if (newMerged.length === 0) {
+                    setCart(cart.filter((_, i) => i !== idx));
+                    return;
+                }
+                (cur as any).mergedOrderItemIds = newMerged;
+                (cur as any).id = newMerged[0].id;
+                setCart(next);
+                void (async () => {
+                    try {
+                        const prevMap = new Map(merged.map((m) => [m.id, m.quantity]));
+                        const nextMap = new Map(newMerged.map((m) => [m.id, m.quantity]));
+                        for (const [id, pq] of prevMap) {
+                            if (!nextMap.has(id)) {
+                                await RestaurantService.removeOrderItem(id);
+                            } else if (nextMap.get(id)! !== pq) {
+                                await updateOrderItemQuantity(table.id, id, nextMap.get(id)!);
+                            }
+                        }
+                        await refreshTableOrders(table.id);
+                    } catch (err) {
+                        console.error('[RestPOS] merged qty sync failed:', err);
+                        notify(tmR('resPosErrQtyUpdate'), 'error');
+                    }
+                })();
+                return;
+            }
+        }
+
         setCart(next);
-        // Masa modunda, tek satırlık kalemse DB ve store ile senkronize et (mutfağa gönderince doğru adet gitsin)
-        if (posMode === 'table' && table?.id && (item as any).id) {
-            const merged = (item as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+        if (posMode === 'table' && table?.id && (cur as any).id) {
+            const merged = (cur as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
             const isSingleRow = !Array.isArray(merged) || merged.length <= 1;
             if (isSingleRow) {
-                const itemId = (item as any).id;
+                const itemId = (cur as any).id;
                 updateOrderItemQuantity(table.id, itemId, newQty).catch(err => {
                     console.error('[RestPOS] updateOrderItemQuantity failed:', err);
-                    notify('Adet güncellenirken hata oluştu', 'error');
+                    notify(tmR('resPosErrQtyUpdate'), 'error');
                 });
             }
         }
@@ -819,7 +1002,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             setCart(cart.filter((_, i) => i !== idx));
             setExpandedCartItem(expandedCartItem === idx ? null : expandedCartItem !== null && expandedCartItem > idx ? expandedCartItem - 1 : expandedCartItem);
             if (selectionMode) setSelectedCartIndices(prev => { const n = new Set(prev); n.delete(idx); prev.forEach(i => { if (i > idx) n.add(i - 1); }); return n; });
-            notify('Ürün sepetten kaldırıldı');
+            notify(tmR('resPosItemRemoved'));
         }
     };
 
@@ -846,7 +1029,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         setSelectedCartIndices(new Set());
         setExpandedCartItem(null);
         if (cart.length <= count) setSelectionMode(false);
-        notify(`${count} ürün sepetten kaldırıldı`);
+        notify(tmR('resPosNItemsRemoved').replace('{count}', String(count)));
     };
 
     /** Ürün seç modunda tüm görünen kalemleri seç */
@@ -863,7 +1046,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     const voidFirstSelected = () => {
         const idx = Array.from(selectedCartIndices).find(i => (cart[i] as any).id);
         if (idx === undefined) {
-            notify('Seçilen ürünlerden hiçbiri henüz kayıtlı değil; önce Sil ile kaldırabilirsiniz.', 'error');
+            notify(tmR('resPosNoneSavedDelete'), 'error');
             return;
         }
         openVoidForCartItem(idx);
@@ -877,11 +1060,83 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         return id ? [id] : [];
     };
 
+    /** Hesap kapatmadan önce sepeti DB ile hizalar (hızlı tıklama / async kayıt / store gecikmesi) */
+    const ensureCartSyncedToDatabaseBeforeClose = useCallback(async () => {
+        if (!table?.id || posMode !== 'table') return;
+        const tid = table.id;
+        const waiterName = waiter || (typeof currentStaff === 'object' ? (currentStaff as any)?.name : currentStaff) || 'Garson';
+
+        const started = Date.now();
+        while (Date.now() - started < 2500) {
+            const pending = cart.some(ci => getOrderItemIds(ci).length === 0);
+            if (!pending) break;
+            await refreshTableOrders(tid);
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        await refreshTableOrders(tid);
+        let st = useRestaurantStore.getState().tables.find(t => t.id === tid);
+        if (!st || st.status === 'empty') {
+            await openTable(tid, waiterName);
+            await refreshTableOrders(tid);
+            st = useRestaurantStore.getState().tables.find(t => t.id === tid);
+        }
+
+        const ordersForPid = (pid: string) =>
+            (st?.orders ?? []).filter(o => o.menuItemId === pid && !o.isVoid);
+
+        for (const ci of cart) {
+            const ids = getOrderItemIds(ci);
+            const pid = String(ci.product?.id ?? '');
+            const itemPayload = {
+                id: pid,
+                name: ci.product?.name ?? tmR('resPosProductFallback'),
+                price: Number(ci.price ?? ci.product?.price ?? 0),
+                category:
+                    rawCategoryString(ci.product as Product) ||
+                    (Array.isArray(ci.product?.category) ? ci.product!.category[0] : (ci.product?.category ?? '')) ||
+                    '',
+            };
+
+            if (ids.length === 0) {
+                const storeQty = ordersForPid(pid).reduce((s, o) => s + o.quantity, 0);
+                const remain = Math.max(0, ci.quantity - storeQty);
+                if (remain > 0) {
+                    await addItemToTable(tid, itemPayload, remain);
+                    await refreshTableOrders(tid);
+                    st = useRestaurantStore.getState().tables.find(t => t.id === tid);
+                }
+                continue;
+            }
+            if (ids.length === 1) {
+                await updateOrderItemQuantity(tid, ids[0], ci.quantity);
+            } else {
+                const merged = (ci as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+                if (Array.isArray(merged)) {
+                    for (const row of merged) {
+                        await updateOrderItemQuantity(tid, row.id, row.quantity);
+                    }
+                }
+            }
+        }
+        await refreshTableOrders(tid);
+    }, [
+        table?.id,
+        posMode,
+        cart,
+        waiter,
+        currentStaff,
+        refreshTableOrders,
+        openTable,
+        addItemToTable,
+        updateOrderItemQuantity,
+    ]);
+
     /** Seçilen ürünleri başka masaya taşı — modal açar (birleştirilmiş satırların tüm id'leri gönderilir) */
     const moveSelectedToTable = () => {
         const ids = Array.from(selectedCartIndices).flatMap(i => getOrderItemIds(cart[i])).filter(Boolean);
         if (ids.length === 0) {
-            notify('Seçilen ürünlerden hiçbiri henüz kayıtlı değil; mutfağa gönderin veya Sil kullanın.', 'error');
+            notify(tmR('resPosNoneSavedKitchen'), 'error');
             return;
         }
         setMoveItemToTable(null);
@@ -890,7 +1145,10 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     };
 
     const subtotal = useMemo(() => cart.reduce((s, i) => s + (i.subtotal ?? 0), 0), [cart]);
-    const discountAmount = useMemo(() => subtotal * (orderDiscount / 100), [subtotal, orderDiscount]);
+    const discountAmount = useMemo(() => {
+        const raw = subtotal * (orderDiscount / 100);
+        return Math.min(roundPosDiscountAmountUp(raw), subtotal);
+    }, [subtotal, orderDiscount]);
     const grandTotal = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
     /** Aktif tabağa göre filtrelenmiş cart — orijinal idx korunur */
     const displayCart = useMemo(() =>
@@ -933,46 +1191,82 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         const discountTotal = (discountAmount || 0) + (paymentData.discount || 0);
         const totalVal = paymentData.finalTotal ?? grandTotal;
 
-        const saleForReceipt: Sale = {
-            id: `RES-${Date.now()}`,
-            receiptNumber,
-            date: new Date().toISOString(),
-            customerId: selectedCustomer?.id,
-            customerName: selectedCustomer?.name,
-            items: cart.map(item => ({
-                productId: String(item.product?.id ?? (item as any).product?.id ?? ''),
-                productName: item.product?.name ?? (item as any).product?.name ?? (item as any).name ?? 'Ürün',
-                quantity: item.quantity,
-                price: item.price ?? item.product?.price ?? 0,
-                discount: item.discount || 0,
-                total: item.subtotal ?? (item as any).total ?? (item.price ?? 0) * item.quantity,
-                variant: item.variant,
-            })),
-            subtotal,
-            discount: discountTotal,
-            total: totalVal,
-            paymentMethod,
-            cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || 'Garson'),
-            table: table?.number !== undefined ? String(table.number) : undefined,
-            notes: orderNote || undefined,
-        };
+        let saleForReceipt: Sale | undefined;
+        let paymentSucceeded = false;
 
         try {
+            if (table && posMode === 'table') {
+                await ensureCartSyncedToDatabaseBeforeClose();
+            }
+
+            saleForReceipt = {
+                id: `RES-${Date.now()}`,
+                receiptNumber,
+                date: new Date().toISOString(),
+                customerId: selectedCustomer?.id,
+                customerName: selectedCustomer?.name,
+                items: cart.map(item => ({
+                    productId: String(item.product?.id ?? (item as any).product?.id ?? ''),
+                    productName: item.product?.name ?? (item as any).product?.name ?? (item as any).name ?? tmR('resPosProductFallback'),
+                    quantity: item.quantity,
+                    price: item.price ?? item.product?.price ?? 0,
+                    discount: item.discount || 0,
+                    total: item.subtotal ?? (item as any).total ?? (item.price ?? 0) * item.quantity,
+                    variant: item.variant,
+                })),
+                subtotal,
+                discount: discountTotal,
+                total: totalVal,
+                paymentMethod,
+                cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || tmR('resPosWaiterDefault')),
+                table: table?.number !== undefined ? String(table.number) : undefined,
+                notes: orderNote || undefined,
+            };
+
+            const saleOverride: CloseBillSaleOverride = {
+                items: saleForReceipt.items.map(it => ({
+                    productId: it.productId,
+                    productName: it.productName,
+                    quantity: it.quantity,
+                    price: it.price,
+                    discount: it.discount || 0,
+                    total: it.total,
+                })),
+                subtotal: saleForReceipt.subtotal,
+                discount: discountTotal,
+                total: totalVal,
+            };
+
             if (table) {
-                await closeBill(table.id, {
-                    ...paymentData,
-                    discountAmount: discountAmount || 0,
-                    finalTotal: paymentData.finalTotal ?? grandTotal,
-                });
+                try {
+                    await closeBill(
+                        table.id,
+                        {
+                            ...paymentData,
+                            discountAmount: discountAmount || 0,
+                            finalTotal: paymentData.finalTotal ?? grandTotal,
+                            resolvedPaymentMethod: paymentMethod,
+                        },
+                        { saleOverride }
+                    );
+                } catch (closeErr: any) {
+                    const msg = closeErr instanceof Error ? closeErr.message : String(closeErr);
+                    if (typeof msg === 'string' && msg.startsWith('ACCOUNTING_POST_FAILED')) {
+                        paymentSucceeded = true;
+                        notify(tmR('resPosAccountingPostFail'), 'warning');
+                    } else {
+                        throw closeErr;
+                    }
+                }
             }
             if (posMode === 'retail' && callerIdDeliveryPhone?.trim()) {
                 const summary = cart
-                    .map((it) => `${it.quantity}x ${it.product?.name || (it as any).name || 'Ürün'}`)
+                    .map((it) => `${it.quantity}x ${it.product?.name || (it as any).name || tmR('resPosProductFallback')}`)
                     .join(', ');
                 await RestaurantService.createDeliveryOrder({
-                    customerName: selectedCustomer?.name?.trim() || 'Telefon Müşterisi',
+                    customerName: selectedCustomer?.name?.trim() || tmR('resPosCustomerPhone'),
                     phone: callerIdDeliveryPhone.trim(),
-                    address: selectedCustomer?.address?.trim() || 'Adres bilgisi eklenmedi',
+                    address: selectedCustomer?.address?.trim() || tmR('resPosAddrMissing'),
                     customerId: selectedCustomer?.id,
                     waiter: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || undefined),
                     channel: 'manual',
@@ -981,32 +1275,36 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     expectedPaymentMethod: retailDeliveryPaymentMethod,
                 });
                 onCallerIdDeliveryConsumed?.();
-                notify('Sipariş paket servise aktarıldı');
+                notify(tmR('resPosDeliveryTransferred'));
             }
+
+            paymentSucceeded = true;
         } catch (err) {
-            console.error('[RestPOS] closeBill error:', err);
-            if (table) {
-                try {
-                    const activeOrder = await RestaurantService.getActiveOrder(table.id);
-                    if (activeOrder) {
-                        await RestaurantService.closeOrder(activeOrder.id, { discountAmount });
+            console.error('[RestPOS] Ödeme tamamlanamadı:', err);
+            notify(tmR('resPosPaymentFailed'), 'error');
+        } finally {
+            setShowPaymentModal(false);
+            if (paymentSucceeded && saleForReceipt) {
+                discountHydratedKeyRef.current = null;
+                void generateNewReceiptNumber();
+                setCart([]);
+                setOrderDiscount(0);
+                setOrderNote('');
+                setPostPaymentSale(saleForReceipt);
+                setPostPaymentData(paymentData);
+                setPostPaymentDirectPrint(!paymentData.showReceiptPreview);
+                setShowPostPaymentReceipt(true);
+                notify(tmR('resPosPaymentOk'));
+                // Masa modunda satış ERP'ye closeBill içinde (REST-*) zaten kaydedilir.
+                // Burada tekrar onSaleComplete çağrısı ikinci bir (RES-*) satış satırı üretmesin.
+                if (!(table && posMode === 'table')) {
+                    try {
+                        onSaleComplete(saleForReceipt);
+                    } catch (e) {
+                        console.error('[RestPOS] onSaleComplete:', e);
                     }
-                    await RestaurantService.updateTableStatus(table.id, 'empty', undefined, undefined, 0);
-                } catch (e2) {
-                    console.error('[RestPOS] fallback close failed:', e2);
                 }
             }
-        } finally {
-            discountHydratedKeyRef.current = null;
-            generateNewReceiptNumber();
-            setCart([]);
-            setOrderDiscount(0);
-            setOrderNote('');
-            setShowPaymentModal(false);
-            setPostPaymentSale(saleForReceipt);
-            setPostPaymentData(paymentData);
-            setShowPostPaymentReceipt(true);
-            notify('Ödeme tamamlandı!');
         }
     };
 
@@ -1027,34 +1325,52 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             );
         }
 
-        const sale: Sale = {
-            id: `DRAFT-${Date.now()}`,
-            receiptNumber,
-            date: new Date().toISOString(),
-            customerId: selectedCustomer?.id,
-            customerName: selectedCustomer?.name,
-            items: cart.map(item => ({
-                productId: String(item.product?.id ?? (item as any).product?.id ?? ''),
-                productName: item.product?.name ?? (item as any).product?.name ?? (item as any).name ?? 'Ürün',
-                quantity: item.quantity,
-                price: item.price ?? item.product?.price ?? 0,
-                discount: item.discount || 0,
-                total: item.subtotal ?? (item as any).total ?? (item.price ?? 0) * item.quantity,
-                variant: item.variant,
-            })),
-            subtotal,
-            discount: (discountAmount || 0) + ctx.discount,
-            total: ctx.finalTotal,
-            paymentMethod,
-            cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || 'Garson'),
-            table: table?.number !== undefined ? String(table.number) : undefined,
-            notes: 'Ön hesap',
-        };
-
         try {
             await persistOrderDiscountToDb(orderDiscount);
             invalidateReceiptSettingsCache();
-            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch(() => ({}));
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const lang: KitchenReceiptLocale = (['tr', 'en', 'ar', 'ku'] as const).includes(
+                ctx.receiptLanguage as KitchenReceiptLocale
+            )
+                ? (ctx.receiptLanguage as KitchenReceiptLocale)
+                : 'tr';
+
+            const sale: Sale = {
+                id: `DRAFT-${Date.now()}`,
+                receiptNumber,
+                date: new Date().toISOString(),
+                customerId: selectedCustomer?.id,
+                customerName: selectedCustomer?.name,
+                items: cart.map((item) => ({
+                    productId: String(item.product?.id ?? (item as any).product?.id ?? ''),
+                    productName:
+                        resolveProductNameForReceipt(item.product ?? null, lang, receiptSettings) ||
+                        item.product?.name ||
+                        (item as any).product?.name ||
+                        (item as any).name ||
+                        tmR('resPosProductFallback'),
+                    quantity: item.quantity,
+                    price: item.price ?? item.product?.price ?? 0,
+                    discount: item.discount || 0,
+                    total: item.subtotal ?? (item as any).total ?? (item.price ?? 0) * item.quantity,
+                    variant: item.variant,
+                })),
+                subtotal,
+                discount: (discountAmount || 0) + ctx.discount,
+                total: ctx.finalTotal,
+                paymentMethod,
+                cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || tmR('resPosWaiterDefault')),
+                table: table?.number !== undefined ? String(table.number) : undefined,
+                notes:
+                    lang === 'en'
+                        ? 'Interim bill'
+                        : lang === 'ar'
+                          ? 'حساب مبدئي'
+                          : lang === 'ku'
+                            ? 'وەسڵی پێشووەختە'
+                            : tmR('resPosInterimBillTr'),
+            };
+
             const companyName =
                 receiptSettings.companyName?.trim()
                 || selectedFirm?.title?.trim()
@@ -1077,13 +1393,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 companyPhone: receiptSettings.companyPhone,
                 companyTaxOffice: receiptSettings.companyTaxOffice,
                 companyTaxNumber: receiptSettings.companyTaxNumber,
-                draftLabel: 'ÖN HESAP',
+                firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
+                locale: lang,
             });
             await printRestaurantHtmlNoPreview(html);
-            notify('Ön fiş yazıcıya gönderildi');
+            notify(tmR('resPosDraftPrinted'));
         } catch (e) {
             console.error('[RestPOS] draft print:', e);
-            notify('Yazdırma başarısız', 'error');
+            notify(tmR('resPosPrintFailed'), 'error');
         }
     };
 
@@ -1106,6 +1423,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             if (catMain !== null) {
                 if (main !== catMain) return false;
                 if (catSub !== null && sub !== catSub) return false;
+            } else if (catMainSolo !== null) {
+                if (main !== catMainSolo) return false;
             }
             const q = query.trim().toLowerCase();
             if (!q) return true;
@@ -1115,7 +1434,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             if (main.toLowerCase().includes(q)) return true;
             if (sub && sub.toLowerCase().includes(q)) return true;
             return false;
-        }), [productsForList, catMain, catSub, query]);
+        }), [productsForList, catMain, catSub, catMainSolo, query]);
 
 
 
@@ -1170,7 +1489,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             className="flex items-center gap-2.5 px-5 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl font-black text-[12px] uppercase transition-all shadow-lg border border-white/20 group active:scale-90 shrink-0"
                         >
                             <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                            Geri
+                            {tmR('resPosBack')}
                         </button>
 
                         <div className="relative group flex-1 min-w-0 max-w-lg h-12">
@@ -1180,7 +1499,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 type="text"
                                 inputMode="search"
                                 autoComplete="off"
-                                placeholder="Ürün veya kategori ara..."
+                                placeholder={tmR('resPosSearchPh')}
                                 className="absolute inset-0 w-full h-full bg-white/20 hover:bg-white/25 focus:bg-white/25 border-2 border-white/30 focus:border-white/50 text-white placeholder:text-white/65 pl-12 pr-4 rounded-2xl outline-none transition-all text-sm font-semibold shadow-inner"
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
@@ -1204,22 +1523,22 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             )}
                         >
                             <UserCircle className="w-4.5 h-4.5" />
-                            {waiter || 'Personel Seç'}
+                            {waiter || tmR('resPosStaffSelect')}
                         </button>
 
                         <button
                             onClick={() => { setShowHistoryModal(true); loadSalesHistory(); }}
                             className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-[12px] font-black uppercase transition-all whitespace-nowrap bg-white/10 text-white hover:bg-white/20 border border-white/10 active:scale-95 shadow-lg shadow-black/10"
                         >
-                            <History className="w-4.5 h-4.5" /> FİŞ LİSTESİ
+                            <History className="w-4.5 h-4.5" /> {tmR('resPosReceiptList')}
                         </button>
 
                         <button
-                            onClick={() => setShowPrintPreview(true)}
+                            onClick={openPrint80ChoiceModal}
                             disabled={cart.length === 0}
                             className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl text-[12px] font-black uppercase transition-all whitespace-nowrap bg-blue-500 hover:bg-blue-400 text-white border border-blue-400 active:scale-95 shadow-lg shadow-blue-500/20 disabled:opacity-30 disabled:grayscale"
                         >
-                            <Printer className="w-4.5 h-4.5" /> YAZDIR (80mm)
+                            <Printer className="w-4.5 h-4.5" /> {tmR('resPosPrint80')}
                         </button>
                     </div>
 
@@ -1228,18 +1547,18 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             {posMode === 'retail' ? (
                                 <div className="flex flex-col items-end gap-2">
                                     <div className="flex items-center gap-2 bg-orange-500/40 px-5 py-2.5 rounded-2xl border border-orange-300/30 shadow-inner backdrop-blur-sm">
-                                        <span className="text-orange-200 font-black text-[12px] uppercase tracking-[0.15em] leading-none">PERAKENDE</span>
+                                        <span className="text-orange-200 font-black text-[12px] uppercase tracking-[0.15em] leading-none">{tmR('resPosRetailBadge')}</span>
                                     </div>
                                     {callerIdDeliveryPhone?.trim() ? (
                                         <div className="flex flex-col items-end gap-1 max-w-[240px]">
                                             <span className="text-[9px] text-orange-100/90 font-bold uppercase tracking-wide text-right leading-tight">
-                                                Paket ödeme — teslimde kasa/bankaya
+                                                {tmR('resPosDeliveryPayHint')}
                                             </span>
                                             <div className="flex flex-wrap gap-1 justify-end">
                                                 {([
-                                                    { id: 'cash' as const, label: 'Nakit', Icon: Banknote },
-                                                    { id: 'card' as const, label: 'Kart', Icon: CreditCard },
-                                                    { id: 'transfer' as const, label: 'Havale', Icon: Landmark },
+                                                    { id: 'cash' as const, label: tmR('resPosPayCash'), Icon: Banknote },
+                                                    { id: 'card' as const, label: tmR('resPosPayCard'), Icon: CreditCard },
+                                                    { id: 'transfer' as const, label: tmR('resPosPayTransfer'), Icon: Landmark },
                                                 ]).map(({ id, label, Icon }) => (
                                                     <button
                                                         key={id}
@@ -1262,7 +1581,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 </div>
                             ) : posMode === 'selfservice' ? (
                                 <div className="flex items-center gap-2 bg-green-600/40 px-5 py-2.5 rounded-2xl border border-green-300/30 shadow-inner backdrop-blur-sm">
-                                    <span className="text-green-200 font-black text-[12px] uppercase tracking-[0.15em] leading-none">SELF SERVİS</span>
+                                    <span className="text-green-200 font-black text-[12px] uppercase tracking-[0.15em] leading-none">{tmR('resPosSelfServiceBadge')}</span>
                                 </div>
                             ) : (() => {
                                 const storeTable = tables.find(t => t.id === table?.id);
@@ -1270,7 +1589,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 bg-blue-900/40 px-5 py-2.5 rounded-2xl border border-white/10 shadow-inner backdrop-blur-sm">
-                                            <span className="text-white/50 font-black text-[10px] uppercase tracking-[0.2em] leading-none">MASA</span>
+                                            <span className="text-white/50 font-black text-[10px] uppercase tracking-[0.2em] leading-none">{tmR('resPosTableWord')}</span>
                                             <span className="text-white font-black text-[18px] leading-none drop-shadow-md">{table?.number || '----'}</span>
                                         </div>
                                         {storeTable?.faturaNo && (
@@ -1300,7 +1619,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         >
                             <Users className="w-5 h-5 group-hover:rotate-12 transition-transform" />
                             <span className="text-[13px] font-bold uppercase tracking-tight leading-none truncate max-w-[140px]">
-                                {selectedCustomer?.name || 'MÜŞTERİ SEÇ'}
+                                {selectedCustomer?.name || tmR('resPosSelectCustomer')}
                             </span>
                         </div>
                     </div>
@@ -1327,7 +1646,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             : 'bg-white/5 text-white/90 border-white/10 hover:bg-white/15 backdrop-blur-sm'
                                     )}
                                 >
-                                    HEPSİ
+                                    {tmR('resPosPlatesAll')}
                                     {plateBadgeCounts.unplated > 0 && (
                                         <span className="ml-2 px-1.5 py-0.5 bg-blue-900/40 rounded-md text-[9px] font-black">{plateBadgeCounts.unplated}</span>
                                     )}
@@ -1377,7 +1696,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     className="px-4 py-1.5 rounded-xl border border-dashed border-white/20 text-[10px] font-black text-white/30 hover:border-white/60 hover:text-white transition-all hover:bg-white/5 min-h-[36px] flex items-center gap-1.5"
                                 >
                                     <Plus className="w-3 h-3" />
-                                    YENİ
+                                    {tmR('resPosNewPlate')}
                                 </button>
                             </div>
                         )}
@@ -1394,7 +1713,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         ? "bg-white text-blue-600 shadow-md"
                                         : "text-white/40 hover:text-white hover:bg-white/10"
                                 )}
-                                title="Tablo Görünümü"
+                                title={tmR('resPosViewTable')}
                             >
                                 <List className="w-4 h-4" />
                             </button>
@@ -1406,7 +1725,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         ? "bg-white text-blue-600 shadow-md"
                                         : "text-white/40 hover:text-white hover:bg-white/10"
                                 )}
-                                title="Kart Görünümü"
+                                title={tmR('resPosViewCard')}
                             >
                                 <LayoutGrid className="w-4 h-4" />
                             </button>
@@ -1423,10 +1742,10 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     ? "bg-violet-500/40 text-white border-violet-500/50"
                                     : "bg-white/10 text-white/80 border-white/20 hover:bg-white/20 hover:text-white"
                             )}
-                            title="Ürün seç (silme, iptal, masaya taşıma)"
+                            title={tmR('resPosSelectProductHint')}
                         >
                             {selectionMode ? <CheckSquare className="w-4.5 h-4.5" /> : <Square className="w-4.5 h-4.5" />}
-                            ÜRÜN SEÇ
+                            {tmR('resPosSelectProduct')}
                         </button>
 
                         <button
@@ -1434,7 +1753,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             disabled={cart.length === 0}
                             className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-100 border border-emerald-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-30 shadow-lg font-black text-[12px] tracking-wide"
                         >
-                            <ChefHat className="w-4.5 h-4.5" /> KAYDET
+                            <ChefHat className="w-4.5 h-4.5" /> {tmR('resPosSave')}
                         </button>
 
                         {table && (
@@ -1443,13 +1762,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     onClick={() => onRequestMoveTable ? onRequestMoveTable() : setShowMoveTableModal(true)}
                                     className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-100 border border-amber-500/30 transition-all hover:scale-105 active:scale-95 shadow-lg font-black text-[12px] tracking-wide"
                                 >
-                                    <RotateCcw className="w-4.5 h-4.5" /> MASA TAŞI
+                                    <RotateCcw className="w-4.5 h-4.5" /> {tmR('resPosMoveTable')}
                                 </button>
                                 <button
                                     onClick={() => setShowSplitBillModal(true)}
                                     className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-100 border border-indigo-500/30 transition-all hover:scale-105 active:scale-95 shadow-lg font-black text-[12px] tracking-wide"
                                 >
-                                    <UtensilsCrossed className="w-4.5 h-4.5" /> ADİSYON PARÇALA
+                                    <UtensilsCrossed className="w-4.5 h-4.5" /> {tmR('resPosSplitBill')}
                                 </button>
                             </>
                         )}
@@ -1466,51 +1785,72 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         {catMain !== null && (
                             <button
                                 type="button"
-                                onClick={() => { setCatMain(null); setCatSub(null); }}
+                                onClick={() => { setCatMain(null); setCatSub(null); setCatMainSolo(null); }}
                                 className="w-full rounded-xl flex items-center gap-2 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 active:scale-[0.98]"
                             >
                                 <ChevronLeft className="w-4 h-4 shrink-0" />
-                                Ana kategoriler
+                                {tmR('resPosMainCategories')}
                             </button>
                         )}
                         <button
                             type="button"
-                            onClick={() => { setCatMain(null); setCatSub(null); }}
+                            onClick={() => { setCatMain(null); setCatSub(null); setCatMainSolo(null); }}
                             className={cn(
                                 'w-full rounded-[20px] flex items-center gap-3.5 px-5 py-4.5 transition-all text-left group shadow-lg active:scale-95 border-2',
-                                catMain === null && catSub === null
+                                catMain === null && catSub === null && catMainSolo === null
                                     ? 'bg-blue-600 text-white font-black border-blue-400 shadow-blue-500/20'
                                     : 'text-slate-600 bg-white hover:bg-slate-50 font-bold border-transparent hover:border-slate-200'
                             )}
                         >
                             <div className={cn(
                                 'w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-all',
-                                catMain === null && catSub === null ? 'bg-white/20 rotate-12' : 'bg-blue-50 group-hover:rotate-12'
+                                catMain === null && catSub === null && catMainSolo === null ? 'bg-white/20 rotate-12' : 'bg-blue-50 group-hover:rotate-12'
                             )}>
-                                <Utensils className={cn('w-5.5 h-5.5 transition-transform', catMain === null && catSub === null ? 'text-white' : 'text-blue-500')} />
+                                <Utensils className={cn('w-5.5 h-5.5 transition-transform', catMain === null && catSub === null && catMainSolo === null ? 'text-white' : 'text-blue-500')} />
                             </div>
-                            <span className="text-[14px] font-black uppercase tracking-widest flex-1">TÜMÜ</span>
+                            <span className="text-[14px] font-black uppercase tracking-widest flex-1">{tmR('resPosAllShort')}</span>
                         </button>
                     </div>
 
                     {catMain === null ? (
                         <div className="px-1">
                             <div className="mx-4 mb-2 flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ana kategori</span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{tmR('resPosCategoryMainLabel')}</span>
                                 <div className="h-[1px] flex-1 ml-4 bg-slate-200/50" />
                             </div>
                             <div className="px-3 flex flex-col items-stretch space-y-2">
-                                {mainCats.map((main, ci) => {
-                                    const emojis = ['🥩', '🍗', '🦐', '🫓', '🍰', '🍔', '🥐', '🍲', '🍱', '🍕', '🥤', '☕'];
-                                    const emoji = emojis[ci % emojis.length];
+                                {mainCats.map((main) => {
+                                    const subs = subsByMain[main] ?? [];
+                                    const hasSubs = subs.length > 0;
+                                    const soloSelected = catMainSolo === main;
                                     return (
                                         <button
                                             key={main}
                                             type="button"
-                                            onClick={() => { setCatMain(main); setCatSub(null); }}
-                                            className="w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 group active:scale-[0.97] text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200"
+                                            onClick={() => {
+                                                if (hasSubs) {
+                                                    setCatMainSolo(null);
+                                                    setCatMain(main);
+                                                    setCatSub(null);
+                                                } else {
+                                                    setCatMain(null);
+                                                    setCatSub(null);
+                                                    setCatMainSolo(prev => (prev === main ? null : main));
+                                                }
+                                            }}
+                                            className={cn(
+                                                'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 group active:scale-[0.97]',
+                                                soloSelected
+                                                    ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                    : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
+                                            )}
                                         >
-                                            <span className="text-[18px] shrink-0 opacity-90">{emoji}</span>
+                                            <span className={cn(
+                                                'shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center border border-slate-200/80',
+                                                soloSelected ? 'bg-blue-50 border-blue-200/80' : 'bg-slate-100 group-hover:bg-amber-50 group-hover:border-amber-200/80'
+                                            )}>
+                                                <MainCategoryIcon name={main} className="w-5 h-5 text-amber-800" />
+                                            </span>
                                             <span className="text-[13px] font-bold tracking-tight leading-tight uppercase truncate">{main}</span>
                                         </button>
                                     );
@@ -1519,45 +1859,52 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         </div>
                     ) : (
                         <div className="px-1">
-                            <div className="mx-4 mb-2">
+                            <div className={cn('mx-4', subsForMain.length > 0 ? 'mb-2' : '')}>
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 block truncate" title={catMain}>{catMain}</span>
-                                <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Alt kategori</span>
-                            </div>
-                            <div className="px-3 flex flex-col items-stretch space-y-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setCatSub(null)}
-                                    className={cn(
-                                        'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97]',
-                                        catSub === null
-                                            ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
-                                            : 'text-slate-500 bg-transparent hover:bg-white border-transparent hover:border-slate-200'
-                                    )}
-                                >
-                                    <span className="text-[13px] font-bold tracking-tight">Bu grupta tümü</span>
-                                </button>
-                                {subsForMain.map((sub) => {
-                                    const active = catSub === sub;
-                                    return (
-                                        <button
-                                            key={sub}
-                                            type="button"
-                                            onClick={() => setCatSub(active ? null : sub)}
-                                            className={cn(
-                                                'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97]',
-                                                active
-                                                    ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
-                                                    : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
-                                            )}
-                                        >
-                                            <span className="text-[13px] font-bold tracking-tight leading-tight truncate">{sub}</span>
-                                        </button>
-                                    );
-                                })}
-                                {subsForMain.length === 0 && (
-                                    <p className="text-[10px] text-slate-400 px-2 py-1">Bu ana kategoride alt grup yok; ürünler yukarıdaki &quot;Bu grupta tümü&quot; ile listelenir.</p>
+                                {subsForMain.length > 0 && (
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Alt kategori</span>
                                 )}
                             </div>
+                            {subsForMain.length > 0 && (
+                                <div className="px-3 flex flex-col items-stretch space-y-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCatSub(null)}
+                                        className={cn(
+                                            'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97]',
+                                            catSub === null
+                                                ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                : 'text-slate-500 bg-transparent hover:bg-white border-transparent hover:border-slate-200'
+                                        )}
+                                    >
+                                        <span className="shrink-0 w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200/80">
+                                            <List className="w-4 h-4 text-slate-600" />
+                                        </span>
+                                        <span className="text-[13px] font-bold tracking-tight">Bu grupta tümü</span>
+                                    </button>
+                                    {subsForMain.map((sub) => {
+                                        const active = catSub === sub;
+                                        return (
+                                            <button
+                                                key={sub}
+                                                type="button"
+                                                onClick={() => setCatSub(active ? null : sub)}
+                                                className={cn(
+                                                    'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97]',
+                                                    active
+                                                        ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                        : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
+                                                )}
+                                            >
+                                                <span className="shrink-0 w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200/80">
+                                                    <SubCategoryIcon className="w-4 h-4 text-violet-700" />
+                                                </span>
+                                                <span className="text-[13px] font-bold tracking-tight leading-tight truncate">{sub}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
                 </aside>
@@ -1633,11 +1980,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     className="bg-white rounded-[24px] border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-2xl hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-1.5 select-none relative active:scale-95"
                                 >
                                     {/* Product image */}
-                                    <div className="h-[90px] w-full overflow-hidden bg-slate-50 shrink-0 relative">
+                                    <div className="w-full aspect-[218/244] max-h-[244px] overflow-hidden bg-slate-50 shrink-0 relative">
                                         <img
                                             src={imgSrc}
                                             alt={product.name}
-                                            className="w-full h-full object-cover group-hover:scale-125 transition-transform duration-700 ease-in-out"
+                                            width={218}
+                                            height={244}
+                                            className="w-full h-full object-cover object-center group-hover:scale-125 transition-transform duration-700 ease-in-out"
                                             onError={e => {
                                                 (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300&h=200&fit=crop&auto=format';
                                             }}
@@ -1660,13 +2009,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             <div className="text-[14px] font-black text-slate-800 leading-[1.3] line-clamp-2 min-h-[36px] group-hover:text-blue-700 transition-colors flex items-center gap-2">
                                                 {product.name}
                                                 {product.stock <= (product.min_stock || 5) && (
-                                                    <span className="shrink-0 w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" title="Düşük Stok" />
+                                                    <span className="shrink-0 w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]" title={tmR('resPosLowStockTitle')} />
                                                 )}
                                             </div>
                                         </div>
                                         <div className="mt-2.5 flex items-center justify-between border-t border-slate-50 pt-2.5">
                                             <div className="flex flex-col">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">FİYAT</span>
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{tmR('resPosCardPriceLabel')}</span>
                                                 <div className="text-[16px] font-black text-[#1a56db] tracking-tighter leading-none">
                                                     {fmt(product.price)}
                                                 </div>
@@ -1700,19 +2049,19 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             onClick={selectAllVisible}
                                             className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-bold text-[10px] uppercase transition-all active:scale-95"
                                         >
-                                            Tümü seç
+                                            {tmR('resPosSelectAll')}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={clearSelection}
                                             className="px-3 py-1.5 rounded-lg bg-slate-500 hover:bg-slate-600 text-white font-bold text-[10px] uppercase transition-all active:scale-95"
                                         >
-                                            Seçimi kaldır
+                                            {tmR('resPosClearSelection')}
                                         </button>
                                     </div>
                                     {selectedCartIndices.size > 0 && (
                                         <span className="text-[12px] font-black text-violet-800 uppercase tracking-wide">
-                                            {selectedCartIndices.size} ürün seçili
+                                            {tmR('resPosNSelected').replace('{n}', String(selectedCartIndices.size))}
                                         </span>
                                     )}
                                 </div>
@@ -1722,17 +2071,17 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             type="button"
                                             onClick={removeSelectedFromCart}
                                             className="px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] uppercase transition-all active:scale-95"
-                                            title="Seçilenleri sepetten kaldır (onay sormaz, minus gibi)"
+                                            title={tmR('resPosRemoveSelectedTitle')}
                                         >
-                                            Sil
+                                            {tmR('resPosDeleteShort')}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={voidFirstSelected}
                                             className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[10px] uppercase transition-all active:scale-95"
-                                            title="Seçilenlerden kayıtlı olanı iptal et (sebep sorar)"
+                                            title={tmR('resPosVoidSelectedTitle')}
                                         >
-                                            İptal
+                                            {tmR('resPosVoidShort')}
                                         </button>
                                         {table && (
                                             <button
@@ -1740,7 +2089,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                 onClick={moveSelectedToTable}
                                                 className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] uppercase transition-all active:scale-95 flex items-center gap-1"
                                             >
-                                                <ArrowRightLeft className="w-3.5 h-3.5" /> Masaya Taşı
+                                                <ArrowRightLeft className="w-3.5 h-3.5" /> {tmR('resPosMoveToTable')}
                                             </button>
                                         )}
                                     </div>
@@ -1857,14 +2206,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                         {(item as any).sourceTableNumber && (item as any).sourceTableNumber !== table?.number && (
                                                             <div className="inline-flex mt-1 items-center gap-1.5 flex-wrap">
                                                                 <span className="text-[9px] font-black text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                                                                    Masa {(item as any).sourceTableNumber}&apos;ten
+                                                                    {tmR('resPosFromTable').replace('{n}', String((item as any).sourceTableNumber))}
                                                                 </span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={e => {
                                                                         e.stopPropagation();
                                                                         const ids = getOrderItemIds(item);
-                                                                        if (ids.length === 0) { notify('Önce mutfağa gönderin veya kaydedin.', 'error'); return; }
+                                                                        if (ids.length === 0) { notify(tmR('resPosSendKitchenFirst'), 'error'); return; }
                                                                         if (ids.length > 1) {
                                                                             setMoveSelectedItemIds(ids);
                                                                             setMoveItemToTable(null);
@@ -1876,7 +2225,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                                     }}
                                                                     className="text-[9px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200 flex items-center gap-1"
                                                                 >
-                                                                    <ArrowRightLeft className="w-3 h-3" /> Başka masaya taşı
+                                                                    <ArrowRightLeft className="w-3 h-3" /> {tmR('resPosMoveOtherTable')}
                                                                 </button>
                                                             </div>
                                                         )}
@@ -1889,7 +2238,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                     onClick={(e) => { e.stopPropagation(); openVoidForCartItem(idx); }}
                                                     style={{ backgroundColor: '#dc2626' }}
                                                     className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center transition-all active:scale-95"
-                                                    title="İptal / İade"
+                                                    title={tmR('resPosVoidReturnTitle')}
                                                 >
                                                     <Minus className="w-6 h-6 text-white font-black" />
                                                 </button>
@@ -1901,13 +2250,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                 <div className="bg-blue-50/50 border-t border-blue-100 p-2 flex items-center justify-center gap-1.5 transform transition-all duration-200 z-10" onClick={e => e.stopPropagation()}>
                                                     <button onClick={() => updateItemDiscount(idx, 100)} className="flex-1 h-8 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm">
                                                         <Percent className="w-3 h-3 border border-white/40 rounded p-0.5" />
-                                                        İkram / İndirim
+                                                        {tmR('resPosDiscountComplimentary')}
                                                     </button>
                                                     <div className="relative flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden h-8 shadow-sm flex-1 max-w-[140px]">
                                                         <span className="pl-2 text-slate-400"><MessageSquareMore className="w-3.5 h-3.5" /></span>
                                                         <input
                                                             type="text"
-                                                            placeholder="Not ekle..."
+                                                            placeholder={tmR('resPosNoteAddPlaceholder')}
                                                             className="w-full px-1.5 py-1 text-[10px] font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:bg-yellow-50/30 transition-colors"
                                                             value={(item as any).note || ''}
                                                             onChange={e => updateItemNote(idx, e.target.value)}
@@ -1916,7 +2265,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                     {!selectionMode && (
                                                     <button onClick={() => openVoidForCartItem(idx)} className="flex-1 h-8 rounded-lg bg-red-500 hover:bg-red-600 text-white font-bold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-colors active:scale-95 shadow-sm max-w-[60px]">
                                                         <Trash2 className="w-3.5 h-3.5" />
-                                                        SİL
+                                                        {tmR('resPosDeleteUpper')}
                                                     </button>
                                                     )}
                                                 </div>
@@ -1933,14 +2282,14 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         <tr>
                                             {selectionMode && (
                                                 <th className="px-2 py-3 text-center text-[11px] font-black text-white/90 uppercase tracking-wider w-12 border-l border-blue-500/30">
-                                                    Seç
+                                                    {tmR('resPosTableThSelect')}
                                                 </th>
                                             )}
                                             <th className="px-3 py-3 text-left text-[11px] font-black text-white/90 uppercase tracking-wider w-8" />
-                                            <th className="px-3 py-3 text-left text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30">Ürün Adı</th>
-                                            <th className="px-3 py-3 text-center text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[120px]">Miktar</th>
-                                            <th className="px-3 py-3 text-right text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[85px]">Fiyat</th>
-                                            <th className="px-3 py-3 text-right text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[90px]">Toplam</th>
+                                            <th className="px-3 py-3 text-left text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30">{tmR('resPosTableThProduct')}</th>
+                                            <th className="px-3 py-3 text-center text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[120px]">{tmR('resPosTableThQty')}</th>
+                                            <th className="px-3 py-3 text-right text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[85px]">{tmR('resPosTableThPrice')}</th>
+                                            <th className="px-3 py-3 text-right text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-[90px]">{tmR('resPosTableThTotal')}</th>
                                             <th className="px-2 py-3 text-center text-[11px] font-black text-white/90 uppercase tracking-wider border-l border-blue-500/30 w-12">
                                                 ⚙️
                                             </th>
@@ -2026,7 +2375,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                                             onClick={e => {
                                                                                 e.stopPropagation();
                                                                                 const ids = getOrderItemIds(item);
-                                                                                if (ids.length === 0) { notify('Önce mutfağa gönderin veya kaydedin.', 'error'); return; }
+                                                                                if (ids.length === 0) { notify(tmR('resPosSendKitchenFirst'), 'error'); return; }
                                                                                 if (ids.length > 1) {
                                                                                     setMoveSelectedItemIds(ids);
                                                                                     setMoveItemToTable(null);
@@ -2111,7 +2460,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                                         <span className="pl-2.5 text-blue-400"><MessageSquareMore className="w-3.5 h-3.5" /></span>
                                                                         <input
                                                                             type="text"
-                                                                            placeholder="Ürün notu (örn: az pişmiş)"
+                                                                            placeholder={tmR('resPosProductNotePlaceholder')}
                                                                             className="w-full px-2 py-2 text-[12px] font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:bg-yellow-50/20"
                                                                             value={(item as any).note || ''}
                                                                             onChange={e => updateItemNote(idx, e.target.value)}
@@ -2158,7 +2507,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">GÜNCEL TOPLAM</span>
                                 <div className="flex items-center gap-2">
                                     <Calculator className="w-5 h-5 text-blue-600 drop-shadow-sm" />
-                                    <span className="font-black text-slate-900 text-[15px] uppercase tracking-tighter">NET ÖDEME</span>
+                                    <span className="font-black text-slate-900 text-[15px] uppercase tracking-tighter">{tmR('resPosNetPayment')}</span>
                                 </div>
                             </div>
                             <div className="flex flex-col items-end">
@@ -2201,22 +2550,22 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-purple-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <LayoutGrid className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
-                            <span className="text-[11px] font-black uppercase tracking-widest">PARÇALI</span>
+                            <span className="text-[11px] font-black uppercase tracking-widest">{tmR('resPosPartialPay')}</span>
                         </button>
 
                         <div className="flex flex-col bg-white border-l border-slate-200">
                             <button
                                 onClick={() => setShowNoteModal(true)}
                                 className="w-14 h-1/2 flex items-center justify-center hover:bg-amber-50 transition-colors border-b border-slate-100"
-                                title="Sipariş Notu"
+                                title={tmR('resPosOrderNoteTitle')}
                             >
                                 <MessageSquareMore className={cn("w-5.5 h-5.5", orderNote ? "text-amber-500 animate-pulse" : "text-slate-300")} />
                             </button>
                             <button
-                                onClick={() => setShowPrintPreview(true)}
+                                onClick={openPrint80ChoiceModal}
                                 disabled={cart.length === 0}
                                 className="w-14 h-1/2 flex items-center justify-center hover:bg-blue-50 transition-colors border-b border-slate-100 disabled:opacity-20"
-                                title="Adisyon Yazdır (80mm)"
+                                title={tmR('resPosPrintBill80Title')}
                             >
                                 <Printer className={cn("w-5.5 h-5.5", cart.length > 0 ? "text-blue-500" : "text-slate-300")} />
                             </button>
@@ -2227,29 +2576,123 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
             {/* ── MODALS ──────────────────────────────────────────────── */}
 
+            {/* 80mm: önce fiş türü + dil (hesap fişi önizlemede formatCurrency ile uyumlu) */}
+            {showPrint80ChoiceModal && (
+                <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+                        <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-600 to-blue-500 text-white">
+                            <h3 className="text-lg font-black tracking-tight">{tmR('resPosPrint80Header')}</h3>
+                            <p className="text-xs text-white/85 mt-1">{tmR('resPosPrint80PickType')}</p>
+                        </div>
+                        <div className="p-5 space-y-5">
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{tmR('resPosReceiptTypeLabel')}</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPrint80ReceiptType('bill')}
+                                        className={cn(
+                                            'flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all text-sm font-black',
+                                            print80ReceiptType === 'bill'
+                                                ? 'border-blue-500 bg-blue-50 text-blue-800'
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                        )}
+                                    >
+                                        <FileText className="w-6 h-6" />
+                                        {tmR('resPosBillReceipt')}
+                                        <span className="text-[10px] font-medium text-slate-500">{tmR('resPosBillReceiptSub')}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPrint80ReceiptType('kitchen')}
+                                        className={cn(
+                                            'flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all text-sm font-black',
+                                            print80ReceiptType === 'kitchen'
+                                                ? 'border-amber-500 bg-amber-50 text-amber-900'
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                        )}
+                                    >
+                                        <ChefHat className="w-6 h-6" />
+                                        {tmR('resPosKitchenReceipt')}
+                                        <span className="text-[10px] font-medium text-slate-500">{tmR('resPosKitchenReceiptSub')}</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Languages className="w-4 h-4" /> {tmR('resPosLanguageLabel')}
+                                </p>
+                                <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                                    {(
+                                        [
+                                            { code: 'tr' as const, label: 'TR' },
+                                            { code: 'en' as const, label: 'EN' },
+                                            { code: 'ar' as const, label: 'AR' },
+                                            { code: 'ku' as const, label: 'KU' },
+                                        ]
+                                    ).map(({ code, label }) => (
+                                        <button
+                                            key={code}
+                                            type="button"
+                                            onClick={() => setPrint80Lang(code)}
+                                            className={cn(
+                                                'flex-1 py-2.5 text-xs font-black rounded-lg transition-all',
+                                                print80Lang === code
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-slate-500 hover:text-slate-700'
+                                            )}
+                                        >
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 px-5 py-4 border-t border-slate-100 bg-slate-50">
+                            <button
+                                type="button"
+                                onClick={() => setShowPrint80ChoiceModal(false)}
+                                className="flex-1 py-3 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-white"
+                            >
+                                {tmR('resPosPrint80ModalCancel')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void confirmPrint80Choice()}
+                                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-500"
+                            >
+                                {print80ReceiptType === 'bill' ? tmR('resPosPreviewNext') : tmR('resPosPrint')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Print Preview Modal (80mm) — ödeme öncesi adisyon */}
-            {showPrintPreview && table && (
+            {showPrintPreview && cart.length > 0 && (
                 <Receipt80mm
                     sale={{
                         id: 'preview',
-                        receiptNumber: receiptNumber || 'ADİSYON',
+                        receiptNumber: receiptNumber || tmR('resPosReceiptDraftLabel'),
                         date: new Date().toISOString(),
+                        paymentMethod: 'pending',
                         items: cart.map(item => ({
                             productId: item.product?.id || (item as any).id,
                             productName: item.product?.name || (item as any).name,
                             quantity: item.quantity,
-                            price: item.price || item.product?.price,
+                            price: item.price ?? item.product?.price ?? 0,
                             discount: item.discount || 0,
-                            total: item.subtotal ?? (item.price * item.quantity),
+                            total: item.subtotal ?? ((item.price ?? item.product?.price ?? 0) * item.quantity),
                             variant: item.variant
                         })),
                         subtotal: subtotal,
                         discount: discountAmount,
                         total: grandTotal,
                         cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || waiter || ''),
-                        table: table.number.toString(),
+                        table: resolveTableLabelForPrint(),
                     }}
                     paymentData={{ payments: [], totalPaid: 0, change: 0 }}
+                    initialPrintLanguage={previewReceiptLang}
                     onClose={() => setShowPrintPreview(false)}
                 />
             )}
@@ -2267,6 +2710,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     selectedCustomer={selectedCustomer}
                     receiptNumber={receiptNumber}
                     showAutoPrintOption={false}
+                    defaultShowReceiptPreview={false}
                     onPrintDraftReceipt={handlePrintDraftFromPaymentModal}
                     onClose={() => {
                         void persistOrderDiscountToDb(orderDiscount);
@@ -2281,8 +2725,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 <Receipt80mm
                     sale={postPaymentSale}
                     paymentData={postPaymentData}
+                    printImmediately={postPaymentDirectPrint}
+                    initialPrintLanguage={typeof postPaymentData.language === 'string' ? postPaymentData.language : 'tr'}
                     onClose={() => {
                         setShowPostPaymentReceipt(false);
+                        setPostPaymentDirectPrint(false);
                         setPostPaymentSale(null);
                         setPostPaymentData(null);
                         onBack?.();
@@ -2322,7 +2769,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             }
                         }
                         setShowReturnModal(false);
-                        notify('İade işlemi tamamlandı (kayıt altına alındı)');
+                        notify(tmR('resPosReturnDone'));
                     }}
                 />
             )}
@@ -2399,7 +2846,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         setShowKitchenConfirm(false);
                         // Sadece henüz gönderilmemiş (pending) satırlar
                         const pendingCart = cart.filter(item => !item.kitchenStatus || item.kitchenStatus === 'pending');
-                        if (pendingCart.length === 0) { notify('Tüm ürünler zaten mutfakta!'); return; }
+                        if (pendingCart.length === 0) { notify(tmR('resPosAllInKitchen')); return; }
                         if (table) {
                             try {
                                 // Items are already saved to DB via addToCart → addItemToTable
@@ -2412,7 +2859,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         ? { ...item, kitchenStatus: 'cooking' as const }
                                         : item
                                 ));
-                                notify('Sipariş mutfağa gönderildi!');
+                                notify(tmR('resPosOrderSentKitchen'));
                                 if (onAfterSendToKitchen) {
                                     onAfterSendToKitchen();
                                 } else {
@@ -2424,13 +2871,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 const hint = /relation|column|does not exist|tablo|sütun/i.test(msg)
                                     ? ' Veritabanı migrasyonlarını çalıştırıp uygulamayı yeniden başlatın.'
                                     : '';
-                                notify(`HATA: Sipariş mutfağa gönderilirken hata oluştu. ${msg}${hint}`, 'error');
+                                notify(tmR('resPosErrKitchenSend').replace('{msg}', msg).replace('{hint}', hint), 'error');
                             }
                         }
                         else if (posMode === 'retail' && callerIdDeliveryPhone?.trim()) {
                             try {
                                 const summary = pendingCart
-                                    .map((it) => `${it.quantity}x ${it.product?.name || (it as any).name || 'Ürün'}`)
+                                    .map((it) => `${it.quantity}x ${it.product?.name || (it as any).name || tmR('resPosProductFallback')}`)
                                     .join(', ');
 
                                 const deliveryOrder = await RestaurantService.createDeliveryOrder({
@@ -2459,7 +2906,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 for (const item of pendingCart) {
                                     const added = await RestaurantService.addOrderItem(deliveryOrder.id, {
                                         productId: String(item.product?.id || ''),
-                                        productName: item.product?.name || (item as any).name || 'Ürün',
+                                        productName: item.product?.name || (item as any).name || tmR('resPosProductFallback'),
                                         quantity: item.quantity,
                                         unitPrice: Number(item.price ?? item.product?.price ?? 0),
                                         discountPct: Number(item.discount || 0),
@@ -2471,7 +2918,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     kitchenItems.push({
                                         orderItemId: added.id,
                                         productId: String(item.product?.id || ''),
-                                        productName: item.product?.name || (item as any).name || 'Ürün',
+                                        productName: item.product?.name || (item as any).name || tmR('resPosProductFallback'),
                                         quantity: item.quantity,
                                         course: (item as any).course,
                                         note: (item as any).note,
@@ -2490,15 +2937,37 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         items: kitchenItems,
                                     });
                                     await RestaurantService.updateDeliveryStatus(deliveryOrder.id, 'preparing');
+                                    const rs = useRestaurantStore.getState();
+                                    void printKitchenTicketsFromLines({
+                                        table: {
+                                            number: 'PAKET SERVIS',
+                                            location: 'Paket Servis',
+                                            waiter: typeof currentStaff === 'object'
+                                                ? (currentStaff as any)?.name
+                                                : (currentStaff || undefined),
+                                        },
+                                        lines: pendingCart.map((ci) => ({
+                                            menuItemId: String(ci.product?.id || ''),
+                                            name: ci.product?.name || (ci as any).name || tmR('resPosProductFallback'),
+                                            quantity: ci.quantity,
+                                            course: (ci as any).course,
+                                            notes: typeof (ci as any).note === 'string' ? (ci as any).note : undefined,
+                                            options: typeof (ci as any).options === 'string' ? (ci as any).options : undefined,
+                                        })),
+                                        menu: rs.menu,
+                                        printerProfiles: rs.printerProfiles,
+                                        printerRoutes: rs.printerRoutes,
+                                        commonPrinterId: rs.commonPrinterId,
+                                    });
                                 }
 
                                 onCallerIdDeliveryConsumed?.();
                                 setCart(prev => prev.map(ci => ({ ...ci, kitchenStatus: 'cooking' as const })));
-                                notify('Sipariş mutfağa ve paket servise gönderildi!');
+                                notify(tmR('resPosOrderSentKitchenDelivery'));
                                 onBack?.();
                             } catch (err: any) {
                                 console.error('[RestPOS] retail callerid kitchen/delivery error:', err);
-                                notify(`HATA: Sipariş gönderilirken hata oluştu. ${err?.message || String(err)}`, 'error');
+                                notify(tmR('resPosErrOrderSend').replace('{err}', err?.message || String(err)), 'error');
                             }
                         }
                     }}
@@ -2519,20 +2988,28 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         }
                     }}
                     onClose={() => setShowProductOptions(false)}
-                    onAddToCart={(p, q) => {
-                        if (q === 2) {
-                            addToCart(p);
-                            addToCart(p);
-                        } else {
-                            addToCart(p);
-                        }
+                    onAddToCart={(p, q = 1) => {
+                        void addToCart(p, q);
                     }}
                     onAddNote={() => setShowNoteModal(true)}
                     onSendToKitchen={() => setShowKitchenConfirm(true)}
-                    onMarkComplementary={() => {
-                        if (table && longPressedProduct) {
-                            markItemAsComplementary(table.id, longPressedProduct.id);
-                            notify('İkram olarak işaretlendi');
+                    onMarkComplementary={async () => {
+                        if (!table || !longPressedProduct) return;
+                        const cartItem = cart.find(c => c.product?.id === longPressedProduct.id);
+                        const orderItemIds = cartItem ? getOrderItemIds(cartItem) : [];
+                        if (orderItemIds.length === 0) {
+                            notify(tmR('resPosNotRegisteredAdd'), 'error');
+                            throw new Error('no_order_item');
+                        }
+                        try {
+                            for (const oid of orderItemIds) {
+                                await markItemAsComplementary(table.id, oid);
+                            }
+                            notify(tmR('resPosComplimentaryOk'));
+                        } catch (e) {
+                            console.error('[RestPOS] markItemAsComplementary', e);
+                            notify(tmR('resPosComplimentaryErr'), 'error');
+                            throw e;
                         }
                     }}
                     onVoidItem={() => {
@@ -2540,7 +3017,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         const cartItem = cart.find(c => c.product?.id === longPressedProduct.id);
                         const orderItemId = (cartItem as any)?.id;
                         if (!cartItem || !orderItemId) {
-                            notify('Bu ürün siparişte bulunamadı veya henüz kaydedilmedi.', 'error');
+                            notify(tmR('resPosItemNotFound'), 'error');
                             return;
                         }
                         const mergedIds = (cartItem as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
@@ -2561,11 +3038,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             {notification && (
                 <div className={cn(
                     'fixed bottom-6 right-6 z-[100] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-white text-[14px] font-semibold transition-all',
-                    notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+                    notification.type === 'success' ? 'bg-green-600' : notification.type === 'warning' ? 'bg-amber-600' : 'bg-red-600'
                 )}>
                     {notification.type === 'success'
                         ? <CheckCircle className="w-5 h-5" />
-                        : <X className="w-5 h-5" />
+                        : notification.type === 'warning'
+                            ? <AlertTriangle className="w-5 h-5" />
+                            : <X className="w-5 h-5" />
                     }
                     {notification.msg}
                 </div>
@@ -2587,30 +3066,31 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 for (const itemId of moveSelectedItemIds) {
                                     await moveOrderItemToTable(table.id, itemId, targetId);
                                 }
-                                setCart(prev => prev.filter((c: any) => !moveSelectedItemIds.includes((c as any).id)));
+                                const removed = new Set(moveSelectedItemIds);
+                                setCart(prev => cartLinesAfterRemovingOrderItemIds(prev, removed));
                                 setSelectedCartIndices(new Set());
                                 setSelectionMode(false);
-                                notify(`${moveSelectedItemIds.length} ürün masaya taşındı`);
+                                notify(tmR('resPosNProductsMoved').replace('{n}', String(moveSelectedItemIds.length)));
                                 setShowMoveTableModal(false);
                                 setMoveSelectedItemIds(null);
                                 setTargetTableId(null);
                             } catch (e) {
                                 console.error('Move items error', e);
-                                notify('Ürünler taşınırken hata oluştu', 'error');
+                                notify(tmR('resPosMoveProductsErr'), 'error');
                             }
                             return;
                         }
                         if (action === 'moveItem' && moveItemToTable && targetId) {
                             try {
                                 await moveOrderItemToTable(table.id, moveItemToTable.itemId, targetId);
-                                setCart(prev => prev.filter((c: any) => c.id !== moveItemToTable.itemId));
-                                notify('Ürün masaya taşındı');
+                                setCart(prev => cartLinesAfterRemovingOrderItemIds(prev, new Set([moveItemToTable.itemId])));
+                                notify(tmR('resPosProductMovedTable'));
                                 setShowMoveTableModal(false);
                                 setMoveItemToTable(null);
                                 setTargetTableId(null);
                             } catch (e) {
                                 console.error('Move item error', e);
-                                notify('Ürün taşınırken hata oluştu', 'error');
+                                notify(tmR('resPosMoveItemErr'), 'error');
                             }
                             return;
                         }
@@ -2619,17 +3099,17 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 if (action === 'move') {
                                     const sourceTableId = (moveScope === 'all' || !moveScope) ? table.id : moveScope.tableId;
                                     await moveTable(sourceTableId, targetId);
-                                    notify(moveScope !== 'all' && moveScope ? 'İşlem taşındı' : 'Masa başarıyla taşındı');
+                                    notify(moveScope !== 'all' && moveScope ? tmR('resPosOpMoved') : tmR('resPosTableMovedOk'));
                                 } else {
                                     await mergeTables(table.id, targetId);
-                                    notify('Masalar birleştirildi');
+                                    notify(tmR('resPosTablesMerged'));
                                 }
                                 setShowMoveTableModal(false);
                                 setTargetTableId(null);
                                 onBack?.();
                             } catch (error) {
                                 console.error(action === 'move' ? 'Move table error' : 'Merge tables error', error);
-                                notify(action === 'move' ? 'Masa taşınırken bir hata oluştu' : 'Masalar birleştirilirken bir hata oluştu', 'error');
+                                notify(action === 'move' ? tmR('resPosMoveTableErr') : tmR('resPosMergeTablesErr'), 'error');
                             }
                         }
                     }}
@@ -2654,7 +3134,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 .filter(Boolean);
 
                             if (itemIds.length === 0) {
-                                notify('Sadece mutfağa gönderilmiş ürünler parçalanabilir', 'error');
+                                notify(tmR('resPosSplitKitchenOnly'), 'error');
                                 return;
                             }
 
@@ -2662,13 +3142,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                 await splitOrder(table.activeOrderId, itemIds);
                                 setShowSplitBillModal(false);
                                 setSplitSelectedItems([]);
-                                notify('Adisyon başarıyla parçalandı');
+                                notify(tmR('resPosSplitOk'));
                                 onBack?.();
                             } catch (err: any) {
-                                notify(err.message || 'Parçalama başarısız', 'error');
+                                notify(err.message || tmR('resPosSplitFail'), 'error');
                             }
                         } else {
-                            notify('Sipariş henüz kaydedilmemiş', 'error');
+                            notify(tmR('resPosOrderNotSaved'), 'error');
                         }
                     }}
                     fmt={fmt}
@@ -2700,7 +3180,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         setShowVoidReasonModal(false);
                         setVoidingItem(null);
                         setVoidReason('');
-                        notify(voidQuantity >= totalQty ? 'Ürün iptal edildi (kayıt altına alındı)' : `${voidQuantity} adet iptal edildi (kayıt altına alındı)`);
+                        notify(voidQuantity >= totalQty ? tmR('resPosVoidFull') : tmR('resPosVoidPartial').replace('{n}', String(voidQuantity)));
                         const itemId = voidingItem?.itemId;
                         if (itemId) {
                             const idx = cart.findIndex((c: any) => c.id === itemId || (c as any).mergedOrderItemIds?.some((r: any) => r.id === itemId));
@@ -2750,6 +3230,7 @@ function PlateBadge({
     plates: string[];
     onCycle: (e: React.MouseEvent) => void;
 }) {
+    const tmR = useRestaurantModuleTm();
     if (plates.length === 0) return null;
     const pIdx = plate ? plates.indexOf(plate) : -1;
     const pal = pIdx >= 0 ? PLATE_PALETTE[pIdx % PLATE_PALETTE.length] : null;
@@ -2764,7 +3245,7 @@ function PlateBadge({
                     ? 'border-current'
                     : 'border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500'
             )}
-            title="Tıkla → tabak değiştir"
+            title={tmR('resPosClickChangePlate')}
         >
             {plate ?? '—'}
         </button>

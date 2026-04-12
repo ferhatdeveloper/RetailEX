@@ -6,8 +6,10 @@
  * @created 2024-12-24
  */
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ConfigProvider } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { retailexAntdTheme } from './theme/retailexAntdTheme';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider } from './contexts/AuthContext';
@@ -33,22 +35,24 @@ const queryClient = new QueryClient({
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <Toaster
-          richColors
-          position="bottom-right"
-          expand={true}
-          visibleToasts={5}
-          toastOptions={{
-            style: {
-              marginBottom: '8px',
-            },
-            className: 'toast-item',
-          }}
-        />
-        <Router>
-          <AuthProvider>
-            <LanguageProvider>
+      {/* Dil bağlamı Auth/Routes üstünde olmalı; aksi halde bazı ağaç düzenlerinde MainLayout useLanguage hatası verebilir */}
+      <LanguageProvider>
+        <ThemeProvider>
+          <Toaster
+            richColors
+            position="bottom-right"
+            expand={true}
+            visibleToasts={5}
+            toastOptions={{
+              style: {
+                marginBottom: '8px',
+              },
+              className: 'toast-item',
+            }}
+          />
+          <Router>
+            <ConfigProvider theme={retailexAntdTheme}>
+              <AuthProvider>
               <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<Login onLogin={() => { }} />} />
@@ -85,10 +89,11 @@ export function AppRouter() {
                   element={<App />}
                 />
               </Routes>
-            </LanguageProvider>
-          </AuthProvider>
-        </Router>
-      </ThemeProvider>
+              </AuthProvider>
+            </ConfigProvider>
+          </Router>
+        </ThemeProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

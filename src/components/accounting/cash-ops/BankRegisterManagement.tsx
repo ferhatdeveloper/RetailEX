@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-    Building2, DollarSign, TrendingUp, AlertTriangle, Clock,
+    Building2, Banknote, TrendingUp, AlertTriangle, Clock,
     CheckCircle, Plus, RefreshCw, Landmark
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';

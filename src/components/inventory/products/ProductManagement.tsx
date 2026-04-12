@@ -4,13 +4,16 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Product } from '../../../App';
 import { useProductStore } from '../../../store';
+import { productAPI } from '../../../services/api/products';
 import { ProductFormPage } from './ProductFormPage';
 import { ProductOperationHub, HubTab } from './ProductOperationHub';
 import { ContextMenu } from '../../shared/ContextMenu';
-import { formatNumber } from '../../../utils/formatNumber';
+import { formatNumber, formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
+import { formatCurrency } from '../../../utils/currency';
 import { toast } from 'sonner';
-import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText } from 'lucide-react';
+import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
 
@@ -36,15 +39,18 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const loadProducts = useProductStore((state) => state.loadProducts);
   const storeProducts = useProductStore((state) => state.products);
   const isLoading = useProductStore((state) => state.isLoading);
+  const [hasLoadedFromStore, setHasLoadedFromStore] = useState(false);
 
   // Store'dan ürünleri kullan (stok güncellemeleri otomatik yansır)
-  const displayProducts = storeProducts.length > 0 ? storeProducts : products;
+  const displayProducts = hasLoadedFromStore ? storeProducts : products;
 
   // Sayfa yüklendiğinde ve periyodik olarak ürünleri yenile
   useEffect(() => {
     // İlk yükleme
     if (storeProducts.length === 0) {
-      loadProducts();
+      loadProducts().finally(() => setHasLoadedFromStore(true));
+    } else {
+      setHasLoadedFromStore(true);
     }
 
     // Her 30 saniyede bir stokları güncelle (alış/satış sonrası güncellemeler için)
@@ -71,12 +77,68 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [showServicesOnly, setShowServicesOnly] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkRateModal, setShowBulkRateModal] = useState(false);
+  const [showBulkImageModal, setShowBulkImageModal] = useState(false);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
 
   // Design Center Integration
   const [showViewer, setShowViewer] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
+
+  const buildInvoiceWarningText = (productNames: string[], saleRefs: string[], purchaseRefs: string[]) => {
+    const names = productNames.slice(0, 8).join(', ');
+    const sales = saleRefs.length > 0 ? `Satış: ${saleRefs.slice(0, 8).join(', ')}` : '';
+    const purchases = purchaseRefs.length > 0 ? `Alış: ${purchaseRefs.slice(0, 8).join(', ')}` : '';
+    return [
+      `Bu ürün(ler) faturalarda kullanılmış: ${names}${productNames.length > 8 ? '...' : ''}`,
+      sales,
+      purchases,
+      'Bu faturalardaki geçmiş kayıt ilişkilerini kaldırmak istediğinize emin misiniz?',
+      'Devam etmek için yönetici şifresi girmeniz gerekecek.'
+    ].filter(Boolean).join('\n');
+  };
+
+  const executeDeleteWithProtection = async (targets: Product[]) => {
+    if (!targets.length) return;
+    const ids = targets.map((p) => p.id);
+    const impact = await productAPI.getDeleteImpact(ids);
+    const hasRefs = impact.hasInvoiceRefs;
+
+    let options: { force?: boolean; adminPassword?: string } | undefined;
+    if (hasRefs) {
+      const saleInvoiceNos = Array.from(new Set(impact.saleRefs.map((x) => x.invoiceNo)));
+      const purchaseInvoiceNos = Array.from(new Set(impact.purchaseRefs.map((x) => x.invoiceNo)));
+      const msg = buildInvoiceWarningText(
+        targets.map((p) => p.name),
+        saleInvoiceNos,
+        purchaseInvoiceNos
+      );
+      if (!window.confirm(msg)) return;
+      const adminPassword = window.prompt('Yönetici şifresi gerekli:');
+      if (!adminPassword) {
+        toast.error('Yönetici şifresi girilmedi, işlem iptal edildi.');
+        return;
+      }
+      options = { force: true, adminPassword };
+    }
+
+    let ok = 0;
+    let fail = 0;
+    for (const product of targets) {
+      try {
+        await deleteProduct(product.id, options);
+        ok++;
+      } catch {
+        fail++;
+      }
+    }
+    await loadProducts(true);
+    if (fail > 0) {
+      toast.success(`${ok} ürün silindi. ${fail} ürün silinemedi.`);
+    } else {
+      toast.success(`${ok} ürün silindi.`);
+    }
+  };
 
   const printLabel = (product: Product, size: { w: number, h: number }) => {
     const template: ReportTemplate = {
@@ -97,7 +159,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           type: 'text',
           x: 2, y: size.h / 2 - 2,
           width: size.w - 4, height: 8,
-          content: `${formatNumber(product.price || 0, 2, false)} IQD`,
+          content: formatCurrency(product.price || 0, 2, false),
           style: { fontSize: size.w < 50 ? '12px' : '16px', fontWeight: '900', textAlign: 'center', color: '#1d4ed8' }
         },
         {
@@ -170,22 +232,22 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     }),
     columnHelper.accessor('cost', {
       header: tm('cost').toUpperCase(),
-      cell: info => info.getValue() ? formatNumber(info.getValue(), 2, false) : '-',
+      cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
       size: 120
     }),
     columnHelper.accessor('price', {
       header: tm('unitPrice').toUpperCase(),
-      cell: info => info.getValue() ? formatNumber(info.getValue(), 2, false) : '-',
+      cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
       size: 140
     }),
     columnHelper.accessor('salePriceUSD' as any, {
       header: 'FİYAT (USD)',
-      cell: info => info.getValue() ? `$${formatNumber(info.getValue(), 2, false)}` : '-',
+      cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
       size: 120
     }),
     columnHelper.accessor('purchasePriceUSD' as any, {
       header: 'ALIŞ (USD)',
-      cell: info => info.getValue() ? `$${formatNumber(info.getValue(), 2, false)}` : '-',
+      cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
       size: 120
     }),
     columnHelper.accessor('taxRate', {
@@ -272,13 +334,33 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <span>Hizmet Kartları</span>
             </button>
             {selectedProducts.length > 0 && (
-              <button
-                onClick={() => setShowBulkRateModal(true)}
-                className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white hover:bg-orange-600 transition-colors text-[10px] font-bold"
-              >
-                <TrendingUp className="w-3 h-3" />
-                <span>Toplu Kur {selectedProducts.length}</span>
-              </button>
+              <>
+                <button
+                  onClick={async () => {
+                    if (!window.confirm(`${selectedProducts.length} ürün silinecek. Emin misiniz?`)) return;
+                    await executeDeleteWithProtection(selectedProducts);
+                    setSelectedProducts([]);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 bg-red-600 text-white hover:bg-red-700 transition-colors text-[10px] font-bold"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Toplu Sil {selectedProducts.length}</span>
+                </button>
+                <button
+                  onClick={() => setShowBulkImageModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors text-[10px] font-bold"
+                >
+                  <ImageIcon className="w-3 h-3" />
+                  <span>Toplu resim {selectedProducts.length}</span>
+                </button>
+                <button
+                  onClick={() => setShowBulkRateModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 bg-orange-500 text-white hover:bg-orange-600 transition-colors text-[10px] font-bold"
+                >
+                  <TrendingUp className="w-3 h-3" />
+                  <span>Toplu Kur {selectedProducts.length}</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -446,8 +528,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 if (!window.confirm(message)) return;
                 setContextMenu(null);
                 try {
-                  await deleteProduct(product.id);
-                  toast.success('Ürün silindi.');
+                  await executeDeleteWithProtection([product]);
                 } catch (err: any) {
                   toast.error(err?.message || 'Ürün silinemedi.');
                 }
@@ -468,22 +549,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                       }
                       (async () => {
                         setContextMenu(null);
-                        let ok = 0;
-                        let fail = 0;
-                        for (const p of demoProductsInList) {
-                          try {
-                            await deleteProduct(p.id);
-                            ok++;
-                          } catch {
-                            fail++;
-                          }
-                        }
-                        await loadProducts(true);
-                        if (fail > 0) {
-                          toast.success(`${ok} demo ürün silindi. ${fail} ürün silinemedi.`);
-                        } else {
-                          toast.success(`${ok} demo ürün silindi.`);
-                        }
+                        await executeDeleteWithProtection(demoProductsInList);
                       })();
                     }
                   }
@@ -492,6 +558,22 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           ]}
         />
       )}
+      {showBulkImageModal && selectedProducts.length > 0 && (
+        <BulkProductImageUpdateModal
+          key={selectedProducts.map((p) => p.id).join(',')}
+          products={selectedProducts}
+          onClose={() => setShowBulkImageModal(false)}
+          onConfirm={async (updates) => {
+            for (const u of updates) {
+              await updateProduct(u.id, { image_url: u.image_url, image_url_cdn: '' });
+            }
+            toast.success(`${updates.length} ürünün resmi güncellendi.`);
+            await loadProducts(true);
+            setSelectedProducts([]);
+          }}
+        />
+      )}
+
       {/* Bulk Rate Modal */}
       {showBulkRateModal && (
         <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

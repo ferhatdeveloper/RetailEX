@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   MapPin, Navigation, CheckCircle, Clock, Camera, Phone, 
-  Package, DollarSign, MessageSquare, AlertCircle, User, Menu
+  Package, Banknote, MessageSquare, AlertCircle, User, Menu
 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { 
@@ -333,7 +333,7 @@ function VisitCard({ visit, location, onCheckIn }: VisitCardProps) {
 
   const visitTypeIcons = {
     SALES: Package,
-    COLLECTION: DollarSign,
+    COLLECTION: Banknote,
     SURVEY: MessageSquare,
     COMPLAINT: AlertCircle,
     DEMO: Camera,
@@ -417,7 +417,7 @@ function VisitScreen({ visit, plannedVisit, location, onCheckOut, onUpdateOutcom
               <span className="text-xs">Sipariş Al</span>
             </button>
             <button className="border-2 border-green-600 text-green-600 py-3 rounded-lg hover:bg-green-50 flex flex-col items-center gap-1">
-              <DollarSign className="w-6 h-6" />
+              <Banknote className="w-6 h-6" />
               <span className="text-xs">Tahsilat</span>
             </button>
           </div>

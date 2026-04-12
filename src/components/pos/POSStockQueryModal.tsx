@@ -1,4 +1,4 @@
-﻿import { X, Search, Package, Barcode, Tag, Boxes, TrendingUp, DollarSign, Building2, Shirt, Grid3x3, List } from 'lucide-react';
+import { X, Search, Package, Barcode, Tag, Boxes, TrendingUp, Banknote, Building2, Shirt, Grid3x3, List } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import type { Product, BranchStock } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -346,7 +346,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
               {/* Pricing */}
               <div className="bg-white p-4 border border-gray-300">
                 <div className="flex items-center gap-2 mb-3">
-                  <DollarSign className="w-4 h-4 text-gray-600" />
+                  <Banknote className="w-4 h-4 text-gray-600" />
                   <p className="text-sm text-gray-600">{t.pricingInfo}</p>
                 </div>
 

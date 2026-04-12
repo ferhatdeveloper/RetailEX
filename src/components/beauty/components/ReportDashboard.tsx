@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-    BarChart3, TrendingUp, TrendingDown, DollarSign,
+    BarChart3, TrendingUp, TrendingDown, Banknote,
     Users, Activity, Download, Calendar, ArrowUpRight,
     ArrowDownRight, PieChart, ShoppingBag, Star, Loader2
 } from 'lucide-react';
@@ -69,7 +69,7 @@ export function ReportDashboard() {
     const totalRevDist  = stats!.serviceDistribution.reduce((s, r) => s + r.revenue, 0) || 1;
 
     const kpiStats = [
-        { label: tm('bMonthlyRevenue'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: DollarSign, color: 'purple' },
+        { label: tm('bMonthlyRevenue'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: Banknote, color: 'purple' },
         { label: tm('bTransactionCount'), value: stats!.transactionCount.toString(), ...txChg,       icon: Activity,   color: 'blue' },
         { label: tm('bNewCustomersKPI'),  value: stats!.newCustomers.toString(),     pct: '—', up: true, icon: Users, color: 'pink' },
         { label: tm('bAvgCart'),          value: fmt(stats!.avgCartValue),           pct: '—', up: true, icon: ShoppingBag, color: 'orange' },

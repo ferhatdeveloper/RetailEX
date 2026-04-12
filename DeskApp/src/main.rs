@@ -21,7 +21,7 @@ mod caller_id_serial;
 
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::{Manager, Emitter};
 use tauri::path::BaseDirectory;
 use tokio_postgres::Client;
@@ -73,7 +73,7 @@ async fn check_pg16() -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn install_pg16() -> Result<String, String> {
+async fn install_pg16(app: tauri::AppHandle) -> Result<String, String> {
     let script = r#"
         $url = "https://get.enterprisedb.com/postgresql/postgresql-16.1-1-windows-x64.exe"
         $installer = "$env:TEMP\postgresql-setup.exe"
@@ -91,11 +91,60 @@ async fn install_pg16() -> Result<String, String> {
         .output()
         .map_err(|e| e.to_string())?;
 
-    if output.status.success() {
-        Ok("Installation completed successfully".to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
     }
+
+    // Tum ag arayuzlerinde dinleme + pg_hba + firewall (RetailEX uzak baglanti)
+    #[cfg(windows)]
+    {
+        let mut ran = false;
+        for rel in ["pg-windows-expose-remote.ps1"] {
+            let Ok(p) = app.path().resolve(rel, BaseDirectory::Resource) else {
+                continue;
+            };
+            if !p.exists() {
+                continue;
+            }
+            let ps1 = p.to_str().ok_or_else(|| "pg-windows-expose-remote.ps1: invalid path".to_string())?;
+            let expose = Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    ps1,
+                    "-AllowAllNetworks",
+                ])
+                .creation_flags(0x08000000)
+                .output();
+            match expose {
+                Ok(o) => {
+                    if o.status.success() {
+                        println!(
+                            "RetailEX: PostgreSQL remote listen configured.\n{}",
+                            String::from_utf8_lossy(&o.stdout)
+                        );
+                    } else {
+                        eprintln!(
+                            "RetailEX: pg-windows-expose-remote failed: {}",
+                            String::from_utf8_lossy(&o.stderr)
+                        );
+                    }
+                    ran = true;
+                }
+                Err(e) => eprintln!("RetailEX: could not run pg-windows-expose-remote: {}", e),
+            }
+            break;
+        }
+        if !ran {
+            eprintln!(
+                "RetailEX: pg-windows-expose-remote.ps1 not bundled; run database/scripts/pg-windows-expose-remote.ps1 -AllowAllNetworks manually (admin)."
+            );
+        }
+    }
+
+    Ok("Installation completed successfully".to_string())
 }
 
 #[tauri::command]
@@ -1318,6 +1367,46 @@ async fn list_system_printers() -> Result<Vec<serde_json::Value>, String> {
     }
 }
 
+/// Windows varsayılan yazıcı adı (Sumatra `-print-to-default` bazı termal sürücülerde güvenilir değil).
+fn get_default_printer_name_windows() -> Option<String> {
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    // UTF-8: Türkçe / Arapça yazıcı adları için
+    let ps = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); (Get-Printer | Where-Object { $_.Default -eq $true } | Select-Object -First 1 -ExpandProperty Name)";
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            ps,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// `printer_name` doluysa onu kullan; değilse Windows varsayılan yazıcı adını çöz (fiziksel yazıcı için gerekli).
+fn resolve_target_printer_name(printer_name: Option<String>) -> Option<String> {
+    let trimmed = printer_name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if trimmed.is_some() {
+        return trimmed;
+    }
+    get_default_printer_name_windows()
+}
+
 /// Windows: Edge headless ile PDF üret; ardından SumatraPDF varsa sessiz yazdır (cmd/WebView önizlemesi yok).
 /// Sumatra yoksa PDF için sistem yazdırma iletişim kutusu açılır (WebView2 önizleme hatasından kaçınır).
 fn print_html_via_edge_windows(
@@ -1402,51 +1491,93 @@ fn print_html_via_edge_windows(
     let pdf_path_str = pdf_path.to_str().ok_or("Geçersiz PDF yolu")?;
     let file_url = path_to_file_url(&html_path)?;
 
+    // Tek profil: sonraki yazdırmalarda Edge bileşen önbelleği → daha hızlı soğuk başlatma
+    let edge_profile = temp_dir.join("retailex_edge_print_profile");
+    let _ = std::fs::create_dir_all(&edge_profile);
+    let profile_str = edge_profile.to_str().ok_or("Geçersiz Edge profil yolu")?;
+
     let mut edge_cmd = Command::new(&edge);
     edge_cmd.args([
         "--headless=new",
         "--disable-gpu",
         "--no-first-run",
+        "--no-default-browser-check",
         "--disable-extensions",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-translate",
+        "--mute-audio",
         "--no-sandbox",
+        "--disable-popup-blocking",
+        "--disable-hang-monitor",
+        "--disable-ipc-flooding-protection",
+        "--disable-renderer-backgrounding",
+        "--disable-prompt-on-repost",
+        "--disable-features=TranslateUI",
+        "--metrics-recording-only",
+        "--disable-logging",
     ]);
+    edge_cmd.arg(format!("--user-data-dir={}", profile_str));
     edge_cmd.arg(format!("--print-to-pdf={}", pdf_path_str));
     edge_cmd.arg("--no-pdf-header-footer");
     edge_cmd.arg(&file_url);
+    edge_cmd.stdin(Stdio::null());
+    edge_cmd.stdout(Stdio::null());
+    edge_cmd.stderr(Stdio::null());
     edge_cmd.creation_flags(CREATE_NO_WINDOW);
 
-    let edge_out = edge_cmd.output().map_err(|e| format!("Edge çalıştırılamadı: {}", e))?;
-    if !edge_out.status.success() {
-        let err = String::from_utf8_lossy(&edge_out.stderr);
-        let out = String::from_utf8_lossy(&edge_out.stdout);
-        return Err(format!(
-            "Edge PDF oluşturamadı. stderr: {}\nstdout: {}",
-            err.trim(),
-            out.trim()
-        ));
-    }
-    if !pdf_path.exists() {
-        return Err("PDF dosyası oluşturulmadı (Edge çıktı vermedi).".into());
+    let edge_status = edge_cmd
+        .status()
+        .map_err(|e| format!("Edge çalıştırılamadı: {}", e))?;
+    if !edge_status.success() || !pdf_path.exists() {
+        return Err(
+            "Edge PDF oluşturamadı (çıkış kodu veya dosya yok). Edge güncel mi kontrol edin."
+                .into(),
+        );
     }
 
     let _ = std::fs::remove_file(&html_path);
 
+    let target_printer = resolve_target_printer_name(printer_name);
+
     if let Some(sumatra) = find_sumatra(bundled_sumatra) {
-        let mut s = Command::new(&sumatra);
-        s.creation_flags(CREATE_NO_WINDOW);
-        if let Some(ref name) = printer_name {
-            if !name.is_empty() {
-                s.args(["-print-to", name.as_str(), "-silent", pdf_path_str]);
-            } else {
-                s.args(["-print-to-default", "-silent", pdf_path_str]);
+        // Önce hızlı yol: kuyruğa atıp çık (-exit-on-print yok → yazıcı bitene kadar beklenmez).
+        // Bazı sürücülerde başarısız olursa ikinci denemede -exit-on-print ile tekrarlanır.
+        let run_sumatra = |wait_device: bool| -> Result<std::process::ExitStatus, std::io::Error> {
+            let mut s = Command::new(&sumatra);
+            s.creation_flags(CREATE_NO_WINDOW);
+            s.stdin(Stdio::null());
+            s.stdout(Stdio::null());
+            s.stderr(Stdio::null());
+            match &target_printer {
+                Some(name) => {
+                    s.arg("-print-to").arg(name).arg("-silent");
+                    if wait_device {
+                        s.arg("-exit-on-print");
+                    }
+                    s.arg(pdf_path_str);
+                }
+                None => {
+                    s.arg("-print-to-default").arg("-silent");
+                    if wait_device {
+                        s.arg("-exit-on-print");
+                    }
+                    s.arg(pdf_path_str);
+                }
             }
-        } else {
-            s.args(["-print-to-default", "-silent", pdf_path_str]);
-        }
-        let pr = s.output().map_err(|e| e.to_string())?;
-        if !pr.status.success() {
-            let e = String::from_utf8_lossy(&pr.stderr);
-            return Err(format!("SumatraPDF yazdırma hatası: {}", e.trim()));
+            s.status()
+        };
+
+        let ok_fast = run_sumatra(false).map(|st| st.success()).unwrap_or(false);
+        if !ok_fast {
+            let st_slow = run_sumatra(true).map_err(|e| e.to_string())?;
+            if !st_slow.success() {
+                return Err(
+                    "SumatraPDF yazdırma başarısız (hızlı ve bekleme modu). Yazıcı adını kontrol edin."
+                        .into(),
+                );
+            }
         }
     } else {
         let pdf_esc = pdf_path_str.replace('\'', "''");
@@ -1553,6 +1684,7 @@ fn main() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_http::init())
+    .plugin(tauri_plugin_notification::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .setup(|app| {
         let handle = app.handle();
@@ -1619,6 +1751,8 @@ fn main() {
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction,
         request_elevation,
+        remove_retailex_windows_services,
+        delete_c_retailex_folder,
         show_touch_keyboard,
         caller_id_serial::list_caller_serial_ports,
         caller_id_serial::caller_serial_start,
@@ -1648,6 +1782,118 @@ async fn show_touch_keyboard() -> Result<(), String> {
     Ok(())
 }
 
+/// Eski/elle kurulum: `C:\RetailEX` klasorunu tamamen siler (istege bagli; yonetici gerekebilir).
+#[tauri::command]
+fn delete_c_retailex_folder() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let p = std::path::Path::new(r"C:\RetailEX");
+        if !p.exists() {
+            return Ok("C:\\RetailEX bulunmuyor; atlandi.".into());
+        }
+        std::fs::remove_dir_all(p).map_err(|e| {
+            format!(
+                "C:\\RetailEX silinemedi: {} (klasor baska programda acik olabilir veya yonetici gerekir)",
+                e
+            )
+        })?;
+        Ok("C:\\RetailEX silindi.".into())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Yalnizca Windows.".into())
+    }
+}
+
+/// Fabrika sifirlama / "Yeniden kurulum": RetailEX Windows hizmetlerini durdurur ve kaldir (yonetici gerekebilir).
+#[tauri::command]
+fn remove_retailex_windows_services() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const SC: &str = r"C:\Windows\System32\sc.exe";
+
+        let exe_dir = std::env::current_exe()
+            .map_err(|e| e.to_string())?
+            .parent()
+            .ok_or("calisma dizini cozulemedi")?
+            .to_path_buf();
+
+        let pairs: &[(&str, &str)] = &[
+            ("RetailEX_Service.exe", "RetailEX_Service"),
+            ("RetailEX_VPN.exe", "RetailEX_VPN"),
+            ("RetailEX_SQL_Bridge.exe", "RetailEX_SQL_Bridge"),
+            ("RetailEX_Logo.exe", "RetailEX_Logo"),
+            ("RetailEX_Logo_Connector.exe", "RetailEXLogoConnector"),
+        ];
+
+        let mut lines: Vec<String> = Vec::new();
+        for (exe_name, svc_name) in pairs {
+            let exe_path = exe_dir.join(exe_name);
+            let _ = Command::new(SC)
+                .args(["stop", svc_name])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+
+            if exe_path.exists() {
+                match Command::new(&exe_path)
+                    .arg("--uninstall")
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                {
+                    Ok(o) => {
+                        let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                        lines.push(format!(
+                            "{} --uninstall: exit={}{}",
+                            exe_name,
+                            o.status,
+                            if stderr.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({})", stderr)
+                            }
+                        ));
+                        if !o.status.success() {
+                            let del = Command::new(SC)
+                                .args(["delete", svc_name])
+                                .creation_flags(CREATE_NO_WINDOW)
+                                .output();
+                            if let Ok(d) = del {
+                                lines.push(format!(
+                                    "  -> sc delete {}: {}",
+                                    svc_name,
+                                    String::from_utf8_lossy(&d.stderr).trim()
+                                ));
+                            }
+                        }
+                    }
+                    Err(e) => lines.push(format!("{} --uninstall: {}", exe_name, e)),
+                }
+            } else {
+                let del = Command::new(SC)
+                    .args(["delete", svc_name])
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output();
+                match del {
+                    Ok(o) => lines.push(format!(
+                        "{} (exe yok): sc delete exit={} {}",
+                        svc_name,
+                        o.status,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    )),
+                    Err(e) => lines.push(format!("{} sc delete: {}", svc_name, e)),
+                }
+            }
+        }
+
+        Ok(lines.join("\n"))
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Yalnizca Windows masaustu uygulamasinda.".into())
+    }
+}
+
 #[tauri::command]
 async fn request_elevation() -> Result<(), String> {
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -1674,27 +1920,44 @@ async fn request_elevation() -> Result<(), String> {
 
 
 
-fn ensure_bridge_service(handle: &tauri::AppHandle) {
-    let handle_clone = handle.clone();
-    let resource_path = handle.path().resolve("resources/install-bridge.ps1", BaseDirectory::Resource);
-    
-    if let Ok(ps_script) = resource_path {
-        println!("🛠️ Startup: Checking SQL Bridge Service...");
-        tauri::async_runtime::spawn(async move {
-            let output = Command::new("powershell")
-                .args([
-                    "-ExecutionPolicy", "Bypass",
-                    "-File", ps_script.to_str().unwrap()
-                ])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .output();
-            
-            match output {
-                Ok(_) => println!("✅ Startup: SQL Bridge setup check completed."),
-                Err(e) => eprintln!("❌ Startup: SQL Bridge setup failed: {}", e),
-            }
-        });
+/// Kurulum (NSIS) `INSTDIR` icine bridge.cjs + package.json koyar; `install-bridge.ps1` burada
+/// servisi BOZMAMALI — RetailEX_SQL_Bridge.exe saricisi ImagePath'te kalir. Sadece eksik npm deps.
+fn ensure_bridge_service(_handle: &tauri::AppHandle) {
+    let Some(exe) = std::env::current_exe().ok() else {
+        return;
+    };
+    let Some(dir) = exe.parent().map(|p| p.to_path_buf()) else {
+        return;
+    };
+    if !dir.join("bridge.cjs").exists() || !dir.join("package.json").exists() {
+        return;
     }
+    if dir.join("node_modules").join("pg").exists() {
+        return;
+    }
+    println!("🛠️ Startup: SQL Bridge node_modules eksik; npm install deneniyor ({})", dir.display());
+    let npm = std::path::PathBuf::from(r"C:\Program Files\nodejs\npm.cmd");
+    let npm_cmd = if npm.exists() {
+        npm
+    } else {
+        return;
+    };
+    tauri::async_runtime::spawn(async move {
+        let out = Command::new(npm_cmd)
+            .args(["install", "--omit=dev", "--no-audit", "--prefix"])
+            .arg(&dir)
+            .creation_flags(0x08000000)
+            .output();
+        match out {
+            Ok(o) if o.status.success() => println!("✅ SQL Bridge npm deps tamam."),
+            Ok(o) => eprintln!(
+                "⚠️ SQL Bridge npm install cikis {}: {}",
+                o.status,
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            Err(e) => eprintln!("⚠️ SQL Bridge npm: {}", e),
+        }
+    });
 }
 
 #[tauri::command]

@@ -10,24 +10,44 @@ Uygulama, mevcut Berqenas Cloud Docker ağına (`berqenas_net`) entegre olur.
 - **Bridge Service**: Node.js executable (Docker: 172.20.0.51)
 - **Database**: Mevcut Postgres 17 (172.20.0.10 / `retailex_db`)
 
+### GitHub → VPS (önerilen akış)
+
+Kodu USB ile taşımak yerine repoyu GitHub’da tutup sunucuda **clone + build** yapabilirsiniz.
+
+1. Projeyi GitHub’a push edin (mümkünse **private** repo; `.env`, `config.db`, şifre commit etmeyin).
+2. VPS’te (Docker kurulu; örn. `/opt/berqenas-cloud/projects`):
+
+```bash
+sudo apt update && sudo apt install -y git
+sudo mkdir -p /opt/berqenas-cloud/projects
+cd /opt/berqenas-cloud/projects
+git clone https://github.com/KULLANICI/RetailEX.git retailex
+cd retailex
+git checkout main   # veya kullandığınız dal
+
+docker build -f Dockerfile.frontend -t retailex-web .
+docker rm -f retailex_frontend 2>/dev/null || true
+docker run -d --name retailex_frontend -p 8080:80 --restart always retailex-web
+```
+
+- **Private repo:** SSH ile `git clone git@github.com:KULLANICI/RetailEX.git` (sunucuda `~/.ssh` anahtarı) veya HTTPS + Personal Access Token.
+- **Güncelleme:** `cd /opt/berqenas-cloud/projects/retailex && git pull && docker build -f Dockerfile.frontend -t retailex-web .` ardından konteyneri yeniden oluşturun (`docker rm -f retailex_frontend` + `docker run ...` yukarıdaki gibi).
+
+`pg_bridge` için aynı klasörde `Dockerfile.bridge` ile benzer şekilde imaj üretip compose’a ekleyebilirsiniz (aşağıdaki §3).
+
 ---
 
 ## 2. Docker Dosyaları (Proje Kök Dizini)
 
-### 📦 `Dockerfile.frontend`
-```dockerfile
-FROM node:20-alpine as build
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
+### 📦 `Dockerfile.frontend` (proje kökünde)
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+Vite çıktı klasörü **`build/`** (Vite `outDir`). Statik dosyalar için Nginx SPA yönlendirmesi `docker/nginx.frontend.conf` içindedir.
+
+```bash
+docker build -f Dockerfile.frontend -t retailex-web .
 ```
+
+İçerik özeti: `npm ci` → `npm run build` → `build/` → Nginx `80`.
 
 ### 🌉 `Dockerfile.bridge`
 ```dockerfile

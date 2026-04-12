@@ -9,6 +9,7 @@ import {
     DialogTitle,
 } from '../ui/dialog';
 import { Button } from '../ui/button';
+import { formatIsoDateTr } from '../../utils/localCalendarDate';
 
 export function FirmSelector() {
     const [isOpen, setIsOpen] = useState(false);
@@ -125,7 +126,7 @@ export function FirmSelector() {
                                                     Dönem {period.nr}
                                                 </p>
                                                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                    {period.beg_date || '-'} - {period.end_date || '-'}
+                                                    {formatIsoDateTr(period.beg_date)} - {formatIsoDateTr(period.end_date)}
                                                 </p>
                                                 {period.active && (
                                                     <span className="inline-block mt-1 px-2 py-0.5 bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-200 text-xs rounded">
@@ -150,7 +151,7 @@ export function FirmSelector() {
                                 </p>
                                 <div className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
                                     <p><strong>Firma:</strong> {selectedFirm.name} ({selectedFirm.firm_nr})</p>
-                                    <p><strong>Dönem:</strong> {selectedPeriod.nr} ({selectedPeriod.beg_date || '-'} - {selectedPeriod.end_date || '-'})</p>
+                                    <p><strong>Dönem:</strong> {selectedPeriod.nr} ({formatIsoDateTr(selectedPeriod.beg_date)} - {formatIsoDateTr(selectedPeriod.end_date)})</p>
                                     <p><strong>Durum:</strong> {selectedPeriod.active ? '✅ Açık' : '❌ Kapalı'}</p>
                                 </div>
                             </div>

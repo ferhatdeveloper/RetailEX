@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Minus, Percent, Trash2, Package, Calculator, DollarSign, Scale } from 'lucide-react';
+import { X, Plus, Minus, Percent, Trash2, Package, Calculator, Scale } from 'lucide-react';
 import type { CartItem, ProductVariant } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { formatMoneyAmount } from '../../utils/formatMoney';
+import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface POSCartItemActionModalProps {
@@ -46,8 +47,8 @@ export function POSCartItemActionModal({
   const currentPrice = parseFloat(price || '0');
   const itemTotal = parseFloat(quantity || '0') * currentPrice;
   const discountPercent = parseFloat(discount || '0');
-  const discountAmount = (itemTotal * discountPercent) / 100;
-  const newTotal = itemTotal - discountAmount;
+  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, discountPercent);
+  const newTotal = lineNetAfterPercentDiscount(itemTotal, discountPercent);
 
   // Sync state if item changes
   useEffect(() => {

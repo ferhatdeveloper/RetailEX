@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Chart of Accounts Management (Hesap Planı Yönetimi)
  * 
  * Comprehensive chart of accounts features:
@@ -21,7 +21,7 @@ import {
   Trash2, 
   ChevronRight,
   ChevronDown,
-  DollarSign,
+  Banknote,
   TrendingUp,
   TrendingDown,
   Eye,

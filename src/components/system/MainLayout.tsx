@@ -21,8 +21,11 @@ import { VoiceAssistantWeb } from '../modules/VoiceAssistantWeb';
 import { wsService } from '../../services/websocket';
 import { useRestaurantStore } from '../restaurant/store/useRestaurantStore';
 import { useRestaurantCallerId } from '../../hooks/useRestaurantCallerId';
+import { useCallerIdRestaurantOrders } from '../../hooks/useCallerIdRestaurantOrders';
+import { useCallerIdBeautyAppointments } from '../../hooks/useCallerIdBeautyAppointments';
 import { findCustomerByCallerPhone } from '../../services/restaurantCallerIdService';
-import { getBridgeUrl } from '../../utils/env';
+import { getBridgeUrl, IS_TAURI } from '../../utils/env';
+import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNotify';
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
 
@@ -37,7 +40,11 @@ const BeautyMain = lazy(() => import('../beauty/index'));
 import { AppFooter } from '../shared/AppFooter';
 import { FirmSelector } from './FirmSelector';
 import { cn } from '../ui/utils';
-import { getShellModuleFallbackOrder, isMainModuleVisible } from '../../utils/mainModuleVisibility';
+import {
+  getPrimaryShellModuleForCallerId,
+  getShellModuleFallbackOrder,
+  isMainModuleVisible,
+} from '../../utils/mainModuleVisibility';
 
 /** Üst çubukta saat/tarih — interval yalnızca bu düğümü yeniler, tüm MainLayout + POS'u değil */
 function MainLayoutClockButton({ onOpenModal }: { onOpenModal: () => void }) {
@@ -65,23 +72,36 @@ function MainLayoutClockButton({ onOpenModal }: { onOpenModal: () => void }) {
   );
 }
 
-/** WS durum göstergesi — polling yalnızca bu küçük düğümü yeniler */
+/** Gerçek zamanlı WebSocket (127.0.0.1:9999) — SQL bridge (3001) ile karıştırılmamalı */
 function WsConnectionStatusDot() {
   const [status, setStatus] = useState<'connected' | 'disconnected' | 'connecting'>(() => wsService.getStatus());
   useEffect(() => {
     const id = window.setInterval(() => setStatus(wsService.getStatus()), 2000);
     return () => window.clearInterval(id);
   }, []);
-  return (
-    <div
-      className={`w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ${
-        status === 'connected'
-          ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]'
-          : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]'
-      }`}
-      title={status === 'connected' ? 'Server Bağlantısı Aktif' : 'Server Bağlantısı Yok'}
-    />
-  );
+
+  const title =
+    status === 'connected'
+      ? 'Gerçek zamanlı sunucu (WebSocket) bağlı — ws://127.0.0.1:9999'
+      : status === 'connecting'
+        ? 'Gerçek zamanlı sunucuya bağlanılıyor…'
+        : IS_TAURI
+          ? 'WebSocket yok — Masaüstü uygulamasında 9999 portu dinlenmiyor olabilir (pg_bridge/SQL ile ilgili değildir)'
+          : 'Tarayıcı modu: WebSocket sunucusu (9999) yok — beklenen; SQL için ayrıca npm run bridge (3001) kullanılır';
+
+  let boxClass =
+    'w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ';
+  if (status === 'connected') {
+    boxClass += 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]';
+  } else if (status === 'connecting') {
+    boxClass += 'bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)] animate-pulse';
+  } else if (!IS_TAURI) {
+    boxClass += 'bg-slate-500/90 shadow-[0_0_4px_rgba(100,116,139,0.4)]';
+  } else {
+    boxClass += 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]';
+  }
+
+  return <div className={boxClass} title={title} role="status" aria-label={title} />;
 }
 
 interface MainLayoutProps {
@@ -109,7 +129,7 @@ export function MainLayout({
   onSaleComplete,
   onLogout
 }: MainLayoutProps) {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   // Firma/Dönem Context
   const { selectedFirm, selectedPeriod, firms, periods, selectFirm, selectPeriod, refreshFirms, loading: firmaLoading } = useFirmaDonem();
   const [showQuickSetup, setShowQuickSetup] = useState(false);
@@ -144,6 +164,9 @@ export function MainLayout({
   };
 
   const [currentModule, setCurrentModule] = useState<Module>(getInitialModule());
+  /** Caller ID bildirimi tıklaması gibi async kapaklarda güncel modül */
+  const currentModuleRef = useRef(currentModule);
+  currentModuleRef.current = currentModule;
 
   // Check for WMS redirect flag from login (depo store login) or URL parameter
   useEffect(() => {
@@ -333,6 +356,19 @@ export function MainLayout({
       .slice(0, 5);
   }, [sales, matchedCallerCustomer?.id]);
 
+  /** Kurulum system_type + aktif kabuk — geçmiş satış/sipariş/randevu kaynağı */
+  const callerIdPrimaryShell = getPrimaryShellModuleForCallerId(currentModule);
+  const callerIdHistoryEnabled =
+    !!incomingCall && !!matchedCallerCustomer?.id && (callerIdPrimaryShell === 'restaurant' || callerIdPrimaryShell === 'beauty');
+  const { orders: callerIdRestaurantOrders, loading: callerIdRestaurantHistoryLoading } = useCallerIdRestaurantOrders(
+    matchedCallerCustomer?.id,
+    callerIdHistoryEnabled && callerIdPrimaryShell === 'restaurant'
+  );
+  const { appointments: callerIdBeautyAppointments, loading: callerIdBeautyHistoryLoading } = useCallerIdBeautyAppointments(
+    matchedCallerCustomer?.id,
+    callerIdHistoryEnabled && callerIdPrimaryShell === 'beauty'
+  );
+
   const findCustomerByPhoneFromPg = useCallback(async (rawPhone: string) => {
     const digits = rawPhone.replace(/\D/g, '');
     const tail10 = digits.length >= 10 ? digits.slice(-10) : digits;
@@ -371,7 +407,8 @@ export function MainLayout({
   }, [incomingCall?.phone, incomingCall?.receivedAt, customers, findCustomerByPhoneFromPg]);
 
   const runContextAction = useCallback((phone: string) => {
-    if (currentModule === 'restaurant') {
+    const target = getPrimaryShellModuleForCallerId(currentModule);
+    if (target === 'restaurant') {
       localStorage.setItem('callerid_context_action', JSON.stringify({ target: 'restaurant_retail_delivery', phone }));
       window.dispatchEvent(
         new CustomEvent('callerid-open-context-action', {
@@ -381,19 +418,46 @@ export function MainLayout({
       setCurrentModule('restaurant');
       return;
     }
-    if (currentModule === 'beauty') {
-      localStorage.setItem('callerid_context_action', JSON.stringify({ target: 'beauty_calendar' }));
+    if (target === 'beauty') {
+      localStorage.setItem('callerid_context_action', JSON.stringify({ target: 'beauty_calendar', phone }));
       window.dispatchEvent(
         new CustomEvent('callerid-open-context-action', {
-          detail: { target: 'beauty_calendar' },
+          detail: { target: 'beauty_calendar', phone },
         })
       );
       setCurrentModule('beauty');
       return;
     }
+    if (target === 'wms') {
+      setCurrentModule('wms');
+      return;
+    }
+    if (target === 'mobile-pos') {
+      setCurrentModule('mobile-pos');
+      return;
+    }
     void phone;
     setCurrentModule('pos');
   }, [currentModule]);
+
+  /**
+   * Caller ID → Yönetim: müşteri listesi `customers` ekranında açılmalı; aksi halde event dinleyici yok (yanlış sayfa).
+   */
+  const navigateManagementToCustomersWithCallerId = useCallback((phone: string, forceCreate: boolean) => {
+    const p = phone.trim();
+    if (!p) return;
+    setCurrentModule('management');
+    const fire = () => {
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'customers' }));
+      window.dispatchEvent(
+        new CustomEvent('callerid-open-customer', {
+          detail: { phone: p, forceCreate },
+        })
+      );
+    };
+    fire();
+    window.setTimeout(fire, 200);
+  }, []);
 
   const [rtlMode, setRtlMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('retailos_rtl_mode');
@@ -403,6 +467,19 @@ export function MainLayout({
     }
     return isRtl;
   });
+
+  /** CRM / raporlar: «yeni randevu» — önce güzellik modülü, sonra Beauty içinde sihirbaz (detail: tarih/saat) */
+  useEffect(() => {
+    const onOpenBeautyWizard = (ev: Event) => {
+      const d = (ev as CustomEvent<{ dateYmd?: string; time?: string; staffId?: string; deviceId?: string; serviceId?: string }>).detail;
+      setCurrentModule('beauty');
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('beauty-open-new-appointment-wizard-delayed', { detail: d ?? {} }));
+      }, 450);
+    };
+    window.addEventListener('beauty-open-new-appointment-wizard', onOpenBeautyWizard);
+    return () => window.removeEventListener('beauty-open-new-appointment-wizard', onOpenBeautyWizard);
+  }, []);
 
   // WebSocket connection on mount
   useEffect(() => {
@@ -414,45 +491,73 @@ export function MainLayout({
     }
   }, [currentUser.id]);
 
-  // Global Caller ID desktop notification (restaurant + beauty + market/store modules).
+  // Global Caller ID: Tauri Windows'ta WebView Notification API güvenilir değil — yerel toast + uygulama içi yedek.
   useEffect(() => {
     if (!incomingCall || !callerIdActive) return;
-    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
 
     const key = `${incomingCall.phone}|${incomingCall.receivedAt}`;
     if (lastDesktopNotifyKeyRef.current === key) return;
     lastDesktopNotifyKeyRef.current = key;
 
     const show = async () => {
-      try {
-        if (Notification.permission === 'default') {
-          await Notification.requestPermission();
+      const title = 'RetailEX Caller ID';
+      const namePart = matchedCallerCustomer?.name ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmedi';
+      const primary = getPrimaryShellModuleForCallerId(currentModuleRef.current);
+      let salePart = 'Geçmiş kayıt bulunamadı';
+      if (!matchedCallerCustomer?.id) {
+        salePart = 'Müşteri eşleşmedi';
+      } else if (primary === 'restaurant') {
+        try {
+          const { RestaurantService } = await import('../../services/restaurant');
+          const rows = await RestaurantService.getOrderHistory({ customerId: matchedCallerCustomer.id, limit: 1 });
+          const r = Array.isArray(rows) && rows[0] ? (rows[0] as { order_no?: string; id?: string }) : null;
+          salePart = r ? `Son sipariş: ${r.order_no || r.id || '-'}` : 'Sipariş geçmişi yok';
+        } catch {
+          salePart = 'Sipariş geçmişi alınamadı';
         }
-        if (Notification.permission !== 'granted') return;
-
-        const title = 'RetailEX Caller ID';
-        const namePart = matchedCallerCustomer?.name ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmedi';
-        const salePart = matchedCustomerSales[0]
-          ? `Son satış: ${matchedCustomerSales[0].receiptNumber || matchedCustomerSales[0].id || '-'}`
+      } else if (primary === 'beauty') {
+        try {
+          const { beautyService } = await import('../../services/beautyService');
+          const rows = await beautyService.getAppointmentsByCustomer(matchedCallerCustomer.id);
+          const a = rows?.[0];
+          if (a) {
+            const d = String(a.appointment_date ?? a.date ?? '').trim();
+            const tm = String(a.appointment_time ?? a.time ?? '')
+              .trim()
+              .slice(0, 5);
+            salePart = `Son randevu: ${[d, tm].filter(Boolean).join(' ')}`.trim();
+          } else {
+            salePart = 'Randevu geçmişi yok';
+          }
+        } catch {
+          salePart = 'Randevu geçmişi alınamadı';
+        }
+      } else {
+        const s = matchedCustomerSales[0];
+        salePart = s
+          ? `Son satış: ${s.receiptNumber || s.id || '-'}`
           : 'Geçmiş satış bulunamadı';
-        const body = `${incomingCall.phone}\n${namePart}\n${salePart}`;
+      }
+      const body = `${incomingCall.phone}\n${namePart}\n${salePart}`;
 
-        const n = new Notification(title, {
-          body,
-          tag: 'retailex-caller-id-global',
-          renotify: true,
-        });
-        n.onclick = () => {
+      const mode = await showCallerIdDesktopNotification({
+        title,
+        body,
+        onClick: () => {
           window.focus();
-          setCurrentModule('pos');
-        };
-      } catch {
-        // Notification desteklenmiyorsa sessiz devam.
+          setCurrentModule(getPrimaryShellModuleForCallerId(currentModuleRef.current));
+        },
+      });
+      if (mode === 'failed') {
+        toast.info(title, {
+          description: body,
+          duration: 12000,
+        });
       }
     };
 
     void show();
-  }, [incomingCall, callerIdActive, matchedCallerCustomer?.name, matchedCustomerSales, setCurrentModule]);
+  }, [incomingCall, callerIdActive, matchedCallerCustomer?.id, matchedCallerCustomer?.name, matchedCustomerSales, setCurrentModule]);
 
   // Pasif bildirim davranışı: ESC ile kapatma + kısa süre sonra otomatik gizleme.
   useEffect(() => {
@@ -785,8 +890,8 @@ export function MainLayout({
                   <button
                     type="button"
                     onClick={() => setCurrentModule('beauty')}
-                    title="Beauty"
-                    aria-label="Beauty"
+                    title={tm('bModuleBeautyTooltip')}
+                    aria-label={tm('bModuleBeautyTooltip')}
                     className={cn(
                       'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
                       'w-9 h-9 sm:w-10 sm:h-10',
@@ -930,8 +1035,65 @@ export function MainLayout({
               {matchedCallerCustomer ? `Müşteri: ${matchedCallerCustomer.name}` : 'Müşteri eşleşmesi bulunamadı'}
             </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">Son işlem geçmişi</div>
-              {matchedCustomerSales.length === 0 ? (
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-1">
+                {callerIdPrimaryShell === 'restaurant'
+                  ? 'Son restoran siparişleri'
+                  : callerIdPrimaryShell === 'beauty'
+                    ? 'Son randevular'
+                    : 'Son işlem geçmişi'}
+              </div>
+              {callerIdPrimaryShell === 'restaurant' ? (
+                callerIdRestaurantHistoryLoading ? (
+                  <div className="text-xs text-slate-500">Yükleniyor…</div>
+                ) : callerIdRestaurantOrders.length === 0 ? (
+                  <div className="text-xs text-slate-500">Sipariş geçmişi bulunamadı.</div>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {callerIdRestaurantOrders.slice(0, 3).map((o) => (
+                      <li key={o.id} className="text-xs text-slate-700 flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          {o.order_no || o.id}
+                          {o.table_number ? ` · Masa ${o.table_number}` : ''}
+                        </span>
+                        <span className="font-bold shrink-0">
+                          {new Intl.NumberFormat('tr-TR', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          }).format(Number(o.total_amount ?? 0))}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : callerIdPrimaryShell === 'beauty' ? (
+                callerIdBeautyHistoryLoading ? (
+                  <div className="text-xs text-slate-500">Yükleniyor…</div>
+                ) : callerIdBeautyAppointments.length === 0 ? (
+                  <div className="text-xs text-slate-500">Randevu geçmişi bulunamadı.</div>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {callerIdBeautyAppointments.slice(0, 3).map((a) => {
+                      const d = String(a.appointment_date ?? a.date ?? '').trim();
+                      const tm = String(a.appointment_time ?? a.time ?? '')
+                        .trim()
+                        .slice(0, 5);
+                      return (
+                        <li key={a.id} className="text-xs text-slate-700 flex items-center justify-between gap-2">
+                          <span className="truncate min-w-0">
+                            {[d, tm].filter(Boolean).join(' ')} · {a.service_name || 'Hizmet'}
+                          </span>
+                          <span className="font-bold shrink-0">
+                            {new Intl.NumberFormat('tr-TR', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }).format(Number(a.total_price ?? 0))}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
+              ) : matchedCustomerSales.length === 0 ? (
                 <div className="text-xs text-slate-500">Satış geçmişi bulunamadı.</div>
               ) : (
                 <ul className="space-y-1.5">
@@ -954,8 +1116,13 @@ export function MainLayout({
                 type="button"
                 onClick={async () => {
                   if (!incomingCall) return;
+                  const target = getPrimaryShellModuleForCallerId(currentModule);
                   runContextAction(incomingCall.phone);
-                  if (currentModule === 'restaurant' || currentModule === 'beauty') {
+                  if (target === 'restaurant' || target === 'beauty') {
+                    dismissIncoming();
+                    return;
+                  }
+                  if (target === 'wms' || target === 'mobile-pos') {
                     dismissIncoming();
                     return;
                   }
@@ -973,23 +1140,21 @@ export function MainLayout({
                 }}
                 className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold"
               >
-                {currentModule === 'restaurant'
+                {callerIdPrimaryShell === 'restaurant'
                   ? 'Perakende satışa git'
-                  : currentModule === 'beauty'
-                    ? 'Randevuya git'
-                    : "Market POS'a git"}
+                  : callerIdPrimaryShell === 'beauty'
+                    ? 'Randevu / kasaya git'
+                    : callerIdPrimaryShell === 'wms'
+                      ? 'Depo (WMS) ekranına git'
+                      : callerIdPrimaryShell === 'mobile-pos'
+                        ? 'Mobil POS\'a git'
+                        : "Market POS'a git"}
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!incomingCall) return;
-                  localStorage.setItem('callerid_customer_phone', incomingCall.phone);
-                  setCurrentModule('management');
-                  window.dispatchEvent(
-                    new CustomEvent('callerid-open-customer', {
-                      detail: { phone: incomingCall.phone },
-                    })
-                  );
+                  navigateManagementToCustomersWithCallerId(incomingCall.phone, false);
                   dismissIncoming();
                 }}
                 className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold"
@@ -1001,13 +1166,7 @@ export function MainLayout({
                   type="button"
                   onClick={() => {
                     if (!incomingCall) return;
-                    localStorage.setItem('callerid_customer_phone', incomingCall.phone);
-                    setCurrentModule('management');
-                    window.dispatchEvent(
-                      new CustomEvent('callerid-open-customer', {
-                        detail: { phone: incomingCall.phone, forceCreate: true },
-                      })
-                    );
+                    navigateManagementToCustomersWithCallerId(incomingCall.phone, true);
                     dismissIncoming();
                   }}
                   className="px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-bold"
@@ -1117,11 +1276,11 @@ export function MainLayout({
             <div className="h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100">
               <div className="text-center">
                 <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-purple-600 font-medium">Beauty & Klinik Yükleniyor...</p>
+                <p className="text-purple-600 font-medium">{tm('bBeautyLoadingMain')}</p>
               </div>
             </div>
           }>
-            <BeautyMain />
+            <BeautyMain sales={sales} products={products} />
           </Suspense>
         ) : (
           <ManagementModule

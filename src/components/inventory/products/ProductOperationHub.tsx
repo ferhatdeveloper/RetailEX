@@ -3,7 +3,7 @@ import {
     X, Package, TrendingUp, Edit3, Barcode, History,
     ShoppingCart, Info, ArrowRightLeft, Printer, Trash2,
     ChevronRight, Box, Tag, Layers, Settings, FileText,
-    AlertCircle, DollarSign, Warehouse, Clock, Search, RefreshCw, Download, Upload, Plus, Edit,
+    AlertCircle, Banknote, Warehouse, Clock, Search, RefreshCw, Download, Upload, Plus, Edit,
     MapPin, Building2, Calendar, Filter
 } from 'lucide-react';
 import { Product, ProductVariant } from '../../../core/types';
@@ -103,7 +103,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                             <div className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'} border p-3 rounded-lg shadow-sm`}>
                                 <div className="flex items-center gap-2 mb-1">
                                     <div className="p-1.5 bg-green-100 text-green-600 rounded-md">
-                                        <DollarSign className="w-4 h-4" />
+                                        <Banknote className="w-4 h-4" />
                                     </div>
                                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Satış Fiyatı</span>
                                 </div>

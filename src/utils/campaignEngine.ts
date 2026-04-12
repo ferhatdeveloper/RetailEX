@@ -1,4 +1,5 @@
 import { Campaign, CartItem } from '../core/types';
+import { roundPosDiscountAmountUp } from './discountRounding';
 
 export interface CampaignResult {
   totalDiscount: number;
@@ -98,13 +99,14 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
         const numFree = X - Y;
         const freeItems = group.slice(-numFree);
         freeItems.forEach(item => {
-          discount += item.price;
+          const inc = roundPosDiscountAmountUp(item.price);
+          discount += inc;
           // Track item-level discount for visualization
           const existing = result.itemDiscounts.find(d => d.index === item.index);
           if (existing) {
-            existing.discountAmount += item.price;
+            existing.discountAmount += inc;
           } else {
-            result.itemDiscounts.push({ index: item.index, discountAmount: item.price });
+            result.itemDiscounts.push({ index: item.index, discountAmount: inc });
           }
         });
       }
@@ -120,7 +122,7 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
       const campaignPrice = campaign.discountValue; // discountValue stores the override price
       
       if (effectivePrice > campaignPrice) {
-        const itemDiscount = (effectivePrice - campaignPrice) * item.quantity;
+        const itemDiscount = roundPosDiscountAmountUp((effectivePrice - campaignPrice) * item.quantity);
         discount += itemDiscount;
         result.itemDiscounts.push({ index, discountAmount: itemDiscount });
       }
@@ -128,11 +130,20 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
     result.totalDiscount = discount;
   }
 
-  // 4. Apply Max Discount Cap
-  if (campaign.maxDiscountAmount && result.totalDiscount > campaign.maxDiscountAmount) {
-    // Proportionally scale down discounts if capped? 
-    // Usually easier to just cap the total.
-    result.totalDiscount = campaign.maxDiscountAmount;
+  // 4. İndirim tutarını 250’lik kademeye yukarı yuvarla; satır kırılımlı kampanyalarda satırları sonra topla
+  if (result.itemDiscounts.length === 0 && result.totalDiscount > 0) {
+    result.totalDiscount = roundPosDiscountAmountUp(result.totalDiscount);
+  } else if (result.itemDiscounts.length > 0) {
+    result.itemDiscounts = result.itemDiscounts.map((d) => ({
+      index: d.index,
+      discountAmount: roundPosDiscountAmountUp(d.discountAmount),
+    }));
+    result.totalDiscount = result.itemDiscounts.reduce((s, d) => s + d.discountAmount, 0);
+  }
+
+  result.totalDiscount = Math.min(result.totalDiscount, eligibleSubtotal);
+  if (campaign.maxDiscountAmount != null && campaign.maxDiscountAmount > 0) {
+    result.totalDiscount = Math.min(result.totalDiscount, campaign.maxDiscountAmount);
   }
 
   return result;

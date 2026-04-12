@@ -9,6 +9,7 @@
   "bundle": {
     "active": true,
     "category": "DeveloperTool",
+    "publisher": "RetailEX",
     "copyright": "",
     "targets": [
       "nsis",
@@ -27,6 +28,8 @@
     ],
     "windows": {
       "allowDowngrades": true,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
       "nsis": {
         "displayLanguageSelector": false,
         "installMode": "perMachine",
@@ -48,8 +51,11 @@
       "../database/init/**/*",
       "../database/migrations/**/*",
       "../database/sys/**/*",
+      "resources/pg-windows-expose-remote.ps1",
       "resources/bridge.cjs",
+      "resources/package.json",
       "resources/install-bridge.ps1",
+      "resources/install-bridge-npm.ps1",
       "resources/sumatra/**/*"
     ],
     "shortDescription": "",
@@ -62,7 +68,7 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.61",
+  "version": "0.1.65",
   "identifier": "com.retailex.app",
   "plugins": {
     "updater": {

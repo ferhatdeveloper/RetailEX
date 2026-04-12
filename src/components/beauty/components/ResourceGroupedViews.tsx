@@ -2,7 +2,7 @@
  * DevExpress WPF Scheduler "Group by Resource" benzeri: üstte kaynak başlıkları, günde sütun başına zaman çizgisi.
  */
 import React, { useMemo } from 'react';
-import { BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
+import { AppointmentStatus, BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { CLINIC } from '../clinicDesignTokens';
 
@@ -610,7 +610,9 @@ export function ResourceGroupedWeekMatrix({
                                         }}
                                     >
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                            {cellApts.slice(0, 4).map(apt => (
+                                            {cellApts.slice(0, 4).map(apt => {
+                                                const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                return (
                                                 <button
                                                     key={apt.id}
                                                     type="button"
@@ -622,9 +624,9 @@ export function ResourceGroupedWeekMatrix({
                                                         textAlign: 'left',
                                                         padding: '4px 6px',
                                                         borderRadius: 6,
-                                                        border: `1px solid ${CLINIC.border}`,
-                                                        borderLeft: `3px solid ${apt.service_color || CLINIC.violet}`,
-                                                        background: CLINIC.surfaceMuted,
+                                                        border: `1px solid ${done ? '#a7f3d0' : CLINIC.border}`,
+                                                        borderLeft: `3px solid ${done ? '#059669' : (apt.service_color || CLINIC.violet)}`,
+                                                        background: done ? 'rgba(5, 150, 105, 0.12)' : CLINIC.surfaceMuted,
                                                         fontSize: 10,
                                                         cursor: 'pointer',
                                                     }}
@@ -634,7 +636,8 @@ export function ResourceGroupedWeekMatrix({
                                                         {apt.customer_name ?? '—'}
                                                     </div>
                                                 </button>
-                                            ))}
+                                                );
+                                            })}
                                             {cellApts.length > 4 && (
                                                 <div style={{ fontSize: 9, fontWeight: 700, color: CLINIC.textMuted, textAlign: 'center' }}>
                                                     +{cellApts.length - 4}

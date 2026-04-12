@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Current Account Management (Cari Hesap Yönetimi)
  * 
  * Comprehensive account receivable/payable management:
@@ -27,7 +27,7 @@ import {
   Eye,
   Edit,
   Trash2,
-  DollarSign,
+  Banknote,
   Clock,
   CheckCircle2
 } from 'lucide-react';

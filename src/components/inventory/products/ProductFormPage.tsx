@@ -7,7 +7,7 @@ import {
   Share2, Trash2, Plus, X, Search, Database, LayoutGrid, Save, MoreVertical,
   Barcode as BarcodeIcon, Tag, Calculator, Check, Download,
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
-  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, DollarSign, Cloud, Link
+  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/api/masterData';
@@ -446,7 +446,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const translationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
   const [uploadingToSupabase, setUploadingToSupabase] = useState(false);
+  const [uploadingToSystem, setUploadingToSystem] = useState(false);
   const [downloadingCdnToLocal, setDownloadingCdnToLocal] = useState(false);
+  const [importingUrlToLocal, setImportingUrlToLocal] = useState(false);
+  const [urlImageWidth, setUrlImageWidth] = useState<number>(400);
+  const [urlImageHeight, setUrlImageHeight] = useState<number>(400);
+  const lastAutoImportedUrlRef = useRef<string>('');
   const [menuImageSuggestions, setMenuImageSuggestions] = useState<{ image_url: string | null; gallery_urls: string[]; menu_item: MenuItem }[]>([]);
   const [cdnGalleryImages, setCdnGalleryImages] = useState<{ url: string; label?: string }[]>([]);
   const [loadingMenuSuggestions, setLoadingMenuSuggestions] = useState(false);
@@ -951,10 +956,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     if (!file) return;
 
     try {
-      // WebP formatında optimize (max 1024px, kalite 0.82)
-      const base64 = await compressImageToWebP(file, 1024, 1024, 0.82);
-      handleInputChange('image_url', base64);
-      toast.success('Resim WebP olarak optimize edildi ve yüklendi');
+      // Normal yüklemede de hedef boyuta zorla (cover crop)
+      const base64 = await compressImageToWebP(file, 2048, 2048, 0.9);
+      const resized = await resizeDataUrlToExactSize(base64, urlImageWidth, urlImageHeight);
+      handleInputChange('image_url', resized);
+      toast.success(`Resim ${urlImageWidth}x${urlImageHeight} boyutunda yüklendi`);
     } catch (error) {
       console.error('Image upload error:', error);
       toast.error('Resim işlenirken bir hata oluştu');
@@ -964,6 +970,70 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const removeImage = () => {
     handleInputChange('image_url', '');
   };
+
+  const resizeDataUrlToExactSize = useCallback(
+    (dataUrl: string, width: number, height: number): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const w = Math.max(32, Math.min(4096, Math.round(width || 0)));
+        const h = Math.max(32, Math.min(4096, Math.round(height || 0)));
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas context oluşturulamadı');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+            // Görseli hedef kutuyu tamamen dolduracak şekilde kırp (cover)
+            const scale = Math.max(w / img.width, h / img.height);
+            const drawW = img.width * scale;
+            const drawH = img.height * scale;
+            const dx = (w - drawW) / 2;
+            const dy = (h - drawH) / 2;
+            ctx.drawImage(img, dx, dy, drawW, drawH);
+            resolve(canvas.toDataURL('image/webp', 0.82));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = reject;
+        img.src = dataUrl;
+      }),
+    []
+  );
+
+  /**
+   * URL'den resmi indirip local/base64 alana yazar.
+   * Not: Tarayıcı CORS kısıtları nedeniyle bazı siteler engelleyebilir.
+   */
+  const importImageUrlToLocal = useCallback(async (urlRaw: string, silent = false): Promise<string | null> => {
+    const url = String(urlRaw || '').trim();
+    if (!url) return null;
+    if (!/^https?:\/\//i.test(url)) {
+      if (!silent) toast.error('Lütfen geçerli bir http/https resim URL girin.');
+      return null;
+    }
+
+    setImportingUrlToLocal(true);
+    try {
+      const base64 = await supabaseProductImageService.downloadCdnImageAsBase64(url);
+      if (base64) {
+        const resized = await resizeDataUrlToExactSize(base64, urlImageWidth, urlImageHeight);
+        handleInputChange('image_url', resized);
+        lastAutoImportedUrlRef.current = url;
+        if (!silent) toast.success('URL resmi bilgisayara alındı ve ürüne eklendi.');
+        return resized;
+      } else if (!silent) {
+        toast.error('URL resmi indirilemedi (CORS veya URL erişimi engelliyor olabilir).');
+      }
+      return null;
+    } finally {
+      setImportingUrlToLocal(false);
+    }
+  }, []);
 
   // Barcode Operations
   const addBarcode = () => {
@@ -1402,6 +1472,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
 
     const primaryBarcode = barcodes[0]?.code || '';
+    let localImageUrl = formData.image_url;
+
+    // CDN görsel girilmiş ama local/base64 boşsa, kaydetmeden önce sisteme de al.
+    if (!localImageUrl && formData.image_url_cdn) {
+      try {
+        const imported = await importImageUrlToLocal(formData.image_url_cdn, true);
+        if (imported) {
+          localImageUrl = imported;
+        }
+      } catch (error) {
+        console.error('[ProductFormPage] CDN -> local image import failed:', error);
+      }
+    }
 
     const productData: Product = {
       id: productId || '', // API will generate UUID for new, use existing for update
@@ -1430,7 +1513,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       categoryCode: formData.categoryCode,
       groupCode: formData.groupCode,
       subGroupCode: formData.subGroupCode,
-      image_url: formData.image_url,
+      image_url: localImageUrl,
       image_url_cdn: formData.image_url_cdn,
       specialCode1: formData.specialCode1,
       specialCode2: formData.specialCode2,
@@ -2070,7 +2153,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                     {formData.autoCalculateUSD && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
-                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
                       </span>
                     )}
                   </div>
@@ -2101,7 +2184,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                     {formData.autoCalculateUSD && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded border border-blue-200">
-                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
                       </span>
                     )}
                   </div>
@@ -3525,6 +3608,33 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </label>
                   )}
                 </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Genişlik (px)</label>
+                    <input
+                      type="number"
+                      min={32}
+                      max={4096}
+                      value={urlImageWidth}
+                      onChange={(e) => setUrlImageWidth(Number(e.target.value) || 400)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 block mb-1">Yükseklik (px)</label>
+                    <input
+                      type="number"
+                      min={32}
+                      max={4096}
+                      value={urlImageHeight}
+                      onChange={(e) => setUrlImageHeight(Number(e.target.value) || 400)}
+                      className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Dosyadan yükleme ve URL'den indirme işlemleri bu hedef boyuta göre kaydedilir.
+                </p>
 
                 <div className="flex items-center gap-4 my-6">
                   <div className="h-px bg-gray-300 flex-1"></div>
@@ -3608,9 +3718,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     placeholder="https://...supabase.co/storage/.../resim.jpg"
                     value={formData.image_url_cdn || ''}
                     onChange={(e) => handleInputChange('image_url_cdn', e.target.value)}
+                    onBlur={async (e) => {
+                      const entered = String(e.target.value || '').trim();
+                      if (!entered) return;
+                      if (entered === lastAutoImportedUrlRef.current) return;
+                      await importImageUrlToLocal(entered, true);
+                    }}
                   />
                   <p className="text-xs text-gray-500">Supabase Storage veya başka bir CDN linki yapıştırabilirsiniz.</p>
-
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3640,7 +3755,37 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </button>
                     <button
                       type="button"
-                      disabled={downloadingCdnToLocal || !formData.image_url_cdn}
+                      disabled={uploadingToSystem || importingUrlToLocal || !formData.image_url_cdn}
+                      onClick={async () => {
+                        if (!formData.image_url_cdn) {
+                          toast.error('Önce CDN URL girin.');
+                          return;
+                        }
+                        setUploadingToSystem(true);
+                        try {
+                          const localImage = await importImageUrlToLocal(formData.image_url_cdn, false);
+                          if (!localImage) return;
+                          if (productId) {
+                            await updateProduct(productId, {
+                              image_url: localImage,
+                              image_url_cdn: formData.image_url_cdn,
+                            } as any);
+                          }
+                          toast.success(productId
+                            ? 'Resim sisteme (Local DB) kaydedildi.'
+                            : 'Resim local olarak hazır. Ürünü kaydedince DB’ye yazılacak.');
+                        } finally {
+                          setUploadingToSystem(false);
+                        }
+                      }}
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Database className="w-4 h-4" />
+                      {uploadingToSystem ? 'Kaydediliyor...' : 'Sisteme kaydet (Local DB)'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingCdnToLocal || importingUrlToLocal || !formData.image_url_cdn}
                       onClick={async () => {
                         if (!formData.image_url_cdn) {
                           toast.error('CDN URL girin veya önce Supabase\'e yükleyin.');
@@ -3648,13 +3793,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         }
                         setDownloadingCdnToLocal(true);
                         try {
-                          const base64 = await supabaseProductImageService.downloadCdnImageAsBase64(formData.image_url_cdn);
-                          if (base64) {
-                            handleInputChange('image_url', base64);
-                            toast.success('CDN resmi locale alındı.');
-                          } else {
-                            toast.error('Resim indirilemedi (CORS veya URL kontrol edin).');
-                          }
+                          await importImageUrlToLocal(formData.image_url_cdn, false);
                         } finally {
                           setDownloadingCdnToLocal(false);
                         }
@@ -3662,7 +3801,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="px-3 py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       <Download className="w-4 h-4" />
-                      {downloadingCdnToLocal ? 'İndiriliyor...' : "CDN'deki resmi locale al"}
+                      {(downloadingCdnToLocal || importingUrlToLocal) ? 'İndiriliyor...' : "URL'den indir ve ürüne ekle"}
                     </button>
                   </div>
                 </div>

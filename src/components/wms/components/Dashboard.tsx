@@ -7,7 +7,7 @@ import {
   Clock, Truck, BarChart3, ArrowUpRight, RefreshCw, ArrowDownRight,
   Loader2, Menu, X, Grid3x3, ChevronRight,
   RotateCcw, ClipboardCheck,
-  MapPin, DollarSign, Star, ThumbsUp, Factory,
+  MapPin, Banknote, Star, ThumbsUp, Factory,
   Activity, Shield, CheckSquare, Users
 } from 'lucide-react';
 import {
@@ -71,7 +71,7 @@ const MODULE_ICONS = {
   'multi-warehouse': Warehouse, 'shelf-space': Grid3x3,    quality:     Shield,
   'vehicle-loading': Truck,     'order-splitting': Package, 'sales-velocity': BarChart3,
   'profit-loss': TrendingUp,    reports:     BarChart3,     performance: Users,
-  'live-performance-tv': Activity, 'auto-reorder': RefreshCw, 'pricing-cost': DollarSign,
+  'live-performance-tv': Activity, 'auto-reorder': RefreshCw, 'pricing-cost': Banknote,
   'cashier-management': Users,  'live-gps-tracking-enhanced': MapPin, alerts: AlertCircle,
   tasks:        CheckSquare,    slotting:    Grid3x3,       labor:       Users, yard: MapPin,
   'outbound-ops': ThumbsUp,     'production-output': Factory, 'route-optimization': MapPin,

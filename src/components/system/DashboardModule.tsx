@@ -1,5 +1,5 @@
 import {
-  TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Users,
+  TrendingUp, TrendingDown, Banknote, ShoppingCart, Package, Users,
   AlertTriangle, Clock, Zap, FileText, UserPlus, PackagePlus,
   BarChart3, Layers, ArrowRight, TrendingUpDown, Wallet, Settings, X,
   Truck, Receipt, Building, Target, Wrench, Calendar, Globe, RefreshCw,
@@ -58,7 +58,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     { id: 'crm', icon: Target, label: t.crmModule, color: 'from-purple-600 to-purple-700', category: t.customerCards },
 
     // Finans & Muhasebe
-    { id: 'finance', icon: DollarSign, label: t.cashBank, color: 'from-orange-500 to-orange-600', category: t.financeAccounting },
+    { id: 'finance', icon: Banknote, label: t.cashBank, color: 'from-orange-500 to-orange-600', category: t.financeAccounting },
     { id: 'accounting', icon: Calculator, label: t.accounting, color: 'from-orange-400 to-orange-500', category: t.financeAccounting },
     { id: 'budget', icon: Wallet, label: t.budget, color: 'from-orange-600 to-orange-700', category: t.financeAccounting },
 
@@ -421,7 +421,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-blue-600" />
+                <Banknote className="w-4 h-4 text-blue-600" />
                 <span className="text-[10px] text-gray-600">{t.todaysSales || 'Bugünkü Satış'}</span>
                 {revenueChange !== 0 && (
                   <span className={`text-[9px] ${revenueChange > 0 ? 'text-green-600' : 'text-red-600'}`}>

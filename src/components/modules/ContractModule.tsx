@@ -1,5 +1,5 @@
-﻿import { useState } from 'react';
-import { FileSignature, Calendar, Plus, Edit2, Trash2, X, Save, Search, FileText, Users, DollarSign } from 'lucide-react';
+import { useState } from 'react';
+import { FileSignature, Calendar, Plus, Edit2, Trash2, X, Save, Search, FileText, Users, Banknote } from 'lucide-react';
 
 interface Contract {
   id: string;
@@ -195,7 +195,7 @@ export function ContractModule() {
           <div className="bg-white border border-gray-200 rounded p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] text-gray-600">Toplam Değer (Aktif)</span>
-              <DollarSign className="w-4 h-4 text-blue-600" />
+              <Banknote className="w-4 h-4 text-blue-600" />
             </div>
             <div className="text-base font-semibold text-blue-600">
               {totalActiveValue.toLocaleString()} IQD

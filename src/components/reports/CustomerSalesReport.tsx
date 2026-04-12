@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { Users, TrendingUp, DollarSign, Calendar } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, TrendingUp, Banknote, Calendar } from 'lucide-react';
 import type { Sale, Customer } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';

@@ -1,7 +1,7 @@
 // Create Campaign Page - Comprehensive Campaign Creation Interface
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, X, Plus, Trash2, Calendar, Percent, Tag, Users, Package, Image as ImageIcon, Globe, DollarSign, Clock, Info } from 'lucide-react';
+import { ArrowLeft, Save, X, Plus, Trash2, Calendar, Percent, Tag, Users, Package, Image as ImageIcon, Globe, Banknote, Clock, Info } from 'lucide-react';
 import type { Campaign, Product } from '../../App';
 import { campaignsAPI } from '../../services/api/campaigns';
 

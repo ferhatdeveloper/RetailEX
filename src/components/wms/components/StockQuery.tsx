@@ -1,9 +1,9 @@
-﻿// 🔍 StockQuery Component - Stok Sorgulama
+// 🔍 StockQuery Component - Stok Sorgulama
 // Real-time stock query with multi-location view
 
 import { useState, useEffect } from 'react';
 import {
-  Search, Package, MapPin, Calendar, DollarSign,
+  Search, Package, MapPin, Calendar, Banknote,
   AlertCircle, TrendingUp, BarChart3, Grid, List,
   Eye, FileText, Printer, Download, BookOpen, Loader2
 } from 'lucide-react';

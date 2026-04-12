@@ -1,4 +1,4 @@
-﻿// Multi-Store Management Module - Çoklu Mağaza Yönetimi
+// Multi-Store Management Module - Çoklu Mağaza Yönetimi
 
 import { useState } from 'react';
 import {
@@ -8,7 +8,7 @@ import {
   ArrowUpDown,
   Users,
   Package,
-  DollarSign,
+  Banknote,
   Target,
   Calendar,
   MapPin,
@@ -671,7 +671,7 @@ function DetailedAnalyticsView() {
               <label className="text-sm text-gray-600 block mb-2">Metrik</label>
               <div className="flex gap-2">
                 {[
-                  { id: 'revenue', label: 'Ciro', icon: DollarSign },
+                  { id: 'revenue', label: 'Ciro', icon: Banknote },
                   { id: 'transactions', label: 'İşlem', icon: ShoppingCart },
                   { id: 'customers', label: 'Müşteri', icon: Users }
                 ].map(metric => {
@@ -706,7 +706,7 @@ function DetailedAnalyticsView() {
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Toplam Ciro</span>
-            <DollarSign className="h-5 w-5 text-blue-600" />
+            <Banknote className="h-5 w-5 text-blue-600" />
           </div>
           <div className="text-2xl text-gray-900">10,680,000</div>
           <div className="flex items-center gap-1 mt-1">

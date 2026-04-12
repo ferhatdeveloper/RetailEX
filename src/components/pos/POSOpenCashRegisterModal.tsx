@@ -1,4 +1,4 @@
-﻿import { X, DollarSign, CheckCircle, Calculator, Users } from 'lucide-react';
+import { X, Banknote, CheckCircle, Calculator, Users } from 'lucide-react';
 import { useState } from 'react';
 import { formatNumberInput, parseFormattedNumber, formatNumberOnBlur } from '../../utils/numberFormatter';
 import { formatNumber } from '../../utils/formatNumber';
@@ -91,7 +91,7 @@ export function POSOpenCashRegisterModal({
             : 'bg-gradient-to-r from-green-600 to-green-700'
         }`}>
           <h3 className="text-lg text-white flex items-center gap-2">
-            <DollarSign className="w-6 h-6" />
+            <Banknote className="w-6 h-6" />
             {pendingHandover ? t.cashHandoverAccept : t.openCashRegisterProcess}
           </h3>
           <div className="flex items-center gap-2">

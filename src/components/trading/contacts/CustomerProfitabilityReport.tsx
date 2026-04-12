@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Customer Profitability Report
  * 
  * Müşteri bazlı karlılık analizi
@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Users, DollarSign, ShoppingCart, Download, Search } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Banknote, ShoppingCart, Download, Search } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { CostAccountingService } from '../../../services/costAccountingService';
 import { toast } from 'sonner';
@@ -244,7 +244,7 @@ export function CustomerProfitabilityReport() {
 
         <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-5 h-5 text-green-600" />
+            <Banknote className="w-5 h-5 text-green-600" />
             <div className="text-sm text-green-700">Toplam Satış</div>
           </div>
           <div className="text-xl font-bold text-green-900">
@@ -267,7 +267,7 @@ export function CustomerProfitabilityReport() {
 
         <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-2 border-cyan-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="w-5 h-5 text-cyan-600" />
+            <Banknote className="w-5 h-5 text-cyan-600" />
             <div className="text-sm text-cyan-700">Ort. İşlem Değeri</div>
           </div>
           <div className="text-xl font-bold text-cyan-900">

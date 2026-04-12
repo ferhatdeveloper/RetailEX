@@ -1,5 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
+import type { Sale, SaleItem } from '../core/types/models';
 import { postgres, ERP_SETTINGS } from './postgres';
+import { useSaleStore } from '../store/useSaleStore';
+import { useCustomerStore } from '../store/useCustomerStore';
 import {
     buildReminderText,
     sendAtakSms,
@@ -9,6 +13,7 @@ import {
 } from './messaging/clinicMessaging';
 import { getEmbeddedBridgeStatus } from './messaging/whatsappEmbeddedBridge';
 import {
+    AppointmentStatus,
     BeautyAppointment,
     BeautyService,
     BeautySpecialist,
@@ -42,6 +47,14 @@ import {
     BeautyAuditLogEntry,
     BeautyClinicAnalytics,
 } from '../types/beauty';
+
+/** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
+export type BeautyCustomerProfileQueryOpts = {
+    phone?: string | null;
+    email?: string | null;
+    code?: string | null;
+    name?: string | null;
+};
 
 /** PG uuid sütunlarında `""` geçersizdir — null kullanılmalı */
 function pgUuidOrNull(v: unknown): string | null {
@@ -79,6 +92,152 @@ function pgDateOrNull(d: unknown): string | null {
     return null;
 }
 
+function pgTimestamptzOrNull(v: unknown): string | null {
+    if (v == null) return null;
+    if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString();
+    const s = String(v).trim();
+    return s.length ? s : null;
+}
+
+/** İlk seans tarihinden itibaren her ayın aynı günü (kısa ayda son güne sıkıştırılır). */
+function computeMonthlySameDayDates(firstYmd: string, count: number): string[] {
+    const m = String(firstYmd).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m || count < 1) return [];
+    let year = parseInt(m[1], 10);
+    let month = parseInt(m[2], 10) - 1;
+    const targetDay = parseInt(m[3], 10);
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const day = Math.min(targetDay, lastDay);
+        const dt = new Date(year, month, day);
+        out.push(dt.toISOString().slice(0, 10));
+        month += 1;
+        if (month > 11) {
+            month = 0;
+            year += 1;
+        }
+    }
+    return out;
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+    const m = String(ymd).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return ymd;
+    const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+/** Raporlarda yerel takvim gününe göre filtre (UTC gece kayması olmasın diye tarayıcı yerel aralığı ISO’ya çevirir) */
+/** Güzellik ödeme kodunu MarketPOS / salesAPI ile uyumlu hale getirir (yalnızca `cash` kasaya yazılır; restoran POS ile aynı ayrım) */
+function mapBeautyPaymentToErpMethod(raw: string | undefined): string {
+    const s = String(raw ?? '').trim();
+    const m = s.toLowerCase();
+    if (m === 'cash' || /^nak[ıi]t$/i.test(s) || m === 'nakit') return 'cash';
+    if (m === 'transfer' || m === 'havale' || /havale|eft|transfer/i.test(s)) return 'transfer';
+    if (m === 'card' || m === 'kart' || /kredi|kart/i.test(s)) return 'card';
+    if (m === 'gateway' || /sanal|gateway/i.test(s)) return 'gateway';
+    if (m === 'veresiye') return 'veresiye';
+    return 'cash';
+}
+
+/** Tablo öneki `rex_00x_*` ile uyum: oturumdaki firma no `1` / `01` iken satır `firm_nr` hep `001` olmalı */
+function erpFirmNrForRow(): string {
+    return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+/** UUID string (güvenli IN listesi) */
+function filterUuidIds(ids: string[]): string[] {
+    const uuidRe = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+    return [...new Set(ids.map(s => String(s).trim()))].filter(s => uuidRe.test(s));
+}
+
+/** Randevu listesi — IN ($1..$n) köprü/pg ile uyumlu (ANY dizisi yerine) */
+async function fetchBeautyAppointmentsForIds(
+    parts: string[],
+    nameForCorp: string | null,
+): Promise<BeautyAppointment[]> {
+    if (!parts.length) return [];
+    const fn = erpFirmNrForRow();
+    const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+    const corp = postgres.getCardTableName('beauty_corporate_accounts', 'beauty');
+    const n = parts.length;
+    const inList = parts.map((_, i) => `$${i + 1}`).join(', ');
+    const firmPh = `$${n + 1}`;
+    const corpPh = `$${n + 2}`;
+    const { rows } = await postgres.query(
+        `
+            SELECT a.*, COALESCE(s.name, rs.name) AS service_name, COALESCE(sp.name, u.full_name, u.username) AS specialist_name
+            FROM ${table} a
+            LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
+            LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = ${firmPh}
+            LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
+            LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = ${firmPh}
+            WHERE (
+                a.client_id IN (${inList})
+                OR (
+                    ${corpPh}::text IS NOT NULL
+                    AND a.corporate_account_id IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1 FROM ${corp} ca
+                        WHERE ca.id = a.corporate_account_id
+                          AND LOWER(TRIM(ca.name)) = LOWER(TRIM(${corpPh}::text))
+                    )
+                )
+            )
+            ORDER BY a.appointment_date DESC NULLS LAST, a.appointment_time DESC NULLS LAST LIMIT 400
+        `,
+        [...parts, fn, nameForCorp],
+    );
+    return rows;
+}
+
+/** Aynı firmada ünvanı birebir eşleşen tüm müşteri kartları (profil geçmişi genişletme) */
+async function fetchCustomerIdsByExactFirmName(displayName: string): Promise<string[]> {
+    const n = String(displayName ?? '').trim();
+    if (n.length < 8) return [];
+    const ct = postgres.getCardTableName('customers');
+    const fn = erpFirmNrForRow();
+    const { rows } = await postgres.query(
+        `SELECT id::text AS id FROM ${ct} c
+         WHERE lpad(trim(c.firm_nr::text), 3, '0') = $1
+           AND LOWER(TRIM(c.name)) = LOWER(TRIM($2::text))`,
+        [fn, n],
+    );
+    return filterUuidIds(rows.map((r: { id: string }) => r.id));
+}
+
+async function resolveBeautyCustomerName(customerId: unknown, hint?: string | null): Promise<string> {
+    if (hint != null && String(hint).trim()) return String(hint).trim();
+    const id = pgUuidOrNull(customerId);
+    if (!id) return '';
+    try {
+        const ct = postgres.getCardTableName('customers');
+        const { rows } = await postgres.query<{ name?: string }>(
+            `SELECT name FROM ${ct} WHERE id = $1 LIMIT 1`,
+            [id]
+        );
+        return rows[0]?.name != null ? String(rows[0].name) : '';
+    } catch {
+        return '';
+    }
+}
+
+function localYmdToIsoRange(ymd: string): { startIso: string; endIso: string } {
+    const parts = ymd.split('-').map(Number);
+    if (parts.length < 3 || parts.some(n => Number.isNaN(n))) {
+        const n = new Date();
+        const start = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0);
+        const end = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
+        return { startIso: start.toISOString(), endIso: end.toISOString() };
+    }
+    const [y, mo, d] = parts;
+    const start = new Date(y, mo - 1, d, 0, 0, 0, 0);
+    const end = new Date(y, mo - 1, d, 23, 59, 59, 999);
+    return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
 /** Hizmet kartı (rex_*_services) ve malzeme «hizmet» satırları için süre tahmini */
 function inferDurationMinFromUnit(unit: unknown): number {
     const u = String(unit ?? '').toLowerCase();
@@ -103,6 +262,7 @@ function mapFirmServiceRowToBeauty(row: Record<string, unknown>): BeautyService 
         commission_rate: 0,
         description: row.description != null ? String(row.description) : undefined,
         requires_device: false,
+        default_sessions: 1,
         is_active: isActive,
     };
 }
@@ -127,11 +287,154 @@ function mapProductServiceRowToBeauty(row: Record<string, unknown>): BeautyServi
         commission_rate: 0,
         description: row.description != null ? String(row.description) : undefined,
         requires_device: false,
+        default_sessions: 1,
         is_active: row.is_active !== false,
     };
 }
 
+/** Aylık seri için: önce güzellik hizmet kartı, yoksa ERP hizmet / stok hizmeti */
+async function resolveServiceForMonthlySeries(serviceId: string): Promise<{
+    name: string;
+    price: number;
+    duration_min: number;
+    default_sessions: number;
+} | null> {
+    const svt = postgres.getCardTableName('beauty_services', 'beauty');
+    try {
+        const { rows } = await postgres.query(
+            `SELECT name, price, duration_min, COALESCE(default_sessions, 1) AS default_sessions
+             FROM ${svt} WHERE id = $1 AND COALESCE(is_active, true) = true`,
+            [serviceId]
+        );
+        const r = rows[0] as Record<string, unknown> | undefined;
+        if (r) {
+            return {
+                name: String(r.name ?? ''),
+                price: Number(r.price ?? 0),
+                duration_min: Math.max(1, Math.round(Number(r.duration_min ?? 30))),
+                default_sessions: Math.max(1, Math.round(Number(r.default_sessions ?? 1))),
+            };
+        }
+    } catch {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT name, price, duration_min FROM ${svt} WHERE id = $1 AND COALESCE(is_active, true) = true`,
+                [serviceId]
+            );
+            const r = rows[0] as Record<string, unknown> | undefined;
+            if (r) {
+                return {
+                    name: String(r.name ?? ''),
+                    price: Number(r.price ?? 0),
+                    duration_min: Math.max(1, Math.round(Number(r.duration_min ?? 30))),
+                    default_sessions: 1,
+                };
+            }
+        } catch {
+            /* devam */
+        }
+    }
+
+    const firmRaw = String(ERP_SETTINGS.firmNr ?? '001').trim();
+    const firmPadded = firmRaw.padStart(3, '0').slice(0, 10);
+    const firmCandidates =
+        firmPadded === firmRaw ? [firmPadded] : [firmPadded, firmRaw];
+    const firmInSql = firmCandidates.map((_, i) => `$${i + 2}`).join(', ');
+
+    const svcTbl = postgres.getCardTableName('services');
+    try {
+        const { rows } = await postgres.query(
+            `SELECT name, unit_price, unit, category FROM ${svcTbl}
+             WHERE id = $1 AND firm_nr IN (${firmInSql})`,
+            [serviceId, ...firmCandidates]
+        );
+        const r = rows[0] as Record<string, unknown> | undefined;
+        if (r) {
+            return {
+                name: String(r.name ?? ''),
+                price: Number(r.unit_price ?? 0),
+                duration_min: inferDurationMinFromUnit(r.unit),
+                default_sessions: 1,
+            };
+        }
+    } catch {
+        /* */
+    }
+
+    const prodTbl = postgres.getCardTableName('products');
+    try {
+        const { rows } = await postgres.query(
+            `SELECT name, price, unit FROM ${prodTbl}
+             WHERE id = $1 AND firm_nr IN (${firmInSql})
+               AND (
+                 LOWER(TRIM(COALESCE(material_type, ''))) = 'service'
+                 OR LOWER(TRIM(COALESCE(materialtype, ''))) = 'service'
+               )`,
+            [serviceId, ...firmCandidates]
+        );
+        const r = rows[0] as Record<string, unknown> | undefined;
+        if (r) {
+            return {
+                name: String(r.name ?? ''),
+                price: Number(r.price ?? 0),
+                duration_min: inferDurationMinFromUnit(r.unit),
+                default_sessions: 1,
+            };
+        }
+    } catch {
+        /* */
+    }
+
+    return null;
+}
+
 export const beautyService = {
+
+    /**
+     * Profil / geçmiş sorguları: aynı telefon, e-posta, kod veya (uzun) ünvana sahip tüm cari kartlarının id'lerini döner.
+     * `$1::uuid` kullanılmaz; geçersiz id veya köprü uyumsuzluğu durumunda tek id ile devam edilir.
+     */
+    async resolveLinkedCustomerIdsForProfile(
+        customerId: string,
+        opts?: BeautyCustomerProfileQueryOpts | null,
+    ): Promise<string[]> {
+        const ct = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
+        const phoneDigits = String(opts?.phone ?? '').replace(/\D/g, '');
+        const emailNorm = String(opts?.email ?? '').trim().toLowerCase();
+        const codeTrim = String(opts?.code ?? '').trim();
+        const nameTrim = String(opts?.name ?? '').trim();
+        const idTrim = String(customerId ?? '').trim();
+        try {
+            const { rows } = await postgres.query(
+                `SELECT DISTINCT c.id::text AS id
+                 FROM ${ct} c
+                 WHERE (
+                     -- Önce id: firm_nr uyuşmasa bile kart varsa yakala (çoklu tenant / demo sapması)
+                     (NULLIF($1::text, '') IS NOT NULL AND c.id::text = $1::text)
+                     OR (
+                         lpad(trim(c.firm_nr::text), 3, '0') = $2
+                         AND (
+                             ($3::text IS NOT NULL AND LENGTH($3::text) >= 8
+                                 AND REGEXP_REPLACE(COALESCE(c.phone, ''), '[^0-9]', '', 'g') = $3)
+                             OR ($4::text IS NOT NULL AND $4::text <> ''
+                                 AND LOWER(TRIM(COALESCE(c.email, ''))) = $4)
+                             OR ($5::text IS NOT NULL AND LENGTH(TRIM($5::text)) >= 1
+                                 AND UPPER(TRIM(COALESCE(c.code, ''))) = UPPER(TRIM($5::text)))
+                             OR ($6::text IS NOT NULL AND LENGTH(TRIM($6::text)) >= 8
+                                 AND LOWER(TRIM(c.name)) = LOWER(TRIM($6::text)))
+                         )
+                     )
+                   )`,
+                [idTrim || null, fn, phoneDigits || null, emailNorm || null, codeTrim || null, nameTrim || null],
+            );
+            const out = rows.map((r: { id: string }) => String(r.id));
+            return out.length > 0 ? out : idTrim ? [idTrim] : [];
+        } catch (e) {
+            console.warn('[beautyService] resolveLinkedCustomerIdsForProfile failed:', e);
+            return idTrim ? [idTrim] : [];
+        }
+    },
 
     // =========================================================================
     // CUSTOMERS  (general rex_{firm}_customers table)
@@ -142,7 +445,7 @@ export const beautyService = {
         const svc = postgres.getCardTableName('beauty_services', 'beauty');
         const svcFirm = postgres.getCardTableName('services');
         const prodTbl = postgres.getCardTableName('products');
-        const fn = String(ERP_SETTINGS.firmNr ?? '001').trim();
+        const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(`
             SELECT
                 c.id, c.code, c.name, c.phone, c.email,
@@ -164,58 +467,115 @@ export const beautyService = {
                  LIMIT 1)              AS last_service_name
             FROM ${t} c
             LEFT JOIN ${apt} a ON a.client_id = c.id
-            WHERE c.is_active = true
+            WHERE c.is_active = true AND lpad(trim(c.firm_nr::text), 3, '0') = $2
             GROUP BY c.id
             ORDER BY c.name
-        `, [fn]);
+        `, [fn, fn]);
         return rows;
     },
 
     async searchCustomers(term: string): Promise<BeautyCustomer[]> {
         const t = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(
             `SELECT id, code, name, phone, email, address, city, points, total_spent, balance, is_active
              FROM ${t}
-             WHERE is_active = true
+             WHERE is_active = true AND lpad(trim(firm_nr::text), 3, '0') = $2
                AND (name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1 OR code ILIKE $1)
              ORDER BY name LIMIT 50`,
-            [`%${term}%`]
+            [`%${term}%`, fn]
         );
         return rows;
     },
 
     async createCustomer(data: Partial<BeautyCustomer>): Promise<string> {
         const t = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
         const code = `BEA-${Date.now().toString(36).toUpperCase()}`;
+        // `notes` / `updated_at` / `total_spent` her kurulumda yok; ana şemadaki zorunlu alanlarla ekle.
         await postgres.query(
-            `INSERT INTO ${t} (id, code, name, phone, email, address, city, notes, is_active, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NOW(),NOW())`,
-            [id, code, data.name, data.phone ?? null, data.email ?? null,
-             data.address ?? null, data.city ?? null, data.notes ?? null]
+            `INSERT INTO ${t} (id, firm_nr, code, name, phone, email, address, city, is_active)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)`,
+            [id, fn, code, data.name, data.phone ?? null, data.email ?? null,
+             data.address ?? null, data.city ?? null]
         );
         return id;
     },
 
     async updateCustomer(id: string, data: Partial<BeautyCustomer>): Promise<void> {
         const t = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
         await postgres.query(
-            `UPDATE ${t} SET name=$2, phone=$3, email=$4, address=$5, city=$6, notes=$7, updated_at=NOW()
-             WHERE id=$1`,
-            [id, data.name, data.phone ?? null, data.email ?? null,
+            `UPDATE ${t} SET name=$3, phone=$4, email=$5, address=$6, city=$7, notes=$8
+             WHERE id=$1 AND lpad(trim(firm_nr::text), 3, '0') = $2`,
+            [id, fn, data.name, data.phone ?? null, data.email ?? null,
              data.address ?? null, data.city ?? null, data.notes ?? null]
         );
     },
 
     // =========================================================================
-    // SPECIALISTS  (firm card table: rex_{firm}_beauty_specialists)
+    // SPECIALISTS — liste: `public.users` (Kullanıcı Yönetimi) + isteğe bağlı güzellik kartı
+    // `beauty_specialists.id` = `users.id` olduğunda prim / renk / uzmanlık burada saklanır.
+    // Randevu `specialist_id` aynı UUID’yi kullanır. Eski (yalnızca kart) kayıtlar UNION ile gelir.
     // =========================================================================
     async getSpecialists(): Promise<BeautySpecialist[]> {
+        const palette = ['#9333ea', '#6366f1', '#0d9488', '#ea580c', '#db2777', '#0891b2', '#7c3aed', '#059669'];
+        const fn = erpFirmNrForRow();
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
-        const { rows } = await postgres.query(
-            `SELECT * FROM ${t} WHERE is_active = true ORDER BY name`
+        const { rows: userLinked } = await postgres.query(
+            `SELECT
+                u.id,
+                COALESCE(bs.name, NULLIF(TRIM(u.full_name), ''), u.username) AS name,
+                NULLIF(TRIM(u.phone), '') AS phone,
+                NULLIF(TRIM(u.email), '') AS email,
+                COALESCE(bs.specialty, r.name, u.role) AS specialty,
+                bs.color,
+                COALESCE(bs.commission_rate, 0)::float AS commission_rate,
+                (COALESCE(bs.is_active, u.is_active) IS NOT FALSE) AS is_active,
+                bs.avatar_url,
+                bs.working_hours
+             FROM public.users u
+             LEFT JOIN public.roles r ON r.id = u.role_id
+             LEFT JOIN ${t} bs ON bs.id = u.id
+             WHERE lpad(trim(u.firm_nr::text), 3, '0') = $1
+             ORDER BY COALESCE(bs.name, NULLIF(TRIM(u.full_name), ''), u.username)`,
+            [fn]
         );
-        return rows;
+        const fromUsers: BeautySpecialist[] = (userLinked as any[]).map((r, i) => ({
+            id: r.id,
+            name: String(r.name ?? ''),
+            phone: r.phone ?? undefined,
+            email: r.email ?? undefined,
+            specialty: r.specialty ?? undefined,
+            color: r.color || palette[i % palette.length],
+            commission_rate: Number(r.commission_rate) || 0,
+            is_active: r.is_active !== false,
+            avatar_url: r.avatar_url ?? undefined,
+            working_hours: r.working_hours ?? undefined,
+        }));
+
+        const { rows: legacyOnly } = await postgres.query(
+            `SELECT bs.*
+             FROM ${t} bs
+             WHERE NOT EXISTS (SELECT 1 FROM public.users u WHERE u.id = bs.id)
+             ORDER BY bs.name`,
+            []
+        );
+        const legacy: BeautySpecialist[] = (legacyOnly as any[]).map((r) => ({
+            id: r.id,
+            name: r.name,
+            phone: r.phone ?? undefined,
+            email: r.email ?? undefined,
+            specialty: r.specialty ?? undefined,
+            color: r.color ?? '#9333ea',
+            commission_rate: Number(r.commission_rate) || 0,
+            is_active: r.is_active !== false,
+            avatar_url: r.avatar_url ?? undefined,
+            working_hours: r.working_hours ?? undefined,
+        }));
+
+        return [...fromUsers, ...legacy];
     },
 
     async createSpecialist(data: Partial<BeautySpecialist>): Promise<string> {
@@ -224,29 +584,65 @@ export const beautyService = {
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, phone, email, specialty, color, commission_rate, avatar_url, is_active, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NOW(),NOW())`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,
             [id, data.name, data.phone ?? null, data.email ?? null, data.specialty ?? null,
-             data.color ?? '#9333ea', data.commission_rate ?? 0, data.avatar_url ?? null]
+             data.color ?? '#9333ea', data.commission_rate ?? 0, data.avatar_url ?? null,
+             data.is_active !== false]
         );
         return id;
     },
 
     async updateSpecialist(id: string, data: Partial<BeautySpecialist>): Promise<void> {
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const active = data.is_active !== false;
         await postgres.query(
-            `UPDATE ${t}
-             SET name=$2, phone=$3, email=$4, specialty=$5, color=$6, commission_rate=$7, updated_at=NOW()
-             WHERE id=$1`,
-            [id, data.name, data.phone ?? null, data.email ?? null, data.specialty ?? null,
-             data.color ?? '#9333ea', data.commission_rate ?? 0]
+            `INSERT INTO ${t}
+                (id, name, phone, email, specialty, color, commission_rate, avatar_url, is_active, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+             ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                phone = EXCLUDED.phone,
+                email = EXCLUDED.email,
+                specialty = EXCLUDED.specialty,
+                color = EXCLUDED.color,
+                commission_rate = EXCLUDED.commission_rate,
+                avatar_url = EXCLUDED.avatar_url,
+                is_active = EXCLUDED.is_active,
+                updated_at = NOW()`,
+            [
+                id,
+                data.name ?? '',
+                data.phone ?? null,
+                data.email ?? null,
+                data.specialty ?? null,
+                data.color ?? '#9333ea',
+                data.commission_rate ?? 0,
+                data.avatar_url ?? null,
+                active,
+            ]
         );
     },
 
     async toggleSpecialist(id: string, active: boolean): Promise<void> {
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
-        await postgres.query(
+        const res = await postgres.query(
             `UPDATE ${t} SET is_active=$2, updated_at=NOW() WHERE id=$1`,
             [id, active]
+        );
+        const n = res.rowCount ?? 0;
+        if (n > 0) return;
+        const { rows } = await postgres.query<{ full_name: string; username: string; phone: string | null; email: string | null }>(
+            `SELECT full_name, username, phone, email FROM public.users WHERE id = $1`,
+            [id]
+        );
+        const u = rows[0];
+        if (!u) return;
+        await postgres.query(
+            `INSERT INTO ${t}
+                (id, name, phone, email, specialty, color, commission_rate, avatar_url, is_active, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,NULL,$5,0,NULL,$6,NOW(),NOW())
+             ON CONFLICT (id) DO UPDATE SET is_active = EXCLUDED.is_active, updated_at = NOW()`,
+            [id, (u.full_name || u.username || '').trim() || u.username, u.phone ?? null, u.email ?? null, '#9333ea', active]
         );
     },
 
@@ -333,12 +729,13 @@ export const beautyService = {
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, category, duration_min, price, cost_price, color, commission_rate,
-                 description, requires_device, expected_shots, is_active, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,NOW(),NOW())`,
+                 description, requires_device, expected_shots, default_sessions, is_active, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,NOW(),NOW())`,
             [id, data.name, data.category ?? 'beauty', data.duration_min ?? 30,
              data.price ?? 0, data.cost_price ?? 0, data.color ?? '#9333ea',
              data.commission_rate ?? 0, data.description ?? null,
-             data.requires_device ?? false, data.expected_shots ?? 0]
+             data.requires_device ?? false, data.expected_shots ?? 0,
+             Math.max(1, Math.round(Number(data.default_sessions ?? 1)))]
         );
         return id;
     },
@@ -348,12 +745,14 @@ export const beautyService = {
         await postgres.query(
             `UPDATE ${t}
              SET name=$2, category=$3, duration_min=$4, price=$5, cost_price=$6, color=$7,
-                 commission_rate=$8, description=$9, requires_device=$10, expected_shots=$11, updated_at=NOW()
+                 commission_rate=$8, description=$9, requires_device=$10, expected_shots=$11,
+                 default_sessions=$12, updated_at=NOW()
              WHERE id=$1`,
             [id, data.name, data.category ?? 'beauty', data.duration_min ?? 30,
              data.price ?? 0, data.cost_price ?? 0, data.color ?? '#9333ea',
              data.commission_rate ?? 0, data.description ?? null,
-             data.requires_device ?? false, data.expected_shots ?? 0]
+             data.requires_device ?? false, data.expected_shots ?? 0,
+             Math.max(1, Math.round(Number(data.default_sessions ?? 1)))]
         );
     },
 
@@ -394,6 +793,7 @@ export const beautyService = {
                 a.commission_amount,
                 a.is_package_session,
                 a.package_purchase_id,
+                a.session_series_id,
                 a.reminder_sent,
                 a.branch_id,
                 a.room_id,
@@ -402,19 +802,24 @@ export const beautyService = {
                 a.corporate_account_id,
                 a.reminder_sent_at,
                 a.last_notification_channel,
+                a.confirmation_call_at,
+                a.pre_visit_activity_at,
                 COALESCE(s.name, rs.name)   AS service_name,
                 COALESCE(s.color, '#6366f1') AS service_color,
-                sp.name  AS specialist_name,
-                c.name   AS customer_name
+                COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
+                c.name   AS customer_name,
+                d.name   AS device_name
             FROM ${table} a
             LEFT JOIN ${svcBeauty} s ON a.service_id = s.id
             LEFT JOIN ${svcFirm} rs ON a.service_id = rs.id AND rs.firm_nr = $3
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
+            LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $3
+            LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
             LEFT JOIN ${postgres.getCardTableName('customers')}                    c  ON a.client_id     = c.id
             WHERE a.appointment_date >= $1 AND a.appointment_date <= $2
             ORDER BY a.appointment_date, a.appointment_time
         `;
-        const fn = String(ERP_SETTINGS.firmNr ?? '001').trim();
+        const fn = erpFirmNrForRow();
         const result = await postgres.query(query, [startDate, endDate, fn]);
         return result.rows;
     },
@@ -436,8 +841,9 @@ export const beautyService = {
                 id, client_id, service_id, specialist_id, device_id, body_region_id,
                 appointment_date, appointment_time, duration,
                 status, type, notes, total_price, commission_amount, is_package_session, package_purchase_id,
-                branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id,
+                session_series_id
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -460,37 +866,62 @@ export const beautyService = {
             appointment.tele_meeting_url ?? null,
             appointment.booking_channel ?? 'staff',
             pgUuidOrNull(appointment.corporate_account_id),
+            pgUuidOrNull(appointment.session_series_id),
         ]);
         return id;
     },
 
+    /** PATCH: yalnızca `patch` içinde tanımlı (undefined olmayan) alanlar güncellenir; diğerleri korunur */
+    mergeBeautyAppointmentPatch(current: BeautyAppointment, patch: Partial<BeautyAppointment>): BeautyAppointment {
+        const out = { ...current };
+        (Object.keys(patch) as (keyof BeautyAppointment)[]).forEach((key) => {
+            const v = patch[key];
+            if (v !== undefined) {
+                (out as Record<string, unknown>)[key as string] = v as unknown;
+            }
+        });
+        return out;
+    },
+
     async updateAppointment(id: string, data: Partial<BeautyAppointment>): Promise<void> {
+        const current = await beautyService.getAppointmentById(id);
+        if (!current) {
+            throw new Error(`beauty appointment not found: ${id}`);
+        }
+        const merged = beautyService.mergeBeautyAppointmentPatch(current, data);
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const dur = Math.max(1, Math.round(Number(merged.duration ?? 30)) || 30);
+        const totalPrice = Number(merged.total_price ?? 0);
+        const statusStr =
+            typeof merged.status === 'string' ? merged.status : merged.status != null ? String(merged.status) : 'scheduled';
         await postgres.query(
             `UPDATE ${table}
              SET client_id=$2, service_id=$3, specialist_id=$4, device_id=$5, body_region_id=$6,
                  appointment_date=$7, appointment_time=$8, duration=$9, status=$10,
                  notes=$11, total_price=$12,
                  branch_id=$13, room_id=$14, tele_meeting_url=$15, booking_channel=$16, corporate_account_id=$17,
+                 confirmation_call_at=$18, pre_visit_activity_at=$19,
                  updated_at=NOW()
              WHERE id=$1`,
             [id,
-             data.customer_id ?? data.client_id ?? null,
-             data.service_id ?? null,
-             data.staff_id ?? data.specialist_id ?? null,
-             data.device_id ?? null,
-             data.body_region_id ?? null,
-             data.date ?? data.appointment_date ?? null,
-             data.time ?? data.appointment_time ?? null,
-             data.duration ?? 30,
-             data.status ?? 'scheduled',
-             data.notes ?? null,
-             data.total_price ?? 0,
-             pgUuidOrNull(data.branch_id),
-             pgUuidOrNull(data.room_id),
-             data.tele_meeting_url ?? null,
-             data.booking_channel ?? null,
-             pgUuidOrNull(data.corporate_account_id)]
+             pgUuidOrNull(merged.customer_id ?? merged.client_id),
+             pgUuidOrNull(merged.service_id),
+             pgUuidOrNull(merged.staff_id ?? merged.specialist_id),
+             pgUuidOrNull(merged.device_id),
+             pgUuidOrNull(merged.body_region_id),
+             pgDateOrNull(merged.date ?? merged.appointment_date),
+             normalizeAppointmentTimeForPg(merged.time ?? merged.appointment_time),
+             dur,
+             statusStr,
+             merged.notes ?? null,
+             totalPrice,
+             pgUuidOrNull(merged.branch_id),
+             pgUuidOrNull(merged.room_id),
+             merged.tele_meeting_url ?? null,
+             merged.booking_channel ?? null,
+             pgUuidOrNull(merged.corporate_account_id),
+             pgTimestamptzOrNull(merged.confirmation_call_at),
+             pgTimestamptzOrNull(merged.pre_visit_activity_at)]
         );
     },
 
@@ -539,6 +970,7 @@ export const beautyService = {
                 a.commission_amount,
                 a.is_package_session,
                 a.package_purchase_id,
+                a.session_series_id,
                 a.reminder_sent,
                 a.branch_id,
                 a.room_id,
@@ -547,30 +979,42 @@ export const beautyService = {
                 a.corporate_account_id,
                 a.reminder_sent_at,
                 a.last_notification_channel,
+                a.confirmation_call_at,
+                a.pre_visit_activity_at,
                 COALESCE(s.name, rs.name) AS service_name,
-                sp.name AS specialist_name,
+                COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name AS customer_name
             FROM ${table} a
             LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
             LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = $2
             LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
+            LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $2
             LEFT JOIN ${postgres.getCardTableName('customers')} c ON a.client_id = c.id
             WHERE a.id = $1
-        `, [id, String(ERP_SETTINGS.firmNr ?? '001').trim()]);
+        `, [id, erpFirmNrForRow()]);
         return rows[0] ?? null;
     },
 
-    async getAppointmentsByCustomer(customerId: string): Promise<BeautyAppointment[]> {
-        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const { rows } = await postgres.query(`
-            SELECT a.*, COALESCE(s.name, rs.name) AS service_name, sp.name AS specialist_name
-            FROM ${table} a
-            LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
-            LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = $2
-            LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
-            WHERE a.client_id = $1
-            ORDER BY a.appointment_date DESC NULLS LAST LIMIT 100
-        `, [customerId, String(ERP_SETTINGS.firmNr ?? '001').trim()]);
+    async getAppointmentsByCustomer(
+        customerId: string,
+        opts?: BeautyCustomerProfileQueryOpts | null,
+    ): Promise<BeautyAppointment[]> {
+        const ids = await beautyService.resolveLinkedCustomerIdsForProfile(customerId, opts);
+        let parts = filterUuidIds(ids);
+        if (!parts.length) {
+            parts = filterUuidIds([String(customerId ?? '')]);
+        }
+        if (!parts.length) return [];
+        const profileName = String(opts?.name ?? '').trim();
+        const nameForCorp = profileName.length >= 8 ? profileName : null;
+        let rows = await fetchBeautyAppointmentsForIds(parts, nameForCorp);
+        if (!rows.length && nameForCorp) {
+            const extra = await fetchCustomerIdsByExactFirmName(nameForCorp);
+            const merged = filterUuidIds([...parts, ...extra]);
+            if (merged.length > parts.length) {
+                rows = await fetchBeautyAppointmentsForIds(merged, nameForCorp);
+            }
+        }
         return rows;
     },
 
@@ -727,19 +1171,279 @@ export const beautyService = {
         return id;
     },
 
-    async getCustomerPackages(customerId: string): Promise<BeautyPackagePurchase[]> {
+    async getCustomerPackages(
+        customerId: string,
+        opts?: BeautyCustomerProfileQueryOpts | null,
+    ): Promise<BeautyPackagePurchase[]> {
+        const ids = await beautyService.resolveLinkedCustomerIdsForProfile(customerId, opts);
+        let parts = filterUuidIds(ids);
+        if (!parts.length) {
+            parts = filterUuidIds([String(customerId ?? '')]);
+        }
+        if (!parts.length) return [];
         const t = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
         const pt = postgres.getCardTableName('beauty_packages', 'beauty');
         const ct = postgres.getCardTableName('customers');
-        const { rows } = await postgres.query(`
-            SELECT pp.*, p.name AS package_name, c.name AS customer_name
-            FROM ${t} pp
-            LEFT JOIN ${pt} p ON pp.package_id = p.id
-            LEFT JOIN ${ct} c ON pp.customer_id = c.id
-            WHERE pp.customer_id = $1
-            ORDER BY pp.purchase_date DESC
-        `, [customerId]);
+        const loadPkgs = async (p: string[]) => {
+            if (!p.length) return [];
+            const inList = p.map((_, i) => `$${i + 1}`).join(', ');
+            const { rows } = await postgres.query(
+                `
+                SELECT pp.*, p.name AS package_name, c.name AS customer_name
+                FROM ${t} pp
+                LEFT JOIN ${pt} p ON pp.package_id = p.id
+                LEFT JOIN ${ct} c ON pp.customer_id = c.id
+                WHERE pp.customer_id IN (${inList})
+                ORDER BY pp.purchase_date DESC
+            `,
+                p,
+            );
+            return rows;
+        };
+        let rows = await loadPkgs(parts);
+        if (!rows.length && opts?.name && String(opts.name).trim().length >= 8) {
+            const extra = await fetchCustomerIdsByExactFirmName(String(opts.name).trim());
+            const merged = filterUuidIds([...parts, ...extra]);
+            if (merged.length > parts.length) {
+                rows = await loadPkgs(merged);
+            }
+        }
         return rows;
+    },
+
+    /**
+     * Paket veya «normal hizmet» ile her ayın aynı günü N seans planı.
+     * Paket: satış + paket seansı; hizmet: paket satışı yok, `default_sessions` / `session_count` ile.
+     */
+    async createMonthlySessionSeries(input: {
+        customer_id: string;
+        first_session_date: string;
+        appointment_time: string;
+        specialist_id?: string;
+        service_id?: string;
+        branch_id?: string;
+        room_id?: string;
+        device_id?: string;
+        package_id?: string;
+        existing_package_purchase_id?: string;
+        /** Hizmet planında paket seans sayısı yerine (hizmet kartı default’u da kullanılabilir) */
+        session_count?: number;
+    }): Promise<{ series_id: string; purchase_id: string | null; appointment_ids: string[] }> {
+        const firstY = pgDateOrNull(input.first_session_date);
+        if (!firstY) throw new Error('Geçerli ilk seans tarihi girin');
+        const timeNorm = normalizeAppointmentTimeForPg(input.appointment_time) || '09:00:00';
+        const timeUi = timeNorm.slice(0, 5);
+
+        if (input.package_id) {
+            const pkgT = postgres.getCardTableName('beauty_packages', 'beauty');
+            const { rows: prow } = await postgres.query(
+                `SELECT * FROM ${pkgT} WHERE id = $1 AND COALESCE(is_active, true) = true`,
+                [input.package_id]
+            );
+            const pkg = prow[0] as Record<string, unknown> | undefined;
+            if (!pkg) throw new Error('Paket bulunamadı');
+            const totalSessions = Math.max(1, Math.round(Number(pkg.total_sessions ?? 1)));
+            const dates = computeMonthlySameDayDates(firstY, totalSessions);
+            if (dates.length !== totalSessions) throw new Error('Seans tarihleri üretilemedi');
+
+            const saleTable = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
+            let purchaseId: string;
+            let salePrice = Number(pkg.price ?? 0);
+            const validityDays = Math.max(1, Math.round(Number(pkg.validity_days ?? 365)));
+            const expiryDate = addDaysYmd(firstY, validityDays);
+
+            if (input.existing_package_purchase_id) {
+                const { rows: ppr } = await postgres.query(
+                    `SELECT * FROM ${saleTable} WHERE id = $1`,
+                    [input.existing_package_purchase_id]
+                );
+                const pp = ppr[0] as Record<string, unknown> | undefined;
+                if (!pp) throw new Error('Paket satış kaydı bulunamadı');
+                if (String(pp.customer_id) !== String(input.customer_id)) throw new Error('Satış müşteriye ait değil');
+                if (String(pp.package_id) !== String(input.package_id)) throw new Error('Satış farklı pakete ait');
+                const rem = Math.max(0, Math.round(Number(pp.remaining_sessions ?? 0)));
+                if (rem < totalSessions) {
+                    throw new Error(`Pakette yeterli kalan seans yok (kalan: ${rem}, gerekli: ${totalSessions})`);
+                }
+                purchaseId = input.existing_package_purchase_id;
+                salePrice = Number(pp.sale_price ?? salePrice);
+            } else {
+                purchaseId = await beautyService.purchasePackage({
+                    customer_id: input.customer_id,
+                    package_id: input.package_id,
+                    total_sessions: totalSessions,
+                    sale_price: salePrice,
+                    expiry_date: expiryDate,
+                });
+            }
+
+            const seriesId = uuidv4();
+            const svcId = pgUuidOrNull(input.service_id ?? pkg.service_id);
+            let duration = 30;
+            if (svcId) {
+                const svt = postgres.getCardTableName('beauty_services', 'beauty');
+                const { rows: sr } = await postgres.query(
+                    `SELECT duration_min FROM ${svt} WHERE id = $1`,
+                    [svcId]
+                );
+                if (sr[0]?.duration_min != null) {
+                    duration = Math.max(1, Math.round(Number((sr[0] as { duration_min?: unknown }).duration_min)));
+                }
+            }
+            const priceEach = totalSessions > 0 ? Math.round((salePrice / totalSessions) * 100) / 100 : 0;
+            const appointmentIds: string[] = [];
+
+            for (let i = 0; i < dates.length; i++) {
+                const aid = await beautyService.createAppointment({
+                    customer_id: input.customer_id,
+                    service_id: svcId ?? undefined,
+                    specialist_id: input.specialist_id,
+                    date: dates[i],
+                    time: timeUi,
+                    duration,
+                    total_price: priceEach,
+                    status: AppointmentStatus.SCHEDULED,
+                    type: 'monthly_series',
+                    is_package_session: true,
+                    package_purchase_id: purchaseId,
+                    session_series_id: seriesId,
+                    branch_id: input.branch_id,
+                    room_id: input.room_id,
+                    device_id: input.device_id,
+                    notes: `Aylık paket seansı ${i + 1}/${totalSessions} — Saat, seanstan 1 gün önce kesinleşir`,
+                });
+                appointmentIds.push(aid);
+            }
+
+            return { series_id: seriesId, purchase_id: purchaseId, appointment_ids: appointmentIds };
+        }
+
+        if (input.service_id) {
+            const resolved = await resolveServiceForMonthlySeries(input.service_id);
+            if (!resolved) throw new Error('Hizmet bulunamadı');
+            const totalSessions = Math.max(1, Math.round(
+                input.session_count ?? resolved.default_sessions ?? 1
+            ));
+            const dates = computeMonthlySameDayDates(firstY, totalSessions);
+            if (dates.length !== totalSessions) throw new Error('Seans tarihleri üretilemedi');
+
+            const seriesId = uuidv4();
+            const priceEach = totalSessions > 0 ? Math.round((resolved.price / totalSessions) * 100) / 100 : 0;
+            const appointmentIds: string[] = [];
+
+            for (let i = 0; i < dates.length; i++) {
+                const aid = await beautyService.createAppointment({
+                    customer_id: input.customer_id,
+                    service_id: input.service_id,
+                    specialist_id: input.specialist_id,
+                    date: dates[i],
+                    time: timeUi,
+                    duration: resolved.duration_min,
+                    total_price: priceEach,
+                    status: AppointmentStatus.SCHEDULED,
+                    type: 'monthly_series',
+                    is_package_session: false,
+                    session_series_id: seriesId,
+                    branch_id: input.branch_id,
+                    room_id: input.room_id,
+                    device_id: input.device_id,
+                    notes: `Aylık seans ${i + 1}/${totalSessions} (${resolved.name}) — Saat, seanstan 1 gün önce kesinleşir`,
+                });
+                appointmentIds.push(aid);
+            }
+
+            return { series_id: seriesId, purchase_id: null, appointment_ids: appointmentIds };
+        }
+
+        throw new Error('Paket veya hizmet seçin');
+    },
+
+    async listMonthlySessionSeriesReport(): Promise<
+        {
+            session_series_id: string;
+            customer_name: string | null;
+            phone: string | null;
+            package_name: string | null;
+            purchase_id: string | null;
+            total_sessions: number;
+            completed_sessions: number;
+            next_appointment_date: string | null;
+            last_appointment_date: string | null;
+        }[]
+    > {
+        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        const ppt = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
+        const pkgT = postgres.getCardTableName('beauty_packages', 'beauty');
+        const bs = postgres.getCardTableName('beauty_services', 'beauty');
+        const { rows } = await postgres.query(`
+            SELECT
+              a.session_series_id::text AS session_series_id,
+              MAX(c.name) AS customer_name,
+              MAX(c.phone)::text AS phone,
+              MAX(COALESCE(pkg.name, bs.name)) AS package_name,
+              MAX(pp.id::text) AS purchase_id,
+              COUNT(*)::int AS total_sessions,
+              COUNT(*) FILTER (WHERE a.status = 'completed')::int AS completed_sessions,
+              MIN(a.appointment_date) FILTER (WHERE a.status IN ('scheduled','confirmed','in_progress')) AS next_appointment_date,
+              MAX(a.appointment_date) AS last_appointment_date
+            FROM ${apt} a
+            LEFT JOIN ${ct} c ON a.client_id = c.id
+            LEFT JOIN ${ppt} pp ON a.package_purchase_id = pp.id
+            LEFT JOIN ${pkgT} pkg ON pp.package_id = pkg.id
+            LEFT JOIN ${bs} bs ON a.service_id = bs.id
+            WHERE a.session_series_id IS NOT NULL
+            GROUP BY a.session_series_id
+            ORDER BY
+              MIN(a.appointment_date) FILTER (WHERE a.status IN ('scheduled','confirmed','in_progress')) NULLS LAST,
+              MAX(c.name) NULLS LAST
+        `);
+        return rows as {
+            session_series_id: string;
+            customer_name: string | null;
+            phone: string | null;
+            package_name: string | null;
+            purchase_id: string | null;
+            total_sessions: number;
+            completed_sessions: number;
+            next_appointment_date: string | null;
+            last_appointment_date: string | null;
+        }[];
+    },
+
+    async sendWhatsAppForNextSessionInSeries(sessionSeriesId: string): Promise<{ success: boolean; error?: string }> {
+        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        const svcB = postgres.getCardTableName('beauty_services', 'beauty');
+        const svcF = postgres.getCardTableName('services');
+        const fn = erpFirmNrForRow();
+        const { rows } = await postgres.query(
+            `SELECT a.appointment_date, a.appointment_time,
+                    c.name AS customer_name, c.phone::text AS phone,
+                    COALESCE(sb.name, sf.name) AS service_name
+             FROM ${apt} a
+             LEFT JOIN ${ct} c ON a.client_id = c.id
+             LEFT JOIN ${svcB} sb ON a.service_id = sb.id
+             LEFT JOIN ${svcF} sf ON a.service_id = sf.id AND sf.firm_nr = $2
+             WHERE a.session_series_id = $1
+               AND a.status IN ('scheduled','confirmed')
+             ORDER BY a.appointment_date, a.appointment_time
+             LIMIT 1`,
+            [sessionSeriesId, fn]
+        );
+        const r = rows[0] as Record<string, unknown> | undefined;
+        if (!r) return { success: false, error: 'Bekleyen seans yok' };
+        const phone = r.phone != null ? String(r.phone).trim() : '';
+        if (!phone) return { success: false, error: 'Müşteri telefonu yok' };
+        const settings = (await beautyService.getPortalSettings()) as ClinicMessagingPortalConfig | null;
+        if (!settings) return { success: false, error: 'Portal ayarı yok' };
+        const tstr = r.appointment_time != null ? String(r.appointment_time).slice(0, 5) : '';
+        const dstr = r.appointment_date != null ? String(r.appointment_date) : '';
+        const name = r.customer_name != null ? String(r.customer_name) : 'Merhaba';
+        const svc = r.service_name != null ? String(r.service_name) : 'seans';
+        const text =
+            `Merhaba ${name}, ${dstr} ${tstr} tarihindeki ${svc} seansınızı hatırlatmak istedik. İyi günler.`;
+        return sendWhatsAppText(settings, phone, text);
     },
 
     // =========================================================================
@@ -1006,18 +1710,153 @@ export const beautyService = {
     async getFeedbackForAppointment(appointmentId: string): Promise<BeautyCustomerFeedback | null> {
         const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const { rows } = await postgres.query(
-            `SELECT * FROM ${table} WHERE appointment_id=$1 LIMIT 1`, [appointmentId]
+            `SELECT * FROM ${table} WHERE appointment_id=$1 ORDER BY created_at DESC NULLS LAST LIMIT 1`,
+            [appointmentId]
         );
         const row = rows[0] as BeautyCustomerFeedback | undefined;
         return row ? beautyService.parseFeedbackRow(row as BeautyCustomerFeedback & { survey_answers?: unknown }) : null;
     },
 
-    async getFeedbackByCustomer(customerId: string): Promise<BeautyCustomerFeedback[]> {
+    async upsertFeedbackForAppointment(
+        feedback: Partial<BeautyCustomerFeedback> & { appointment_id: string; customer_id: string }
+    ): Promise<void> {
         const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
-        const { rows } = await postgres.query(
-            `SELECT * FROM ${table} WHERE customer_id=$1 ORDER BY created_at DESC NULLS LAST`,
+        const existing = await beautyService.getFeedbackForAppointment(feedback.appointment_id);
+        const mergedAnswers =
+            feedback.survey_answers !== undefined
+                ? feedback.survey_answers && feedback.survey_answers.length
+                    ? feedback.survey_answers
+                    : null
+                : existing?.survey_answers ?? null;
+        if (existing?.id) {
+            await postgres.query(
+                `UPDATE ${table} SET
+                    service_rating = $2,
+                    staff_rating = $3,
+                    cleanliness_rating = $4,
+                    overall_rating = $5,
+                    comment = $6,
+                    would_recommend = $7,
+                    survey_id = $8,
+                    survey_answers = $9::jsonb
+                 WHERE id = $1`,
+                [
+                    existing.id,
+                    feedback.service_rating ?? existing.service_rating ?? 5,
+                    feedback.staff_rating ?? existing.staff_rating ?? 5,
+                    feedback.cleanliness_rating ?? existing.cleanliness_rating ?? 5,
+                    feedback.overall_rating ?? existing.overall_rating ?? 5,
+                    feedback.comment ?? existing.comment ?? null,
+                    feedback.would_recommend ?? existing.would_recommend ?? true,
+                    feedback.survey_id ?? existing.survey_id ?? null,
+                    mergedAnswers,
+                ]
+            );
+        } else {
+            await beautyService.addFeedback({ ...feedback, survey_answers: mergedAnswers ?? feedback.survey_answers });
+        }
+    },
+
+    async getCustomerContact(customerId: string): Promise<{ name: string; phone: string | null; email: string | null } | null> {
+        const ct = postgres.getCardTableName('customers');
+        const { rows } = await postgres.query<{ name?: string; phone?: string; email?: string }>(
+            `SELECT name, phone, email FROM ${ct} WHERE id = $1 LIMIT 1`,
             [customerId]
         );
+        const r = rows[0];
+        if (!r) return null;
+        return {
+            name: String(r.name ?? ''),
+            phone: r.phone != null && String(r.phone).trim() !== '' ? String(r.phone).trim() : null,
+            email: r.email != null && String(r.email).trim() !== '' ? String(r.email).trim() : null,
+        };
+    },
+
+    /** CRM: randevu satırına bağlı müşteri takip notları (audit log) */
+    async logCrmActivity(
+        appointmentId: string,
+        userId: string | null,
+        payload: { preset?: string; note?: string; label?: string }
+    ): Promise<void> {
+        await beautyService.appendAuditLog('beauty_appointments', 'crm_activity', appointmentId, userId, payload);
+    },
+
+    /** Randevu CRM aktivitesini, eşleşen lead kayıtlarının not alanına ekler (Lead yönetimi ekranında görünür). */
+    async syncCrmActivityToLeadNotes(customerId: string, activityLine: string): Promise<void> {
+        const line = String(activityLine ?? '').trim();
+        if (!line) return;
+        const contact = await beautyService.getCustomerContact(customerId);
+        if (!contact) return;
+        const leads = await beautyService.getLeadsLinkedToCustomer(customerId, contact.phone, contact.email);
+        if (!leads.length) return;
+        const lt = postgres.getCardTableName('beauty_leads', 'beauty');
+        const stamp = new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
+        const block = `[${stamp}] ${line}`;
+        for (const lead of leads) {
+            const prev = (lead.notes != null ? String(lead.notes) : '').trim();
+            const next = prev ? `${prev}\n\n${block}` : block;
+            await postgres.query(
+                `UPDATE ${lt}
+                 SET notes = $2, last_contact_date = CURRENT_DATE, updated_at = NOW()
+                 WHERE id = $1`,
+                [lead.id, next]
+            );
+        }
+    },
+
+    async getCrmActivitiesForAppointment(appointmentId: string): Promise<
+        { id: string; created_at: string; payload_json: Record<string, unknown> }[]
+    > {
+        const t = postgres.getMovementTableName('beauty_audit_log', 'beauty');
+        /** `table_name = 'beauty_appointments'` SQL literal yazılamaz: pg.query tablo adı rewrite ile
+         *  `'beauty_appointments'` → `beauty.rex_*_beauty_appointments` olur; INSERT ise parametre ile doğru kalır. */
+        const { rows } = await postgres.query(
+            `SELECT id, created_at, payload_json
+             FROM ${t}
+             WHERE table_name = $1
+               AND record_id = $2::uuid
+               AND action = $3
+             ORDER BY created_at DESC
+             LIMIT 100`,
+            ['beauty_appointments', appointmentId, 'crm_activity']
+        );
+        return rows.map((r: { id: string; created_at: string; payload_json: unknown }) => ({
+            id: String(r.id),
+            created_at: String(r.created_at),
+            payload_json:
+                typeof r.payload_json === 'string'
+                    ? (JSON.parse(r.payload_json) as Record<string, unknown>)
+                    : (r.payload_json as Record<string, unknown>) ?? {},
+        }));
+    },
+
+    async getFeedbackByCustomer(
+        customerId: string,
+        opts?: BeautyCustomerProfileQueryOpts | null,
+    ): Promise<BeautyCustomerFeedback[]> {
+        const ids = await beautyService.resolveLinkedCustomerIdsForProfile(customerId, opts);
+        let parts = filterUuidIds(ids);
+        if (!parts.length) {
+            parts = filterUuidIds([String(customerId ?? '')]);
+        }
+        if (!parts.length) return [];
+        const runFb = async (p: string[]) => {
+            const inList = p.map((_, i) => `$${i + 1}`).join(', ');
+            const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+            const { rows } = await postgres.query(
+                `SELECT * FROM ${table} WHERE customer_id IN (${inList}) ORDER BY created_at DESC NULLS LAST`,
+                p,
+            );
+            return rows;
+        };
+        let rows = await runFb(parts);
+        if (!rows.length && opts?.name && String(opts.name).trim().length >= 8) {
+            const extra = await fetchCustomerIdsByExactFirmName(String(opts.name).trim());
+            const merged = filterUuidIds([...parts, ...extra]);
+            if (merged.length > parts.length) {
+                rows = await runFb(merged);
+            }
+        }
         return rows.map((r: BeautyCustomerFeedback & { survey_answers?: unknown }) =>
             beautyService.parseFeedbackRow(r)
         );
@@ -1038,21 +1877,79 @@ export const beautyService = {
         return rows;
     },
 
-    async getSalesByCustomer(customerId: string): Promise<BeautySale[]> {
+    async getSalesByCustomer(
+        customerId: string,
+        opts?: BeautyCustomerProfileQueryOpts | null,
+    ): Promise<BeautySale[]> {
+        const ids = await beautyService.resolveLinkedCustomerIdsForProfile(customerId, opts);
+        let parts = filterUuidIds(ids);
+        if (!parts.length) {
+            parts = filterUuidIds([String(customerId ?? '')]);
+        }
+        if (!parts.length) return [];
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
         const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
         const ct = postgres.getCardTableName('customers');
-        const { rows: sales } = await postgres.query(
+        const loadSales = async (p: string[]): Promise<BeautySale[]> => {
+            if (!p.length) return [];
+            const inList = p.map((_, i) => `$${i + 1}`).join(', ');
+            const { rows: sales } = await postgres.query(
+                `SELECT s.*, c.name AS customer_name
+                 FROM ${st} s
+                 LEFT JOIN ${ct} c ON s.customer_id = c.id
+                 WHERE s.customer_id IN (${inList})
+                 ORDER BY s.created_at DESC NULLS LAST
+                 LIMIT 400`,
+                p,
+            );
+            if (!sales.length) return [];
+            const saleIds = sales.map((s: { id: string }) => s.id);
+            const saleParts = filterUuidIds(saleIds);
+            if (!saleParts.length) return sales.map((s: BeautySale) => ({ ...s, items: [] }));
+            const saleIn = saleParts.map((_, i) => `$${i + 1}`).join(', ');
+            const { rows: allItems } = await postgres.query(
+                `SELECT * FROM ${it} WHERE sale_id IN (${saleIn})`,
+                saleParts,
+            );
+            const bySale = new Map<string, BeautySaleItem[]>();
+            for (const row of allItems) {
+                const arr = bySale.get(row.sale_id) ?? [];
+                arr.push(row as BeautySaleItem);
+                bySale.set(row.sale_id, arr);
+            }
+            return sales.map((s: BeautySale) => ({ ...s, items: bySale.get(s.id) ?? [] }));
+        };
+        let out = await loadSales(parts);
+        if (!out.length && opts?.name && String(opts.name).trim().length >= 8) {
+            const extra = await fetchCustomerIdsByExactFirmName(String(opts.name).trim());
+            const merged = filterUuidIds([...parts, ...extra]);
+            if (merged.length > parts.length) {
+                out = await loadSales(merged);
+            }
+        }
+        return out;
+    },
+
+    /**
+     * Günlük / Z raporu: yerel YYYY-MM-DD gününe düşen ödenmiş güzellik satışları (kalemler dahil).
+     * Ana ERP `sales` tablosundan ayrı tutulduğu için rapor modülü burayı birleştirir.
+     */
+    async getSalesWithItemsForLocalCalendarDay(ymd: string): Promise<BeautySale[]> {
+        const { startIso, endIso } = localYmdToIsoRange(ymd);
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        const { rows: salesRows } = await postgres.query(
             `SELECT s.*, c.name AS customer_name
              FROM ${st} s
              LEFT JOIN ${ct} c ON s.customer_id = c.id
-             WHERE s.customer_id = $1
-             ORDER BY s.created_at DESC NULLS LAST
-             LIMIT 100`,
-            [customerId]
+             WHERE s.created_at >= $1 AND s.created_at <= $2
+               AND COALESCE(s.payment_status, 'paid') = 'paid'
+             ORDER BY s.created_at ASC`,
+            [startIso, endIso]
         );
-        if (!sales.length) return [];
-        const saleIds = sales.map((s: { id: string }) => s.id);
+        if (!salesRows.length) return [];
+        const saleIds = salesRows.map((s: { id: string }) => s.id);
         const { rows: allItems } = await postgres.query(
             `SELECT * FROM ${it} WHERE sale_id = ANY($1::uuid[])`,
             [saleIds]
@@ -1063,7 +1960,7 @@ export const beautyService = {
             arr.push(row as BeautySaleItem);
             bySale.set(row.sale_id, arr);
         }
-        return sales.map((s: BeautySale) => ({ ...s, items: bySale.get(s.id) ?? [] }));
+        return salesRows.map((s: BeautySale) => ({ ...s, items: bySale.get(s.id) ?? [] }));
     },
 
     async createSale(sale: Partial<BeautySale>, items: Partial<BeautySaleItem>[]): Promise<string> {
@@ -1095,6 +1992,86 @@ export const beautyService = {
                 item.discount ?? 0, item.total ?? 0,
                 pgUuidOrNull(item.staff_id), item.commission_amount ?? 0]);
         }
+
+        // Perakende satış faturası + kasa / cari (restoran `closeBill` → addSale ile aynı ERP akışı)
+        const erpItems: SaleItem[] = (items.length > 0 ? items : [{
+            name: 'Güzellik',
+            quantity: 1,
+            unit_price: sale.total ?? 0,
+            total: sale.total ?? 0,
+            discount: 0,
+            item_type: 'service',
+        }]).map((item) => ({
+            productId: item.item_id
+                ? String(item.item_id)
+                : `beauty-${String(item.item_type ?? 'line')}-${String(item.name ?? 'x').slice(0, 24)}`,
+            productName: String(item.name ?? 'Kalem'),
+            quantity: Number(item.quantity ?? 1),
+            price: Number(item.unit_price ?? 0),
+            discount: Number(item.discount ?? 0),
+            total: Number(item.total ?? 0),
+        }));
+
+        const customerLabel = await resolveBeautyCustomerName(
+            sale.customer_id,
+            sale.customer_name != null ? String(sale.customer_name) : undefined
+        );
+        const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
+        const dateIso = new Date().toISOString();
+
+        try {
+            const noteTail = sale.notes?.trim() ? String(sale.notes).trim() : 'Güzellik satışı';
+            /** Restoran `RestoranPOS|rest_order_id:…` ile aynı amaç: ERP faturasında kaynak izi */
+            const erpNotes = `GüzellikPOS|beauty_sale_id:${id}|${noteTail}`;
+
+            await useSaleStore.getState().addSale({
+                id: uuidv4(),
+                receiptNumber: invoiceNumber,
+                date: dateIso,
+                customerId: sale.customer_id ?? undefined,
+                customerName: customerLabel || 'Peşin Müşteri',
+                items: erpItems,
+                subtotal: Number(sale.subtotal ?? 0),
+                discount: Number(sale.discount ?? 0),
+                tax: Number(sale.tax ?? 0),
+                total: Number(sale.total ?? 0),
+                paymentMethod: pm,
+                paymentStatus: 'paid',
+                status: 'completed',
+                notes: erpNotes,
+                cashier: 'Güzellik',
+                firmNr: ERP_SETTINGS.firmNr,
+                periodNr: ERP_SETTINGS.periodNr,
+            });
+        } catch (erpErr) {
+            const detail = erpErr instanceof Error ? erpErr.message : String(erpErr);
+            console.error('[beautyService] ERP addSale başarısız; güzellik kaydı korundu', {
+                beautySaleId: id,
+                invoiceNumber,
+                error: erpErr,
+            });
+            toast.warning('Fatura / kasa kaydı oluşturulamadı', {
+                description:
+                    `Güzellik satışı veritabanında duruyor (Fiş: ${invoiceNumber}). Muhasebe ve kasa tarafını kontrol edin. Hata: ${detail}`,
+                duration: 14_000,
+            });
+            throw new Error(
+                `Güzellik satışı kaydedildi ancak perakende fatura veya kasa işlenemedi. Fiş: ${invoiceNumber}. ${detail}`
+            );
+        }
+
+        const cid = pgUuidOrNull(sale.customer_id);
+        const tot = Number(sale.total ?? 0);
+        if (cid && tot > 0) {
+            try {
+                await useCustomerStore.getState().updatePurchaseHistory(cid, tot);
+                const pts = Math.floor(tot / 100);
+                if (pts > 0) await useCustomerStore.getState().updatePoints(cid, pts);
+            } catch (e) {
+                console.warn('[beautyService] Müşteri alışveriş / puan güncellenemedi:', e);
+            }
+        }
+
         return id;
     },
 
@@ -1184,23 +2161,25 @@ export const beautyService = {
                 ORDER BY revenue DESC
                 LIMIT 6
             `, [String(ERP_SETTINGS.firmNr ?? '001').trim()]),
-            // Staff performance (current month)
+            // Staff performance (current month) — staff_id = kullanıcı veya eski uzman kartı UUID
             postgres.query(`
                 SELECT
-                    sp.id   AS specialist_id,
-                    sp.name,
-                    sp.commission_rate,
+                    si.staff_id AS specialist_id,
+                    COALESCE(sp.name, u.full_name, u.username) AS name,
+                    COALESCE(sp.commission_rate, 0)::float AS commission_rate,
                     COUNT(si.id)::int                       AS transactions,
                     COALESCE(SUM(si.total), 0)::float       AS revenue,
                     COALESCE(SUM(si.commission_amount), 0)::float AS commission
-                FROM ${spt} sp
-                LEFT JOIN ${it} si ON si.staff_id = sp.id
-                  AND si.created_at >= date_trunc('month', CURRENT_DATE)
-                WHERE sp.is_active = true
-                GROUP BY sp.id, sp.name, sp.commission_rate
+                FROM ${it} si
+                LEFT JOIN ${spt} sp ON si.staff_id = sp.id
+                LEFT JOIN public.users u ON si.staff_id = u.id
+                  AND lpad(trim(u.firm_nr::text), 3, '0') = $1
+                WHERE si.created_at >= date_trunc('month', CURRENT_DATE)
+                  AND si.staff_id IS NOT NULL
+                GROUP BY si.staff_id, COALESCE(sp.name, u.full_name, u.username), COALESCE(sp.commission_rate, 0)
                 ORDER BY revenue DESC
                 LIMIT 10
-            `),
+            `, [erpFirmNrForRow()]),
         ]);
 
         const trend = (trendRes.rows as any[]).map(r => ({
@@ -1893,9 +2872,18 @@ export const beautyService = {
 
     async listServiceConsumables(serviceId?: string): Promise<BeautyServiceConsumableRow[]> {
         const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
+        const p = postgres.getCardTableName('products');
         const q = serviceId
-            ? `SELECT * FROM ${t} WHERE service_id = $1 ORDER BY created_at`
-            : `SELECT * FROM ${t} ORDER BY created_at`;
+            ? `SELECT c.id, c.service_id, c.product_id, c.qty_per_service, c.created_at,
+                      pr.name AS product_name, pr.unit AS product_unit
+               FROM ${t} c
+               LEFT JOIN ${p} pr ON pr.id = c.product_id
+               WHERE c.service_id = $1 ORDER BY c.created_at`
+            : `SELECT c.id, c.service_id, c.product_id, c.qty_per_service, c.created_at,
+                      pr.name AS product_name, pr.unit AS product_unit
+               FROM ${t} c
+               LEFT JOIN ${p} pr ON pr.id = c.product_id
+               ORDER BY c.created_at`;
         const { rows } = serviceId
             ? await postgres.query(q, [serviceId])
             : await postgres.query(q);
@@ -1904,12 +2892,33 @@ export const beautyService = {
 
     async setServiceConsumable(row: { service_id: string; product_id: string; qty_per_service: number }): Promise<string> {
         const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
+        const dup = await postgres.query(
+            `SELECT id FROM ${t} WHERE service_id = $1 AND product_id = $2 LIMIT 1`,
+            [row.service_id, row.product_id]
+        );
+        if (dup.rows[0]?.id) {
+            await postgres.query(
+                `UPDATE ${t} SET qty_per_service = $2 WHERE id = $1`,
+                [dup.rows[0].id, row.qty_per_service]
+            );
+            return dup.rows[0].id as string;
+        }
         const id = uuidv4();
         await postgres.query(
             `INSERT INTO ${t} (id, service_id, product_id, qty_per_service) VALUES ($1,$2,$3,$4)`,
             [id, row.service_id, row.product_id, row.qty_per_service]
         );
         return id;
+    },
+
+    async updateServiceConsumable(id: string, qty_per_service: number): Promise<void> {
+        const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
+        await postgres.query(`UPDATE ${t} SET qty_per_service = $2 WHERE id = $1`, [id, qty_per_service]);
+    },
+
+    async deleteServiceConsumable(id: string): Promise<void> {
+        const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
+        await postgres.query(`DELETE FROM ${t} WHERE id = $1`, [id]);
     },
 
     async listProductBatches(productId?: string): Promise<BeautyProductBatch[]> {

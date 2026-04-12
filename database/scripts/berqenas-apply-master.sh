@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# Berqenas Cloud — 000_master_schema.sql'i retailex_db'ye uygular.
-# Kullanım (sunucuda, /opt/berqenas-cloud içinde 000_master_schema.sql varsa):
-#   chmod +x database/scripts/berqenas-apply-master.sh
-#   ./database/scripts/berqenas-apply-master.sh
+# Berqenas Cloud — 000_master_schema.sql'i PostgreSQL konteynerine uygular.
 #
-# Veya tek satır (proje kökünden, dosyayı önce scp ile attıysanız):
-#   ssh user@72.60.182.107 'docker cp /opt/berqenas-cloud/000_master_schema.sql saas_postgres:/tmp/ && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/000_master_schema.sql'
+# ÖNEMLİ: Bu dosyanın içeriğini SSH oturumuna satır satır yapıştırmayın; BASH_SOURCE
+# bozulur, oturum kapanabilir. Dosyayı kaydedin veya aşağıdaki TEK SATIRI kullanın.
+#
+# --- Seçenek A — SQL zaten sunucuda (/opt/berqenas-cloud/000_master_schema.sql) ---
+#   docker cp /opt/berqenas-cloud/000_master_schema.sql saas_postgres:/tmp/000_master_schema.sql \
+#     && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/000_master_schema.sql
+#
+# --- Seçenek B — Repo klonluysa ---
+#   cd .../RetailEX/database/scripts && chmod +x berqenas-apply-master.sh && ./berqenas-apply-master.sh
+#
+# Ortam: PG_CONTAINER PG_DATABASE PG_USER (varsayılan: saas_postgres, retailex_db, postgres)
 
 set -e
 CONTAINER="${PG_CONTAINER:-saas_postgres}"

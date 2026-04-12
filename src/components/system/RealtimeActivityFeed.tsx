@@ -1,4 +1,4 @@
-﻿// Real-time activity feed component
+// Real-time activity feed component
 
 import { useState, useEffect } from 'react';
 import { 
@@ -6,7 +6,7 @@ import {
   TrendingUp,
   AlertCircle,
   Store,
-  DollarSign,
+  Banknote,
   ShoppingCart,
   Zap,
   Radio

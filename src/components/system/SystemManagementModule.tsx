@@ -4,14 +4,20 @@ import { useState, useEffect } from 'react';
 import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download,
-  Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image
+  Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
+  Phone,
 } from 'lucide-react';
+import { PrinterSettings } from './PrinterSettings';
+import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
+import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
 
 type SystemView =
   | 'userManagement'
   | 'roleAuthorization'
   | 'definitionsParameters'
   | 'receiptSettings'
+  | 'printerSettings'
+  | 'callerIdVirtualPbx'
   | 'dataBroadcast'
   | 'backupRestore'
   | 'logAudit'
@@ -25,6 +31,8 @@ export function SystemManagementModule() {
     { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
     { id: 'definitionsParameters' as const, label: 'Tanımlar/Parametreler', icon: Settings, color: 'green' },
     { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
+    { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
+    { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
     { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
@@ -62,6 +70,12 @@ export function SystemManagementModule() {
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
         {currentView === 'definitionsParameters' && <DefinitionsParametersView />}
         {currentView === 'receiptSettings' && <ReceiptSettingsView />}
+        {currentView === 'printerSettings' && <PrinterSettings />}
+        {currentView === 'callerIdVirtualPbx' && (
+          <div className="min-h-full bg-gray-50">
+            <RestaurantCallerIdSettings />
+          </div>
+        )}
         {currentView === 'dataBroadcast' && <DataBroadcastView />}
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
@@ -323,6 +337,12 @@ function ReceiptSettingsView() {
     companyTaxOffice: '',
     companyTaxNumber: '',
     logoDataUrl: '' as string,
+    /** Boş = uygulama dili; dolu = POS fiş varsayılanı */
+    defaultReceiptLanguage: '' as '' | 'tr' | 'en' | 'ar' | 'ku',
+    productNameFieldTr: 'name',
+    productNameFieldEn: 'name',
+    productNameFieldAr: 'name',
+    productNameFieldKu: 'name',
   });
 
   useEffect(() => {
@@ -332,6 +352,7 @@ function ReceiptSettingsView() {
         const { getReceiptSettings } = await import('../../services/receiptSettingsService');
         const data = await getReceiptSettings();
         if (!cancelled) {
+          const m = data.productNameFieldByLang || {};
           setForm({
             companyName: data.companyName ?? '',
             companyAddress: data.companyAddress ?? '',
@@ -339,6 +360,13 @@ function ReceiptSettingsView() {
             companyTaxOffice: data.companyTaxOffice ?? '',
             companyTaxNumber: data.companyTaxNumber ?? '',
             logoDataUrl: data.logoDataUrl ?? '',
+            defaultReceiptLanguage: (['tr', 'en', 'ar', 'ku'].includes(String(data.defaultReceiptLanguage))
+              ? (data.defaultReceiptLanguage as 'tr' | 'en' | 'ar' | 'ku')
+              : '') as '' | 'tr' | 'en' | 'ar' | 'ku',
+            productNameFieldTr: m.tr || 'name',
+            productNameFieldEn: m.en || 'name',
+            productNameFieldAr: m.ar || 'name',
+            productNameFieldKu: m.ku || 'name',
           });
         }
       } catch (e) {
@@ -362,7 +390,7 @@ function ReceiptSettingsView() {
     setSaving(true);
     setToast(null);
     try {
-      const { saveReceiptSettings } = await import('../../services/receiptSettingsService');
+      const { saveReceiptSettings, invalidateReceiptSettingsCache } = await import('../../services/receiptSettingsService');
       await saveReceiptSettings({
         companyName: form.companyName || undefined,
         companyAddress: form.companyAddress || undefined,
@@ -370,7 +398,15 @@ function ReceiptSettingsView() {
         companyTaxOffice: form.companyTaxOffice || undefined,
         companyTaxNumber: form.companyTaxNumber || undefined,
         logoDataUrl: form.logoDataUrl || undefined,
+        defaultReceiptLanguage: form.defaultReceiptLanguage || undefined,
+        productNameFieldByLang: {
+          tr: form.productNameFieldTr || 'name',
+          en: form.productNameFieldEn || 'name',
+          ar: form.productNameFieldAr || 'name',
+          ku: form.productNameFieldKu || 'name',
+        },
       });
+      invalidateReceiptSettingsCache();
       setToast('Fiş ayarları kaydedildi.');
     } catch (e) {
       setToast('Kaydetme başarısız.');
@@ -394,7 +430,9 @@ function ReceiptSettingsView() {
           <Receipt className="h-5 w-5 text-amber-600" />
           Fiş / Firma Bilgisi
         </h3>
-        <p className="text-gray-600 mb-6 text-sm">Hesap ve mutfak fişlerinde görünecek firma adı, adres, telefon ve logo.</p>
+        <p className="text-gray-600 mb-6 text-sm">
+          Hesap ve mutfak fişlerinde görünecek firma bilgisi, logo, varsayılan fiş dili ve ürün adı için kullanılacak veritabanı alanları.
+        </p>
 
         {toast && (
           <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${toast.includes('başarısız') ? 'bg-red-50 text-red-800' : 'bg-green-50 text-green-800'}`}>
@@ -402,7 +440,7 @@ function ReceiptSettingsView() {
           </div>
         )}
 
-        <div className="space-y-6 max-w-xl">
+        <div className="space-y-6 max-w-3xl">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Firma logosu (fişte üstte)</label>
             <div className="flex items-start gap-4">
@@ -464,6 +502,57 @@ function ReceiptSettingsView() {
               placeholder="+90 212 ..."
             />
           </div>
+          <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4 space-y-4">
+            <h4 className="text-sm font-semibold text-gray-900">Fiş dili ve ürün adı alanları</h4>
+            <p className="text-xs text-gray-600">
+              POS’ta fiş açılışında kullanılacak varsayılan dil. Ürün adı: her dil için `rex_*_products` tablosundaki alan adını seçin (ör. İngilizce için <code className="bg-white px-1 rounded">description_en</code>).
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Varsayılan fiş dili</label>
+              <select
+                value={form.defaultReceiptLanguage}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    defaultReceiptLanguage: e.target.value as typeof f.defaultReceiptLanguage,
+                  }))
+                }
+                className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg bg-white"
+              >
+                <option value="">Uygulama dili (otomatik)</option>
+                <option value="tr">Türkçe</option>
+                <option value="en">English</option>
+                <option value="ar">العربية</option>
+                <option value="ku">کوردی</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {(
+                [
+                  { key: 'productNameFieldTr' as const, label: 'TR — ürün adı alanı' },
+                  { key: 'productNameFieldEn' as const, label: 'EN — ürün adı alanı' },
+                  { key: 'productNameFieldAr' as const, label: 'AR — ürün adı alanı' },
+                  { key: 'productNameFieldKu' as const, label: 'KU — ürün adı alanı' },
+                ]
+              ).map(({ key, label }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+                  <select
+                    value={form[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+                  >
+                    {RECEIPT_PRODUCT_NAME_FIELD_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vergi dairesi</label>

@@ -137,6 +137,8 @@ export interface MenuTranslations {
   whatsappIntegration: string;
   wholesaleSales: string;
   supabaseDataTransfer: string;
+  /** Sanal santral / Caller ID (pg_bridge webhook + poll) */
+  virtualPbxCallerId: string;
 }
 
 export interface SidebarTranslations {
@@ -224,6 +226,12 @@ export interface Translations {
     cashier: string;
     customer: string;
     table: string;
+    /** Güzellik fişi — cihaz */
+    device: string;
+    /** Güzellik fişi — personel */
+    staff: string;
+    /** Hizmet / işlem satırı (ürün adı ile birlikte gösterim) */
+    operation: string;
     subtotal: string;
     discount: string;
     campaign: string;
@@ -1871,6 +1879,8 @@ export const translations: any = {
       materialWarehouseStatus: 'Malzeme Ambar Durum',
       materials: 'Malzemeler',
       menuManagement: 'Menü Yönetimi',
+      supabaseDataTransfer: 'Supabase Veri Aktarımı',
+      virtualPbxCallerId: 'Sanal santral (Caller ID)',
       minMaxStock: 'Minimum Maksimum Stok',
       inventoryCountOps: 'Sayım İşlemleri',
       mobileCount: 'Mobil Sayım / Fiş Oluştur',
@@ -1947,6 +1957,9 @@ export const translations: any = {
       cashier: 'KASİYER',
       customer: 'MÜŞTERİ',
       table: 'MASA',
+      device: 'CİHAZ',
+      staff: 'PERSONEL',
+      operation: 'İŞLEM',
       subtotal: 'ARA TOPLAM',
       discount: 'İNDİRİM',
       campaign: 'KAMPANYA',
@@ -3366,6 +3379,8 @@ export const translations: any = {
       sellRate: 'Sell Rate',
       updateRates: 'Update Rates',
       menuManagement: 'Menu Management',
+      supabaseDataTransfer: 'Supabase Data Transfer',
+      virtualPbxCallerId: 'Virtual PBX (Caller ID)',
       movements: 'Movements',
       multiStoreManagement: 'Multi-Store Management',
       newBadge: 'NEW',
@@ -4054,6 +4069,9 @@ export const translations: any = {
       cashier: 'CASHIER',
       customer: 'CUSTOMER',
       table: 'TABLE',
+      device: 'DEVICE',
+      staff: 'STAFF',
+      operation: 'SERVICE',
       subtotal: 'SUBTOTAL',
       discount: 'DISCOUNT',
       campaign: 'CAMPAIGN',
@@ -4688,6 +4706,8 @@ export const translations: any = {
       sellRate: 'سعر البيع',
       updateRates: 'تحديث الأسعار',
       menuManagement: 'إدارة القوائم',
+      supabaseDataTransfer: 'نقل بيانات Supabase',
+      virtualPbxCallerId: 'المقسم الافتراضي (معرف المتصل)',
       minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
       movements: 'الحركات',
       multiCurrency: 'متعدد العملات',
@@ -5379,6 +5399,9 @@ export const translations: any = {
       cashier: 'الصراف',
       customer: 'العميل',
       table: 'الطاولة',
+      device: 'الجهاز',
+      staff: 'الموظف',
+      operation: 'الخدمة',
       subtotal: 'المجموع الفرعي',
       discount: 'الخصم',
       campaign: 'الحملة',
@@ -6013,6 +6036,8 @@ export const translations: any = {
       sellRate: 'نرخی فرۆشتن',
       updateRates: 'نوێکردنەوەی نرخەکان',
       menuManagement: 'بەڕێوەبردنی مێنۆ',
+      supabaseDataTransfer: 'گواستنەوەی داتای Supabase',
+      virtualPbxCallerId: 'سنۆری مەزنی (پەیوەندی ناسنامەی پەیوەندیکەر)',
       minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
       movements: 'الحركات',
       multiCurrency: 'متعدد العملات',
@@ -6752,6 +6777,9 @@ export const translations: any = {
       cashier: 'سندوقدار',
       customer: 'کڕیار',
       table: 'مێز',
+      device: 'ئامێر',
+      staff: 'ستاف',
+      operation: 'خزمەت',
       subtotal: 'کۆی گشتی',
       discount: 'داشکاندن',
       campaign: 'کەمپەین',

@@ -326,7 +326,19 @@ export class RestaurantService {
         if (sets.length === 0) return;
         // Recompute subtotal when qty/discount changes
         sets.push(`subtotal = quantity * unit_price * (1 - discount_pct/100)`);
-        await this.db.query(`UPDATE rest_order_items SET ${sets.join(',')} WHERE id=$1`, vals);
+        const { rows } = await this.db.query(
+            `UPDATE rest_order_items SET ${sets.join(',')} WHERE id=$1 RETURNING order_id`,
+            vals
+        );
+        const orderId = rows[0]?.order_id;
+        if (orderId) {
+            await this.db.query(
+                `UPDATE rest_orders SET total_amount = (
+                    SELECT COALESCE(SUM(subtotal), 0) FROM rest_order_items WHERE order_id = $1
+                 ), updated_at=NOW() WHERE id=$1`,
+                [orderId]
+            );
+        }
     }
 
     static async removeOrderItem(itemId: string) {
@@ -672,6 +684,8 @@ export class RestaurantService {
         customerId?: string;
         limit?: number;
         offset?: number;
+        /** Günlük rapor: o gün kapanan adisyonlar (önceki gün açılmış olsa bile) */
+        dateField?: 'opened_at' | 'closed_at';
     }) {
         let sql = `
             SELECT o.*,
@@ -684,8 +698,9 @@ export class RestaurantService {
         `;
         const vals: any[] = [];
         let idx = 1;
-        if (params?.fromDate) { sql += ` AND o.opened_at >= $${idx++}`; vals.push(params.fromDate); }
-        if (params?.toDate) { sql += ` AND o.opened_at <  $${idx++}`; vals.push(params.toDate); }
+        const dateCol = params?.dateField === 'closed_at' ? 'closed_at' : 'opened_at';
+        if (params?.fromDate) { sql += ` AND o.${dateCol} >= $${idx++}`; vals.push(params.fromDate); }
+        if (params?.toDate) { sql += ` AND o.${dateCol} <  $${idx++}`; vals.push(params.toDate); }
         if (params?.status) { sql += ` AND o.status = $${idx++}`; vals.push(params.status); }
         if (params?.tableId) { sql += ` AND o.table_id = $${idx++}`; vals.push(params.tableId); }
         if (params?.customerId) { sql += ` AND o.customer_id = $${idx++}::uuid`; vals.push(params.customerId); }
@@ -1617,47 +1632,83 @@ export class RestaurantService {
     // -------------------------------------------------------------------------
 
     static async getZReportData(workDayDate: string) {
-        // Tarihi YYYY-MM-DD yap (DB DATE karşılaştırması için). Gelen "17.03.2026" veya "2026-03-17" olabilir.
+        // Tarihi YYYY-MM-DD yap (gelen "17.03.2026" veya "2026-03-17" olabilir).
+        // Sonra yerel takvim gününü UTC ISO aralığına çevirerek timezone kaymasını engelle.
         const normalizedDate = (() => {
-            const d = workDayDate.trim();
+            const d = String(workDayDate ?? '').trim();
             const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
             if (isoMatch) return d;
             const trMatch = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(d);
             if (trMatch) return `${trMatch[3]}-${trMatch[2].padStart(2, '0')}-${trMatch[1].padStart(2, '0')}`;
-            return new Date().toISOString().slice(0, 10);
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
         })();
+        const [y, mo, d] = normalizedDate.split('-').map(Number);
+        const start = new Date(y, mo - 1, d, 0, 0, 0, 0).toISOString();
+        const end = new Date(y, mo - 1, d, 23, 59, 59, 999).toISOString();
 
         try {
-            // 1. Payment method breakdown + totals (sadece rest_orders — tablo adı postgres tarafından prefix’lenir)
-            const { rows: paymentRows } = await this.db.query(`
+            // 1. Ödeme özeti: önce ERP `sales` (REST-/GEL-/DLV- fiş = Perakende Satışlar ile aynı işlem sayısı).
+            // Yoksa veya sorgu hata verirse rest_orders’a düş (eski davranış).
+            const { rows: paymentRowsRest } = await this.db.query(`
                 SELECT
                     COALESCE(UPPER(payment_method), 'DİĞER') AS method,
-                    SUM(total_amount)                         AS amount,
-                    COUNT(*)                                  AS count
+                    SUM(COALESCE(total_amount, 0) - COALESCE(discount_amount, 0)) AS amount,
+                    COUNT(*) AS count
                 FROM rest_orders
                 WHERE status = 'closed'
-                  AND (closed_at IS NOT NULL AND closed_at::date = $1::date)
+                  AND (closed_at IS NOT NULL AND closed_at >= $1::timestamptz AND closed_at <= $2::timestamptz)
                 GROUP BY COALESCE(UPPER(payment_method), 'DİĞER')
-                ORDER BY SUM(total_amount) DESC
-            `, [normalizedDate]);
+                ORDER BY SUM(COALESCE(total_amount, 0) - COALESCE(discount_amount, 0)) DESC
+            `, [start, end]);
+
+            let paymentRows: any[] = paymentRowsRest;
+            try {
+                const { rows: paymentRowsErp } = await this.db.query(`
+                    SELECT
+                        COALESCE(UPPER(TRIM(payment_method)), 'DİĞER') AS method,
+                        SUM(COALESCE(net_amount, 0)) AS amount,
+                        COUNT(*)::int AS count
+                    FROM sales
+                    WHERE date >= $1::timestamptz AND date <= $2::timestamptz
+                      AND COALESCE(is_cancelled, false) = false
+                      AND (
+                        fiche_no ILIKE 'REST-%' OR fiche_no ILIKE 'GEL-%' OR fiche_no ILIKE 'DLV-%'
+                        OR COALESCE(document_no, '') ILIKE 'REST-%'
+                        OR COALESCE(document_no, '') ILIKE 'GEL-%'
+                        OR COALESCE(document_no, '') ILIKE 'DLV-%'
+                      )
+                    GROUP BY COALESCE(UPPER(TRIM(payment_method)), 'DİĞER')
+                    ORDER BY SUM(COALESCE(net_amount, 0)) DESC
+                `, [start, end]);
+                const erpInvoices = (paymentRowsErp || []).reduce((n: number, r: any) => n + (parseInt(r.count, 10) || 0), 0);
+                if (erpInvoices > 0) {
+                    paymentRows = paymentRowsErp;
+                }
+            } catch {
+                /* sales tablosu yok / şema farklı — rest_orders kullanılmaya devam */
+            }
 
             const totalSales = paymentRows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
             const netCash = paymentRows
-                .filter((r: any) => /NAK[İI]T|CASH/i.test(r.method))
+                .filter((r: any) => /NAK[İI]T|CASH|^cash$/i.test(String(r.method || '')))
                 .reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
 
-            // 2. Kategori özeti (products tablosuna bağlı değil; sadece rest tabloları)
+            // 2. Kategori özeti — count = kapalı adisyon sayısı (kalem sayısı değil; 7 kalem ≠ 7 işlem karışmasın)
             const { rows: catRows } = await this.db.query(`
                 SELECT
                     'Satış' AS category,
                     SUM(oi.subtotal) AS amount,
-                    COUNT(oi.id)     AS count
+                    COUNT(DISTINCT o.id) AS count
                 FROM rest_order_items oi
                 JOIN rest_orders o ON oi.order_id = o.id
                 WHERE o.status = 'closed'
-                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (o.closed_at IS NOT NULL AND o.closed_at >= $1::timestamptz AND o.closed_at <= $2::timestamptz)
                   AND (oi.is_void IS NOT TRUE)
-            `, [normalizedDate]);
+            `, [start, end]);
 
             // 3. İptaller
             const { rows: voidRows } = await this.db.query(`
@@ -1668,10 +1719,10 @@ export class RestaurantService {
                 FROM rest_order_items oi
                 JOIN rest_orders o ON oi.order_id = o.id
                 WHERE o.status = 'closed'
-                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (o.closed_at IS NOT NULL AND o.closed_at >= $1::timestamptz AND o.closed_at <= $2::timestamptz)
                   AND oi.is_void = TRUE
                 GROUP BY COALESCE(oi.void_reason, 'İptal')
-            `, [normalizedDate]);
+            `, [start, end]);
 
             // 4. İkramlar
             const { rows: compRows } = await this.db.query(`
@@ -1679,11 +1730,30 @@ export class RestaurantService {
                 FROM rest_order_items oi
                 JOIN rest_orders o ON oi.order_id = o.id
                 WHERE o.status = 'closed'
-                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (o.closed_at IS NOT NULL AND o.closed_at >= $1::timestamptz AND o.closed_at <= $2::timestamptz)
                   AND oi.is_complimentary = TRUE
-            `, [normalizedDate]);
+            `, [start, end]);
 
-            // 5. Ürün bazlı satış (yazdırmada satılan ürün listesi)
+            // 5. İadeler (rest.return_log yoksa raporu bozmasın)
+            let returnSummary = { amount: 0, count: 0 };
+            try {
+                const { rows: returnRows } = await this.db.query(`
+                    SELECT
+                        COALESCE(SUM(total_amount), 0) AS amount,
+                        COALESCE(COUNT(id), 0) AS count
+                    FROM rest.return_log
+                    WHERE created_at >= $1::timestamptz
+                      AND created_at <= $2::timestamptz
+                `, [start, end]);
+                returnSummary = {
+                    amount: parseFloat(returnRows?.[0]?.amount) || 0,
+                    count: parseInt(returnRows?.[0]?.count) || 0,
+                };
+            } catch (err) {
+                console.warn('[getZReportData] return_log bulunamadı, iade özeti 0 kabul edildi.');
+            }
+
+            // 6. Ürün bazlı satış (yazdırmada satılan ürün listesi)
             const { rows: productRows } = await this.db.query(`
                 SELECT
                     oi.product_name AS product_name,
@@ -1692,11 +1762,11 @@ export class RestaurantService {
                 FROM rest_order_items oi
                 JOIN rest_orders o ON oi.order_id = o.id
                 WHERE o.status = 'closed'
-                  AND (o.closed_at IS NOT NULL AND o.closed_at::date = $1::date)
+                  AND (o.closed_at IS NOT NULL AND o.closed_at >= $1::timestamptz AND o.closed_at <= $2::timestamptz)
                   AND (oi.is_void IS NOT TRUE)
                 GROUP BY oi.product_name
                 ORDER BY SUM(oi.subtotal) DESC
-            `, [normalizedDate]);
+            `, [start, end]);
 
             return {
                 totalSales,
@@ -1720,6 +1790,7 @@ export class RestaurantService {
                     amount: parseFloat(compRows?.[0]?.amount) || 0,
                     count: parseInt(compRows?.[0]?.count) || 0,
                 },
+                returns: returnSummary,
                 salesByProduct: (productRows || []).map((r: any) => ({
                     productName: String(r.product_name ?? ''),
                     quantity: Number(r.qty) || 0,
@@ -1731,6 +1802,65 @@ export class RestaurantService {
             console.error('[getZReportData]', msg, err);
             throw new Error(`Z-Raporu verisi alınamadı: ${msg}. Restoran mali gün tabloları (rest_orders, rest_order_items) mevcut mu kontrol edin.`);
         }
+    }
+
+    /**
+     * Kapalı adisyon satırlarından ürün bazlı toplam adet ve satır tutarı (iptal kalemler hariç).
+     * Tarih aralığı yerel takvim günüyle Z raporu ile uyumludur.
+     */
+    static normalizeYmdRangeToUtcIso(fromYmd: string, toYmd: string): { start: string; end: string } | null {
+        const parse = (s: string) => {
+            const d = String(s ?? '').trim();
+            const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+            if (iso) return { y: +iso[1], m: +iso[2], day: +iso[3] };
+            const tr = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(d);
+            if (tr) return { y: +tr[3], m: +tr[2], day: +tr[1] };
+            return null;
+        };
+        const a = parse(fromYmd);
+        const b = parse(toYmd);
+        if (!a || !b) return null;
+        const d1 = new Date(a.y, a.m - 1, a.day, 0, 0, 0, 0);
+        const d2 = new Date(b.y, b.m - 1, b.day, 23, 59, 59, 999);
+        if (d1.getTime() > d2.getTime()) return null;
+        return { start: d1.toISOString(), end: d2.toISOString() };
+    }
+
+    static async getProductSalesByClosedDateRange(fromYmd: string, toYmd: string): Promise<Array<{
+        productId: string | null;
+        productName: string;
+        quantity: number;
+        revenue: number;
+    }>> {
+        const range = this.normalizeYmdRangeToUtcIso(fromYmd, toYmd);
+        if (!range) {
+            throw new Error('Geçersiz tarih aralığı');
+        }
+        const { rows } = await this.db.query(
+            `
+                SELECT
+                    oi.product_id::text AS product_id,
+                    oi.product_name AS product_name,
+                    SUM(oi.quantity) AS qty,
+                    SUM(oi.subtotal) AS revenue
+                FROM rest_order_items oi
+                JOIN rest_orders o ON oi.order_id = o.id
+                WHERE o.status = 'closed'
+                  AND o.closed_at IS NOT NULL
+                  AND o.closed_at >= $1::timestamptz
+                  AND o.closed_at <= $2::timestamptz
+                  AND (oi.is_void IS NOT TRUE)
+                GROUP BY oi.product_id, oi.product_name
+                ORDER BY SUM(oi.quantity) DESC
+            `,
+            [range.start, range.end]
+        );
+        return (rows || []).map((r: any) => ({
+            productId: r.product_id && String(r.product_id).trim() !== '' ? String(r.product_id) : null,
+            productName: String(r.product_name ?? '—'),
+            quantity: Number(r.qty) || 0,
+            revenue: parseFloat(r.revenue) || 0,
+        }));
     }
 
     /** İptal edilen kalemlerin raporu — sebep, tutar, tarih, masa, fiş (kayıt altı) */
@@ -1775,6 +1905,22 @@ export class RestaurantService {
             waiter: r.waiter,
             tableNumber: r.table_number ?? '—',
         }));
+    }
+
+    /** İptal raporundaki (is_void=true) kalemleri seçili tarih aralığına göre siler */
+    static async deleteVoidReportEntries(params?: { fromDate?: string; toDate?: string }) {
+        let sql = `
+            DELETE FROM rest_order_items oi
+            USING rest_orders o
+            WHERE o.id = oi.order_id
+              AND oi.is_void = TRUE
+        `;
+        const vals: any[] = [];
+        let idx = 1;
+        if (params?.fromDate) { sql += ` AND COALESCE(o.closed_at, o.opened_at) >= $${idx++}`; vals.push(params.fromDate); }
+        if (params?.toDate) { sql += ` AND COALESCE(o.closed_at, o.opened_at) < $${idx++}`; vals.push(params.toDate); }
+        const res = await this.db.query(sql, vals);
+        return Number(res?.rowCount ?? 0);
     }
 
     /** İade işlemini kayıt altına al (sebep zorunlu, rapor için) */
@@ -1839,6 +1985,17 @@ export class RestaurantService {
             console.error('[RestaurantService] getReturnReport error:', e);
             return [];
         }
+    }
+
+    /** İade raporundaki kayıtları seçili tarih aralığına göre siler */
+    static async deleteReturnReportEntries(params?: { fromDate?: string; toDate?: string }) {
+        let sql = `DELETE FROM rest.return_log WHERE 1=1`;
+        const vals: any[] = [];
+        let idx = 1;
+        if (params?.fromDate) { sql += ` AND created_at >= $${idx++}`; vals.push(params.fromDate); }
+        if (params?.toDate) { sql += ` AND created_at < $${idx++}`; vals.push(params.toDate); }
+        const res = await this.db.query(sql, vals);
+        return Number(res?.rowCount ?? 0);
     }
 
     static async saveStaff(firmNr: string, staff: Partial<Staff>): Promise<Staff> {

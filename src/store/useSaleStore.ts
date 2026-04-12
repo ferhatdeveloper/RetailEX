@@ -12,6 +12,8 @@ interface SaleState {
 
   // Actions
   setSales: (sales: Sale[]) => void;
+  /** Fatura silindikten sonra yerel listeyi anında güncelle (persist ile uyumlu) */
+  removeSaleById: (id: string) => void;
   loadSales: (limit?: number) => Promise<void>;
   addSale: (sale: Sale) => Promise<void>;
   getSaleById: (id: string) => Promise<Sale | null>;
@@ -29,6 +31,15 @@ export const useSaleStore = create<SaleState>()(
       lastSync: null,
 
       setSales: (sales) => set({ sales, lastSync: Date.now() }),
+
+      removeSaleById: (id) => {
+        const sid = String(id || '').trim();
+        if (!sid) return;
+        set((state) => ({
+          sales: state.sales.filter((s) => String(s.id) !== sid),
+          lastSync: Date.now(),
+        }));
+      },
 
       loadSales: async (limit?: number) => {
         set({ isLoading: true, error: null });

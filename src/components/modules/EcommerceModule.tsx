@@ -1,6 +1,6 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
-  ShoppingCart, Package, TrendingUp, DollarSign, Users, Star,
+  ShoppingCart, Package, TrendingUp, Banknote, Users, Star,
   Search, Filter, Plus, Edit2, Trash2, Eye, Settings, Globe,
   Tag, Percent, Image, FileText, BarChart3, MessageSquare,
   Clock, CheckCircle, XCircle, AlertCircle, ChevronDown,

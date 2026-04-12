@@ -6,8 +6,44 @@ Bu rehber, **Berqenas Cloud** (Ubuntu VPS + Docker: PostgreSQL, pgAdmin, WireGua
 
 ## Ön koşul
 
-- VPN’e bağlı olmalısınız (WireGuard peer_admin config ile).
-- Sunucuya SSH erişiminiz olmalı (`ssh kullanici@72.60.182.107` veya kullandığınız IP).
+- Sunucuya SSH erişiminiz olmalı (`ssh kullanici@berqenas.cloud` veya VPS IP).
+- **DNS:** Üretimde `berqenas.cloud` alan adının **A kaydı** VPS genel IP’sine işaret etmeli; WireGuard `SERVERURL` varsayılanı bu alan adıdır (istemciler VPN’e alan adıyla bağlanır).
+- **WireGuard isteğe bağlıdır:** `database/scripts/berqenas-cloud-install.sh` ile `ENABLE_VPN=0` vererek VPN’siz stack kurulabilir. VPN açıksa peer config: `docker exec -it saas_vpn cat /config/peer_admin/peer_admin.conf` (konteyner yoksa VPN kapalıdır).
+
+---
+
+## 0. Sıfır kurulum (tek betik, VPN isteğe bağlı)
+
+Repoyu sunucuya klonlayın (`database/scripts` ve `database/docker` yolları erişilebilir olsun):
+
+```bash
+cd /path/to/RetailEX/database/scripts
+chmod +x berqenas-cloud-install.sh create_berqenas_tenant_databases.sh
+sudo bash berqenas-cloud-install.sh
+```
+
+**Tek parça “tam kurulum” (eski `sudo bash -c` stiline denk):** `database/scripts/berqenas-vps-full-paste.sh` — Docker + Postgres + pgAdmin + isteğe bağlı WireGuard (`SERVERURL=berqenas.cloud`) + tüm DB’ler + `authenticator` + `merkez_db.tenant_registry`. **Etkileşimli sorular:** terminal açıksa önce “VPN kurulsun mu?” (E/h), sonra “RetailEX Web GitHub URL?” (boş = atla). Otomasyon: `ENABLE_VPN=0 RETAILEX_GIT_URL=https://github.com/kullanici/RetailEX.git sudo -E bash berqenas-vps-full-paste.sh`
+
+Web dağıtımı `database/scripts/berqenas-deploy-web.sh` ile: repoyu `INSTALL_DIR/projects/retailex` altına klonlar, `Dockerfile.frontend` ile imaj üretir, `berqenas_net` üzerinde `:8080` yayınlar.
+
+```bash
+cd /path/to/RetailEX/database/scripts
+sudo bash berqenas-vps-full-paste.sh
+```
+
+| Ortam değişkeni | Varsayılan | Açıklama |
+|-----------------|------------|----------|
+| `ENABLE_VPN` | `1` | `0` → WireGuard servisi yazılmaz / kalkırılmaz; UFW’de 51820 açılmaz. |
+| `ENABLE_POSTGREST` | `0` | `1` → `docker-compose.postgrest-per-db.yml` ile birlikte `docker compose up` (3002–3006, UFW). |
+| `INSTALL_DIR` | `/opt/berqenas-cloud` | Veri ve compose dosyaları. |
+| `SERVERURL` | `berqenas.cloud` | `ENABLE_VPN=1` iken WireGuard istemci endpoint’i (linuxserver/wireguard). DNS A → VPS IP. |
+
+**VPN kapalı örnek:**
+
+```bash
+cd /path/to/RetailEX/database/scripts
+ENABLE_VPN=0 sudo -E bash berqenas-cloud-install.sh
+```
 
 ---
 
@@ -19,10 +55,10 @@ Bu rehber, **Berqenas Cloud** (Ubuntu VPS + Docker: PostgreSQL, pgAdmin, WireGua
 
 ```powershell
 # 1) Migration dosyasını sunucuya kopyala
-scp D:\RetailEX\database\migrations\000_master_schema.sql kullanici@72.60.182.107:/opt/berqenas-cloud/
+scp D:\RetailEX\database\migrations\000_master_schema.sql kullanici@berqenas.cloud:/opt/berqenas-cloud/
 
 # 2) SSH ile bağlanıp konteyner içinde çalıştır (veritabanı: retailex_db)
-ssh kullanici@72.60.182.107 "docker cp /opt/berqenas-cloud/000_master_schema.sql saas_postgres:/tmp/ && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/000_master_schema.sql"
+ssh kullanici@berqenas.cloud "docker cp /opt/berqenas-cloud/000_master_schema.sql saas_postgres:/tmp/ && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/000_master_schema.sql"
 ```
 
 `kullanici` yerine Ubuntu’daki SSH kullanıcı adınızı yazın (örn. `root` veya `ubuntu`).
@@ -30,8 +66,8 @@ ssh kullanici@72.60.182.107 "docker cp /opt/berqenas-cloud/000_master_schema.sql
 İsterseniz **isteğe bağlı** PostgREST anon rolünü de uygulayın:
 
 ```powershell
-scp D:\RetailEX\database\migrations\007_postgrest_anon_role.sql kullanici@72.60.182.107:/opt/berqenas-cloud/
-ssh kullanici@72.60.182.107 "docker cp /opt/berqenas-cloud/007_postgrest_anon_role.sql saas_postgres:/tmp/ && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/007_postgrest_anon_role.sql"
+scp D:\RetailEX\database\migrations\007_postgrest_anon_role.sql kullanici@berqenas.cloud:/opt/berqenas-cloud/
+ssh kullanici@berqenas.cloud "docker cp /opt/berqenas-cloud/007_postgrest_anon_role.sql saas_postgres:/tmp/ && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/007_postgrest_anon_role.sql"
 ```
 
 ### Yöntem B: Tek SSH oturumunda (dosya sunucuda zaten varsa)
@@ -73,37 +109,51 @@ postgres://postgres:root_password_2026@172.20.0.10:5432/retailex_db
 
 **Not:** RetailEX varsayılanında veritabanı adı `retailex_local` geçer. Bulutta **retailex_db** kullandığınız için uygulama/ortam ayarlarında **database** alanını `retailex_db` yapın (veya sunucuda `retailex_local` adında bir DB oluşturup şemayı oraya atabilirsiniz).
 
-### PostgREST (VPN olmadan)
+### PostgREST — her veritabanı ayrı port
 
-`Rest API (PostgREST)` seçeneği için sunucuda **postgrest container'ı** ve dışarıdan erişim açık olmalı:
+`Rest API (PostgREST)` için **her PostgreSQL veritabanına ayrı PostgREST konteyneri** ve **farklı host portu** kullanılır (RetailEX’te kiracı DB’leri: `merkez_db`, `aqua_beauty_db`, …).
 
-1. Sunucuda portu açın:
+**Ön koşul:** PostgREST’in `anon` rolünü kullanması için `007_postgrest_anon_role.sql` dosyasını **ilgili her veritabanında** ayrı çalıştırın (örnek: `-d aqua_beauty_db`).
+
+1. Repodaki hazır parça dosyasını sunucuya kopyalayın (örnek hedef: `/opt/berqenas-cloud/docker-compose.postgrest-per-db.yml`):
+
+   - Kaynak: `database/docker/docker-compose.postgrest-per-db.yml`
+
+2. Ana compose ile birlikte kaldırın (çalışma dizini `/opt/berqenas-cloud`):
+
 ```bash
-ufw allow 3002/tcp
+cd /opt/berqenas-cloud
+docker compose -f docker-compose.yml -f docker-compose.postgrest-per-db.yml up -d --remove-orphans
 ```
 
-2. Docker compose içine `postgrest` servisi eklenmeli (örnek):
-```yaml
-  postgrest:
-    image: postgrest/postgrest:latest
-    container_name: saas_postgrest
-    restart: always
-    environment:
-      PGRST_DB_URI: "postgres://postgres:root_password_2026@172.20.0.10:5432/retailex_db"
-      PGRST_DB_ANON_ROLE: "anon"
-      PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos"
-      PGRST_SERVER_HOST: "0.0.0.0"
-      PGRST_SERVER_PORT: "3000"
-      PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
-    ports:
-      - "3002:3000"
-    networks:
-      berqenas_net:
+İsteğe bağlı: `/opt/berqenas-cloud/.env` içinde `POSTGRES_PASSWORD=...` tanımlayın; tanımlı değilse dosyadaki varsayılan kullanılır.
+
+3. Güvenlik duvarı — tüm PostgREST portları:
+
+```bash
+ufw allow 3002:3006/tcp
+ufw reload
 ```
 
-Bu ayağı yaptıktan sonra, uygulama tarafında URL’yi şöyle girin:
-- `http://72.60.182.107:3002` (VPN’siz public IP)
-- veya VPN açıkken `http://172.20.0.10:3002`
+**Port — veritabanı eşlemesi**
+
+| Host portu | Veritabanı      | Konteyner adı (örnek)   |
+|-----------|-----------------|-------------------------|
+| 3002      | `merkez_db`     | `saas_postgrest_merkez` |
+| 3003      | `aqua_beauty_db`| `saas_postgrest_aqua_beauty` |
+| 3004      | `qubocoffe_db`  | `saas_postgrest_qubocoffe` |
+| 3005      | `dismarco_db`   | `saas_postgrest_dismarco` |
+| 3006      | `bestcom_db`    | `saas_postgrest_bestcom` |
+
+Uygulama tarafında örnek taban URL (public IP):
+
+- Merkez: `http://berqenas.cloud:3002`
+- Aqua Beauty: `http://berqenas.cloud:3003`
+- … (port tablosuna göre)
+
+VPN açıksa aynı portlar üzerinden `172.20.0.10` yerine **sunucunun erişilebilir IP’si** kullanılır; PostgREST konteynerleri `postgres` servis adıyla aynı Docker ağında konuşur.
+
+**Yeni firma DB’si eklemek:** `docker-compose.postgrest-per-db.yml` içinde yeni bir servis kopyalayıp `PGRST_DB_URI` içindeki veritabanı adını ve `ports` altındaki host portunu (ör. `3007:3000`) değiştirin; `ufw` ve RetailEX `remote_rest_url` ayarını buna göre güncelleyin.
 
 ---
 
@@ -125,8 +175,9 @@ Bu ayağı yaptıktan sonra, uygulama tarafında URL’yi şöyle girin:
 | PostgreSQL      | postgres / root_password_2026 |
 | pgAdmin         | ferhatdeveloper@gmail.com / Yq7xwQpt6c* |
 | pgAdmin URL     | http://172.20.0.20 (sadece VPN ile) |
-| DB’ler          | pdks_db, retailex_db, beauty_db, rest_db |
-| RetailEX DB     | retailex_db |
+| DB’ler          | Kiracı: `merkez_db`, `aqua_beauty_db`, `qubocoffe_db`, `dismarco_db`, `bestcom_db`; isteğe bağlı: `pdks_db`, `retailex_db`, `beauty_db`, `rest_db` |
+| PostgREST portları | 3002–3006 (kiracı DB başına bir port; ayrıntı: §2 PostgREST) |
+| RetailEX DB     | Kullanım senaryosuna göre (ör. `retailex_db` veya firma DB’si) |
 
 ---
 

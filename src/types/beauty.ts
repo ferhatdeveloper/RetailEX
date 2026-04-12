@@ -66,6 +66,8 @@ export interface BeautyService {
     description?: string;
     requires_device?: boolean;
     expected_shots?: number;
+    /** Çok seanslı tedaviler için tipik seans sayısı (1 = tek seans) */
+    default_sessions?: number;
     is_active: boolean;
 }
 
@@ -130,6 +132,8 @@ export interface BeautyAppointment {
     specialist_name?: string;
     staff_name?: string;
     device_id?: string;
+    /** Randevu listeleri / raporlar için JOIN */
+    device_name?: string;
     body_region_id?: string;
     appointment_date?: string;
     date?: string;
@@ -143,6 +147,8 @@ export interface BeautyAppointment {
     commission_amount?: number;
     is_package_session: boolean;
     package_purchase_id?: string;
+    /** Aynı aylık çok seans planına ait randevuları gruplar */
+    session_series_id?: string;
     reminder_sent?: boolean;
     branch_id?: string;
     room_id?: string;
@@ -151,6 +157,10 @@ export interface BeautyAppointment {
     corporate_account_id?: string;
     reminder_sent_at?: string;
     last_notification_channel?: string;
+    /** Ön arama yapıldı (hatırlatma / teyit) */
+    confirmation_call_at?: string | null;
+    /** Randevu öncesi iç aktivite / hazırlık notu işlendi */
+    pre_visit_activity_at?: string | null;
 }
 
 export interface BeautyBranch {
@@ -223,6 +233,9 @@ export interface BeautyServiceConsumableRow {
     service_id: string;
     product_id: string;
     qty_per_service: number;
+    /** JOIN products — liste ekranı için */
+    product_name?: string | null;
+    product_unit?: string | null;
 }
 
 export interface BeautyCustomerHealth {

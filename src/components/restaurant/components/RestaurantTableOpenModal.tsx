@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Utensils, Plus, Minus, Users, CheckCircle, Info, Calendar, RefreshCcw } from 'lucide-react';
+import { X, Utensils, Plus, Minus, Users, CheckCircle, Calendar, RefreshCcw } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { Table, Reservation } from '../types';
 import { useRestaurantStore } from '../store/useRestaurantStore';
 import { RestaurantStaffPinModal } from './RestaurantStaffPinModal';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RestaurantTableOpenModalProps {
     table: Table;
@@ -19,6 +20,7 @@ export function RestaurantTableOpenModal({
     onConfirm,
     currentStaff
 }: RestaurantTableOpenModalProps) {
+    const tmR = useRestaurantModuleTm();
     const { reservations, loadReservations } = useRestaurantStore();
     const [covers, setCovers] = useState(table.seats || 2);
     const [selectedResId, setSelectedResId] = useState<string | undefined>(undefined);
@@ -81,8 +83,8 @@ export function RestaurantTableOpenModal({
                                 <Utensils className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-black uppercase tracking-tight">Masa {table.number}</h3>
-                                <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest">{table.location || 'Genel Alan'}</p>
+                                <h3 className="text-xl font-black uppercase tracking-tight">{tmR('resKrokiTablePrefix').replace('{n}', String(table.number))}</h3>
+                                <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest">{table.location || tmR('resTableOpenDefaultLocation')}</p>
                             </div>
                         </div>
                         <button
@@ -104,12 +106,12 @@ export function RestaurantTableOpenModal({
                                     <Users className="w-4 h-4" />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-blue-600/60 uppercase leading-none mb-1">Garson</span>
+                                    <span className="text-[10px] font-bold text-blue-600/60 uppercase leading-none mb-1">{tmR('resTableOpenWaiterLabel')}</span>
                                     <span className="text-sm font-black text-blue-900 leading-none uppercase">{localStaffName}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 text-blue-400">
-                                <span className="text-[10px] font-black uppercase tracking-wider">Değiştir</span>
+                                <span className="text-[10px] font-black uppercase tracking-wider">{tmR('resTableOpenChangeStaff')}</span>
                                 <RefreshCcw className="w-4 h-4" />
                             </div>
                         </div>
@@ -118,7 +120,7 @@ export function RestaurantTableOpenModal({
                         {availableReservations.length > 0 && (
                             <div className="space-y-3">
                                 <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] ml-1 flex items-center gap-2">
-                                    <Calendar className="w-3.5 h-3.5" /> Rezervasyon Seçimi
+                                    <Calendar className="w-3.5 h-3.5" /> {tmR('resTableOpenReservationPick')}
                                 </p>
                                 <div className="flex flex-col gap-2">
                                     {availableReservations.map(res => (
@@ -135,7 +137,7 @@ export function RestaurantTableOpenModal({
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-bold leading-none mb-1">{res.customerName}</span>
                                                 <span className={cn("text-[10px] font-medium opacity-60", selectedResId === res.id ? "text-white" : "text-slate-400")}>
-                                                    {res.reservationTime} • {res.guestCount} Kişi
+                                                    {res.reservationTime} • {res.guestCount} {tmR('resRvGuests')}
                                                 </span>
                                             </div>
                                             {selectedResId === res.id && <CheckCircle className="w-5 h-5 text-white" />}
@@ -147,7 +149,7 @@ export function RestaurantTableOpenModal({
 
                         {/* Guest Counter Segment */}
                         <div className="flex flex-col items-center py-2 border-t border-slate-50 mt-4">
-                            <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.3em] mb-6 pt-4">Kişi Sayısı</p>
+                            <p className="text-[11px] text-slate-400 font-black uppercase tracking-[0.3em] mb-6 pt-4">{tmR('resRvGuestCount')}</p>
 
                             <div className="flex items-center justify-center gap-10">
                                 <button
@@ -168,7 +170,7 @@ export function RestaurantTableOpenModal({
                                     </span>
                                     <div className="flex items-center gap-1 text-blue-600 mt-2">
                                         <Users className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-black uppercase tracking-widest">Kişi</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest">{tmR('resRvGuests')}</span>
                                     </div>
                                 </div>
 
@@ -188,14 +190,14 @@ export function RestaurantTableOpenModal({
                             onClick={onClose}
                             className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] hover:bg-slate-100 transition-colors active:scale-95"
                         >
-                            VAZGEÇ
+                            {tmR('resRvCancel')}
                         </button>
                         <button
                             onClick={() => onConfirm(covers, selectedResId)}
                             className="relative z-20 flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-3 shadow-xl shadow-blue-200 hover:bg-blue-700 active:scale-95 transition-all"
                         >
                             <CheckCircle className="w-5 h-5" />
-                            <span>MASAYI AÇ</span>
+                            <span>{tmR('resTableOpenConfirmBtn')}</span>
                         </button>
                     </div>
                 </div>

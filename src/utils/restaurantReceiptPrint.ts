@@ -1,4 +1,140 @@
 import type { Sale } from '../core/types/models';
+import type { ReceiptSettings } from '../services/receiptSettingsService';
+import { buildReceipt80mmPrintHtml } from './receipt80mmPrintHtml';
+
+/** Receipt80mm / mutfak fişi ile aynı dil kodları */
+export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku';
+
+/** 80mm ön hesap — `Receipt80mm` / `translations.receipt` ile uyumlu etiketler */
+const ADISYON_I18N: Record<
+  KitchenReceiptLocale,
+  {
+    docTitle: string;
+    draftBanner: string;
+    receiptNo: string;
+    date: string;
+    cashier: string;
+    table: string;
+    colProduct: string;
+    colQty: string;
+    colAmount: string;
+    subtotal: string;
+    discount: string;
+    total: string;
+    paymentHeading: string;
+    paid: string;
+    remaining: string;
+    change: string;
+    thanksLine: string;
+    payCash: string;
+    payCard: string;
+    payCredit: string;
+    payQr: string;
+    taxId: string;
+    taxOffice: string;
+  }
+> = {
+  tr: {
+    docTitle: 'Fiş',
+    draftBanner: 'ÖN HESAP',
+    receiptNo: 'FİŞ NO',
+    date: 'TARİH',
+    cashier: 'KASİYER',
+    table: 'MASA',
+    colProduct: 'Ürün',
+    colQty: 'Adet',
+    colAmount: 'Tutar',
+    subtotal: 'ARA TOPLAM',
+    discount: 'İNDİRİM',
+    total: 'TOPLAM',
+    paymentHeading: 'ÖDEME',
+    paid: 'ÖDENEN',
+    remaining: 'KALAN',
+    change: 'PARA ÜSTÜ',
+    thanksLine: 'Bizi Tercih Ettiğiniz İçin Teşekkürler',
+    payCash: 'NAKIT',
+    payCard: 'KART',
+    payCredit: 'VERESIYE',
+    payQr: 'QR',
+    taxId: 'VKN',
+    taxOffice: 'VD',
+  },
+  en: {
+    docTitle: 'Receipt',
+    draftBanner: 'INTERIM BILL',
+    receiptNo: 'RECEIPT NO',
+    date: 'DATE',
+    cashier: 'SERVER',
+    table: 'TABLE',
+    colProduct: 'Item',
+    colQty: 'Qty',
+    colAmount: 'Amount',
+    subtotal: 'SUBTOTAL',
+    discount: 'DISCOUNT',
+    total: 'TOTAL',
+    paymentHeading: 'PAYMENT',
+    paid: 'PAID',
+    remaining: 'REMAINING',
+    change: 'CHANGE',
+    thanksLine: 'Thank You For Choosing Us',
+    payCash: 'CASH',
+    payCard: 'CARD',
+    payCredit: 'CREDIT',
+    payQr: 'QR',
+    taxId: 'TIN',
+    taxOffice: 'TAX OFF.',
+  },
+  ar: {
+    docTitle: 'إيصال',
+    draftBanner: 'فاتورة مؤقتة',
+    receiptNo: 'رقم الإيصال',
+    date: 'التاريخ',
+    cashier: 'الكاشير',
+    table: 'طاولة',
+    colProduct: 'الصنف',
+    colQty: 'العدد',
+    colAmount: 'المبلغ',
+    subtotal: 'المجموع الفرعي',
+    discount: 'الخصم',
+    total: 'الإجمالي',
+    paymentHeading: 'الدفع',
+    paid: 'المدفوع',
+    remaining: 'المتبقي',
+    change: 'الباقي',
+    thanksLine: 'شكراً لاختياركم لنا',
+    payCash: 'نقد',
+    payCard: 'بطاقة',
+    payCredit: 'آجل',
+    payQr: 'QR',
+    taxId: 'الرقم الضريبي',
+    taxOffice: 'مكتب الضريبة',
+  },
+  ku: {
+    docTitle: 'پسوولە',
+    draftBanner: 'وەسڵی پێشووەختە',
+    receiptNo: 'ژ. پسوولە',
+    date: 'بەروار',
+    cashier: 'کاشێر',
+    table: 'مێز',
+    colProduct: 'بەرهەم',
+    colQty: 'ژمارە',
+    colAmount: 'بڕ',
+    subtotal: 'کۆی ناوەند',
+    discount: 'داشکاندن',
+    total: 'کۆی گشتی',
+    paymentHeading: 'پارەدان',
+    paid: 'پارەدراو',
+    remaining: 'ماوە',
+    change: 'گەڕاوە',
+    thanksLine: 'سپاس بۆ هەڵبژاردنمان',
+    payCash: 'نەقد',
+    payCard: 'کارت',
+    payCredit: 'قەرز',
+    payQr: 'QR',
+    taxId: 'ژمارەی باج',
+    taxOffice: 'نووسینگەی باج',
+  },
+};
 
 /** Restoran ödeme modalı taslak yazdırma bağlamı (POS modal ile uyumlu) */
 export type RestaurantDraftPaymentCtx = {
@@ -19,12 +155,16 @@ export type RestaurantAdisyonPrintInput = {
   companyPhone?: string;
   companyTaxOffice?: string;
   companyTaxNumber?: string;
-  /** Fiş üstü etiket (örn. ÖN HESAP) */
+  /** Başlık altı firma unvanı — Receipt80mm ile aynı */
+  firmTitle?: string;
+  /** Fiş üstü etiket — verilmezse `locale` için çeviri kullanılır */
   draftLabel?: string;
+  /** Fiş metinleri — Receipt80mm ile aynı kodlar */
+  locale?: KitchenReceiptLocale;
 };
 
 /**
- * 80mm adisyon / ön fiş HTML — önizleme yok, doğrudan yazıcıya gönderim için.
+ * 80mm ön fiş / adisyon — `Receipt80mm` önizlemesiyle aynı düzen; doğrudan yazıcıya.
  */
 export function buildRestaurantAdisyonHtml(input: RestaurantAdisyonPrintInput): string {
   const {
@@ -36,91 +176,38 @@ export function buildRestaurantAdisyonHtml(input: RestaurantAdisyonPrintInput): 
     companyPhone,
     companyTaxOffice,
     companyTaxNumber,
-    draftLabel = 'ÖN HESAP',
+    firmTitle,
+    draftLabel: draftLabelIn,
+    locale: localeIn = 'tr',
   } = input;
 
-  const logoTrim = logoDataUrl && String(logoDataUrl).trim();
-  const logoSafe =
-    logoTrim && logoTrim.startsWith('data:image/')
-      ? logoTrim
-      : undefined;
-  const logoHtml = logoSafe
-    ? `<img src=${JSON.stringify(logoSafe)} alt="" style="max-height:14mm;max-width:72mm;width:auto;height:auto;display:block;margin:0 auto 5px;object-fit:contain" />`
-    : '';
-  const subLine = [companyAddress, companyPhone].filter(Boolean).join(' | ');
-  const taxLines: string[] = [];
-  if (companyTaxNumber) taxLines.push(`VKN: ${companyTaxNumber}`);
-  if (companyTaxOffice) taxLines.push(`VD: ${companyTaxOffice}`);
-  const taxBlock = taxLines.map((line) => `<p class="sub" style="margin:0">${escapeHtml(line)}</p>`).join('');
+  const locale: KitchenReceiptLocale = localeIn in ADISYON_I18N ? localeIn : 'tr';
+  const L = ADISYON_I18N[locale];
+  const interimBanner = draftLabelIn?.trim() || L.draftBanner;
 
-  const itemRows = (sale.items || []).map((it: { productName?: string; quantity?: number; total?: number; price?: number }) => {
-    const name = (it.productName || '').slice(0, 22);
-    const lineTotal = it.total ?? (it.price ?? 0) * (it.quantity ?? 0);
-    return `<tr><td style="text-align:left;padding:1px 2px;font-size:9px;word-break:break-word;width:45%">${escapeHtml(name)}</td><td style="text-align:center;padding:1px 2px;font-size:9px;width:15%">${it.quantity ?? 0}x</td><td style="text-align:right;padding:1px 2px;font-size:9px;font-weight:bold;white-space:nowrap;width:40%;min-width:0">${lineTotal.toLocaleString('tr-TR')} IQD</td></tr>`;
-  }).join('');
+  const receiptSettings: ReceiptSettings = {
+    companyName,
+    logoDataUrl: logoDataUrl ?? undefined,
+    companyAddress,
+    companyPhone,
+    companyTaxOffice,
+    companyTaxNumber,
+  };
 
-  const payRows = (ctx.payments || []).map((p) => {
-    const label =
-      p.method === 'cash' ? 'NAKIT' : p.method === 'card' ? 'KART' : p.method === 'veresiye' ? 'VERESIYE' : 'QR';
-    const cur = p.currency || 'IQD';
-    const amt = (p.amount ?? 0).toLocaleString('tr-TR');
-    return `<tr><td>${label}</td><td style="text-align:right;font-weight:bold">${amt} ${cur}</td></tr>`;
-  }).join('');
-
-  const tableRow = sale.table
-    ? `<tr><td>MASA:</td><td style="text-align:right;font-weight:bold">${escapeHtml(String(sale.table))}</td></tr>`
-    : '';
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fiş - ${escapeHtml(sale.receiptNumber)}</title>
-<style>
-  /* auto: içerik kadar yükseklik — altta boş kağıt bırakmaz; kesim çizgisine yakın biter */
-  @page{size:80mm auto;margin:0}
-  html,body{height:auto!important;min-height:0!important;margin:0;padding:0}
-  body{font-family:'Courier New',Courier,monospace;padding:2mm 2mm 0 2mm;font-size:10.5px;line-height:1.28;width:80mm;max-width:80mm;box-sizing:border-box;color:#000;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact;overflow-x:hidden;page-break-after:avoid;text-rendering:optimizeLegibility}
-  *{color:#000 !important;box-sizing:border-box}
-  h2{text-align:center;margin:2px 0;font-size:13px;font-weight:800;color:#000}
-  .sub{text-align:center;font-size:8.5px;color:#000;margin:1px 0;font-weight:700}
-  .banner{text-align:center;font-size:11px;font-weight:800;margin:4px 0;padding:4px;border:1.3px dashed #000}
-  hr{border:0;border-top:1.2px solid #000;margin:3px 0}
-  table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px}
-  td{padding:1px 2px;font-size:9.5px;color:#000;font-weight:700}
-  .total{font-size:11.5px;font-weight:800;text-align:right;color:#000}
-  .center{text-align:center}
-  p{color:#000;margin:2px 0}
-  .foot{margin:0;padding:0 0 1mm 0}
-</style>
-</head><body>
-${logoHtml}
-<h2>${escapeHtml(companyName)}</h2>
-${subLine ? `<p class="sub">${escapeHtml(subLine)}</p>` : ''}
-${taxBlock}
-<div class="banner">${escapeHtml(draftLabel)}</div>
-<hr/>
-<table>
-  <tr><td>FİŞ NO:</td><td style="text-align:right;font-weight:bold">${escapeHtml(sale.receiptNumber)}</td></tr>
-  <tr><td>TARİH:</td><td style="text-align:right">${escapeHtml(new Date(sale.date).toLocaleString('tr-TR'))}</td></tr>
-  ${sale.cashier ? `<tr><td>KASİYER:</td><td style="text-align:right">${escapeHtml(sale.cashier)}</td></tr>` : ''}
-  ${tableRow}
-</table>
-<hr/>
-<table style="table-layout:fixed"><thead><tr><td style="text-align:left;font-size:8px">Ürün</td><td style="text-align:center;font-size:8px">Adet</td><td style="text-align:right;font-size:8px">Tutar</td></tr></thead><tbody>${itemRows}</tbody></table>
-<hr/>
-<table style="width:100%">
-  <tr><td>ARA TOPLAM:</td><td style="text-align:right;white-space:nowrap">${(sale.subtotal ?? 0).toLocaleString('tr-TR')} IQD</td></tr>
-  ${sale.discount > 0 ? `<tr><td>İNDİRİM:</td><td style="text-align:right;color:red">-${(sale.discount ?? 0).toLocaleString('tr-TR')} IQD</td></tr>` : ''}
-</table>
-<hr/>
-<p class="total" style="white-space:nowrap">TOPLAM: ${(sale.total ?? 0).toLocaleString('tr-TR')} IQD</p>
-<hr/>
-<p style="font-weight:800;margin:4px 0">ÖDEME:</p>
-<table>${payRows}</table>
-<p style="text-align:right;margin:4px 0">ÖDENEN: ${(ctx.totalPaid ?? 0).toLocaleString('tr-TR')} IQD</p>
-${ctx.remaining > 0.01 ? `<p style="text-align:right;font-weight:bold">KALAN: ${ctx.remaining.toLocaleString('tr-TR')} IQD</p>` : ''}
-${ctx.change > 0 ? `<p style="text-align:right">PARA ÜSTÜ: ${ctx.change.toLocaleString('tr-TR')} IQD</p>` : ''}
-<div class="foot">
-<p class="center" style="font-size:10px;color:#000;font-weight:600;margin:2px 0 0 0">*** Bizi Tercih Ettiğiniz İçin Teşekkürler ***</p>
-</div>
-</body></html>`;
+  return buildReceipt80mmPrintHtml({
+    sale,
+    paymentData: {
+      payments: ctx.payments,
+      totalPaid: ctx.totalPaid,
+      change: ctx.change,
+      remaining: ctx.remaining,
+    },
+    receiptSettings,
+    companyNameFallback: companyName,
+    firmTitle,
+    locale,
+    interimBanner,
+  });
 }
 
 function escapeHtml(s: string): string {
@@ -131,27 +218,196 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/**
- * Önizleme penceresi açmadan yazdır: Tauri → print_html_silent; aksi gizli iframe + print().
- * Gecikmeler minimum tutulur (iframe yolu tarayıcı yazdırma iletişim kutusu için).
- */
-export async function printRestaurantHtmlNoPreview(html: string): Promise<void> {
-  const isTauri = typeof window !== 'undefined' && ((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ || (window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  if (isTauri) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('print_html_silent', { html, printerName: null });
-      return;
-    } catch (e) {
-      console.warn('[restaurantReceiptPrint] print_html_silent:', e);
-    }
-  }
+export type KitchenTicketItemLine = {
+  name: string;
+  quantity: number;
+  course?: string;
+  notes?: string;
+  options?: string;
+};
 
+const KITCHEN_I18N: Record<
+  KitchenReceiptLocale,
+  {
+    title: string;
+    tableSource: string;
+    floor: string;
+    waiter: string;
+    time: string;
+    empty: string;
+    footer: string;
+    /** Tablo başlığı — adet sütunu */
+    colQty: string;
+    /** Tablo başlığı — ürün adı */
+    colProduct: string;
+  }
+> = {
+  tr: {
+    title: 'MUTFAK FİŞİ',
+    tableSource: 'MASA / KAYNAK:',
+    floor: 'BÖLGE:',
+    waiter: 'GARSON:',
+    time: 'SAAT:',
+    empty: '(kalem yok)',
+    footer: '— hazırlanacak —',
+    colQty: 'Adet',
+    colProduct: 'Ürün',
+  },
+  en: {
+    title: 'KITCHEN TICKET',
+    tableSource: 'TABLE / SOURCE:',
+    floor: 'AREA:',
+    waiter: 'SERVER:',
+    time: 'TIME:',
+    empty: '(no items)',
+    footer: '— to prepare —',
+    colQty: 'Qty',
+    colProduct: 'Item',
+  },
+  ar: {
+    title: 'فاتورة المطبخ',
+    tableSource: 'طاولة / مصدر:',
+    floor: 'منطقة:',
+    waiter: 'نادل:',
+    time: 'الوقت:',
+    empty: '(لا عناصر)',
+    footer: '— للتحضير —',
+    colQty: 'العدد',
+    colProduct: 'الصنف',
+  },
+  ku: {
+    title: 'پسوولەی چێشتخانە',
+    tableSource: 'مێز / سەرچاوە:',
+    floor: 'ناوچە:',
+    waiter: 'گەرسۆن:',
+    time: 'کات:',
+    empty: '(بێ بەرهەم)',
+    footer: '— بۆ ئامادەکردن —',
+    colQty: 'ژمارە',
+    colProduct: 'بەرهەم',
+  },
+};
+
+function kitchenDateLocale(locale: KitchenReceiptLocale): string {
+  switch (locale) {
+    case 'en':
+      return 'en-GB';
+    case 'ar':
+      return 'ar-IQ';
+    case 'ku':
+      return 'ku-IQ';
+    default:
+      return 'tr-TR';
+  }
+}
+
+/**
+ * 80mm mutfak fişi — fiyat yok; masa, zaman, kalemler ve notlar.
+ */
+export function buildRestaurantKitchenTicketHtml(input: {
+  tableNumber: string;
+  floorName?: string;
+  waiter?: string;
+  /** Sipariş / masa notu */
+  orderNote?: string;
+  items: KitchenTicketItemLine[];
+  printedAtLabel?: string;
+  /** Fiş başlığı ve meta etiketleri (varsayılan: tr) */
+  locale?: KitchenReceiptLocale;
+}): string {
+  const {
+    tableNumber,
+    floorName,
+    waiter,
+    orderNote,
+    items,
+    printedAtLabel: printedAtOverride,
+    locale: localeIn = 'tr',
+  } = input;
+
+  const locale: KitchenReceiptLocale = localeIn in KITCHEN_I18N ? localeIn : 'tr';
+  const L = KITCHEN_I18N[locale];
+  const printedAtLabel =
+    printedAtOverride ?? new Date().toLocaleString(kitchenDateLocale(locale));
+
+  const cellBorder = 'border:1px solid #000;padding:3px 4px;vertical-align:top';
+  const rows = (items || []).map((it) => {
+    const opt = it.options?.trim();
+    const nt = it.notes?.trim();
+    const crs = it.course?.trim();
+    /** Mutfakta önce sipariş notu, sonra seçenek, sonra sıra — ürün adı satırına eklenmez; tam genişlik alt satırda */
+    const detailParts = [nt, opt, crs ? `(${crs})` : ''].filter((s): s is string => Boolean(s && String(s).trim()));
+    const detailText = detailParts.join(' · ');
+    const qty = `${it.quantity}x`;
+    const mainRow = `<tr>
+<td style="${cellBorder};width:16%;min-width:14mm;text-align:center;font-size:11px;font-weight:900;white-space:nowrap">${escapeHtml(qty)}</td>
+<td style="${cellBorder};font-size:11px;font-weight:900;word-break:break-word;vertical-align:top">${escapeHtml(it.name)}</td>
+</tr>`;
+    const descRow =
+      detailParts.length > 0
+        ? `<tr>
+<td colspan="2" style="${cellBorder};font-size:10px;font-weight:700;font-style:italic;line-height:1.35;word-break:break-word;text-align:start" role="note" aria-label="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
+</tr>`
+        : '';
+    return mainRow + descRow;
+  }).join('');
+
+  const thead = `<thead><tr>
+<th style="${cellBorder};width:16%;text-align:center;font-size:8px;font-weight:800">${escapeHtml(L.colQty)}</th>
+<th style="${cellBorder};text-align:left;font-size:8px;font-weight:800">${escapeHtml(L.colProduct)}</th>
+</tr></thead>`;
+
+  const metaTdLabel = `${cellBorder};width:38%;font-size:10px;font-weight:800;word-break:break-word`;
+  const metaTdValue = `${cellBorder};text-align:right;font-size:10px;font-weight:800;word-break:break-word`;
+  const metaRows = [
+    `<tr><td style="${metaTdLabel}">${escapeHtml(L.tableSource)}</td><td style="${metaTdValue};font-weight:900">${escapeHtml(tableNumber)}</td></tr>`,
+    floorName
+      ? `<tr><td style="${metaTdLabel}">${escapeHtml(L.floor)}</td><td style="${metaTdValue}">${escapeHtml(floorName)}</td></tr>`
+      : '',
+    waiter
+      ? `<tr><td style="${metaTdLabel}">${escapeHtml(L.waiter)}</td><td style="${metaTdValue}">${escapeHtml(waiter)}</td></tr>`
+      : '',
+    `<tr><td style="${metaTdLabel}">${escapeHtml(L.time)}</td><td style="${metaTdValue};font-weight:700">${escapeHtml(printedAtLabel)}</td></tr>`,
+  ]
+    .filter(Boolean)
+    .join('');
+
+  const dir = locale === 'ar' || locale === 'ku' ? 'rtl' : 'ltr';
+
+  return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><title>${escapeHtml(L.title)}</title>
+<style>
+  @page{size:80mm auto;margin:0}
+  html,body{height:auto!important;min-height:0!important;margin:0;padding:0}
+  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:11px;line-height:1.25;width:80mm;max-width:80mm;box-sizing:border-box;color:#000;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  *{color:#000 !important;box-sizing:border-box}
+  h2{text-align:center;margin:4px 0 6px 0;font-size:15px;font-weight:900;letter-spacing:0.06em}
+  hr{border:0;border-top:1.5px dashed #000;margin:6px 0}
+  table.kitchen-lines{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin-bottom:4px}
+  table.kitchen-lines th,table.kitchen-lines td{border:1px solid #000}
+</style>
+</head><body dir="${dir}">
+<h2>${escapeHtml(L.title)}</h2>
+<table class="kitchen-lines"><tbody>${metaRows}</tbody></table>
+${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:10px;font-weight:800;border:1px dashed #000;padding:4px">${escapeHtml(orderNote.trim())}</p>` : ''}
+<hr/>
+<table class="kitchen-lines">${thead}<tbody>${rows || `<tr><td colspan="2" style="border:1px solid #000;padding:6px;font-size:10px;text-align:center">${escapeHtml(L.empty)}</td></tr>`}</tbody></table>
+<hr/>
+<p style="text-align:center;font-size:9px;font-weight:600;margin:4px 0 0 0">${escapeHtml(L.footer)}</p>
+</body></html>`;
+}
+
+/**
+ * Tam HTML belgesini gizli iframe’e yükleyip sistem yazdırma diyaloğunu açar.
+ * Ana uygulama penceresinde `body * { visibility:hidden }` tabanlı print ile boş önizleme oluşmasını önler
+ * (Receipt80mm, WebView2, bazı Chrome sürümleri).
+ */
+export async function printHtmlInHiddenIframe(html: string): Promise<void> {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
   document.body.appendChild(iframe);
-  const doc = iframe.contentWindow?.document;
+  const w = iframe.contentWindow;
+  const doc = w?.document;
   if (!doc) {
     document.body.removeChild(iframe);
     throw new Error('iframe document');
@@ -160,7 +416,10 @@ export async function printRestaurantHtmlNoPreview(html: string): Promise<void> 
   doc.write(html);
   doc.close();
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
     const cleanup = () => {
+      if (settled) return;
+      settled = true;
       try {
         document.body.removeChild(iframe);
       } catch {
@@ -168,11 +427,17 @@ export async function printRestaurantHtmlNoPreview(html: string): Promise<void> 
       }
       resolve();
     };
+    const onAfterPrint = () => {
+      w?.removeEventListener('afterprint', onAfterPrint);
+      setTimeout(cleanup, 100);
+    };
+    w?.addEventListener('afterprint', onAfterPrint);
     requestAnimationFrame(() => {
       try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
+        w?.focus();
+        w?.print();
       } catch (err) {
+        w?.removeEventListener('afterprint', onAfterPrint);
         try {
           document.body.removeChild(iframe);
         } catch {
@@ -181,7 +446,36 @@ export async function printRestaurantHtmlNoPreview(html: string): Promise<void> 
         reject(err);
         return;
       }
-      setTimeout(cleanup, 120);
+      /* afterprint her ortamda tetiklenmez (özellikle İptal) */
+      setTimeout(cleanup, 2500);
     });
   });
+}
+
+/**
+ * Önizleme penceresi açmadan yazdır: Tauri → print_html_silent; aksi gizli iframe + print().
+ * Gecikmeler minimum tutulur (iframe yolu tarayıcı yazdırma iletişim kutusu için).
+ *
+ * @param explicitPrinter — `undefined`: kasa fişi ayarındaki Windows yazıcısı; `string`: bu ad; `null`: OS varsayılanı
+ */
+export async function printRestaurantHtmlNoPreview(html: string, explicitPrinter?: string | null): Promise<void> {
+  const isTauri = typeof window !== 'undefined' && ((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ || (window as unknown as { __TAURI__?: unknown }).__TAURI__);
+  if (isTauri) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      let printerName: string | null;
+      if (explicitPrinter === undefined) {
+        const { getAccountReceiptSystemPrinterName } = await import('./restaurantAccountReceiptPrinter');
+        printerName = getAccountReceiptSystemPrinterName();
+      } else {
+        printerName = explicitPrinter;
+      }
+      await invoke('print_html_silent', { html, printerName: printerName ?? null });
+      return;
+    } catch (e) {
+      console.warn('[restaurantReceiptPrint] print_html_silent:', e);
+    }
+  }
+
+  await printHtmlInHiddenIframe(html);
 }

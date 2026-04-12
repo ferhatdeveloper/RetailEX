@@ -4,6 +4,7 @@
 
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { type Invoice } from '../../core/types';
+import { customerAPI } from './customers';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -16,6 +17,79 @@ const isValidUuid = (uuid: any): boolean => {
 function isNonEmptyScalar(v: string | number | undefined | null): boolean {
   if (v === undefined || v === null) return false;
   return String(v).trim() !== '';
+}
+
+/** Restoran `closeBill` notu — ERP fatura silinince adisyon da iptal */
+function extractRestOrderIdFromInvoiceNotes(notes?: string | null): string | null {
+  if (!notes || typeof notes !== 'string') return null;
+  const m = notes.match(/rest_order_id:([0-9a-f-]{36})/i);
+  return m ? m[1]! : null;
+}
+
+/**
+ * Satışta cari borç (müşteri bize borçlu) yalnızca veresiye / açık hesap kayıtlarında güncellenir.
+ * Nakit, kart, havale, cari bakiyeden tahsilat vb. için balance artırılmaz (MarketPOS / RestPOS / Güzellik).
+ */
+export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null): boolean {
+  const p = String(pm || '').toLowerCase().trim();
+  if (!p) return false;
+  if (p === 'veresiye' || p === 'open_account') return true;
+  if (p.includes('veresiye')) return true;
+  if (p === 'cari' || p === 'açık hesap' || p === 'acik hesap') return true;
+  return false;
+}
+
+/** Kasa hareketleri `rex_{firma}_{dönem}_cash_lines` tablosunda; silme sorgusu satışın dönemine göre çözülmeli */
+function buildCashLinePgOpts(firmRaw?: string | null, periodRaw?: string | null): { firmNr: string; periodNr: string } {
+  const firmNr = String(firmRaw ?? ERP_SETTINGS.firmNr ?? '001').trim() || '001';
+  const periodNr = String(periodRaw ?? ERP_SETTINGS.periodNr ?? '01').trim() || '01';
+  return { firmNr, periodNr };
+}
+
+/** Fiş no ile kasa satırını bul (WHERE yalnızca fiche_no — tablo adı zaten firma+dönem ile ayrılmış), bakiyeyi geri al, satırı sil */
+async function removeCashRegisterLinesForSaleFiche(
+  ficheNo: string,
+  primaryOpts: { firmNr: string; periodNr: string }
+): Promise<void> {
+  const trimmed = String(ficheNo || '').trim();
+  if (!trimmed) return;
+
+  const attempts: { firmNr: string; periodNr: string }[] = [
+    primaryOpts,
+    buildCashLinePgOpts(ERP_SETTINGS.firmNr, ERP_SETTINGS.periodNr),
+  ];
+  const seen = new Set<string>();
+  for (const opt of attempts) {
+    const key = `${opt.firmNr}|${opt.periodNr}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const { rows: cashRows } = await postgres.query(
+      `SELECT id, register_id, amount, sign FROM cash_lines WHERE fiche_no::text = $1::text`,
+      [trimmed],
+      { firmNr: opt.firmNr, periodNr: opt.periodNr }
+    );
+    if (!cashRows?.length) continue;
+
+    for (const line of cashRows) {
+      const regId = line.register_id;
+      const amt = parseFloat(String(line.amount ?? 0)) || 0;
+      const sgn = parseInt(String(line.sign ?? 1), 10) || 1;
+      const delta = amt * sgn;
+      if (regId && delta !== 0 && !Number.isNaN(delta)) {
+        await postgres.query(
+          `UPDATE cash_registers SET balance = COALESCE(balance, 0)::numeric - $1::numeric WHERE id = $2::uuid`,
+          [String(delta), regId],
+          { firmNr: opt.firmNr }
+        );
+      }
+    }
+    await postgres.query(`DELETE FROM cash_lines WHERE fiche_no::text = $1::text`, [trimmed], {
+      firmNr: opt.firmNr,
+      periodNr: opt.periodNr,
+    });
+    return;
+  }
 }
 
 /**
@@ -317,13 +391,17 @@ export const invoicesAPI = {
         }
       }
 
-      // 4. Update current account balance
+      // 4. Cari borç: yalnızca veresiye / açık hesap (nakit-kart satışta müşteri seçili olsa bile borç yazılmaz)
       const accountId = invoice.customer_id || invoice.supplier_id;
+      const salePm = (invoice as any).payment_method as string | undefined;
       if (accountId && isValidUuid(accountId)) {
         const amount = Number(invoice.total_amount || 0);
 
-        if (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet') {
-          // Satış: müşteri borcu artar (bizim alacağımız)
+        if (
+          (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
+          && paymentMethodImpliesCustomerDebt(salePm)
+        ) {
+          // Veresiye satış: müşteri borcu artar
           await postgres.query(
             `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
             [amount, accountId, firmNr],
@@ -840,7 +918,10 @@ export const invoicesAPI = {
         const accountId = invoice.customer_id || invoice.supplier_id;
         const amount = Number(invoice.total_amount || invoice.total || 0);
         if (accountId && isValidUuid(accountId) && amount > 0) {
-          if (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet') {
+          if (
+            (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
+            && paymentMethodImpliesCustomerDebt(invoice.payment_method)
+          ) {
             await postgres.query(
               `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
               [amount, accountId, firmNr]
@@ -867,10 +948,76 @@ export const invoicesAPI = {
 
   async delete(id: string): Promise<boolean> {
     try {
-      console.log('[InvoicesAPI] Deleting invoice...', id);
+      console.log('[InvoicesAPI] Deleting invoice (cascade side effects)...', id);
       const firmNr = ERP_SETTINGS.firmNr;
+      const firmNrStr = String(firmNr ?? '').trim();
+
+      let header: Invoice | null = null;
+      try {
+        header = await this.getById(id);
+      } catch {
+        header = null;
+      }
+
+      let ficheNo = header?.invoice_no ? String(header.invoice_no).trim() : '';
+      let notes = header?.notes != null ? String(header.notes) : '';
+      let paymentMethod = header?.payment_method;
+      let customerId = header?.customer_id && isValidUuid(header.customer_id) ? header.customer_id : '';
+      let totalAmt = Number(header?.total_amount ?? header?.total ?? 0);
+      let saleFirmNr: string | null = header ? String((header as any).firma_id ?? '').trim() || null : null;
+      let salePeriodNr: string | null = header ? String((header as any).donem_id ?? '').trim() || null : null;
+
+      if (!header) {
+        try {
+          const { rows: hdrRows } = await postgres.query(
+            `SELECT fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr FROM sales WHERE id::text = $1::text LIMIT 1`,
+            [String(id).trim()]
+          );
+          const h = hdrRows?.[0];
+          if (h) {
+            if (!ficheNo && h.fiche_no) ficheNo = String(h.fiche_no).trim();
+            if (!notes && h.notes != null) notes = String(h.notes);
+            if (paymentMethod == null && h.payment_method != null) paymentMethod = String(h.payment_method);
+            if (!customerId && h.customer_id && isValidUuid(h.customer_id)) customerId = String(h.customer_id);
+            if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
+            if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
+            if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+          }
+        } catch {
+          /* yedek başlık okunamazsa yalnızca sales silinir */
+        }
+      }
+
+      const restOrderId = extractRestOrderIdFromInvoiceNotes(notes);
+
+      // 1) Kasa: `cash_lines` dönem tablosunda (rex_*_*_cash_lines); satışın firm_nr/period_nr ile aynı tabloya gidilmeli
+      const cashOpts = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
+      if (ficheNo) {
+        await removeCashRegisterLinesForSaleFiche(ficheNo, cashOpts);
+      }
+
+      // 2) Veresiye: satışta eklenen cari borç geri alınır
+      if (paymentMethodImpliesCustomerDebt(paymentMethod) && customerId && totalAmt !== 0 && !Number.isNaN(totalAmt)) {
+        try {
+          await customerAPI.addBalance(customerId, -totalAmt);
+        } catch (e) {
+          console.warn('[InvoicesAPI] Veresiye bakiye geri alınamadı:', e);
+        }
+      }
+
       await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
-      await postgres.query(`DELETE FROM sales WHERE id::text::uuid = $1::text::uuid AND firm_nr::text = $2::text`, [id, String(firmNr)]);
+      await postgres.query(`DELETE FROM sales WHERE id::text::uuid = $1::text::uuid AND firm_nr::text = $2::text`, [id, firmNrStr]);
+
+      // 3) Restoran adisyonu (DB transaction dışında — farklı bağlantı / şema)
+      if (restOrderId) {
+        try {
+          const { RestaurantService } = await import('../restaurant');
+          await RestaurantService.cancelOrder(restOrderId);
+        } catch (e) {
+          console.warn('[InvoicesAPI] Bağlı restoran adisyonu iptal edilemedi:', e);
+        }
+      }
+
       return true;
     } catch (error) {
       console.error('[InvoicesAPI] delete failed:', error);
@@ -924,5 +1071,6 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     profit_margin: parseFloat(dbInv.profit_margin || 0),
     currency: dbInv.currency || 'IQD',
     currency_rate: parseFloat(dbInv.currency_rate || 1),
+    payment_method: dbInv.payment_method,
   } as Invoice;
 }

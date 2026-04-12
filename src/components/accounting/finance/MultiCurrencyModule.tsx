@@ -13,7 +13,7 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  DollarSign, 
+  Banknote, 
   TrendingUp, 
   TrendingDown,
   RefreshCw,
@@ -296,7 +296,7 @@ export function MultiCurrencyModule() {
       {/* Currency Converter */}
       <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg border-2 border-blue-200 p-6">
         <h3 className="font-semibold mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-blue-600" />
+          <Banknote className="w-5 h-5 text-blue-600" />
           Hızlı Dönüştürücü
         </h3>
         

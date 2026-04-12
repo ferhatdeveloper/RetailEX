@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Universal Invoice Module COMPLETE VERSION
  * Task 1.3: Full implementation with period control and auto-journal
  * 
@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { FileText, Plus, Search, Save, X, Printer, Send, Calendar, AlertCircle, Check, TrendingUp, DollarSign } from 'lucide-react';
+import { FileText, Plus, Search, Save, X, Printer, Send, Calendar, AlertCircle, Check, TrendingUp, Banknote } from 'lucide-react';
 import { DocumentManager } from './DocumentManager';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';

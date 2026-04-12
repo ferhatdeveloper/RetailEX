@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Layers, Package, RefreshCw, Download, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
+import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { toast } from 'sonner';
 
 export interface CategoryGroupProductRow {
@@ -70,13 +71,15 @@ export function CategoryGroupSalesProfitReport() {
 
   useEffect(() => {
     if (selectedDonem?.beg_date && selectedDonem?.end_date) {
-      setDateFrom(String(selectedDonem.beg_date).slice(0, 10));
-      setDateTo(String(selectedDonem.end_date).slice(0, 10));
+      setDateFrom(toSqlDateInputString(selectedDonem.beg_date) || '');
+      setDateTo(toSqlDateInputString(selectedDonem.end_date) || '');
     }
   }, [selectedDonem?.beg_date, selectedDonem?.end_date]);
 
   const load = useCallback(async () => {
-    if (!selectedFirma || !selectedDonem || !dateFrom || !dateTo) return;
+    const from = toSqlDateInputString(dateFrom);
+    const to = toSqlDateInputString(dateTo);
+    if (!selectedFirma || !selectedDonem || !from || !to) return;
     setLoading(true);
     try {
       const firmNr = String(selectedFirma.firm_nr || ERP_SETTINGS.firmNr || '001')
@@ -127,7 +130,7 @@ export function CategoryGroupSalesProfitReport() {
         HAVING SUM(si.quantity) <> 0
         ORDER BY 1, 2, SUM(si.net_amount) DESC
         `,
-        [firmNr, dateFrom, dateTo],
+        [firmNr, from, to],
         { firmNr: firmNr, periodNr: String(selectedDonem.nr ?? ERP_SETTINGS.periodNr).padStart(2, '0') }
       );
 
@@ -230,7 +233,7 @@ export function CategoryGroupSalesProfitReport() {
             Başlangıç
             <input
               type="date"
-              value={dateFrom}
+              value={toSqlDateInputString(dateFrom) || ''}
               onChange={(e) => setDateFrom(e.target.value)}
               className="rounded border border-slate-200 px-2 py-1 text-sm"
             />
@@ -239,7 +242,7 @@ export function CategoryGroupSalesProfitReport() {
             Bitiş
             <input
               type="date"
-              value={dateTo}
+              value={toSqlDateInputString(dateTo) || ''}
               onChange={(e) => setDateTo(e.target.value)}
               className="rounded border border-slate-200 px-2 py-1 text-sm"
             />

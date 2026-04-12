@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import {
     UtensilsCrossed,
     LayoutGrid,
@@ -34,6 +34,7 @@ import { KitchenDisplay } from './components/KitchenDisplay';
 import { RecipeManagement } from './components/RecipeManagement';
 import { TicketHistory } from './components/TicketHistory';
 import { VoidReturnReport } from './components/VoidReturnReport';
+import { RestaurantProductQtyReport } from './components/RestaurantProductQtyReport';
 import { RestPOS } from './components/RestPOS';
 import { ModuleWrapper } from './components/ModuleWrapper';
 import { POSOpenCashRegisterModal } from '../pos/POSOpenCashRegisterModal';
@@ -55,9 +56,11 @@ import { useRestaurantStore } from './store/useRestaurantStore';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { RestaurantService } from '../../services/restaurant';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { moduleTranslations } from '../../locales/module-translations';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import type { Product, Customer, Campaign, User as UserType, Sale } from '../../core/types';
 import { isMainModuleVisible } from '../../utils/mainModuleVisibility';
+import { formatCurrency } from '../../utils/currency';
 import './restaurant-premium.css';
 
 interface RestaurantModuleProps {
@@ -97,7 +100,14 @@ export default function RestaurantModule({
     setActiveModule
 }: RestaurantModuleProps) {
     const { hasPermission, isAdmin } = usePermission();
-    const { t } = useLanguage();
+    const { tm, language } = useLanguage();
+    const dateLocale =
+        language === 'en' ? 'en-US' : language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : 'tr-TR';
+    const formatWorkDayLabel = (wd: string | null | undefined) => {
+        if (!wd) return tm('resClosedState');
+        if (wd.includes('.')) return wd;
+        return new Date(`${wd}T12:00:00`).toLocaleDateString(dateLocale);
+    };
 
     const handleZoomIn = () => {
         if (!setZoomLevel || zoomLevel === undefined) return;
@@ -118,7 +128,7 @@ export default function RestaurantModule({
         setZoomLevel(100);
         localStorage.setItem('retailos_zoom_level', '100');
     };
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'productQtyReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [moveTableSource, setMoveTableSource] = useState<Table | null>(null);
     const [showStaffModalOnFloor, setShowStaffModalOnFloor] = useState(false);
@@ -132,6 +142,7 @@ export default function RestaurantModule({
         loadMenu,
         loadRegions,
         loadRecipes,
+        loadPrinterConfigFromDb,
         loadCategories,
         syncTableStatuses,
         loadKitchenOrders,
@@ -144,6 +155,9 @@ export default function RestaurantModule({
         registerOpeningCash,
     } = useRestaurantStore();
     const [callerIdPickRequest, setCallerIdPickRequest] = useState<RestaurantCallerIdPickRequest | null>(null);
+
+    /** Otomatik gün sonu — güncel React state ile Z modalını açar */
+    const runAutoCloseRef = useRef<() => Promise<void>>(async () => {});
 
     const [showRegisterModal, setShowRegisterModal] = useState(false);
     const [showZReport, setShowZReport] = useState(false);
@@ -159,6 +173,7 @@ export default function RestaurantModule({
         loadMenu();
         loadRegions();
         loadRecipes();
+        void loadPrinterConfigFromDb();
     }, []);
 
     useEffect(() => {
@@ -232,6 +247,57 @@ export default function RestaurantModule({
         return () => clearInterval(interval);
     }, [syncTableStatuses, loadKitchenOrders]);
 
+    useEffect(() => {
+        runAutoCloseRef.current = async () => {
+            const st = useRestaurantStore.getState();
+            const activeTablesCount = st.tables.filter(t => t.status !== 'empty' && t.status !== 'reserved').length;
+            const todayStr = new Date().toISOString().slice(0, 10);
+            if (activeTablesCount > 0) {
+                alert(tm('resAlertAutoCloseBlocked').replace('{n}', String(activeTablesCount)));
+                return;
+            }
+            const dateStr = st.workDayDate || todayStr;
+            try {
+                const dbData = await RestaurantService.getZReportData(dateStr);
+                const closedAt = new Date().toISOString();
+                setZReportData({
+                    date: closedAt,
+                    openedAt: new Date(Date.now() - 10 * 3600000).toISOString(),
+                    closedAt,
+                    staffName: st.currentStaff?.name || currentUser?.fullName || currentUser?.username || tm('resStaffAuto'),
+                    openingCash: st.registerOpeningCash,
+                    ...dbData,
+                });
+                setShowZReport(true);
+                st.closeRegister();
+                st.setWorkDayAutomation({ workDayLastAutoEndDate: todayStr });
+            } catch (err: any) {
+                console.error(err);
+                const msg = err?.message || String(err);
+                alert(msg.includes('Z-Raporu') ? msg : tm('resAlertZFailedAuto').replace('{msg}', msg));
+            }
+        };
+    }, [currentUser?.fullName, currentUser?.username, tm]);
+
+    useEffect(() => {
+        const id = setInterval(() => {
+            const s = useRestaurantStore.getState();
+            const now = new Date();
+            const todayStr = now.toISOString().slice(0, 10);
+            const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+            if (s.workDayAutoStartEnabled && !s.isDayActive && hm === s.workDayStartTime && s.workDayLastAutoStartDate !== todayStr) {
+                s.openRegister(s.workDayAutoOpeningCash, tm('resOpenRegisterAutoNote'));
+                s.setWorkDayAutomation({ workDayLastAutoStartDate: todayStr });
+            }
+
+            if (s.workDayAutoEndEnabled && s.isDayActive && hm === s.workDayEndTime && s.workDayLastAutoEndDate !== todayStr) {
+                void runAutoCloseRef.current();
+            }
+        }, 20000);
+        return () => clearInterval(id);
+    }, [tm]);
+
     const handleSelectTable = (table: Table, covers: number) => {
         setSelectedTable(table);
         setInitialCovers(covers);
@@ -241,7 +307,7 @@ export default function RestaurantModule({
     const handlePrintZReport = () => {
         if (!zReportData) return;
         const d = zReportData;
-        const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD' }).format(num);
+        const fmt = (num: number) => formatCurrency(num, 0, false);
         const esc = (s: string) =>
             String(s ?? '')
                 .replace(/&/g, '&amp;')
@@ -253,7 +319,7 @@ export default function RestaurantModule({
         if (!win) return;
 
         const productRows = (d.salesByProduct || []).map((p: any) =>
-            `<tr><td>${esc(p.productName)}</td><td style="text-align:right">${Number(p.quantity ?? 0).toLocaleString('tr-TR', { maximumFractionDigits: 3 })}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
+            `<tr><td>${esc(p.productName)}</td><td style="text-align:right">${Number(p.quantity ?? 0).toLocaleString(dateLocale, { maximumFractionDigits: 3 })}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
         ).join('');
 
         const categoryRows = (d.salesByCategory || []).map((c: any) =>
@@ -264,12 +330,9 @@ export default function RestaurantModule({
             `<tr><td>${esc(String(p.type))}</td><td style="text-align:right">${p.count}</td><td style="text-align:right">${fmt(p.amount)}</td></tr>`
         ).join('');
 
-        const voidRows = (d.voids || []).map((v: any) =>
-            `<tr><td>${esc(String(v.reason))}</td><td style="text-align:right">${v.count}</td><td style="text-align:right">${fmt(v.amount)}</td></tr>`
-        ).join('');
-
+        const zTitle = `Z — ${new Date(d.date).toLocaleDateString(dateLocale)}`;
         win.document.write(`
-            <html><head><title>Z-Raporu - ${new Date(d.date).toLocaleDateString('tr-TR')}</title>
+            <html><head><title>${esc(zTitle)}</title>
             <style>
                 body{font-family:'Courier New',Courier,monospace;margin:0;padding:30px;font-size:13px;color:#000;background:#fff}
                 .ticket{max-width:400px;margin:0 auto}
@@ -281,26 +344,28 @@ export default function RestaurantModule({
             </style>
             </head><body>
             <div class="ticket">
-                <h1>RETAILEX ERP</h1>
+                <h1>${esc(tm('resZPrintBrand'))}</h1>
                 <hr/>
-                <p>TARİH: ${new Date(d.date).toLocaleDateString('tr-TR')}</p>
-                <p>SORUMLU: ${d.staffName}</p>
+                <p>${esc(tm('resZPrintDateLabel'))}: ${new Date(d.date).toLocaleDateString(dateLocale)}</p>
+                <p>${esc(tm('resZPrintStaffLabel'))}: ${esc(String(d.staffName ?? ''))}</p>
                 <hr/>
-                <h3>TOPLAM SATIŞ: ${fmt(d.totalSales)}</h3>
+                <h3>${esc(tm('resZPrintTotalSales'))}: ${fmt(d.totalSales)}</h3>
+                <h3>${esc(tm('resZPrintRefund'))}: ${fmt(d.returns?.amount || 0)}</h3>
+                <h3>${esc(tm('resZPrintComplement'))}: ${fmt(d.complements?.amount || 0)}</h3>
                 <hr/>
-                <h4 style="margin:12px 0 6px;font-size:14px">Satılan ürünler</h4>
+                <h4 style="margin:12px 0 6px;font-size:14px">${esc(tm('resZPrintSoldProducts'))}</h4>
                 <table>
-                    <thead><tr><th>Ürün</th><th style="text-align:right">Miktar</th><th style="text-align:right">Tutar</th></tr></thead>
-                    <tbody>${productRows || '<tr><td colspan="3" style="text-align:center;color:#666">Kayıt yok</td></tr>'}</tbody>
+                    <thead><tr><th>${esc(tm('resZPrintColProduct'))}</th><th style="text-align:right">${esc(tm('resZPrintColQty'))}</th><th style="text-align:right">${esc(tm('resZPrintColAmount'))}</th></tr></thead>
+                    <tbody>${productRows || `<tr><td colspan="3" style="text-align:center;color:#666">${esc(tm('resZPrintNoRows'))}</td></tr>`}</tbody>
                 </table>
                 <hr/>
                 <table>
-                    <thead><tr><th>Kategori</th><th style="text-align:right">Adet</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <thead><tr><th>${esc(tm('resZPrintCategory'))}</th><th style="text-align:right">${esc(tm('resZPrintColCount'))}</th><th style="text-align:right">${esc(tm('resZPrintColAmount'))}</th></tr></thead>
                     <tbody>${categoryRows}</tbody>
                 </table>
                 <hr/>
                 <table>
-                    <thead><tr><th>Ödeme</th><th style="text-align:right">Adet</th><th style="text-align:right">Tutar</th></tr></thead>
+                    <thead><tr><th>${esc(tm('resZPrintPayment'))}</th><th style="text-align:right">${esc(tm('resZPrintColCount'))}</th><th style="text-align:right">${esc(tm('resZPrintColAmount'))}</th></tr></thead>
                     <tbody>${paymentRows}</tbody>
                 </table>
             </div>
@@ -327,10 +392,13 @@ export default function RestaurantModule({
                 <div className="flex items-center gap-6">
                     <div className="hidden md:flex items-center gap-6">
                         <div className="flex items-center gap-2 text-white/70 font-bold text-sm">
-                            <Users className="w-4 h-4" /> <span>{activeTablesCount + emptyTablesCount} Masa</span>
+                            <Users className="w-4 h-4" />{' '}
+                            <span>
+                                {activeTablesCount + emptyTablesCount} {tm('resTablesWord')}
+                            </span>
                         </div>
                         <div className="flex items-center gap-2 font-bold text-sm text-blue-200">
-                            <PlusCircle className="w-4 h-4" /> <span>Garson Talebi: 0</span>
+                            <PlusCircle className="w-4 h-4" /> <span>{tm('resWaiterRequestZero')}</span>
                         </div>
                     </div>
 
@@ -338,29 +406,29 @@ export default function RestaurantModule({
 
                     <div className="flex items-center gap-4">
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">Mali Gün</span>
-                            <span className="text-sm font-bold text-white leading-none">{workDayDate ? (workDayDate.includes('.') ? workDayDate : new Date(workDayDate + 'T12:00:00').toLocaleDateString('tr-TR')) : 'KAPALI'}</span>
+                            <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">{tm('resFiscalDayHeader')}</span>
+                            <span className="text-sm font-bold text-white leading-none">{formatWorkDayLabel(workDayDate)}</span>
                         </div>
 
                         <div className="flex items-center gap-1 bg-white/10 p-1 rounded-xl border border-white/5">
                             <button
                                 onClick={handleZoomOut}
                                 className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all active:scale-95"
-                                title="Küçült"
+                                title={tm('resZoomOutTitle')}
                             >
                                 <ZoomOut className="w-4.5 h-4.5" />
                             </button>
                             <button
                                 onClick={handleZoomReset}
                                 className="px-2 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white font-bold text-[10px] transition-all active:scale-95 min-w-[45px]"
-                                title="Sıfırla"
+                                title={tm('resZoomResetTitle')}
                             >
                                 {zoomLevel}%
                             </button>
                             <button
                                 onClick={handleZoomIn}
                                 className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all active:scale-95"
-                                title="Büyüt"
+                                title={tm('resZoomInTitle')}
                             >
                                 <ZoomIn className="w-4.5 h-4.5" />
                             </button>
@@ -371,7 +439,7 @@ export default function RestaurantModule({
                         <button
                             onClick={() => setShowLanguageModal(true)}
                             className="p-2 hover:bg-white/10 rounded-lg transition-all text-white/70 hover:text-white group"
-                            title="Dil Değiştir"
+                            title={tm('resLanguageSwitchTitle')}
                         >
                             <Languages className="w-5 h-5 group-hover:rotate-12 transition-transform" />
                         </button>
@@ -382,7 +450,7 @@ export default function RestaurantModule({
                             </div>
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-xs font-bold text-white leading-tight">{currentUser.fullName || currentUser.username}</span>
-                                <span className="text-[9px] font-medium text-blue-200 uppercase tracking-wider">{currentUser.role || 'GÖREVLİ'}</span>
+                                <span className="text-[9px] font-medium text-blue-200 uppercase tracking-wider">{currentUser.role || tm('resRoleStaffDefault')}</span>
                             </div>
                         </div>
 
@@ -417,15 +485,19 @@ export default function RestaurantModule({
                             <div className="res-stat-card cursor-pointer bg-red-500" onClick={() => setActiveTab('floor')}>
                                 <UtensilsCrossed className="w-6 h-6 text-white" />
                                 <div className="ml-5">
-                                    <div className="res-stat-value text-white">{activeTablesCount} DOLU</div>
-                                    <div className="res-stat-label text-white/80">MASA DURUMU</div>
+                                    <div className="res-stat-value text-white">
+                                        {activeTablesCount} {tm('resStatFull')}
+                                    </div>
+                                    <div className="res-stat-label text-white/80">{tm('resStatTableStatus')}</div>
                                 </div>
                             </div>
                             <div className="res-stat-card cursor-pointer bg-blue-500" onClick={() => setActiveTab('floor')}>
                                 <LayoutGrid className="w-6 h-6 text-white" />
                                 <div className="ml-5">
-                                    <div className="res-stat-value text-white">{emptyTablesCount} BOŞ</div>
-                                    <div className="res-stat-label text-white/80">MÜSAİT MASA</div>
+                                    <div className="res-stat-value text-white">
+                                        {emptyTablesCount} {tm('resStatEmpty')}
+                                    </div>
+                                    <div className="res-stat-label text-white/80">{tm('resStatAvailableTable')}</div>
                                 </div>
                             </div>
                             <div className="res-stat-card cursor-pointer" style={{ backgroundColor: isDayActive ? '#10b981' : '#8b5cf6' }}
@@ -435,10 +507,12 @@ export default function RestaurantModule({
                                         return;
                                     }
                                     if (activeTablesCount > 0) {
-                                        alert(`Uyarı: Gün kapatılamaz. Hala açık olan ${activeTablesCount} masa var. Önce masaları kapatın veya hesap alın.`);
+                                        alert(
+                                            tm('resAlertCannotCloseOpenTables').replace('{n}', String(activeTablesCount))
+                                        );
                                         return;
                                     }
-                                    if (!confirm('Mali günü kapatmak ve Z-Raporu almak istiyor musunuz? Kapatıldıktan sonra yeni gün başlatmanız gerekir.')) return;
+                                    if (!confirm(tm('resConfirmCloseDayZ'))) return;
                                     const closedAt = new Date().toISOString();
                                     const dateStr = workDayDate || new Date().toISOString().slice(0, 10);
                                     try {
@@ -447,7 +521,7 @@ export default function RestaurantModule({
                                             date: closedAt,
                                             openedAt: new Date(Date.now() - 10 * 3600000).toISOString(),
                                             closedAt,
-                                            staffName: storeStaff?.name || 'Yönetici',
+                                            staffName: storeStaff?.name || tm('resStaffManager'),
                                             openingCash: registerOpeningCash,
                                             ...dbData,
                                         });
@@ -456,13 +530,21 @@ export default function RestaurantModule({
                                     } catch (err: any) {
                                         console.error(err);
                                         const msg = err?.message || String(err);
-                                        alert(msg.includes('Z-Raporu') ? msg : `Z-Raporu alınamadı. ${msg}\n\nGün kapatılmadı.`);
+                                        alert(
+                                            msg.includes('Z-Raporu')
+                                                ? msg
+                                                : tm('resAlertZFailedClose').replace('{msg}', msg)
+                                        );
                                     }
                                 }}>
                                 <Clock className="w-6 h-6 text-white" />
                                 <div className="ml-5">
-                                    <div className="res-stat-value text-white">{isDayActive ? 'GÜNÜ KAPAT' : 'GÜNÜ BAŞLAT'}</div>
-                                    <div className="res-stat-label text-white/80">MALİ GÜN ({workDayDate ? (workDayDate.includes('.') ? workDayDate : new Date(workDayDate + 'T12:00:00').toLocaleDateString('tr-TR')) : 'KAPALI'})</div>
+                                    <div className="res-stat-value text-white">
+                                        {isDayActive ? tm('resDayClose') : tm('resDayStart')}
+                                    </div>
+                                    <div className="res-stat-label text-white/80">
+                                        {tm('resFiscalDayLine').replace('{date}', formatWorkDayLabel(workDayDate))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -471,55 +553,63 @@ export default function RestaurantModule({
                         <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 md:gap-6">
                                 {hasPermission('restaurant.pos', 'READ') && (
-                                    <DashboardTile icon={<UtensilsCrossed />} label="Servis" color="#ef4444" onClick={() => setActiveTab('floor')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<UtensilsCrossed />} label={tm('resTileService')} color="#ef4444" onClick={() => setActiveTab('floor')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.delivery', 'READ') && (
-                                    <DashboardTile icon={<Bike />} label="Paket Servis" color="#3b82f6" onClick={() => setActiveTab('delivery')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Bike />} label={tm('resTileDelivery')} color="#3b82f6" onClick={() => setActiveTab('delivery')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('pos', 'READ') && (
-                                    <DashboardTile icon={<ShoppingCart />} label="Perakende" color="#10b981" onClick={() => { setSelectedTable(null); setPosMode('retail'); setActiveTab('pos'); }} disabled={!isDayActive} />
+                                    <DashboardTile icon={<ShoppingCart />} label={tm('resTileRetail')} color="#10b981" onClick={() => { setSelectedTable(null); setPosMode('retail'); setActiveTab('pos'); }} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.takeaway', 'READ') && (
-                                    <DashboardTile icon={<ShoppingBag />} label="Gel Al" color="#f59e0b" onClick={() => setActiveTab('takeaway')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<ShoppingBag />} label={tm('resTileTakeaway')} color="#f59e0b" onClick={() => setActiveTab('takeaway')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.selfservice', 'READ') && (
-                                    <DashboardTile icon={<Coffee />} label="Self Servis" color="#8b5cf6" onClick={() => { setSelectedTable(null); setPosMode('selfservice'); setActiveTab('pos'); }} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Coffee />} label={tm('resTileSelfService')} color="#8b5cf6" onClick={() => { setSelectedTable(null); setPosMode('selfservice'); setActiveTab('pos'); }} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.orders', 'READ') && (
-                                    <DashboardTile icon={<History />} label="Siparişler" color="#06b6d4" onClick={() => setActiveTab('history')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<History />} label={tm('resTileOrders')} color="#06b6d4" onClick={() => setActiveTab('history')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.pos', 'READ') && (
-                                    <DashboardTile icon={<FileText />} label="İptal / İade Raporu" color="#dc2626" onClick={() => setActiveTab('voidReport')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<FileText />} label={tm('resTileVoidReturn')} color="#dc2626" onClick={() => setActiveTab('voidReport')} disabled={!isDayActive} />
+                                )}
+                                {(hasPermission('restaurant.reports', 'READ') || hasPermission('restaurant.pos', 'READ')) && (
+                                    <DashboardTile
+                                        icon={<BarChart3 />}
+                                        label={tm('resProductQtyReportTitle')}
+                                        color="#7c3aed"
+                                        onClick={() => setActiveTab('productQtyReport')}
+                                    />
                                 )}
                                 {hasPermission('restaurant.reservations', 'READ') && (
-                                    <DashboardTile icon={<CalendarDays />} label="Rezervasyon" color="#f43f5e" onClick={() => setActiveTab('reservations')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<CalendarDays />} label={tm('resTileReservations')} color="#f43f5e" onClick={() => setActiveTab('reservations')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('contacts.customers', 'READ') && (
-                                    <DashboardTile icon={<Users />} label="Müşteriler" color="#1fb141" onClick={() => setActiveTab('customers')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Users />} label={tm('resTileCustomers')} color="#1fb141" onClick={() => setActiveTab('customers')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.reports', 'READ') && (
-                                    <DashboardTile icon={<BarChart3 />} label="Raporlar" color="#6366f1" onClick={() => setActiveTab('reports')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<BarChart3 />} label={tm('resTileReports')} color="#6366f1" onClick={() => setActiveTab('reports')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('stock', 'READ') && (
-                                    <DashboardTile icon={<Box />} label="Stok" color="#64748b" onClick={() => setActiveTab('stock')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Box />} label={tm('resTileStock')} color="#64748b" onClick={() => setActiveTab('stock')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('accounting.cash', 'READ') && (
-                                    <DashboardTile icon={<CreditCard />} label="Kasa" color="#fb923c" onClick={() => setActiveTab('cash')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<CreditCard />} label={tm('resTileCash')} color="#fb923c" onClick={() => setActiveTab('cash')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.smart_table', 'READ') && (
-                                    <DashboardTile icon={<Monitor />} label="Akıllı Masa" color="#0ea5e9" onClick={() => setActiveTab('floor')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Monitor />} label={tm('resTileSmartTable')} color="#0ea5e9" onClick={() => setActiveTab('floor')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.kds', 'READ') && (
-                                    <DashboardTile icon={<ChefHat />} label="Mutfak Paneli" color="#ec4899" onClick={() => setActiveTab('kds')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<ChefHat />} label={tm('resTileKitchen')} color="#ec4899" onClick={() => setActiveTab('kds')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.recipes', 'READ') && (
-                                    <DashboardTile icon={<Layers />} label="Reçeteler" color="#475569" onClick={() => setActiveTab('recipes')} disabled={!isDayActive} />
+                                    <DashboardTile icon={<Layers />} label={tm('resTileRecipes')} color="#475569" onClick={() => setActiveTab('recipes')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.settings', 'READ') && (
-                                    <DashboardTile icon={<Settings />} label="Ayarlar" color="#0f172a" onClick={() => setActiveTab('settings')} />
+                                    <DashboardTile icon={<Settings />} label={tm('resTileSettings')} color="#0f172a" onClick={() => setActiveTab('settings')} />
                                 )}
                                 {hasPermission('management', 'READ') && isMainModuleVisible('management') && (
-                                    <DashboardTile icon={<LayoutGrid />} label="Yönetim" color="#d946ef" onClick={() => setActiveModule?.('management')} />
+                                    <DashboardTile icon={<LayoutGrid />} label={tm('resTileManagement')} color="#d946ef" onClick={() => setActiveModule?.('management')} />
                                 )}
                             </div>
                         </div>
@@ -563,7 +653,7 @@ export default function RestaurantModule({
             {showRegisterModal && (
                 <POSOpenCashRegisterModal
                     onClose={() => setShowRegisterModal(false)}
-                    currentStaff={storeStaff?.name || initialStaff?.name || 'Yönetici'}
+                    currentStaff={storeStaff?.name || initialStaff?.name || tm('resStaffManager')}
                     onOpenRegister={(amount, note) => {
                         openRegister(amount, note);
                         setShowRegisterModal(false);
@@ -667,6 +757,11 @@ function RestaurantContent({
     callerIdDeliveryPhone,
     onCallerIdDeliveryConsumed,
 }: RestaurantContentProps) {
+    const { language, tm: globalTm } = useLanguage();
+    const tm = useCallback(
+        (key: string) => moduleTranslations[key]?.[language] || globalTm(key),
+        [language, globalTm]
+    );
     const { tables, moveTable, mergeTables } = useRestaurantStore();
     const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
 
@@ -697,7 +792,12 @@ function RestaurantContent({
                             setSelectedTable(targetTable || moveTableSource!);
                         } catch (e: any) {
                             console.error(e);
-                            alert('Masa taşınırken hata: ' + (e?.message || 'Bilinmeyen hata'));
+                            alert(
+                                tm('resAlertMoveTableError').replace(
+                                    '{msg}',
+                                    e?.message || tm('resErrorUnknown')
+                                )
+                            );
                         }
                     }}
                     onMoveCancel={() => { setMoveTableSource(null); setMoveTargetTableId(null); }}
@@ -729,26 +829,29 @@ function RestaurantContent({
             {activeTab === 'recipes' && <RecipeManagement onBack={() => setActiveTab('dashboard')} />}
             {activeTab === 'history' && <TicketHistory onClose={() => setActiveTab('dashboard')} />}
             {activeTab === 'voidReport' && <VoidReturnReport onBack={() => setActiveTab('dashboard')} />}
+            {activeTab === 'productQtyReport' && (
+                <RestaurantProductQtyReport onBack={() => setActiveTab('dashboard')} />
+            )}
             {activeTab === 'customers' && (
-                <ModuleWrapper title="Müşteri Yönetimi" onBack={() => setActiveTab('dashboard')}>
+                <ModuleWrapper title={tm('resModuleCustomersTitle')} onBack={() => setActiveTab('dashboard')}>
                     <Suspense fallback={<LoadingSpinner />}><CustomerManagementModule sales={[]} customers={customers} setCustomers={() => { }} /></Suspense>
                 </ModuleWrapper>
             )}
             {activeTab === 'stock' && (
-                <ModuleWrapper title="Stok ve Envanter" onBack={() => setActiveTab('dashboard')}>
+                <ModuleWrapper title={tm('resModuleStockTitle')} onBack={() => setActiveTab('dashboard')}>
                     <Suspense fallback={<LoadingSpinner />}><StockModule products={products} setProducts={() => { }} /></Suspense>
                 </ModuleWrapper>
             )}
             {activeTab === 'reports' && (
-                <ModuleWrapper title="Raporlar ve Analiz" onBack={() => setActiveTab('dashboard')}>
-                    <Suspense fallback={<LoadingSpinner />}><ReportsModule sales={sales} products={products} /></Suspense>
+                <ModuleWrapper title={tm('resModuleReportsTitle')} onBack={() => setActiveTab('dashboard')}>
+                    <Suspense fallback={<LoadingSpinner />}><ReportsModule sales={sales} products={products} initialBusinessType="restaurant" /></Suspense>
                 </ModuleWrapper>
             )}
             {activeTab === 'settings' && (
                 <div className="h-full bg-white"><RestaurantSettings onBack={() => setActiveTab('dashboard')} /></div>
             )}
             {activeTab === 'cash' && (
-                <ModuleWrapper title="Kasa ve Finans" onBack={() => setActiveTab('dashboard')}>
+                <ModuleWrapper title={tm('resModuleCashTitle')} onBack={() => setActiveTab('dashboard')}>
                     <Suspense fallback={<LoadingSpinner />}><KasalarModule /></Suspense>
                 </ModuleWrapper>
             )}

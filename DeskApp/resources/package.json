@@ -1,0 +1,10 @@
+{
+  "name": "retailex-sql-bridge",
+  "private": true,
+  "description": "PostgreSQL bridge for RetailEX (Windows service / node bridge.cjs)",
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "hono": "^4.12.5",
+    "pg": "^8.18.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { UserCog, Users, DollarSign } from 'lucide-react';
+import { UserCog, Users, Banknote } from 'lucide-react';
 
 export function HRModule() {
   const employees = [
@@ -33,7 +33,7 @@ export function HRModule() {
             </div>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-green-600" />
+                <Banknote className="w-4 h-4 text-green-600" />
                 <span className="text-[10px] text-gray-600">Aylık Bordro</span>
               </div>
               <div className="text-base text-green-600">{employees.reduce((s, e) => s + e.salary, 0).toLocaleString()}</div>

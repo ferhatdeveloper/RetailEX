@@ -1,0 +1,9 @@
+# pg_bridge (Hono) — web ortamında SQL proxy (:3001)
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+ENV NODE_ENV=production
+EXPOSE 3001
+CMD ["npx", "tsx", "src/services/pg_bridge.ts"]

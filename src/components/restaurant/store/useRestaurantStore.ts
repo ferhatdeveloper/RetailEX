@@ -15,6 +15,22 @@ import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { categoryAPI, type Category } from '../../../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { convertUnit } from '../utils/unitConverter';
+import { printKitchenTicketsAfterSend } from '../../../utils/restaurantKitchenPrint';
+
+/** `closeBill` — kasa/satış kaydı sepetle aynı olsun diye (store gecikmesinde) */
+export type CloseBillSaleOverride = {
+    items: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        price: number;
+        discount: number;
+        total: number;
+    }>;
+    subtotal: number;
+    discount: number;
+    total: number;
+};
 
 interface RestaurantState {
     tables: Table[];
@@ -42,7 +58,7 @@ interface RestaurantState {
     openTable: (tableId: string, waiter: string) => Promise<void>;
     addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => Promise<string | undefined>;
     requestBill: (tableId: string) => Promise<void>;
-    closeBill: (tableId: string, paymentData: any) => Promise<void>;
+    closeBill: (tableId: string, paymentData: any, options?: { saleOverride?: CloseBillSaleOverride }) => Promise<void>;
     markAsClean: (tableId: string) => Promise<void>;
     /** Masayı servisten çıkarıp temizlik aşamasına alır (served → cleaning) */
     markAsCleaning: (tableId: string) => Promise<void>;
@@ -77,6 +93,8 @@ interface RestaurantState {
     addRegion: (region: Region, storeId: string | null) => Promise<void>;
     updateRegion: (regionId: string, updates: { name: string }, storeId: string | null) => Promise<void>;
     removeRegion: (regionId: string) => Promise<void>;
+    /** app_settings’ten yazıcı profilleri ve kategori rotalarını yükler */
+    loadPrinterConfigFromDb: () => Promise<void>;
     updatePrinterRoute: (route: PrinterRouting) => void;
     removePrinterRoute: (routeId: string) => void;
     updatePrinterProfile: (profile: PrinterProfile) => void;
@@ -110,12 +128,49 @@ interface RestaurantState {
     closeRegister: () => void;
     loadSystemPrinters: () => Promise<void>;
 
+    /** Mali gün: belirlenen saatte otomatik başlat / sonlandır (ayarlar + zamanlayıcı) */
+    workDayAutoStartEnabled: boolean;
+    workDayAutoEndEnabled: boolean;
+    workDayStartTime: string;
+    workDayEndTime: string;
+    workDayAutoOpeningCash: number;
+    /** Aynı gün iki kez otomatik tetiklenmesin */
+    workDayLastAutoStartDate: string | null;
+    workDayLastAutoEndDate: string | null;
+    setWorkDayAutomation: (
+        partial: Partial<{
+            workDayAutoStartEnabled: boolean;
+            workDayAutoEndEnabled: boolean;
+            workDayStartTime: string;
+            workDayEndTime: string;
+            workDayAutoOpeningCash: number;
+            workDayLastAutoStartDate: string | null;
+            workDayLastAutoEndDate: string | null;
+        }>
+    ) => void;
+
     // Reservation Actions
     loadReservations: (date?: string) => Promise<void>;
     addReservation: (res: Omit<Reservation, 'id'>) => Promise<void>;
     updateReservation: (res: Reservation) => Promise<void>;
     deleteReservation: (id: string) => Promise<void>;
     updateReservationStatus: (id: string, status: Reservation['status']) => Promise<void>;
+}
+
+let _printerPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRestaurantPrinterPersist(get: () => RestaurantState) {
+    if (_printerPersistTimer) clearTimeout(_printerPersistTimer);
+    _printerPersistTimer = setTimeout(() => {
+        _printerPersistTimer = null;
+        const s = get();
+        void import('../../../services/restaurantPrinterConfigService').then(({ saveRestaurantPrinterConfig }) =>
+            saveRestaurantPrinterConfig({
+                printerProfiles: s.printerProfiles,
+                printerRoutes: s.printerRoutes,
+                commonPrinterId: s.commonPrinterId,
+            })
+        ).catch((e) => console.warn('[restaurant] printer persist', e));
+    }, 500);
 }
 
 export const useRestaurantStore = create<RestaurantState>()(
@@ -136,6 +191,13 @@ export const useRestaurantStore = create<RestaurantState>()(
             registerOpeningNote: '',
             workDayDate: null,
             isDayActive: false,
+            workDayAutoStartEnabled: false,
+            workDayAutoEndEnabled: false,
+            workDayStartTime: '06:00',
+            workDayEndTime: '23:00',
+            workDayAutoOpeningCash: 0,
+            workDayLastAutoStartDate: null,
+            workDayLastAutoEndDate: null,
             systemPrinters: [],
             reservations: [],
             categories: [],
@@ -324,6 +386,16 @@ export const useRestaurantStore = create<RestaurantState>()(
                         )
                     }));
                     await RestaurantService.updateTableStatus(tableId, 'kitchen', table.waiter, table.staffId, table.total);
+
+                    const st = get();
+                    void printKitchenTicketsAfterSend({
+                        table,
+                        pendingItems,
+                        menu: st.menu,
+                        printerProfiles: st.printerProfiles,
+                        printerRoutes: st.printerRoutes,
+                        commonPrinterId: st.commonPrinterId,
+                    });
                 } catch (error) {
                     console.error("Mutfak siparişi gönderilirken hata oluştu:", error);
                     throw error;
@@ -353,7 +425,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                 }
             },
 
-            closeBill: async (tableId, paymentData) => {
+            closeBill: async (tableId, paymentData, options) => {
                 const table = get().tables.find(t => t.id === tableId);
                 if (!table) return;
                 try {
@@ -375,7 +447,10 @@ export const useRestaurantStore = create<RestaurantState>()(
                     }
                     if (!orderId) throw new Error('Order selection failed');
                     const linkedOrderIds = (table.mergedOrders || []).map(m => m.orderId);
-                    const paymentMethod = paymentData.payments?.[0]?.method || 'cash';
+                    const paymentMethod =
+                        (paymentData.resolvedPaymentMethod as string | undefined) ||
+                        paymentData.payments?.[0]?.method ||
+                        'cash';
                     const discountAmount = Number(paymentData.discountAmount ?? 0);
 
                     // ✅ CRITICAL: Close order + reset table status (must block payment)
@@ -388,48 +463,55 @@ export const useRestaurantStore = create<RestaurantState>()(
                             : t)
                     }));
 
-                    // 🔄 Secondary operations in background (non-blocking)
                     const tableSnapshot = { ...table };
-                    const orderDiscountAmount = Number(paymentData.discountAmount ?? 0);
-                    const effectiveTotal = (tableSnapshot.total || 0) - orderDiscountAmount;
-                    Promise.resolve().then(async () => {
-                        try {
-                            const salesStore = useSaleStore.getState();
-                            await salesStore.addSale({
-                                id: uuidv4(),
-                                receiptNumber: `REST-${tableSnapshot.number}-${Date.now()}`,
-                                date: new Date().toISOString(),
-                                total: effectiveTotal,
-                                subtotal: tableSnapshot.total || 0,
-                                discount: orderDiscountAmount,
-                                items: tableSnapshot.orders.map(o => ({
-                                    productId: o.menuItemId,
-                                    productName: o.name,
-                                    quantity: o.quantity,
-                                    price: o.price,
-                                    discount: 0,
-                                    total: o.price * o.quantity
-                                })),
-                                paymentMethod,
-                                status: 'completed',
-                                cashier: tableSnapshot.waiter || 'Garson'
-                            });
-                        } catch (e) { console.error('[closeBill bg] addSale failed:', e); }
+                    const saleOv = options?.saleOverride;
+                    const orderDiscountAmount = saleOv
+                        ? Number(saleOv.discount ?? 0)
+                        : Number(paymentData.discountAmount ?? 0);
+                    const effectiveTotal = saleOv
+                        ? Number(saleOv.total ?? 0)
+                        : (tableSnapshot.total || 0) - orderDiscountAmount;
 
-                        try {
-                            if (tableSnapshot.customerId) {
-                                const customerStore = useCustomerStore.getState();
-                                await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
-                                const accountPayments = paymentData.payments?.filter((p: any) => p.method === 'account') || [];
-                                const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
-                                if (totalAccountAmount > 0) await customerStore.updateBalance(tableSnapshot.customerId, totalAccountAmount);
-                                const points = Math.floor(effectiveTotal / 100);
-                                if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
-                            }
-                        } catch (e) { console.error('[closeBill bg] customer update failed:', e); }
+                    try {
+                        const salesStore = useSaleStore.getState();
+                        await salesStore.addSale({
+                            id: uuidv4(),
+                            receiptNumber: `REST-${tableSnapshot.number}-${Date.now()}`,
+                            date: new Date().toISOString(),
+                            total: effectiveTotal,
+                            subtotal: saleOv ? saleOv.subtotal : (tableSnapshot.total || 0),
+                            discount: orderDiscountAmount,
+                            items: saleOv?.items ?? tableSnapshot.orders.map(o => ({
+                                productId: o.menuItemId,
+                                productName: o.name,
+                                quantity: o.quantity,
+                                price: o.price,
+                                discount: 0,
+                                total: o.price * o.quantity
+                            })),
+                            paymentMethod,
+                            status: 'completed',
+                            cashier: tableSnapshot.waiter || 'Garson',
+                            /** Günlük raporda ERP fişi silindiğinde aynı işlemin RES-* adisyon satırı tekrar çıkmasın diye */
+                            notes: `RestoranPOS|rest_order_id:${orderId}`,
+                        });
+                    } catch (e: any) {
+                        const msg = e instanceof Error ? e.message : String(e);
+                        console.error('[closeBill] addSale failed:', e);
+                        throw new Error(`ACCOUNTING_POST_FAILED:${msg}`);
+                    }
 
-                        // ✅ Recipe-based stock deduction removed (now handled in addItemToTable/voidOrderItem)
-                    });
+                    try {
+                        if (tableSnapshot.customerId) {
+                            const customerStore = useCustomerStore.getState();
+                            await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
+                            const accountPayments = paymentData.payments?.filter((p: any) => p.method === 'account') || [];
+                            const totalAccountAmount = accountPayments.reduce((sum: number, p: any) => sum + p.amount, 0);
+                            if (totalAccountAmount > 0) await customerStore.updateBalance(tableSnapshot.customerId, totalAccountAmount);
+                            const points = Math.floor(effectiveTotal / 100);
+                            if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
+                        }
+                    } catch (e) { console.error('[closeBill] customer update failed:', e); }
 
                 } catch (error) {
                     console.error('[RestaurantStore] closeBill error:', error);
@@ -701,11 +783,39 @@ export const useRestaurantStore = create<RestaurantState>()(
                 set(state => ({ regions: state.regions.filter(r => r.id !== regionId) }));
             },
 
-            updatePrinterRoute: (route) => set(state => ({ printerRoutes: state.printerRoutes.some(r => r.id === route.id) ? state.printerRoutes.map(r => r.id === route.id ? route : r) : [...state.printerRoutes, route] })),
-            removePrinterRoute: (routeId) => set(state => ({ printerRoutes: state.printerRoutes.filter(r => r.id !== routeId) })),
-            updatePrinterProfile: (profile) => set(state => ({ printerProfiles: state.printerProfiles.some(p => p.id === profile.id) ? state.printerProfiles.map(p => p.id === profile.id ? profile : p) : [...state.printerProfiles, profile] })),
-            removePrinterProfile: (profileId) => set(state => ({ printerProfiles: state.printerProfiles.filter(p => p.id !== profileId) })),
-            setCommonPrinter: (printerId) => set({ commonPrinterId: printerId }),
+            loadPrinterConfigFromDb: async () => {
+                try {
+                    const { getRestaurantPrinterConfig } = await import('../../../services/restaurantPrinterConfigService');
+                    const cfg = await getRestaurantPrinterConfig();
+                    set({
+                        printerProfiles: cfg.printerProfiles,
+                        printerRoutes: cfg.printerRoutes,
+                        commonPrinterId: cfg.commonPrinterId,
+                    });
+                } catch (e) {
+                    console.warn('[restaurant] loadPrinterConfigFromDb', e);
+                }
+            },
+            updatePrinterRoute: (route) => {
+                set(state => ({ printerRoutes: state.printerRoutes.some(r => r.id === route.id) ? state.printerRoutes.map(r => r.id === route.id ? route : r) : [...state.printerRoutes, route] }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            removePrinterRoute: (routeId) => {
+                set(state => ({ printerRoutes: state.printerRoutes.filter(r => r.id !== routeId) }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            updatePrinterProfile: (profile) => {
+                set(state => ({ printerProfiles: state.printerProfiles.some(p => p.id === profile.id) ? state.printerProfiles.map(p => p.id === profile.id ? profile : p) : [...state.printerProfiles, profile] }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            removePrinterProfile: (profileId) => {
+                set(state => ({ printerProfiles: state.printerProfiles.filter(p => p.id !== profileId) }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            setCommonPrinter: (printerId) => {
+                set({ commonPrinterId: printerId });
+                scheduleRestaurantPrinterPersist(get);
+            },
             setCustomerForTable: (tableId, customerId, customerName) => set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, customerId, customerName } : t) })),
             setCourseForItem: (tableId, itemId, course) => set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, course } : o) } : t) })),
             splitOrder: async (orderId, itemIds, targetTableId) => {
@@ -801,6 +911,7 @@ export const useRestaurantStore = create<RestaurantState>()(
             setCurrentStaff: (staff) => set({ currentStaff: staff }),
             openRegister: (cash, note) => set({ isRegisterOpen: true, registerOpeningCash: cash, registerOpeningNote: note, workDayDate: new Date().toISOString().slice(0, 10), isDayActive: true }),
             closeRegister: () => set({ isRegisterOpen: false, registerOpeningCash: 0, registerOpeningNote: '', isDayActive: false }),
+            setWorkDayAutomation: (partial) => set((state) => ({ ...state, ...partial })),
             loadSystemPrinters: async () => {
                 try {
                     const { invoke } = await import('@tauri-apps/api/core');
@@ -867,6 +978,13 @@ export const useRestaurantStore = create<RestaurantState>()(
                 workDayDate: state.workDayDate,
                 isDayActive: state.isDayActive,
                 callerIdConfig: state.callerIdConfig,
+                workDayAutoStartEnabled: state.workDayAutoStartEnabled,
+                workDayAutoEndEnabled: state.workDayAutoEndEnabled,
+                workDayStartTime: state.workDayStartTime,
+                workDayEndTime: state.workDayEndTime,
+                workDayAutoOpeningCash: state.workDayAutoOpeningCash,
+                workDayLastAutoStartDate: state.workDayLastAutoStartDate,
+                workDayLastAutoEndDate: state.workDayLastAutoEndDate,
             }),
             merge: (persisted, current) => {
                 const p = persisted as Partial<RestaurantState> | undefined;

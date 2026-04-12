@@ -1,4 +1,4 @@
-﻿import { X, CreditCard, Tag, Percent, DollarSign, TrendingDown, Banknote, Check, Plus, Minus, Globe, Smartphone } from 'lucide-react';
+import { X, CreditCard, Tag, Percent, TrendingDown, Banknote, Check, Plus, Minus, Globe, Smartphone } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { Campaign } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -252,7 +252,7 @@ export function POSPaymentModalV2({
                         : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
                       }`}
                   >
-                    <DollarSign className="w-3.5 h-3.5 inline mr-1" />
+                    <Banknote className="w-3.5 h-3.5 inline mr-1" />
                     IQD
                   </button>
                 </div>

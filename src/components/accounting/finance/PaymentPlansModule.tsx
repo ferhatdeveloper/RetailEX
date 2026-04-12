@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import {
     Calendar, Plus, Edit, Trash2, Search, X,
-    ChevronRight, Layout, Info, Save, Clock, Percent, DollarSign, RefreshCw
+    ChevronRight, Layout, Info, Save, Clock, Percent, Banknote, RefreshCw
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';

@@ -1,99 +1,142 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
     UserCog, BarChart3, Bell, Search, Plus,
     ChevronLeft, ChevronRight, Box, Megaphone,
-    Sparkles, Settings2, ShoppingBag, Globe, ClipboardList,
+    Sparkles, Settings2, ShoppingBag, Globe, ClipboardList, Layers, Repeat,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
 import { formatLocalYmd } from '../../utils/dateLocal';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 import { SmartScheduler } from './components/SmartScheduler';
 import { ClientCRM } from './components/ClientCRM';
+import { ClientCustomerDetailPage } from './components/ClientCustomerDetailPage';
 import { PackageManagement } from './components/PackageManagement';
 import { ClinicDashboard } from './components/ClinicDashboard';
 import { ServiceManagement } from './components/ServiceManagement';
+import { ServiceRecipeManagement } from './components/ServiceRecipeManagement';
 import { StaffManagement } from './components/StaffManagement';
 import { DeviceManagement } from './components/DeviceManagement';
-import { ReportDashboard } from './components/ReportDashboard';
+import { ReportsModule } from '../reports/ReportsModule';
+import type { Product, Sale } from '../../core/types';
 import { LeadManagement } from './components/LeadManagement';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
+import { MonthlySessionSeriesModule } from './components/MonthlySessionSeriesModule';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
+import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
 import './ClinicStyles.css';
-
-const MENU_GROUPS = [
-    {
-        title: 'Genel',
-        items: [{ id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' }],
-    },
-    {
-        title: 'Operasyonlar',
-        items: [
-            { id: 'clients', icon: Users, label: 'Müşteriler' },
-            { id: 'calendar', icon: Calendar, label: 'Randevular' },
-            { id: 'pos', icon: ShoppingBag, label: 'Kasa / POS' },
-        ],
-    },
-    {
-        title: 'Tanımlar',
-        items: [
-            { id: 'services', icon: Scissors, label: 'Hizmetler' },
-            { id: 'packages', icon: Package, label: 'Paketler' },
-            { id: 'devices', icon: Box, label: 'Cihazlar' },
-            { id: 'surveys', icon: ClipboardList, label: 'Memnuniyet anketleri' },
-        ],
-    },
-    {
-        title: 'Yönetim',
-        items: [
-            { id: 'staff', icon: UserCog, label: 'Personel' },
-            { id: 'leads', icon: Megaphone, label: 'Leads & CRM' },
-            { id: 'reports', icon: BarChart3, label: 'Raporlar' },
-            { id: 'clinic_ops', icon: ClipboardList, label: 'Klinik operasyon' },
-        ],
-    },
-];
-
-const PAGE_TITLES: Record<string, string> = {
-    dashboard: 'Dashboard', clients: 'Müşteriler', calendar: 'Randevular',
-    pos: 'Kasa / POS', services: 'Hizmetler', packages: 'Paketler',
-    devices: 'Cihazlar', surveys: 'Memnuniyet anketleri',
-    staff: 'Personel', leads: 'Leads & CRM', reports: 'Raporlar',
-    clinic_ops: 'Klinik operasyon',
-};
 
 // Sidebar constants
 const SIDEBAR_W = 220;
 const COLLAPSED_W = 56;
 
-export default function BeautyModule() {
+export type BeautyModuleProps = {
+    /** Back office ile aynı ERP raporları (satış / ürün) */
+    sales?: Sale[];
+    products?: Product[];
+};
+
+export default function BeautyModule({ sales = [], products = [] }: BeautyModuleProps) {
+    const { tm, language } = useLanguage();
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [beautyClientDetailId, setBeautyClientDetailId] = useState<string | null>(null);
     const [collapsed, setCollapsed] = useState(false);
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
-    const { loadSpecialists, loadServices, loadAppointments } = useBeautyStore();
+    const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
+    const [showNewAptWizard, setShowNewAptWizard] = useState(false);
+    const [wizardDate, setWizardDate] = useState(() => formatLocalYmd(new Date()));
+    const [wizardTime, setWizardTime] = useState('09:00');
+    const [wizardStaffId, setWizardStaffId] = useState('');
+    const [wizardDeviceId, setWizardDeviceId] = useState('');
+    /** CRM’den gelen randevu hizmeti — POS’ta sepete otomatik */
+    const [wizardServiceId, setWizardServiceId] = useState('');
+
+    const MENU_GROUPS = useMemo(() => [
+        {
+            title: tm('bShellMenuGeneral'),
+            items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
+        },
+        {
+            title: tm('bShellMenuOperations'),
+            items: [
+                { id: 'clients', icon: Users, label: tm('bShellNavClients') },
+                { id: 'calendar', icon: Calendar, label: tm('bShellNavCalendar') },
+                { id: 'pos', icon: ShoppingBag, label: tm('bShellNavPOS') },
+            ],
+        },
+        {
+            title: tm('bShellMenuDefinitions'),
+            items: [
+                { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
+                { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
+                { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
+                { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
+                { id: 'surveys', icon: ClipboardList, label: tm('bSatisfactionSurveysTitle') },
+            ],
+        },
+        {
+            title: tm('bShellMenuManagement'),
+            items: [
+                { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
+                { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
+                { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
+                { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
+                { id: 'monthly_series', icon: Repeat, label: tm('bShellNavMonthlySeries') },
+            ],
+        },
+    ], [language]);
+
+    const PAGE_TITLES = useMemo((): Record<string, string> => ({
+        dashboard: tm('dashboard'),
+        clients: tm('bShellNavClients'),
+        calendar: tm('bShellNavCalendar'),
+        pos: tm('bShellNavPOS'),
+        services: tm('bShellNavServices'),
+        service_recipes: tm('bShellNavServiceRecipes'),
+        packages: tm('bShellNavPackages'),
+        devices: tm('bShellNavDevices'),
+        surveys: tm('bSatisfactionSurveysTitle'),
+        staff: tm('bShellNavStaff'),
+        leads: tm('bShellNavLeads'),
+        reports: tm('bShellNavReports'),
+        clinic_ops: tm('bShellNavClinicOps'),
+        monthly_series: tm('bMonthlySeriesTitle'),
+    }), [language]);
 
     React.useEffect(() => {
         const today = formatLocalYmd(new Date());
         loadSpecialists();
         loadServices();
+        loadDevices();
         loadAppointments(today);
-    }, []);
+    }, [loadSpecialists, loadServices, loadDevices, loadAppointments]);
 
     React.useEffect(() => {
-        const applyAction = (target?: string) => {
+        if (activeTab !== 'clients') setBeautyClientDetailId(null);
+    }, [activeTab]);
+
+    React.useEffect(() => {
+        const prefillCallerSearch = (phone?: string) => {
+            const p = phone?.trim();
+            if (!p) return;
+            window.dispatchEvent(new CustomEvent('beauty-callerid-prefill-search', { detail: { phone: p } }));
+        };
+        const applyAction = (target?: string, phone?: string) => {
             if (target === 'beauty_calendar') {
                 setActiveTab('calendar');
+                prefillCallerSearch(phone);
             }
         };
         const fromStorage = localStorage.getItem('callerid_context_action');
         if (fromStorage) {
             try {
-                const parsed = JSON.parse(fromStorage) as { target?: string };
-                applyAction(parsed?.target);
+                const parsed = JSON.parse(fromStorage) as { target?: string; phone?: string };
+                applyAction(parsed?.target, parsed?.phone);
             } catch {
                 // no-op
             } finally {
@@ -101,11 +144,49 @@ export default function BeautyModule() {
             }
         }
         const onCtx = (ev: Event) => {
-            const custom = ev as CustomEvent<{ target?: string }>;
-            applyAction(custom.detail?.target);
+            const custom = ev as CustomEvent<{ target?: string; phone?: string }>;
+            applyAction(custom.detail?.target, custom.detail?.phone);
         };
         window.addEventListener('callerid-open-context-action', onCtx);
         return () => window.removeEventListener('callerid-open-context-action', onCtx);
+    }, []);
+
+    /** MainLayout modüle geçtikten sonra gecikmeli tetiklenir; detail = tıklanan randevu satırı */
+    React.useEffect(() => {
+        const openWizard = (ev: Event) => {
+            const ce = ev as CustomEvent<{
+                dateYmd?: string;
+                time?: string;
+                staffId?: string;
+                deviceId?: string;
+                serviceId?: string;
+            }>;
+            const d = ce.detail ?? {};
+            const today = formatLocalYmd(new Date());
+            if (d.dateYmd && /^\d{4}-\d{2}-\d{2}$/.test(d.dateYmd)) {
+                setWizardDate(d.dateYmd);
+            } else {
+                setWizardDate(today);
+            }
+            let tt = (d.time ?? '09:00').trim();
+            if (tt.length >= 5) tt = tt.slice(0, 5);
+            if (!/^\d{1,2}:\d{2}$/.test(tt)) tt = '09:00';
+            const tp = tt.match(/^(\d{1,2}):(\d{2})$/);
+            if (tp) {
+                const hh = String(Math.min(23, parseInt(tp[1], 10))).padStart(2, '0');
+                const mm = String(Math.min(59, parseInt(tp[2], 10))).padStart(2, '0');
+                setWizardTime(`${hh}:${mm}`);
+            } else {
+                setWizardTime('09:00');
+            }
+            setWizardStaffId(d.staffId?.trim() ? String(d.staffId) : '');
+            setWizardDeviceId(d.deviceId?.trim() ? String(d.deviceId) : '');
+            setWizardServiceId(d.serviceId?.trim() ? String(d.serviceId) : '');
+            setActiveTab('calendar');
+            setShowNewAptWizard(true);
+        };
+        window.addEventListener('beauty-open-new-appointment-wizard-delayed', openWizard);
+        return () => window.removeEventListener('beauty-open-new-appointment-wizard-delayed', openWizard);
     }, []);
 
     return (
@@ -133,8 +214,8 @@ export default function BeautyModule() {
                     </div>
                     {!collapsed && (
                         <div className="ml-2.5 min-w-0">
-                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>ClinicERP</p>
-                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Beauty Suite</p>
+                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>{tm('bShellBrandTitle')}</p>
+                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{tm('bShellBrandSubtitle')}</p>
                         </div>
                     )}
                     <button
@@ -215,8 +296,8 @@ export default function BeautyModule() {
                         {!collapsed && (
                             <>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>Clinic Admin</p>
-                                    <p style={{ color: 'rgba(167,139,250,0.5)', fontSize: 10, fontWeight: 600 }}>Yönetici</p>
+                                    <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
+                                    <p style={{ color: 'rgba(167,139,250,0.5)', fontSize: 10, fontWeight: 600 }}>{tm('bShellRoleAdmin')}</p>
                                 </div>
                                 <button style={{ color: 'rgba(167,139,250,0.4)', flexShrink: 0 }}>
                                     <Settings2 size={13} />
@@ -250,7 +331,7 @@ export default function BeautyModule() {
                             padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.08em',
                         }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                            Sistem Aktif
+                            {tm('bShellSystemActive')}
                         </span>
                     </div>
 
@@ -263,7 +344,7 @@ export default function BeautyModule() {
                             />
                             <input
                                 type="text"
-                                placeholder="Müşteri veya işlem ara..."
+                                placeholder={tm('bShellHeaderSearch')}
                                 style={{
                                     paddingLeft: 30, paddingRight: 12, height: 32,
                                     background: '#f9fafb', border: '1px solid #e5e7eb',
@@ -297,7 +378,15 @@ export default function BeautyModule() {
 
                         {/* CTA */}
                         <button
-                            onClick={() => setActiveTab('calendar')}
+                            type="button"
+                            onClick={() => {
+                                setWizardDate(formatLocalYmd(new Date()));
+                                setWizardTime('09:00');
+                                setWizardStaffId('');
+                                setWizardDeviceId('');
+                                setWizardServiceId('');
+                                setShowNewAptWizard(true);
+                            }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: 6,
                                 height: 32, padding: '0 12px',
@@ -311,25 +400,40 @@ export default function BeautyModule() {
                             onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
                         >
                             <Plus size={13} />
-                            Yeni Randevu
+                            {tm('bShellNewAppointment')}
                         </button>
                     </div>
                 </header>
 
-                {/* Content */}
-                <main className="flex-1 overflow-hidden">
+                {/* Content — min-h-0 + overflow-y-auto so long pages (e.g. Hizmetler grid) can scroll inside the shell */}
+                <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {activeTab === 'dashboard' && <ClinicDashboard />}
                     {activeTab === 'calendar' && <SmartScheduler />}
                     {activeTab === 'pos' && <AppointmentPOS />}
-                    {activeTab === 'clients' && <ClientCRM />}
+                    {activeTab === 'clients' && (
+                        beautyClientDetailId ? (
+                            <ClientCustomerDetailPage
+                                customerId={beautyClientDetailId}
+                                onBack={() => setBeautyClientDetailId(null)}
+                            />
+                        ) : (
+                            <ClientCRM onOpenCustomer={id => setBeautyClientDetailId(id)} />
+                        )
+                    )}
                     {activeTab === 'packages' && <PackageManagement />}
                     {activeTab === 'services' && <ServiceManagement />}
+                    {activeTab === 'service_recipes' && <ServiceRecipeManagement />}
                     {activeTab === 'staff' && <StaffManagement />}
                     {activeTab === 'devices' && <DeviceManagement />}
                     {activeTab === 'surveys' && <SatisfactionSurveyManagement />}
                     {activeTab === 'leads' && <LeadManagement />}
-                    {activeTab === 'reports' && <ReportDashboard />}
+                    {activeTab === 'reports' && (
+                        <div className="h-full min-h-[min(100dvh,1200px)] min-w-0">
+                            <ReportsModule sales={sales} products={products} initialBusinessType="beauty" />
+                        </div>
+                    )}
                     {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
+                    {activeTab === 'monthly_series' && <MonthlySessionSeriesModule />}
                 </main>
             </div>
 
@@ -340,6 +444,87 @@ export default function BeautyModule() {
                     setRtlMode={setRtlMode}
                 />
             )}
+
+            <RetailExFlatModal
+                open={showNewAptWizard}
+                onClose={() => setShowNewAptWizard(false)}
+                title={tm('bNewAptWizardTitle')}
+                subtitle={tm('bNewAptWizardSubtitle')}
+                headerIcon={<Calendar size={20} />}
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('bNewAptWizardOpenPos')}
+                onConfirm={() => {
+                    const dateYmd = wizardDate.trim() || formatLocalYmd(new Date());
+                    const timeRaw = wizardTime.trim().slice(0, 5) || '09:00';
+                    const staffId = wizardStaffId.trim();
+                    const deviceId = wizardDeviceId.trim();
+                    const serviceId = wizardServiceId.trim();
+                    setShowNewAptWizard(false);
+                    setActiveTab('calendar');
+                    /** SmartScheduler useEffect dinleyicisi mount olduktan sonra */
+                    window.setTimeout(() => {
+                        window.dispatchEvent(
+                            new CustomEvent('beauty-open-new-appointment', {
+                                detail: {
+                                    dateYmd,
+                                    time: timeRaw,
+                                    staffId: staffId || undefined,
+                                    deviceId: deviceId || undefined,
+                                    serviceId: serviceId || undefined,
+                                },
+                            })
+                        );
+                    }, 0);
+                }}
+                confirmDisabled={!wizardDate.trim()}
+            >
+                <div className="flex flex-col gap-4">
+                    <label className="flex flex-col gap-1.5">
+                        <RetailExFlatFieldLabel>{tm('date')}</RetailExFlatFieldLabel>
+                        <input
+                            type="date"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400"
+                            value={wizardDate}
+                            onChange={e => setWizardDate(e.target.value)}
+                        />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <RetailExFlatFieldLabel>{tm('time')}</RetailExFlatFieldLabel>
+                        <input
+                            type="time"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400"
+                            value={wizardTime}
+                            onChange={e => setWizardTime(e.target.value)}
+                        />
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <RetailExFlatFieldLabel>{tm('bNewAptWizardStaff')}</RetailExFlatFieldLabel>
+                        <select
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400 bg-white"
+                            value={wizardStaffId}
+                            onChange={e => setWizardStaffId(e.target.value)}
+                        >
+                            <option value="">—</option>
+                            {specialists.filter(s => s.is_active !== false).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="flex flex-col gap-1.5">
+                        <RetailExFlatFieldLabel>{tm('bNewAptWizardDevice')}</RetailExFlatFieldLabel>
+                        <select
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400 bg-white"
+                            value={wizardDeviceId}
+                            onChange={e => setWizardDeviceId(e.target.value)}
+                        >
+                            <option value="">—</option>
+                            {devices.filter(d => d.is_active !== false).map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            </RetailExFlatModal>
         </div>
     );
 }

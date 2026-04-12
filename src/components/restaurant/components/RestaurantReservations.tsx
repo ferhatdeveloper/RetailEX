@@ -8,12 +8,14 @@ import { useRestaurantStore } from '../store/useRestaurantStore';
 import { Reservation } from '../types';
 import { cn } from '@/components/ui/utils';
 import { v4 as uuidv4 } from 'uuid';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RestaurantReservationsProps {
     onBack: () => void;
 }
 
 export function RestaurantReservations({ onBack }: RestaurantReservationsProps) {
+    const tmR = useRestaurantModuleTm();
     const { reservations, loadReservations, addReservation, updateReservation, deleteReservation, tables } = useRestaurantStore();
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -90,10 +92,10 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                         <div>
                             <h1 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none flex items-center gap-3">
                                 <Calendar className="w-6 h-6" />
-                                Rezervasyon Yönetimi
+                                {tmR('resRvTitle')}
                             </h1>
                             <p className="text-[10px] text-white/70 font-bold uppercase tracking-widest mt-1.5">
-                                {selectedDate} Tarihli Rezervasyonlar • {reservations.length} Kayıt
+                                {tmR('resRvSubtitle').replace('{date}', selectedDate).replace('{n}', String(reservations.length))}
                             </p>
                         </div>
                     </div>
@@ -103,7 +105,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60 group-focus-within:text-white transition-colors" />
                             <input
                                 type="text"
-                                placeholder="Müşteri veya Telefon..."
+                                placeholder={tmR('resRvSearchPlaceholder')}
                                 className="bg-white/10 border border-white/20 text-white placeholder:text-white/50 pl-10 pr-4 h-10 rounded-xl w-64 focus:outline-none focus:ring-2 focus:ring-white/30 transition-all text-xs font-bold sm:flex hidden shadow-inner"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -120,7 +122,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                             className="bg-[#2ecc71] hover:bg-[#27ae60] text-white h-10 px-5 rounded-xl font-black text-[11px] uppercase transition-all shadow-sm shadow-green-500/20 active:scale-95 flex items-center gap-2 border border-white/20 group"
                         >
                             <Plus className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
-                            Yeni Rezervasyon
+                            {tmR('resRvNewReservationBtn')}
                         </button>
                     </div>
                 </div>
@@ -135,8 +137,8 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                                     <History className="w-10 h-10 opacity-20" />
                                 </div>
-                                <p className="text-lg font-medium opacity-60">Seçili tarihte rezervasyon bulunmuyor</p>
-                                <p className="text-sm opacity-40">Yeni bir kayıt eklemek için butona tıklayın</p>
+                                <p className="text-lg font-medium opacity-60">{tmR('resRvEmpty')}</p>
+                                <p className="text-sm opacity-40">{tmR('resRvEmptyHint')}</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -147,10 +149,10 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                     >
                                         <div className="flex justify-between items-start mb-4">
                                             <div className={cn("px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", getStatusColor(res.status))}>
-                                                {res.status === 'pending' ? 'Beklemede' :
-                                                    res.status === 'confirmed' ? 'Onaylı' :
-                                                        res.status === 'seated' ? 'Oturtuldu' :
-                                                            res.status === 'cancelled' ? 'İptal' : 'Gelmedi'}
+                                                {res.status === 'pending' ? tmR('resRvStatusPending') :
+                                                    res.status === 'confirmed' ? tmR('resRvStatusConfirmed') :
+                                                        res.status === 'seated' ? tmR('resRvStatusSeated') :
+                                                            res.status === 'cancelled' ? tmR('resRvStatusCancelled') : tmR('resRvStatusNoShow')}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
@@ -188,7 +190,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                                     <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center">
                                                         <Users className="w-4 h-4 text-blue-600" />
                                                     </div>
-                                                    <div className="text-sm font-bold text-slate-700">{res.guestCount} Kişi</div>
+                                                    <div className="text-sm font-bold text-slate-700">{res.guestCount} {tmR('resRvGuests')}</div>
                                                 </div>
                                             </div>
 
@@ -221,7 +223,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                         <div className="bg-gradient-to-r from-[#2563eb] to-[#3b82f6] p-6 flex justify-between items-center text-white">
                             <h3 className="text-xl font-bold flex items-center gap-2">
                                 {editingRes ? <Edit2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                                {editingRes ? 'Rezervasyonu Düzenle' : 'Yeni Rezervasyon'}
+                                {editingRes ? tmR('resRvFormEdit') : tmR('resRvFormNew')}
                             </h3>
                             <button onClick={() => setIsAddModalOpen(false)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
                                 <X className="w-5 h-5" />
@@ -231,7 +233,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                         <form onSubmit={handleSave} className="p-8 space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2 col-span-2 md:col-span-1">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Müşteri Adı</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvCustomerName')}</label>
                                     <div className="relative">
                                         <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -244,7 +246,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                     </div>
                                 </div>
                                 <div className="space-y-2 col-span-2 md:col-span-1">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Telefon</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvPhoneLabel')}</label>
                                     <div className="relative">
                                         <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -252,13 +254,13 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                             required
                                             defaultValue={editingRes?.phone}
                                             className="w-full bg-slate-50 border-none rounded-2xl py-3.5 pl-12 pr-4 focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-800"
-                                            placeholder="05..."
+                                            placeholder={tmR('resRvPlaceholderPhone')}
                                         />
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Tarih</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvDate')}</label>
                                     <div className="relative">
                                         <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -271,7 +273,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Saat</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvTime')}</label>
                                     <div className="relative">
                                         <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -285,7 +287,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Kişi Sayısı</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvGuestCount')}</label>
                                     <div className="relative">
                                         <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
@@ -299,27 +301,27 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Masa Bağla (Opsiyonel)</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvTableOptional')}</label>
                                     <select
                                         name="tableId"
                                         defaultValue={editingRes?.tableId}
                                         className="w-full bg-slate-50 border-none rounded-2xl py-3.5 px-4 focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-800 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2394A3B8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E')] bg-[length:20px] bg-[right_1rem_center] bg-no-repeat"
                                     >
-                                        <option value="">Masa Seçilmedi</option>
+                                        <option value="">{tmR('resRvNoTable')}</option>
                                         {tables.map(table => (
-                                            <option key={table.id} value={table.id}>Masa {table.number}</option>
+                                            <option key={table.id} value={table.id}>{tmR('resRvTableOption').replace('{n}', String(table.number))}</option>
                                         ))}
                                     </select>
                                 </div>
 
                                 <div className="space-y-2 col-span-2">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Notlar</label>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">{tmR('resRvNotes')}</label>
                                     <textarea
                                         name="note"
                                         defaultValue={editingRes?.note}
                                         rows={2}
                                         className="w-full bg-slate-50 border-none rounded-2xl py-3.5 px-4 focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-800 resize-none"
-                                        placeholder="Eklemek istediğiniz notlar..."
+                                        placeholder={tmR('resRvNotesPlaceholder')}
                                     />
                                 </div>
                             </div>
@@ -330,14 +332,14 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                                     onClick={() => setIsAddModalOpen(false)}
                                     className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold hover:bg-slate-200 transition-colors active:scale-95"
                                 >
-                                    Vazgeç
+                                    {tmR('resRvCancel')}
                                 </button>
                                 <button
                                     type="submit"
                                     className="flex-[2] bg-gradient-to-r from-blue-600 to-blue-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-200 hover:shadow-xl hover:translate-y-[-2px] transition-all active:scale-95 flex items-center justify-center gap-2"
                                 >
                                     <Check className="w-5 h-5" />
-                                    {editingRes ? 'Güncelle' : 'Kaydet'}
+                                    {editingRes ? tmR('resRvUpdate') : tmR('resRvSave')}
                                 </button>
                             </div>
                         </form>

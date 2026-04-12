@@ -18,6 +18,9 @@ use windows_service::service_control_handler::{self, ServiceControlHandlerResult
 use windows_service::service_dispatcher;
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
+#[path = "windows_service_install.rs"]
+mod windows_service_install;
+
 const SERVICE_NAME: &str = "RetailEX_SQL_Bridge";
 const DISPLAY_NAME: &str = "RetailEX SQL Bridge";
 const LOG_FILE: &str = "C:\\ProgramData\\RetailEX\\sql_bridge_service.log";
@@ -26,31 +29,41 @@ fn main() {
     if let Err(e) = run() {
         log_line(&format!("Fatal error: {}", e));
         eprintln!("RetailEX_SQL_Bridge error: {}", e);
+        std::process::exit(1);
     }
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "--install" => install_service(),
-            "--uninstall" => uninstall_service(),
-            _ => {
-                println!("Usage: RetailEX_SQL_Bridge.exe [--install | --uninstall]");
-                Ok(())
-            }
+    match windows_service_install::scan_bootstrap_service_cmd(&args) {
+        Some(windows_service_install::BootstrapServiceCmd::Install) => return install_service(),
+        Some(windows_service_install::BootstrapServiceCmd::Uninstall) => return uninstall_service(),
+        Some(windows_service_install::BootstrapServiceCmd::Console) => {
+            println!("Usage: RetailEX_SQL_Bridge.exe [--install | --uninstall]");
+            return Ok(());
         }
-    } else {
-        service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
+        None => {}
     }
+    if args.len() > 1 {
+        println!("Usage: RetailEX_SQL_Bridge.exe [--install | --uninstall]");
+        return Ok(());
+    }
+    service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
 }
 
 fn install_service() -> Result<(), Box<dyn std::error::Error>> {
     let manager = ServiceManager::local_computer(
         None::<&str>,
         ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
-    )?;
-    let exe_path = env::current_exe()?;
+    )
+    .map_err(|e| {
+        windows_service_install::log_service_install_failure("RetailEX_SQL_Bridge", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
+    let exe_path = env::current_exe().map_err(|e| {
+        windows_service_install::log_install_any_error("RetailEX_SQL_Bridge", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
 
     let info = ServiceInfo {
         name: SERVICE_NAME.into(),
@@ -65,21 +78,20 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         account_password: None,
     };
 
-    match manager.create_service(&info, ServiceAccess::all()) {
-        Ok(_) => {
+    match windows_service_install::create_service_or_accept_exists(
+        &manager,
+        &info,
+        ServiceAccess::all(),
+        "RetailEX_SQL_Bridge",
+    )? {
+        windows_service_install::CreateServiceOutcome::Created => {
             println!("Service installed successfully.");
-            Ok(())
         }
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("exists") || msg.contains("1073") {
-                println!("Service already exists.");
-                Ok(())
-            } else {
-                Err(Box::new(e))
-            }
+        windows_service_install::CreateServiceOutcome::AlreadyExisted => {
+            println!("Service already exists.");
         }
     }
+    Ok(())
 }
 
 fn uninstall_service() -> Result<(), Box<dyn std::error::Error>> {
@@ -203,6 +215,7 @@ fn spawn_bridge_child() -> Result<Child, Box<dyn std::error::Error>> {
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     let child = Command::new(node)
         .arg(bridge)
+        .current_dir(&base)
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()?;
 

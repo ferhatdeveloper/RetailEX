@@ -1,7 +1,7 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import {
-  BarChart3, TrendingUp, DollarSign, Package, Users,
+  BarChart3, TrendingUp, Banknote, Package, Users,
   ShoppingCart, Calendar, FileText, Printer, Download,
   PieChart, LineChart, Activity, Target, Percent,
   Clock, Award, TrendingDown, RefreshCw, Archive,
@@ -50,10 +50,10 @@ export function Reports({ sales, products }: ReportsProps) {
     {
       id: 'finance',
       title: 'Finans & Muhasebe Raporları',
-      icon: DollarSign,
+      icon: Banknote,
       color: 'emerald',
       reports: [
-        { name: 'Günlük Kasa Raporu', desc: 'Kasadaki nakit durumu', icon: DollarSign, count: 'Anlık' },
+        { name: 'Günlük Kasa Raporu', desc: 'Kasadaki nakit durumu', icon: Banknote, count: 'Anlık' },
         { name: 'Kar-Zarar Tablosu', desc: 'Gelir-gider analizi', icon: TrendingUp, count: 'Aylık' },
       ]
     },
@@ -161,7 +161,7 @@ export function Reports({ sales, products }: ReportsProps) {
             <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Toplam Ciro</span>
-                <DollarSign className="w-4 h-4 text-emerald-500" />
+                <Banknote className="w-4 h-4 text-emerald-500" />
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-gray-900">

@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { X, DollarSign, Printer, CheckCircle, AlertTriangle, Calculator, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Banknote, Printer, CheckCircle, AlertTriangle, Calculator, Users } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { POSClosePrintPreview } from './POSClosePrintPreview';
 import { formatCurrency, formatNumber } from '../../utils/formatNumber';
@@ -133,7 +133,7 @@ export function POSCloseCashRegisterModal({
         {/* Header */}
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-red-600 to-red-700 flex items-center justify-between">
           <h3 className="text-lg text-white flex items-center gap-2">
-            <DollarSign className="w-6 h-6" />
+            <Banknote className="w-6 h-6" />
             {t.closeCashRegisterProcess}
           </h3>
           <div className="flex items-center gap-2">

@@ -2,6 +2,8 @@
  * Environment Detection Utility
  */
 
+import { APP_VERSION } from '../core/version';
+
 export const IS_TAURI = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 export const IS_BROWSER = !IS_TAURI;
 
@@ -35,14 +37,39 @@ export async function safeInvoke<T>(command: string, args?: any, fallback?: T): 
   // Natural fallback logic for common commands
   if (command === 'get_app_config')
     return { is_configured: false, regulatory_region: 'IQ', default_currency: 'IQD' } as any;
-  if (command === 'get_app_version') return '0.1.56-web' as any;
+  if (command === 'get_app_version') return `${APP_VERSION.full}-web` as any;
   if (command === 'check_pg16') return true as any; // Pretend PG exists for bridge
   
   throw new Error(`Tauri command "${command}" is not available in browser mode.`);
 }
 
+/** Windows Tauri: RetailEX arka plan / VPN / SQL Bridge / Logo Windows hizmetlerini durdurur ve kaldırır. */
+export async function removeRetailexWindowsServicesIfTauri(): Promise<{ ok: boolean; detail?: string }> {
+  if (!IS_TAURI) return { ok: true };
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const detail = await invoke<string>('remove_retailex_windows_services');
+    return { ok: true, detail };
+  } catch (e: unknown) {
+    return { ok: false, detail: String(e) };
+  }
+}
+
+/** Windows Tauri: `C:\\RetailEX` klasorunu siler (fabrika / yeniden kurulum secenegi). */
+export async function deleteCRetailexFolderIfTauri(): Promise<{ ok: boolean; detail?: string }> {
+  if (!IS_TAURI) return { ok: true };
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const detail = await invoke<string>('delete_c_retailex_folder');
+    return { ok: true, detail };
+  } catch (e: unknown) {
+    return { ok: false, detail: String(e) };
+  }
+}
+
 /**
- * Get the appropriate API/Bridge URL based on environment
+ * PostgreSQL Bridge tabanı (tarayıcıda `/api/pg_query` vb. için).
+ * Vite dev: aynı origin + `vite.config` proxy → bridge :3001 (köprü yine çalışır durumda olmalı).
  */
 export const getBridgeUrl = () => {
   if (BRIDGE_URL_OVERRIDE) return BRIDGE_URL_OVERRIDE.replace(/\/+$/, '');
@@ -54,6 +81,12 @@ export const getBridgeUrl = () => {
     host.endsWith('.localhost') ||
     host === '127.0.0.1' ||
     host === '::1';
+
+  const dev =
+    typeof import.meta !== 'undefined' && !!(import.meta as any).env?.DEV;
+  if (dev && isLocalHost) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
 
   return isLocalHost ? 'http://localhost:3001' : 'https://api.retailex.app';
 };

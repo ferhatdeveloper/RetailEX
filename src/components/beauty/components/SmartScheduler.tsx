@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CheckCircle2,
+    CheckCircle2, CalendarDays,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -60,17 +60,33 @@ export function SmartScheduler() {
     };
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [view,        setView]        = useState<ViewType>('day');
+    const [view,        setView]        = useState<ViewType>('device');
     /** DevExpress WPF benzeri kaynak gruplaması (gün / hafta / iş haftası) */
     const [groupMode,   setGroupMode]   = useState<GroupMode>('none');
     const [searchTerm,  setSearchTerm]  = useState('');
+
+    useEffect(() => {
+        const onPrefill = (ev: Event) => {
+            const phone = (ev as CustomEvent<{ phone?: string }>).detail?.phone?.trim();
+            if (phone) setSearchTerm(phone);
+        };
+        window.addEventListener('beauty-callerid-prefill-search', onPrefill);
+        return () => window.removeEventListener('beauty-callerid-prefill-search', onPrefill);
+    }, []);
     const [slotIntervalMin, setSlotIntervalMin] = useState<number>(15);
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
+    /** Tamamlanmış (ödemesi alınmış) randevu: tam ekran POS yerine sağ panel */
+    const [paidInfoApt, setPaidInfoApt] = useState<BeautyAppointment | null>(null);
 
     // Full-page new appointment state
     const [showNewPage,     setShowNewPage]     = useState(false);
     const [prefillTime,     setPrefillTime]     = useState('09:00');
     const [newPrefillDate,  setNewPrefillDate]  = useState<string | null>(null);
+    /** Kaynak sütunundan (personel/cihaz) tıklanınca AppointmentPOS ön doldurma */
+    const [prefillStaffId,  setPrefillStaffId]  = useState<string | undefined>(undefined);
+    const [prefillDeviceId, setPrefillDeviceId] = useState<string | undefined>(undefined);
+    /** CRM / sihirbaz: randevudaki hizmeti sepete bir kez eklemek için */
+    const [prefillServiceId, setPrefillServiceId] = useState<string | undefined>(undefined);
     const [editingApt,      setEditingApt]      = useState<BeautyAppointment | null>(null);
 
     // Feedback state (shown after marking appointment as completed)
@@ -197,17 +213,61 @@ export function SmartScheduler() {
         );
     }, [appointments, searchTerm]);
 
-    const openNewApt = (time?: string, dateYmd?: string) => {
+    /** Personel ve cihaz aynı anda (sihirbaz) veya tek sütun (takvim) ile doldurulabilir */
+    type NewAptPrefill = { staffId?: string; deviceId?: string; serviceId?: string };
+
+    const openNewApt = useCallback((time?: string, dateYmd?: string, prefill?: NewAptPrefill) => {
+        if (dateYmd && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) {
+            const [y, mo, da] = dateYmd.split('-').map(Number);
+            setCurrentDate(new Date(y, mo - 1, da));
+        }
         setPrefillTime(time ?? '09:00');
         setNewPrefillDate(dateYmd ?? null);
         setEditingApt(null);
         setSelectedApt(null);
+        setPrefillStaffId(prefill?.staffId);
+        setPrefillDeviceId(prefill?.deviceId);
+        const svc = prefill?.serviceId?.trim();
+        setPrefillServiceId(svc || undefined);
         setShowNewPage(true);
-    };
+    }, []);
+
+    /** Güzellik kabuğu üst çubuğu: sihirbazdan tam ekran randevu (POS) aç */
+    const openNewAptRef = useRef(openNewApt);
+    openNewAptRef.current = openNewApt;
+    useEffect(() => {
+        const onShellOpen = (ev: Event) => {
+            const ce = ev as CustomEvent<{
+                dateYmd?: string;
+                time?: string;
+                staffId?: string;
+                deviceId?: string;
+                serviceId?: string;
+            }>;
+            const d = ce.detail;
+            if (!d?.dateYmd) return;
+            openNewAptRef.current(d.time, d.dateYmd, {
+                staffId: d.staffId?.trim() || undefined,
+                deviceId: d.deviceId?.trim() || undefined,
+                serviceId: d.serviceId?.trim() || undefined,
+            });
+        };
+        window.addEventListener('beauty-open-new-appointment', onShellOpen);
+        return () => window.removeEventListener('beauty-open-new-appointment', onShellOpen);
+    }, []);
 
     const openExistingAptInPos = (apt: BeautyAppointment) => {
+        const isPaidDone = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+        if (isPaidDone) {
+            setPaidInfoApt(apt);
+            setSelectedApt(null);
+            return;
+        }
         setPrefillTime((apt.appointment_time ?? apt.time ?? '09:00').slice(0, 5));
         setNewPrefillDate(beautyAppointmentDateKey(apt) || null);
+        setPrefillStaffId(undefined);
+        setPrefillDeviceId(undefined);
+        setPrefillServiceId(undefined);
         setEditingApt(apt);
         setSelectedApt(null);
         setShowNewPage(true);
@@ -359,13 +419,15 @@ export function SmartScheduler() {
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+        const done  = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
         return (
             <div
                 key={apt.id}
                 onClick={() => openExistingAptInPos(apt)}
                 style={{
-                    background: '#fff', border: '1px solid #e8e4f0',
-                    borderLeft: `3px solid ${color}`,
+                    background: done ? cfg.bg : '#fff',
+                    border: `1px solid ${done ? cfg.color + '55' : '#e8e4f0'}`,
+                    borderLeft: `3px solid ${done ? cfg.color : color}`,
                     borderRadius: 6, padding: '10px 12px', cursor: 'pointer',
                     transition: 'box-shadow 0.1s',
                 }}
@@ -410,10 +472,16 @@ export function SmartScheduler() {
                     <AppointmentPOS
                         prefillDate={prefillDateStr}
                         prefillTime={prefillTime}
+                        prefillStaffId={prefillStaffId}
+                        prefillDeviceId={prefillDeviceId}
+                        prefillServiceId={prefillServiceId}
                         existingAppointment={editingApt}
                         onBack={() => {
                             setShowNewPage(false);
                             setNewPrefillDate(null);
+                            setPrefillStaffId(undefined);
+                            setPrefillDeviceId(undefined);
+                            setPrefillServiceId(undefined);
                             setEditingApt(null);
                             const r = useBeautyStore.getState().lastAppointmentRange;
                             if (r) void loadAppointmentsInRange(r.start, r.end);
@@ -439,6 +507,46 @@ export function SmartScheduler() {
                         <ChevronLeft size={14} />
                     </button>
                     <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 220, textAlign: 'center' }}>{toolbarDateLabel}</span>
+                    <label
+                        title={tm('bJumpToDate')}
+                        aria-label={tm('bJumpToDate')}
+                        style={{
+                            width: 28,
+                            height: 28,
+                            border: '1px solid #e5e7eb',
+                            borderRadius: 5,
+                            background: '#f9fafb',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: '#7c3aed',
+                            position: 'relative',
+                            flexShrink: 0,
+                        }}
+                    >
+                        <input
+                            type="date"
+                            value={formatLocalYmd(currentDate)}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                if (!v) return;
+                                const [y, mo, da] = v.split('-').map(Number);
+                                if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(da)) return;
+                                setCurrentDate(new Date(y, mo - 1, da));
+                            }}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                opacity: 0,
+                                cursor: 'pointer',
+                                width: '100%',
+                                height: '100%',
+                                margin: 0,
+                            }}
+                        />
+                        <CalendarDays size={14} style={{ pointerEvents: 'none' }} />
+                    </label>
                     <button onClick={handleNext} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
                         <ChevronRight size={14} />
                     </button>
@@ -484,11 +592,11 @@ export function SmartScheduler() {
                         <select
                             value={slotIntervalMin}
                             onChange={e => setSlotIntervalMin(Number(e.target.value))}
-                            title="Dakika aralığı"
+                            title={tm('bSchedulerSlotIntervalTitle')}
                             style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 11, fontWeight: 700, color: '#6b7280', cursor: 'pointer' }}
                         >
                             {SLOT_INTERVAL_OPTIONS.map(min => (
-                                <option key={min} value={min}>{min} dk</option>
+                                <option key={min} value={min}>{tm('bSchedulerMinutesAbbr').replace('{n}', String(min))}</option>
                             ))}
                         </select>
                     </div>
@@ -595,12 +703,14 @@ export function SmartScheduler() {
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
                                 timeColumnLabel={tm('bSchedulerTimeColumn')}
                                 renderAppointment={renderAptCard}
-                                onEmptySlotClick={(timeHHmm, dateYmd) => {
+                                onEmptySlotClick={(timeHHmm, dateYmd, resourceColumnId) => {
                                     if (dateYmd) {
                                         const [y, mo, day] = dateYmd.split('-').map(Number);
                                         setCurrentDate(new Date(y, mo - 1, day));
                                     }
-                                    openNewApt(timeHHmm, dateYmd);
+                                    openNewApt(timeHHmm, dateYmd, groupMode === 'staff'
+                                        ? { staffId: resourceColumnId }
+                                        : { deviceId: resourceColumnId });
                                 }}
                             />
                         )}
@@ -633,10 +743,12 @@ export function SmartScheduler() {
                                 resourceColumnLabel={tm('bSchedulerResourceColumn')}
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
                                 onAppointmentClick={openExistingAptInPos}
-                                onCellNew={(dateYmd, _resourceId) => {
+                                onCellNew={(dateYmd, resourceColumnId) => {
                                     const [y, mo, day] = dateYmd.split('-').map(Number);
                                     setCurrentDate(new Date(y, mo - 1, day));
-                                    openNewApt(undefined, dateYmd);
+                                    openNewApt(undefined, dateYmd, groupMode === 'staff'
+                                        ? { staffId: resourceColumnId }
+                                        : { deviceId: resourceColumnId });
                                 }}
                             />
                         )}
@@ -668,10 +780,12 @@ export function SmartScheduler() {
                                 resourceColumnLabel={tm('bSchedulerResourceColumn')}
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
                                 onAppointmentClick={openExistingAptInPos}
-                                onCellNew={(dateYmd) => {
+                                onCellNew={(dateYmd, resourceColumnId) => {
                                     const [y, mo, day] = dateYmd.split('-').map(Number);
                                     setCurrentDate(new Date(y, mo - 1, day));
-                                    openNewApt(undefined, dateYmd);
+                                    openNewApt(undefined, dateYmd, groupMode === 'staff'
+                                        ? { staffId: resourceColumnId }
+                                        : { deviceId: resourceColumnId });
                                 }}
                             />
                         )}
@@ -732,7 +846,9 @@ export function SmartScheduler() {
                                                 </div>
                                                 <div>
                                                     <p style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{device.name}</p>
-                                                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{devApts.length} {tm('bAppointmentWord')}</p>
+                                                    <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>
+                                                        {tm('bDeviceColumnAppointmentCount').replace('{n}', String(devApts.length))}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
@@ -787,8 +903,12 @@ export function SmartScheduler() {
                                                                                         boxSizing: 'border-box',
                                                                                         padding: '6px 8px',
                                                                                         borderRadius: 4,
-                                                                                        background: '#ede9fe',
-                                                                                        borderLeft: `3px solid ${p.apt.service_color ?? '#7c3aed'}`,
+                                                                                        background: (p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed')
+                                                                                            ? (STATUS_CFG.completed?.bg ?? '#d1fae5')
+                                                                                            : '#ede9fe',
+                                                                                        borderLeft: `3px solid ${(p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed')
+                                                                                            ? (STATUS_CFG.completed?.color ?? '#059669')
+                                                                                            : (p.apt.service_color ?? '#7c3aed')}`,
                                                                                         fontSize: 11,
                                                                                         cursor: 'pointer',
                                                                                         display: 'flex',
@@ -817,7 +937,9 @@ export function SmartScheduler() {
                                                                             }}
                                                                         >
                                                                             <div
-                                                                                onClick={() => openNewApt(time)}
+                                                                                onClick={() => openNewApt(time, formatLocalYmd(currentDate), {
+                                                                                    deviceId: String(device.id),
+                                                                                })}
                                                                                 style={{
                                                                                     height: 36,
                                                                                     width: '100%',
@@ -893,6 +1015,72 @@ export function SmartScheduler() {
                     </>
                 )}
             </div>
+
+            {/* ── ÖDENMİŞ RANDEVU — sağ panel (POS açılmaz) ───────── */}
+            {paidInfoApt && (
+                <div
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
+                    onClick={() => setPaidInfoApt(null)}
+                >
+                    <div
+                        style={{ width: 360, height: '100%', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ padding: '14px 18px', borderBottom: '1px solid #bbf7d0', background: '#ecfdf5', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                            <CheckCircle2 size={22} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: 13, fontWeight: 800, color: '#065f46', margin: 0 }}>{tm('bBeautyPaidPanelTitle')}</p>
+                                <p style={{ fontSize: 10, fontWeight: 600, color: '#047857', margin: '4px 0 0' }}>{tm('bBeautyPaidPanelSubtitle')}</p>
+                            </div>
+                            <button type="button" onClick={() => setPaidInfoApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }} aria-label="close"><X size={18} /></button>
+                        </div>
+                        <div style={{ padding: '16px 20px', flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{paidInfoApt.customer_name ?? '—'}</p>
+                            <p style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, margin: '0 0 16px' }}>{paidInfoApt.service_name ?? '—'}</p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                                {[
+                                    {
+                                        label: tm('bDate'),
+                                        value: (() => {
+                                            const ymd = beautyAppointmentDateKey(paidInfoApt);
+                                            if (!ymd) return '—';
+                                            const [y, mo, d] = ymd.split('-').map(Number);
+                                            return new Date(y, mo - 1, d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+                                        })(),
+                                    },
+                                    { label: tm('bTimeHeader'), value: (paidInfoApt.appointment_time ?? paidInfoApt.time ?? '—').toString().slice(0, 5) },
+                                    { label: tm('bSpecialist'), value: paidInfoApt.specialist_name ?? paidInfoApt.staff_name ?? '—' },
+                                    { label: tm('bDuration'), value: `${paidInfoApt.duration ?? 30}${tm('bDkSuffix')}` },
+                                    {
+                                        label: tm('bDeviceView'),
+                                        value: paidInfoApt.device_id
+                                            ? (devices.find(d => String(d.id) === String(paidInfoApt.device_id))?.name ?? '—')
+                                            : '—',
+                                    },
+                                    {
+                                        label: tm('bPriceHeader'),
+                                        value: (paidInfoApt.total_price ?? 0) > 0 ? formatMoneyAmount(paidInfoApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—',
+                                    },
+                                ].map(({ label, value }) => (
+                                    <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
+                                        <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
+                                        <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            {paidInfoApt.notes && (
+                                <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
+                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{tm('bNotes')}</p>
+                                    <p style={{ fontSize: 12, color: '#374151' }}>{paidInfoApt.notes}</p>
+                                </div>
+                            )}
+                            <p style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.45, margin: 0, padding: '10px 12px', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
+                                {tm('bBeautyPaidNoNewSale')}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── APPOINTMENT DETAIL PANEL ─────────────────────────── */}
             {selectedApt && (

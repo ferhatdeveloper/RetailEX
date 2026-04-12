@@ -19,27 +19,29 @@ Yeni oluşturulacak veya mevcut bir modal üzerinde işlem yapılacaksa **bu mod
 ## Zorunlu sınıflar ve yapı
 
 ```tsx
-{/* Overlay */}
-<div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
-  <div className="bg-white rounded-[2rem] w-full max-w-{...} max-h-[90vh] overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
-    {/* Header — gradient */}
-    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black uppercase tracking-tight">Başlık</h2>
-          <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Alt başlık</p>
+{/* Overlay — taşmada dış scroll; kutu max-h ile sınırlı */}
+<div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+  <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
+    <div className="bg-white rounded-[2rem] w-full max-w-{...} max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
+      {/* Header — gradient */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-tight">Başlık</h2>
+            <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Alt başlık</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <button type="button" onClick={onClose} className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
-          <X className="w-5 h-5" />
-        </button>
       </div>
-    </div>
-    {/* Body — scroll */}
-    <div className="flex-1 overflow-y-auto p-8">...</div>
-    {/* Footer */}
-    <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
-      <button type="button" className="flex-1 ... rounded-2xl border-2 border-slate-200 ...">İptal</button>
-      <button type="button" className="flex-1 ... rounded-2xl bg-blue-600 text-white ...">Ana aksiyon</button>
+      {/* Body — yalnız burada scroll */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">...</div>
+      {/* Footer */}
+      <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+        <button type="button" className="flex-1 ... rounded-2xl border-2 border-slate-200 ...">İptal</button>
+        <button type="button" className="flex-1 ... rounded-2xl bg-blue-600 text-white ...">Ana aksiyon</button>
+      </div>
     </div>
   </div>
 </div>
@@ -65,9 +67,22 @@ Dropdown’da çoklu chevron hatasını önlemek için:
 - İptal: `rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]`
 - Birincil: `rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]`
 
+## Viewport — modal her zaman ekrana sığmalı (zorunlu)
+
+Uzun liste veya çok satır içerikte modal **viewport’u taşmamalı**; başlık ve footer **her zaman görünür** kalmalı, kaydırma **yalnızca gövde**de olmalı.
+
+1. **Dış sarmalayıcı (overlay):** `fixed inset-0 z-[…] overflow-y-auto overflow-x-hidden` + arka plan. Gerekirse içte `flex min-h-[100dvh] min-h-screen items-center justify-center p-3 sm:p-4 py-6` ile kutu ortalanır; taşma durumunda **sayfa (overlay) kayar**, kutu yine `max-h` ile sınırlı kalır.
+2. **Modal kutusu:** `w-full max-w-{…} max-h-[min(90vh,100dvh)] flex flex-col min-h-0 overflow-hidden` — üst sınır mutlaka `vh` / `dvh` ile verilmeli.
+3. **Header + ara toolbar + footer:** `shrink-0` (sabit yükseklik; taşmaz).
+4. **Gövde (liste/form):** `flex-1 min-h-0 overflow-y-auto overscroll-contain` — yalnızca bu alan scroll olur; `min-h-0` flex zincirinde **zorunlu** (aksi halde içerik kutuyu şişirip başlık/altı ekran dışına iter).
+5. Küçük hücrelerde uzun hata metni: `line-clamp-*`, `break-words`, gerekirse `max-w-*` ile satır yüksekliği patlamasın.
+
+Yeni veya güncellenen her modal bu viewport kuralına uygun olmalı; `max-h-[90vh]` tek başına yetmez — **`flex flex-col` + gövdede `flex-1 min-h-0 overflow-y-auto`** birlikte kullanılmalı.
+
 ## Kurallar
 
 1. Yeni modal eklendiğinde veya eski modal düzenlendiğinde bu yapı ve sınıflar uygulanmalı.
 2. Modal overlay z-index: `z-[9999]` veya ihtiyaca göre yüksek bir değer; çakışma olmamalı.
 3. Kapatma: Header’da X butonu; gerekirse backdrop’a tıklanınca kapatma (isteğe bağlı, `mandatory` gibi durumlarda kapatma kapatılabilir).
 4. Animasyon: `animate-in fade-in` (overlay), `animate-in zoom-in-95` (kutu); süre `duration-200` veya `duration-300`.
+5. **Viewport:** Yukarıdaki “Viewport — modal her zaman ekrana sığmalı” bölümüne uyulmalı.

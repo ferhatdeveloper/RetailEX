@@ -5,6 +5,7 @@ import type { RestaurantCallerIdEvent } from '../types';
 import { findCustomerByCallerPhone, formatCustomerAddressLines } from '@/services/restaurantCallerIdService';
 import { useCallerIdRestaurantOrders, type CallerIdOrderPreview } from '@/hooks/useCallerIdRestaurantOrders';
 import { cn } from '@/components/ui/utils';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RestaurantIncomingCallBannerProps {
     event: RestaurantCallerIdEvent;
@@ -47,21 +48,6 @@ function itemCount(row: CallerIdOrderPreview): number {
     return it.filter(Boolean).length;
 }
 
-function statusLabel(s: string | undefined): string {
-    switch (s) {
-        case 'closed':
-            return 'Kapatıldı';
-        case 'open':
-            return 'Açık';
-        case 'billed':
-            return 'Hesap';
-        case 'cancelled':
-            return 'İptal';
-        default:
-            return s || '—';
-    }
-}
-
 export function RestaurantIncomingCallBanner({
     event,
     customers,
@@ -72,6 +58,21 @@ export function RestaurantIncomingCallBanner({
     onAssignMatched,
     onOpenCustomerPicker,
 }: RestaurantIncomingCallBannerProps) {
+    const tmR = useRestaurantModuleTm();
+    const orderStatusLabel = (s: string | undefined): string => {
+        switch (s) {
+            case 'closed':
+                return tmR('resCallerClosed');
+            case 'open':
+                return tmR('resCallerOpen');
+            case 'billed':
+                return tmR('resCallerBilled');
+            case 'cancelled':
+                return tmR('resCallerCancelled');
+            default:
+                return s || '—';
+        }
+    };
     const match = findCustomerByCallerPhone(customers, event.phone);
     const displayPhone = event.phone;
     const [detailOpen, setDetailOpen] = useState(true);
@@ -98,7 +99,7 @@ export function RestaurantIncomingCallBanner({
                     </div>
                     <div className="flex-1 p-4 min-w-0 overflow-hidden">
                         <div className="text-[10px] font-black uppercase tracking-widest text-violet-600 mb-1">
-                            Gelen arama
+                            {tmR('resCallerIncomingTitle')}
                         </div>
                         <div className="text-xl font-black text-slate-900 tracking-tight truncate">{displayPhone}</div>
                         {event.name ? (
@@ -119,7 +120,7 @@ export function RestaurantIncomingCallBanner({
                             </div>
                         ) : (
                             <div className="mt-2 text-xs text-slate-500 font-medium">
-                                Müşteri kartında eşleşen telefon yok; POS’tan manuel seçebilirsiniz.
+                                {tmR('resCallerNoPhoneMatch')}
                             </div>
                         )}
                         {pollError ? (
@@ -134,7 +135,7 @@ export function RestaurantIncomingCallBanner({
                                     onClick={onGoToPos}
                                     className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-bold hover:bg-violet-700 transition-colors"
                                 >
-                                    POS&apos;a geç
+                                    {tmR('resCallerGoPos')}
                                 </button>
                             ) : null}
                             {match && onAssignMatched ? (
@@ -144,7 +145,7 @@ export function RestaurantIncomingCallBanner({
                                     className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1"
                                 >
                                     <UserCircle className="w-3.5 h-3.5" />
-                                    Müşteriyi ata
+                                    {tmR('resCallerAssign')}
                                 </button>
                             ) : null}
                             {onOpenCustomerPicker ? (
@@ -154,7 +155,7 @@ export function RestaurantIncomingCallBanner({
                                     className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors flex items-center gap-1"
                                 >
                                     <List className="w-3.5 h-3.5" />
-                                    Müşteri listesi
+                                    {tmR('resCallerList')}
                                 </button>
                             ) : null}
                         </div>
@@ -163,7 +164,7 @@ export function RestaurantIncomingCallBanner({
                         type="button"
                         onClick={onDismiss}
                         className="px-3 hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors shrink-0"
-                        aria-label="Kapat"
+                        aria-label={tmR('resCallerClose')}
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -176,7 +177,7 @@ export function RestaurantIncomingCallBanner({
                             onClick={() => setDetailOpen((v) => !v)}
                             className="flex items-center justify-between w-full px-4 py-2.5 text-left text-xs font-black uppercase tracking-wider text-slate-600 hover:bg-slate-100/80 transition-colors"
                         >
-                            <span>Adres ve sipariş geçmişi</span>
+                            <span>{tmR('resCallerAddressHistory')}</span>
                             {detailOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </button>
                         {detailOpen ? (
@@ -186,14 +187,14 @@ export function RestaurantIncomingCallBanner({
                                         <MapPin className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
                                         <div className="min-w-0">
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">
-                                                Teslimat / fatura adresi
+                                                {tmR('resCallerDeliveryAddrLabel')}
                                             </div>
                                             {hasAddress ? (
                                                 <p className="text-sm text-slate-800 font-medium leading-snug break-words">
                                                     {addressLine}
                                                 </p>
                                             ) : (
-                                                <p className="text-sm text-slate-400 italic">Kayıtlı adres yok</p>
+                                                <p className="text-sm text-slate-400 italic">{tmR('resCallerNoAddress')}</p>
                                             )}
                                         </div>
                                     </div>
@@ -202,15 +203,15 @@ export function RestaurantIncomingCallBanner({
                                     <div className="flex items-center gap-2 mb-2">
                                         <Package className="w-4 h-4 text-violet-500 shrink-0" />
                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-                                            Son restoran siparişleri
+                                            {tmR('resCallerRecentOrders')}
                                         </span>
                                     </div>
                                     {ordersLoading ? (
-                                        <p className="text-xs text-slate-500 animate-pulse">Yükleniyor…</p>
+                                        <p className="text-xs text-slate-500 animate-pulse">{tmR('resCallerLoading')}</p>
                                     ) : ordersError ? (
                                         <p className="text-xs text-amber-700 font-medium">{ordersError}</p>
                                     ) : orders.length === 0 ? (
-                                        <p className="text-xs text-slate-400 italic">Bu müşteriye ait kayıtlı restoran adisyonu yok</p>
+                                        <p className="text-xs text-slate-400 italic">{tmR('resCallerNoOrders')}</p>
                                     ) : (
                                         <ul className="space-y-2">
                                             {orders.map((row) => (
@@ -225,7 +226,7 @@ export function RestaurantIncomingCallBanner({
                                                                 {row.table_number ? (
                                                                     <span className="font-semibold text-slate-500">
                                                                         {' '}
-                                                                        · Masa {row.table_number}
+                                                                        {tmR('resCallerOrderTableSuffix').replace('{n}', String(row.table_number))}
                                                                     </span>
                                                                 ) : null}
                                                             </div>
@@ -234,7 +235,7 @@ export function RestaurantIncomingCallBanner({
                                                         <div className="text-right shrink-0">
                                                             <div className="font-black text-slate-800">{fmtMoney(row.total_amount)}</div>
                                                             <div className="text-[10px] text-slate-500">
-                                                                {itemCount(row)} kalem · {statusLabel(row.status)}
+                                                                {itemCount(row)} {tmR('resCallerLineItems')} · {orderStatusLabel(row.status)}
                                                             </div>
                                                         </div>
                                                     </div>

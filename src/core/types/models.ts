@@ -20,6 +20,13 @@ export interface BranchVariantStock {
 export interface Product {
   id: string;
   name: string;
+  /** DB `name2` — alternatif / ikinci ürün adı */
+  name2?: string;
+  /** Çok dilli ürün adları (fiş / menü — `receipt_settings.productNameFieldByLang` ile eşlenir) */
+  name_tr?: string;
+  name_en?: string;
+  name_ar?: string;
+  name_ku?: string;
   barcode: string;
   price: number;
   cost: number;
@@ -199,6 +206,8 @@ export interface Sale {
   created_at?: string;
   autoPrint?: boolean;
   language?: string;
+  /** Güzellik POS: randevu/satışta seçilen cihaz adı (fiş üst bilgisi) */
+  beautyDeviceName?: string;
 }
 
 export interface SaleItem {
@@ -215,6 +224,8 @@ export interface SaleItem {
   variant?: ProductVariant;
   unit?: string;
   multiplier?: number;
+  /** Güzellik: bu satırdaki personel adı (fiş) */
+  beautyStaffName?: string;
 }
 
 export interface Campaign {

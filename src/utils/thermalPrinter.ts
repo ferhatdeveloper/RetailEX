@@ -1,6 +1,7 @@
 import type { Sale, SaleItem } from '../core/types/models';
 import { Capacitor } from '@capacitor/core';
 import SunmiPrinter, { SunmiUtils } from './sunmiPrinter';
+import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 
 export interface ReturnReceipt {
   id: string;
@@ -156,7 +157,8 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
   if (options?.autoPrint && (window as any).__TAURI_INTERNALS__) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('print_html_silent', { html: receiptHTML, printerName: null });
+      const printerName = getStoredWindowsPrinterNameForPrint();
+      await invoke('print_html_silent', { html: receiptHTML, printerName: printerName ?? null });
       return;
     } catch (e) { 
       console.error('Tauri silent failed', e);

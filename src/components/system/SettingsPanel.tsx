@@ -1,4 +1,5 @@
 ﻿import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { formatIsoDateTr } from '../../utils/localCalendarDate';
 import { RoleManagement } from './RoleManagement';
 import { Settings, Building2, Calendar, MapPin, Box, Store } from 'lucide-react';
 
@@ -65,7 +66,7 @@ export function SettingsPanel() {
                   Aktif Dönem
                 </label>
                 <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700 font-medium">
-                  {selectedPeriod ? `${selectedPeriod.nr.toString().padStart(2, '0')} (${selectedPeriod.beg_date} - ${selectedPeriod.end_date})` : '-'}
+                  {selectedPeriod ? `${selectedPeriod.nr.toString().padStart(2, '0')} (${formatIsoDateTr(selectedPeriod.beg_date)} - ${formatIsoDateTr(selectedPeriod.end_date)})` : '-'}
                 </div>
               </div>
             </div>

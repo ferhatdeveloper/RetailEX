@@ -1,5 +1,5 @@
-﻿import { useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, CreditCard, Banknote, Calendar, Download, Filter } from 'lucide-react';
+import { useState } from 'react';
+import { Banknote, TrendingUp, TrendingDown, CreditCard, Calendar, Download, Filter } from 'lucide-react';
 import type { Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
 
@@ -89,7 +89,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
       <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white px-4 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <DollarSign className="w-4 h-4" />
+            <Banknote className="w-4 h-4" />
             <h2 className="text-sm">Finans & Kasa Yönetimi</h2>
           </div>
           <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
@@ -148,7 +148,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
           <div className="grid grid-cols-4 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-blue-600" />
+                <Banknote className="w-4 h-4 text-blue-600" />
                 <span className="text-[10px] text-gray-600">Toplam Gelir</span>
               </div>
               <div className="text-base text-blue-600">{formatNumber(totalRevenue, 2, false)} IQD</div>
@@ -164,7 +164,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
             </div>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="w-4 h-4 text-blue-600" />
+                <Banknote className="w-4 h-4 text-blue-600" />
                 <span className="text-[10px] text-gray-600">Brüt Satış</span>
               </div>
               <div className="text-base text-blue-600">{formatNumber(grossRevenue, 2, false)} IQD</div>

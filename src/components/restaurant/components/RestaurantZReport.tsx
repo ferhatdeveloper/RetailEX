@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText, Printer, X, Clock, Banknote, CreditCard } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { formatCurrency } from '../../../utils/currency';
 
 interface ZReportData {
     date: string;
@@ -12,6 +13,7 @@ interface ZReportData {
     paymentsByType: { type: string; amount: number; count: number }[];
     voids: { reason: string; amount: number; count: number }[];
     complements: { amount: number; count: number };
+    returns?: { amount: number; count: number };
     totalSales: number;
     netCash: number;
     /** Mali gün içinde satılan ürün kalemleri (adet + tutar) */
@@ -31,7 +33,7 @@ function padLine(left: string, right: string, width = 32): string {
 }
 
 export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onClose, onPrint }) => {
-    const fmt = (num: number) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'IQD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
+    const fmt = (num: number) => formatCurrency(num, 0, false);
 
     /** 80mm termal fiş içeriği — yazdırma penceresine gönderilecek HTML */
     const getReceipt80mmHtml = () => {
@@ -46,6 +48,8 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
         lines.push(padLine('Sorumlu', d.staffName));
         lines.push('--------------------------------');
         lines.push(padLine('TOPLAM SATIS', fmt(d.totalSales)));
+        lines.push(padLine('IADE', fmt(d.returns?.amount || 0)));
+        lines.push(padLine('IKRAM', fmt(d.complements?.amount || 0)));
         lines.push(padLine('NET NAKIT', fmt(d.netCash)));
         lines.push('--------------------------------');
         lines.push('  SATILAN URUNLER');
@@ -153,6 +157,14 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
                         <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
                             <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Net Nakit</p>
                             <p className="text-xl font-bold text-slate-900 mt-0.5">{fmt(data.netCash)}</p>
+                        </div>
+                        <div className="bg-rose-50 rounded-xl p-4 border border-rose-100">
+                            <p className="text-xs font-semibold text-rose-600 uppercase tracking-wide">İade Tutarı</p>
+                            <p className="text-xl font-bold text-slate-900 mt-0.5">{fmt(data.returns?.amount || 0)}</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">İkram Tutarı</p>
+                            <p className="text-xl font-bold text-slate-900 mt-0.5">{fmt(data.complements?.amount || 0)}</p>
                         </div>
                     </div>
                 </div>

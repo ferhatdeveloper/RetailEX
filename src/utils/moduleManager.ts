@@ -242,7 +242,7 @@ export const ALL_MODULES: ModuleDefinition[] = [
     nameEn: 'Currency Management',
     nameAr: 'إدارة العملات',
     category: 'finance',
-    icon: 'DollarSign',
+    icon: 'Banknote',
     description: 'Çoklu para birimi desteği',
     descriptionEn: 'Multi-currency support',
     descriptionAr: 'دعم متعدد العملات',

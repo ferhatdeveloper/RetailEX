@@ -63,6 +63,9 @@ mod db_utils;
 #[path = "scanner.rs"]
 mod scanner;
 
+#[path = "windows_service_install.rs"]
+mod windows_service_install;
+
 // ----------------------
 
 const SERVICE_NAME: &str = "RetailEX_Service";
@@ -72,29 +75,42 @@ const LOG_FILE: &str = "C:\\ProgramData\\RetailEX\\service.log";
 fn main() {
     if let Err(e) = run() {
         eprintln!("Service error: {}", e);
+        std::process::exit(1);
     }
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "--install" => install_service(),
-            "--uninstall" => uninstall_service(),
-            _ => {
-                println!("Usage: RetailEX_Service.exe [--install | --uninstall]");
-                Ok(())
-            }
+    match windows_service_install::scan_bootstrap_service_cmd(&args) {
+        Some(windows_service_install::BootstrapServiceCmd::Install) => return install_service(),
+        Some(windows_service_install::BootstrapServiceCmd::Uninstall) => return uninstall_service(),
+        Some(windows_service_install::BootstrapServiceCmd::Console) => {
+            println!("Usage: RetailEX_Service.exe [--install | --uninstall]");
+            return Ok(());
         }
-    } else {
-        println!("Starting RetailEX Background Service...");
-        service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
+        None => {}
     }
+    if args.len() > 1 {
+        println!("Usage: RetailEX_Service.exe [--install | --uninstall]");
+        return Ok(());
+    }
+    println!("Starting RetailEX Background Service...");
+    service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
 }
 
 fn install_service() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE)?;
-    let exe_path = env::current_exe()?;
+    let manager = ServiceManager::local_computer(
+        None::<&str>,
+        ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
+    )
+    .map_err(|e| {
+        windows_service_install::log_service_install_failure("RetailEX_Service", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
+    let exe_path = env::current_exe().map_err(|e| {
+        windows_service_install::log_install_any_error("RetailEX_Service", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
     
     let info = ServiceInfo {
         name: SERVICE_NAME.to_string().into(),
@@ -109,9 +125,19 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         account_password: None,
     };
 
-    manager.create_service(&info, ServiceAccess::all())?;
-    
-    println!("Service installed successfully.");
+    match windows_service_install::create_service_or_accept_exists(
+        &manager,
+        &info,
+        ServiceAccess::all(),
+        "RetailEX_Service",
+    )? {
+        windows_service_install::CreateServiceOutcome::Created => {
+            println!("Service installed successfully.");
+        }
+        windows_service_install::CreateServiceOutcome::AlreadyExisted => {
+            println!("Service already exists.");
+        }
+    }
     Ok(())
 }
 

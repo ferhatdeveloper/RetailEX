@@ -1,10 +1,10 @@
-﻿// ğŸ”„ Auto Reorder Suggestions - Otomatik Sipariş Önerileri
+// ğŸ”„ Auto Reorder Suggestions - Otomatik Sipariş Önerileri
 // Min-Max stock levels, reorder point, automatic suggestions
 
 import { useState, useEffect } from 'react';
 import {
   RefreshCw, TrendingDown, AlertCircle, CheckCircle, Send,
-  Package, Calendar, DollarSign, Truck, MessageCircle,
+  Package, Calendar, Banknote, Truck, MessageCircle,
   Download, Filter, Eye, X
 } from 'lucide-react';
 

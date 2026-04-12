@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Printer,
     Plus,
@@ -13,9 +13,11 @@ import {
     Tag
 } from 'lucide-react';
 import { useRestaurantStore } from '../store/useRestaurantStore';
+import { useProductStore } from '../../../store/useProductStore';
 import { PrinterProfile, PrinterRouting } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/components/ui/utils';
+import { mergeWindowsPrinterNameIntoLocalStorage } from '@/utils/tauriPrintSettings';
 
 export const RestaurantPrinterSettings: React.FC = () => {
     const {
@@ -29,16 +31,43 @@ export const RestaurantPrinterSettings: React.FC = () => {
         setCommonPrinter,
         menu,
         systemPrinters,
-        loadSystemPrinters
+        loadSystemPrinters,
+        loadMenu,
     } = useRestaurantStore();
+
+    const refreshMenuFromProducts = useCallback(async () => {
+        try {
+            await useProductStore.getState().loadProducts(true);
+        } catch {
+            /* ağ yoksa bile menüyü mevcut stokla türet */
+        }
+        await loadMenu();
+    }, [loadMenu]);
 
     useEffect(() => {
         loadSystemPrinters();
-    }, []);
+        void refreshMenuFromProducts();
+    }, [loadSystemPrinters, refreshMenuFromProducts]);
 
     const [editingProfile, setEditingProfile] = useState<Partial<PrinterProfile> | null>(null);
 
-    const categories = Array.from(new Set(menu.map(item => item.category)));
+    /** Menü ürünlerinden + DB’de kayıtlı rotalardan (yetim kategori kaybolmasın) */
+    const categories = useMemo(() => {
+        const set = new Set<string>();
+        for (const item of menu) {
+            const c = item.category != null ? String(item.category).trim() : '';
+            if (c) set.add(c);
+        }
+        for (const r of printerRoutes) {
+            const c = r.categoryId != null ? String(r.categoryId).trim() : '';
+            if (c) set.add(c);
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [menu, printerRoutes]);
+
+    /** Silinmiş profile kalan ortak yazıcı id’si — seçim boş görünmesin */
+    const commonPrinterSelectValue =
+        commonPrinterId && printerProfiles.some((p) => p.id === commonPrinterId) ? commonPrinterId : '';
 
     const handleSaveProfile = () => {
         if (editingProfile && editingProfile.name) {
@@ -51,6 +80,10 @@ export const RestaurantPrinterSettings: React.FC = () => {
                 systemName: editingProfile.connection === 'system' ? editingProfile.systemName : undefined,
                 ...editingProfile
             } as PrinterProfile);
+            // Tauri 80mm fiş (print_html_silent) aynı localStorage anahtarını okur — buradan seçilen Windows yazıcısı fişe de yansır
+            if (editingProfile.connection === 'system' && editingProfile.systemName?.trim()) {
+                mergeWindowsPrinterNameIntoLocalStorage(editingProfile.systemName);
+            }
             setEditingProfile(null);
         }
     };
@@ -60,7 +93,9 @@ export const RestaurantPrinterSettings: React.FC = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Yazıcı Yönetimi</h1>
-                    <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Mutfak, Bar ve Kasa yazıcılarını yapılandırın</p>
+                    <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">
+                        Mutfak, Bar ve Kasa — profiller ve kategori rotaları veritabanında (firma bazlı) saklanır
+                    </p>
                 </div>
                 <button
                     onClick={() => setEditingProfile({ id: uuidv4(), name: '', type: 'thermal', connection: 'network' })}
@@ -71,10 +106,9 @@ export const RestaurantPrinterSettings: React.FC = () => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* 1. Printer Profiles */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100">
+            <div className="flex flex-col gap-8">
+                {/* 1. Yazıcı listesi */}
+                <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
                                 <Printer className="w-6 h-6" />
@@ -115,39 +149,54 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                 </div>
                             )}
                         </div>
-                    </div>
+                </div>
 
-                    {/* 2. Common Printer (Ortak Yazıcı) */}
-                    <div className="bg-slate-900 rounded-[32px] p-8 text-white shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
-                        <div className="flex items-center justify-between mb-8 relative">
-                            <div className="flex items-center gap-3">
-                                <div className="p-3 bg-white/10 rounded-2xl text-blue-400">
-                                    <RefreshCcw className="w-6 h-6" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-black uppercase tracking-tight">Ortak Yazıcı</h2>
-                                    <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">Tüm siparişlerin ikincil çıktısını alır</p>
-                                </div>
+                {/* 2. Ortak yazıcı */}
+                <div className="bg-white rounded-[32px] p-8 shadow-sm border-2 border-blue-100 ring-1 ring-blue-50">
+                        <div className="flex items-start gap-3 mb-5">
+                            <div className="p-3 bg-blue-50 rounded-2xl text-blue-600 shrink-0">
+                                <RefreshCcw className="w-6 h-6" aria-hidden />
+                            </div>
+                            <div className="min-w-0">
+                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Ortak Yazıcı</h2>
+                                <p className="text-sm text-slate-600 mt-1.5 leading-snug">
+                                    Hesap fişi ve varsayılan çıktı için bu profili seçin (tercihen <span className="font-semibold text-slate-800">Sistem yazıcısı</span>).
+                                    Mutfakta kategori rotası yoksa yedek olarak da kullanılır.
+                                </p>
                             </div>
                         </div>
 
+                        <label htmlFor="rest-common-printer-select" className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                            Profil seçimi
+                        </label>
                         <select
-                            value={commonPrinterId || ''}
+                            id="rest-common-printer-select"
+                            value={commonPrinterSelectValue}
                             onChange={(e) => setCommonPrinter(e.target.value || undefined)}
-                            className="w-full bg-white/10 border border-white/10 rounded-2xl h-14 px-6 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all appearance-none"
+                            className={cn(
+                                'w-full rounded-2xl min-h-[3.5rem] px-4 py-3 text-base font-semibold',
+                                'bg-slate-50 border-2 border-slate-200 text-slate-900',
+                                'focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white outline-none cursor-pointer',
+                                'shadow-inner'
+                            )}
                         >
-                            <option value="" className="bg-slate-800 text-white">Devre Dışı</option>
-                            {printerProfiles.map(p => (
-                                <option key={p.id} value={p.id} className="bg-slate-800 text-white">{p.name}</option>
+                            <option value="">Devre Dışı (yalnızca genel fiş yazıcısı — Yönetim / Yazıcı Ayarları)</option>
+                            {printerProfiles.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                    {p.name}
+                                    {p.connection === 'system' && p.systemName ? ` — ${p.systemName}` : ''}
+                                </option>
                             ))}
                         </select>
-                    </div>
+                        {printerProfiles.length === 0 ? (
+                            <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                                Önce «Yeni Yazıcı Ekle» ile en az bir profil oluşturun; liste burada görünür.
+                            </p>
+                        ) : null}
                 </div>
 
-                {/* 3. Category Routing */}
-                <div className="space-y-6">
-                    <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100 h-full">
+                {/* 3. Kategori rotalama — ortak yazıcının altında */}
+                <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">
                                 <Tag className="w-6 h-6" />
@@ -155,42 +204,65 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Kategori Rotalama</h2>
                         </div>
 
+                        <p className="text-sm text-slate-600 mb-4 leading-relaxed">
+                            Her ürün kategorisi için mutfak çıktısının gideceği yazıcı profilini seçin. Liste, ürün stoğundaki kategori alanlarından oluşur.
+                        </p>
+
                         <div className="space-y-4">
-                            {categories.map(cat => {
-                                const route = printerRoutes.find(r => r.categoryId === cat);
-                                return (
-                                    <div key={cat} className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">{cat}</label>
-                                        <select
-                                            value={route?.printerId || ''}
-                                            onChange={(e) => {
-                                                const pId = e.target.value;
-                                                if (pId) {
-                                                    const profile = printerProfiles.find(p => p.id === pId);
-                                                    updatePrinterRoute({
-                                                        id: route?.id || uuidv4(),
-                                                        categoryId: cat,
-                                                        printerId: pId,
-                                                        printerName: profile?.name || '',
-                                                        printerType: profile?.type || 'thermal',
-                                                        connectionType: profile?.connection || 'usb'
-                                                    } as PrinterRouting);
-                                                } else if (route) {
-                                                    removePrinterRoute(route.id);
-                                                }
-                                            }}
-                                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-12 px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        >
-                                            <option value="">İstasyon Seçin...</option>
-                                            {printerProfiles.map(p => (
-                                                <option key={p.id} value={p.id}>{p.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                );
-                            })}
+                            {categories.length === 0 ? (
+                                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
+                                    <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                                    <p className="text-slate-800 font-semibold text-sm mb-1">Henüz kategori yok</p>
+                                    <p className="text-slate-600 text-xs mb-4 max-w-md mx-auto">
+                                        Ürünler yüklenmediyse veya tüm ürünlerde kategori alanı boşsa bu liste görünmez. Stokta kategorisi olan ürünler yüklendikten sonra burada satırlar belirir.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => void refreshMenuFromProducts()}
+                                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
+                                    >
+                                        <RefreshCcw className="w-4 h-4" />
+                                        Ürün menüsünü yeniden yükle
+                                    </button>
+                                </div>
+                            ) : (
+                                categories.map((cat) => {
+                                    const route = printerRoutes.find((r) => r.categoryId === cat);
+                                    return (
+                                        <div key={cat} className="space-y-2">
+                                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide pl-1">{cat}</label>
+                                            <select
+                                                value={route?.printerId || ''}
+                                                onChange={(e) => {
+                                                    const pId = e.target.value;
+                                                    if (pId) {
+                                                        const profile = printerProfiles.find((p) => p.id === pId);
+                                                        updatePrinterRoute({
+                                                            id: route?.id || uuidv4(),
+                                                            categoryId: cat,
+                                                            printerId: pId,
+                                                            printerName: profile?.name || '',
+                                                            printerType: profile?.type || 'thermal',
+                                                            connectionType: profile?.connection || 'usb',
+                                                        } as PrinterRouting);
+                                                    } else if (route) {
+                                                        removePrinterRoute(route.id);
+                                                    }
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl min-h-12 px-4 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                                            >
+                                                <option value="">İstasyon seçin…</option>
+                                                {printerProfiles.map((p) => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
-                    </div>
                 </div>
             </div>
 

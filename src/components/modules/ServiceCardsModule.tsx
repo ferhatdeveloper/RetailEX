@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Edit2, Trash2, X, DollarSign, Tag } from 'lucide-react';
+import { FileText, Plus, Search, Edit2, Trash2, X, Banknote, Tag } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { serviceAPI, Service, CreateServiceInput } from '../../services/serviceAPI';
 
@@ -316,7 +316,7 @@ export function ServiceCardsModule() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                        <DollarSign className="w-4 h-4 inline mr-1" />
+                                        <Banknote className="w-4 h-4 inline mr-1" />
                                         Birim Fiyat *
                                     </label>
                                     <input

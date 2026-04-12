@@ -1,11 +1,11 @@
-﻿// Regional & Franchise Management Module
+// Regional & Franchise Management Module
 
 import { useState } from 'react';
 import { 
   Map,
   Building,
   Users,
-  DollarSign,
+  Banknote,
   TrendingUp,
   TrendingDown,
   Award,
@@ -154,7 +154,7 @@ function RegionalView({ regionStats }: any) {
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Toplam Ciro</span>
-            <DollarSign className="h-5 w-5 text-purple-600" />
+            <Banknote className="h-5 w-5 text-purple-600" />
           </div>
           <div className="text-2xl font-bold text-purple-600">
             {formatCurrency(regionStats?.reduce((sum: number, r: any) => sum + r.revenue, 0) || 0)}
@@ -446,7 +446,7 @@ function FranchiseView() {
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Toplam Royalty</span>
-            <DollarSign className="h-5 w-5 text-purple-600" />
+            <Banknote className="h-5 w-5 text-purple-600" />
           </div>
           <div className="text-2xl font-bold text-purple-600">
             {formatCurrency(275000000)}

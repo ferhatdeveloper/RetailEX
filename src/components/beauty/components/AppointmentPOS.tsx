@@ -9,12 +9,13 @@
  *   [Randevu Oluştur] → yalnızca sepette en az bir hizmet varken randevu kaydı
  *   [Ödeme Tamamla]   → hizmet varsa randevu + satış; sadece ürün/paket ise yalnızca beauty satışı (+ ürün stok düşümü)
  */
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users,
-    CalendarDays, Clock, Cpu, Activity, CheckCircle2, Scissors, Package,
-    Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag,
-    AlertTriangle,
+    CalendarDays, CalendarClock, Clock, Cpu, Activity, CheckCircle2, Scissors, Package,
+    Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
+    AlertTriangle, PanelLeft, Repeat,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
@@ -22,13 +23,39 @@ import type { BeautyAppointment, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
-import { POSPaymentModal } from '../../pos/POSPaymentModal';
+import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
+import { Receipt80mm } from '../../pos/Receipt80mm';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useProductStore } from '../../../store/useProductStore';
 import type { Product } from '../../../core/types';
+import type { Sale, SaleItem } from '../../../core/types/models';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { salesAPI } from '../../../services/api/sales';
+import {
+    buildRestaurantAdisyonHtml,
+    printRestaurantHtmlNoPreview,
+    type KitchenReceiptLocale,
+} from '../../../utils/restaurantReceiptPrint';
+import { getReceiptSettings, invalidateReceiptSettingsCache, type ReceiptSettings } from '../../../services/receiptSettingsService';
+import { resolveProductNameForReceipt } from '../../../utils/receiptProductName';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
+import { toast } from 'sonner';
+import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
+import { formatLocalYmd } from '../../../utils/dateLocal';
+import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
 import '../ClinicStyles.css';
+
+const BEAUTY_CATEGORY_RAIL_KEY = 'retailex_beauty_pos_category_rail';
+type BeautyCategoryRailMode = 'chips' | 'sidebar';
+function readBeautyCategoryRailMode(): BeautyCategoryRailMode {
+    try {
+        if (typeof localStorage === 'undefined') return 'chips';
+        return localStorage.getItem(BEAUTY_CATEGORY_RAIL_KEY) === 'sidebar' ? 'sidebar' : 'chips';
+    } catch {
+        return 'chips';
+    }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CartLine {
@@ -43,6 +70,67 @@ interface CartLine {
     duration_min?: number;
 }
 
+/** Mevcut randevuda «Güncelle» için karşılaştırma anlığı (baseline yalnızca yükleme / kayıt sonrası yenilenir) */
+interface ExistingEditSnap {
+    date: string;
+    time: string;
+    device: string;
+    notes: string;
+    status: string;
+    discount: number;
+    durationMin: number;
+    customerId: string;
+    cartSig: string;
+    total: number;
+}
+
+function isKitchenReceiptLocale(s: string): s is KitchenReceiptLocale {
+    return s === 'tr' || s === 'en' || s === 'ar' || s === 'ku';
+}
+
+/** Randevu cihazı → fişte gösterilecek ad */
+function resolveBeautyDeviceLabel(
+    deviceId: string | undefined,
+    deviceList: { id: string; name: string }[],
+): string | undefined {
+    const id = typeof deviceId === 'string' ? deviceId.trim() : '';
+    if (!id) return undefined;
+    const d = deviceList.find((x) => String(x.id) === String(id));
+    return (d?.name && d.name.trim()) || id;
+}
+
+/** Sepet satırları → fiş kalemleri (ürün/hizmet; Receipt80mm dil alanları) */
+function beautyLinesToReceiptItems(
+    lines: CartLine[],
+    lang: KitchenReceiptLocale,
+    receiptSettings: ReceiptSettings,
+    productList: Product[],
+    specialistList: { id: string; name?: string }[],
+): SaleItem[] {
+    return lines.map((line) => {
+        const product: Partial<Product> | null =
+            line.type === 'product'
+                ? productList.find((p) => p.id === line.item_id) ?? { id: line.item_id, name: line.name }
+                : { id: line.item_id, name: line.name };
+        const productName =
+            resolveProductNameForReceipt(product, lang, receiptSettings) || line.name || '—';
+        const lineTotal = line.unit_price * line.qty;
+        const sid = line.staff_id?.trim();
+        const staffName = sid
+            ? specialistList.find((s) => String(s.id) === String(sid))?.name?.trim()
+            : undefined;
+        const base: SaleItem = {
+            productId: line.item_id,
+            productName,
+            quantity: line.qty,
+            price: line.unit_price,
+            discount: 0,
+            total: lineTotal,
+        };
+        return staffName ? { ...base, beautyStaffName: staffName } : base;
+    });
+}
+
 interface BookingBlockModalState {
     open: boolean;
     title: string;
@@ -52,10 +140,35 @@ interface BookingBlockModalState {
     diagnostics: { label: string; ok: boolean }[];
 }
 
+/** Takvim çakışması: iptal / gelmedi kayıtları slotu meşgul sayma */
+function beautyAptBlocksCalendarSlot(e: BeautyAppointment): boolean {
+    const s = String(e.status ?? '').toLowerCase();
+    return s !== 'cancelled' && s !== 'canceled' && s !== 'no_show';
+}
+
+type SlotConflictDetail = {
+    kind: 'staff' | 'device';
+    staffName?: string;
+    deviceName?: string;
+    sameDeviceSlots: string[];
+    otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }>;
+};
+
+class SlotConflictError extends Error {
+    readonly detail: SlotConflictDetail;
+    constructor(message: string, detail: SlotConflictDetail) {
+        super(message);
+        this.name = 'SlotConflictError';
+        this.detail = detail;
+    }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-let _uid = 0;
-const uid = () => `line_${++_uid}`;
+/** Sepet satırı anahtarı — modül sayacı HMR sonrası çakışır; UUID kullan */
+const uid = () =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? `ln_${crypto.randomUUID()}`
+        : `ln_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -77,6 +190,15 @@ const safeTimeHHmm = (v: unknown, fallback = '09:00') => {
     const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 };
+
+/** Aylık seri son randevu tarihine kadar yükleme aralığı */
+function addCalendarMonthsYmd(ymd: string, months: number): string {
+    const m = String(ymd).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return ymd;
+    const d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+    d.setMonth(d.getMonth() + Math.max(0, months));
+    return formatLocalYmd(d);
+}
 
 /** PG date için güvenli YYYY-MM-DD */
 const safeDateYmd = (v: unknown, fallback = new Date().toISOString().slice(0, 10)) => {
@@ -126,21 +248,37 @@ const iStyle: React.CSSProperties = {
 const selStyle: React.CSSProperties = { ...iStyle, cursor: 'pointer' };
 
 // ─── Component ────────────────────────────────────────────────────────────────
+const UNASSIGNED_RESOURCE = '__unassigned__';
+
 interface Props {
     prefillDate?: string;
     prefillTime?: string;
+    /** Takvimde personel sütununa tıklanınca; atanmamış sütunu boş bırakmak için `__unassigned__` */
+    prefillStaffId?: string;
+    /** Takvimde cihaz sütununa tıklanınca */
+    prefillDeviceId?: string;
+    /** CRM / sihirbaz: bu hizmet satırı sepete bir kez eklenir */
+    prefillServiceId?: string;
     existingAppointment?: BeautyAppointment | null;
     onBack?: () => void;      // undefined = standalone POS mode
 }
 
-export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, onBack }: Props) {
+export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefillDeviceId, prefillServiceId, existingAppointment, onBack }: Props) {
     const {
         services, packages, specialists, customers, devices,
         loadServices, loadPackages, loadSpecialists, loadCustomers, loadDevices,
-        createAppointment, updateAppointment,
+        createAppointment, updateAppointment, loadAppointmentsInRange,
     } = useBeautyStore();
     const { products, loadProducts, updateStock } = useProductStore();
-    const { tm } = useLanguage();
+    const { tm, language: uiLanguage } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
+    const receiptFirmNr = useMemo(() => {
+        const f = selectedFirm;
+        if (!f) return undefined;
+        const raw = f.firm_nr ?? f.firma_kodu ?? (f.nr != null ? String(f.nr) : '');
+        const s = String(raw).trim().padStart(3, '0').slice(0, 10);
+        return s || undefined;
+    }, [selectedFirm]);
 
     const STATUS_OPTS = [
         { value: AppointmentStatus.SCHEDULED, label: tm('bAppointmentScheduled') },
@@ -158,6 +296,16 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
     const [tab, setTab] = useState<'services' | 'packages' | 'products'>('services');
     const [category, setCategory] = useState('all');
     const [svcQ, setSvcQ] = useState('');
+    const [categoryRailMode, setCategoryRailMode] = useState<BeautyCategoryRailMode>(readBeautyCategoryRailMode);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(BEAUTY_CATEGORY_RAIL_KEY, categoryRailMode);
+        } catch { /* ignore */ }
+    }, [categoryRailMode]);
+
+    const showCategoryRailToggle = tab === 'services' || tab === 'products';
+    const useCategorySidebar = showCategoryRailToggle && categoryRailMode === 'sidebar';
 
     // ── Cart ─────────────────────────────────────────────────────────────
     const [cart, setCart] = useState<CartLine[]>([]);
@@ -180,6 +328,20 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         steps: [],
         diagnostics: [],
     });
+    const [slotSuggestModal, setSlotSuggestModal] = useState<{
+        open: boolean;
+        title: string;
+        subtitle?: string;
+        sameDeviceSlots: string[];
+        otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }>;
+        conflictKind?: 'staff' | 'device';
+    }>({
+        open: false,
+        title: '',
+        sameDeviceSlots: [],
+        otherDeviceSuggestions: [],
+    });
+    const [slotBrowseLoading, setSlotBrowseLoading] = useState(false);
     /** Sepet satırındaki hizmet için personel — liste modalı (uid) */
     const [staffLinePickerUid, setStaffLinePickerUid] = useState<string | null>(null);
 
@@ -192,12 +354,49 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
     const [aptStatus, setAptStatus] = useState<AppointmentStatus>(AppointmentStatus.SCHEDULED);
     const [aptOpen, setAptOpen] = useState(true);  // section collapse
     const [hydratedAppointmentId, setHydratedAppointmentId] = useState<string | null>(null);
+    const [existingEditBaselineFlush, setExistingEditBaselineFlush] = useState(0);
+    const [updateExistingBusy, setUpdateExistingBusy] = useState(false);
+    const [editBaselineSnap, setEditBaselineSnap] = useState<ExistingEditSnap | null>(null);
+    /** Tek hizmet veya mevcut randevu düzenlemede ödeme / kayıtta kullanılan gerçek süre (dk). */
+    const [aptActualDurationMin, setAptActualDurationMin] = useState(30);
+    const [monthlyModalLine, setMonthlyModalLine] = useState<CartLine | null>(null);
+    const [monthlyForm, setMonthlyForm] = useState({ date: '', sessions: 1 });
+    const [monthlyBusy, setMonthlyBusy] = useState(false);
 
     // ── Payment modal ─────────────────────────────────────────────────────
     const [showPay, setShowPay] = useState(false);
+    const [receiptNumber, setReceiptNumber] = useState(() =>
+        `BTY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0')}`
+    );
+    const generateNewReceiptNumber = useCallback(async () => {
+        try {
+            const counts = await salesAPI.getSequenceCounts();
+            const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+            setReceiptNumber(`BTY-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
+        } catch {
+            const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+            const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
+            setReceiptNumber(`BTY-${datePart}-${randomPart}`);
+        }
+    }, []);
+    useEffect(() => {
+        void generateNewReceiptNumber();
+    }, [generateNewReceiptNumber]);
 
-    // ── Done state ────────────────────────────────────────────────────────
-    const [doneMsg, setDoneMsg] = useState('');
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+    const [completedPaymentData, setCompletedPaymentData] = useState<any>(null);
+    const [receiptPrintImmediately, setReceiptPrintImmediately] = useState(false);
+    /** Randevu fişi — üst bant; ödeme fişinde temizlenir */
+    const [receiptHeaderBanner, setReceiptHeaderBanner] = useState<string | undefined>(undefined);
+
+    /** Çift tıklama / üst üste tıklamada aynı randevunun iki kez oluşmasını engeller */
+    const bookingSubmitRef = useRef(false);
+    const checkoutSubmitRef = useRef(false);
+    /** prefillServiceId ile otomatik eklenen satırı yalnızca bir kez */
+    const didAddPrefillServiceRef = useRef(false);
+    const [bookingBusy, setBookingBusy] = useState(false);
 
     useEffect(() => {
         loadServices(); loadPackages(); loadSpecialists();
@@ -235,19 +434,126 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         if (!ok) setStaffLinePickerUid(null);
     }, [cart, staffLinePickerUid]);
 
-    /** Tek aktif uzman varsa varsayılan personel olarak seç */
+    /** Takvimden personel/cihaz sütunu ile açıldıysa önce bunu uygula */
     useEffect(() => {
-        const act = specialists.filter(s => s.is_active);
-        if (act.length === 1) {
-            setDefaultSpecialistId(prev => prev || act[0].id);
+        if (existingAppointment?.id) return;
+        if (prefillStaffId !== undefined) {
+            setDefaultSpecialistId(!prefillStaffId || prefillStaffId === UNASSIGNED_RESOURCE ? '' : prefillStaffId);
         }
-    }, [specialists]);
+    }, [existingAppointment?.id, prefillStaffId]);
+
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        if (prefillDeviceId === undefined) return;
+        const raw = String(prefillDeviceId).trim();
+        if (!raw || raw === UNASSIGNED_RESOURCE) {
+            setAptDevice('');
+            return;
+        }
+        const match = devices.find(d => String(d.id) === String(raw) && d.is_active !== false);
+        setAptDevice(match ? String(match.id) : raw);
+    }, [existingAppointment?.id, prefillDeviceId, devices]);
+
+    useEffect(() => {
+        didAddPrefillServiceRef.current = false;
+    }, [prefillServiceId, existingAppointment?.id]);
+
+    /** CRM/sihirbaz serviceId: hizmet listesi ve personel hazır olunca sepete */
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        const rawPid = prefillServiceId?.trim();
+        if (!rawPid) return;
+        if (!services.length) return;
+        const svc = services.find(s => String(s.id) === String(rawPid));
+        if (!svc) return;
+
+        const staffResolved =
+            (defaultSpecialistId || '').trim() ||
+            (prefillStaffId && prefillStaffId !== UNASSIGNED_RESOURCE ? prefillStaffId : '');
+        const specialistsActive = specialists.filter(s => s.is_active !== false);
+        const unassignedStaffColumn = prefillStaffId === UNASSIGNED_RESOURCE;
+        const mustWaitForDefaultStaff =
+            !staffResolved &&
+            specialistsActive.length > 0 &&
+            prefillStaffId === undefined;
+        if (mustWaitForDefaultStaff) return;
+
+        const canInsert = !!staffResolved || unassignedStaffColumn || specialistsActive.length === 0;
+        if (!canInsert) return;
+
+        setCart(c => {
+            const idx = c.findIndex(l => l.type === 'service' && String(l.item_id) === String(rawPid));
+            if (idx >= 0) {
+                const line = c[idx];
+                if (staffResolved && !line.staff_id?.trim()) {
+                    const next = [...c];
+                    next[idx] = { ...line, staff_id: staffResolved };
+                    return next;
+                }
+                return c;
+            }
+            if (didAddPrefillServiceRef.current) return c;
+            didAddPrefillServiceRef.current = true;
+            return [
+                ...c,
+                {
+                    uid: uid(),
+                    type: 'service',
+                    item_id: svc.id,
+                    name: svc.name,
+                    unit_price: svc.price,
+                    qty: 1,
+                    color: svc.color,
+                    duration_min: svc.duration_min,
+                    staff_id: staffResolved || undefined,
+                },
+            ];
+        });
+    }, [
+        existingAppointment?.id,
+        prefillServiceId,
+        services,
+        defaultSpecialistId,
+        prefillStaffId,
+        specialists,
+    ]);
+
+    /** Varsayılan personel: ilk aktif uzman (takvimden atanmamış / belirli sütun yoksa). Mevcut randevu düzenlemesinde dokunulmaz. */
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        const act = specialists.filter(s => s.is_active);
+        if (act.length === 0) return;
+        if (prefillStaffId !== undefined && prefillStaffId !== '' && prefillStaffId !== UNASSIGNED_RESOURCE) return;
+        if (prefillStaffId === UNASSIGNED_RESOURCE) return;
+        setDefaultSpecialistId(prev => (prev ? prev : act[0].id));
+    }, [specialists, prefillStaffId, existingAppointment?.id]);
 
     // ── Derived ──────────────────────────────────────────────────────────
     const subtotal = cart.reduce((s, l) => s + l.unit_price * l.qty, 0);
     const discAmt = subtotal * (discount / 100);
     const total = subtotal - discAmt;
     const totalDur = cart.filter(l => l.type === 'service').reduce((s, l) => s + (l.duration_min ?? 0) * l.qty, 0);
+
+    useEffect(() => {
+        if (existingAppointment?.id) return;
+        setAptActualDurationMin(Math.max(1, totalDur || 30));
+    }, [totalDur, existingAppointment?.id]);
+
+    useEffect(() => {
+        if (!monthlyModalLine) return;
+        const svc = services.find((s) => s.id === monthlyModalLine.item_id);
+        setMonthlyForm({
+            date: safeDateYmd(aptDate),
+            sessions: Math.max(1, Math.round(svc?.default_sessions ?? 1)),
+        });
+    }, [monthlyModalLine?.uid, aptDate, aptTime, services, monthlyModalLine]);
+
+    /** Personel ikonu gibi: tıklanınca her zaman modal açılır; eksikler gövdede uyarı + onay kilitlenir */
+    const openMonthlyCartModalForUid = useCallback((uid: string) => {
+        const line = cart.find((l) => l.uid === uid);
+        if (!line || line.type !== 'service') return;
+        setMonthlyModalLine(line);
+    }, [cart]);
 
     const filteredSvcs = useMemo(() => services.filter(s => {
         const activeOk = s.is_active !== false;
@@ -322,7 +628,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
             setCustomer(
                 picked ?? {
                     id: customerId,
-                    name: String(existingAppointment.customer_name ?? 'Müşteri'),
+                    name: String(existingAppointment.customer_name ?? tm('bCustomerFallbackName')),
                     is_active: true,
                 } as BeautyCustomer
             );
@@ -349,8 +655,15 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         setAptDevice(String(existingAppointment.device_id ?? '').trim());
         setAptNotes(String(existingAppointment.notes ?? ''));
         setAptStatus(existingAppointment.status ?? AppointmentStatus.CONFIRMED);
+        setAptActualDurationMin(
+            Math.max(1, Math.round(Number(existingAppointment.duration ?? mappedService?.duration_min ?? 30)))
+        );
         setHydratedAppointmentId(existingAppointment.id);
     }, [existingAppointment, hydratedAppointmentId, mergedCustomers, services, prefillDate, prefillTime]);
+
+    useEffect(() => {
+        setExistingEditBaselineFlush(0);
+    }, [existingAppointment?.id]);
 
     const handleSaveNewCustomer = async () => {
         if (!newCust.name.trim()) return;
@@ -377,8 +690,14 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
             setShowCustModal(false);
             setShowAddForm(false);
             setNewCust({ name: '', phone: '', email: '' });
-        } catch (e) {
+            toast.success(tm('bSaveCustomerOk'));
+        } catch (e: unknown) {
             logger.error('createCustomer failed', e);
+            const msg = e instanceof Error ? e.message : String(e);
+            toast.error(tm('bSaveCustomerFailed'), {
+                description: msg,
+                duration: 8000,
+            });
         } finally {
             setSavingCust(false);
         }
@@ -440,10 +759,81 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
 
     // ── Save actions ──────────────────────────────────────────────────────
     const canSave = cart.length > 0 && !!customer;
+    /** Tamamlanmış randevu: tekrar ödeme / yeni randevu kaydı yok */
+    const isExistingPaidComplete = useMemo(
+        () =>
+            !!existingAppointment?.id &&
+            (existingAppointment.status === AppointmentStatus.COMPLETED ||
+                existingAppointment.status === 'completed' ||
+                aptStatus === AppointmentStatus.COMPLETED ||
+                aptStatus === 'completed'),
+        [existingAppointment?.id, existingAppointment?.status, aptStatus],
+    );
     const serviceLines = useMemo(() => cart.filter(l => l.type === 'service'), [cart]);
     /** Randevu: en az bir hizmet + her hizmet satırında personel (ürün/paket tek başına randevu oluşturmaz). */
     const allServicesStaffed = serviceLines.length === 0 || serviceLines.every(l => !!l.staff_id?.trim());
     const canBookApt = serviceLines.length > 0 && allServicesStaffed;
+
+    useEffect(() => {
+        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || isExistingPaidComplete) {
+            setEditBaselineSnap(null);
+            return;
+        }
+        setEditBaselineSnap({
+            date: safeDateYmd(aptDate),
+            time: safeTimeHHmm(aptTime),
+            device: String(aptDevice ?? '').trim(),
+            notes: aptNotes,
+            status: String(aptStatus),
+            discount,
+            durationMin: Math.max(1, Math.round(aptActualDurationMin || totalDur || 30)),
+            customerId: String(customer?.id ?? '').trim(),
+            cartSig: cart
+                .map((l) => `${l.type}:${l.item_id}:${String(l.staff_id ?? '').trim()}:${l.qty}:${l.unit_price}`)
+                .join('§'),
+            total: Math.round(total * 100) / 100,
+        });
+        // Baseline yalnızca randevu yüklenince veya başarılı güncellemeden sonra — form alanı değişince kaymaz
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [existingAppointment?.id, hydratedAppointmentId, existingEditBaselineFlush, isExistingPaidComplete]);
+
+    const currentEditSnap = useMemo(
+        (): ExistingEditSnap => ({
+            date: safeDateYmd(aptDate),
+            time: safeTimeHHmm(aptTime),
+            device: String(aptDevice ?? '').trim(),
+            notes: aptNotes,
+            status: String(aptStatus),
+            discount,
+            durationMin: Math.max(1, Math.round(aptActualDurationMin || totalDur || 30)),
+            customerId: String(customer?.id ?? '').trim(),
+            cartSig: cart
+                .map((l) => `${l.type}:${l.item_id}:${String(l.staff_id ?? '').trim()}:${l.qty}:${l.unit_price}`)
+                .join('§'),
+            total: Math.round(total * 100) / 100,
+        }),
+        [aptDate, aptTime, aptDevice, aptNotes, aptStatus, discount, aptActualDurationMin, totalDur, customer?.id, cart, total],
+    );
+
+    const existingEditDirty = useMemo(() => {
+        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || isExistingPaidComplete || !editBaselineSnap) {
+            return false;
+        }
+        const b = editBaselineSnap;
+        const c = currentEditSnap;
+        return (
+            b.date !== c.date ||
+            b.time !== c.time ||
+            b.device !== c.device ||
+            b.notes !== c.notes ||
+            b.status !== c.status ||
+            b.discount !== c.discount ||
+            b.durationMin !== c.durationMin ||
+            b.customerId !== c.customerId ||
+            b.cartSig !== c.cartSig ||
+            b.total !== c.total
+        );
+    }, [existingAppointment?.id, hydratedAppointmentId, isExistingPaidComplete, editBaselineSnap, currentEditSnap]);
 
     const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
 
@@ -609,9 +999,14 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         const perStaffOffset = new Map<string, number>();
         const planned: ReturnType<typeof buildAptPayload>[] = [];
 
+        const singleSvc =
+            serviceLines.length === 1 && Math.max(1, Number(serviceLines[0]?.qty ?? 1)) === 1;
         for (const line of serviceLines) {
             const sid = String(line.staff_id ?? '').trim();
-            const d = Math.max(1, Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)));
+            let d = Math.max(1, Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)));
+            if (singleSvc) {
+                d = Math.max(1, Math.round(aptActualDurationMin));
+            }
             const offset = sid ? (perStaffOffset.get(sid) ?? 0) : 0;
             const startMin = baseStart + offset;
             if (sid) perStaffOffset.set(sid, offset + d);
@@ -636,49 +1031,347 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         return planned;
     };
 
-    const ensureNoStaffConflicts = async (planned: ReturnType<typeof buildAptPayload>[]) => {
+    /** Seçilen gün + personel + cihaz için segment serbest mi (mevcut kayıt hariç) */
+    const slotSegmentFree = (
+        startMin: number,
+        dur: number,
+        staffId: string,
+        deviceId: string,
+        existing: BeautyAppointment[],
+        excludeAptId?: string,
+    ): boolean => {
+        for (const e of existing) {
+            if (!beautyAptBlocksCalendarSlot(e)) continue;
+            if (excludeAptId && String(e.id) === String(excludeAptId)) continue;
+            const eStart = hhmmToMin(String(e.appointment_time ?? e.time ?? ''));
+            if (eStart == null) continue;
+            const eDur = Math.max(1, Number(e.duration ?? 30));
+            if (!overlaps(startMin, dur, eStart, eDur)) continue;
+            const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
+            const eDev = String(e.device_id ?? '').trim();
+            if (staffId && eSid === staffId) return false;
+            if (String(deviceId ?? '').trim() && eDev === String(deviceId).trim()) return false;
+        }
+        return true;
+    };
+
+    /** Çakışan segment veya tek satır sepetten: aynı gün boş saatler + diğer cihazlarda ilk uygun aralık */
+    type SlotSegHint = { staffId: string; deviceId: string; durationMin: number; anchorStartMin?: number | null };
+    const buildSlotSuggestionsSync = (
+        existing: BeautyAppointment[],
+        hint?: SlotSegHint,
+    ): { sameDeviceSlots: string[]; otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }> } => {
+        const empty = {
+            sameDeviceSlots: [] as string[],
+            otherDeviceSuggestions: [] as Array<{ deviceId: string; deviceLabel: string; time: string }>,
+        };
+        let staffId = '';
+        let devId = '';
+        let dur = 30;
+        if (hint && String(hint.staffId ?? '').trim()) {
+            staffId = String(hint.staffId ?? '').trim();
+            devId = String(hint.deviceId ?? '').trim();
+            dur = Math.max(1, Math.round(hint.durationMin));
+        } else if (serviceLines.length === 1) {
+            const line = serviceLines[0];
+            staffId = String(line.staff_id ?? '').trim();
+            if (!staffId) return empty;
+            dur = Math.max(1, Math.round(aptActualDurationMin));
+            devId = String(aptDevice ?? '').trim();
+        } else if (serviceLines.length > 1) {
+            const line = serviceLines[0];
+            staffId = String(line.staff_id ?? '').trim();
+            if (!staffId) return empty;
+            dur = Math.max(
+                1,
+                Math.round(Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1))),
+            );
+            devId = String(aptDevice ?? '').trim();
+        } else {
+            return empty;
+        }
+        const exId = existingAppointment?.id;
+        const WORK_START = 8 * 60;
+        const WORK_END = 20 * 60;
+        const STEP = 15;
+        const multi = serviceLines.length > 1;
+        const anchor = hint?.anchorStartMin != null && !Number.isNaN(hint.anchorStartMin) ? hint.anchorStartMin : null;
+        const scanFrom = multi && anchor != null ? Math.max(WORK_START, anchor - 90) : WORK_START;
+        const scanTo = multi && anchor != null ? Math.min(WORK_END, anchor + 120 + dur) : WORK_END;
+        const sameDeviceSlots: string[] = [];
+        for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
+            if (slotSegmentFree(t, dur, staffId, devId, existing, exId)) {
+                sameDeviceSlots.push(minToHhmm(t));
+                if (sameDeviceSlots.length >= 40) break;
+            }
+        }
+        const other: Array<{ deviceId: string; deviceLabel: string; time: string }> = [];
+        for (const d of devices.filter((x) => x.is_active)) {
+            const did = String(d.id);
+            if (devId && did === devId) continue;
+            for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
+                if (slotSegmentFree(t, dur, staffId, did, existing, exId)) {
+                    other.push({
+                        deviceId: d.id,
+                        deviceLabel: (d.name && String(d.name).trim()) || did,
+                        time: minToHhmm(t),
+                    });
+                    break;
+                }
+            }
+            if (other.length >= 12) break;
+        }
+        return { sameDeviceSlots, otherDeviceSuggestions: other };
+    };
+
+    /** Personel ve cihaz üzerinde çakışma kontrolü; önerilerle SlotConflictError */
+    const ensureAppointmentSlotOk = async (planned: ReturnType<typeof buildAptPayload>[]) => {
+        if (planned.length === 0) return;
         const day = safeDateYmd(aptDate);
-        const existing = await beautyService.getAppointmentsInRange(day, day);
+        const existingRaw = await beautyService.getAppointmentsInRange(day, day);
+        const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
+        const exId = existingAppointment?.id;
+
         for (const p of planned) {
             const sid = String(p.staff_id ?? '').trim();
-            if (!sid) continue;
+            const dev = String(p.device_id ?? '').trim();
             const pStart = hhmmToMin(String(p.time ?? p.appointment_time ?? ''));
             const pDur = Math.max(1, Number(p.duration ?? 30));
             if (pStart == null) continue;
-            const clash = existing.find(e => {
-                const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
-                if (eSid !== sid) return false;
-                if (existingAppointment?.id && String(e.id) === String(existingAppointment.id)) return false;
+
+            const clash = existing.find((e) => {
+                if (exId && String(e.id) === String(exId)) return false;
                 const eStart = hhmmToMin(String(e.appointment_time ?? e.time ?? ''));
+                if (eStart == null) return false;
                 const eDur = Math.max(1, Number(e.duration ?? 30));
-                return eStart != null && overlaps(pStart, pDur, eStart, eDur);
+                if (!overlaps(pStart, pDur, eStart, eDur)) return false;
+                const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
+                const eDev = String(e.device_id ?? '').trim();
+                const staffClash = !!(sid && eSid === sid);
+                const devClash = !!(dev && eDev === dev);
+                return staffClash || devClash;
             });
+
             if (clash) {
-                const staffName = specialists.find(s => s.id === sid)?.name ?? sid;
-                throw new Error(`Saat çakışması: ${staffName} için ${String(p.time)} zamanında randevu var.`);
+                const sug = buildSlotSuggestionsSync(existing, {
+                    staffId: sid,
+                    deviceId: dev,
+                    durationMin: pDur,
+                    anchorStartMin: pStart,
+                });
+                const eSid = String(clash.staff_id ?? clash.specialist_id ?? '').trim();
+                const eDev = String(clash.device_id ?? '').trim();
+                const overlapStaff = !!(sid && eSid === sid);
+                const overlapDev = !!(dev && eDev === dev);
+                if (overlapStaff) {
+                    const staffName = specialists.find((s) => s.id === sid)?.name ?? sid;
+                    throw new SlotConflictError(
+                        tm('bErrTimeConflict').replace('{staff}', staffName).replace('{time}', String(p.time)),
+                        {
+                            kind: 'staff',
+                            staffName,
+                            sameDeviceSlots: sug.sameDeviceSlots,
+                            otherDeviceSuggestions: sug.otherDeviceSuggestions,
+                        },
+                    );
+                }
+                if (overlapDev) {
+                    const dname = devices.find((d) => String(d.id) === dev)?.name ?? dev;
+                    throw new SlotConflictError(
+                        tm('bErrSlotDeviceBusy').replace('{device}', dname).replace('{time}', String(p.time)),
+                        {
+                            kind: 'device',
+                            deviceName: dname,
+                            sameDeviceSlots: sug.sameDeviceSlots,
+                            otherDeviceSuggestions: sug.otherDeviceSuggestions,
+                        },
+                    );
+                }
             }
         }
     };
 
+    const applySuggestedSlot = (time: string, deviceId?: string) => {
+        setAptTime(safeTimeHHmm(time));
+        if (deviceId) setAptDevice(String(deviceId));
+        setSlotSuggestModal((s) => ({ ...s, open: false }));
+    };
+
+    const browseFreeSlots = async () => {
+        if (serviceLines.length === 0 || !allServicesStaffed) {
+            toast.info(tm('bSlotBrowseNeedStaff'));
+            return;
+        }
+        if (!String(serviceLines[0].staff_id ?? '').trim()) {
+            toast.info(tm('bSlotBrowseNeedStaff'));
+            return;
+        }
+        setSlotBrowseLoading(true);
+        try {
+            const day = safeDateYmd(aptDate);
+            const existingRaw = await beautyService.getAppointmentsInRange(day, day);
+            const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
+            const firstLine = serviceLines[0];
+            const baseMin = hhmmToMin(safeTimeHHmm(aptTime));
+            const hint: SlotSegHint | undefined =
+                serviceLines.length === 1
+                    ? undefined
+                    : {
+                          staffId: String(firstLine.staff_id ?? '').trim(),
+                          deviceId: String(aptDevice ?? '').trim(),
+                          durationMin: Math.max(
+                              1,
+                              Math.round(Number(firstLine.duration_min ?? 30) * Math.max(1, Number(firstLine.qty ?? 1))),
+                          ),
+                          anchorStartMin: baseMin ?? undefined,
+                      };
+            const sug = buildSlotSuggestionsSync(existing, hint);
+            setSlotSuggestModal({
+                open: true,
+                title: tm('bSlotBrowseTitle'),
+                subtitle: tm('bSlotBrowseSubtitle'),
+                sameDeviceSlots: sug.sameDeviceSlots,
+                otherDeviceSuggestions: sug.otherDeviceSuggestions,
+                conflictKind: undefined,
+            });
+        } catch (e: unknown) {
+            logger.crudError('AppointmentPOS', 'browseFreeSlots', e);
+            toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
+        } finally {
+            setSlotBrowseLoading(false);
+        }
+    };
+
+    const handleUpdateExistingAppointment = async () => {
+        if (!existingAppointment?.id || isExistingPaidComplete || !existingEditDirty || updateExistingBusy) return;
+        if (!canSave) return;
+        if (serviceLines.length > 0 && !allServicesStaffed) {
+            openBookingBlockModal('staff');
+            return;
+        }
+        if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+            openBookingBlockModal('no_specialists');
+            return;
+        }
+        setUpdateExistingBusy(true);
+        try {
+            if (serviceLines.length > 0) {
+                const planned = buildServiceAppointmentPayloads(aptStatus);
+                await ensureAppointmentSlotOk(planned);
+            }
+            const firstSvc = serviceLines[0];
+            await updateAppointment(existingAppointment.id, {
+                appointment_date: safeDateYmd(aptDate),
+                appointment_time: safeTimeHHmm(aptTime),
+                date: safeDateYmd(aptDate),
+                time: safeTimeHHmm(aptTime),
+                device_id: aptDevice || null,
+                notes: aptNotes || null,
+                status: aptStatus,
+                total_price: total,
+                duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
+                staff_id: firstSvc?.staff_id?.trim() || undefined,
+                service_id: serviceLines.length === 1 ? serviceLines[0]?.item_id : undefined,
+            });
+            toast.success(tm('bAppointmentUpdatedOk'));
+            setExistingEditBaselineFlush((f) => f + 1);
+        } catch (e: unknown) {
+            if (e instanceof SlotConflictError) {
+                setSlotSuggestModal({
+                    open: true,
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
+                    sameDeviceSlots: e.detail.sameDeviceSlots,
+                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
+                    conflictKind: e.detail.kind,
+                });
+            } else {
+                logger.crudError('AppointmentPOS', 'updateExistingAppointment', e);
+                const msg = extractTechnicalError(e);
+                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+            }
+        } finally {
+            setUpdateExistingBusy(false);
+        }
+    };
+
+    const resolveBeautyCashierName = () => {
+        const svc = cart.find(l => l.type === 'service' && l.staff_id?.trim());
+        if (svc?.staff_id) {
+            const n = specialists.find(s => s.id === svc.staff_id)?.name;
+            if (n?.trim()) return n.trim();
+        }
+        return '—';
+    };
+
     const handleBookOnly = async () => {
+        if (isExistingPaidComplete) {
+            toast.info(tm('bPaymentAlreadyReceived'));
+            return;
+        }
         if (!canSave || !canBookApt) return;
+        if (bookingSubmitRef.current) return;
+        bookingSubmitRef.current = true;
+        setBookingBusy(true);
         try {
             const planned = buildServiceAppointmentPayloads(aptStatus);
-            await ensureNoStaffConflicts(planned);
+            await ensureAppointmentSlotOk(planned);
             for (const p of planned) {
                 await createAppointment(p);
             }
-            setDoneMsg(tm('bAppointmentCreated'));
-            setTimeout(() => { setDoneMsg(''); clearCart(); onBack?.(); }, 1400);
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const payLang: KitchenReceiptLocale = isKitchenReceiptLocale(uiLanguage) ? uiLanguage : 'tr';
+            const bookingSale: Sale = {
+                id: `APT-${Date.now()}`,
+                receiptNumber,
+                date: new Date().toISOString(),
+                customerId: customer!.id,
+                customerName: customer?.name,
+                items: beautyLinesToReceiptItems(cart, payLang, receiptSettings, products, specialists),
+                subtotal,
+                discount: discAmt,
+                total,
+                paymentMethod: 'pending',
+                cashier: resolveBeautyCashierName(),
+                beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+            };
+            setReceiptHeaderBanner(tm('bAppointmentReceiptBanner'));
+            setCompletedSale(bookingSale);
+            setCompletedPaymentData({
+                payments: [],
+                totalPaid: 0,
+                change: 0,
+                language: payLang,
+            });
+            setReceiptPrintImmediately(false);
+            clearCart();
+            void generateNewReceiptNumber();
+            setShowReceiptModal(true);
+            toast.success(tm('bAppointmentCreated'));
         } catch (e: unknown) {
-            logger.crudError('AppointmentPOS', 'bookAppointment', e);
-            const msg = extractTechnicalError(e);
-            openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+            if (e instanceof SlotConflictError) {
+                setSlotSuggestModal({
+                    open: true,
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
+                    sameDeviceSlots: e.detail.sameDeviceSlots,
+                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
+                    conflictKind: e.detail.kind,
+                });
+            } else {
+                logger.crudError('AppointmentPOS', 'bookAppointment', e);
+                const msg = extractTechnicalError(e);
+                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+            }
+        } finally {
+            bookingSubmitRef.current = false;
+            setBookingBusy(false);
         }
     };
 
     /** Randevu Oluştur — eksikleri modalda göster */
     const tryBookAppointment = () => {
+        if (bookingBusy || bookingSubmitRef.current) return;
         if (!customer) {
             openBookingBlockModal('customer');
             return;
@@ -699,6 +1392,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
     };
 
     const tryOpenPay = () => {
+        if (bookingBusy || bookingSubmitRef.current) return;
+        if (isExistingPaidComplete) {
+            toast.info(tm('bPaymentAlreadyReceived'));
+            return;
+        }
         if (!customer) {
             openBookingBlockModal('customer');
             return;
@@ -715,20 +1413,134 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
         setShowPay(true);
     };
 
-    const handlePayComplete = async (paymentData: any) => {
-        if (!canSave) return;
-        if (serviceLines.length > 0 && !allServicesStaffed) {
-            setShowPay(false);
-            openBookingBlockModal('staff');
+    const tryUpdateExistingAppointment = () => {
+        if (updateExistingBusy || bookingBusy || bookingSubmitRef.current) return;
+        if (!existingAppointment?.id || isExistingPaidComplete) return;
+        if (!existingEditDirty) return;
+        if (!customer) {
+            openBookingBlockModal('customer');
             return;
         }
+        if (!cart.length) return;
         if (serviceLines.length > 0 && activeSpecialists.length === 0) {
-            setShowPay(false);
             openBookingBlockModal('no_specialists');
             return;
         }
+        if (serviceLines.length > 0 && !allServicesStaffed) {
+            openBookingBlockModal('staff');
+            return;
+        }
+        void handleUpdateExistingAppointment();
+    };
+
+    /** Ödeme modalı: hesabı kapatmadan ön fiş (Restoran POS ile aynı) */
+    const handlePrintDraftFromPaymentModal = async (ctx: POSPaymentModalDraftContext) => {
+        let paymentMethod = 'cash';
+        if (ctx.payments.length > 0) {
+            const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
+            const methodTotals: Record<string, number> = { cash: 0, card: 0, veresiye: 0 };
+            ctx.payments.forEach((payment) => {
+                const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
+                let method = payment.method;
+                if (method === 'gateway') method = 'card';
+                methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
+            });
+            paymentMethod = Object.keys(methodTotals).reduce((a, b) =>
+                (methodTotals[a] ?? 0) > (methodTotals[b] ?? 0) ? a : b
+            );
+        }
+
         try {
+            invalidateReceiptSettingsCache();
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const lang: KitchenReceiptLocale = isKitchenReceiptLocale(ctx.receiptLanguage) ? ctx.receiptLanguage : 'tr';
+
+            const sale: Sale = {
+                id: `DRAFT-${Date.now()}`,
+                receiptNumber,
+                date: new Date().toISOString(),
+                customerId: customer?.id,
+                customerName: customer?.name,
+                items: beautyLinesToReceiptItems(cart, lang, receiptSettings, products, specialists),
+                subtotal,
+                discount: discAmt + ctx.discount,
+                total: ctx.finalTotal,
+                paymentMethod,
+                cashier: resolveBeautyCashierName(),
+                beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+                notes:
+                    lang === 'en'
+                        ? 'Interim bill'
+                        : lang === 'ar'
+                          ? 'حساب مبدئي'
+                          : lang === 'ku'
+                            ? 'وەسڵی پێشووەختە'
+                            : 'Ön hesap',
+            };
+
+            const companyName =
+                receiptSettings.companyName?.trim()
+                || selectedFirm?.title?.trim()
+                || selectedFirm?.name?.trim()
+                || 'RetailEX';
+            const html = buildRestaurantAdisyonHtml({
+                sale,
+                ctx: {
+                    payments: ctx.payments,
+                    totalPaid: ctx.totalPaid,
+                    change: ctx.change,
+                    remaining: ctx.remaining,
+                    finalTotal: ctx.finalTotal,
+                    discount: ctx.discount,
+                },
+                companyName,
+                logoDataUrl: receiptSettings.logoDataUrl,
+                companyAddress: receiptSettings.companyAddress,
+                companyPhone: receiptSettings.companyPhone,
+                companyTaxOffice: receiptSettings.companyTaxOffice,
+                companyTaxNumber: receiptSettings.companyTaxNumber,
+                firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
+                locale: lang,
+            });
+            await printRestaurantHtmlNoPreview(html);
+            toast.success('Ön fiş yazıcıya gönderildi');
+        } catch (e: unknown) {
+            logger.crudError('AppointmentPOS', 'draftReceiptPrint', e);
+            toast.error('Yazdırma başarısız');
+        }
+    };
+
+    const handlePayComplete = async (paymentData: any) => {
+        if (isExistingPaidComplete) {
+            setShowPay(false);
+            toast.info(tm('bPaymentAlreadyReceived'));
+            return;
+        }
+        if (checkoutSubmitRef.current) return;
+        checkoutSubmitRef.current = true;
+        try {
+            if (!canSave) return;
+            if (serviceLines.length > 0 && !allServicesStaffed) {
+                setShowPay(false);
+                openBookingBlockModal('staff');
+                return;
+            }
+            if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+                setShowPay(false);
+                openBookingBlockModal('no_specialists');
+                return;
+            }
+            /** POS ödeme modalındaki ilave indirim (tutar/%); fiş ile aynı tutarların DB / ERP’ye yazılması */
+            const extraDiscount = Math.max(0, Number(paymentData?.discount) || 0);
+            const ftRaw = Number(paymentData?.finalTotal);
+            const finalTotalSale = Number.isFinite(ftRaw) ? ftRaw : total;
+            const headerDiscount = discAmt + extraDiscount;
+
             if (existingAppointment?.id) {
+                if (serviceLines.length > 0) {
+                    const plannedPay = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
+                    await ensureAppointmentSlotOk(plannedPay);
+                }
                 await updateAppointment(existingAppointment.id, {
                     appointment_date: safeDateYmd(aptDate),
                     appointment_time: safeTimeHHmm(aptTime),
@@ -737,37 +1549,57 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                     device_id: aptDevice || null,
                     notes: aptNotes || null,
                     status: AppointmentStatus.COMPLETED,
-                    total_price: total,
-                    duration: totalDur || existingAppointment.duration || 30,
+                    total_price: finalTotalSale,
+                    duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                 });
             } else if (canBookApt) {
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.CONFIRMED);
-                await ensureNoStaffConflicts(planned);
+                await ensureAppointmentSlotOk(planned);
                 for (const p of planned) {
                     await createAppointment(p);
                 }
             }
 
-            const saleItems = cart.map(line => ({
+            let paymentMethod = 'cash';
+            if (paymentData.payments && paymentData.payments.length > 0) {
+                const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
+                const methodTotals: Record<string, number> = {};
+                paymentData.payments.forEach((payment: { method: string; currency: string; amount: number }) => {
+                    const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
+                    let method = payment.method;
+                    if (method === 'gateway') method = 'card';
+                    methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
+                });
+                paymentMethod = Object.keys(methodTotals).reduce((a, b) =>
+                    (methodTotals[a] ?? 0) > (methodTotals[b] ?? 0) ? a : b
+                );
+            } else if (paymentData?.payments?.[0]?.method) {
+                paymentMethod = paymentData.payments[0].method === 'gateway' ? 'card' : paymentData.payments[0].method;
+            }
+
+            const lineGrosses = cart.map((l) => l.unit_price * l.qty);
+            const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
+            const saleItems = cart.map((line, idx) => ({
                 item_type: line.type,
                 item_id: line.item_id,
                 name: line.name,
                 quantity: line.qty,
                 unit_price: line.unit_price,
-                discount: 0,
-                total: line.unit_price * line.qty,
+                discount: lineSplits[idx]?.discount ?? 0,
+                total: lineSplits[idx]?.total ?? line.unit_price * line.qty,
                 staff_id: line.staff_id ?? null,
                 commission_amount: 0,
             }));
             await beautyService.createSale({
                 customer_id: customer!.id,
+                customer_name: customer?.name,
                 subtotal,
-                discount: discAmt,
+                discount: headerDiscount,
                 tax: 0,
-                total,
-                payment_method: paymentData?.payments?.[0]?.method ?? 'cash',
+                total: finalTotalSale,
+                payment_method: paymentMethod,
                 payment_status: 'paid',
-                paid_amount: total,
+                paid_amount: finalTotalSale,
                 remaining_amount: 0,
             }, saleItems);
 
@@ -777,24 +1609,88 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                 if (p) await updateStock(p.id, Math.max(0, (p.stock ?? 0) - line.qty));
             }
 
-            setDoneMsg(tm('bPaymentCompleted'));
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const payLang: KitchenReceiptLocale = isKitchenReceiptLocale(paymentData?.language) ? paymentData.language : 'tr';
+
+            const sale: Sale = {
+                id: Date.now().toString(),
+                receiptNumber,
+                date: new Date().toISOString(),
+                customerId: customer?.id,
+                customerName: customer?.name,
+                items: beautyLinesToReceiptItems(cart, payLang, receiptSettings, products, specialists),
+                subtotal,
+                discount: headerDiscount,
+                total: finalTotalSale,
+                paymentMethod,
+                cashier: resolveBeautyCashierName(),
+                notes: aptNotes?.trim() || undefined,
+                beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+            };
+
+            setReceiptHeaderBanner(undefined);
+            setCompletedSale(sale);
+            setCompletedPaymentData(paymentData);
+            setReceiptPrintImmediately(paymentData.showReceiptPreview === false);
+            setShowReceiptModal(true);
+
+            clearCart();
+            void generateNewReceiptNumber();
             setShowPay(false);
-            setTimeout(() => { setDoneMsg(''); clearCart(); onBack?.(); }, 1400);
+            toast.success(tm('bPaymentCompleted'));
         } catch (e: unknown) {
-            logger.crudError('AppointmentPOS', 'payAndBook', e);
             setShowPay(false);
-            const msg = extractTechnicalError(e);
-            openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+            if (e instanceof SlotConflictError) {
+                setSlotSuggestModal({
+                    open: true,
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
+                    sameDeviceSlots: e.detail.sameDeviceSlots,
+                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
+                    conflictKind: e.detail.kind,
+                });
+            } else {
+                logger.crudError('AppointmentPOS', 'payAndBook', e);
+                const msg = extractTechnicalError(e);
+                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+            }
+        } finally {
+            checkoutSubmitRef.current = false;
         }
     };
 
-    // ── Done splash ───────────────────────────────────────────────────────
-    if (doneMsg) return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: '#f7f6fb' }}>
-            <CheckCircle2 size={56} color="#059669" />
-            <p style={{ fontSize: 18, fontWeight: 800, color: '#111827' }}>{doneMsg}</p>
-        </div>
-    );
+    const handleMonthlySeriesFromCartConfirm = useCallback(async () => {
+        if (!monthlyModalLine || !customer) return;
+        const sid = String(monthlyModalLine.staff_id ?? '').trim();
+        if (!sid) {
+            toast.error(tm('bMonthlyCartNeedStaff'));
+            return;
+        }
+        setMonthlyBusy(true);
+        try {
+            const first = safeDateYmd(monthlyForm.date);
+            /** Kesin saat iş kuralı: D-1; DB’de üst bardaki saat yer tutucu */
+            const t = safeTimeHHmm(aptTime) || '09:00';
+            await beautyService.createMonthlySessionSeries({
+                customer_id: customer.id,
+                service_id: monthlyModalLine.item_id,
+                first_session_date: first,
+                appointment_time: t,
+                specialist_id: sid,
+                session_count: Math.max(1, Math.round(monthlyForm.sessions)),
+                device_id: aptDevice?.trim() || undefined,
+            });
+            toast.success(tm('bMonthlySeriesCreatedToast').replace('{n}', String(monthlyForm.sessions)));
+            setMonthlyModalLine(null);
+            const end = addCalendarMonthsYmd(first, Math.max(1, monthlyForm.sessions) + 1);
+            await loadAppointmentsInRange(first, end);
+        } catch (e: unknown) {
+            logger.crudError('AppointmentPOS', 'createMonthlySessionSeries', e);
+            toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
+        } finally {
+            setMonthlyBusy(false);
+        }
+    }, [monthlyModalLine, customer, monthlyForm, aptDevice, aptTime, tm, loadAppointmentsInRange]);
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
@@ -803,74 +1699,123 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flexWrap: 'wrap' }}>
                 {onBack && (
                     <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                        <ArrowLeft size={13} /> Takvim
+                        <ArrowLeft size={13} /> {tm('bPOSBackCalendar')}
                     </button>
                 )}
                 <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                     <p style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0 }}>
-                        {onBack ? tm('bAppointmentPOS') : 'Kasa / POS'}
+                        {onBack ? tm('bAppointmentPOS') : tm('bPOSRegisterTitle')}
                     </p>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '4px 10px' }}>
-                        <CalendarDays size={12} color="#7c3aed" />
-                        <input type="date" value={aptDate} onChange={e => setAptDate(e.target.value)}
-                            style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }} />
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <Label>{tm('date')}</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
+                            <CalendarDays size={12} color="#7c3aed" />
+                            <input
+                                type="date"
+                                value={aptDate}
+                                onChange={e => setAptDate(e.target.value)}
+                                aria-label={tm('date')}
+                                style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }}
+                            />
+                        </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '4px 10px' }}>
-                        <Clock size={12} color="#7c3aed" />
-                        <input type="time" value={aptTime} onChange={e => setAptTime(e.target.value)}
-                            style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <Label>{tm('time')}</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
+                                <Clock size={12} color="#7c3aed" />
+                                <input
+                                    type="time"
+                                    value={aptTime}
+                                    onChange={e => setAptTime(e.target.value)}
+                                    aria-label={tm('time')}
+                                    style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }}
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => void browseFreeSlots()}
+                                disabled={slotBrowseLoading || serviceLines.length === 0 || !allServicesStaffed}
+                                title={tm('bSlotBrowseTitle')}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    padding: '6px 10px',
+                                    borderRadius: 5,
+                                    border: '1px solid #c4b5fd',
+                                    background: serviceLines.length > 0 && allServicesStaffed ? '#fff' : '#f3f4f6',
+                                    color: serviceLines.length > 0 && allServicesStaffed ? '#5b21b6' : '#9ca3af',
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    cursor: serviceLines.length > 0 && allServicesStaffed && !slotBrowseLoading ? 'pointer' : 'not-allowed',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                <CalendarClock size={13} color="currentColor" />
+                                {slotBrowseLoading ? tm('bLoading') : tm('bSlotBrowseShort')}
+                            </button>
+                        </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '2px 8px 2px 10px', minWidth: 0, maxWidth: 220 }}>
-                        <Cpu size={12} color="#7c3aed" style={{ flexShrink: 0 }} />
-                        <select
-                            value={aptDevice}
-                            onChange={e => setAptDevice(String(e.target.value))}
-                            title={tm('bDiagDevice')}
-                            style={{
-                                border: 'none',
-                                background: 'transparent',
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: '#4c1d95',
-                                outline: 'none',
-                                cursor: 'pointer',
-                                minWidth: 100,
-                                maxWidth: 180,
-                                flex: 1,
-                            }}
-                        >
-                            <option value="">{tm('bDeviceSelectPlaceholder')}</option>
-                            {devices.filter(d => d.is_active).map(d => (
-                                <option key={d.id} value={String(d.id)}>{d.name}</option>
-                            ))}
-                        </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, maxWidth: 220 }}>
+                        <Label>{tm('bDiagDevice')}</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '4px 8px 4px 10px', minWidth: 0 }}>
+                            <Cpu size={12} color="#7c3aed" style={{ flexShrink: 0 }} />
+                            <select
+                                value={aptDevice}
+                                onChange={e => setAptDevice(String(e.target.value))}
+                                title={tm('bDiagDevice')}
+                                aria-label={tm('bDiagDevice')}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: '#4c1d95',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                    minWidth: 100,
+                                    maxWidth: 180,
+                                    flex: 1,
+                                }}
+                            >
+                                <option value="">{tm('bDeviceSelectPlaceholder')}</option>
+                                {devices.filter(d => d.is_active).map(d => (
+                                    <option key={d.id} value={String(d.id)}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '2px 8px 2px 10px', minWidth: 0, maxWidth: 200 }}>
-                        <Activity size={12} color="#7c3aed" style={{ flexShrink: 0 }} />
-                        <select
-                            value={aptStatus}
-                            onChange={e => setAptStatus(e.target.value as AppointmentStatus)}
-                            title={tm('bStatus')}
-                            style={{
-                                border: 'none',
-                                background: 'transparent',
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: '#4c1d95',
-                                outline: 'none',
-                                cursor: 'pointer',
-                                minWidth: 88,
-                                maxWidth: 160,
-                                flex: 1,
-                            }}
-                        >
-                            {STATUS_OPTS.map(o => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, maxWidth: 200 }}>
+                        <Label>{tm('bStatus')}</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '4px 8px 4px 10px', minWidth: 0 }}>
+                            <Activity size={12} color="#7c3aed" style={{ flexShrink: 0 }} />
+                            <select
+                                value={aptStatus}
+                                onChange={e => setAptStatus(e.target.value as AppointmentStatus)}
+                                title={tm('bStatus')}
+                                aria-label={tm('bStatus')}
+                                style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: '#4c1d95',
+                                    outline: 'none',
+                                    cursor: 'pointer',
+                                    minWidth: 88,
+                                    maxWidth: 160,
+                                    flex: 1,
+                                }}
+                            >
+                                {STATUS_OPTS.map(o => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -881,110 +1826,157 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                 {/* ── LEFT: Item grid ─────────────────────────────── */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #e8e4f0' }}>
                     {/* Tabs + search (+ hizmetlerde kategori + varsayılan uzman tek satır) */}
-                    <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '8px 12px', flexShrink: 0 }}>
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 0, flexWrap: 'wrap' }}>
-                            {([
-                                { id: 'services' as const, label: 'Hizmetler', Icon: Scissors },
-                                { id: 'packages' as const, label: 'Paketler', Icon: Package },
-                                { id: 'products' as const, label: 'Ürünler', Icon: ShoppingBag },
-                            ]).map(({ id, label, Icon }) => (
-                                <button key={id} onClick={() => { setTab(id); setCategory('all'); setSvcQ(''); }} style={{
-                                    display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 5,
-                                    border: tab === id ? 'none' : '1px solid #e5e7eb',
-                                    background: tab === id ? '#7c3aed' : '#f9fafb',
-                                    color: tab === id ? '#fff' : '#6b7280',
-                                    fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                                }}>
-                                    <Icon size={12} />{label}
-                                </button>
-                            ))}
-                            <div style={{ flex: 1, minWidth: 160, position: 'relative' }}>
-                                <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                    <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 14px', flexShrink: 0 }}>
+                        {/* Arama solda, daha büyük dokunma alanı; sekmeler sağda/yanında */}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <div style={{ flex: '1 1 220px', minWidth: 200, maxWidth: 480, position: 'relative' }}>
+                                <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
                                 <input value={svcQ} onChange={e => setSvcQ(e.target.value)}
-                                    placeholder={tab === 'products' ? 'Ürün, barkod ara...' : tab === 'packages' ? 'Paket ara...' : 'Hizmet ara...'}
-                                    style={{ ...iStyle, paddingLeft: 26, height: 30 }} />
+                                    placeholder={tab === 'products' ? tm('bSearchProductsPlaceholder') : tab === 'packages' ? tm('bSearchPackagesPlaceholder') : tm('bSearchServicesPlaceholder')}
+                                    style={{
+                                        ...iStyle,
+                                        paddingLeft: 40,
+                                        height: 42,
+                                        fontSize: 14,
+                                        borderRadius: 8,
+                                        minHeight: 44,
+                                    }} />
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 auto', minWidth: 0 }}>
+                                {([
+                                    { id: 'services' as const, label: tm('bPOSTabServices'), Icon: Scissors },
+                                    { id: 'packages' as const, label: tm('bPOSTabPackages'), Icon: Package },
+                                    { id: 'products' as const, label: tm('bPOSTabProducts'), Icon: ShoppingBag },
+                                ]).map(({ id, label, Icon }) => (
+                                    <button key={id} onClick={() => { setTab(id); setCategory('all'); setSvcQ(''); }} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
+                                        border: tab === id ? 'none' : '1px solid #e5e7eb',
+                                        background: tab === id ? '#7c3aed' : '#f9fafb',
+                                        color: tab === id ? '#fff' : '#6b7280',
+                                        fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                                        minHeight: 44,
+                                        touchAction: 'manipulation',
+                                    }}>
+                                        <Icon size={18} />{label}
+                                    </button>
+                                ))}
+                                {tab === 'services' && activeSpecialists.length > 0 && (
+                                    <div
+                                        title={`${tm('bDefaultSpecialist')}: ${tm('bDefaultSpecialistHint')}`}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            flexShrink: 0,
+                                            paddingLeft: 10,
+                                            marginLeft: 2,
+                                            borderLeft: '1px solid #e8e4f0',
+                                            minWidth: 0,
+                                            maxWidth: '100%',
+                                            overflowX: 'auto',
+                                            scrollbarWidth: 'thin',
+                                            touchAction: 'manipulation',
+                                        }}
+                                    >
+                                        <UserRound size={16} color="#7c3aed" style={{ flexShrink: 0, pointerEvents: 'none' }} />
+                                        <button
+                                            type="button"
+                                            title={tm('bDefaultSpecialistPlaceholder')}
+                                            onClick={() => clearDefaultSpecialist()}
+                                            style={{
+                                                ...UZMAN_CHIP_TOUCH,
+                                                width: 44,
+                                                height: 44,
+                                                padding: 0,
+                                                flexShrink: 0,
+                                                border: !defaultSpecialistId ? 'none' : '1px solid #e5e7eb',
+                                                background: !defaultSpecialistId ? '#7c3aed' : '#f3f4f6',
+                                                color: !defaultSpecialistId ? '#fff' : '#6b7280',
+                                                fontSize: 14,
+                                                lineHeight: 1,
+                                            }}
+                                        >
+                                            —
+                                        </button>
+                                        {activeSpecialists.map(s => {
+                                            const sel = defaultSpecialistId === s.id;
+                                            return (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    title={s.name}
+                                                    onClick={() => pickDefaultSpecialist(s.id)}
+                                                    style={{
+                                                        ...UZMAN_CHIP_TOUCH,
+                                                        flexShrink: sel ? 1 : 0,
+                                                        minWidth: sel ? 72 : 44,
+                                                        maxWidth: sel ? 280 : undefined,
+                                                        padding: sel ? '8px 12px' : '0 10px',
+                                                        justifyContent: sel ? 'flex-start' : 'center',
+                                                        textAlign: sel ? 'left' : 'center',
+                                                        border: sel ? 'none' : '1px solid #e5e7eb',
+                                                        background: sel ? '#7c3aed' : '#f3f4f6',
+                                                        color: sel ? '#fff' : '#374151',
+                                                        letterSpacing: sel ? 'normal' : '0.02em',
+                                                        fontSize: sel ? 13 : 12,
+                                                        fontWeight: sel ? 700 : 800,
+                                                        whiteSpace: sel ? 'normal' : 'nowrap',
+                                                        lineHeight: sel ? 1.25 : 1,
+                                                    }}
+                                                >
+                                                    {sel ? s.name : specInitials(s.name)}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {showCategoryRailToggle && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCategoryRailMode(m => (m === 'chips' ? 'sidebar' : 'chips'))}
+                                        title={categoryRailMode === 'chips' ? tm('bCategoryRailUseSidebar') : tm('bCategoryRailUseChips')}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            width: 44, height: 44, padding: 0, borderRadius: 8,
+                                            border: categoryRailMode === 'sidebar' ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                                            background: categoryRailMode === 'sidebar' ? '#ede9fe' : '#fff',
+                                            color: '#7c3aed', cursor: 'pointer', flexShrink: 0,
+                                            touchAction: 'manipulation',
+                                        }}
+                                    >
+                                        <PanelLeft size={20} strokeWidth={2.25} />
+                                    </button>
+                                )}
                             </div>
                         </div>
-                        {tab === 'services' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-                                <div style={{ display: 'flex', gap: 4, overflowX: 'auto', flex: '1 1 120px', minWidth: 0, scrollbarWidth: 'none' }}>
+                        {tab === 'services' && !useCategorySidebar && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: '1 1 120px', minWidth: 0, scrollbarWidth: 'none' }}>
                                     {['all', ...categories].map(cat => (
                                         <button key={cat} onClick={() => setCategory(cat)} style={{
-                                            flexShrink: 0, padding: '2px 8px', borderRadius: 4,
+                                            flexShrink: 0, padding: '8px 14px', borderRadius: 8,
                                             border: category === cat ? 'none' : '1px solid #e5e7eb',
                                             background: category === cat ? '#ede9fe' : '#f9fafb',
                                             color: category === cat ? '#7c3aed' : '#6b7280',
-                                            fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                            fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                            minHeight: 40, touchAction: 'manipulation',
                                         }}>
                                             {cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat)}
                                         </button>
                                     ))}
                                 </div>
-                                <div
-                                    title={`${tm('bDefaultSpecialist')}: ${tm('bDefaultSpecialistHint')}`}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        flexShrink: 0,
-                                        paddingLeft: 8,
-                                        borderLeft: '1px solid #e8e4f0',
-                                        touchAction: 'manipulation',
-                                    }}
-                                >
-                                    <UserRound size={16} color="#7c3aed" style={{ flexShrink: 0, pointerEvents: 'none' }} />
-                                    <button
-                                        type="button"
-                                        title={tm('bDefaultSpecialistPlaceholder')}
-                                        onClick={() => clearDefaultSpecialist()}
-                                        style={{
-                                            ...UZMAN_CHIP_TOUCH,
-                                            width: 44,
-                                            height: 44,
-                                            padding: 0,
-                                            flexShrink: 0,
-                                            border: !defaultSpecialistId ? 'none' : '1px solid #e5e7eb',
-                                            background: !defaultSpecialistId ? '#7c3aed' : '#f3f4f6',
-                                            color: !defaultSpecialistId ? '#fff' : '#6b7280',
-                                            fontSize: 14,
-                                            lineHeight: 1,
-                                        }}
-                                    >
-                                        —
-                                    </button>
-                                    {activeSpecialists.map(s => {
-                                        const sel = defaultSpecialistId === s.id;
-                                        return (
-                                            <button
-                                                key={s.id}
-                                                type="button"
-                                                title={s.name}
-                                                onClick={() => pickDefaultSpecialist(s.id)}
-                                                style={{
-                                                    ...UZMAN_CHIP_TOUCH,
-                                                    flexShrink: 0,
-                                                    border: sel ? 'none' : '1px solid #e5e7eb',
-                                                    background: sel ? '#7c3aed' : '#f3f4f6',
-                                                    color: sel ? '#fff' : '#374151',
-                                                    letterSpacing: '0.02em',
-                                                }}
-                                            >
-                                                {specInitials(s.name)}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
                             </div>
                         )}
-                        {tab === 'products' && (
-                            <div style={{ display: 'flex', gap: 5, overflowX: 'auto', scrollbarWidth: 'none', marginTop: 6 }}>
+                        {tab === 'products' && !useCategorySidebar && (
+                            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', marginTop: 8 }}>
                                 {['all', ...productCategories].map(cat => (
                                     <button key={cat} onClick={() => setCategory(cat)} style={{
-                                        flexShrink: 0, padding: '3px 9px', borderRadius: 4,
+                                        flexShrink: 0, padding: '8px 14px', borderRadius: 8,
                                         border: category === cat ? 'none' : '1px solid #e5e7eb',
                                         background: category === cat ? '#ccfbf1' : '#f9fafb',
                                         color: category === cat ? '#0d9488' : '#6b7280',
-                                        fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        minHeight: 40, touchAction: 'manipulation',
                                     }}>
                                         {cat === 'all' ? tm('bAll') : cat}
                                     </button>
@@ -993,8 +1985,70 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                         )}
                     </div>
 
+                    {/* Kategori: RestPOS tarzı sol şerit veya tam genişlik grid */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0, minWidth: 0 }}>
+                        {useCategorySidebar && (
+                            <aside
+                                className="custom-scrollbar"
+                                style={{
+                                    width: 200,
+                                    flexShrink: 0,
+                                    background: '#f8fafc',
+                                    borderRight: '1px solid #e2e8f0',
+                                    overflowY: 'auto',
+                                    overflowX: 'hidden',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    padding: '12px 10px 16px',
+                                    gap: 8,
+                                    alignItems: 'stretch',
+                                    boxShadow: 'inset -1px 0 0 rgba(148, 163, 184, 0.12)',
+                                }}
+                            >
+                                <div style={{
+                                    fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                    letterSpacing: '0.14em', padding: '4px 8px 2px',
+                                }}>
+                                    {tm('bCategorySidebarHeading')}
+                                </div>
+                                {(tab === 'services' ? ['all', ...categories] : ['all', ...productCategories]).map(cat => {
+                                    const sel = category === cat;
+                                    const isTeal = tab === 'products';
+                                    const label = cat === 'all' ? tm('bAll') : (tab === 'services' ? (CATEGORY_TR[cat] ?? cat) : cat);
+                                    return (
+                                        <button
+                                            key={cat}
+                                            type="button"
+                                            onClick={() => setCategory(cat)}
+                                            style={{
+                                                width: '100%',
+                                                textAlign: 'left',
+                                                padding: '12px 14px',
+                                                borderRadius: 14,
+                                                border: sel ? `2px solid ${isTeal ? '#0d9488' : '#7c3aed'}` : '2px solid transparent',
+                                                background: sel ? (isTeal ? '#ccfbf1' : '#ede9fe') : '#fff',
+                                                color: sel ? (isTeal ? '#0f766e' : '#5b21b6') : '#64748b',
+                                                fontSize: 13,
+                                                fontWeight: sel ? 800 : 600,
+                                                cursor: 'pointer',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em',
+                                                lineHeight: 1.25,
+                                                wordBreak: 'break-word',
+                                                touchAction: 'manipulation',
+                                                boxShadow: sel
+                                                    ? (isTeal ? '0 4px 14px rgba(13, 148, 136, 0.18)' : '0 4px 14px rgba(124, 58, 237, 0.12)')
+                                                    : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                            }}
+                                        >
+                                            {label}
+                                        </button>
+                                    );
+                                })}
+                            </aside>
+                        )}
                     {/* Grid */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px,1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
+                    <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px,1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
                         {tab === 'services' && filteredSvcs.map(svc => (
                             <button key={svc.id} onClick={() => addService(svc)} style={{
                                 background: '#fff', border: '1px solid #e8e4f0',
@@ -1007,7 +2061,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                             >
                                 <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{svc.name}</p>
                                 <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase' }}>
-                                    {CATEGORY_TR[svc.category] ?? svc.category} · {svc.duration_min}dk
+                                    {CATEGORY_TR[svc.category] ?? svc.category} · {svc.duration_min}{tm('bDkSuffix')}
                                 </p>
                                 <p style={{ fontSize: 13, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                             </button>
@@ -1021,7 +2075,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                     borderRadius: 7, padding: '10px', textAlign: 'left', cursor: 'pointer',
                                 }}>
                                     <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3 }}>{pkg.name}</p>
-                                    <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{pkg.total_sessions} seans · {pkg.validity_days}g</p>
+                                    <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>
+                                        {tm('bPackageSessionsDays').replace('{sessions}', String(pkg.total_sessions)).replace('{days}', String(pkg.validity_days))}
+                                    </p>
                                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
                                         <span style={{ fontSize: 13, fontWeight: 800, color: pkg.color ?? '#7c3aed' }}>{fmt(fp)}</span>
                                         {(pkg.discount_pct ?? 0) > 0 && <span style={{ fontSize: 10, color: '#9ca3af', textDecoration: 'line-through' }}>{fmt(pkg.price)}</span>}
@@ -1041,12 +2097,12 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                             >
                                 <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{p.name}</p>
                                 <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>
-                                    {(p.category || 'Genel')}{(p.barcode ? ` · ${p.barcode}` : '')}
+                                    {(p.category || tm('bCategoryGeneral'))}{(p.barcode ? ` · ${p.barcode}` : '')}
                                 </p>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                                     <span style={{ fontSize: 13, fontWeight: 800, color: '#0d9488' }}>{fmt(p.price)}</span>
                                     <span style={{ fontSize: 10, fontWeight: 600, color: (p.stock ?? 0) <= 0 ? '#ef4444' : '#6b7280' }}>
-                                        Stok: {p.stock ?? 0}
+                                        {tm('stockLabel')}: {p.stock ?? 0}
                                     </span>
                                 </div>
                             </button>
@@ -1054,15 +2110,16 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                         {tab === 'services' && filteredSvcs.length === 0 && (
                             <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', color: '#d1d5db', gap: 8 }}>
                                 <Scissors size={28} />
-                                <p style={{ fontSize: 12, fontWeight: 600 }}>Hizmet bulunamadı</p>
+                                <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bServiceNotFound')}</p>
                             </div>
                         )}
                         {tab === 'products' && filteredRetailProducts.length === 0 && (
                             <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', color: '#d1d5db', gap: 8 }}>
                                 <ShoppingBag size={28} />
-                                <p style={{ fontSize: 12, fontWeight: 600 }}>Ürün bulunamadı</p>
+                                <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bProductNotFound')}</p>
                             </div>
                         )}
+                    </div>
                     </div>
                 </div>
 
@@ -1202,7 +2259,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                 }}>
                                     <div>
                                         <h3 style={{ fontSize: 18, fontWeight: 800, color: '#111827', margin: 0 }}>{tm('bSelectCustomer')}</h3>
-                                        <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>Satış için bir müşteri seçin veya ekleyin.</p>
+                                        <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>{tm('bSaleSelectCustomerHelp')}</p>
                                     </div>
                                     <button
                                         onClick={() => setShowCustModal(false)}
@@ -1231,7 +2288,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                             autoFocus
                                             value={custModalQ}
                                             onChange={e => setCustModalQ(e.target.value)}
-                                            placeholder="İsim, telefon veya e-posta..."
+                                            placeholder={tm('bSearchPlaceholderCustomer')}
                                             style={{
                                                 width: '100%',
                                                 height: 46,
@@ -1268,7 +2325,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                             }}>
                                                 <User size={24} />
                                             </div>
-                                            <p style={{ fontSize: 14, fontWeight: 600, color: '#6b7280' }}>Müşteri bulunamadı</p>
+                                            <p style={{ fontSize: 14, fontWeight: 600, color: '#6b7280' }}>{tm('bCustomerNotFoundList')}</p>
                                         </div>
                                     ) : (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1364,16 +2421,16 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                             borderRadius: 14,
                                             border: '1px solid #e5e7eb'
                                         }}>
-                                            <h4 style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#374151' }}>Yeni Kayıt</h4>
-                                            <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder="Ad Soyad *" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                            <h4 style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#374151' }}>{tm('bFormNewRecord')}</h4>
+                                            <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder={tm('bPlaceholderNameRequired')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                                <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder="Telefon" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
-                                                <input value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder="E-posta" style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder={tm('bPhone')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                <input value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder={tm('bEmail')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                             </div>
                                             <div style={{ display: 'flex', gap: 8, marginTop: 5 }}>
-                                                <button onClick={() => { setShowAddForm(false); setNewCust({ name: '', phone: '', email: '' }); }} style={{ flex: 1, height: 38, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}>İptal</button>
+                                                <button onClick={() => { setShowAddForm(false); setNewCust({ name: '', phone: '', email: '' }); }} style={{ flex: 1, height: 38, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}>{tm('cancel')}</button>
                                                 <button onClick={handleSaveNewCustomer} disabled={!newCust.name.trim() || savingCust} style={{ flex: 1.5, height: 38, border: 'none', borderRadius: 10, background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: (!newCust.name.trim() || savingCust) ? 0.6 : 1 }}>
-                                                    {savingCust ? '...' : 'Müşteriyi Kaydet'}
+                                                    {savingCust ? '...' : tm('bSaveCustomerButton')}
                                                 </button>
                                             </div>
                                         </div>
@@ -1388,94 +2445,235 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                         {cart.length === 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#d1d5db', gap: 8 }}>
                                 <Sparkles size={32} />
-                                <p style={{ fontSize: 12, fontWeight: 600 }}>Hizmet, paket veya ürün ekleyin</p>
+                                <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bCartEmptyHint')}</p>
                             </div>
                         ) : cart.map(line => (
-                            <div key={line.uid} style={{ padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                    <div style={{ width: 3, height: 32, borderRadius: 2, background: line.color ?? '#7c3aed', flexShrink: 0, marginTop: 2 }} />
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 5, gap: 8 }}>
-                                            <div style={{ minWidth: 0, flex: 1 }}>
+                            <div
+                                key={line.uid}
+                                style={{
+                                    margin: '0 10px 8px',
+                                    padding: 0,
+                                    borderRadius: 16,
+                                    border: '1px solid #e2e8f0',
+                                    background: '#fff',
+                                    boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                }}
+                                onContextMenu={(e) => {
+                                    if (line.type !== 'service') return;
+                                    e.preventDefault();
+                                    openMonthlyCartModalForUid(line.uid);
+                                }}
+                            >
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        bottom: 0,
+                                        width: 4,
+                                        zIndex: 1,
+                                        pointerEvents: 'none',
+                                        boxShadow: '2px 0 10px rgba(0,0,0,0.06)',
+                                        background: line.color ?? '#7c3aed',
+                                        borderRadius: '16px 0 0 16px',
+                                    }}
+                                    aria-hidden
+                                />
+                                <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, position: 'relative', zIndex: 2 }}>
+                                    <div style={{ width: 4, flexShrink: 0 }} aria-hidden />
+                                    <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 10px 8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                            <div style={{ flex: 1, minWidth: 0 }}>
                                                 <span style={{
-                                                    fontSize: 9, fontWeight: 800, letterSpacing: '0.06em',
-                                                    color: line.type === 'product' ? '#0d9488' : line.type === 'package' ? '#7c3aed' : '#6366f1',
-                                                    display: 'block', marginBottom: 3,
+                                                    fontSize: 10,
+                                                    fontWeight: 800,
+                                                    letterSpacing: '0.08em',
+                                                    color: '#64748b',
+                                                    display: 'block',
+                                                    marginBottom: 6,
                                                 }}>
-                                                    {line.type === 'product' ? 'ÜRÜN' : line.type === 'package' ? 'PAKET' : 'HİZMET'}
+                                                    {line.type === 'product' ? tm('bLineBadgeProduct') : line.type === 'package' ? tm('bLineBadgePackage') : tm('bLineBadgeService')}
                                                 </span>
-                                                <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{line.name}</p>
-                                            </div>
-                                            <button type="button" onClick={() => remLine(line.uid)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', flexShrink: 0 }}><X size={12} /></button>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                                                <button onClick={() => chgQty(line.uid, -1)} style={{ width: 20, height: 20, border: '1px solid #e5e7eb', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#f9fafb', color: '#6b7280' }}><Minus size={9} /></button>
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', minWidth: 14, textAlign: 'center' }}>{line.qty}</span>
-                                                <button onClick={() => chgQty(line.uid, 1)} style={{ width: 20, height: 20, border: '1px solid #e5e7eb', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#f9fafb', color: '#6b7280' }}><Plus size={9} /></button>
-                                            </div>
-                                            <span style={{ fontSize: 13, fontWeight: 800, color: '#111827' }}>{fmt(line.unit_price * line.qty)}</span>
-                                        </div>
-                                        {line.type === 'service' && (
-                                            <div
-                                                style={{
-                                                    marginTop: 6,
-                                                    display: 'flex',
-                                                    gap: 6,
-                                                    alignItems: 'stretch',
-                                                    touchAction: 'manipulation',
-                                                }}
-                                            >
-                                                <select
-                                                    value={line.staff_id ?? ''}
-                                                    onChange={e => setStaff(line.uid, e.target.value)}
-                                                    title={!line.staff_id?.trim() ? tm('bLineStaffRequired') : undefined}
+                                                <div
                                                     style={{
-                                                        flex: 1,
-                                                        minWidth: 0,
-                                                        minHeight: 44,
-                                                        padding: '0 10px',
-                                                        fontSize: 12,
-                                                        fontWeight: 700,
-                                                        borderRadius: 8,
-                                                        border: line.staff_id?.trim()
-                                                            ? '1px solid #e5e7eb'
-                                                            : '1px solid #fcd34d',
-                                                        background: line.staff_id?.trim() ? '#fafafa' : '#fffbeb',
-                                                        color: line.staff_id?.trim() ? '#374151' : '#b45309',
-                                                        outline: 'none',
-                                                        cursor: 'pointer',
-                                                        boxSizing: 'border-box',
-                                                    }}
-                                                >
-                                                    <option value="">{tm('bLineStaffRequired')}</option>
-                                                    {activeSpecialists.map(s => (
-                                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                                    ))}
-                                                </select>
-                                                <button
-                                                    type="button"
-                                                    title={tm('bStaffPickModalTitle')}
-                                                    onClick={() => setStaffLinePickerUid(line.uid)}
-                                                    style={{
-                                                        width: 44,
-                                                        height: 44,
-                                                        flexShrink: 0,
-                                                        borderRadius: 8,
-                                                        border: '1px solid #ddd6fe',
-                                                        background: '#f5f3ff',
-                                                        cursor: 'pointer',
                                                         display: 'flex',
                                                         alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        color: '#7c3aed',
-                                                        touchAction: 'manipulation',
+                                                        gap: 10,
+                                                        flexWrap: 'nowrap',
+                                                        width: '100%',
                                                     }}
                                                 >
-                                                    <Users size={18} />
-                                                </button>
+                                                    <p
+                                                        title={line.name}
+                                                        style={{
+                                                            flex: '1 1 0',
+                                                            minWidth: 0,
+                                                            fontSize: 15,
+                                                            fontWeight: 800,
+                                                            color: '#0f172a',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap',
+                                                            margin: 0,
+                                                            lineHeight: 1.2,
+                                                            letterSpacing: '-0.02em',
+                                                        }}
+                                                    >
+                                                        {line.name}
+                                                    </p>
+                                                    <div
+                                                        style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => chgQty(line.uid, -1)}
+                                                            style={{ width: 28, height: 28, border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
+                                                        >
+                                                            <Minus size={12} />
+                                                        </button>
+                                                        <span style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', minWidth: 22, textAlign: 'center' }}>{line.qty}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => chgQty(line.uid, 1)}
+                                                            style={{ width: 28, height: 28, border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#fff', color: '#64748b' }}
+                                                        >
+                                                            <Plus size={12} />
+                                                        </button>
+                                                    </div>
+                                                    <span style={{
+                                                        fontSize: 15,
+                                                        fontWeight: 800,
+                                                        color: '#0f172a',
+                                                        fontVariantNumeric: 'tabular-nums',
+                                                        flexShrink: 0,
+                                                    }}>
+                                                        {fmt(line.unit_price * line.qty)}
+                                                    </span>
+                                                </div>
                                             </div>
-                                        )}
+                                            <button
+                                                type="button"
+                                                aria-label={tm('bCartLineRemoveAria')}
+                                                onClick={() => remLine(line.uid)}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    color: '#94a3b8',
+                                                    flexShrink: 0,
+                                                    padding: 4,
+                                                    margin: '-4px -4px 0 0',
+                                                    borderRadius: 6,
+                                                }}
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                        {line.type === 'service' && (() => {
+                                            const sid = String(line.staff_id ?? '').trim();
+                                            const staffLabel = sid
+                                                ? (activeSpecialists.find(s => String(s.id) === String(sid))?.name?.trim()
+                                                    ?? specialists.find(s => String(s.id) === String(sid))?.name?.trim())
+                                                : undefined;
+                                            const hasStaff = Boolean(staffLabel);
+                                            return (
+                                                <div
+                                                    style={{
+                                                        marginTop: 10,
+                                                        paddingTop: 10,
+                                                        borderTop: '1px solid #f1f5f9',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 10,
+                                                        touchAction: 'manipulation',
+                                                        position: 'relative',
+                                                        zIndex: 5,
+                                                    }}
+                                                >
+                                                    <div style={{ flex: 1, minWidth: 0, paddingRight: 4 }}>
+                                                        <div style={{
+                                                            fontSize: 9,
+                                                            fontWeight: 800,
+                                                            letterSpacing: '0.07em',
+                                                            color: '#94a3b8',
+                                                            marginBottom: 3,
+                                                        }}>
+                                                            {tm('bStaffName')}
+                                                        </div>
+                                                        <div
+                                                            title={hasStaff ? staffLabel : tm('bLineStaffRequired')}
+                                                            style={{
+                                                                fontSize: 13,
+                                                                fontWeight: 700,
+                                                                color: hasStaff ? '#0f172a' : '#b45309',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap',
+                                                                lineHeight: 1.3,
+                                                            }}
+                                                        >
+                                                            {hasStaff ? staffLabel : tm('bLineStaffRequired')}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                                        <button
+                                                            type="button"
+                                                            title={tm('bStaffPickModalTitle')}
+                                                            aria-label={tm('bStaffPickModalTitle')}
+                                                            onClick={() => {
+                                                                queueMicrotask(() => setStaffLinePickerUid(line.uid));
+                                                            }}
+                                                            style={{
+                                                                width: 44,
+                                                                height: 44,
+                                                                borderRadius: 10,
+                                                                border: '1px solid #e9d5ff',
+                                                                background: '#faf5ff',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                color: '#7c3aed',
+                                                                touchAction: 'manipulation',
+                                                                WebkitTapHighlightColor: 'transparent',
+                                                                flexShrink: 0,
+                                                                padding: 0,
+                                                            }}
+                                                        >
+                                                            <Users size={18} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            title={tm('bCartMonthlyPlanButton')}
+                                                            aria-label={tm('bCartMonthlyPlanButton')}
+                                                            onClick={() => {
+                                                                queueMicrotask(() => openMonthlyCartModalForUid(line.uid));
+                                                            }}
+                                                            style={{
+                                                                width: 44,
+                                                                height: 44,
+                                                                borderRadius: 10,
+                                                                border: '1px solid #bfdbfe',
+                                                                background: '#eff6ff',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                color: '#2563eb',
+                                                                touchAction: 'manipulation',
+                                                                WebkitTapHighlightColor: 'transparent',
+                                                                flexShrink: 0,
+                                                                padding: 0,
+                                                            }}
+                                                        >
+                                                            <CalendarDays size={18} strokeWidth={2.25} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -1492,14 +2690,32 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <CalendarDays size={13} color="#7c3aed" />
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Randevu Detayları</span>
-                                    {totalDur > 0 && <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>· {totalDur}dk</span>}
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{tm('bAppointmentDetailsTitle')}</span>
+                                    {totalDur > 0 && <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>· {totalDur}{tm('bDkSuffix')}</span>}
                                 </div>
                                 {aptOpen ? <ChevronUp size={14} color="#9ca3af" /> : <ChevronDown size={14} color="#9ca3af" />}
                             </button>
 
                             {aptOpen && (
-                                <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto' }} className="custom-scrollbar">
+                                <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 320, overflowY: 'auto' }} className="custom-scrollbar">
+                                    <p style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>
+                                        {tm('bPosSlotEditHint')}
+                                    </p>
+                                    {serviceLines.length === 1 && (
+                                        <Field label={tm('bPosActualDurationLabel')}>
+                                            <input
+                                                type="number"
+                                                min={5}
+                                                max={600}
+                                                value={aptActualDurationMin}
+                                                onChange={e => setAptActualDurationMin(Math.max(1, Math.round(Number(e.target.value) || 1)))}
+                                                style={iStyle}
+                                            />
+                                            <span style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af', marginTop: 4, display: 'block' }}>
+                                                {tm('bPosActualDurationHint').replace('{plan}', String(totalDur || '—'))}
+                                            </span>
+                                        </Field>
+                                    )}
                                     <Field label={tm('bNotes')}>
                                         <textarea value={aptNotes} onChange={e => setAptNotes(e.target.value)}
                                             placeholder={tm('bAppointmentNotesPlaceholder')}
@@ -1514,7 +2730,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                         <div style={{ padding: '12px 14px' }}>
                             {/* Discount */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>İndirim (%)</span>
+                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{tm('bDiscountPercentShort')}</span>
                                 <input type="number" min={0} max={100} value={discount} onChange={e => setDiscount(Number(e.target.value))}
                                     style={{ width: 52, height: 26, textAlign: 'right', border: '1px solid #e5e7eb', borderRadius: 4, fontSize: 12, fontWeight: 700, paddingRight: 5, outline: 'none' }} />
                             </div>
@@ -1522,74 +2738,138 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                             {/* Summary */}
                             <div style={{ background: '#f7f6fb', borderRadius: 5, padding: '8px 10px', marginBottom: 10 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Ara toplam</span>
+                                    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{tm('subTotal')}</span>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>{fmt(subtotal)}</span>
                                 </div>
                                 {discount > 0 && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>İndirim -%{discount}</span>
+                                        <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>{tm('bDiscountMinusPct').replace('{n}', String(discount))}</span>
                                         <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>-{fmt(discAmt)}</span>
                                     </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e8e4f0', paddingTop: 6 }}>
-                                    <span style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>Toplam</span>
+                                    <span style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{tm('total')}</span>
                                     <span style={{ fontSize: 15, fontWeight: 800, color: '#7c3aed' }}>{fmt(total)}</span>
                                 </div>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {/* Actions */}
-                            <div style={{ display: 'grid', gridTemplateColumns: existingAppointment ? '1fr' : '1fr 1fr', gap: 8 }}>
-                                {!existingAppointment && (
+                            {isExistingPaidComplete ? (
+                                <div
+                                    style={{
+                                        padding: '12px 14px',
+                                        borderRadius: 8,
+                                        background: '#ecfdf5',
+                                        border: '1px solid #bbf7d0',
+                                        fontSize: 11,
+                                        fontWeight: 700,
+                                        color: '#065f46',
+                                        lineHeight: 1.45,
+                                        textAlign: 'center',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
+                                        <CheckCircle2 size={16} color="#059669" />
+                                        {tm('bBeautyPaidPanelTitle')}
+                                    </div>
+                                    <span style={{ fontWeight: 600, color: '#047857' }}>{tm('bBeautyPaidNoNewSale')}</span>
+                                </div>
+                            ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                {!existingAppointment ? (
                                     <button
                                         type="button"
+                                        disabled={bookingBusy || !(canSave && canBookApt)}
                                         onClick={tryBookAppointment}
                                         title={tm('bBookingHintTitle')}
                                         style={{
-                                            height: 38, borderRadius: 5, border: (canSave && canBookApt) ? '2px solid #7c3aed' : '1px solid #e5e7eb',
-                                            background: (canSave && canBookApt) ? '#fff' : '#f9fafb',
-                                            color: (canSave && canBookApt) ? '#7c3aed' : '#9ca3af',
-                                            fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                                            height: 38, borderRadius: 5, border: (canSave && canBookApt && !bookingBusy) ? '2px solid #7c3aed' : '1px solid #e5e7eb',
+                                            background: (canSave && canBookApt && !bookingBusy) ? '#fff' : '#f9fafb',
+                                            color: (canSave && canBookApt && !bookingBusy) ? '#7c3aed' : '#9ca3af',
+                                            fontSize: 11, fontWeight: 800, cursor: (bookingBusy || !(canSave && canBookApt)) ? 'not-allowed' : 'pointer',
                                             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                                         }}
                                     >
-                                        <CalendarDays size={13} /> Randevu Oluştur
+                                        <CalendarDays size={13} /> {bookingBusy ? tm('bLoading') : tm('bAppointmentCreate')}
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        disabled={
+                                            updateExistingBusy ||
+                                            bookingBusy ||
+                                            !canSave ||
+                                            !existingEditDirty ||
+                                            (serviceLines.length > 0 && !allServicesStaffed) ||
+                                            (serviceLines.length > 0 && activeSpecialists.length === 0)
+                                        }
+                                        onClick={tryUpdateExistingAppointment}
+                                        title={tm('bAppointmentUpdateHint')}
+                                        style={{
+                                            height: 38, borderRadius: 5, border:
+                                                existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                    ? '2px solid #7c3aed'
+                                                    : '1px solid #e5e7eb',
+                                            background:
+                                                existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                    ? '#fff'
+                                                    : '#f9fafb',
+                                            color:
+                                                existingEditDirty && canSave && !updateExistingBusy && !bookingBusy &&
+                                                !(serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                    ? '#7c3aed'
+                                                    : '#9ca3af',
+                                            fontSize: 11, fontWeight: 800,
+                                            cursor:
+                                                updateExistingBusy || bookingBusy || !existingEditDirty || !canSave ||
+                                                (serviceLines.length > 0 && (!allServicesStaffed || activeSpecialists.length === 0))
+                                                    ? 'not-allowed'
+                                                    : 'pointer',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                                        }}
+                                    >
+                                        <RefreshCw size={13} /> {updateExistingBusy ? tm('bAppointmentUpdateSaving') : tm('bAppointmentUpdate')}
                                     </button>
                                 )}
                                 <button
                                     type="button"
+                                    disabled={bookingBusy}
                                     onClick={tryOpenPay}
                                     style={{
                                         height: 38, borderRadius: 5, border: 'none',
-                                        background: canSave ? '#7c3aed' : '#e5e7eb',
-                                        color: canSave ? '#fff' : '#9ca3af',
-                                        fontSize: 11, fontWeight: 800, cursor: canSave ? 'pointer' : 'not-allowed',
+                                        background: (canSave && !bookingBusy) ? '#7c3aed' : '#e5e7eb',
+                                        color: (canSave && !bookingBusy) ? '#fff' : '#9ca3af',
+                                        fontSize: 11, fontWeight: 800, cursor: (canSave && !bookingBusy) ? 'pointer' : 'not-allowed',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                                         transition: 'background 0.1s',
                                     }}
-                                    onMouseEnter={e => { if (canSave) e.currentTarget.style.background = '#6d28d9'; }}
-                                    onMouseLeave={e => { if (canSave) e.currentTarget.style.background = '#7c3aed'; }}
+                                    onMouseEnter={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = '#6d28d9'; }}
+                                    onMouseLeave={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = '#7c3aed'; }}
                                 >
-                                    <Receipt size={13} /> {existingAppointment ? 'Ödeme Al ve Tamamla' : 'Ödeme Al'}
+                                    <Receipt size={13} /> {existingAppointment ? tm('bPaymentCollectComplete') : tm('bPaymentCollect')}
                                 </button>
                             </div>
+                            )}
                             </div>
                         </div>
                     </div>{/* end scrollable bottom section */}
                 </div>
             </div>
 
-            {/* ── Sepet satırı: personel liste modalı (dokunmatik) ─────────────── */}
+            {/* ── Sepet satırı: personel liste modalı — body portal (layout üstünde görünsün) ── */}
             {staffLinePickerUid && (() => {
                 const pickLine = cart.find(l => l.uid === staffLinePickerUid);
                 if (!pickLine || pickLine.type !== 'service') return null;
-                return (
+                return createPortal(
                     <div
                         role="presentation"
                         style={{
                             position: 'fixed',
                             inset: 0,
-                            zIndex: 250,
+                            zIndex: 2147483640,
                             background: 'rgba(17, 24, 39, 0.5)',
                             backdropFilter: 'blur(4px)',
                             display: 'flex',
@@ -1730,7 +3010,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                                 })}
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body,
                 );
             })()}
 
@@ -1893,10 +3174,173 @@ export function AppointmentPOS({ prefillDate, prefillTime, existingAppointment, 
                     itemDiscount={discAmt}
                     campaignDiscount={0}
                     selectedCustomer={customer as any}
+                    receiptNumber={receiptNumber}
+                    showAutoPrintOption={false}
+                    defaultShowReceiptPreview={false}
+                    onPrintDraftReceipt={handlePrintDraftFromPaymentModal}
                     onClose={() => setShowPay(false)}
                     onComplete={handlePayComplete}
                 />
             )}
+
+            {showReceiptModal && completedSale && completedPaymentData && (
+                <Receipt80mm
+                    sale={completedSale}
+                    paymentData={completedPaymentData}
+                    printImmediately={receiptPrintImmediately}
+                    initialPrintLanguage={
+                        typeof completedPaymentData.language === 'string' ? completedPaymentData.language : 'tr'
+                    }
+                    headerBanner={receiptHeaderBanner}
+                    onClose={() => {
+                        setShowReceiptModal(false);
+                        setReceiptPrintImmediately(false);
+                        setReceiptHeaderBanner(undefined);
+                        setCompletedSale(null);
+                        setCompletedPaymentData(null);
+                        onBack?.();
+                    }}
+                />
+            )}
+
+            <RetailExFlatModal
+                open={!!monthlyModalLine}
+                onClose={() => { if (!monthlyBusy) setMonthlyModalLine(null); }}
+                title={tm('bMonthlyFromCartTitle')}
+                subtitle={monthlyModalLine ? monthlyModalLine.name : undefined}
+                headerIcon={<Repeat size={20} />}
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('bMonthlySeriesCreate')}
+                onConfirm={handleMonthlySeriesFromCartConfirm}
+                confirmLoading={monthlyBusy}
+                confirmDisabled={
+                    monthlyBusy
+                    || !customer
+                    || !monthlyModalLine
+                    || !String(monthlyModalLine.staff_id ?? '').trim()
+                }
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {!customer && (
+                        <p style={{ fontSize: 12, fontWeight: 700, color: '#b45309', margin: 0, padding: '10px 12px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fcd34d' }}>
+                            {tm('bMonthlyCartNeedCustomer')}
+                        </p>
+                    )}
+                    {monthlyModalLine && !String(monthlyModalLine.staff_id ?? '').trim() && (
+                        <p style={{ fontSize: 12, fontWeight: 700, color: '#b45309', margin: 0, padding: '10px 12px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fcd34d' }}>
+                            {tm('bMonthlyCartNeedStaff')}
+                        </p>
+                    )}
+                    <Field label={tm('bMonthlySeriesFirstDate')}>
+                        <input
+                            type="date"
+                            value={monthlyForm.date}
+                            onChange={e => setMonthlyForm(f => ({ ...f, date: e.target.value }))}
+                            style={iStyle}
+                        />
+                    </Field>
+                    <div>
+                        <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', color: '#64748b', marginBottom: 6 }}>
+                            {tm('bMonthlySeriesTime')}
+                        </div>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: '#475569', margin: 0, lineHeight: 1.5, padding: '10px 12px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            {tm('bMonthlyTimePolicyD1')}
+                        </p>
+                    </div>
+                    <Field label={tm('bMonthlySeriesSessionCount')}>
+                        <input
+                            type="number"
+                            min={1}
+                            max={120}
+                            value={monthlyForm.sessions}
+                            onChange={e =>
+                                setMonthlyForm(f => ({
+                                    ...f,
+                                    sessions: Math.max(1, Math.round(Number(e.target.value) || 1)),
+                                }))
+                            }
+                            style={iStyle}
+                        />
+                    </Field>
+                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>
+                        {tm('bMonthlyFromCartDeviceHint')}
+                    </p>
+                </div>
+            </RetailExFlatModal>
+
+            <RetailExFlatModal
+                open={slotSuggestModal.open}
+                onClose={() => setSlotSuggestModal((s) => ({ ...s, open: false }))}
+                title={slotSuggestModal.title}
+                subtitle={slotSuggestModal.subtitle}
+                maxWidthClass="max-w-lg"
+                headerIcon={<CalendarClock size={20} />}
+            >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {slotSuggestModal.sameDeviceSlots.length > 0 && (
+                        <div>
+                            <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', margin: '0 0 8px' }}>
+                                {tm('bSlotFreeOnSelection')}
+                            </p>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                {slotSuggestModal.sameDeviceSlots.slice(0, 28).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => applySuggestedSlot(t)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            borderRadius: 8,
+                                            border: '1px solid #ddd6fe',
+                                            background: '#f5f3ff',
+                                            color: '#5b21b6',
+                                            fontSize: 13,
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {slotSuggestModal.otherDeviceSuggestions.length > 0 && (
+                        <div>
+                            <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', margin: '0 0 8px' }}>
+                                {tm('bSlotOnOtherDevices')}
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {slotSuggestModal.otherDeviceSuggestions.map((o) => (
+                                    <button
+                                        key={`${o.deviceId}-${o.time}`}
+                                        type="button"
+                                        onClick={() => applySuggestedSlot(o.time, o.deviceId)}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '10px 12px',
+                                            borderRadius: 10,
+                                            border: '1px solid #e5e7eb',
+                                            background: '#fafafa',
+                                            cursor: 'pointer',
+                                            textAlign: 'left',
+                                        }}
+                                    >
+                                        <span style={{ fontWeight: 700, color: '#111827' }}>{o.deviceLabel}</span>
+                                        <span style={{ fontWeight: 800, color: '#7c3aed' }}>{o.time}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {slotSuggestModal.sameDeviceSlots.length === 0 &&
+                        slotSuggestModal.otherDeviceSuggestions.length === 0 && (
+                        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{tm('bSlotNoFreeFound')}</p>
+                    )}
+                </div>
+            </RetailExFlatModal>
         </div>
     );
 }

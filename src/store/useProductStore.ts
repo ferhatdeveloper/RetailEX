@@ -15,7 +15,7 @@ interface ProductState {
   loadProducts: (silent?: boolean) => Promise<void>;
   addProduct: (product: Product) => Promise<Product | undefined>;
   updateProduct: (id: string, product: Partial<Product>) => Promise<Product | undefined>;
-  deleteProduct: (id: string) => Promise<void>;
+  deleteProduct: (id: string, options?: { force?: boolean; adminPassword?: string }) => Promise<void>;
   updateStock: (id: string, quantity: number) => Promise<void>;
   findByBarcode: (barcode: string) => Product | undefined;
   syncWithServer: () => Promise<void>;
@@ -85,10 +85,10 @@ export const useProductStore = create<ProductState>()(
         }
       },
 
-      deleteProduct: async (id) => {
+      deleteProduct: async (id, options) => {
         set({ isLoading: true, error: null });
         try {
-          const success = await productAPI.delete(id);
+          const success = await productAPI.delete(id, options);
           if (success) {
             set((state) => ({
               products: state.products.filter(p => p.id !== id),

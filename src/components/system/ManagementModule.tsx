@@ -80,6 +80,7 @@ import { CentralDataBroadcastPanel } from '../modules/CentralDataBroadcastPanel'
 import { EnterpriseCentralDataManagement } from '../modules/EnterpriseCentralDataManagement';
 import { ModuleManagement } from './ModuleManagement';
 import { SystemManagementModule } from './SystemManagementModule';
+import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { MenuManagementPanel } from './MenuManagementPanel';
 import { ExpenseManagement } from '../accounting/reports/ExpenseManagement';
 import { CompanySetup } from './CompanySetup';
@@ -194,11 +195,12 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
-  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
+  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
   'supabase-migration' |
+  'virtual-pbx-caller-id' |
   'restaurant' | 'beauty';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -1036,6 +1038,12 @@ export function ManagementModule({
           return <NebimMigrationWizard />;
         case 'supabase-migration':
           return <SupabaseMigrationModule />;
+        case 'virtual-pbx-caller-id':
+          return (
+            <div className="h-full min-h-0 overflow-auto bg-slate-50">
+              <RestaurantCallerIdSettings />
+            </div>
+          );
         case 'income-statement':
           return <IncomeStatementReport />;
         case 'balance-sheet':
@@ -1132,6 +1140,7 @@ export function ManagementModule({
         case 'financereports':
         case 'customeranalysis':
         case 'graphanalysis':
+        case 'reports':
         case 'customreports':
           return <ReportsModule sales={sales} products={products} />;
         case 'profit-dashboard':

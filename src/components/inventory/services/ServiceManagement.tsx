@@ -7,7 +7,7 @@ import { ServiceFormPage } from './ServiceFormPage';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
-import { Briefcase, Edit, Trash2, RefreshCw, Plus, Search, Layers, DollarSign } from 'lucide-react';
+import { Briefcase, Edit, Trash2, RefreshCw, Plus, Search, Layers, Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function ServiceManagement() {

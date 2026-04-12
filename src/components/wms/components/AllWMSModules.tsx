@@ -1,11 +1,11 @@
-﻿// ğŸ¯ ALL WMS MODULES - Compact Implementation
+// ğŸ¯ ALL WMS MODULES - Compact Implementation
 // Issue Center, Transfer, Returns, Counting, Alerts, QC, Reports, Tasks
 
 import { useState } from 'react';
 import {
   TrendingUp, RotateCcw, FileText, AlertCircle,
   ClipboardCheck, Shield, BarChart3, CheckSquare,
-  Package, MapPin, Calendar, DollarSign, Users,
+  Package, MapPin, Calendar, Banknote, Users,
   X, Check, Search, Filter, Download, Printer,
   ChevronRight, Split, UserPlus, Layers, Target, Clock, Zap, Plus
 } from 'lucide-react';
@@ -478,7 +478,7 @@ export function ReportsCenter({ darkMode, onBack }: ModuleProps) {
   const reportCategories = [
     { name: 'Operasyonel Raporlar', count: 12, icon: BarChart3 },
     { name: 'Envanter Raporları', count: 15, icon: Package },
-    { name: 'Mali Raporlar', count: 8, icon: DollarSign },
+    { name: 'Mali Raporlar', count: 8, icon: Banknote },
     { name: 'Yönetim Raporları', count: 10, icon: Users },
   ];
 

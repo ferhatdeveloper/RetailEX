@@ -21,6 +21,9 @@ out/
 .env
 .env.signing
 
+# Windows kod imzasi (thumbprint yerel; repoya konmaz)
+DeskApp/tauri.windows.conf.json
+
 # Debug
 npm-debug.log*
 yarn-debug.log*

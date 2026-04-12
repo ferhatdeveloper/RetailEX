@@ -6,8 +6,9 @@ var import_cors = require("hono/cors");
 var import_pg = require("pg");
 var import_node_server = require("@hono/node-server");
 var app = new import_hono.Hono();
+// Kaynak pg_bridge.ts ile aynı: dar whitelist LAN / 127.0.0.1 / farklı portlarda tarayıcıyı bloklar; servis bu yüzden “çalışmıyor” sanılırdı.
 app.use("*", (0, import_cors.cors)({
-  origin: ["https://retailex.app", "http://localhost:8080", "http://localhost:5173", "http://localhost:6173", "http://localhost:6174", "http://localhost:3000"],
+  origin: "*",
   allowMethods: ["GET", "POST", "OPTIONS"]
 }));
 var pools = /* @__PURE__ */ new Map();

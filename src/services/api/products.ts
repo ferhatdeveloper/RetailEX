@@ -8,6 +8,105 @@ import type { Product } from '../../core/types';
 import { useAuthStore } from '../../store/useAuthStore';
 
 export const productAPI = {
+  async verifyManagementPassword(password: string): Promise<boolean> {
+    const pwd = String(password || '').trim();
+    if (!pwd) return false;
+    try {
+      const firmNr = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+      const { rows } = await postgres.query<{ ok: number }>(
+        `SELECT 1 AS ok
+         FROM public.users u
+         LEFT JOIN public.roles r ON r.id = u.role_id
+         WHERE LPAD(TRIM(COALESCE(u.firm_nr, '')), 3, '0') = LPAD(TRIM($1), 3, '0')
+           AND u.is_active = true
+           AND LOWER(COALESCE(NULLIF(u.role, ''), r.name, '')) IN ('admin', 'manager', 'yonetici', 'yönetici')
+           AND u.password_hash IS NOT NULL
+           AND (
+             u.password_hash = crypt($2, u.password_hash)
+             OR u.password_hash = $2
+           )
+         LIMIT 1`,
+        [firmNr, pwd]
+      );
+      return rows.length > 0;
+    } catch (error) {
+      console.error('[ProductAPI] verifyManagementPassword failed:', error);
+      return false;
+    }
+  },
+
+  async getDeleteImpact(productIds: string[]): Promise<{
+    hasInvoiceRefs: boolean;
+    saleRefs: { productId: string; invoiceNo: string }[];
+    purchaseRefs: { productId: string; invoiceNo: string }[];
+  }> {
+    const ids = (productIds || []).filter(Boolean);
+    if (ids.length === 0) {
+      return { hasInvoiceRefs: false, saleRefs: [], purchaseRefs: [] };
+    }
+    const firmNr = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+    const periodNr = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
+    const salesTable = `rex_${firmNr}_${periodNr}_sales`;
+    const saleItemsTable = `rex_${firmNr}_${periodNr}_sale_items`;
+    const stockMovementsTable = `rex_${firmNr}_${periodNr}_stock_movements`;
+    const stockMovementItemsTable = `rex_${firmNr}_${periodNr}_stock_movement_items`;
+
+    const saleRefs: { productId: string; invoiceNo: string }[] = [];
+    const purchaseRefs: { productId: string; invoiceNo: string }[] = [];
+
+    try {
+      const saleTableExists = await postgres.query<{ reg: string | null }>(
+        'SELECT to_regclass($1) AS reg',
+        [saleItemsTable]
+      );
+      if (saleTableExists.rows[0]?.reg) {
+        const { rows } = await postgres.query<{ product_id: string; invoice_no: string }>(
+          `SELECT si.product_id::text AS product_id,
+                  COALESCE(s.fiche_no, s.document_no, s.id::text) AS invoice_no
+           FROM ${saleItemsTable} si
+           LEFT JOIN ${salesTable} s ON s.id = si.invoice_id
+           WHERE si.product_id = ANY($1::uuid[])
+           LIMIT 200`,
+          [ids]
+        );
+        rows.forEach((r) => {
+          saleRefs.push({ productId: r.product_id, invoiceNo: r.invoice_no });
+        });
+      }
+    } catch (error) {
+      console.warn('[ProductAPI] getDeleteImpact sales lookup skipped:', error);
+    }
+
+    try {
+      const movementItemsExists = await postgres.query<{ reg: string | null }>(
+        'SELECT to_regclass($1) AS reg',
+        [stockMovementItemsTable]
+      );
+      if (movementItemsExists.rows[0]?.reg) {
+        const { rows } = await postgres.query<{ product_id: string; invoice_no: string }>(
+          `SELECT smi.product_id::text AS product_id,
+                  COALESCE(sm.document_no, sm.id::text) AS invoice_no
+           FROM ${stockMovementItemsTable} smi
+           LEFT JOIN ${stockMovementsTable} sm ON sm.id = smi.movement_id
+           WHERE smi.product_id = ANY($1::uuid[])
+             AND COALESCE(sm.movement_type, '') IN ('in', 'purchase')
+           LIMIT 200`,
+          [ids]
+        );
+        rows.forEach((r) => {
+          purchaseRefs.push({ productId: r.product_id, invoiceNo: r.invoice_no });
+        });
+      }
+    } catch (error) {
+      console.warn('[ProductAPI] getDeleteImpact purchase lookup skipped:', error);
+    }
+
+    return {
+      hasInvoiceRefs: saleRefs.length > 0 || purchaseRefs.length > 0,
+      saleRefs,
+      purchaseRefs,
+    };
+  },
   /**
    * Get all products
    */
@@ -173,13 +272,18 @@ export const productAPI = {
   async create(product: Omit<Product, 'id'>): Promise<Product | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const p = product as any;
+      const trunc = (s: unknown, max: number) => String(s ?? '').slice(0, max);
 
       const productData = {
-        name: product.name,
-        code: product.code || '',
-        barcode: product.barcode || await this.generateNextBarcode(),
+        name: trunc(p.name ?? product.name, 255) || 'Ürün',
+        code: trunc(product.code || '', 100),
+        barcode: trunc(product.barcode || (await this.generateNextBarcode()), 100),
         // V2: 'category' kolonu kaldırıldı → category_code kullan
-        category_code: (product as any).categoryCode || (product as any).category_code || product.category || '',
+        category_code: trunc(
+          p.categoryCode || p.category_code || product.category || '',
+          50,
+        ),
         price: product.price || 0,
         cost: product.cost || 0,
         stock: product.stock || 0,
@@ -197,21 +301,21 @@ export const productAPI = {
         description_en: product.description_en || '',
         description_ar: product.description_ar || '',
         description_ku: product.description_ku || '',
-        group_code: (product as any).groupCode || (product as any).group_code || '',
-        sub_group_code: (product as any).subGroupCode || (product as any).sub_group_code || '',
-        brand: product.brand || '',
+        group_code: trunc(p.groupCode || p.group_code || '', 50),
+        sub_group_code: trunc(p.subGroupCode || p.sub_group_code || '', 50),
+        brand: trunc(product.brand || '', 100),
         model: product.model || '',
         manufacturer: product.manufacturer || '',
         supplier: product.supplier || '',
         origin: product.origin || '',
         material_type: (product as any).materialType || (product as any).material_type || 'commercial_goods',
         vat_rate: product.taxRate || 0,
-        special_code_1: product.specialCode1 || '',
-        special_code_2: product.specialCode2 || '',
-        special_code_3: (product as any).specialCode3 || '',
-        special_code_4: (product as any).specialCode4 || '',
-        special_code_5: (product as any).specialCode5 || '',
-        special_code_6: (product as any).specialCode6 || '',
+        special_code_1: trunc(product.specialCode1 || p.special_code_1 || '', 50),
+        special_code_2: trunc(product.specialCode2 || p.special_code_2 || '', 50),
+        special_code_3: trunc((product as any).specialCode3 || p.special_code_3 || '', 50),
+        special_code_4: trunc((product as any).specialCode4 || p.special_code_4 || '', 50),
+        special_code_5: trunc((product as any).specialCode5 || p.special_code_5 || '', 50),
+        special_code_6: trunc((product as any).specialCode6 || p.special_code_6 || '', 50),
         unit2: (product as any).unit2 || '',
         unit3: (product as any).unit3 || '',
         has_variants: (product as any).hasVariants || (product as any).has_variants || false,
@@ -238,6 +342,11 @@ export const productAPI = {
       const errCode = error?.code;
       const detail = String(error?.detail ?? error?.message ?? '');
       if (errCode === '23505' || /23505|unique|tekil|duplicate/i.test(detail || '')) {
+        if (/barcode|barkod/i.test(detail)) {
+          throw new Error(
+            'Bu barkod başka bir üründe kayıtlı. Excel’de barkodu değiştirin veya çakışan ürünü kaldırın.',
+          );
+        }
         const match = detail.match(/\(code\)=\(([^)]+)\)/) || detail.match(/key is "([^"]+)"/);
         const codeValue = match ? match[1] : 'bu kod';
         throw new Error(`Bu ürün kodu zaten mevcut: ${codeValue}. Excel aktarımında aynı kod varsa kayıt güncellenir.`);
@@ -423,8 +532,21 @@ export const productAPI = {
   /**
    * Delete product
    */
-  async delete(id: string): Promise<boolean> {
+  async delete(
+    id: string,
+    options?: { force?: boolean; adminPassword?: string }
+  ): Promise<boolean> {
     try {
+      const impact = await this.getDeleteImpact([id]);
+      if (impact.hasInvoiceRefs && !options?.force) {
+        throw new Error('Bu ürünün satış/alış faturalarında hareketi var. Devam için yönetici şifresi ile onaylayın.');
+      }
+      if (impact.hasInvoiceRefs && options?.force) {
+        const ok = await this.verifyManagementPassword(options?.adminPassword || '');
+        if (!ok) {
+          throw new Error('Yönetici şifresi hatalı.');
+        }
+      }
       const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET is_active = false WHERE id = $1 AND firm_nr = $2`,
@@ -535,9 +657,14 @@ export const productAPI = {
  * Helper: Map database product
  */
 function mapDatabaseProductToProduct(dbProduct: any): Product {
+  const name =
+    [dbProduct.name, dbProduct.name2, dbProduct.code, dbProduct.barcode]
+      .map((x) => (x == null ? '' : String(x).trim()))
+      .find((s) => s.length > 0) || 'İsimsiz ürün';
   return {
     id: dbProduct.id,
-    name: dbProduct.name,
+    name,
+    name2: dbProduct.name2,
     code: dbProduct.code,
     barcode: dbProduct.barcode,
     category: dbProduct.category || dbProduct.category_code || '',
@@ -547,6 +674,7 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     minStock: parseFloat(dbProduct.min_stock || 0),
     min_stock: parseFloat(dbProduct.min_stock || 0),
     max_stock: parseFloat(dbProduct.max_stock || 0),
+    criticalStock: parseFloat(dbProduct.critical_stock ?? dbProduct.criticalStock ?? 0),
     unit: dbProduct.unit,
     isActive: dbProduct.is_active,
     hasVariants: dbProduct.has_variants,

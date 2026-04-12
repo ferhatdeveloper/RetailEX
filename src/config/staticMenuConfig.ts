@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, DollarSign, Mic, Landmark, Layout
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -223,7 +223,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 screen: 'finance-other',
                 icon: MoreVertical,
                 children: [
-                    // { label: t.menu.accountingManagement, screen: 'accounting-mgmt', icon: DollarSign, badge: t.menu.newBadge },
+                    // { label: t.menu.accountingManagement, screen: 'accounting-mgmt', icon: Banknote, badge: t.menu.newBadge },
                     // { label: t.menu.expenseManagement, screen: 'revenueexpense', icon: Receipt },
                     // { label: t.menu.checkPromissory, screen: 'checkpromissory', icon: Receipt },
                     // { label: t.menu.collectionPayment, screen: 'collectionpayment', icon: CreditCard },
@@ -300,6 +300,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
+            { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
@@ -435,6 +436,8 @@ export const staticMenuSections = getStaticMenuSections({
         definitionsParameters: 'Tanımlar/Parametreler',
         backupRestore: 'Yedekleme/Geri Yükleme',
         logAudit: 'Log/Denetim',
+        virtualPbxCallerId: 'Sanal santral (Caller ID)',
+        supabaseDataTransfer: 'Supabase Veri Aktarımı',
         systemHealth: 'Sistem Sağlığı',
         inventoryCountOps: 'Sayım İşlemleri',
         mobileCount: 'Mobil Sayım / Fiş Oluştur',

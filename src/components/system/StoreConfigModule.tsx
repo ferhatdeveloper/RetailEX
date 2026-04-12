@@ -1,4 +1,4 @@
-﻿// Store Configuration & Settings Module
+// Store Configuration & Settings Module
 
 import { useState } from 'react';
 import { 
@@ -12,7 +12,7 @@ import {
   Shield,
   Bell,
   Clock,
-  DollarSign,
+  Banknote,
   Percent,
   Users,
   Package,
@@ -279,7 +279,7 @@ function POSSettings() {
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-green-600" />
+            <Banknote className="h-5 w-5 text-green-600" />
             Ödeme Yöntemleri
           </h3>
         </div>

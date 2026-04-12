@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CostAccountingService, StockValuation, formatMoney } from '../../../services/costAccountingService';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, DollarSign } from 'lucide-react';
+import { Download, Banknote } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -63,7 +63,7 @@ export function MaterialValueReport() {
             <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <div>
                     <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                        <DollarSign className="w-5 h-5 text-green-600" />
+                        <Banknote className="w-5 h-5 text-green-600" />
                         {tm('materialValueReport')}
                     </h2>
                     <div className="text-sm text-gray-500 mt-1">

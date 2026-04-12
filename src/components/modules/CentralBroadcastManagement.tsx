@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Radio, Wifi, Clock, Calendar, TrendingUp, BarChart3,
-  Zap, Send, Database, Users, Package, DollarSign,
+  Zap, Send, Database, Users, Package, Banknote,
   Tag, ShoppingCart, Filter, Plus, Play, Pause, Trash2,
   AlertCircle, CheckCircle, XCircle, RefreshCw, Download, Upload
 } from 'lucide-react';

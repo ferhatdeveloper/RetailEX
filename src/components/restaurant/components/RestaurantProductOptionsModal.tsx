@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Plus, StickyNote, ChefHat, Gift, Trash2, Info, Pencil } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { Product } from '../types';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RestaurantProductOptionsModalProps {
     product: Product;
@@ -9,7 +10,8 @@ interface RestaurantProductOptionsModalProps {
     onAddToCart: (product: Product, quantity?: number) => void;
     onAddNote: () => void;
     onSendToKitchen: () => void;
-    onMarkComplementary: () => void;
+    /** İkram DB güncellemesi bitene kadar bekleyebilir; hata olursa modal kapanmaz */
+    onMarkComplementary: () => void | Promise<void>;
     onVoidItem: () => void;
     fmt: (num: number) => string;
     /** Yönetici ise fiyat değiştirilebilir */
@@ -30,10 +32,17 @@ export function RestaurantProductOptionsModal({
     isAdmin = false,
     onPriceApply
 }: RestaurantProductOptionsModalProps) {
+    const tm = useRestaurantModuleTm();
     const [priceOverride, setPriceOverride] = useState<number | null>(null);
     const [showPriceEdit, setShowPriceEdit] = useState(false);
     const [priceInput, setPriceInput] = useState('');
+    /** Uzun basma: sepete eklenecek adet */
+    const [quantityInput, setQuantityInput] = useState('1');
     const displayPrice = priceOverride ?? product.price;
+
+    useEffect(() => {
+        setQuantityInput('1');
+    }, [product.id]);
 
     const applyPrice = () => {
         const num = parseFloat(priceInput.replace(/,/g, '.'));
@@ -46,6 +55,12 @@ export function RestaurantProductOptionsModal({
     };
 
     const productWithPrice = (): Product => priceOverride != null ? { ...product, price: priceOverride } : product;
+
+    const applyQuantityAdd = () => {
+        const n = Math.max(1, Math.min(999, parseInt(String(quantityInput).replace(/\D/g, '') || '1', 10) || 1));
+        onAddToCart(productWithPrice(), n);
+        onClose();
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -75,8 +90,8 @@ export function RestaurantProductOptionsModal({
                                         className="w-24 px-2 py-1 text-[10px] font-black uppercase bg-white/20 border border-white/40 rounded text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/50"
                                         autoFocus
                                     />
-                                    <button type="button" onClick={applyPrice} className="text-[10px] font-black uppercase bg-white/30 hover:bg-white/50 px-2 py-1 rounded">OK</button>
-                                    <button type="button" onClick={() => { setShowPriceEdit(false); setPriceInput(''); }} className="text-white/80 hover:text-white text-[10px]">İptal</button>
+                                    <button type="button" onClick={applyPrice} className="text-[10px] font-black uppercase bg-white/30 hover:bg-white/50 px-2 py-1 rounded">{tm('resOptOk')}</button>
+                                    <button type="button" onClick={() => { setShowPriceEdit(false); setPriceInput(''); }} className="text-white/80 hover:text-white text-[10px]">{tm('resOptPriceCancel')}</button>
                                 </div>
                             ) : (
                                 <button
@@ -97,43 +112,71 @@ export function RestaurantProductOptionsModal({
 
                 <div className="p-8 space-y-4">
                     <div className="grid grid-cols-1 gap-3">
-                        <button
-                            onClick={() => { onAddToCart(productWithPrice(), 1); onClose(); }}
-                            className="w-full py-4 bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-blue-200 active:scale-95"
-                        >
-                            <Plus className="w-4 h-4" /> 1 ADET EKLE
-                        </button>
-                        <button
-                            onClick={() => { onAddToCart(productWithPrice(), 2); onClose(); }}
-                            className="w-full py-4 bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-blue-200 active:scale-95"
-                        >
-                            <Plus className="w-4 h-4" /> 2 ADET EKLE
-                        </button>
+                        <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-4 space-y-3">
+                            <div className="text-[10px] font-black uppercase tracking-widest text-blue-800/80 flex items-center gap-2">
+                                <Plus className="w-4 h-4 shrink-0" /> {tm('resOptCartQty')}
+                            </div>
+                            <div className="flex gap-2 items-stretch">
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    pattern="[0-9]*"
+                                    autoComplete="off"
+                                    value={quantityInput}
+                                    onChange={e => setQuantityInput(e.target.value.replace(/\D/g, ''))}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            applyQuantityAdd();
+                                        }
+                                    }}
+                                    placeholder="1"
+                                    className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-blue-100 bg-white text-slate-900 text-center text-lg font-black tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300"
+                                    aria-label={tm('resOptQtyAria')}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={applyQuantityAdd}
+                                    className="shrink-0 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black uppercase text-xs tracking-wide shadow-md active:scale-[0.98] transition-all"
+                                >
+                                    {tm('resOptOk')}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-medium leading-tight">{tm('resOptQtyHint')}</p>
+                        </div>
                         <button
                             onClick={() => { onAddNote(); onClose(); }}
                             className="w-full py-4 bg-slate-50 hover:bg-amber-50 text-slate-700 hover:text-amber-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-amber-200 active:scale-95"
                         >
-                            <StickyNote className="w-4 h-4" /> NOT EKLE
+                            <StickyNote className="w-4 h-4" /> {tm('resOptAddNote')}
                         </button>
                         <button
                             onClick={() => { onSendToKitchen(); onClose(); }}
                             className="w-full py-4 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-600 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-slate-100 hover:border-emerald-200 active:scale-95"
                         >
-                            <ChefHat className="w-4 h-4" /> MUTFAĞA GÖNDER
+                            <ChefHat className="w-4 h-4" /> {tm('resOptSendKitchen')}
                         </button>
 
                         <div className="grid grid-cols-2 gap-3 pt-2">
                             <button
-                                onClick={() => { onMarkComplementary(); onClose(); }}
+                                type="button"
+                                onClick={async () => {
+                                    try {
+                                        await Promise.resolve(onMarkComplementary());
+                                        onClose();
+                                    } catch {
+                                        /* Hata: RestPOS zaten bildirdi; modal açık kalsın */
+                                    }
+                                }}
                                 className="py-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-indigo-100 active:scale-95"
                             >
-                                <Gift className="w-4 h-4" /> İKRAM
+                                <Gift className="w-4 h-4" /> {tm('resOptComplimentary')}
                             </button>
                             <button
                                 onClick={() => { onVoidItem(); onClose(); }}
                                 className="py-4 bg-red-50 hover:bg-red-100 text-red-700 rounded-2xl font-black uppercase text-xs transition-all flex items-center justify-center gap-3 border-2 border-red-100 active:scale-95"
                             >
-                                <Trash2 className="w-4 h-4" /> İPTAL
+                                <Trash2 className="w-4 h-4" /> {tm('resOptVoid')}
                             </button>
                         </div>
                     </div>
@@ -144,7 +187,7 @@ export function RestaurantProductOptionsModal({
                     onClick={onClose}
                     className="w-full py-5 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-slate-600 transition-all border-t border-slate-50 mt-auto"
                 >
-                    VAZGEÇ
+                    {tm('resOptCancel')}
                 </button>
             </div>
         </div>

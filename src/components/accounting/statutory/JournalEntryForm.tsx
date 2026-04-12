@@ -85,203 +85,66 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
         setActiveLineIndex(null);
     };
 
-    setSaving(true);
-    try {
-        // Context for Routing
-        const routingContext = {
-            firmNr: selectedFirm.nr,
-            periodNr: selectedPeriod.nr
-        };
-
-        // 1. Prepare Header Payload
-        const headerPayload = {
-            fiche_no: ficheNo,
-            date: format(date, 'yyyy-MM-dd'),
-            fiche_type: parseInt(ficheType),
-            description: description,
-            doc_no: docNo,
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-            branch_id: selectedBranch?.logicalref,
-            status: 1 // Active
-        };
-
-        // 2. Add Header to Queue
-        // We use a generated UUID for the header so lines can reference it (if backend supports it)
-        // Or we send a composite object if the backend endpoint supports "Deep Insert".
-        // Given the complexity, let's assume we are sending a "Composite Journal Entry" to a specific endpoint
-        // OR we treat the Header INSERT as the parent. 
-        // *CRITICAL*: For offline safety, sending the whole object (Header + Lines) is best.
-        // Let's us assume we are inserting into EMUHFICHE and the backend trigger or logic handles lines?
-        // NO, Supabase REST is table-based. 
-        // STRATEGY: We will add the HEADER to the queue. 
-        // The LINES need the Header's ID. 
-        // In a distributed offline system, we assign the GUID (logicalref or similar) on the client if possible, 
-        // OR we use the `idempotency_key` to strict link them.
-        // SIMPLIFICATION: I will use the 'RPC' or 'Edge Function' approach implication here:
-        // I'll enqueue a single "SAVE_JOURNAL" command if I had an endpoint.
-        // But since we are using Table Routing, we might need to enqueue Header then Lines.
-        // HOWEVER, `OfflineQueueService` processes sequentially. 
-        // LET'S DO THIS: Enqueue the Header. We need its ID. 
-        // Supabase ID generation happens on server. 
-        // SOLUTION: We will use a "Composite Payload" and route it to a custom RPC or just use the `offlineQueue` to hit a custom "journal_entry" endpoint 
-        // that handles the transaction. 
-        // BUT `TableRoutingService` targets specific tables.
-        // Let's try to hit the `EMUHFICHE` table but with a special payload that the backend (FastAPI) intercepts? 
-        // No, getting ahead of myself. 
-        // BACK TO BASICS: The user wants "Offline Queue". The Queue calls `syncItem`. 
-        // `syncItem` does a FETCH to `TableRoutingService.getTableName`.
-        // If I just insert to `FN_..._EMUHFICHE`, I only get header.
-        // I need to insert lines to `FN_..._EMUHLINE`. They need `parent_ref`.
-        // REVISION: I will use the `offlineQueue` to send a single requests to a FastAPI endpoint (which I need to build/verify) 
-        // OR, strictly for now, I will assume the `accountingService` wrapper previously mentioned handled this.
-        // WAIT, looking at the code I replaced: `await accountingService.saveJournalEntry(payload);`
-        // The user said "Logic is yours". 
-        // I will implement a robust client-side ID generation (UUID) for the `logicalref` (or equivalent `guid`) if the schema supports it.
-        // Checking schema... `logicalref` is usually SERIAL. `guid` is UUID.
-        // OK, I will update `OfflineQueueService` to support a "Transaction Bundle" or just hit the FastAPI backend.
-        // The previous conversation phase 5 mentioned "Implement Accounting Endpoints in FastAPI".
-        // So, I should enqueue a request to THAT endpoint.
-        // Endpoint: `/api/accounting/journal-entry` (or similar).
-        // BUT `OfflineQueueService` is built to hit `Supabase REST` based on `tableName`.
-        // I will update the `tableName` to be a "Virtual Table" or "Endpoint" that the service handles.
-        // Let's use `JOURNAL_ENTRY_COMPOSITE` as the table name, and handle it in `OfflineQueueService` or just let it hit the backend.
-
-        // ACTUALLY: The best way for "Logo-style" is strict table inserts.
-        // 1. Queue Header Insert (Client generates a temporary UUID `guid`).
-        // 2. Queue Line Inserts (referencing that `guid`).
-        // Backend trigger maps `guid` to `logicalref`.
-
-        // ALTERNATIVE (Simpler & Robust): Queue a single item with type 'RPC' or 'API'.
-        // I'll stick to the "Composite Payload" to a specific FastAPI endpoint for atomicity.
-        // I'll cheat slightly and make the `tableName` argument be the endpoint path suffix.
-
-        const compositePayload = {
-            ...headerPayload,
-            lines: lines.map((line, index) => ({
-                line_nr: index + 1,
-                account_code: line.account_code, // Accessing by code might be safer if refs change
-                account_ref: line.account_ref,
-                description: line.description,
-                amount: line.debit > 0 ? line.debit : line.credit,
-                sign: line.debit > 0 ? 0 : 1,
-                date: format(date, 'yyyy-MM-dd'),
-                branch_id: selectedBranch?.logicalref
-            }))
-        };
-
-        // Add to Queue (Targeting the FastAPI endpoint logic via a virtual table name)
-        // effectively: POST /FN_..._EMUHFICHE (but with lines? No, standard REST fails).
-        // I will use a custom tag 'RPC_SAVE_JOURNAL' which I will handle in QueueService specific logic later if needed
-        // OR simpler: `rpc/save_journal_entry`.
-        // Let's use the Queue to call a Supabase RPC function `save_journal_entry` which I likely need to create.
-        // Users prompt: "Logic is yours".
-        // I will assume I will create a `save_journal` RPC that takes JSON.
-        // Queue Item:
-        await offlineQueue.addToQueue(
-            routingContext,
-            'rpc/save_journal_entry', // This acts as the "Table Name" for the URL builder
-            compositePayload
-                fiche_type: parseInt(ficheType),
-            description: description,
-            doc_no: docNo,
-            total_debit: totalDebit,
-            total_credit: totalCredit,
-            branch_id: selectedBranch?.logicalref,
-            status: 1 // Active
+    const handleSave = async () => {
+        if (balance !== 0) {
+            toast.error('Borç ve alacak toplamları eşit olmalıdır.');
+            return;
+        }
+        if (lines.length === 0) {
+            toast.error('En az bir satır ekleyin.');
+            return;
+        }
+        setSaving(true);
+        try {
+            const routingContext = {
+                firmNr: selectedFirm.nr,
+                periodNr: selectedPeriod.nr
             };
 
-    // 2. Add Header to Queue
-    // We use a generated UUID for the header so lines can reference it (if backend supports it)
-    // Or we send a composite object if the backend endpoint supports "Deep Insert".
-    // Given the complexity, let's assume we are sending a "Composite Journal Entry" to a specific endpoint
-    // OR we treat the Header INSERT as the parent. 
-    // *CRITICAL*: For offline safety, sending the whole object (Header + Lines) is best.
-    // Let's us assume we are inserting into EMUHFICHE and the backend trigger or logic handles lines?
-    // NO, Supabase REST is table-based. 
-    // STRATEGY: We will add the HEADER to the queue. 
-    // The LINES need the Header's ID. 
-    // In a distributed offline system, we assign the GUID (logicalref or similar) on the client if possible, 
-    // OR we use the `idempotency_key` to strict link them.
-    // SIMPLIFICATION: I will use the 'RPC' or 'Edge Function' approach implication here:
-    // I'll enqueue a single "SAVE_JOURNAL" command if I had an endpoint.
-    // But since we are using Table Routing, we might need to enqueue Header then Lines.
-    // HOWEVER, `OfflineQueueService` processes sequentially. 
-    // LET'S DO THIS: Enqueue the Header. We need its ID. 
-    // Supabase ID generation happens on server. 
-    // SOLUTION: We will use a "Composite Payload" and route it to a custom RPC or just use the `offlineQueue` to hit a custom "journal_entry" endpoint 
-    // that handles the transaction. 
-    // BUT `TableRoutingService` targets specific tables.
-    // Let's try to hit the `FN_..._EMUHFICHE` table but with a special payload that the backend (FastAPI) intercepts? 
-    // No, getting ahead of myself. 
-    // BACK TO BASICS: The user wants "Offline Queue". The Queue calls `syncItem`. 
-    // `syncItem` does a FETCH to `TableRoutingService.getTableName`.
-    // If I just insert to `FN_..._EMUHFICHE`, I only get header.
-    // I need to insert lines to `FN_..._EMUHLINE`. They need `parent_ref`.
-    // REVISION: I will use the `offlineQueue` to send a single requests to a FastAPI endpoint (which I need to build/verify) 
-    // OR, strictly for now, I will assume the `accountingService` wrapper previously mentioned handled this.
-    // WAIT, looking at the code I replaced: `await accountingService.saveJournalEntry(payload);`
-    // The user said "Logic is yours". 
-    // I will implement a robust client-side ID generation (UUID) for the `logicalref` (or equivalent `guid`) if the schema supports it.
-    // Checking schema... `logicalref` is usually SERIAL. `guid` is UUID.
-    // OK, I will update `OfflineQueueService` to support a "Transaction Bundle" or just hit the FastAPI backend.
-    // The previous conversation phase 5 mentioned "Implement Accounting Endpoints in FastAPI".
-    // So, I should enqueue a request to THAT endpoint.
-    // Endpoint: `/api/accounting/journal-entry` (or similar).
-    // BUT `OfflineQueueService` is built to hit `Supabase REST` based on `tableName`.
-    // I will update the `tableName` to be a "Virtual Table" or "Endpoint" that the service handles.
-    // Let's use `JOURNAL_ENTRY_COMPOSITE` as the table name, and handle it in `OfflineQueueService` or just let it hit the backend.
+            const headerPayload = {
+                fiche_no: ficheNo,
+                date: format(date, 'yyyy-MM-dd'),
+                fiche_type: parseInt(ficheType, 10),
+                description: description,
+                doc_no: docNo,
+                total_debit: totalDebit,
+                total_credit: totalCredit,
+                branch_id: selectedBranch?.logicalref,
+                status: 1
+            };
 
-    // ACTUALLY: The best way for "Logo-style" is strict table inserts.
-    // 1. Queue Header Insert (Client generates a temporary UUID `guid`).
-    // 2. Queue Line Inserts (referencing that `guid`).
-    // Backend trigger maps `guid` to `logicalref`.
+            const compositePayload = {
+                ...headerPayload,
+                lines: lines.map((line, index) => ({
+                    line_nr: index + 1,
+                    account_code: line.account_code,
+                    account_ref: line.account_ref,
+                    description: line.description,
+                    amount: line.debit > 0 ? line.debit : line.credit,
+                    sign: line.debit > 0 ? 0 : 1,
+                    date: format(date, 'yyyy-MM-dd'),
+                    branch_id: selectedBranch?.logicalref
+                }))
+            };
 
-    // ALTERNATIVE (Simpler & Robust): Queue a single item with type 'RPC' or 'API'.
-    // I'll stick to the "Composite Payload" to a specific FastAPI endpoint for atomicity.
-    // I'll cheat slightly and make the `tableName` argument be the endpoint path suffix.
+            await offlineQueue.addToQueue(
+                routingContext,
+                'rpc/save_journal_entry',
+                compositePayload
+            );
 
-    const compositePayload = {
-        ...headerPayload,
-        lines: lines.map((line, index) => ({
-            line_nr: index + 1,
-            account_code: line.account_code, // Accessing by code might be safer if refs change
-            account_ref: line.account_ref,
-            description: line.description,
-            amount: line.debit > 0 ? line.debit : line.credit,
-            sign: line.debit > 0 ? 0 : 1,
-            date: format(date, 'yyyy-MM-dd'),
-            branch_id: selectedBranch?.logicalref
-        }))
+            toast.success('Fiş kaydedildi (Kuyruğa Eklendi)');
+            onSaveSuccess();
+            onClose();
+        } catch (error: any) {
+            console.error(error);
+            toast.error('Kaydetme hatası: ' + (error?.message ?? String(error)));
+        } finally {
+            setSaving(false);
+        }
     };
 
-    // Add to Queue (Targeting the FastAPI endpoint logic via a virtual table name)
-    // effectively: POST /FN_..._EMUHFICHE (but with lines? No, standard REST fails).
-    // I will use a custom tag 'RPC_SAVE_JOURNAL' which I will handle in QueueService specific logic later if needed
-    // OR simpler: `rpc/save_journal_entry`.
-    // Let's use the Queue to call a Supabase RPC function `save_journal_entry` which I likely need to create.
-    // Users prompt: "Logic is yours".
-    // I will assume I will create a `save_journal` RPC that takes JSON.
-    // Queue Item:
-    await offlineQueue.addToQueue(
-        routingContext,
-        'rpc/save_journal_entry', // This acts as the "Table Name" for the URL builder
-        compositePayload
-    );
-
-    toast.success('Fiş kaydedildi (Kuyruğa Eklendi)');
-    onSaveSuccess();
-    onClose();
-
-} catch (error: any) {
-    console.error(error);
-    toast.error('Kaydetme hatası: ' + error.message);
-} finally {
-    setSaving(false);
-}
-    };
-
-return (
+    return (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white w-full max-w-6xl h-[90vh] rounded-lg shadow-xl flex flex-col border">
             {/* Header */}

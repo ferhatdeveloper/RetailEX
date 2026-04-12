@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  DollarSign, Plus, Edit, TrendingUp, TrendingDown, Calendar,
+  Banknote, Plus, Edit, TrendingUp, TrendingDown, Calendar,
   Globe, RefreshCw, Search, ChevronDown, ChevronUp, BarChart3,
   Loader2, Trash2, X, Check, Calculator
 } from 'lucide-react';
@@ -83,7 +83,7 @@ const currencyColumns = [
     header: 'Kod', // will be replaced dynamically inside the component, but let's keep it clean or make a factory function for columns. Actually, wait! The best way is to generate columns *inside* the component, or pass `tm` as a parameter to a column generator function.
     cell: info => (
       <div className="flex items-center gap-2">
-        <DollarSign className="w-4 h-4 text-gray-400" />
+        <Banknote className="w-4 h-4 text-gray-400" />
         <span className="font-semibold">{info.getValue()}</span>
       </div>
     ),
@@ -171,7 +171,7 @@ export function CurrencyManagement() {
       header: tm('code') || 'Kod',
       cell: info => (
         <div className="flex items-center gap-2">
-          <DollarSign className="w-4 h-4 text-gray-400" />
+          <Banknote className="w-4 h-4 text-gray-400" />
           <span className="font-semibold">{info.getValue()}</span>
         </div>
       ),
@@ -856,7 +856,7 @@ export function CurrencyManagement() {
               <div key={rate.id} className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <DollarSign className="w-6 h-6 text-blue-600" />
+                    <Banknote className="w-6 h-6 text-blue-600" />
                     <span className="text-xl font-bold">{rate.currencyCode}</span>
                   </div>
                   <div className="flex items-center gap-1">

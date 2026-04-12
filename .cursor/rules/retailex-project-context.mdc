@@ -28,6 +28,7 @@ alwaysApply: true
 POS (MarketPOS, MobilePOS), Yönetim (dashboard, ürünler, faturalar, raporlar, kasa, banka, kampanyalar), WMS (alım/sevkiyat/sayım), Restoran, Güzellik (randevu, uzman, CRM), Muhasebe/Finans.
 
 ## Kritik kurallar
+- **Sürüm (semver):** tek kaynak kök `package.json` → `version`; UI `src/core/version.ts`; Tauri dosyaları `scripts/sync-app-version.mjs` ile — ayrıntı `.cursor/rules/app-version-single-source.mdc`.
 - Tauri hata: `err?.message || String(err)`.
 - Yeni WMS servisi: `PostgresConnection.getInstance()` + `ERP_SETTINGS`.
 - Dark mode: `darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'`.

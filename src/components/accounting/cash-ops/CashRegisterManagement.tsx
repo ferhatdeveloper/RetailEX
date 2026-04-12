@@ -1,11 +1,11 @@
-﻿/**
+/**
  * Cash Register Management Module - Kasa Yönetimi
  * Pixel-perfect restoration of the original design while adding real functionality
  */
 
 import { useState, useEffect } from 'react';
 import {
-  Wallet, DollarSign, TrendingUp, AlertTriangle, Clock,
+  Wallet, Banknote, TrendingUp, AlertTriangle, Clock,
   CheckCircle, Plus, RefreshCw, Search
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';

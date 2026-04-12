@@ -1,8 +1,8 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, Scan, Package, CheckCircle, AlertCircle,
   Camera, X, Check, RefreshCw, TruckIcon, FileText,
-  User, Calendar, DollarSign, MessageSquare, Image as ImageIcon,
+  User, Calendar, Banknote, MessageSquare, Image as ImageIcon,
   Clock, Box, ShoppingBag, RotateCcw, XCircle, AlertTriangle
 } from 'lucide-react';
 

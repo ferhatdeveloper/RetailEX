@@ -1,10 +1,10 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import {
     BookOpen, PackagePlus, Monitor, ShieldCheck,
     RotateCcw, Grid3x3, ArrowLeft,
     CheckCircle2, Info, ExternalLink, Smartphone, Play,
     Truck, CheckSquare, Package, Warehouse, BarChart3,
-    TrendingUp, RefreshCw, DollarSign, Users, MapPin,
+    TrendingUp, RefreshCw, Banknote, Users, MapPin,
     AlertCircle, Factory, ThumbsUp, Activity
 } from 'lucide-react';
 
@@ -212,7 +212,7 @@ export function WmsGuidePage({ darkMode, onBack }: WmsGuidePageProps) {
         {
             id: 'pricing-cost',
             title: 'Fiyatlandırma & Maliyet',
-            icon: DollarSign,
+            icon: Banknote,
             color: 'text-green-500',
             bgColor: 'bg-green-500/10',
             description: 'Maliyet yönetimi ve fiyatlandırma desteği.',

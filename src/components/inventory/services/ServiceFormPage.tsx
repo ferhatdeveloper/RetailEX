@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  X, Save, FileText, Tag, DollarSign, Calculator, Info, 
+  X, Save, FileText, Tag, Banknote, Calculator, Info, 
   Settings, Database, Check, AlertCircle, Briefcase,
   Share2, Trash2, Plus, Search, LayoutGrid, MoreVertical,
   Barcode as BarcodeIcon, Download, Image as ImageIcon,
@@ -877,7 +877,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                     />
                     {formData.autoCalculateUSD && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
-                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
                       </span>
                     )}
                   </div>
@@ -908,7 +908,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                     />
                     {formData.autoCalculateUSD && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded border border-blue-200">
-                        <DollarSign className="w-2.5 h-2.5" /> {tm('auto')}
+                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
                       </span>
                     )}
                   </div>

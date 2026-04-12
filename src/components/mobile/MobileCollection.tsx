@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { DollarSign, Camera, CreditCard, Banknote, Check } from 'lucide-react';
+import { Banknote, Camera, CreditCard, Check } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 
 interface Payment {
@@ -54,7 +54,7 @@ export function MobileCollection({ customerId, customerName }: { customerId: str
       <div className="max-w-md mx-auto">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="text-center mb-6">
-            <DollarSign className="w-16 h-16 mx-auto text-green-600 mb-4" />
+            <Banknote className="w-16 h-16 mx-auto text-green-600 mb-4" />
             <h1 className="text-xl mb-1">Tahsilat</h1>
             <p className="text-sm text-gray-600">{customerName}</p>
           </div>
@@ -109,7 +109,7 @@ export function MobileCollection({ customerId, customerName }: { customerId: str
                     method === 'TRANSFER' ? 'border-green-600 bg-green-50' : 'border-gray-300'
                   }`}
                 >
-                  <DollarSign className="w-6 h-6" />
+                  <Banknote className="w-6 h-6" />
                   <span className="text-xs">Havale</span>
                 </button>
               </div>

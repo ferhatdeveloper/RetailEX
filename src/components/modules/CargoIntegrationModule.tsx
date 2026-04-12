@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Package, Truck, MapPin, Clock, CheckCircle, XCircle, AlertCircle,
   Search, Filter, Plus, Edit2, Trash2, Eye, Download, Upload,
-  BarChart3, Settings, RefreshCw, FileText, Calendar, DollarSign,
+  BarChart3, Settings, RefreshCw, FileText, Calendar, Banknote,
   TrendingUp, ArrowRight, Copy, Printer, Send, Users, Box,
   Navigation, Phone, Mail, Building, CreditCard, Percent,
   Star, ThumbsUp, Activity, Zap, Globe, ChevronDown, X
@@ -387,7 +387,7 @@ export function CargoIntegrationModule() {
               <p className="text-xs text-gray-500 mt-1">Ort. teslimat: {stats.avgDeliveryTime} gün</p>
             </div>
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-white" />
+              <Banknote className="w-6 h-6 text-white" />
             </div>
           </div>
         </div>
@@ -1001,7 +1001,7 @@ export function CargoIntegrationModule() {
             { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
             { id: 'shipments', label: 'Gönderiler', icon: Package, badge: stats.totalShipments },
             { id: 'tracking', label: 'Kargo Takip', icon: MapPin },
-            { id: 'pricing', label: 'Fiyat Karşılaştır', icon: DollarSign },
+            { id: 'pricing', label: 'Fiyat Karşılaştır', icon: Banknote },
             { id: 'reports', label: 'Raporlar', icon: FileText },
             { id: 'settings', label: 'Ayarlar', icon: Settings }
           ].map(tab => {

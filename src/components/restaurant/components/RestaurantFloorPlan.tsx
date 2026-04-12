@@ -29,7 +29,8 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '../../ui/utils';
 import { useRestaurantStore } from '../store/useRestaurantStore';
-import { Table } from '../types';
+import { Table, RESTAURANT_FLOOR_ALL_ID } from '../types';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 import { KrokiView } from './KrokiView';
 import { useResponsive } from '@/hooks/useResponsive';
 import { RestaurantService } from '../../../services/restaurant';
@@ -42,13 +43,6 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 /** Serviste (mor) kartın otomatik maviye dönme süresi — masaya ürün gitmiş (ms) */
 const SERVED_TO_BLUE_MS = 15 * 1000;
 
-const ORDER_ITEM_STATUS_TR: Record<string, string> = {
-    pending: 'Bekliyor',
-    cooking: 'Mutfakta',
-    ready: 'Hazır',
-    served: 'Serviste',
-    cancelled: 'İptal',
-};
 const servedFirstSeenAt = new Map<string, number>();
 
 async function getStoreId(): Promise<string | null> {
@@ -86,7 +80,32 @@ interface RestaurantFloorPlanProps {
 }
 
 export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, moveTargetTableId, onMoveTargetSelect, onMoveConfirm, onMoveCancel, onRequestStaffChange, onOpenReservations }: RestaurantFloorPlanProps) {
-    const [activeFloor, setActiveFloor] = useState('Tümü');
+    const tmR = useRestaurantModuleTm();
+    const tmOrderLineStatus = (s: string) => {
+        const k: Record<string, string> = {
+            pending: 'resOrderLinePending',
+            cooking: 'resOrderLineCooking',
+            ready: 'resOrderLineReady',
+            served: 'resOrderLineServed',
+            cancelled: 'resOrderLineCancelled',
+        };
+        const key = k[s];
+        return key ? tmR(key) : s;
+    };
+    const tmTableStatusLabel = (s: string) => {
+        const k: Record<string, string> = {
+            empty: 'resTableStatusEmpty',
+            occupied: 'resTableStatusOccupied',
+            kitchen: 'resTableStatusKitchen',
+            served: 'resTableStatusServedBadge',
+            billing: 'resTableStatusBilling',
+            reserved: 'resTableStatusReserved',
+            cleaning: 'resTableStatusCleaning',
+        };
+        const key = k[s];
+        return key ? tmR(key) : s;
+    };
+    const [activeFloor, setActiveFloor] = useState(RESTAURANT_FLOOR_ALL_ID);
     const [activeView, setActiveView] = useState<'tables' | 'kroki' | 'orders'>('tables');
     const [searchTerm, setSearchTerm] = useState('');
     const [openModal, setOpenModal] = useState<{ table: Table; covers: number } | null>(null);
@@ -171,7 +190,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
     const cols = width >= 1024 ? 10 : width >= 768 ? 8 : width >= 640 ? 6 : 3;
 
     const activeFloorName = regions.find(r => r.id === activeFloor)?.name;
-    const byFloor = activeFloor === 'Tümü'
+    const byFloor = activeFloor === RESTAURANT_FLOOR_ALL_ID
         ? tables
         : tables.filter(t => t.floorId === activeFloor || t.location === activeFloor || t.location === activeFloorName);
 
@@ -194,7 +213,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         className="flex items-center gap-2.5 px-6 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[12px] group shrink-0 shadow-inner"
                     >
                         <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                        <span>Geri</span>
+                        <span>{tmR('resNavBackShort')}</span>
                     </button>
 
                     <div className="relative flex-1 max-w-lg group h-12 min-w-0">
@@ -204,7 +223,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             type="text"
                             inputMode="search"
                             autoComplete="off"
-                            placeholder="Masa veya sipariş ara..."
+                            placeholder={tmR('resFloorSearchPlaceholder')}
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             onFocus={() => {
@@ -222,10 +241,10 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         <button
                             onClick={onRequestStaffChange ?? logout}
                             className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all border border-red-500/20 group"
-                            title={onRequestStaffChange ? 'Garson değiştir' : 'Çıkış'}
+                            title={onRequestStaffChange ? tmR('resFloorStaffChange') : tmR('resFloorLogout')}
                         >
                             <div className="flex flex-col items-end mr-1">
-                                <span className="text-[10px] font-bold text-red-500/60 uppercase leading-none mb-1">Personel</span>
+                                <span className="text-[10px] font-bold text-red-500/60 uppercase leading-none mb-1">{tmR('resFloorStaffLabel')}</span>
                                 <span className="text-sm font-black text-white leading-none uppercase tracking-tighter">{currentStaff.name}</span>
                             </div>
                             <LogOut className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -233,9 +252,9 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                     )}
 
                     <div className="flex items-center gap-1">
-                        <FloorSubTab icon={<Utensils className="w-5 h-5" />} label="Masalar" active={activeView === 'tables'} activeColor="bg-white/20 text-white" onClick={() => setActiveView('tables')} />
-                        <FloorSubTab icon={<MapIcon className="w-5 h-5" />} label="Kroki" active={activeView === 'kroki'} activeColor="bg-blue-400 text-white" onClick={() => setActiveView('kroki')} />
-                        <FloorSubTab icon={<LayoutGrid className="w-5 h-5" />} label="Siparişler" active={activeView === 'orders'} activeColor="bg-emerald-500 text-white" onClick={() => setActiveView('orders')} />
+                        <FloorSubTab icon={<Utensils className="w-5 h-5" />} label={tmR('resFloorTabTables')} active={activeView === 'tables'} activeColor="bg-white/20 text-white" onClick={() => setActiveView('tables')} />
+                        <FloorSubTab icon={<MapIcon className="w-5 h-5" />} label={tmR('resFloorTabKroki')} active={activeView === 'kroki'} activeColor="bg-blue-400 text-white" onClick={() => setActiveView('kroki')} />
+                        <FloorSubTab icon={<LayoutGrid className="w-5 h-5" />} label={tmR('resFloorTabOrders')} active={activeView === 'orders'} activeColor="bg-emerald-500 text-white" onClick={() => setActiveView('orders')} />
                     </div>
                 </div>
             </div>
@@ -246,15 +265,15 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
             >
                 <div className="flex items-center gap-1 flex-1 py-2">
                     <button
-                        onClick={() => setActiveFloor('Tümü')}
+                        onClick={() => setActiveFloor(RESTAURANT_FLOOR_ALL_ID)}
                         className={cn(
                             "flex items-center justify-center px-6 py-3 rounded-2xl text-[12px] font-black uppercase tracking-tight whitespace-nowrap outline-none transition-all min-h-[44px]",
-                            activeFloor === 'Tümü'
+                            activeFloor === RESTAURANT_FLOOR_ALL_ID
                                 ? "bg-white/20 text-white shadow-lg border border-white/10"
                                 : "text-white/50 hover:text-white hover:bg-white/10"
                         )}
                     >
-                        TÜMÜ
+                        {tmR('resPosAllShort')}
                     </button>
                     {regions.map((region) => (
                         <button
@@ -279,26 +298,26 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                 className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-[11px] font-black uppercase text-white/90 hover:text-white transition-all rounded-xl border border-white/15"
                             >
                                 <Plus className="w-4 h-4" />
-                                <span>Bölge Ekle</span>
+                                <span>{tmR('resFloorBtnAddRegion')}</span>
                             </button>
                             <button
                                 onClick={() => { setRegionDeleteError(null); setRegionDeleteSelectedId(regions[0]?.id ?? ''); setShowRegionDeleteModal(true); }}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-rose-100/90 text-[11px] font-black uppercase text-white/90 hover:text-rose-700 transition-all rounded-xl border border-white/15"
-                                title="Bölge sil (içinde masa varsa önce masaları kaldırın)"
+                                title={tmR('resFloorDeleteRegionHint')}
                             >
                                 <Trash2 className="w-4 h-4" />
-                                <span>Bölge Sil</span>
+                                <span>{tmR('resFloorBtnDeleteRegion')}</span>
                             </button>
                             <button
                                 onClick={() => {
                                     setManageType('table');
-                                    setTargetRegionId(activeFloor === 'Tümü' ? (regions[0]?.id || '') : activeFloor);
+                                    setTargetRegionId(activeFloor === RESTAURANT_FLOOR_ALL_ID ? (regions[0]?.id || '') : activeFloor);
                                     setShowManageModal(true);
                                 }}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-[11px] font-black uppercase text-white transition-all rounded-xl border border-white/15 shadow-lg"
                             >
                                 <Plus className="w-4 h-4" />
-                                <span>Masa Ekle</span>
+                                <span>{tmR('resFloorBtnAddTable')}</span>
                             </button>
                         </>
                     )}
@@ -307,7 +326,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         onClick={() => onOpenReservations?.()}
                         className="flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-[11px] font-black uppercase text-white/90 hover:text-white transition-all rounded-xl border border-white/15"
                     >
-                        <span>Rezervasyonlar</span>
+                        <span>{tmR('resFloorBtnReservations')}</span>
                         <Calendar className="w-4 h-4" />
                     </button>
                 </div>
@@ -329,11 +348,11 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             <>
                                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 min-w-0">
                                     <span className="font-black uppercase text-base sm:text-lg tracking-wide text-white drop-shadow-sm">
-                                        Masa <span className="inline-block bg-black/30 px-2.5 py-1 rounded-lg text-white">{moveTableSource.number}</span>
+                                        {tmR('resFloorMoveTableWord')} <span className="inline-block bg-black/30 px-2.5 py-1 rounded-lg text-white">{moveTableSource.number}</span>
                                         <ArrowRightLeft className="inline-block w-5 h-5 mx-2 align-middle text-amber-100" />
-                                        Masa <span className="inline-block bg-black/30 px-2.5 py-1 rounded-lg text-white">{tables.find(t => t.id === moveTargetTableId)?.number ?? moveTargetTableId}</span>
+                                        {tmR('resFloorMoveTableWord')} <span className="inline-block bg-black/30 px-2.5 py-1 rounded-lg text-white">{tables.find(t => t.id === moveTargetTableId)?.number ?? moveTargetTableId}</span>
                                     </span>
-                                    <span className="text-xs font-bold text-amber-100 uppercase tracking-wider hidden sm:inline">İşlem seçin</span>
+                                    <span className="text-xs font-bold text-amber-100 uppercase tracking-wider hidden sm:inline">{tmR('resFloorMoveBannerChoose')}</span>
                                 </div>
                                 {onMoveConfirm && (
                                     <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
@@ -342,14 +361,14 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                             onClick={() => onMoveConfirm('move', moveTargetTableId)}
                                             className="flex items-center gap-2 px-5 py-3 bg-white text-amber-900 hover:bg-amber-50 rounded-xl font-black uppercase text-xs sm:text-sm transition-all shadow-lg border-2 border-white"
                                         >
-                                            <ArrowRightLeft className="w-4 h-4 shrink-0" /> Taşı
+                                            <ArrowRightLeft className="w-4 h-4 shrink-0" /> {tmR('resFloorMoveBtnTransfer')}
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => onMoveConfirm('merge', moveTargetTableId)}
                                             className="flex items-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-black uppercase text-xs sm:text-sm transition-all shadow-lg ring-2 ring-emerald-900/40"
                                         >
-                                            <Merge className="w-4 h-4 shrink-0" /> Birleştir
+                                            <Merge className="w-4 h-4 shrink-0" /> {tmR('resFloorMoveBtnMerge')}
                                         </button>
                                     </div>
                                 )}
@@ -357,9 +376,9 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         ) : (
                             <div className="flex flex-col gap-1">
                                 <span className="font-black uppercase text-base sm:text-lg text-white drop-shadow-md tracking-wide">
-                                    Masa <span className="bg-black/35 px-2.5 py-1 rounded-lg">{moveTableSource.number}</span> — hedef masayı seçin
+                                    {tmR('resFloorMovePickTarget').replace('{n}', String(moveTableSource.number))}
                                 </span>
-                                <span className="text-sm font-bold text-amber-100">Hedef masanın kartına dokunun / tıklayın</span>
+                                <span className="text-sm font-bold text-amber-100">{tmR('resFloorMoveTapTarget')}</span>
                             </div>
                         )}
                     </div>
@@ -368,7 +387,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                         onClick={onMoveCancel}
                         className="flex items-center gap-2 px-5 py-3 bg-black/30 hover:bg-black/45 text-white rounded-xl font-black text-sm uppercase transition-all shrink-0 ring-2 ring-white/30"
                     >
-                        <X className="w-5 h-5" /> İptal
+                        <X className="w-5 h-5" /> {tmR('resFloorMoveCancel')}
                     </button>
                 </div>
             )}
@@ -414,13 +433,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                 return (
                                     <div key={s} className="flex items-center gap-1.5">
                                         <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: c.bg }} />
-                                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{c.label}</span>
+                                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{tmTableStatusLabel(s)}</span>
                                     </div>
                                 );
                             })}
                             {canFloorAdminTable && (
                                 <span className="text-[10px] font-bold text-slate-400 border-l border-slate-200 pl-3 ml-1">
-                                    Yönetici: masada uzun bas → düzenle / sil
+                                    {tmR('resFloorAdminLongPressHint')}
                                 </span>
                             )}
                         </div>
@@ -437,7 +456,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                     const q = (searchTerm || '').trim().toLowerCase();
                     const baseOrderTables = tables.filter(
                         t => t.status !== 'empty' &&
-                        (activeFloor === 'Tümü' || t.floorId === activeFloor) &&
+                        (activeFloor === RESTAURANT_FLOOR_ALL_ID || t.floorId === activeFloor) &&
                         (!q || t.number.toLowerCase().includes(q) || (t.waiter ?? '').toLowerCase().includes(q) || (t.location ?? '').toLowerCase().includes(q))
                     );
                     const uniqueWaiters = Array.from(new Set(baseOrderTables.map(t => t.waiter).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b));
@@ -447,33 +466,33 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                     return (
                         <div className="h-full flex flex-col" style={{ backgroundColor: '#f1f3f5' }}>
                             <div className="shrink-0 p-4 pb-2">
-                                <h3 className="text-lg font-black text-slate-700 uppercase tracking-tight mb-3 px-1">Açık siparişler</h3>
+                                <h3 className="text-lg font-black text-slate-700 uppercase tracking-tight mb-3 px-1">{tmR('resFloorOrdersTitle')}</h3>
                                 <div className="flex flex-wrap items-center gap-3">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Filtre</span>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{tmR('resFloorFilterLabel')}</span>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-xs font-semibold text-slate-600">Durum:</span>
+                                        <span className="text-xs font-semibold text-slate-600">{tmR('resFloorStatusColon')}</span>
                                         <select
                                             value={orderFilterStatus}
                                             onChange={e => setOrderFilterStatus(e.target.value)}
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-400 min-w-[120px]"
                                         >
-                                            <option value="">Tümü</option>
-                                            <option value="occupied">Dolu</option>
-                                            <option value="kitchen">Mutfakta</option>
-                                            <option value="served">Serviste</option>
-                                            <option value="billing">Hesap</option>
-                                            <option value="cleaning">Temizlik</option>
-                                            <option value="reserved">Rezerve</option>
+                                            <option value="">{tmR('resPosAllShort')}</option>
+                                            <option value="occupied">{tmTableStatusLabel('occupied')}</option>
+                                            <option value="kitchen">{tmTableStatusLabel('kitchen')}</option>
+                                            <option value="served">{tmTableStatusLabel('served')}</option>
+                                            <option value="billing">{tmTableStatusLabel('billing')}</option>
+                                            <option value="cleaning">{tmTableStatusLabel('cleaning')}</option>
+                                            <option value="reserved">{tmTableStatusLabel('reserved')}</option>
                                         </select>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-xs font-semibold text-slate-600">Garson:</span>
+                                        <span className="text-xs font-semibold text-slate-600">{tmR('resFloorWaiterColon')}</span>
                                         <select
                                             value={orderFilterWaiter}
                                             onChange={e => setOrderFilterWaiter(e.target.value)}
                                             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-400 min-w-[120px]"
                                         >
-                                            <option value="">Tümü</option>
+                                            <option value="">{tmR('resPosAllShort')}</option>
                                             {uniqueWaiters.map(w => (
                                                 <option key={w} value={w}>{w}</option>
                                             ))}
@@ -485,13 +504,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                             onClick={() => { setOrderFilterStatus(''); setOrderFilterWaiter(''); }}
                                             className="text-xs font-bold text-slate-500 hover:text-blue-600 uppercase tracking-wide"
                                         >
-                                            Filtreyi temizle
+                                            {tmR('resFloorFilterClear')}
                                         </button>
                                     )}
                                     <span className="text-xs font-semibold text-slate-500 ml-auto">
                                         {orderTables.length === baseOrderTables.length
-                                            ? `${orderTables.length} kayıt`
-                                            : `${orderTables.length} / ${baseOrderTables.length}`}
+                                            ? tmR('resFloorOrdersCount').replace('{n}', String(orderTables.length))
+                                            : tmR('resFloorOrdersCountFiltered').replace('{a}', String(orderTables.length)).replace('{b}', String(baseOrderTables.length))}
                                     </span>
                                 </div>
                             </div>
@@ -501,8 +520,8 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                     <Receipt className="w-14 h-14 text-slate-300 mb-3" />
                                     {baseOrderTables.length === 0 ? (
                                         <>
-                                            <p className="text-slate-500 font-medium">Açık sipariş yok</p>
-                                            <p className="text-sm text-slate-400 mt-1">Üst bölge / arama ile kontrol edin</p>
+                                            <p className="text-slate-500 font-medium">{tmR('resFloorOrdersNone')}</p>
+                                            <p className="text-sm text-slate-400 mt-1">{tmR('resFloorOrdersNoneHint')}</p>
                                         </>
                                     ) : (
                                         <>
@@ -575,7 +594,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2 shrink-0 text-slate-600">
                                                                             <span className="text-xs px-1.5 py-0.5 rounded bg-white border border-slate-200">
-                                                                                {ORDER_ITEM_STATUS_TR[o.status] ?? o.status}
+                                                                                {tmOrderLineStatus(o.status)}
                                                                             </span>
                                                                             <span>{o.quantity} × {formatMoneyAmount(o.price)}</span>
                                                                             <span className="font-bold text-slate-800">{formatMoneyAmount(o.quantity * o.price)}</span>
@@ -908,7 +927,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                                     try {
                                         await removeRegion(regionDeleteSelectedId);
                                         if (activeFloor === regionDeleteSelectedId)
-                                            setActiveFloor(regions.find(r => r.id !== regionDeleteSelectedId)?.id ?? 'Tümü');
+                                            setActiveFloor(regions.find(r => r.id !== regionDeleteSelectedId)?.id ?? RESTAURANT_FLOOR_ALL_ID);
                                         setShowRegionDeleteModal(false);
                                     } catch (e: any) {
                                         setRegionDeleteError(e?.message || 'Bölge silinemedi');
@@ -1130,6 +1149,20 @@ function TableCard({
     enableAdminLongPress?: boolean;
     onAdminLongPress?: (table: Table) => void;
 }) {
+    const tmR = useRestaurantModuleTm();
+    const tmTableStatusLabel = (s: string) => {
+        const k: Record<string, string> = {
+            empty: 'resTableStatusEmpty',
+            occupied: 'resTableStatusOccupied',
+            kitchen: 'resTableStatusKitchen',
+            served: 'resTableStatusServedBadge',
+            billing: 'resTableStatusBilling',
+            reserved: 'resTableStatusReserved',
+            cleaning: 'resTableStatusCleaning',
+        };
+        const key = k[s];
+        return key ? tmR(key) : s;
+    };
     const { markAsClean, kitchenOrders, markAsServed } = useRestaurantStore();
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressConsumedRef = useRef(false);
@@ -1267,7 +1300,7 @@ function TableCard({
                         {table.status === 'served' && <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
                         {table.status === 'cleaning' && <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
                         {table.status === 'kitchen' && <Utensils className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />}
-                        {table.status === 'served' ? 'Masaya gitti' : table.status === 'cleaning' ? 'Temizlik' : config.label}
+                        {table.status === 'served' ? tmR('resTableCardServed') : table.status === 'cleaning' ? tmR('resTableStatusCleaning') : tmTableStatusLabel(table.status)}
                     </span>
                 )}
             </div>
@@ -1276,7 +1309,7 @@ function TableCard({
             <div className="flex justify-between items-center w-full relative z-20">
                 {moveTargetMode && !isMoveSource ? (
                     <div className="w-full py-2 px-2 text-center rounded-xl bg-black/25 border border-white/20 pointer-events-none">
-                        <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-white/95">Hedef seçmek için karta dokunun</span>
+                        <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-white/95">{tmR('resFloorMoveTapHint')}</span>
                     </div>
                 ) : isCleaning ? (
                     <button
@@ -1284,7 +1317,7 @@ function TableCard({
                         className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-white/20 hover:bg-white/35 active:scale-95 rounded-xl transition-all text-[10px] font-black uppercase border border-white/20"
                     >
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        Temizlendi
+                        {tmR('resTableCleanDone')}
                     </button>
                 ) : table.status === 'kitchen' && kitchenOrder ? (
                     <button
@@ -1292,7 +1325,7 @@ function TableCard({
                         className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-white/20 hover:bg-white/35 active:scale-95 rounded-xl transition-all text-[10px] font-black uppercase border border-white/20"
                     >
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        Masaya gitti
+                        {tmR('resTableCardServed')}
                     </button>
                 ) : (
                     <>

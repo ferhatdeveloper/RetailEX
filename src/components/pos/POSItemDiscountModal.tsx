@@ -3,6 +3,7 @@ import { X, Percent, Calculator } from 'lucide-react';
 import type { CartItem } from './types';
 import { POSNumpad } from './POSNumpad';
 import { formatNumber } from '../../utils/formatNumber';
+import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 
 interface POSItemDiscountModalProps {
   item: CartItem;
@@ -15,8 +16,8 @@ export function POSItemDiscountModal({ item, onClose, onApplyDiscount }: POSItem
   const [showNumpad, setShowNumpad] = useState(false);
   const currentPrice = item.variant?.price || item.product.price;
   const itemTotal = item.quantity * currentPrice;
-  const discountAmount = (itemTotal * parseFloat(discountValue || '0')) / 100;
-  const newTotal = itemTotal - discountAmount;
+  const discountAmount = lineDiscountMoneyFromPercent(itemTotal, parseFloat(discountValue || '0'));
+  const newTotal = lineNetAfterPercentDiscount(itemTotal, parseFloat(discountValue || '0'));
 
   const handleApply = () => {
     const discount = parseFloat(discountValue) || 0;

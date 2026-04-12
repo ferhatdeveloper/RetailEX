@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  CreditCard, DollarSign, CheckCircle, XCircle, Clock, AlertCircle,
+  CreditCard, Banknote, CheckCircle, XCircle, Clock, AlertCircle,
   Search, Filter, Download, Settings, RefreshCw, Eye, Send, Copy,
   TrendingUp, Shield, Zap, Globe, Link2, Activity, BarChart3,
   FileText, Plus, Edit2, Trash2, Phone, Mail, Key, Lock
@@ -478,7 +478,7 @@ export function PaymentIntegrationModule() {
               <p className="text-xs text-gray-500 mt-1">{stats.successfulTransactions} başarılı</p>
             </div>
             <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-white" />
+              <Banknote className="w-6 h-6 text-white" />
             </div>
           </div>
         </div>

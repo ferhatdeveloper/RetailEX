@@ -91,29 +91,44 @@ impl AppState {
     }
 }
 
+#[path = "windows_service_install.rs"]
+mod windows_service_install;
+
 // Main entry point
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "--install" => return install_service(),
-            "--uninstall" => return uninstall_service(),
-            "--console" => {
-                let rt = tokio::runtime::Runtime::new()?;
-                rt.block_on(run_app_logic());
-                return Ok(());
-            }
-            _ => {}
+    match windows_service_install::scan_bootstrap_service_cmd(&args) {
+        Some(windows_service_install::BootstrapServiceCmd::Console) => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(run_app_logic());
+            return Ok(());
         }
+        Some(windows_service_install::BootstrapServiceCmd::Install) => return install_service(),
+        Some(windows_service_install::BootstrapServiceCmd::Uninstall) => return uninstall_service(),
+        None => {}
     }
 
-    // Default to service mode if no args (or unknown)
+    if args.len() > 1 {
+        println!("Usage: RetailEX_VPN.exe [--install | --uninstall | --console]");
+        return Ok(());
+    }
+
     service_dispatcher::start(SERVICE_NAME, ffi_service_main).map_err(|e| e.into())
 }
 
 fn install_service() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE)?;
-    let exe_path = std::env::current_exe()?;
+    let manager = ServiceManager::local_computer(
+        None::<&str>,
+        ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE,
+    )
+    .map_err(|e| {
+        windows_service_install::log_service_install_failure("RetailEX_VPN", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
+    let exe_path = std::env::current_exe().map_err(|e| {
+        windows_service_install::log_install_any_error("RetailEX_VPN", &e);
+        Box::new(e) as Box<dyn std::error::Error>
+    })?;
     
     let info = ServiceInfo {
         name: SERVICE_NAME.to_string().into(),
@@ -128,8 +143,19 @@ fn install_service() -> Result<(), Box<dyn std::error::Error>> {
         account_password: None,
     };
 
-    manager.create_service(&info, ServiceAccess::all())?;
-    println!("VPN Service installed successfully.");
+    match windows_service_install::create_service_or_accept_exists(
+        &manager,
+        &info,
+        ServiceAccess::all(),
+        "RetailEX_VPN",
+    )? {
+        windows_service_install::CreateServiceOutcome::Created => {
+            println!("VPN Service installed successfully.");
+        }
+        windows_service_install::CreateServiceOutcome::AlreadyExisted => {
+            println!("VPN Service already exists.");
+        }
+    }
     Ok(())
 }
 

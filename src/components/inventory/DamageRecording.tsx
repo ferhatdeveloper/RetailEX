@@ -1,6 +1,6 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  ArrowLeft, Scan, AlertTriangle, Camera, DollarSign,
+  ArrowLeft, Scan, AlertTriangle, Camera, Banknote,
   User, Calendar, Package, FileText, Check, X,
   Trash2, TrendingDown, BarChart3, Image as ImageIcon,
   MapPin, Clock, MessageSquare, AlertCircle
@@ -509,7 +509,7 @@ export function DamageRecording({ onBack }: DamageRecordingProps) {
               Tahmini Maliyet (IQD)
             </label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Banknote className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 type="number"
                 value={estimatedCost}

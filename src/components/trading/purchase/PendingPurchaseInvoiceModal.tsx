@@ -1,4 +1,4 @@
-﻿import { X, Package, TrendingUp, DollarSign } from 'lucide-react';
+import { X, Package, TrendingUp, Banknote } from 'lucide-react';
 import { usePendingPurchaseStore, type PurchaseInvoiceItem } from '../../store/usePendingPurchaseStore';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
@@ -71,7 +71,7 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                 <div className="grid grid-cols-3 gap-4 p-6 bg-gray-50 border-b">
                     <div className="bg-white p-4 rounded-lg shadow-sm">
                         <div className="flex items-center gap-2 text-gray-600 mb-1">
-                            <DollarSign className="w-4 h-4" />
+                            <Banknote className="w-4 h-4" />
                             <span className="text-xs font-medium">Toplam Maliyet</span>
                         </div>
                         <div className="text-2xl font-bold text-gray-900">

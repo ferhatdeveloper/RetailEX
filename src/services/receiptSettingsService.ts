@@ -3,6 +3,9 @@
  */
 import { postgres, ERP_SETTINGS } from './postgres';
 
+/** Fiş / önizleme dilleri — POS fişi ve çeviri anahtarları ile uyumlu */
+export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku';
+
 export interface ReceiptSettings {
   companyName?: string;
   companyAddress?: string;
@@ -11,6 +14,17 @@ export interface ReceiptSettings {
   companyTaxNumber?: string;
   /** Base64 data URL (data:image/png;base64,...) — fişte gösterilecek logo */
   logoDataUrl?: string;
+  /**
+   * Varsayılan fiş dili (POS önizleme / yazdır açılışında).
+   * Boşsa uygulama dili kullanılır.
+   */
+  defaultReceiptLanguage?: ReceiptLangCode;
+  /**
+   * Fişte ürün adı için hangi ürün alanı kullanılacak (dil bazlı).
+   * Örn: tr→name, en→description_en. Boş dilde `name` kullanılır.
+   * Anahtarlar `Product` üzerindeki alan adlarıyla aynı olmalıdır.
+   */
+  productNameFieldByLang?: Partial<Record<ReceiptLangCode, string>>;
 }
 
 const KEY_RECEIPT_SETTINGS = 'receipt_settings';

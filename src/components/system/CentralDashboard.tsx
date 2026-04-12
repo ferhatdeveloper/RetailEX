@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, Users, Package, ShoppingCart, AlertCircle, TrendingDown, ArrowUpCircle, ArrowDownCircle, Zap, Clock, Loader2, Map, Store as StoreIcon, Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, Banknote, Users, Package, ShoppingCart, AlertCircle, TrendingDown, ArrowUpCircle, ArrowDownCircle, Zap, Clock, Loader2, Map, Store as StoreIcon, Activity, AlertTriangle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from '../../utils/logger';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -231,7 +231,7 @@ export function CentralDashboard({ onStoreSelect }: CentralDashboardProps) {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-blue-600" />
+                  <Banknote className="w-5 h-5 text-blue-600" />
                 </div>
                 <TrendingUp className="w-5 h-5 text-green-600" />
               </div>

@@ -33,7 +33,8 @@ ${StrLoc}
   !define VERSIONWITHBUILD "0.1.19.0"
 !endif
 !ifndef INSTALLMODE
-  !define INSTALLMODE "currentUser"
+  ; Tauri bundle.windows.nsis.installMode ile uyumlu: servis kurulumu icin baslangicta UAC
+  !define INSTALLMODE "perMachine"
 !endif
 !ifndef LICENSE
   !define LICENSE ""
@@ -120,8 +121,9 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !endif
 
 ; Handle install mode, `perUser`, `perMachine` or `both`
+; perMachine: Windows hizmetleri / Program Files icin UAC ile Yonetici zorunlu
 !if "${INSTALLMODE}" == "perMachine"
-  RequestExecutionLevel highest
+  RequestExecutionLevel admin
 !endif
 
 !if "${INSTALLMODE}" == "currentUser"
@@ -141,7 +143,8 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_VALUENAME "CurrentUser"
   !define MULTIUSER_INSTALLMODEPAGE_SHOWUSERNAME
   !define MULTIUSER_INSTALLMODE_FUNCTION RestorePreviousInstallLocation
-  !define MULTIUSER_EXECUTIONLEVEL Highest
+  ; Kurulum sihirbazinda da Yonetici (Program Files / servisler)
+  !define MULTIUSER_EXECUTIONLEVEL Admin
   !include MultiUser.nsh
 !endif
 
@@ -880,30 +883,35 @@ Section Install
     File /a "/oname=RetailEX_SQL_Bridge.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
     File /a "/oname=RetailEX_Config.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Config.exe"
     File /a "/oname=bridge.cjs" "D:\RetailEX\DeskApp\resources\bridge.cjs"
+    File /a "/oname=package.json" "D:\RetailEX\DeskApp\resources\package.json"
     File /a "/oname=install-bridge.ps1" "D:\RetailEX\DeskApp\resources\install-bridge.ps1"
+    File /a "/oname=install-bridge.cmd" "D:\RetailEX\DeskApp\resources\install-bridge.cmd"
+    File /a "/oname=install-bridge-npm.ps1" "D:\RetailEX\DeskApp\resources\install-bridge-npm.ps1"
+    File /a "/oname=install-bridge-npm.cmd" "D:\RetailEX\DeskApp\resources\install-bridge-npm.cmd"
     File /a "/oname=install-services-manual.ps1" "D:\RetailEX\DeskApp\resources\install-services-manual.ps1"
+    File /a "/oname=install-services-manual.cmd" "D:\RetailEX\DeskApp\resources\install-services-manual.cmd"
+    File /a "/oname=install-services-setup.ps1" "D:\RetailEX\DeskApp\resources\install-services-setup.ps1"
     File /a "/oname=retailex-admin.ps1" "D:\RetailEX\DeskApp\resources\retailex-admin.ps1"
+    File /a "/oname=retailex-admin.cmd" "D:\RetailEX\DeskApp\resources\retailex-admin.cmd"
+    File /a "/oname=pg-windows-expose-remote.ps1" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.ps1"
+    File /a "/oname=pg-windows-expose-remote.cmd" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.cmd"
+    CreateDirectory "$INSTDIR\RetailEXTools"
+    File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Tools.exe"
     
     
 
 
-  ; Install and Start Services
-  DetailPrint "Installing Background Services..."
-  ExecWait '"$INSTDIR\RetailEX_Service.exe" --install'
-  ExecWait '"$INSTDIR\RetailEX_VPN.exe" --install'
-  
-  ; Start services
-  Exec 'net start RetailEX_Service'
-  Exec 'net start RetailEX_VPN'
+  ; Windows hizmetleri: bosluklu INSTDIR icin -Prefix yerine dosya (install-services-setup.ps1 okur)
+  DetailPrint "Installing Background Services (UAC if needed)..."
+  FileOpen $R9 "$INSTDIR\retailex_install_prefix.txt" w
+  FileWrite $R9 "$INSTDIR"
+  FileClose $R9
+  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\install-services-setup.ps1"' $0
+  ${If} $0 != 0
+    DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nGerekirse UAC penceresinde İzin Ver seçin; kurulum yönetici olmadan çalışıyorsa tekrar deneyin.$\r$\n$\r$\nTeknik ayrıntılar (varsa):$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_VPN_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n$\r$\nKurulumdan sonra: install-services-manual.cmd dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
+  ${EndIf}
 
-  ; Install SQL bridge as native Windows service (auto-start)
-  DetailPrint "Installing RetailEX SQL Bridge service..."
-  ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --install'
-  Exec 'net start RetailEX_SQL_Bridge'
-  
-    
-
-  
   ; Write bootstrap config for the backend to consume on first run
   FileOpen $9 "$INSTDIR\bootstrap.json" w
   ${If} $UseLogoObj == 1
@@ -950,8 +958,8 @@ Section Install
   FileWrite $9 "1. Eğer Logo bağlantısı aktifse, LObjects.dll yolunun doğruluğunu kontrol edin.$\r$\n"
   FileWrite $9 "2. Güvenlik duvarından (Firewall) 8000, 5432 ve 6379 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "3. Wintun VPN IP adresi ($WSUrl) üzerinden terminaller merkeze bağlanabilir.$\r$\n"
-  FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.ps1' dosyasını Yönetici olarak çalıştırın.$\r$\n"
-  FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.ps1' dosyasını Yönetici olarak çalıştırın.$\r$\n"
+  FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
+  FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
 
@@ -1100,9 +1108,22 @@ Section Uninstall
     ExecWait 'sc.exe stop RetailEX_SQL_Bridge'
     ExecWait 'sc.exe delete RetailEX_SQL_Bridge'
     Delete "$INSTDIR\bridge.cjs"
+    Delete "$INSTDIR\package.json"
     Delete "$INSTDIR\install-bridge.ps1"
+    Delete "$INSTDIR\install-bridge.cmd"
+    Delete "$INSTDIR\install-bridge-npm.ps1"
+    Delete "$INSTDIR\install-bridge-npm.cmd"
+    RMDir /r /REBOOTOK "$INSTDIR\node_modules"
     Delete "$INSTDIR\install-services-manual.ps1"
+    Delete "$INSTDIR\install-services-manual.cmd"
+    Delete "$INSTDIR\install-services-setup.ps1"
+    Delete "$INSTDIR\retailex_install_prefix.txt"
     Delete "$INSTDIR\retailex-admin.ps1"
+    Delete "$INSTDIR\retailex-admin.cmd"
+    Delete "$INSTDIR\pg-windows-expose-remote.ps1"
+    Delete "$INSTDIR\pg-windows-expose-remote.cmd"
+    Delete "$INSTDIR\RetailEXTools\RetailEX_Tools.exe"
+    RMDir "$INSTDIR\RetailEXTools"
 
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"

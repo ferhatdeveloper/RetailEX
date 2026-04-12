@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface ModuleWrapperProps {
     title: string;
@@ -8,6 +9,7 @@ interface ModuleWrapperProps {
 }
 
 export const ModuleWrapper: React.FC<ModuleWrapperProps> = ({ title, onBack, children }) => {
+    const tmR = useRestaurantModuleTm();
     return (
         <div className="h-full flex flex-col bg-[#f8fafc]">
             {/* Standardized Restaurant Appbar */}
@@ -20,7 +22,7 @@ export const ModuleWrapper: React.FC<ModuleWrapperProps> = ({ title, onBack, chi
                     className="flex items-center gap-2.5 px-6 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[12px] group shrink-0 shadow-inner"
                 >
                     <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                    <span>Geri</span>
+                    <span>{tmR('resNavBackShort')}</span>
                 </button>
 
                 <div className="flex flex-col">
@@ -28,7 +30,7 @@ export const ModuleWrapper: React.FC<ModuleWrapperProps> = ({ title, onBack, chi
                         {title}
                     </h1>
                     <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mt-1">
-                        Restoran Yönetimi
+                        {tmR('resModuleShellSubtitle')}
                     </p>
                 </div>
             </header>

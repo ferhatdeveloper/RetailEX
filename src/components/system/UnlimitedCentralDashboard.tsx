@@ -1,8 +1,8 @@
-﻿// Unlimited Store Central Dashboard - Enterprise Edition
+// Unlimited Store Central Dashboard - Enterprise Edition
 
 import { useState, useEffect } from 'react';
 import { useQuery, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { Search, TrendingUp, AlertCircle, Store, Users, ShoppingCart, Package, DollarSign, Map as MapIcon, List, GitBranch, Clock, CheckCircle, XCircle, Loader2, Zap, Activity, BarChart3 } from 'lucide-react';
+import { Search, TrendingUp, AlertCircle, Store, Users, ShoppingCart, Package, Banknote, Map as MapIcon, List, GitBranch, Clock, CheckCircle, XCircle, Loader2, Zap, Activity, BarChart3 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
 // Types
@@ -488,7 +488,7 @@ function UnlimitedCentralDashboardContent({ onStoreSelect }: UnlimitedCentralDas
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">Toplam Ciro</span>
-                <DollarSign className="w-5 h-5 text-blue-600" />
+                <Banknote className="w-5 h-5 text-blue-600" />
               </div>
               {statsLoading ? (
                 <div className="h-8 bg-blue-200 rounded animate-pulse"></div>

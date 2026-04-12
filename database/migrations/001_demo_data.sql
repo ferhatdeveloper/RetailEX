@@ -406,48 +406,7 @@ FROM rest.floors f,
 WHERE f.name = 'Zemin Kat'
 ON CONFLICT DO NOTHING;
 
--- Örnek açık sipariş (masa 3)
-INSERT INTO rest.rex_001_01_rest_orders
-  (order_no, table_id, floor_id, waiter, status, total_amount, opened_at)
-SELECT
-  'ORD-2026-0001',
-  t.id,
-  f.id,
-  'Hasan',
-  'open',
-  355.00,
-  NOW() - INTERVAL '25 minutes'
-FROM rest.rex_001_rest_tables t
-JOIN rest.floors f ON f.id = t.floor_id
-WHERE t.number = '3' AND f.name = 'Zemin Kat'
-ON CONFLICT (order_no) DO NOTHING;
-
--- Sipariş kalemleri
-INSERT INTO rest.rex_001_01_rest_order_items
-  (order_id, product_id, product_name, quantity, unit_price, subtotal, status, course)
-SELECT
-  o.id,
-  p.id,
-  p.name,
-  v.qty,
-  p.price,
-  p.price * v.qty,
-  'served',
-  v.course
-FROM rest.rex_001_01_rest_orders o,
-     rex_001_products p,
-     (VALUES ('MENU-001',1,'main'),('MENU-003',2,'starter'),('MENU-004',3,'drink')) AS v(code,qty,course)
-WHERE o.order_no = 'ORD-2026-0001' AND p.code = v.code
-  AND NOT EXISTS (SELECT 1 FROM rest.rex_001_01_rest_order_items oi WHERE oi.order_id=o.id AND oi.product_id=p.id);
-
--- Tamamlanmış sipariş örnekleri
-INSERT INTO rest.rex_001_01_rest_orders
-  (order_no, waiter, status, total_amount, opened_at, closed_at, payment_method)
-VALUES
-  ('ORD-2026-0002', 'Fatma', 'closed', 485.00, NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour',   'cash'),
-  ('ORD-2026-0003', 'Hasan', 'closed', 220.00, NOW() - INTERVAL '3 hours', NOW() - INTERVAL '2 hours',  'credit'),
-  ('ORD-2026-0004', 'Merve', 'closed', 670.00, NOW() - INTERVAL '4 hours', NOW() - INTERVAL '3 hours',  'cash')
-ON CONFLICT (order_no) DO NOTHING;
+-- (ORD-* örnek siparişler kaldırıldı — raporlarda sahte kapalı adisyon satırı oluşturmasın.)
 
 -- ============================================================================
 -- 13. GÜZELLİK MERKEZİ — DEMO VERİLER
@@ -455,9 +414,9 @@ ON CONFLICT (order_no) DO NOTHING;
 
 -- Uzmanlar
 INSERT INTO beauty.rex_001_beauty_specialists (name, phone, specialty, color, commission_rate, is_active) VALUES
-  ('Ayşe Kaya',    '+964 770 300 0001', 'Lazer Epilasyon', '#9333ea', 15.00, true),
-  ('Zeynep Arslan','+964 770 300 0002', 'Cilt Bakımı',     '#ec4899', 12.00, true),
-  ('Merve Demir',  '+964 770 300 0003', 'Saç Bakımı',      '#f97316', 10.00, true)
+  ('Zahra', '+964 770 300 0001', 'Lazer Epilasyon', '#9333ea', 15.00, true),
+  ('Fatma', '+964 770 300 0002', 'Cilt Bakımı',     '#ec4899', 12.00, true),
+  ('Shoxan','+964 770 300 0003', 'Saç Bakımı',      '#f97316', 10.00, true)
 ON CONFLICT DO NOTHING;
 
 -- Hizmetler
@@ -479,9 +438,11 @@ ON CONFLICT DO NOTHING;
 
 -- Cihazlar
 INSERT INTO beauty.rex_001_beauty_devices (name, device_type, serial_number, manufacturer, model, total_shots, max_shots, status, is_active) VALUES
-  ('Lumina Pro Lazer',   'laser', 'LP-2023-001', 'MedLaser',   'Lumina Pro 1200', 45200,  500000, 'active', true),
-  ('Soprano Ice Titan',  'laser', 'SI-2022-002', 'Alma Lasers','Soprano Ice',    128000, 1000000, 'active', true),
-  ('RF Cilt Germe',      'rf',    'RF-2023-003', 'TheraTech',  'RF Pro X',            0,  100000, 'active', true)
+  ('Candela 1',   'laser',  'CD-001', 'Candela',   'Gentle series',  45200,  500000, 'active', true),
+  ('Candela 2',   'laser',  'CD-002', 'Candela',   'Gentle series',  38000,  500000, 'active', true),
+  ('Epilyum 1',   'laser',  'EP-001', 'Epilyum',   'Epilyum',        21000,  500000, 'active', true),
+  ('Epilyum 2',   'laser',  'EP-002', 'Epilyum',   'Epilyum',        19500,  500000, 'active', true),
+  ('Hydrafacial', 'facial', 'HF-001', 'HydraFacial','Syndeo',             0,       0, 'active', true)
 ON CONFLICT DO NOTHING;
 
 -- Müşteriler (güzellik — genel müşterilerden bağımsız)
@@ -499,12 +460,12 @@ SELECT
   c.id, sv.id, sp.id,
   v.adate::DATE, v.atime::TIME, v.dur, v.stat, v.price, false
 FROM (VALUES
-  ('BCust-001','Bacak Lazer Epilasyon (Tam)','Ayşe Kaya',  '2026-01-15','10:00', 90,'completed', 2500.00),
-  ('BCust-001','Koltuk Altı Lazer',          'Ayşe Kaya',  '2026-01-22','10:00', 30,'completed',  800.00),
-  ('BCust-002','Yüz Bakımı',                 'Zeynep Arslan','2026-01-20','14:00',60,'completed', 1200.00),
-  ('BCust-003','Saç Boyama',                 'Merve Demir','2026-01-25','11:00', 90,'completed', 1800.00),
-  ('BCust-001','Bacak Lazer Epilasyon (Tam)','Ayşe Kaya',  '2026-02-05','10:00', 90,'scheduled', 2500.00),
-  ('BCust-002','Manikür & Pedikür',          'Merve Demir','2026-02-07','15:00', 60,'scheduled',  650.00)
+  ('BCust-001','Bacak Lazer Epilasyon (Tam)','Zahra',  '2026-01-15','10:00', 90,'completed', 2500.00),
+  ('BCust-001','Koltuk Altı Lazer',          'Zahra',  '2026-01-22','10:00', 30,'completed',  800.00),
+  ('BCust-002','Yüz Bakımı',                 'Fatma','2026-01-20','14:00',60,'completed', 1200.00),
+  ('BCust-003','Saç Boyama',                 'Shoxan','2026-01-25','11:00', 90,'completed', 1800.00),
+  ('BCust-001','Bacak Lazer Epilasyon (Tam)','Zahra',  '2026-02-05','10:00', 90,'scheduled', 2500.00),
+  ('BCust-002','Manikür & Pedikür',          'Shoxan','2026-02-07','15:00', 60,'scheduled',  650.00)
 ) AS v(ccode, sname, spname, adate, atime, dur, stat, price)
 JOIN rex_001_customers c ON c.code = v.ccode
 JOIN beauty.rex_001_beauty_services sv ON sv.name = v.sname

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid, Phone, Bike } from 'lucide-react';
+import { RestaurantWorkDaySettings } from './RestaurantWorkDaySettings';
 import { RestaurantFoodDeliverySettings } from './RestaurantFoodDeliverySettings';
 import { RestaurantPrinterSettings } from './RestaurantPrinterSettings';
 import { RestaurantCallerIdSettings } from './RestaurantCallerIdSettings';
@@ -7,8 +8,10 @@ import { UserManagementModule } from '../../system/UserManagementModule';
 import { RoleManagement } from '../../system/RoleManagement';
 import { FloorTableManagement } from './FloorTableManagement';
 import { cn } from '@/components/ui/utils';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export function RestaurantSettings({ onBack }: { onBack: () => void }) {
+    const tmR = useRestaurantModuleTm();
     const [activeTab, setActiveTab] = useState<
         'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables' | 'callerid' | 'delivery'
     >('general');
@@ -25,8 +28,8 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         <ChevronLeft className="w-6 h-6 text-slate-500" />
                     </button>
                     <div>
-                        <h2 className="text-xl font-bold tracking-tight text-slate-800">Ayarlar</h2>
-                        <p className="text-xs text-slate-500">Sistem Yapılandırması</p>
+                        <h2 className="text-xl font-bold tracking-tight text-slate-800">{tmR('resSettingsPageTitle')}</h2>
+                        <p className="text-xs text-slate-500">{tmR('resSettingsPageSubtitle')}</p>
                     </div>
                 </div>
 
@@ -41,7 +44,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Settings className={cn("w-5 h-5", activeTab === 'general' ? "text-blue-500" : "text-slate-400")} />
-                        Genel Ayarlar
+                        {tmR('resSettingsTabGeneral')}
                     </button>
                     <button
                         onClick={() => setActiveTab('users')}
@@ -53,7 +56,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Users className={cn("w-5 h-5", activeTab === 'users' ? "text-emerald-500" : "text-slate-400")} />
-                        Kullanıcılar & Personel
+                        {tmR('resSettingsTabUsers')}
                     </button>
                     <button
                         onClick={() => setActiveTab('roles')}
@@ -65,7 +68,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Shield className={cn("w-5 h-5", activeTab === 'roles' ? "text-indigo-500" : "text-slate-400")} />
-                        Yetkilendirme & Roller
+                        {tmR('resSettingsTabRoles')}
                     </button>
                     <button
                         onClick={() => setActiveTab('printers')}
@@ -77,7 +80,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Printer className={cn("w-5 h-5", activeTab === 'printers' ? "text-purple-500" : "text-slate-400")} />
-                        Yazıcı ve Cihazlar
+                        {tmR('resSettingsTabPrinters')}
                     </button>
                     <button
                         onClick={() => setActiveTab('receipts')}
@@ -89,7 +92,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Receipt className={cn("w-5 h-5", activeTab === 'receipts' ? "text-orange-500" : "text-slate-400")} />
-                        Adisyon & Fatura
+                        {tmR('resSettingsTabReceipts')}
                     </button>
                     <button
                         onClick={() => setActiveTab('tables')}
@@ -101,7 +104,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <LayoutGrid className={cn("w-5 h-5", activeTab === 'tables' ? "text-blue-500" : "text-slate-400")} />
-                        Masa & Bölge
+                        {tmR('resSettingsTabTables')}
                     </button>
                     <button
                         onClick={() => setActiveTab('callerid')}
@@ -113,7 +116,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Phone className={cn("w-5 h-5", activeTab === 'callerid' ? "text-violet-500" : "text-slate-400")} />
-                        Arayan No (Caller ID)
+                        {tmR('resSettingsTabCallerId')}
                     </button>
                     <button
                         onClick={() => setActiveTab('delivery')}
@@ -125,7 +128,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                     >
                         <Bike className={cn("w-5 h-5", activeTab === 'delivery' ? "text-cyan-600" : "text-slate-400")} />
-                        Paket platformları
+                        {tmR('resSettingsTabDelivery')}
                     </button>
                 </div>
             </div>
@@ -140,11 +143,8 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                             </div>
                         )}
                         {activeTab === 'general' && (
-                            <div className="flex items-center justify-center h-full text-slate-400 font-medium">
-                                <div className="text-center">
-                                    <Settings className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                                    <p>Genel Ayarlar Yapılandırılıyor...</p>
-                                </div>
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 md:p-8">
+                                <RestaurantWorkDaySettings />
                             </div>
                         )}
                         {activeTab === 'users' && (
@@ -166,7 +166,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                             <div className="flex items-center justify-center h-full text-slate-400 font-medium">
                                 <div className="text-center">
                                     <Receipt className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                                    <p>Adisyon Tasarımı ve Vergi Ayarları Yapılandırılıyor...</p>
+                                    <p>{tmR('resSettingsReceiptsPlaceholder')}</p>
                                 </div>
                             </div>
                         )}

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ExRetailOS - Kasalar Modülü
  * 
  * Kasa yönetimi modülü:
@@ -21,7 +21,7 @@ import {
   FileText,
   ArrowUpDown,
   MoreVertical,
-  DollarSign,
+  Banknote,
   TrendingUp,
   TrendingDown,
   Minus,
