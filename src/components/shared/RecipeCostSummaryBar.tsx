@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, Col, InputNumber, Row, Space, Statistic, Typography } from 'antd';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
@@ -43,6 +44,7 @@ export function RecipeCostSummaryBar({
     profitMargin,
     entityName,
 }: RecipeCostSummaryBarProps) {
+    const { tm } = useLanguage();
     const fireExtra = Math.max(0, realCost - totalCost);
     const marginColor =
         profitMargin > 20 ? '#52c41a' : profitMargin > 0 ? '#fa8c16' : '#ff4d4f';
@@ -58,7 +60,7 @@ export function RecipeCostSummaryBar({
                         <Statistic
                             title={
                                 <span className="text-[11px] font-medium uppercase tracking-wide text-[#8c8c8c]">
-                                    Temel Maliyet
+                                    {tm('resRecipeBaseCost')}
                                 </span>
                             }
                             value={totalCost}
@@ -72,7 +74,7 @@ export function RecipeCostSummaryBar({
                 </Col>
                 <Col xs={24} sm={12} xl={6}>
                     <Card {...cardFlat} bordered size="small">
-                        <div className="text-[11px] font-medium uppercase tracking-wide text-[#8c8c8c]">Fire Oranı</div>
+                        <div className="text-[11px] font-medium uppercase tracking-wide text-[#8c8c8c]">{tm('resRecipeWasteRate')}</div>
                         <Space align="center" className="mt-1" size={6} wrap>
                             <InputNumber
                                 size="small"
@@ -93,7 +95,7 @@ export function RecipeCostSummaryBar({
                         <Statistic
                             title={
                                 <span className="text-[11px] font-medium uppercase tracking-wide text-[#8c8c8c]">
-                                    Net Maliyet
+                                    {tm('resRecipeNetCost')}
                                 </span>
                             }
                             value={realCost}
@@ -107,7 +109,7 @@ export function RecipeCostSummaryBar({
                         <Statistic
                             title={
                                 <span className="text-[11px] font-medium uppercase tracking-wide text-[#8c8c8c]">
-                                    Brüt Kar Marjı
+                                    {tm('resRecipeGrossMargin')}
                                 </span>
                             }
                             value={profitMargin}

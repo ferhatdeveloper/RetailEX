@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, Plus, X, Search, Edit, Trash2, Mail, Phone, MapPin,
-  FileText, Loader2, Printer, RefreshCw
+  FileText, Loader2, Printer, RefreshCw, Download
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
+import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
 
 export function SupplierModule() {
   const { t, tm } = useLanguage();
@@ -20,6 +22,7 @@ export function SupplierModule() {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [exchangeRate, setExchangeRate] = useState<number>(1310);
   const [showUSD, setShowUSD] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   useEffect(() => {
     const fetchRate = async () => {
@@ -146,6 +149,17 @@ export function SupplierModule() {
       (s.email?.toLowerCase() || '').includes(q);
   });
 
+  /** Cari listesindeki demo kayıtlar (müşteri + tedarikçi) */
+  const demoAccountsInList = useMemo(() => {
+    return suppliers.filter(s => {
+      const code = String(s.code || '').trim();
+      if (!code) return false;
+      const ct = s.cardType || 'supplier';
+      if (ct === 'supplier') return DEMO_SUPPLIER_CODES.has(code);
+      return DEMO_CUSTOMER_CODES.has(code);
+    });
+  }, [suppliers]);
+
   const handleAddClick = () => {
     setFormData({ code: '', name: '', phone: '', email: '', address: '', city: '', payment_terms: 30, credit_limit: 0, tax_number: '', tax_office: '', notes: '', cardType: 'supplier' });
     setEditingSupplier(null);
@@ -183,6 +197,51 @@ export function SupplierModule() {
       if (selectedAccount?.id === id) setSelectedAccount(null);
       loadSuppliers();
     } catch (e: any) { toast.error(e.message || tm('deleteFailed')); }
+  };
+
+  const handleExportExcel = async () => {
+    const list = filteredSuppliers;
+    if (list.length === 0) {
+      toast.error(tm('noRecordFound') || 'Dışa aktarılacak kayıt yok.');
+      return;
+    }
+    setExportingExcel(true);
+    try {
+      const rows = list.map(mapUnifiedSupplierToCurrentAccountExcelRow);
+      const saved = await saveCurrentAccountsAsXlsx(
+        rows,
+        `CariHesaplar_${new Date().toISOString().split('T')[0]}.xlsx`
+      );
+      if (saved) {
+        toast.success(`${list.length} cari hesap Excel şablonuna uygun kaydedildi.`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Excel oluşturulamadı.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleBulkDeleteDemoAccounts = async () => {
+    const n = demoAccountsInList.length;
+    if (n === 0) return;
+    if (!window.confirm(`${n} demo cari kaydı silinecek. Emin misiniz?`)) return;
+    setContextMenu(null);
+    let ok = 0;
+    for (const a of demoAccountsInList) {
+      try {
+        await supplierAPI.delete(a.id, a.cardType || 'supplier');
+        ok++;
+      } catch {
+        // devam
+      }
+    }
+    if (selectedAccount && demoAccountsInList.some(d => d.id === selectedAccount.id)) {
+      setSelectedAccount(null);
+    }
+    await loadSuppliers();
+    if (ok > 0) toast.success(`${ok} demo cari kaydı silindi.`);
+    if (ok < n) toast.error('Bazı kayıtlar silinemedi.');
   };
 
   const columnHelper = createColumnHelper<Supplier>();
@@ -315,6 +374,16 @@ export function SupplierModule() {
             <button onClick={loadSuppliers} className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
               <span>{tm('refreshData')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportExcel()}
+              disabled={exportingExcel || filteredSuppliers.length === 0}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] disabled:opacity-40 disabled:pointer-events-none"
+              title="Excel modülü cari içe aktarım şablonu ile aynı sütunlar"
+            >
+              <Download className={`w-3 h-3 ${exportingExcel ? 'animate-pulse' : ''}`} />
+              <span>{tm('export')} Excel</span>
             </button>
             <button onClick={handleAddClick} className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold">
               <Plus className="w-3 h-3" />
@@ -497,7 +566,28 @@ export function SupplierModule() {
           items={[
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
             { id: 'extract', label: tm('accountStatement'), icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
-            { id: 'delete', label: tm('deleteAction'), icon: Trash2, variant: 'danger' as const, onClick: () => { if (contextMenu.supplier) handleDelete(contextMenu.supplier.id, contextMenu.supplier.name, contextMenu.supplier.cardType || 'supplier'); setContextMenu(null); } }
+            {
+              id: 'delete',
+              label: tm('deleteAction'),
+              icon: Trash2,
+              variant: 'danger' as const,
+              divider: demoAccountsInList.length > 0,
+              onClick: () => {
+                if (contextMenu.supplier) handleDelete(contextMenu.supplier.id, contextMenu.supplier.name, contextMenu.supplier.cardType || 'supplier');
+                setContextMenu(null);
+              }
+            },
+            ...(demoAccountsInList.length > 0
+              ? [
+                  {
+                    id: 'delete-demo',
+                    label: `Demo cari kayıtlarını toplu sil (${demoAccountsInList.length} adet)`,
+                    icon: Trash2,
+                    variant: 'danger' as const,
+                    onClick: () => { void handleBulkDeleteDemoAccounts(); }
+                  }
+                ]
+              : [])
           ]}
         />
       )}

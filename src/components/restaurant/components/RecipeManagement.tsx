@@ -25,12 +25,14 @@ import { useRestaurantStore } from '../store/useRestaurantStore';
 import { useProductStore } from '../../../store/useProductStore';
 import { Recipe, RecipeIngredient, MenuItem } from '../types';
 import { toast } from 'sonner';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RecipeManagementProps {
     onBack?: () => void;
 }
 
 export function RecipeManagement({ onBack }: RecipeManagementProps) {
+    const tmR = useRestaurantModuleTm();
     const { recipes, updateRecipe, menu, loadRecipes, loadMenu } = useRestaurantStore();
 
     useEffect(() => {
@@ -76,7 +78,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
 
         // Check if already exists
         if (editingRecipe.ingredients.some(i => i.materialId === product.id)) {
-            toast.info('Bu ürün zaten listede');
+            toast.info(tmR('resRecipeToastDuplicate'));
             return;
         }
 
@@ -186,15 +188,15 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                         className="flex items-center gap-2 px-5 h-9 bg-white/15 hover:bg-white/25 text-white rounded-xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[11px] group shrink-0 shadow-inner"
                     >
                         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                        <span>Geri</span>
+                        <span>{tmR('resRecipeBack')}</span>
                     </button>
                     <div className="flex items-center gap-3 ml-2">
                         <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center border border-white/20">
                             <Layers className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-black italic tracking-tighter text-white uppercase leading-none">Reçete Yönetimi</h2>
-                            <p className="text-[9px] text-white/50 font-bold uppercase tracking-widest mt-0.5">Recipe & Inventory Management</p>
+                            <h2 className="text-lg font-black italic tracking-tighter text-white uppercase leading-none">{tmR('resRecipeTitle')}</h2>
+                            <p className="text-[9px] text-white/50 font-bold uppercase tracking-widest mt-0.5">{tmR('resRecipeSubtitle')}</p>
                         </div>
                     </div>
                 </div>
@@ -202,14 +204,14 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                 {selectedMenuItem && (
                     <div className="flex items-center gap-3">
                         <div className="bg-black/20 px-3 py-1.5 rounded-xl border border-white/10 text-right">
-                            <p className="text-[9px] text-white/50 font-black uppercase tracking-widest leading-none">SEÇİLİ ÜRÜN</p>
+                            <p className="text-[9px] text-white/50 font-black uppercase tracking-widest leading-none">{tmR('resRecipeSelectedProduct')}</p>
                             <p className="text-xs font-black text-white mt-1 uppercase leading-none">{selectedMenuItem.name}</p>
                         </div>
                         <button
                             className="h-9 bg-[#2ecc71] text-white rounded-xl px-5 font-black text-[11px] uppercase hover:bg-[#27ae60] transition-all active:scale-95 flex items-center gap-2 border border-white/20 shadow-sm shadow-green-500/20"
                             onClick={handleSave}
                         >
-                            <Save className="w-4 h-4" /> Kaydet (F2)
+                            <Save className="w-4 h-4" /> {tmR('resRecipeSave')}
                         </button>
                     </div>
                 )}
@@ -222,7 +224,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 font-bold" />
                             <input
-                                placeholder="Ürün ara..."
+                                placeholder={tmR('resRecipeSearchMenu')}
                                 className="w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-xs font-bold focus:ring-2 focus:ring-blue-500/10 shadow-inner outline-none transition-all"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -253,7 +255,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                                 "text-[9px] font-bold uppercase tracking-widest",
                                                 hasRecipe ? "text-emerald-500" : "text-slate-300"
                                             )}>
-                                                {hasRecipe ? 'REÇETE HAZIR' : 'REÇETE YOK'}
+                                                {hasRecipe ? tmR('resRecipeHasRecipe') : tmR('resRecipeNoRecipe')}
                                             </span>
                                             {hasRecipe && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200"></span>}
                                         </div>
@@ -276,14 +278,14 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                             <div key={selectedMenuItem.id} className="flex-1 overflow-auto p-6 custom-scrollbar">
                                 <div ref={addProductBarRef} className="relative z-30 mb-5">
                                     <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                        Stok ürünü ara — seçince listeye eklenir
+                                        {tmR('resRecipeMaterialHint')}
                                     </p>
                                     <div className="relative">
                                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                                         <input
                                             type="search"
                                             autoComplete="off"
-                                            placeholder="Ürün adı veya barkod yazın…"
+                                            placeholder={tmR('resRecipeMaterialPh')}
                                             value={materialSearch}
                                             onChange={e => setMaterialSearch(e.target.value)}
                                             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs font-bold text-slate-800 shadow-inner outline-none transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15"
@@ -292,7 +294,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                             <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl ring-1 ring-black/5">
                                                 {filteredMaterials.length === 0 ? (
                                                     <div className="px-3 py-2.5 text-center text-[11px] font-medium text-slate-400">
-                                                        Sonuç yok
+                                                        {tmR('resRecipeNoResults')}
                                                     </div>
                                                 ) : (
                                                     filteredMaterials.map(p => (
@@ -319,7 +321,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
 
                                 <div className="mb-6 flex items-center justify-between">
                                     <h3 className="text-[10px] font-black text-slate-400 tracking-widest uppercase flex items-center gap-2">
-                                        <FileText className="w-3 h-3" /> Malzeme Listesi ({editingRecipe.ingredients.length})
+                                        <FileText className="w-3 h-3" /> {tmR('resRecipeMaterialList')} ({editingRecipe.ingredients.length})
                                     </h3>
                                 </div>
 
@@ -332,12 +334,12 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-black text-slate-800 uppercase truncate leading-none">{ing.materialName}</p>
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1.5 leading-none">Birim Maliyet: {ing.cost.toLocaleString()}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1.5 leading-none">{tmR('resRecipeUnitCost')} {ing.cost.toLocaleString()}</p>
                                                 </div>
 
                                                 <div className="flex items-center gap-8 shrink-0">
                                                     <div className="flex flex-col items-start w-28">
-                                                        <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1.5 tracking-widest">Miktar ({ing.unit})</span>
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1.5 tracking-widest">{tmR('resRecipeQtyWithUnit').replace('{unit}', ing.unit)}</span>
                                                         <input
                                                             type="number"
                                                             value={ing.quantity}
@@ -346,7 +348,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                                         />
                                                     </div>
                                                     <div className="flex flex-col items-end w-24">
-                                                        <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1.5 tracking-widest text-right w-full">Toplam</span>
+                                                        <span className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1.5 tracking-widest text-right w-full">{tmR('resRecipeLineTotal')}</span>
                                                         <span className="text-sm font-black text-slate-900 leading-none">
                                                             {(ing.cost * ing.quantity).toLocaleString()}
                                                         </span>
@@ -367,7 +369,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                                                 <Package className="w-10 h-10 text-slate-300" />
                                             </div>
                                             <p className="text-xs font-black uppercase text-slate-400">
-                                                Yukarıdaki arama ile stok ürünü ekleyin
+                                                {tmR('resRecipeEmptyList')}
                                             </p>
                                         </div>
                                     )}
@@ -386,7 +388,7 @@ export function RecipeManagement({ onBack }: RecipeManagementProps) {
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center opacity-10 py-32 bg-slate-50">
                             <Scale size={160} />
-                            <p className="text-2xl font-black uppercase tracking-tighter mt-4 text-center">Reçete Düzenlemek İçin<br />Yandan Bir Ürün Seçiniz</p>
+                            <p className="text-2xl font-black uppercase tracking-tighter mt-4 text-center whitespace-pre-line">{tmR('resRecipeSelectSide')}</p>
                         </div>
                     )}
                 </div>

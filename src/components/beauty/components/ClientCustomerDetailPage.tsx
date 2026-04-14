@@ -36,6 +36,7 @@ import {
     CreditCardOutlined,
     RiseOutlined,
     FileTextOutlined,
+    FormOutlined,
 } from '@ant-design/icons';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
@@ -56,6 +57,7 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { User, Package } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
@@ -131,6 +133,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [feedbacks, setFeedbacks] = useState<BeautyCustomerFeedback[]>([]);
     const [salesHistory, setSalesHistory] = useState<BeautySale[]>([]);
     const [histLoading, setHistLoading] = useState(false);
+    const [surveyModalOpen, setSurveyModalOpen] = useState(false);
 
     useEffect(() => {
         loadCustomers();
@@ -243,6 +246,20 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             setHistLoading(false);
         })();
     }, [selected?.id, selected?.phone, selected?.email, profileQueryOpts]);
+
+    const reloadFeedbacks = useCallback(async () => {
+        if (!selected) return;
+        try {
+            const list = await beautyService.getFeedbackByCustomer(selected.id, profileQueryOpts);
+            setFeedbacks(list);
+        } catch (e) {
+            logger.error('ClientCustomerDetailPage', 'reloadFeedbacks', e);
+        }
+    }, [selected, profileQueryOpts]);
+
+    useEffect(() => {
+        setSurveyModalOpen(false);
+    }, [customerId]);
 
     useEffect(() => {
         if (!selected) {
@@ -729,7 +746,20 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                       </span>
                   ),
                   children: (
-                      <Card bordered className="!shadow-none">
+                      <Card
+                          bordered
+                          className="!shadow-none"
+                          extra={
+                              <Button
+                                  type="primary"
+                                  size="small"
+                                  icon={<FormOutlined />}
+                                  onClick={() => setSurveyModalOpen(true)}
+                              >
+                                  {tm('bSurveyApplyFromProfile')}
+                              </Button>
+                          }
+                      >
                           {histLoading ? (
                               <Typography.Text type="secondary">{tm('bLoading')}</Typography.Text>
                           ) : feedbacks.length === 0 ? (
@@ -1210,6 +1240,19 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         </div>
                     </div>
                 </RetailExFlatModal>
+                {selected ? (
+                    <BeautyFeedbackSurveyModal
+                        open={surveyModalOpen}
+                        onClose={() => setSurveyModalOpen(false)}
+                        onSaved={() => {
+                            void reloadFeedbacks();
+                        }}
+                        customerId={selected.id}
+                        customerName={selected.name ?? undefined}
+                        appointmentId={null}
+                        variant="standalone"
+                    />
+                ) : null}
             </div>
     );
 }

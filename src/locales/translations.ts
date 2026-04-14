@@ -232,6 +232,9 @@ export interface Translations {
     staff: string;
     /** Hizmet / işlem satırı (ürün adı ile birlikte gösterim) */
     operation: string;
+    /** Lazer / cihaz fiş satırı */
+    treatmentDegreeLabel: string;
+    treatmentShotsLabel: string;
     subtotal: string;
     discount: string;
     campaign: string;
@@ -1960,6 +1963,8 @@ export const translations: any = {
       device: 'CİHAZ',
       staff: 'PERSONEL',
       operation: 'İŞLEM',
+      treatmentDegreeLabel: 'Derece',
+      treatmentShotsLabel: 'Atış',
       subtotal: 'ARA TOPLAM',
       discount: 'İNDİRİM',
       campaign: 'KAMPANYA',
@@ -4072,6 +4077,8 @@ export const translations: any = {
       device: 'DEVICE',
       staff: 'STAFF',
       operation: 'SERVICE',
+      treatmentDegreeLabel: 'Degree',
+      treatmentShotsLabel: 'Shots',
       subtotal: 'SUBTOTAL',
       discount: 'DISCOUNT',
       campaign: 'CAMPAIGN',
@@ -5402,6 +5409,8 @@ export const translations: any = {
       device: 'الجهاز',
       staff: 'الموظف',
       operation: 'الخدمة',
+      treatmentDegreeLabel: 'الدرجة',
+      treatmentShotsLabel: 'الطلقات',
       subtotal: 'المجموع الفرعي',
       discount: 'الخصم',
       campaign: 'الحملة',
@@ -6780,6 +6789,8 @@ export const translations: any = {
       device: 'ئامێر',
       staff: 'ستاف',
       operation: 'خزمەت',
+      treatmentDegreeLabel: 'پلە',
+      treatmentShotsLabel: 'تەقینەوە',
       subtotal: 'کۆی گشتی',
       discount: 'داشکاندن',
       campaign: 'کەمپەین',

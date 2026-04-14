@@ -39,6 +39,10 @@ export const customerAPI = {
          AND (
            LOWER(name) LIKE $2 OR 
            phone LIKE $2 OR 
+           COALESCE(phone2, '') LIKE $2 OR
+           LOWER(COALESCE(notes, '')) LIKE $2 OR
+           LOWER(COALESCE(occupation, '')) LIKE $2 OR
+           LOWER(COALESCE(file_id, '')) LIKE $2 OR
            LOWER(code) LIKE $2
          )
          ORDER BY name ASC 
@@ -76,7 +80,9 @@ export const customerAPI = {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       const { rows: exactRows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE phone = $1 AND firm_nr = $2 AND is_active = true`,
+        `SELECT * FROM ${tableName} 
+         WHERE firm_nr = $2 AND is_active = true
+           AND (phone = $1 OR COALESCE(phone2, '') = $1)`,
         [phone, ERP_SETTINGS.firmNr]
       );
       if (exactRows[0]) return mapDatabaseCustomerToCustomer(exactRows[0]);
@@ -93,6 +99,11 @@ export const customerAPI = {
              OR (
                LENGTH(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g')) >= 10
                AND RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $3
+             )
+             OR REGEXP_REPLACE(COALESCE(phone2, ''), '[^0-9]', '', 'g') = $2
+             OR (
+               LENGTH(REGEXP_REPLACE(COALESCE(phone2, ''), '[^0-9]', '', 'g')) >= 10
+               AND RIGHT(REGEXP_REPLACE(COALESCE(phone2, ''), '[^0-9]', '', 'g'), 10) = $3
              )
            )
          ORDER BY name ASC
@@ -112,15 +123,34 @@ export const customerAPI = {
   async create(customer: Omit<Customer, 'id'>): Promise<Customer | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      let ageSafe: number | null = null;
+      if (customer.age !== undefined && customer.age !== null) {
+        const n = Number(customer.age);
+        if (Number.isFinite(n)) ageSafe = Math.round(n);
+      }
+
+      const fileIdSafe =
+        customer.file_id != null && String(customer.file_id).trim() !== ''
+          ? String(customer.file_id).trim()
+          : null;
+
       const { rows } = await postgres.query(
-        `INSERT INTO ${tableName} (code, name, phone, email, address, points, total_spent, is_active, firm_nr) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        `INSERT INTO ${tableName} (
+           code, name, phone, phone2, email, address, notes, age, occupation, file_id,
+           points, total_spent, is_active, firm_nr
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
         [
           customer.code || '',
           customer.name,
           customer.phone,
+          customer.phone2 || '',
           customer.email || '',
           customer.address || '',
+          customer.notes || '',
+          ageSafe,
+          customer.occupation || '',
+          fileIdSafe,
           customer.points || 0,
           customer.totalSpent || 0,
           true,
@@ -278,8 +308,15 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
     code: dbCustomer.code,
     name: dbCustomer.name,
     phone: dbCustomer.phone,
+    phone2: dbCustomer.phone2 || undefined,
     email: dbCustomer.email,
     address: dbCustomer.address,
+    notes: dbCustomer.notes || undefined,
+    age: dbCustomer.age != null ? Number(dbCustomer.age) : undefined,
+    file_id: dbCustomer.file_id != null && String(dbCustomer.file_id).trim() !== ''
+      ? String(dbCustomer.file_id).trim()
+      : undefined,
+    occupation: dbCustomer.occupation || undefined,
     points: dbCustomer.points || 0,
     totalSpent: parseFloat(dbCustomer.total_spent || 0),
     balance: parseFloat(dbCustomer.balance || 0),

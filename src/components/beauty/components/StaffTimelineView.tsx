@@ -7,6 +7,13 @@ import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLoc
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
 import '../ClinicStyles.css';
+import { QueueModeResourceList } from './QueueModeResourceList';
+import { groupBeautyQueueByCustomer, suggestQueuePrefillTime } from '../../../utils/beautyQueueOrder';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import {
+    beautySchedulerResourceColumnDropHandlers,
+    beautySchedulerResourceDragStartHandler,
+} from '../../../utils/beautySchedulerDragDrop';
 
 interface StaffTimelineViewProps {
     currentDate: Date;
@@ -14,6 +21,13 @@ interface StaffTimelineViewProps {
     timeSlots?: string[];
     onNewAppointment?: (time?: string, date?: string) => void;
     appointmentsOverride?: BeautyAppointment[];
+    /** Saat ızgarası yerine sıra numarasına göre liste (kayıt / saat sırası) */
+    queueMode?: boolean;
+    queueSnapMinutes?: number;
+    /** Personel sütunları arasında sürükleyip taşıma */
+    resourceDragKind?: 'staff';
+    dragResourceTitle?: string;
+    onResourceColumnDrop?: (appointmentIds: string[], targetColumnId: string) => void;
 }
 
 const UNASSIGNED_ID = '__unassigned__';
@@ -24,13 +38,20 @@ export function StaffTimelineView({
     timeSlots,
     onNewAppointment,
     appointmentsOverride,
+    queueMode = false,
+    queueSnapMinutes = 5,
+    resourceDragKind,
+    dragResourceTitle,
+    onResourceColumnDrop,
 }: StaffTimelineViewProps) {
     const { tm } = useLanguage();
     const { appointments: storeApts, specialists } = useBeautyStore();
     const appointments = appointmentsOverride ?? storeApts;
 
     const dateStr = formatLocalYmd(currentDate);
-    const dayAppointments = appointments.filter(a => beautyAppointmentDateKey(a) === dateStr);
+    const dayAppointments = appointments.filter(
+        a => beautyAppointmentDateKey(a) === dateStr && beautyAptVisibleOnSchedule(a),
+    );
 
     const slots = (timeSlots && timeSlots.length > 0)
         ? timeSlots
@@ -91,9 +112,7 @@ export function StaffTimelineView({
 
             const revenue = isUnassigned
                 ? 0
-                : colApts
-                    .filter(a => a.status !== 'cancelled' && a.status !== 'no_show')
-                    .reduce((sum, a) => sum + Number(a.total_price ?? 0), 0);
+                : colApts.reduce((sum, a) => sum + Number(a.total_price ?? 0), 0);
             const rate = !isUnassigned && 'commission_rate' in col ? Number(col.commission_rate ?? 0) : 0;
             const commission = (revenue * rate) / 100;
 
@@ -124,6 +143,18 @@ export function StaffTimelineView({
         <div style={{ display: 'flex', gap: 12, overflowX: 'auto', height: '100%' }} className="custom-scrollbar">
             {columnData.map(({ col, isUnassigned, appointments: colApts, revenue, commission, rate }) => {
                 const accent = (col as BeautySpecialist).color ?? '#7c3aed';
+                const queueRowCount = queueMode ? groupBeautyQueueByCustomer(colApts).length : colApts.length;
+                const colIdStr = String(col.id);
+                const staffDropHandlers =
+                    resourceDragKind === 'staff' && onResourceColumnDrop
+                        ? beautySchedulerResourceColumnDropHandlers({
+                            acceptKind: 'staff',
+                            targetColumnId: colIdStr,
+                            onDrop: ids => {
+                                onResourceColumnDrop(ids, colIdStr);
+                            },
+                        })
+                        : {};
                 return (
                     <div
                         key={col.id}
@@ -167,7 +198,7 @@ export function StaffTimelineView({
                                     {col.name}
                                 </p>
                                 <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, margin: 0 }}>
-                                    {colApts.length} {tm('bAppointmentWord')}
+                                    {queueRowCount} {tm('bAppointmentWord')}
                                 </p>
                                 {!isUnassigned && (
                                     <p style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, margin: '4px 0 0', lineHeight: 1.3 }}>
@@ -177,8 +208,26 @@ export function StaffTimelineView({
                             </div>
                         </div>
 
-                        <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
-                            {(() => {
+                        <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar" {...staffDropHandlers}>
+                            {queueMode ? (
+                                <QueueModeResourceList
+                                    appointments={colApts}
+                                    accent={accent}
+                                    resourceDragKind={resourceDragKind === 'staff' ? 'staff' : undefined}
+                                    dragResourceTitle={dragResourceTitle}
+                                    onAppointmentClick={onAppointmentClick}
+                                    onAddClick={() => {
+                                        const res = isUnassigned
+                                            ? ({ kind: 'staff' as const, id: null })
+                                            : ({ kind: 'staff' as const, id: String(col.id) });
+                                        const t = suggestQueuePrefillTime(appointments, dateStr, {
+                                            resource: res,
+                                            snapMinutes: queueSnapMinutes,
+                                        });
+                                        onNewAppointment?.(t, dateStr);
+                                    }}
+                                />
+                            ) : (() => {
                                 const SLOT_H = 52;
                                 const spanPlacements = buildBeautySpanPlacements(colApts, slots, inferredInterval, slotBucket);
                                 return (
@@ -207,6 +256,7 @@ export function StaffTimelineView({
                                                 gridTemplateRows: `repeat(${slots.length}, minmax(${SLOT_H}px, auto))`,
                                                 alignContent: 'start',
                                             }}
+                                            {...staffDropHandlers}
                                         >
                                             {slots.map((time, i) => {
                                                 const p = spanPlacements.find(pl => pl.startIdx === i);
@@ -222,6 +272,14 @@ export function StaffTimelineView({
                                                             }}
                                                         >
                                                             <div
+                                                                {...staffDropHandlers}
+                                                                draggable={resourceDragKind === 'staff' && !!onResourceColumnDrop}
+                                                                title={dragResourceTitle}
+                                                                onDragStart={
+                                                                    resourceDragKind === 'staff' && onResourceColumnDrop
+                                                                        ? beautySchedulerResourceDragStartHandler('staff', [p.apt.id])
+                                                                        : undefined
+                                                                }
                                                                 onClick={() => onAppointmentClick(p.apt)}
                                                                 style={{
                                                                     height: '100%',
@@ -232,7 +290,10 @@ export function StaffTimelineView({
                                                                     background: '#ede9fe',
                                                                     borderLeft: `3px solid ${p.apt.service_color ?? accent}`,
                                                                     fontSize: 11,
-                                                                    cursor: 'pointer',
+                                                                    cursor:
+                                                                        resourceDragKind === 'staff' && onResourceColumnDrop
+                                                                            ? 'grab'
+                                                                            : 'pointer',
                                                                     display: 'flex',
                                                                     flexDirection: 'column',
                                                                     justifyContent: 'flex-start',

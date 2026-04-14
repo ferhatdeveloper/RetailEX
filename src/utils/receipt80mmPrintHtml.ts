@@ -49,6 +49,8 @@ type RText = {
   card: string;
   veresiye: string;
   qr: string;
+  treatmentDegree: string;
+  treatmentShots: string;
 };
 
 const TEXT: Record<Receipt80mmPrintLocale, RText> = {
@@ -78,6 +80,8 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     card: 'Kart',
     veresiye: 'Veresiye',
     qr: 'QR',
+    treatmentDegree: 'Derece',
+    treatmentShots: 'Atış',
   },
   en: {
     receiptNo: 'RECEIPT NO',
@@ -105,6 +109,8 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     card: 'Card',
     veresiye: 'Credit',
     qr: 'QR',
+    treatmentDegree: 'Degree',
+    treatmentShots: 'Shots',
   },
   ar: {
     receiptNo: 'رقم الإيصال',
@@ -132,6 +138,8 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     card: 'بطاقة',
     veresiye: 'آجل',
     qr: 'QR',
+    treatmentDegree: 'الدرجة',
+    treatmentShots: 'الطلقات',
   },
   ku: {
     receiptNo: 'ژ. پسوولە',
@@ -159,6 +167,8 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     card: 'کارت',
     veresiye: 'قەرز',
     qr: 'QR',
+    treatmentDegree: 'پلە',
+    treatmentShots: 'تەقینەوە',
   },
 };
 
@@ -280,7 +290,18 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     );
   }
 
-  const itemsHtml = (sale.items || [])
+  const degVal = (sale.beautyTreatmentDegree ?? '').trim();
+  const shotsVal = (sale.beautyTreatmentShots ?? '').trim();
+  const hasBeautyLine = (sale.items || []).some((item) => !!(item.beautyStaffName ?? '').trim());
+  const showTreatmentRow = !!beautyDeviceRow || hasBeautyLine || !!degVal || !!shotsVal;
+  const treatmentRowHtml = showTreatmentRow
+    ? `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10px;font-weight:700;margin:4px 0 6px"><tr>
+<td style="width:52%;vertical-align:bottom;text-align:${ta};padding:2px 4px 2px 0">${escapeHtml(T.treatmentDegree)}:&nbsp;<span style="display:inline-block;min-width:4.5em;border-bottom:1px dotted #000">${degVal ? escapeHtml(degVal) : '&#160;'}</span></td>
+<td style="width:48%;vertical-align:bottom;text-align:end;padding:2px 0">${escapeHtml(T.treatmentShots)}:&nbsp;<span style="display:inline-block;min-width:4em;border-bottom:1px dotted #000">${shotsVal ? escapeHtml(shotsVal) : '&#160;'}</span></td>
+</tr></table>`
+    : '';
+
+  const itemRows = (sale.items || [])
     .map((item) => {
       const sub = itemSubline(item);
       const variantExtra =
@@ -292,17 +313,27 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
       const nameBlock = beautyCtx
         ? `<div><span style="font-size:8px;font-weight:800;color:#4b5563">${escapeHtml(T.operation)}: </span><span style="font-weight:800;font-size:10px">${escapeHtml(item.productName || '')}</span>${staff ? `<div style="font-size:9px;font-weight:800;margin-top:3px;color:#111">${escapeHtml(T.staff)}: ${escapeHtml(staff)}</div>` : ''}</div>`
         : `<span style="font-weight:800;font-size:10px;display:block">${escapeHtml(item.productName || '')}</span>`;
-      return `<div style="display:flex;gap:4px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;align-items:flex-start">
-  <div style="flex:1;min-width:0;text-align:${ta};word-break:break-word">
-    ${nameBlock}
-    ${variantExtra}
-    <span style="font-size:9px;font-weight:700;color:#374151;display:block">${escapeHtml(sub)}</span>
-  </div>
-  <div style="width:36px;flex-shrink:0;text-align:center;font-size:10px;font-weight:800;padding-top:2px">${escapeHtml(String(item.quantity))}</div>
-  <div style="width:76px;flex-shrink:0;text-align:end;font-size:10px;font-weight:800;white-space:nowrap;padding-top:2px">${formatNumber(item.total, 0, true)} IQD</div>
-</div>`;
+      return `<tr>
+<td style="padding:5px 2px;vertical-align:top;text-align:${ta};word-break:break-word;border-bottom:1px solid #e5e7eb">
+${nameBlock}
+${variantExtra}
+<span style="font-size:9px;font-weight:700;color:#374151;display:block">${escapeHtml(sub)}</span>
+</td>
+<td style="padding:5px 2px;text-align:center;vertical-align:top;font-weight:800;border-bottom:1px solid #e5e7eb">${escapeHtml(String(item.quantity))}</td>
+<td style="padding:5px 2px;text-align:end;vertical-align:top;font-weight:800;white-space:nowrap;border-bottom:1px solid #e5e7eb">${formatNumber(item.total, 0, true)} IQD</td>
+</tr>`;
     })
     .join('');
+
+  const itemsTableHtml = `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10px;font-weight:600;margin:0 0 8px">
+<colgroup><col style="width:52%" /><col style="width:14%" /><col style="width:34%" /></colgroup>
+<thead><tr style="font-weight:800;border-bottom:2px solid #000">
+<td style="padding:5px 2px;text-align:${ta}">${escapeHtml(T.productLabel)}</td>
+<td style="padding:5px 2px;text-align:center">${escapeHtml(T.qtyLabel)}</td>
+<td style="padding:5px 2px;text-align:end">${escapeHtml(T.amountLabel)}</td>
+</tr></thead>
+<tbody>${itemRows}</tbody>
+</table>`;
 
   const campaignBlock =
     (sale.campaignDiscount && sale.campaignDiscount > 0) || sale.campaignId || sale.campaignName
@@ -352,13 +383,9 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
   </div>
   ${bannerHtml}
   ${metaRows.join('')}
+  ${treatmentRowHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="display:flex;gap:4px;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #000;font-size:9px;font-weight:800">
-    <span style="flex:1;min-width:0">${escapeHtml(T.productLabel)}</span>
-    <span style="width:36px;text-align:center;flex-shrink:0">${escapeHtml(T.qtyLabel)}</span>
-    <span style="width:76px;text-align:end;flex-shrink:0">${escapeHtml(T.amountLabel)}</span>
-  </div>
-  ${itemsHtml}
+  ${itemsTableHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   <div style="font-size:10px;margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;font-weight:700;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${formatNumber(sale.subtotal ?? 0, 0, true)} IQD</span></div>

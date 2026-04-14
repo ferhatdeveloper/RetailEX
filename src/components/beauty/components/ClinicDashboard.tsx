@@ -12,6 +12,7 @@ import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyService } from '../../../services/beautyService';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import '../ClinicStyles.css';
@@ -276,7 +277,9 @@ export function ClinicDashboard() {
     };
 
     const stats = useMemo(() => {
-        const todayApts = appointments.filter(a => beautyAppointmentDateKey(a) === todayStr);
+        const todayApts = appointments.filter(
+            a => beautyAppointmentDateKey(a) === todayStr && beautyAptVisibleOnSchedule(a),
+        );
         const completed = todayApts.filter(a => a.status === AppointmentStatus.COMPLETED);
         const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);

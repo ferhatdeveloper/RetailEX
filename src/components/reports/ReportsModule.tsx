@@ -692,6 +692,37 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       }));
   }, [beautyServiceAppointments, beautyServiceFilterId]);
 
+  /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
+  const beautyCancelledGrouped = useMemo(() => {
+    const rows = beautyServiceAppointments.filter((a) => {
+      const st = String(a.status ?? '').toLowerCase();
+      if (st !== 'cancelled') return false;
+      if (beautyServiceFilterId && String(a.service_id ?? '') !== String(beautyServiceFilterId)) return false;
+      return true;
+    });
+    const map = new Map<string, BeautyAppointment[]>();
+    for (const a of rows) {
+      const name = (a.service_name && String(a.service_name).trim()) || '—';
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(a);
+    }
+    for (const arr of map.values()) {
+      arr.sort((x, y) => {
+        const dx = String(x.date ?? x.appointment_date ?? '');
+        const dy = String(y.date ?? y.appointment_date ?? '');
+        if (dx !== dy) return dx.localeCompare(dy);
+        return String(x.time ?? x.appointment_time ?? '').localeCompare(String(y.time ?? y.appointment_time ?? ''));
+      });
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([serviceName, items]) => ({
+        serviceName,
+        items,
+        sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
+      }));
+  }, [beautyServiceAppointments, beautyServiceFilterId]);
+
   /** Dönem karşılaştırması: ERP `sales` veya (restoran) fiş yoksa `comparisonOrders` */
   const comparisonBundle = useMemo(() => {
     const todayKey = localTodayDateKey();
@@ -1019,7 +1050,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               ? restOrderToSaleForReceipt(row.restOrder)
               : null;
         if (!sale) {
-          toast.error('Fiş verisi bulunamadı.');
+          toast.error(tm('reportToastReceiptMissing'));
           closeDailyRowReceiptModal();
           return;
         }
@@ -1046,13 +1077,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         setDailyRowReceiptPreviewH(400);
       } catch (e: any) {
         console.error('[ReportsModule] Fiş önizleme:', e);
-        toast.error(e?.message || 'Fiş yüklenemedi.');
+        toast.error(e?.message || tm('reportToastReceiptLoadFail'));
         closeDailyRowReceiptModal();
       } finally {
         setDailyRowReceiptLoading(false);
       }
     },
-    [closeDailyRowReceiptModal, language, reportCurrency, selectedFirm]
+    [closeDailyRowReceiptModal, language, reportCurrency, selectedFirm, tm]
   );
 
   const printDailyRowReceipt = useCallback(() => {
@@ -1066,7 +1097,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     const doc = iframe.contentWindow?.document;
     if (!doc) {
       document.body.removeChild(iframe);
-      toast.error('Yazdırma çerçevesi oluşturulamadı.');
+      toast.error(tm('reportToastPrintFrameFail'));
       return;
     }
     // buildReceipt80mmPrintHtml zaten tam HTML belgesi döndürür; tekrar sarmalama geçersiz DOM üretir
@@ -1088,18 +1119,18 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     } else {
       win?.addEventListener('load', runPrint, { once: true });
     }
-  }, [dailyRowReceiptHtml]);
+  }, [dailyRowReceiptHtml, tm]);
 
   const handleDeleteDailyErpSale = useCallback(async () => {
     const inv = dailyRowReceiptModal?.erpSale;
     const id = inv?.id && isSaleRowUuid(String(inv.id)) ? String(inv.id).trim() : '';
     if (!id || !inv?.receiptNumber) return;
-    if (!window.confirm(`Bu satış faturası silinsin mi?\n\nFiş: ${inv.receiptNumber}`)) return;
+    if (!window.confirm(tm('reportConfirmDeleteErpSale').replace('{n}', String(inv.receiptNumber)))) return;
     try {
       const { invoicesAPI } = await import('../../services/api/invoices');
       const ok = await invoicesAPI.delete(id);
       if (!ok) {
-        toast.error('Fatura silinemedi.');
+        toast.error(tm('reportToastInvoiceDeleteFail'));
         return;
       }
       const { useSaleStore } = await import('../../store');
@@ -1108,36 +1139,32 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       if (businessType === 'restaurant') {
         await loadRestOrdersForSelectedDate();
       }
-      toast.success('Fatura silindi.');
+      toast.success(tm('reportToastInvoiceDeleted'));
       closeDailyRowReceiptModal();
     } catch (e: any) {
       console.error('[ReportsModule] Fatura silme:', e);
-      toast.error(e?.message || 'Silme başarısız.');
+      toast.error(e?.message || tm('reportToastDeleteFail'));
     }
-  }, [businessType, closeDailyRowReceiptModal, dailyRowReceiptModal?.erpSale, loadRestOrdersForSelectedDate]);
+  }, [businessType, closeDailyRowReceiptModal, dailyRowReceiptModal?.erpSale, loadRestOrdersForSelectedDate, tm]);
 
   const handleDeleteDailyRestOrder = useCallback(async () => {
     const o = dailyRowReceiptModal?.restOrder;
     const id = o?.id != null ? String(o.id).trim() : '';
     const orderNo = dailyRowReceiptModal?.receiptNumber || id;
     if (!id) return;
-    if (
-      !window.confirm(
-        `Bu kapalı adisyon kaydı iptal edilsin mi?\n\nFiş / adisyon: ${orderNo}\n\nKayıt günlük rapordan düşer. ERP satış faturası yoksa bu işlem yeterlidir.`
-      )
-    ) {
+    if (!window.confirm(tm('reportConfirmCancelRestOrder').replace('{n}', String(orderNo)))) {
       return;
     }
     try {
       await RestaurantService.cancelOrder(id);
-      toast.success('Adisyon kaydı iptal edildi.');
+      toast.success(tm('reportToastOrderCancelled'));
       closeDailyRowReceiptModal();
       await loadRestOrdersForSelectedDate();
     } catch (e: any) {
       console.error('[ReportsModule] Adisyon iptal:', e);
-      toast.error(e?.message || 'İptal başarısız.');
+      toast.error(e?.message || tm('reportToastCancelOrderFail'));
     }
-  }, [closeDailyRowReceiptModal, dailyRowReceiptModal, loadRestOrdersForSelectedDate]);
+  }, [closeDailyRowReceiptModal, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
 
   // Z Report — restoranda tutarlar Perakende Satışlar (ERP) ile aynı; o gün ERP fişi yoksa kapalı adisyonlar
   const generateZReport = () => {
@@ -4160,7 +4187,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Adet: önceki dönem vs bu dönem</p>
+                        <p className="text-sm font-medium text-gray-700 mb-2">{tm('reportCompareQtyChartTitle')}</p>
                         <div className="h-56 w-full min-h-[14rem]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={comparison.chartCountData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
@@ -4169,14 +4196,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                               <YAxis tick={{ fontSize: 11 }} />
                               <Tooltip />
                               <Legend wrapperStyle={{ fontSize: 12 }} />
-                              <Bar dataKey="onceki" name="Önceki dönem" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                              <Bar dataKey="guncel" name="Bu dönem" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="onceki" name={tm('reportChartPrevPeriod')} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="guncel" name={tm('reportChartCurrentPeriod')} fill="#6366f1" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Tutar ({reportCurrency}): önceki vs bu dönem</p>
+                        <p className="text-sm font-medium text-gray-700 mb-2">{tm('reportCompareAmountChartTitle').replace('{c}', reportCurrency)}</p>
                         <div className="h-56 w-full min-h-[14rem]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={comparison.chartMoneyData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
@@ -4185,8 +4212,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                               <YAxis tick={{ fontSize: 11 }} />
                               <Tooltip formatter={(v: number | string) => formatNumber(Number(v), 2, false)} />
                               <Legend wrapperStyle={{ fontSize: 12 }} />
-                              <Bar dataKey="onceki" name="Önceki dönem" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                              <Bar dataKey="guncel" name="Bu dönem" fill="#10b981" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="onceki" name={tm('reportChartPrevPeriod')} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="guncel" name={tm('reportChartCurrentPeriod')} fill="#10b981" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
@@ -4196,27 +4223,27 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                   <div className="bg-white rounded-lg border overflow-hidden">
                     <div className="p-4 border-b flex items-center justify-between gap-2">
-                      <h3 className="text-lg font-semibold text-gray-800">Ürün karşılaştırması</h3>
-                      <span className="text-xs text-gray-500">Ciroya göre ilk 60 ürün</span>
+                      <h3 className="text-lg font-semibold text-gray-800">{tm('reportProductCompareTitle')}</h3>
+                      <span className="text-xs text-gray-500">{tm('reportProductCompareSubtitle')}</span>
                     </div>
                     <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[720px] text-sm">
                         <thead className="bg-gray-50 border-b sticky top-0 z-10">
                           <tr>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Ürün</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Önceki adet</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Bu dönem adet</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Adet Δ%</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Önceki ciro</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Bu dönem ciro</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">Ciro Δ%</th>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {comparison.productRows.length === 0 ? (
                             <tr>
                               <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                                Bu dönemlerde ürün satırı yok veya satış kaydı bulunamadı.
+                                {tm('reportCompareNoProductRows')}
                               </td>
                             </tr>
                           ) : (
@@ -4919,6 +4946,86 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     </div>
                   )}
                 </Spin>
+
+                {beautyCancelledGrouped.length > 0 && (
+                  <div className="space-y-4 mt-10">
+                    <div>
+                      <h3 className="text-base font-black text-slate-800">{tm('beautyCancelledAppointmentsSection')}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
+                    </div>
+                    <div className="space-y-6">
+                      {beautyCancelledGrouped.map((g) => (
+                        <div
+                          key={`cx-${g.serviceName}`}
+                          className="bg-white rounded-xl border border-red-100 overflow-hidden shadow-sm"
+                        >
+                          <div
+                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold bg-red-700/90"
+                            title={tm('beautyCancelledAppointmentsHint')}
+                          >
+                            <span className="text-base">{g.serviceName}</span>
+                            <span className="text-sm font-semibold opacity-95">
+                              {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
+                            </span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-100 text-left text-xs uppercase text-slate-500">
+                                  <th className="px-4 py-2 font-semibold">{tm('date')}</th>
+                                  <th className="px-4 py-2 font-semibold">{tm('customer')}</th>
+                                  <th className="px-4 py-2 font-semibold">{tm('bStaffView')}</th>
+                                  <th className="px-4 py-2 font-semibold">{tm('bDeviceView')}</th>
+                                  <th className="px-4 py-2 font-semibold text-right">{tm('amount')}</th>
+                                  <th className="px-4 py-2 font-semibold">{tm('status')}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {g.items.map((a) => (
+                                  <tr
+                                    key={a.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setBeautyCrmModalAppointment(a)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setBeautyCrmModalAppointment(a);
+                                      }
+                                    }}
+                                    className="cursor-pointer hover:bg-red-50/80"
+                                  >
+                                    <td className="px-4 py-2.5 tabular-nums text-slate-700 whitespace-nowrap">
+                                      {String(a.date ?? a.appointment_date ?? '—')}
+                                      {a.time || a.appointment_time
+                                        ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
+                                        : ''}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-800">
+                                      {String(a.customer_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-800">
+                                      {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-800">
+                                      {String(a.device_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900">
+                                      {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-slate-600 text-xs capitalize">
+                                      {String(a.status ?? '—')}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <BeautyServiceReportCrmModal
                   open={beautyCrmModalAppointment != null}
@@ -5875,7 +5982,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200] }}
                             scroll={{ x: 'max-content', y: 'calc(100vh - 380px)' }}
                             size="small"
-                            locale={{ emptyText: 'Bu dönem için kayıt yok' }}
+                            locale={{ emptyText: tm('reportTableEmptyPeriod') }}
                           />
                         </>
                       )}

@@ -388,6 +388,98 @@ async function resolveServiceForMonthlySeries(serviceId: string): Promise<{
     return null;
 }
 
+/** ERP kasa + müşteri puanı — tek sefer tahsilat (kalem ayrı güzellik fişlerinden sonra toplam). */
+type BeautyErpSyncContext = {
+    invoiceNumber: string;
+    /** Varsa fiş notunda kaynak beauty_sales kaydı */
+    beautySaleId?: string;
+};
+
+async function runBeautySaleErpAndLoyalty(
+    sale: Partial<BeautySale>,
+    items: Partial<BeautySaleItem>[],
+    ctx: BeautyErpSyncContext,
+): Promise<void> {
+    const erpItems: SaleItem[] = (items.length > 0 ? items : [{
+        name: 'Güzellik',
+        quantity: 1,
+        unit_price: sale.total ?? 0,
+        total: sale.total ?? 0,
+        discount: 0,
+        item_type: 'service',
+    }]).map((item) => ({
+        productId: item.item_id
+            ? String(item.item_id)
+            : `beauty-${String(item.item_type ?? 'line')}-${String(item.name ?? 'x').slice(0, 24)}`,
+        productName: String(item.name ?? 'Kalem'),
+        quantity: Number(item.quantity ?? 1),
+        price: Number(item.unit_price ?? 0),
+        discount: Number(item.discount ?? 0),
+        total: Number(item.total ?? 0),
+    }));
+
+    const customerLabel = await resolveBeautyCustomerName(
+        sale.customer_id,
+        sale.customer_name != null ? String(sale.customer_name) : undefined
+    );
+    const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
+    const dateIso = new Date().toISOString();
+
+    try {
+        const noteTail = sale.notes?.trim() ? String(sale.notes).trim() : 'Güzellik satışı';
+        const erpNotes = ctx.beautySaleId
+            ? `GüzellikPOS|beauty_sale_id:${ctx.beautySaleId}|${noteTail}`
+            : `GüzellikPOS|checkout_tek_tahsilat|${noteTail}`;
+
+        await useSaleStore.getState().addSale({
+            id: uuidv4(),
+            receiptNumber: ctx.invoiceNumber,
+            date: dateIso,
+            customerId: sale.customer_id ?? undefined,
+            customerName: customerLabel || 'Peşin Müşteri',
+            items: erpItems,
+            subtotal: Number(sale.subtotal ?? 0),
+            discount: Number(sale.discount ?? 0),
+            tax: Number(sale.tax ?? 0),
+            total: Number(sale.total ?? 0),
+            paymentMethod: pm,
+            paymentStatus: 'paid',
+            status: 'completed',
+            notes: erpNotes,
+            cashier: 'Güzellik',
+            firmNr: ERP_SETTINGS.firmNr,
+            periodNr: ERP_SETTINGS.periodNr,
+        });
+    } catch (erpErr) {
+        const detail = erpErr instanceof Error ? erpErr.message : String(erpErr);
+        console.error('[beautyService] ERP addSale başarısız', {
+            invoiceNumber: ctx.invoiceNumber,
+            beautySaleId: ctx.beautySaleId,
+            error: erpErr,
+        });
+        toast.warning('Fatura / kasa kaydı oluşturulamadı', {
+            description:
+                `Güzellik satışı veritabanında duruyor (Fiş: ${ctx.invoiceNumber}). Muhasebe ve kasa tarafını kontrol edin. Hata: ${detail}`,
+            duration: 14_000,
+        });
+        throw new Error(
+            `Güzellik satışı kaydedildi ancak perakende fatura veya kasa işlenemedi. Fiş: ${ctx.invoiceNumber}. ${detail}`
+        );
+    }
+
+    const cid = pgUuidOrNull(sale.customer_id);
+    const tot = Number(sale.total ?? 0);
+    if (cid && tot > 0) {
+        try {
+            await useCustomerStore.getState().updatePurchaseHistory(cid, tot);
+            const pts = Math.floor(tot / 100);
+            if (pts > 0) await useCustomerStore.getState().updatePoints(cid, pts);
+        } catch (e) {
+            console.warn('[beautyService] Müşteri alışveriş / puan güncellenemedi:', e);
+        }
+    }
+}
+
 export const beautyService = {
 
     /**
@@ -448,7 +540,7 @@ export const beautyService = {
         const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(`
             SELECT
-                c.id, c.code, c.name, c.phone, c.email,
+                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.file_id, c.occupation, c.email,
                 c.address, c.city, c.points, c.total_spent, c.balance,
                 c.is_active, c.notes, c.created_at,
                 COUNT(a.id)::int          AS appointment_count,
@@ -478,10 +570,15 @@ export const beautyService = {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(
-            `SELECT id, code, name, phone, email, address, city, points, total_spent, balance, is_active
+            `SELECT id, code, name, phone, phone2, age, file_id, occupation, email, address, city, points, total_spent, balance, is_active, notes
              FROM ${t}
              WHERE is_active = true AND lpad(trim(firm_nr::text), 3, '0') = $2
-               AND (name ILIKE $1 OR phone ILIKE $1 OR email ILIKE $1 OR code ILIKE $1)
+               AND (
+                 name ILIKE $1 OR phone ILIKE $1 OR COALESCE(phone2, '') ILIKE $1
+                 OR email ILIKE $1 OR code ILIKE $1
+                 OR COALESCE(notes, '') ILIKE $1 OR COALESCE(occupation, '') ILIKE $1
+                 OR COALESCE(file_id, '') ILIKE $1
+               )
              ORDER BY name LIMIT 50`,
             [`%${term}%`, fn]
         );
@@ -493,12 +590,35 @@ export const beautyService = {
         const fn = erpFirmNrForRow();
         const id = uuidv4();
         const code = `BEA-${Date.now().toString(36).toUpperCase()}`;
-        // `notes` / `updated_at` / `total_spent` her kurulumda yok; ana şemadaki zorunlu alanlarla ekle.
+        let ageVal: number | null = null;
+        if (data.age !== undefined && data.age !== null) {
+            const n = Number(data.age);
+            if (Number.isFinite(n)) ageVal = Math.round(n);
+        }
+        const fileIdVal =
+            data.file_id != null && String(data.file_id).trim() !== ''
+                ? String(data.file_id).trim()
+                : null;
         await postgres.query(
-            `INSERT INTO ${t} (id, firm_nr, code, name, phone, email, address, city, is_active)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)`,
-            [id, fn, code, data.name, data.phone ?? null, data.email ?? null,
-             data.address ?? null, data.city ?? null]
+            `INSERT INTO ${t} (
+               id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, file_id, occupation, is_active
+             )
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)`,
+            [
+                id,
+                fn,
+                code,
+                data.name,
+                data.phone ?? null,
+                data.phone2?.trim() || null,
+                data.email ?? null,
+                data.address ?? null,
+                data.city ?? null,
+                data.notes?.trim() || null,
+                ageVal,
+                fileIdVal,
+                data.occupation?.trim() || null,
+            ]
         );
         return id;
     },
@@ -506,11 +626,41 @@ export const beautyService = {
     async updateCustomer(id: string, data: Partial<BeautyCustomer>): Promise<void> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
+        const sets: string[] = [];
+        const vals: unknown[] = [];
+        let i = 1;
+        const push = (col: string, v: unknown) => {
+            sets.push(`${col} = $${i++}`);
+            vals.push(v);
+        };
+        if (data.name !== undefined) push('name', data.name);
+        if (data.phone !== undefined) push('phone', data.phone ?? null);
+        if (data.phone2 !== undefined) push('phone2', data.phone2?.trim() || null);
+        if (data.email !== undefined) push('email', data.email ?? null);
+        if (data.address !== undefined) push('address', data.address ?? null);
+        if (data.city !== undefined) push('city', data.city ?? null);
+        if (data.notes !== undefined) push('notes', data.notes ?? null);
+        if (data.file_id !== undefined) {
+            push(
+                'file_id',
+                data.file_id != null && String(data.file_id).trim() !== ''
+                    ? String(data.file_id).trim()
+                    : null
+            );
+        }
+        if (data.occupation !== undefined) push('occupation', data.occupation?.trim() || null);
+        if (data.age !== undefined) {
+            if (data.age === null) push('age', null);
+            else {
+                const n = Number(data.age);
+                push('age', Number.isFinite(n) ? Math.round(n) : null);
+            }
+        }
+        if (sets.length === 0) return;
+        vals.push(id, fn);
         await postgres.query(
-            `UPDATE ${t} SET name=$3, phone=$4, email=$5, address=$6, city=$7, notes=$8
-             WHERE id=$1 AND lpad(trim(firm_nr::text), 3, '0') = $2`,
-            [id, fn, data.name, data.phone ?? null, data.email ?? null,
-             data.address ?? null, data.city ?? null, data.notes ?? null]
+            `UPDATE ${t} SET ${sets.join(', ')} WHERE id=$${i} AND lpad(trim(firm_nr::text), 3, '0') = $${i + 1}`,
+            vals
         );
     },
 
@@ -804,6 +954,9 @@ export const beautyService = {
                 a.last_notification_channel,
                 a.confirmation_call_at,
                 a.pre_visit_activity_at,
+                a.treatment_degree,
+                a.treatment_shots,
+                a.created_at,
                 COALESCE(s.name, rs.name)   AS service_name,
                 COALESCE(s.color, '#6366f1') AS service_color,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
@@ -842,8 +995,8 @@ export const beautyService = {
                 appointment_date, appointment_time, duration,
                 status, type, notes, total_price, commission_amount, is_package_session, package_purchase_id,
                 branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id,
-                session_series_id
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                session_series_id, treatment_degree, treatment_shots
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -867,6 +1020,12 @@ export const beautyService = {
             appointment.booking_channel ?? 'staff',
             pgUuidOrNull(appointment.corporate_account_id),
             pgUuidOrNull(appointment.session_series_id),
+            appointment.treatment_degree != null && String(appointment.treatment_degree).trim() !== ''
+                ? String(appointment.treatment_degree).trim()
+                : null,
+            appointment.treatment_shots != null && String(appointment.treatment_shots).trim() !== ''
+                ? String(appointment.treatment_shots).trim()
+                : null,
         ]);
         return id;
     },
@@ -894,6 +1053,21 @@ export const beautyService = {
         const totalPrice = Number(merged.total_price ?? 0);
         const statusStr =
             typeof merged.status === 'string' ? merged.status : merged.status != null ? String(merged.status) : 'scheduled';
+        const degRaw = merged.treatment_degree;
+        const shotsRaw = merged.treatment_shots;
+        const treatmentDegree =
+            degRaw === null || degRaw === undefined
+                ? null
+                : String(degRaw).trim() === ''
+                    ? null
+                    : String(degRaw).trim();
+        const treatmentShots =
+            shotsRaw === null || shotsRaw === undefined
+                ? null
+                : String(shotsRaw).trim() === ''
+                    ? null
+                    : String(shotsRaw).trim();
+
         await postgres.query(
             `UPDATE ${table}
              SET client_id=$2, service_id=$3, specialist_id=$4, device_id=$5, body_region_id=$6,
@@ -901,6 +1075,7 @@ export const beautyService = {
                  notes=$11, total_price=$12,
                  branch_id=$13, room_id=$14, tele_meeting_url=$15, booking_channel=$16, corporate_account_id=$17,
                  confirmation_call_at=$18, pre_visit_activity_at=$19,
+                 treatment_degree=$20, treatment_shots=$21,
                  updated_at=NOW()
              WHERE id=$1`,
             [id,
@@ -921,7 +1096,27 @@ export const beautyService = {
              merged.booking_channel ?? null,
              pgUuidOrNull(merged.corporate_account_id),
              pgTimestamptzOrNull(merged.confirmation_call_at),
-             pgTimestamptzOrNull(merged.pre_visit_activity_at)]
+             pgTimestamptzOrNull(merged.pre_visit_activity_at),
+             treatmentDegree,
+             treatmentShots]
+        );
+        if (statusStr === 'cancelled') {
+            await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+        }
+    },
+
+    /** POS satış notlarında `rex_appt:<uuid>` ile eşlenen ödenmiş kayıtları iptal (ciro dışı). */
+    async voidPaidBeautySalesLinkedToAppointment(appointmentId: string): Promise<void> {
+        const aid = String(appointmentId ?? '').trim();
+        if (!aid) return;
+        const table = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const needle = `%rex_appt:${aid}%`;
+        await postgres.query(
+            `UPDATE ${table}
+             SET payment_status = 'cancelled'
+             WHERE COALESCE(notes, '') LIKE $1
+               AND COALESCE(payment_status, 'paid') = 'paid'`,
+            [needle]
         );
     },
 
@@ -946,6 +1141,9 @@ export const beautyService = {
             } catch {
                 /* stok/sarf yoksa sessizce geç */
             }
+        }
+        if (status === 'cancelled') {
+            await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
         }
     },
 
@@ -981,6 +1179,8 @@ export const beautyService = {
                 a.last_notification_channel,
                 a.confirmation_call_at,
                 a.pre_visit_activity_at,
+                a.treatment_degree,
+                a.treatment_shots,
                 COALESCE(s.name, rs.name) AS service_name,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name AS customer_name
@@ -1963,7 +2163,15 @@ export const beautyService = {
         return salesRows.map((s: BeautySale) => ({ ...s, items: bySale.get(s.id) ?? [] }));
     },
 
-    async createSale(sale: Partial<BeautySale>, items: Partial<BeautySaleItem>[]): Promise<string> {
+    /**
+     * Güzellik satışı + kalemler. `skipErpAndLoyalty`: yalnızca beauty şeması (kalem ayrı fiş);
+     * sonra `syncBeautyCheckoutToErp` ile tek tahsilat.
+     */
+    async createSale(
+        sale: Partial<BeautySale>,
+        items: Partial<BeautySaleItem>[],
+        opts?: { skipErpAndLoyalty?: boolean },
+    ): Promise<string> {
         const st = postgres.getMovementTableName('beauty_sales', 'beauty');
         const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
         const id = uuidv4();
@@ -1993,86 +2201,19 @@ export const beautyService = {
                 pgUuidOrNull(item.staff_id), item.commission_amount ?? 0]);
         }
 
-        // Perakende satış faturası + kasa / cari (restoran `closeBill` → addSale ile aynı ERP akışı)
-        const erpItems: SaleItem[] = (items.length > 0 ? items : [{
-            name: 'Güzellik',
-            quantity: 1,
-            unit_price: sale.total ?? 0,
-            total: sale.total ?? 0,
-            discount: 0,
-            item_type: 'service',
-        }]).map((item) => ({
-            productId: item.item_id
-                ? String(item.item_id)
-                : `beauty-${String(item.item_type ?? 'line')}-${String(item.name ?? 'x').slice(0, 24)}`,
-            productName: String(item.name ?? 'Kalem'),
-            quantity: Number(item.quantity ?? 1),
-            price: Number(item.unit_price ?? 0),
-            discount: Number(item.discount ?? 0),
-            total: Number(item.total ?? 0),
-        }));
-
-        const customerLabel = await resolveBeautyCustomerName(
-            sale.customer_id,
-            sale.customer_name != null ? String(sale.customer_name) : undefined
-        );
-        const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
-        const dateIso = new Date().toISOString();
-
-        try {
-            const noteTail = sale.notes?.trim() ? String(sale.notes).trim() : 'Güzellik satışı';
-            /** Restoran `RestoranPOS|rest_order_id:…` ile aynı amaç: ERP faturasında kaynak izi */
-            const erpNotes = `GüzellikPOS|beauty_sale_id:${id}|${noteTail}`;
-
-            await useSaleStore.getState().addSale({
-                id: uuidv4(),
-                receiptNumber: invoiceNumber,
-                date: dateIso,
-                customerId: sale.customer_id ?? undefined,
-                customerName: customerLabel || 'Peşin Müşteri',
-                items: erpItems,
-                subtotal: Number(sale.subtotal ?? 0),
-                discount: Number(sale.discount ?? 0),
-                tax: Number(sale.tax ?? 0),
-                total: Number(sale.total ?? 0),
-                paymentMethod: pm,
-                paymentStatus: 'paid',
-                status: 'completed',
-                notes: erpNotes,
-                cashier: 'Güzellik',
-                firmNr: ERP_SETTINGS.firmNr,
-                periodNr: ERP_SETTINGS.periodNr,
-            });
-        } catch (erpErr) {
-            const detail = erpErr instanceof Error ? erpErr.message : String(erpErr);
-            console.error('[beautyService] ERP addSale başarısız; güzellik kaydı korundu', {
-                beautySaleId: id,
-                invoiceNumber,
-                error: erpErr,
-            });
-            toast.warning('Fatura / kasa kaydı oluşturulamadı', {
-                description:
-                    `Güzellik satışı veritabanında duruyor (Fiş: ${invoiceNumber}). Muhasebe ve kasa tarafını kontrol edin. Hata: ${detail}`,
-                duration: 14_000,
-            });
-            throw new Error(
-                `Güzellik satışı kaydedildi ancak perakende fatura veya kasa işlenemedi. Fiş: ${invoiceNumber}. ${detail}`
-            );
-        }
-
-        const cid = pgUuidOrNull(sale.customer_id);
-        const tot = Number(sale.total ?? 0);
-        if (cid && tot > 0) {
-            try {
-                await useCustomerStore.getState().updatePurchaseHistory(cid, tot);
-                const pts = Math.floor(tot / 100);
-                if (pts > 0) await useCustomerStore.getState().updatePoints(cid, pts);
-            } catch (e) {
-                console.warn('[beautyService] Müşteri alışveriş / puan güncellenemedi:', e);
-            }
+        if (!opts?.skipErpAndLoyalty) {
+            await runBeautySaleErpAndLoyalty(sale, items, { invoiceNumber, beautySaleId: id });
         }
 
         return id;
+    },
+
+    /**
+     * Kalem ayrı `beauty_sales` kayıtları yazıldıktan sonra: tek ERP/kasa hareketi ve tek müşteri puanı (toplam tutar).
+     */
+    async syncBeautyCheckoutToErp(sale: Partial<BeautySale>, items: Partial<BeautySaleItem>[]): Promise<void> {
+        const invoiceNumber = `BEA-${new Date().getFullYear()}-CHK-${Date.now().toString(36).toUpperCase()}`;
+        await runBeautySaleErpAndLoyalty(sale, items, { invoiceNumber });
     },
 
     // =========================================================================

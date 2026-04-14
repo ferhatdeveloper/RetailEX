@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, Search, Plus, Edit, Trash2, Phone, Mail, MapPin, TrendingUp, Calendar, FileText, Eye, X } from 'lucide-react';
 import type { Customer, Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -9,6 +9,7 @@ import { useCustomerStore } from '../../../store/useCustomerStore';
 import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
 
 interface CustomerManagementModuleProps {
   customers: Customer[];
@@ -16,8 +17,32 @@ interface CustomerManagementModuleProps {
   sales: Sale[];
 }
 
+const emptyCustomerForm = () => ({
+  code: '',
+  name: '',
+  phone: '',
+  phone2: '',
+  age: '',
+  file_id: '',
+  email: '',
+  address: '',
+  occupation: '',
+  notes: '',
+  taxNumber: '',
+  taxOffice: '',
+  company: ''
+});
+
+function parseAgeInput(raw: string): number | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 150) return undefined;
+  return n;
+}
+
 export function CustomerManagementModule({ customers, setCustomers, sales }: CustomerManagementModuleProps) {
-  const { t } = useLanguage();
+  const { t, tm, language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -31,16 +56,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   } | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-    taxNumber: '',
-    taxOffice: '',
-    company: ''
-  });
+  const [formData, setFormData] = useState(emptyCustomerForm);
 
   const normalizePhoneCandidates = (rawPhone: string): string[] => {
     const digits = rawPhone.replace(/\D/g, '');
@@ -57,14 +73,8 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   const openAddModalWithPhone = async (phone: string) => {
     setSelectedCustomer(null);
     setFormData({
-      code: '',
-      name: '',
-      phone: phone.trim(),
-      email: '',
-      address: '',
-      taxNumber: '',
-      taxOffice: '',
-      company: ''
+      ...emptyCustomerForm(),
+      phone: phone.trim()
     });
     setShowAddModal(true);
     try {
@@ -89,14 +99,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       if (found) {
         setSelectedCustomer(found);
         setShowDetailModal(true);
-        toast.success('Müşteri bulundu', {
-          description: `${found.name} kaydı açıldı.`,
+        toast.success(tm('custCallerFound'), {
+          description: `${found.name} ${tm('custCallerFoundDesc')}`,
         });
         return;
       }
     }
-    toast.info('Müşteri kaydı bulunamadı', {
-      description: 'Telefonla yeni müşteri formu açıldı.',
+    toast.info(tm('custCallerNotFound'), {
+      description: tm('custCallerNotFoundDesc'),
     });
     await openAddModalWithPhone(phone);
   };
@@ -119,11 +129,23 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   }, []);
 
   // Filter customers
+  const q = searchQuery.toLowerCase();
+  /** Listede bulunan demo müşteriler — 001_demo_data.sql kodları */
+  const demoCustomersInList = useMemo(
+    () => customers.filter(c => c.code && DEMO_CUSTOMER_CODES.has(String(c.code).trim())),
+    [customers]
+  );
+
   const filteredCustomers = customers.filter(c =>
-    (c.code && c.code.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase()))
+    (c.code && c.code.toLowerCase().includes(q)) ||
+    c.name.toLowerCase().includes(q) ||
+    c.phone.toLowerCase().includes(q) ||
+    (c.phone2 && c.phone2.toLowerCase().includes(q)) ||
+    (c.email && c.email.toLowerCase().includes(q)) ||
+    (c.address && c.address.toLowerCase().includes(q)) ||
+    (c.notes && c.notes.toLowerCase().includes(q)) ||
+    (c.occupation && c.occupation.toLowerCase().includes(q)) ||
+    (c.age != null && String(c.age).includes(searchQuery.trim()))
   );
 
   // Calculate customer statistics
@@ -145,18 +167,26 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   // Handle add customer
   const handleAddCustomer = async () => {
     if (!formData.name || !formData.phone) {
-      toast.error('Lütfen zorunlu alanları doldurun');
+      toast.error(tm('custToastRequired'));
       return;
     }
 
     try {
       const addCustomer = useCustomerStore.getState().addCustomer;
+      const trimmedAge = formData.age.trim();
+      const ageVal =
+        trimmedAge === '' ? undefined : parseAgeInput(formData.age);
       await addCustomer({
         code: formData.code,
         name: formData.name,
         phone: formData.phone,
+        phone2: formData.phone2.trim() || undefined,
         email: formData.email,
         address: formData.address,
+        notes: formData.notes.trim() || undefined,
+        occupation: formData.occupation.trim() || undefined,
+        file_id: formData.file_id.trim() || undefined,
+        age: ageVal,
         taxNumber: formData.taxNumber,
         taxOffice: formData.taxOffice,
         company: formData.company,
@@ -164,21 +194,12 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         totalSpent: 0
       } as any);
 
-      toast.success('Müşteri eklendi');
+      toast.success(tm('custToastAdded'));
       setShowAddModal(false);
-      setFormData({
-        code: '',
-        name: '',
-        phone: '',
-        email: '',
-        address: '',
-        taxNumber: '',
-        taxOffice: '',
-        company: ''
-      });
+      setFormData(emptyCustomerForm());
     } catch (error) {
       console.error('Error adding customer:', error);
-      toast.error('Müşteri eklenemedi');
+      toast.error(tm('custToastAddFail'));
     }
   };
 
@@ -189,8 +210,13 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       code: customer.code || '',
       name: customer.name,
       phone: customer.phone || '',
+      phone2: customer.phone2 || '',
+      age: customer.age != null ? String(customer.age) : '',
+      file_id: customer.file_id || '',
       email: customer.email || '',
       address: customer.address || '',
+      occupation: customer.occupation || '',
+      notes: customer.notes || '',
       taxNumber: customer.taxNumber || '',
       taxOffice: (customer as any).taxOffice || '',
       company: customer.company || ''
@@ -201,54 +227,69 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   // Handle update customer
   const handleUpdateCustomer = async () => {
     if (!selectedCustomer || !formData.name || !formData.phone) {
-      toast.error('Lütfen zorunlu alanları doldurun');
+      toast.error(tm('custToastRequired'));
       return;
     }
 
     try {
       const updateCustomer = useCustomerStore.getState().updateCustomer;
+      const trimmedAge = formData.age.trim();
+      const ageForDb =
+        trimmedAge === '' ? null : (parseAgeInput(formData.age) ?? null);
       await updateCustomer(selectedCustomer.id, {
         code: formData.code,
         name: formData.name,
         phone: formData.phone,
+        phone2: formData.phone2.trim() === '' ? (null as any) : formData.phone2.trim(),
         email: formData.email,
         address: formData.address,
+        notes: formData.notes.trim() === '' ? (null as any) : formData.notes.trim(),
+        occupation: formData.occupation.trim() === '' ? (null as any) : formData.occupation.trim(),
+        file_id: formData.file_id.trim() === '' ? (null as any) : formData.file_id.trim(),
+        age: ageForDb as any,
         taxNumber: formData.taxNumber,
         taxOffice: formData.taxOffice,
         company: formData.company
       } as any);
 
-      toast.success('Müşteri güncellendi');
+      toast.success(tm('custToastUpdated'));
       setShowAddModal(false);
       setSelectedCustomer(null);
-      setFormData({
-        code: '',
-        name: '',
-        phone: '',
-        email: '',
-        address: '',
-        taxNumber: '',
-        taxOffice: '',
-        company: ''
-      });
+      setFormData(emptyCustomerForm());
     } catch (error) {
       console.error('Error updating customer:', error);
-      toast.error('Müşteri güncellenemedi');
+      toast.error(tm('custToastUpdateFail'));
     }
   };
 
   // Handle delete customer
   const handleDeleteCustomer = async (customerId: string, customerName: string) => {
-    if (confirm(`${customerName} müşterisini silmek istediğinize emin misiniz?`)) {
+    if (confirm(tm('custDeleteConfirm').replace('{name}', customerName))) {
       try {
         const deleteCustomer = useCustomerStore.getState().deleteCustomer;
         await deleteCustomer(customerId);
-        toast.success('Müşteri silindi');
+        toast.success(tm('custToastDeleted'));
       } catch (error) {
         console.error('Error deleting customer:', error);
-        toast.error('Müşteri silinemedi');
+        toast.error(tm('custToastDeleteFail'));
       }
     }
+  };
+
+  const handleBulkDeleteDemoCustomers = async () => {
+    const n = demoCustomersInList.length;
+    if (n === 0) return;
+    if (!window.confirm(`${n} demo müşterisi silinecek. Emin misiniz?`)) return;
+    setContextMenu(null);
+    let ok = 0;
+    for (const c of demoCustomersInList) {
+      const success = await customerAPI.delete(c.id);
+      if (success) ok++;
+    }
+    await useCustomerStore.getState().loadCustomers();
+    setCustomers(useCustomerStore.getState().customers);
+    if (ok > 0) toast.success(`${ok} demo müşteri silindi.`);
+    if (ok < n) toast.error('Bazı kayıtlar silinemedi.');
   };
 
   // View customer details
@@ -267,16 +308,19 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     });
   };
 
+  const dateLocale =
+    language === 'tr' ? 'tr-TR' : language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : 'en-US';
+
   // Column definitions
   const columnHelper = createColumnHelper<Customer>();
   const columns: ColumnDef<Customer, any>[] = [
     columnHelper.accessor('code', {
-      header: 'Kod',
+      header: tm('custColCode'),
       cell: info => <span className="font-mono text-xs text-blue-600 font-medium">{info.getValue() || '-'}</span >,
       size: 100
     }),
     columnHelper.accessor('name', {
-      header: 'Müşteri Adı',
+      header: tm('custColName'),
       cell: info => {
         const row = info.row.original;
         return (
@@ -293,7 +337,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       }
     }),
     columnHelper.accessor('phone', {
-      header: 'İletişim',
+      header: tm('custColContact'),
       cell: info => {
         const row = info.row.original;
         return (
@@ -302,6 +346,12 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
               <Phone className="w-3 h-3 text-gray-400" />
               {row.phone}
             </span>
+            {row.phone2 && (
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <Phone className="w-3 h-3 text-gray-400" />
+                {row.phone2}
+              </span>
+            )}
             {row.email && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
                 <Mail className="w-3 h-3 text-gray-400" />
@@ -313,7 +363,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       }
     }),
     columnHelper.accessor('company', {
-      header: 'Şirket/Vergi',
+      header: tm('custColCompanyTax'),
       cell: info => {
         const row = info.row.original;
         const taxOffice = row.taxOffice;
@@ -330,7 +380,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     }),
     columnHelper.display({
       id: 'totalPurchases',
-      header: 'Toplam Alışveriş',
+      header: tm('custColTotalPurchases'),
       cell: ({ row }) => {
         const stats = getCustomerStats(row.original.id);
         return (
@@ -343,7 +393,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     }),
     columnHelper.display({
       id: 'totalSpent',
-      header: 'Toplam Tutar',
+      header: tm('custColTotalAmount'),
       cell: ({ row }) => {
         const stats = getCustomerStats(row.original.id);
         return <span className="font-medium">{formatNumber(stats.totalSpent, 2, true)} IQD</span>;
@@ -352,41 +402,41 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     }),
     columnHelper.display({
       id: 'lastPurchase',
-      header: 'Son Alışveriş',
+      header: tm('custColLastPurchase'),
       cell: ({ row }) => {
         const stats = getCustomerStats(row.original.id);
         if (!stats.lastPurchase) return <span className="text-gray-400 text-xs">-</span>;
         return (
           <div className="flex flex-col text-xs">
-            <span>{stats.lastPurchase.toLocaleDateString('tr-TR')}</span>
-            <span className="text-gray-500">{stats.lastPurchase.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span>{stats.lastPurchase.toLocaleDateString(dateLocale)}</span>
+            <span className="text-gray-500">{stats.lastPurchase.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         );
       }
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İşlemler',
+      header: tm('custColActions'),
       cell: ({ row }) => (
         <div className="flex items-center justify-center gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); handleViewDetails(row.original); }}
             className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-            title="Detayları Gör"
+            title={tm('custTooltipView')}
           >
             <Eye className="w-4 h-4" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); handleEditCustomer(row.original); }}
             className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-            title="Düzenle"
+            title={tm('custTooltipEdit')}
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(row.original.id, row.original.name); }}
             className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-            title="Sil"
+            title={tm('custTooltipDelete')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -403,23 +453,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
           <div>
             <h2 className="text-2xl flex items-center gap-2 font-bold text-gray-800">
               <Users className="w-6 h-6 text-blue-600" />
-              Müşteri Yönetimi
+              {tm('custMgmtTitle')}
             </h2>
-            <p className="text-sm text-gray-600 mt-1">Müşteri kayıtları ve işlem geçmişi</p>
+            <p className="text-sm text-gray-600 mt-1">{tm('custMgmtSubtitle')}</p>
           </div>
           <button
             onClick={async () => {
               setSelectedCustomer(null);
-              setFormData({
-                code: '',
-                name: '',
-                phone: '',
-                email: '',
-                address: '',
-                taxNumber: '',
-                taxOffice: '',
-                company: ''
-              });
+              setFormData(emptyCustomerForm());
               setShowAddModal(true);
 
               // Generate code
@@ -433,7 +474,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-lg transition-all hover:shadow-xl font-medium"
           >
             <Plus className="w-5 h-5" />
-            Yeni Müşteri
+            {tm('custMgmtNewBtn')}
           </button>
         </div>
       </div>
@@ -446,7 +487,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Müşteri adı, telefon veya e-posta ile ara..."
+            placeholder={tm('custMgmtSearchPh')}
             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 bg-white shadow-sm"
           />
         </div>
@@ -500,8 +541,22 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 if (contextMenu.customer) handleDeleteCustomer(contextMenu.customer.id, contextMenu.customer.name);
                 setContextMenu(null);
               },
-              variant: 'danger'
-            }
+              variant: 'danger',
+              divider: demoCustomersInList.length > 0
+            },
+            ...(demoCustomersInList.length > 0
+              ? [
+                  {
+                    id: 'delete-demo',
+                    label: `Demo müşterileri toplu sil (${demoCustomersInList.length} adet)`,
+                    icon: Trash2,
+                    variant: 'danger' as const,
+                    onClick: () => {
+                      void handleBulkDeleteDemoCustomers();
+                    }
+                  }
+                ]
+              : [])
           ]}
         />
       )}
@@ -514,7 +569,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
           <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in duration-200">
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-800">
-                {selectedCustomer ? 'Müşteri Düzenle' : 'Yeni Müşteri Ekle'}
+                {selectedCustomer ? tm('custModalEditTitle') : tm('custModalAddTitle')}
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -527,24 +582,24 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             <div className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Müşteri Kodu</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelCode')}</label>
                   <input
                     type="text"
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Müşteri kodunu girin"
+                    placeholder={tm('custPhCode')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Müşteri Adı <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelFullName')} <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Müşteri adını girin"
+                    placeholder={tm('custPhName')}
                     required
                   />
                 </div>
@@ -552,71 +607,132 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefon <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelPhone1')} <span className="text-red-500">*</span></label>
                   <input
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0(555) 555 55 55"
+                    placeholder={tm('custPhPhone')}
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">E-posta</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelPhone2')}</label>
                   <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    type="tel"
+                    value={formData.phone2}
+                    onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="musteri@example.com"
+                    placeholder={tm('custPhPhone2')}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelAge')}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={150}
+                    value={formData.age}
+                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={tm('custPhAge')}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelFileId')}</label>
+                  <input
+                    type="text"
+                    value={formData.file_id}
+                    onChange={(e) => setFormData({ ...formData, file_id: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={tm('custPhFileId')}
+                    autoComplete="off"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Adres</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelAddress')}</label>
                 <textarea
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Adres bilgisi"
+                  placeholder={tm('custPhAddress')}
                   rows={3}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Şirket Adı</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelOccupation')}</label>
+                  <input
+                    type="text"
+                    value={formData.occupation}
+                    onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={tm('custPhOccupation')}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelEmail')}</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={tm('custPhEmail')}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelAbout')}</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={tm('custPhAbout')}
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelCompany')}</label>
                   <input
                     type="text"
                     value={formData.company}
                     onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Şirket adı"
+                    placeholder={tm('custPhCompany')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vergi Numarası</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelTaxNo')}</label>
                   <input
                     type="text"
                     value={formData.taxNumber}
                     onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Vergi/TC No"
+                    placeholder={tm('custPhTaxNo')}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vergi Dairesi</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelTaxOffice')}</label>
                   <input
                     type="text"
                     value={formData.taxOffice}
                     onChange={(e) => setFormData({ ...formData, taxOffice: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Vergi dairesi"
+                    placeholder={tm('custPhTaxOffice')}
                   />
                 </div>
               </div>
@@ -627,26 +743,17 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 onClick={() => {
                   setShowAddModal(false);
                   setSelectedCustomer(null);
-                  setFormData({
-                    code: '',
-                    name: '',
-                    phone: '',
-                    email: '',
-                    address: '',
-                    taxNumber: '',
-                    taxOffice: '',
-                    company: ''
-                  });
+                  setFormData(emptyCustomerForm());
                 }}
                 className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
               >
-                İptal
+                {tm('custModalCancel')}
               </button>
               <button
                 onClick={selectedCustomer ? handleUpdateCustomer : handleAddCustomer}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium"
               >
-                {selectedCustomer ? 'Güncelle' : 'Ekle'}
+                {selectedCustomer ? tm('custBtnUpdate') : tm('custBtnAdd')}
               </button>
             </div>
           </div>
@@ -660,7 +767,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         }}>
           <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in duration-200">
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-gray-800">Müşteri Detayları</h3>
+              <h3 className="text-xl font-semibold text-gray-800">{tm('custDetailTitle')}</h3>
               <button
                 onClick={() => setShowDetailModal(false)}
                 className="text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-full p-1 transition-colors"
@@ -674,18 +781,46 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
               <div className="grid grid-cols-2 gap-6 mb-8">
                 <div className="space-y-4">
                   <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Müşteri Adı</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custColName')}</p>
                     <p className="text-lg font-medium text-gray-900">{selectedCustomer.name}</p>
                   </div>
-                  <div className="flex gap-4">
-                    <div className="bg-gray-50 p-4 rounded-lg flex-1">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Telefon</p>
-                      <p className="text-gray-900">{selectedCustomer.phone}</p>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelPhone1')}</p>
+                    <p className="text-gray-900">{selectedCustomer.phone}</p>
+                  </div>
+                  {selectedCustomer.phone2 && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelPhone2')}</p>
+                      <p className="text-gray-900">{selectedCustomer.phone2}</p>
                     </div>
+                  )}
+                  {(selectedCustomer.age != null || (selectedCustomer.file_id != null && String(selectedCustomer.file_id).trim() !== '')) && (
+                    <div className="flex gap-4 flex-wrap">
+                      {selectedCustomer.age != null && (
+                        <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[100px]">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelAge')}</p>
+                          <p className="text-gray-900">{selectedCustomer.age}</p>
+                        </div>
+                      )}
+                      {selectedCustomer.file_id != null && String(selectedCustomer.file_id).trim() !== '' && (
+                        <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[100px]">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelFileId')}</p>
+                          <p className="text-gray-900">{selectedCustomer.file_id}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-4 flex-wrap">
                     {selectedCustomer.email && (
-                      <div className="bg-gray-50 p-4 rounded-lg flex-1">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">E-posta</p>
-                        <p className="text-gray-900">{selectedCustomer.email}</p>
+                      <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[140px]">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelEmail')}</p>
+                        <p className="text-gray-900 break-all">{selectedCustomer.email}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.occupation && (
+                      <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[140px]">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelOccupation')}</p>
+                        <p className="text-gray-900">{selectedCustomer.occupation}</p>
                       </div>
                     )}
                   </div>
@@ -694,18 +829,24 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 <div className="space-y-4">
                   {(selectedCustomer.company || selectedCustomer.taxNumber) && (
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Kurumsal Bilgiler</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custDetailCorp')}</p>
                       <div className="space-y-2">
-                        {selectedCustomer.company && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">Şirket:</span> {selectedCustomer.company}</p>}
-                        {selectedCustomer.taxNumber && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">Vergi No:</span> {selectedCustomer.taxNumber}</p>}
-                        {(selectedCustomer as any).taxOffice && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">Vergi Dairesi:</span> {(selectedCustomer as any).taxOffice}</p>}
+                        {selectedCustomer.company && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">{tm('custCompanyLabel')}</span> {selectedCustomer.company}</p>}
+                        {selectedCustomer.taxNumber && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">{tm('custTaxNoShort')}</span> {selectedCustomer.taxNumber}</p>}
+                        {(selectedCustomer as any).taxOffice && <p className="text-gray-900"><span className="text-gray-500 w-24 inline-block">{tm('custTaxOfficeShort')}</span> {(selectedCustomer as any).taxOffice}</p>}
                       </div>
                     </div>
                   )}
                   {selectedCustomer.address && (
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Adres</p>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelAddress')}</p>
                       <p className="text-gray-900">{selectedCustomer.address}</p>
+                    </div>
+                  )}
+                  {selectedCustomer.notes && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelAbout')}</p>
+                      <p className="text-gray-900 whitespace-pre-wrap">{selectedCustomer.notes}</p>
                     </div>
                   )}
                 </div>
@@ -715,7 +856,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
               <div className="border-t pt-6">
                 <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
-                  Alışveriş Geçmişi
+                  {tm('custHistoryTitle')}
                 </h4>
                 <div className="space-y-3">
                   {sales
@@ -728,10 +869,10 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                             <FileText className="w-5 h-5" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-900">Fiş No: {sale.receiptNumber}</p>
+                            <p className="text-sm font-medium text-gray-900">{tm('custReceiptLabel')} {sale.receiptNumber}</p>
                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                               <Calendar className="w-3 h-3" />
-                              {new Date(sale.date).toLocaleString('tr-TR')}
+                              {new Date(sale.date).toLocaleString(dateLocale)}
                             </p>
                           </div>
                         </div>
@@ -740,10 +881,10 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                           <p className="text-lg font-bold text-gray-900">{formatNumber(sale.total, 2, false)}</p>
                           <div className="flex items-center justify-end gap-2 text-xs text-gray-500">
                             <span className="bg-white px-2 py-0.5 rounded border border-gray-200">
-                              {sale.items.length} ürün
+                              {tm('custSaleItemsCount').replace('{n}', String(sale.items.length))}
                             </span>
                             <span className="bg-white px-2 py-0.5 rounded border border-gray-200 uppercase">
-                              {sale.paymentMethod === 'cash' ? 'Nakit' : 'Kart'}
+                              {sale.paymentMethod === 'cash' ? tm('custPayCash') : tm('custPayCard')}
                             </span>
                           </div>
                         </div>
@@ -751,7 +892,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                     ))}
                   {sales.filter(s => s.customerId === selectedCustomer.id).length === 0 && (
                     <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                      Bu müşteriye ait henüz alışveriş kaydı bulunmamaktadır.
+                      {tm('custNoSalesYet')}
                     </div>
                   )}
                 </div>
@@ -766,7 +907,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 }}
                 className="px-6 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors shadow-sm font-medium"
               >
-                Kapat
+                {tm('custCloseBtn')}
               </button>
             </div>
           </div>

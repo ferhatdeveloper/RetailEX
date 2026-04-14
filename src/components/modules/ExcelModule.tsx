@@ -19,7 +19,8 @@ import { productAPI } from '../../services/api/products';
 import { customerAPI } from '../../services/api/customers';
 import { supplierAPI } from '../../services/api/suppliers';
 import { productVariantAPI } from '../../services/api/productVariants';
-import { fetchCurrentAccounts, createCurrentAccount } from '../../services/api/currentAccounts';
+import { createCurrentAccount } from '../../services/api/currentAccounts';
+import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../utils/currentAccountsExcelExport';
 import { serviceAPI } from '../../services/serviceAPI';
 import { categoryAPI } from '../../services/api/masterData';
 import { postgres, ERP_SETTINGS } from '../../services/postgres';
@@ -395,29 +396,10 @@ async function exportProducts(): Promise<void> {
 }
 
 async function exportCurrentAccounts(): Promise<void> {
-  const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr);
-  if (accounts.length === 0) throw new Error('Dışa aktarılacak cari hesap bulunamadı.');
-  const data = accounts.map(a => ({
-    'Hesap Kodu*': a.kod,
-    'Ünvan*': a.unvan,
-    'Tip (MÜŞTERİ/TEDARİKÇİ)': a.tip === 'MUSTERI' ? 'MÜŞTERİ' : 'TEDARİKÇİ',
-    'Telefon': a.telefon || '',
-    'E-posta': a.email || '',
-    'Adres': a.adres || '',
-    'İlçe': '',
-    'Şehir': '',
-    'Posta Kodu': '',
-    'Ülke': '',
-    'Vergi No': a.vergi_no || '',
-    'Vergi Dairesi': a.vergi_dairesi || '',
-    'Kredi Limiti': a.kredi_limiti || 0,
-    'Vade Süresi (Gün)': a.vade_suresi || 30,
-    'Ödeme Şekli': a.odeme_sekli || '',
-    'İskonto Oranı (%)': 0,
-    'Notlar': '',
-    'Aktif (E/H)': a.aktif ? 'E' : 'H',
-  }));
-  await downloadExcel('Cari Hesaplar', data, `CariHesaplar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const suppliers = await supplierAPI.getAll();
+  if (suppliers.length === 0) throw new Error('Dışa aktarılacak cari hesap bulunamadı.');
+  const data = suppliers.map(mapUnifiedSupplierToCurrentAccountExcelRow);
+  await saveCurrentAccountsAsXlsx(data);
 }
 
 async function exportVariants(): Promise<void> {

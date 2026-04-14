@@ -96,6 +96,12 @@ pub struct AppConfig {
     /// Beauty takviminde slot aralığı (dakika)
     #[serde(default = "default_beauty_slot_interval_min")]
     pub beauty_slot_interval_min: i32,
+    /// Güzellik takviminde sıra (kuyruk) modu
+    #[serde(default = "default_true")]
+    pub beauty_queue_mode: bool,
+    /// POS: güzellik sepetinde her kalem ayrı fiş / satış kaydı
+    #[serde(default = "default_true")]
+    pub beauty_queue_separate_sale_per_line: bool,
 }
 
 fn default_true() -> bool { true }
@@ -201,6 +207,8 @@ impl Default for AppConfig {
             regulatory_region: default_regulatory_region(),
             default_currency: default_currency(),
             beauty_slot_interval_min: default_beauty_slot_interval_min(),
+            beauty_queue_mode: true,
+            beauty_queue_separate_sale_per_line: true,
         }
     }
 }

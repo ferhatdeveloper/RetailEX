@@ -120,6 +120,9 @@ export interface Customer {
   name: string;
   phone: string;
   phone2?: string;      // İkinci telefon
+  age?: number | null;
+  file_id?: string | null;
+  occupation?: string | null;
   email: string;
   address: string;
   district?: string;    // İlçe
@@ -208,6 +211,10 @@ export interface Sale {
   language?: string;
   /** Güzellik POS: randevu/satışta seçilen cihaz adı (fiş üst bilgisi) */
   beautyDeviceName?: string;
+  /** Güzellik / lazer fişi: tedavi derecesi (ör. cihaz parametresi) */
+  beautyTreatmentDegree?: string;
+  /** Güzellik / lazer fişi: atış sayısı */
+  beautyTreatmentShots?: string;
 }
 
 export interface SaleItem {

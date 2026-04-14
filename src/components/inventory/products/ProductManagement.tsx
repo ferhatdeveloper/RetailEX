@@ -16,15 +16,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
-
-/** 001_demo_data.sql ile gelen demo ürün kodları — toplu silmede kullanılır */
-const DEMO_PRODUCT_CODES = new Set([
-  'PHONE-001', 'PHONE-002', 'PHONE-003', 'PC-001', 'PC-002',
-  'SNACK-001', 'SNACK-002', 'SNACK-003', 'DRINK-001', 'DRINK-002',
-  'BEAUTY-001', 'BEAUTY-002', 'CLOTH-001', 'CLOTH-002', 'CLOTH-003',
-  'TSHIRT-VAR', 'PHONE-VAR',
-  'MENU-001', 'MENU-002', 'MENU-003', 'MENU-004', 'MENU-005', 'MENU-006', 'MENU-007'
-]);
+import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
 
 interface ProductManagementProps {
   products: Product[];

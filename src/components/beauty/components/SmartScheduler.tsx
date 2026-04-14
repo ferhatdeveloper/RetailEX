@@ -4,27 +4,23 @@ import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CheckCircle2, CalendarDays,
+    CalendarDays, Banknote, Undo2,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
     BeautyAppointment,
     AppointmentStatus,
-    BeautySatisfactionQuestion,
-    BeautySatisfactionSurvey,
-    BeautySurveyAnswer,
 } from '../../../types/beauty';
-import type { Language } from '../../../locales/translations';
-import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import { WeekView, MonthView, AgendaView } from './WeekMonthViews';
 import { DaySchedulerGrid } from './DaySchedulerGrid';
 import { ResourceGroupedDayView, ResourceGroupedWeekMatrix } from './ResourceGroupedViews';
 import { StaffTimelineView } from './StaffTimelineView';
+import { QueueModeResourceList } from './QueueModeResourceList';
 import { AppointmentPOS } from './AppointmentPOS';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
-import { safeInvoke } from '../../../utils/env';
+import { safeInvoke, IS_BROWSER } from '../../../utils/env';
 import {
     beautyAppointmentDateKey,
     formatLocalYmd,
@@ -33,22 +29,60 @@ import {
     getWorkWeekRangeLocal,
     getAgendaRangeLocal,
 } from '../../../utils/dateLocal';
+import { compareBeautyQueueOrder, groupBeautyQueueByCustomer, suggestQueuePrefillTime } from '../../../utils/beautyQueueOrder';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import '../ClinicStyles.css';
 import { CLINIC } from '../clinicDesignTokens';
 import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
+import {
+    buildBeautyResourceMovePatch,
+    beautySchedulerResourceColumnDropHandlers,
+    beautySchedulerResourceDragStartHandler,
+} from '../../../utils/beautySchedulerDragDrop';
+import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
+import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
+import { usePermission } from '../../../shared/hooks/usePermission';
 
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list';
 type GroupMode = 'none' | 'staff' | 'device';
 const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
+const LS_BEAUTY_SLOT = 'retailex.beauty.slotIntervalMin';
+const LS_BEAUTY_QUEUE = 'retailex.beauty.queueMode';
+const LS_BEAUTY_SEP = 'retailex.beauty.separateLineInvoices';
+
+function readBeautyToolbarPrefs(): { slot: number; queue: boolean; sep: boolean } | null {
+    if (typeof window === 'undefined' || !IS_BROWSER) return null;
+    try {
+        const slotRaw = window.localStorage.getItem(LS_BEAUTY_SLOT);
+        const queueRaw = window.localStorage.getItem(LS_BEAUTY_QUEUE);
+        const sepRaw = window.localStorage.getItem(LS_BEAUTY_SEP);
+        if (slotRaw == null && queueRaw == null && sepRaw == null) return null;
+        const nv = slotRaw != null ? Number(slotRaw) : 15;
+        const slot = SLOT_INTERVAL_OPTIONS.includes(nv as (typeof SLOT_INTERVAL_OPTIONS)[number]) ? nv : 15;
+        const parseBool = (s: string | null, def: boolean) => {
+            if (s === null || s === '') return def;
+            return s === '1' || s === 'true';
+        };
+        return {
+            slot,
+            queue: parseBool(queueRaw, true),
+            sep: parseBool(sepRaw, true),
+        };
+    } catch {
+        return null;
+    }
+}
+
 // ─── Main Scheduler ────────────────────────────────────────────────────────────
 export function SmartScheduler() {
     const {
-        appointments, loadAppointmentsInRange, updateAppointmentStatus, isLoading,
+        appointments, loadAppointmentsInRange, updateAppointment, updateAppointmentStatus, isLoading,
         specialists, services, customers, devices,
         loadSpecialists, loadServices, loadCustomers, loadDevices,
     } = useBeautyStore();
-    const { tm, language } = useLanguage();
+    const { tm } = useLanguage();
+    const { isAdmin } = usePermission();
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -73,10 +107,18 @@ export function SmartScheduler() {
         window.addEventListener('beauty-callerid-prefill-search', onPrefill);
         return () => window.removeEventListener('beauty-callerid-prefill-search', onPrefill);
     }, []);
-    const [slotIntervalMin, setSlotIntervalMin] = useState<number>(15);
+    const [slotIntervalMin, setSlotIntervalMin] = useState<number>(() => readBeautyToolbarPrefs()?.slot ?? 15);
+    /** Sıra öncelikli işletmeler: saat sütunu yok, liste sırası */
+    const [beautyQueueMode, setBeautyQueueMode] = useState(() => readBeautyToolbarPrefs()?.queue ?? true);
+    /** POS: her sepet kalemi ayrı güzellik satışı / ERP fişi */
+    const [beautySeparateLineInvoices, setBeautySeparateLineInvoices] = useState(
+        () => readBeautyToolbarPrefs()?.sep ?? true,
+    );
+    /** Takvim kartından işlem tutarı düzenleme */
+    const [priceEditApt, setPriceEditApt] = useState<BeautyAppointment | null>(null);
+    const [priceEditDraft, setPriceEditDraft] = useState('');
+    const [priceEditSaving, setPriceEditSaving] = useState(false);
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
-    /** Tamamlanmış (ödemesi alınmış) randevu: tam ekran POS yerine sağ panel */
-    const [paidInfoApt, setPaidInfoApt] = useState<BeautyAppointment | null>(null);
 
     // Full-page new appointment state
     const [showNewPage,     setShowNewPage]     = useState(false);
@@ -89,52 +131,32 @@ export function SmartScheduler() {
     const [prefillServiceId, setPrefillServiceId] = useState<string | undefined>(undefined);
     const [editingApt,      setEditingApt]      = useState<BeautyAppointment | null>(null);
 
-    // Feedback state (shown after marking appointment as completed)
-    const [feedbackApt,      setFeedbackApt]      = useState<BeautyAppointment | null>(null);
-    const [feedbackRatings,  setFeedbackRatings]  = useState({ service: 5, staff: 5, overall: 5 });
-    const [feedbackComment,  setFeedbackComment]  = useState('');
-    const [feedbackSaving,   setFeedbackSaving]   = useState(false);
-    const [activeSurvey, setActiveSurvey] = useState<BeautySatisfactionSurvey | null>(null);
-    const [surveyQuestions, setSurveyQuestions] = useState<BeautySatisfactionQuestion[]>([]);
-    const [dynAnswers, setDynAnswers] = useState<Record<string, number | string | boolean>>({});
-
-    const questionLabel = (q: BeautySatisfactionQuestion, lang: Language) => {
-        const j = q.labels_json || {};
-        return j[lang] || j.tr || j.en || j.ar || j.ku || '';
-    };
+    /** Sağ panelden “Anket yap” ile açılan memnuniyet anketi */
+    const [feedbackApt, setFeedbackApt] = useState<BeautyAppointment | null>(null);
+    /** Tamamlamayı geri al — onay modali için anlık randevu kopyası */
+    const [revertModalApt, setRevertModalApt] = useState<BeautyAppointment | null>(null);
+    const [revertSaving, setRevertSaving] = useState(false);
+    const [treatmentDegreeDraft, setTreatmentDegreeDraft] = useState('');
+    const [treatmentShotsDraft, setTreatmentShotsDraft] = useState('');
+    const [treatmentFieldsSaving, setTreatmentFieldsSaving] = useState(false);
 
     useEffect(() => {
-        if (!feedbackApt) {
-            setActiveSurvey(null);
-            setSurveyQuestions([]);
-            setDynAnswers({});
+        setSelectedApt(prev => {
+            if (!prev) return null;
+            const next = appointments.find(a => a.id === prev.id);
+            return next ? { ...next } : prev;
+        });
+    }, [appointments]);
+
+    useEffect(() => {
+        if (!selectedApt) {
+            setTreatmentDegreeDraft('');
+            setTreatmentShotsDraft('');
             return;
         }
-        let cancelled = false;
-        void beautyService.getActiveSatisfactionSurveyWithQuestions().then(({ survey, questions }) => {
-            if (cancelled) return;
-            setActiveSurvey(survey);
-            setSurveyQuestions(questions);
-            const init: Record<string, number | string | boolean> = {};
-            for (const q of questions) {
-                if (q.question_type === 'rating') {
-                    init[q.id] = Math.min(5, q.scale_max || 5);
-                } else if (q.question_type === 'text') {
-                    init[q.id] = '';
-                } else {
-                    init[q.id] = true;
-                }
-            }
-            setDynAnswers(init);
-        }).catch(() => {
-            if (!cancelled) {
-                setActiveSurvey(null);
-                setSurveyQuestions([]);
-                setDynAnswers({});
-            }
-        });
-        return () => { cancelled = true; };
-    }, [feedbackApt?.id]);
+        setTreatmentDegreeDraft(String(selectedApt.treatment_degree ?? ''));
+        setTreatmentShotsDraft(String(selectedApt.treatment_shots ?? ''));
+    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots]);
 
     useEffect(() => {
         loadSpecialists();
@@ -144,6 +166,7 @@ export function SmartScheduler() {
     }, []);
 
     useEffect(() => {
+        if (IS_BROWSER) return;
         let cancelled = false;
         void (async () => {
             try {
@@ -152,6 +175,22 @@ export function SmartScheduler() {
                 if (!cancelled && SLOT_INTERVAL_OPTIONS.includes(v as (typeof SLOT_INTERVAL_OPTIONS)[number])) {
                     setSlotIntervalMin(v);
                 }
+                const qm = cfg?.beauty_queue_mode;
+                if (!cancelled) {
+                    setBeautyQueueMode(
+                        qm === undefined || qm === null
+                            ? true
+                            : qm === true || qm === 'true' || qm === 1 || qm === '1',
+                    );
+                }
+                const sep = cfg?.beauty_queue_separate_sale_per_line;
+                if (!cancelled) {
+                    setBeautySeparateLineInvoices(
+                        sep === undefined || sep === null
+                            ? true
+                            : sep === true || sep === 'true' || sep === 1 || sep === '1',
+                    );
+                }
             } catch {
                 // no-op: fallback to default interval
             }
@@ -159,7 +198,18 @@ export function SmartScheduler() {
         return () => { cancelled = true; };
     }, []);
 
+    /** Tauri: config.db (SQLite) — tarayıcı: localStorage */
     useEffect(() => {
+        if (IS_BROWSER) {
+            try {
+                window.localStorage.setItem(LS_BEAUTY_SLOT, String(slotIntervalMin));
+                window.localStorage.setItem(LS_BEAUTY_QUEUE, beautyQueueMode ? 'true' : 'false');
+                window.localStorage.setItem(LS_BEAUTY_SEP, beautySeparateLineInvoices ? 'true' : 'false');
+            } catch {
+                // no-op
+            }
+            return;
+        }
         void (async () => {
             try {
                 const cfg: any = await safeInvoke('get_app_config');
@@ -167,13 +217,15 @@ export function SmartScheduler() {
                     config: {
                         ...cfg,
                         beauty_slot_interval_min: slotIntervalMin,
+                        beauty_queue_mode: beautyQueueMode,
+                        beauty_queue_separate_sale_per_line: beautySeparateLineInvoices,
                     },
                 });
             } catch {
-                // no-op in browser mode
+                // no-op
             }
         })();
-    }, [slotIntervalMin]);
+    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices]);
 
     useEffect(() => {
         if (view === 'week') {
@@ -204,14 +256,40 @@ export function SmartScheduler() {
     }, [showNewPage]);
 
     const visibleAppointments = useMemo(() => {
+        const base = appointments.filter(beautyAptVisibleOnSchedule);
         const q = searchTerm.trim().toLowerCase();
-        if (!q) return appointments;
-        return appointments.filter(a =>
+        if (!q) return base;
+        return base.filter(a =>
             (a.customer_name ?? '').toLowerCase().includes(q) ||
             (a.service_name ?? '').toLowerCase().includes(q) ||
             (a.specialist_name ?? a.staff_name ?? '').toLowerCase().includes(q)
         );
     }, [appointments, searchTerm]);
+
+    const applyBeautyResourceDrop = useCallback(
+        async (
+            appointmentIds: string[],
+            kind: 'device' | 'staff',
+            targetColumnId: string,
+            targetDateYmd?: string,
+        ) => {
+            const uniq = [...new Set(appointmentIds.map(String).filter(Boolean))];
+            const tasks: Promise<void>[] = [];
+            for (const id of uniq) {
+                const apt = visibleAppointments.find(a => a.id === id);
+                if (!apt) continue;
+                const patch = buildBeautyResourceMovePatch(apt, kind, targetColumnId, targetDateYmd);
+                if (patch) tasks.push(updateAppointment(id, patch));
+            }
+            if (!tasks.length) return;
+            try {
+                await Promise.all(tasks);
+            } catch (e: unknown) {
+                logger.crudError('SmartScheduler', 'applyBeautyResourceDrop', e);
+            }
+        },
+        [updateAppointment, visibleAppointments],
+    );
 
     /** Personel ve cihaz aynı anda (sihirbaz) veya tek sütun (takvim) ile doldurulabilir */
     type NewAptPrefill = { staffId?: string; deviceId?: string; serviceId?: string };
@@ -257,12 +335,6 @@ export function SmartScheduler() {
     }, []);
 
     const openExistingAptInPos = (apt: BeautyAppointment) => {
-        const isPaidDone = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
-        if (isPaidDone) {
-            setPaidInfoApt(apt);
-            setSelectedApt(null);
-            return;
-        }
         setPrefillTime((apt.appointment_time ?? apt.time ?? '09:00').slice(0, 5));
         setNewPrefillDate(beautyAppointmentDateKey(apt) || null);
         setPrefillStaffId(undefined);
@@ -271,6 +343,20 @@ export function SmartScheduler() {
         setEditingApt(apt);
         setSelectedApt(null);
         setShowNewPage(true);
+    };
+
+    const isBeautyAppointmentDone = (apt: BeautyAppointment) =>
+        apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+
+    /** Tamamlanan: sağ detay paneli; diğerleri: POS tam ekran */
+    const handleAppointmentPrimaryClick = (apt: BeautyAppointment) => {
+        if (isBeautyAppointmentDone(apt)) setSelectedApt(apt);
+        else openExistingAptInPos(apt);
+    };
+
+    const openAppointmentDetailPanel = (apt: BeautyAppointment, e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setSelectedApt(apt);
     };
 
     const handlePrevious = () => {
@@ -295,93 +381,77 @@ export function SmartScheduler() {
     const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
         await updateAppointmentStatus(apt.id, newStatus);
         if (newStatus === AppointmentStatus.COMPLETED) {
-            setFeedbackApt({ ...apt, status: newStatus });
-            setFeedbackRatings({ service: 5, staff: 5, overall: 5 });
-            setFeedbackComment('');
+            setSelectedApt({ ...apt, status: newStatus });
+        } else {
+            setSelectedApt(null);
         }
+    };
+
+    const openSurveyFromDetailPanel = () => {
+        if (!selectedApt) return;
+        const cid = selectedApt.customer_id ?? selectedApt.client_id;
+        if (!cid) return;
+        setFeedbackApt(selectedApt);
         setSelectedApt(null);
     };
 
-    const handleFeedbackSubmit = async () => {
-        if (!feedbackApt) return;
-        setFeedbackSaving(true);
+    const saveTreatmentFieldsFromPanel = async () => {
+        if (!selectedApt) return;
+        setTreatmentFieldsSaving(true);
         try {
-            let payload: Parameters<typeof beautyService.addFeedback>[0];
-            if (activeSurvey && surveyQuestions.length > 0) {
-                const answers: BeautySurveyAnswer[] = [];
-                for (const q of surveyQuestions) {
-                    const v = dynAnswers[q.id];
-                    const label_snapshot = questionLabel(q, language);
-                    if (q.question_type === 'rating') {
-                        const rating = typeof v === 'number' ? v : Math.min(5, q.scale_max || 5);
-                        answers.push({ question_id: q.id, rating, label_snapshot });
-                    } else if (q.question_type === 'text') {
-                        answers.push({
-                            question_id: q.id,
-                            text: typeof v === 'string' ? v : '',
-                            label_snapshot,
-                        });
-                    } else {
-                        answers.push({
-                            question_id: q.id,
-                            yes_no: typeof v === 'boolean' ? v : true,
-                            label_snapshot,
-                        });
-                    }
-                }
-                const ratingVals = surveyQuestions
-                    .filter(q => q.question_type === 'rating')
-                    .map(q => dynAnswers[q.id] as number)
-                    .filter(v => typeof v === 'number');
-                const avg = ratingVals.length
-                    ? Math.round(ratingVals.reduce((a, b) => a + b, 0) / ratingVals.length)
-                    : 5;
-                const r1 = ratingVals[0] ?? avg;
-                const r2 = ratingVals[1] ?? avg;
-                const r3 = ratingVals[2] ?? avg;
-                payload = {
-                    appointment_id: feedbackApt.id,
-                    customer_id: feedbackApt.customer_id ?? feedbackApt.client_id,
-                    service_rating: r1,
-                    staff_rating: r2,
-                    cleanliness_rating: r3,
-                    overall_rating: avg,
-                    comment: feedbackComment || null,
-                    would_recommend: avg >= 4,
-                    survey_id: activeSurvey.id,
-                    survey_answers: answers,
-                };
-            } else {
-                payload = {
-                    appointment_id: feedbackApt.id,
-                    customer_id: feedbackApt.customer_id ?? feedbackApt.client_id,
-                    service_rating: feedbackRatings.service,
-                    staff_rating: feedbackRatings.staff,
-                    cleanliness_rating: 5,
-                    overall_rating: feedbackRatings.overall,
-                    comment: feedbackComment || null,
-                    would_recommend: feedbackRatings.overall >= 4,
-                };
-            }
-            await beautyService.addFeedback(payload);
-        } catch (e) { logger.crudError('SmartScheduler', 'saveFeedback', e); }
-        finally {
-            setFeedbackSaving(false);
-            setFeedbackApt(null);
+            await updateAppointment(selectedApt.id, {
+                treatment_degree: treatmentDegreeDraft.trim() || null,
+                treatment_shots: treatmentShotsDraft.trim() || null,
+            });
+        } catch (e: unknown) {
+            logger.crudError('SmartScheduler', 'saveTreatmentFields', e);
+        } finally {
+            setTreatmentFieldsSaving(false);
         }
     };
+
+    const openRevertConfirmModal = () => {
+        if (!selectedApt) return;
+        const done =
+            selectedApt.status === AppointmentStatus.COMPLETED || selectedApt.status === 'completed';
+        if (!done) return;
+        setRevertModalApt(selectedApt);
+    };
+
+    const closeRevertModal = () => {
+        if (revertSaving) return;
+        setRevertModalApt(null);
+    };
+
+    const executeRevertCompletion = async () => {
+        if (!revertModalApt) return;
+        const apt = revertModalApt;
+        setRevertSaving(true);
+        try {
+            await updateAppointmentStatus(apt.id, AppointmentStatus.IN_PROGRESS);
+            setSelectedApt(prev => (prev?.id === apt.id ? null : prev));
+            setRevertModalApt(null);
+        } catch (e: unknown) {
+            logger.crudError('SmartScheduler', 'revertCompletion', e);
+        } finally {
+            setRevertSaving(false);
+        }
+    };
+
+    /** Sıra modunda görünüm her zaman 15 dk adım (işlemler aynı hizada) */
+    const schedulerSlotMin = beautyQueueMode ? 15 : slotIntervalMin;
 
     const timeSlots = useMemo(() => {
         const startMin = 9 * 60;
         const endMin = 21 * 60;
         const slots: string[] = [];
-        for (let m = startMin; m <= endMin; m += slotIntervalMin) {
+        for (let m = startMin; m <= endMin; m += schedulerSlotMin) {
             const hh = Math.floor(m / 60).toString().padStart(2, '0');
             const mm = (m % 60).toString().padStart(2, '0');
             slots.push(`${hh}:${mm}`);
         }
         return slots;
-    }, [slotIntervalMin]);
+    }, [schedulerSlotMin]);
 
     const slotBucket = useCallback((raw: string, interval: number): string => {
         const s = String(raw ?? '').trim();
@@ -416,6 +486,40 @@ export function SmartScheduler() {
         return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     }, [view, currentDate]);
 
+    const saveAppointmentPriceFromCard = useCallback(async () => {
+        if (!isAdmin()) return;
+        if (!priceEditApt) return;
+        const oldPrice = Number(priceEditApt.total_price ?? 0);
+        const raw = String(priceEditDraft).replace(/\s/g, '').replace(',', '.');
+        const newPrice = Math.max(0, Number(raw) || 0);
+        if (Number.isNaN(newPrice)) return;
+        if (newPrice === oldPrice) {
+            setPriceEditApt(null);
+            return;
+        }
+        setPriceEditSaving(true);
+        try {
+            await updateAppointment(priceEditApt.id, { total_price: newPrice });
+            logger.info('SmartScheduler', 'beauty_appointment_price_update', {
+                action: 'appointment_total_price_change',
+                appointmentId: priceEditApt.id,
+                oldTotalPrice: oldPrice,
+                newTotalPrice: newPrice,
+                customerName: priceEditApt.customer_name,
+                serviceName: priceEditApt.service_name,
+                appointmentDate: beautyAppointmentDateKey(priceEditApt),
+            });
+            setSelectedApt(prev =>
+                prev && prev.id === priceEditApt.id ? { ...prev, total_price: newPrice } : prev
+            );
+            setPriceEditApt(null);
+        } catch (e: unknown) {
+            logger.crudError('SmartScheduler', 'updateAppointmentPrice', e, { id: priceEditApt.id });
+        } finally {
+            setPriceEditSaving(false);
+        }
+    }, [isAdmin, priceEditApt, priceEditDraft, updateAppointment]);
+
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
@@ -423,7 +527,7 @@ export function SmartScheduler() {
         return (
             <div
                 key={apt.id}
-                onClick={() => openExistingAptInPos(apt)}
+                onClick={() => handleAppointmentPrimaryClick(apt)}
                 style={{
                     background: done ? cfg.bg : '#fff',
                     border: `1px solid ${done ? cfg.color + '55' : '#e8e4f0'}`,
@@ -436,15 +540,99 @@ export function SmartScheduler() {
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>{apt.customer_name ?? '—'}</p>
-                    <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
+                    {!beautyQueueMode && (
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
+                    )}
                 </div>
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{apt.service_name ?? '—'}</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#9ca3af' }}>
-                        <User size={10} />
-                        <span style={{ fontSize: 10, fontWeight: 600 }}>{apt.specialist_name ?? apt.staff_name ?? '—'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#9ca3af', minWidth: 0, flex: 1 }}>
+                            <User size={10} style={{ flexShrink: 0 }} />
+                            <span style={{ fontSize: 10, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.specialist_name ?? apt.staff_name ?? '—'}</span>
+                        </div>
+                        {isAdmin() ? (
+                        <button
+                            type="button"
+                            title={tm('bAppointmentEditPriceTitleBtn')}
+                            aria-label={tm('bAppointmentEditPriceTitleBtn')}
+                            onClick={e => {
+                                e.stopPropagation();
+                                setPriceEditApt(apt);
+                                setPriceEditDraft(String(Number(apt.total_price ?? 0)));
+                            }}
+                            style={{
+                                flexShrink: 0,
+                                width: 26,
+                                height: 26,
+                                borderRadius: 6,
+                                border: '1px solid #e8e4f0',
+                                background: '#faf9fd',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: '#7c3aed',
+                            }}
+                        >
+                            <Banknote size={12} strokeWidth={2.25} />
+                        </button>
+                        ) : null}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: cfg.bg, color: cfg.color, flexShrink: 0 }}>{cfg.label}</span>
+                </div>
+                <div
+                    style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 6,
+                        marginTop: 8,
+                        paddingTop: 8,
+                        borderTop: '1px solid rgba(15, 23, 42, 0.06)',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        onClick={e => openAppointmentDetailPanel(apt, e)}
+                        style={{
+                            border: 'none',
+                            background: 'transparent',
+                            padding: 0,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: '#4f46e5',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                            textUnderlineOffset: 2,
+                        }}
+                    >
+                        {tm('bCardDetailView')}
+                    </button>
+                    {done ? (
+                        <button
+                            type="button"
+                            onClick={e => {
+                                e.stopPropagation();
+                                openExistingAptInPos(apt);
+                            }}
+                            style={{
+                                border: 'none',
+                                background: 'transparent',
+                                padding: 0,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                color: '#6b7280',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                                textUnderlineOffset: 2,
+                            }}
+                        >
+                            {tm('bCardOpenInPos')}
+                        </button>
+                    ) : null}
                 </div>
             </div>
         );
@@ -592,14 +780,74 @@ export function SmartScheduler() {
                         <select
                             value={slotIntervalMin}
                             onChange={e => setSlotIntervalMin(Number(e.target.value))}
-                            title={tm('bSchedulerSlotIntervalTitle')}
-                            style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 11, fontWeight: 700, color: '#6b7280', cursor: 'pointer' }}
+                            disabled={beautyQueueMode}
+                            title={beautyQueueMode ? tm('bBeautyQueueSlotLockedTitle') : tm('bSchedulerSlotIntervalTitle')}
+                            style={{
+                                border: 'none',
+                                background: 'transparent',
+                                outline: 'none',
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: beautyQueueMode ? '#d1d5db' : '#6b7280',
+                                cursor: beautyQueueMode ? 'not-allowed' : 'pointer',
+                                opacity: beautyQueueMode ? 0.85 : 1,
+                            }}
                         >
                             {SLOT_INTERVAL_OPTIONS.map(min => (
                                 <option key={min} value={min}>{tm('bSchedulerMinutesAbbr').replace('{n}', String(min))}</option>
                             ))}
                         </select>
                     </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={beautyQueueMode}
+                        title={tm('bBeautyQueueModeTitle')}
+                        onClick={() => setBeautyQueueMode(v => !v)}
+                        style={{
+                            padding: '5px 10px',
+                            borderRadius: 5,
+                            border: '1px solid #e5e7eb',
+                            background: beautyQueueMode ? '#fff' : '#f3f4f6',
+                            color: beautyQueueMode ? '#7c3aed' : '#6b7280',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: beautyQueueMode ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.1s',
+                            userSelect: 'none',
+                            maxWidth: 160,
+                            lineHeight: 1.25,
+                            textAlign: 'left',
+                        }}
+                    >
+                        {tm('bBeautyQueueMode')}
+                    </button>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={beautySeparateLineInvoices}
+                        title={tm('bBeautyQueueSeparateLineInvoicesTitle')}
+                        onClick={() => setBeautySeparateLineInvoices(v => !v)}
+                        style={{
+                            padding: '5px 10px',
+                            borderRadius: 5,
+                            border: '1px solid #e5e7eb',
+                            background: beautySeparateLineInvoices ? '#fff' : '#f3f4f6',
+                            color: beautySeparateLineInvoices ? '#7c3aed' : '#6b7280',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: beautySeparateLineInvoices ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.1s',
+                            userSelect: 'none',
+                            maxWidth: 200,
+                            lineHeight: 1.25,
+                            textAlign: 'left',
+                        }}
+                    >
+                        {tm('bBeautyQueueSeparateLineInvoices')}
+                    </button>
                     <div style={{ position: 'relative' }}>
                         <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                         <input
@@ -682,6 +930,8 @@ export function SmartScheduler() {
                             <DaySchedulerGrid
                                 currentDate={currentDate}
                                 appointments={visibleAppointments}
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
                                 renderAppointment={renderAptCard}
                                 onEmptySlotClick={(timeHHmm, dateYmd) => {
                                     if (dateYmd) {
@@ -699,10 +949,17 @@ export function SmartScheduler() {
                                 specialists={specialists}
                                 devices={devices}
                                 mode={groupMode}
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
                                 unassignedLabel={tm('bUnassignedResource')}
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
                                 timeColumnLabel={tm('bSchedulerTimeColumn')}
                                 renderAppointment={renderAptCard}
+                                resourceDragKind={groupMode}
+                                dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                onResourceColumnDrop={(ids, colId) => {
+                                    void applyBeautyResourceDrop(ids, groupMode, colId);
+                                }}
                                 onEmptySlotClick={(timeHHmm, dateYmd, resourceColumnId) => {
                                     if (dateYmd) {
                                         const [y, mo, day] = dateYmd.split('-').map(Number);
@@ -720,8 +977,10 @@ export function SmartScheduler() {
                                 currentDate={currentDate}
                                 timeSlots={timeSlots}
                                 workWeekOnly
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
                                 appointmentsOverride={visibleAppointments}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
                                 onNewAppointment={(t, d) => {
                                     if (d) {
                                         const [y, mo, day] = d.split('-').map(Number);
@@ -739,14 +998,29 @@ export function SmartScheduler() {
                                 devices={devices}
                                 mode={groupMode}
                                 workWeekOnly
+                                queueMode={beautyQueueMode}
                                 unassignedLabel={tm('bUnassignedResource')}
                                 resourceColumnLabel={tm('bSchedulerResourceColumn')}
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                resourceDragKind={groupMode}
+                                dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                onResourceCellDrop={(ids, colId, dateYmd) => {
+                                    void applyBeautyResourceDrop(ids, groupMode, colId, dateYmd);
+                                }}
                                 onCellNew={(dateYmd, resourceColumnId) => {
                                     const [y, mo, day] = dateYmd.split('-').map(Number);
                                     setCurrentDate(new Date(y, mo - 1, day));
-                                    openNewApt(undefined, dateYmd, groupMode === 'staff'
+                                    const t = beautyQueueMode
+                                        ? suggestQueuePrefillTime(visibleAppointments, dateYmd, {
+                                            resource:
+                                                groupMode === 'staff'
+                                                    ? { kind: 'staff', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) }
+                                                    : { kind: 'device', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) },
+                                            snapMinutes: schedulerSlotMin,
+                                        })
+                                        : undefined;
+                                    openNewApt(t, dateYmd, groupMode === 'staff'
                                         ? { staffId: resourceColumnId }
                                         : { deviceId: resourceColumnId });
                                 }}
@@ -757,8 +1031,10 @@ export function SmartScheduler() {
                             <WeekView
                                 currentDate={currentDate}
                                 timeSlots={timeSlots}
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
                                 appointmentsOverride={visibleAppointments}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
                                 onNewAppointment={(t, d) => {
                                     if (d) {
                                         const [y, mo, day] = d.split('-').map(Number);
@@ -776,14 +1052,29 @@ export function SmartScheduler() {
                                 devices={devices}
                                 mode={groupMode}
                                 workWeekOnly={false}
+                                queueMode={beautyQueueMode}
                                 unassignedLabel={tm('bUnassignedResource')}
                                 resourceColumnLabel={tm('bSchedulerResourceColumn')}
                                 emptyResourcesMessage={tm('bNoResourcesForGroup')}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                resourceDragKind={groupMode}
+                                dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                onResourceCellDrop={(ids, colId, dateYmd) => {
+                                    void applyBeautyResourceDrop(ids, groupMode, colId, dateYmd);
+                                }}
                                 onCellNew={(dateYmd, resourceColumnId) => {
                                     const [y, mo, day] = dateYmd.split('-').map(Number);
                                     setCurrentDate(new Date(y, mo - 1, day));
-                                    openNewApt(undefined, dateYmd, groupMode === 'staff'
+                                    const t = beautyQueueMode
+                                        ? suggestQueuePrefillTime(visibleAppointments, dateYmd, {
+                                            resource:
+                                                groupMode === 'staff'
+                                                    ? { kind: 'staff', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) }
+                                                    : { kind: 'device', id: resourceColumnId === '__unassigned__' ? null : String(resourceColumnId) },
+                                            snapMinutes: schedulerSlotMin,
+                                        })
+                                        : undefined;
+                                    openNewApt(t, dateYmd, groupMode === 'staff'
                                         ? { staffId: resourceColumnId }
                                         : { deviceId: resourceColumnId });
                                 }}
@@ -793,7 +1084,7 @@ export function SmartScheduler() {
                             <MonthView
                                 currentDate={currentDate}
                                 appointmentsOverride={visibleAppointments}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
                                 onDayNavigate={day => { setCurrentDate(day); setView('day'); }}
                                 onNewAppointment={(_t, d) => { if (d) openNewApt(undefined, d); }}
                             />
@@ -802,7 +1093,7 @@ export function SmartScheduler() {
                             <AgendaView
                                 currentDate={currentDate}
                                 appointmentsOverride={visibleAppointments}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
                                 onDayNavigate={day => { setCurrentDate(day); setView('day'); }}
                             />
                         )}
@@ -810,8 +1101,15 @@ export function SmartScheduler() {
                             <StaffTimelineView
                                 currentDate={currentDate}
                                 timeSlots={timeSlots}
+                                queueMode={beautyQueueMode}
+                                queueSnapMinutes={schedulerSlotMin}
                                 appointmentsOverride={visibleAppointments}
-                                onAppointmentClick={openExistingAptInPos}
+                                onAppointmentClick={handleAppointmentPrimaryClick}
+                                resourceDragKind="staff"
+                                dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                onResourceColumnDrop={(ids, colId) => {
+                                    void applyBeautyResourceDrop(ids, 'staff', colId);
+                                }}
                                 onNewAppointment={(t, d) => {
                                     if (d) {
                                         const [y, mo, day] = d.split('-').map(Number);
@@ -838,6 +1136,7 @@ export function SmartScheduler() {
                                             ? !a.device_id
                                             : String(a.device_id ?? '') === String(device.id))
                                     );
+                                    const devQueueRows = beautyQueueMode ? groupBeautyQueueByCustomer(devApts).length : devApts.length;
                                     return (
                                         <div key={device.id} style={{ flexShrink: 0, width: 260, background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                             <div style={{ padding: '10px 14px', borderBottom: '1px solid #e8e4f0', background: '#f5f3ff', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -847,14 +1146,46 @@ export function SmartScheduler() {
                                                 <div>
                                                     <p style={{ fontSize: 12, fontWeight: 800, color: '#111827' }}>{device.name}</p>
                                                     <p style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>
-                                                        {tm('bDeviceColumnAppointmentCount').replace('{n}', String(devApts.length))}
+                                                        {tm('bDeviceColumnAppointmentCount').replace('{n}', String(devQueueRows))}
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div style={{ flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
-                                                {(() => {
+                                            <div
+                                                style={{ flex: 1, overflowY: 'auto' }}
+                                                className="custom-scrollbar"
+                                                {...beautySchedulerResourceColumnDropHandlers({
+                                                    acceptKind: 'device',
+                                                    targetColumnId: String(device.id),
+                                                    onDrop: ids => {
+                                                        void applyBeautyResourceDrop(ids, 'device', String(device.id));
+                                                    },
+                                                })}
+                                            >
+                                                {beautyQueueMode ? (
+                                                    <QueueModeResourceList
+                                                        appointments={devApts}
+                                                        accent="#7c3aed"
+                                                        useStatusTint
+                                                        resourceDragKind="device"
+                                                        dragResourceTitle={tm('bBeautyDragToResourceColumnTitle')}
+                                                        onAppointmentClick={handleAppointmentPrimaryClick}
+                                                        onAddClick={() => {
+                                                            const dayYmd = formatLocalYmd(currentDate);
+                                                            const t = suggestQueuePrefillTime(visibleAppointments, dayYmd, {
+                                                                resource: {
+                                                                    kind: 'device',
+                                                                    id: device.id === '__unassigned__' ? null : String(device.id),
+                                                                },
+                                                                snapMinutes: schedulerSlotMin,
+                                                            });
+                                                            openNewApt(t, dayYmd, {
+                                                                deviceId: device.id === '__unassigned__' ? undefined : String(device.id),
+                                                            });
+                                                        }}
+                                                    />
+                                                ) : (() => {
                                                     const SLOT_H = 52;
-                                                    const spanPlacements = buildBeautySpanPlacements(devApts, timeSlots, slotIntervalMin, slotBucket);
+                                                    const spanPlacements = buildBeautySpanPlacements(devApts, timeSlots, schedulerSlotMin, slotBucket);
                                                     return (
                                                         <div style={{ display: 'flex', minHeight: timeSlots.length * SLOT_H }}>
                                                             <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6' }}>
@@ -881,6 +1212,13 @@ export function SmartScheduler() {
                                                                     gridTemplateRows: `repeat(${timeSlots.length}, minmax(${SLOT_H}px, auto))`,
                                                                     alignContent: 'start',
                                                                 }}
+                                                                {...beautySchedulerResourceColumnDropHandlers({
+                                                                    acceptKind: 'device',
+                                                                    targetColumnId: String(device.id),
+                                                                    onDrop: ids => {
+                                                                        void applyBeautyResourceDrop(ids, 'device', String(device.id));
+                                                                    },
+                                                                })}
                                                             >
                                                                 {timeSlots.map((time, i) => {
                                                                     const p = spanPlacements.find(pl => pl.startIdx === i);
@@ -896,7 +1234,17 @@ export function SmartScheduler() {
                                                                                 }}
                                                                             >
                                                                                 <div
-                                                                                    onClick={() => openExistingAptInPos(p.apt)}
+                                                                                    {...beautySchedulerResourceColumnDropHandlers({
+                                                                                        acceptKind: 'device',
+                                                                                        targetColumnId: String(device.id),
+                                                                                        onDrop: ids => {
+                                                                                            void applyBeautyResourceDrop(ids, 'device', String(device.id));
+                                                                                        },
+                                                                                    })}
+                                                                                    draggable
+                                                                                    title={tm('bBeautyDragToResourceColumnTitle')}
+                                                                                    onDragStart={beautySchedulerResourceDragStartHandler('device', [p.apt.id])}
+                                                                                    onClick={() => handleAppointmentPrimaryClick(p.apt)}
                                                                                     style={{
                                                                                         height: '100%',
                                                                                         minHeight: p.span * SLOT_H - 8,
@@ -910,7 +1258,7 @@ export function SmartScheduler() {
                                                                                             ? (STATUS_CFG.completed?.color ?? '#059669')
                                                                                             : (p.apt.service_color ?? '#7c3aed')}`,
                                                                                         fontSize: 11,
-                                                                                        cursor: 'pointer',
+                                                                                        cursor: 'grab',
                                                                                         display: 'flex',
                                                                                         flexDirection: 'column',
                                                                                         justifyContent: 'flex-start',
@@ -918,7 +1266,57 @@ export function SmartScheduler() {
                                                                                     }}
                                                                                 >
                                                                                     <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>{p.apt.customer_name ?? '—'}</p>
-                                                                                    <p style={{ color: '#6b7280', margin: 0, flex: 1 }}>{p.apt.service_name ?? '—'}</p>
+                                                                                    <p style={{ color: '#6b7280', margin: 0, flex: 1, minHeight: 0 }}>{p.apt.service_name ?? '—'}</p>
+                                                                                    <div
+                                                                                        style={{
+                                                                                            display: 'flex',
+                                                                                            flexWrap: 'wrap',
+                                                                                            justifyContent: 'space-between',
+                                                                                            gap: 4,
+                                                                                            marginTop: 'auto',
+                                                                                            paddingTop: 4,
+                                                                                            borderTop: '1px solid rgba(15,23,42,0.08)',
+                                                                                        }}
+                                                                                        onClick={e => e.stopPropagation()}
+                                                                                    >
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={e => openAppointmentDetailPanel(p.apt, e)}
+                                                                                            style={{
+                                                                                                border: 'none',
+                                                                                                background: 'transparent',
+                                                                                                padding: 0,
+                                                                                                fontSize: 9,
+                                                                                                fontWeight: 700,
+                                                                                                color: '#4f46e5',
+                                                                                                cursor: 'pointer',
+                                                                                                textDecoration: 'underline',
+                                                                                            }}
+                                                                                        >
+                                                                                            {tm('bCardDetailView')}
+                                                                                        </button>
+                                                                                        {(p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed') ? (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={e => {
+                                                                                                    e.stopPropagation();
+                                                                                                    openExistingAptInPos(p.apt);
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    border: 'none',
+                                                                                                    background: 'transparent',
+                                                                                                    padding: 0,
+                                                                                                    fontSize: 9,
+                                                                                                    fontWeight: 600,
+                                                                                                    color: '#6b7280',
+                                                                                                    cursor: 'pointer',
+                                                                                                    textDecoration: 'underline',
+                                                                                                }}
+                                                                                            >
+                                                                                                {tm('bCardOpenInPos')}
+                                                                                            </button>
+                                                                                        ) : null}
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
                                                                         );
@@ -972,8 +1370,11 @@ export function SmartScheduler() {
                         {view === 'list' && (
                             <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
                                 {/* Header */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                                    {[tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')].map((h, i) => (
+                                <div style={{ display: 'grid', gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                                    {(beautyQueueMode
+                                        ? [tm('bOrderIndexHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
+                                        : [tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
+                                    ).map((h, i) => (
                                         <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
                                     ))}
                                 </div>
@@ -983,22 +1384,68 @@ export function SmartScheduler() {
                                         <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointments')}</p>
                                     </div>
                                 ) : [...visibleAppointments]
-                                    .sort((a, b) => (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? ''))
-                                    .map(apt => {
+                                    .sort((a, b) =>
+                                        beautyQueueMode
+                                            ? compareBeautyQueueOrder(a, b)
+                                            : (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '')
+                                    )
+                                    .map((apt, rowIdx) => {
                                         const cfg = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+                                        const rowDone = isBeautyAppointmentDone(apt);
                                         return (
                                             <div
                                                 key={apt.id}
-                                                onClick={() => openExistingAptInPos(apt)}
-                                                style={{ display: 'grid', gridTemplateColumns: '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '11px 16px', borderBottom: '1px solid #f3f4f6', alignItems: 'center', cursor: 'pointer', transition: 'background 0.08s' }}
+                                                onClick={() => handleAppointmentPrimaryClick(apt)}
+                                                style={{ display: 'grid', gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '11px 16px', borderBottom: '1px solid #f3f4f6', alignItems: 'center', cursor: 'pointer', transition: 'background 0.08s' }}
                                                 onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
                                                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                             >
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: 'monospace' }}>{(apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}</span>
+                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: beautyQueueMode ? 'inherit' : 'monospace' }}>
+                                                    {beautyQueueMode ? rowIdx + 1 : (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}
+                                                </span>
                                                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
                                                 <div>
                                                     <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
                                                     <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{apt.service_name ?? '—'}</p>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => openAppointmentDetailPanel(apt, e)}
+                                                            style={{
+                                                                border: 'none',
+                                                                background: 'transparent',
+                                                                padding: 0,
+                                                                fontSize: 10,
+                                                                fontWeight: 700,
+                                                                color: '#4f46e5',
+                                                                cursor: 'pointer',
+                                                                textDecoration: 'underline',
+                                                            }}
+                                                        >
+                                                            {tm('bCardDetailView')}
+                                                        </button>
+                                                        {rowDone ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={e => {
+                                                                    e.stopPropagation();
+                                                                    openExistingAptInPos(apt);
+                                                                }}
+                                                                style={{
+                                                                    border: 'none',
+                                                                    background: 'transparent',
+                                                                    padding: 0,
+                                                                    fontSize: 10,
+                                                                    fontWeight: 600,
+                                                                    color: '#6b7280',
+                                                                    cursor: 'pointer',
+                                                                    textDecoration: 'underline',
+                                                                }}
+                                                            >
+                                                                {tm('bCardOpenInPos')}
+                                                            </button>
+                                                        ) : null}
+                                                    </div>
                                                 </div>
                                                 <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{apt.specialist_name ?? '—'}</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#9ca3af' }}>
@@ -1016,72 +1463,6 @@ export function SmartScheduler() {
                 )}
             </div>
 
-            {/* ── ÖDENMİŞ RANDEVU — sağ panel (POS açılmaz) ───────── */}
-            {paidInfoApt && (
-                <div
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
-                    onClick={() => setPaidInfoApt(null)}
-                >
-                    <div
-                        style={{ width: 360, height: '100%', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div style={{ padding: '14px 18px', borderBottom: '1px solid #bbf7d0', background: '#ecfdf5', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                            <CheckCircle2 size={22} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: 13, fontWeight: 800, color: '#065f46', margin: 0 }}>{tm('bBeautyPaidPanelTitle')}</p>
-                                <p style={{ fontSize: 10, fontWeight: 600, color: '#047857', margin: '4px 0 0' }}>{tm('bBeautyPaidPanelSubtitle')}</p>
-                            </div>
-                            <button type="button" onClick={() => setPaidInfoApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }} aria-label="close"><X size={18} /></button>
-                        </div>
-                        <div style={{ padding: '16px 20px', flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
-                            <p style={{ fontSize: 15, fontWeight: 800, color: '#111827', margin: '0 0 4px' }}>{paidInfoApt.customer_name ?? '—'}</p>
-                            <p style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, margin: '0 0 16px' }}>{paidInfoApt.service_name ?? '—'}</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-                                {[
-                                    {
-                                        label: tm('bDate'),
-                                        value: (() => {
-                                            const ymd = beautyAppointmentDateKey(paidInfoApt);
-                                            if (!ymd) return '—';
-                                            const [y, mo, d] = ymd.split('-').map(Number);
-                                            return new Date(y, mo - 1, d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
-                                        })(),
-                                    },
-                                    { label: tm('bTimeHeader'), value: (paidInfoApt.appointment_time ?? paidInfoApt.time ?? '—').toString().slice(0, 5) },
-                                    { label: tm('bSpecialist'), value: paidInfoApt.specialist_name ?? paidInfoApt.staff_name ?? '—' },
-                                    { label: tm('bDuration'), value: `${paidInfoApt.duration ?? 30}${tm('bDkSuffix')}` },
-                                    {
-                                        label: tm('bDeviceView'),
-                                        value: paidInfoApt.device_id
-                                            ? (devices.find(d => String(d.id) === String(paidInfoApt.device_id))?.name ?? '—')
-                                            : '—',
-                                    },
-                                    {
-                                        label: tm('bPriceHeader'),
-                                        value: (paidInfoApt.total_price ?? 0) > 0 ? formatMoneyAmount(paidInfoApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—',
-                                    },
-                                ].map(({ label, value }) => (
-                                    <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
-                                        <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
-                                        <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
-                                    </div>
-                                ))}
-                            </div>
-                            {paidInfoApt.notes && (
-                                <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 14 }}>
-                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{tm('bNotes')}</p>
-                                    <p style={{ fontSize: 12, color: '#374151' }}>{paidInfoApt.notes}</p>
-                                </div>
-                            )}
-                            <p style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.45, margin: 0, padding: '10px 12px', background: '#f9fafb', borderRadius: 6, border: '1px solid #e5e7eb' }}>
-                                {tm('bBeautyPaidNoNewSale')}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* ── APPOINTMENT DETAIL PANEL ─────────────────────────── */}
             {selectedApt && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
@@ -1098,7 +1479,70 @@ export function SmartScheduler() {
                             </div>
                             <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>
-                        <div style={{ padding: 20, flex: 1, overflowY: 'auto' }} className="custom-scrollbar">
+                        <div
+                            style={{ padding: 20, flex: 1, minHeight: 0, overflowY: 'auto' }}
+                            className="custom-scrollbar"
+                        >
+                            <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelOperationDetails')}</p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+                                {(() => {
+                                    const dk = beautyAppointmentDateKey(selectedApt);
+                                    let dateShown = '—';
+                                    if (dk) {
+                                        try {
+                                            dateShown = new Date(`${dk}T12:00:00`).toLocaleDateString('tr-TR', {
+                                                weekday: 'short',
+                                                day: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric',
+                                            });
+                                        } catch {
+                                            dateShown = dk;
+                                        }
+                                    }
+                                    const st = STATUS_CFG[String(selectedApt.status)]?.label ?? String(selectedApt.status ?? '');
+                                    const created =
+                                        selectedApt.created_at &&
+                                        (() => {
+                                            try {
+                                                return new Date(selectedApt.created_at!).toLocaleString('tr-TR', {
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                });
+                                            } catch {
+                                                return selectedApt.created_at;
+                                            }
+                                        })();
+                                    return (
+                                        <>
+                                            {[
+                                                { label: tm('bPanelAppointmentDate'), value: dateShown },
+                                                {
+                                                    label: tm('bPanelAppointmentTime'),
+                                                    value: (selectedApt.appointment_time ?? selectedApt.time ?? '—').slice(0, 5),
+                                                },
+                                                { label: tm('bPanelAppointmentStatus'), value: st || '—' },
+                                                {
+                                                    label: tm('bPanelAppointmentId'),
+                                                    value: (
+                                                        <span style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                                                            {selectedApt.id}
+                                                        </span>
+                                                    ),
+                                                },
+                                                ...(created ? [{ label: tm('createdAt'), value: created }] : []),
+                                            ].map(({ label, value }) => (
+                                                <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
+                                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
+                                                    <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</div>
+                                                </div>
+                                            ))}
+                                        </>
+                                    );
+                                })()}
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
                                 {[
                                     { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
@@ -1111,6 +1555,72 @@ export function SmartScheduler() {
                                         <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
                                     </div>
                                 ))}
+                            </div>
+                            <div style={{ marginBottom: 18 }}>
+                                <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelTreatmentFieldsTitle')}</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div>
+                                        <label htmlFor="beauty-panel-treatment-degree" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentDegree')}</label>
+                                        <input
+                                            id="beauty-panel-treatment-degree"
+                                            type="text"
+                                            value={treatmentDegreeDraft}
+                                            onChange={e => setTreatmentDegreeDraft(e.target.value)}
+                                            autoComplete="off"
+                                            style={{
+                                                width: '100%',
+                                                boxSizing: 'border-box',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: 6,
+                                                padding: '8px 10px',
+                                                fontSize: 13,
+                                                fontWeight: 600,
+                                                color: '#111827',
+                                                outline: 'none',
+                                            }}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="beauty-panel-treatment-shots" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentShots')}</label>
+                                        <input
+                                            id="beauty-panel-treatment-shots"
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={treatmentShotsDraft}
+                                            onChange={e => setTreatmentShotsDraft(e.target.value)}
+                                            autoComplete="off"
+                                            style={{
+                                                width: '100%',
+                                                boxSizing: 'border-box',
+                                                border: '1px solid #e5e7eb',
+                                                borderRadius: 6,
+                                                padding: '8px 10px',
+                                                fontSize: 13,
+                                                fontWeight: 600,
+                                                color: '#111827',
+                                                outline: 'none',
+                                            }}
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => void saveTreatmentFieldsFromPanel()}
+                                        disabled={treatmentFieldsSaving}
+                                        style={{
+                                            width: '100%',
+                                            height: 36,
+                                            borderRadius: 8,
+                                            border: '1px solid #c4b5fd',
+                                            background: '#f5f3ff',
+                                            color: '#5b21b6',
+                                            fontSize: 12,
+                                            fontWeight: 800,
+                                            cursor: treatmentFieldsSaving ? 'wait' : 'pointer',
+                                        }}
+                                    >
+                                        {treatmentFieldsSaving ? tm('bSaving') : tm('save')}
+                                    </button>
+                                </div>
                             </div>
                             {selectedApt.notes && (
                                 <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
@@ -1150,189 +1660,174 @@ export function SmartScheduler() {
                                     })}
                                 </div>
                             </div>
+                            {!isBeautyAppointmentDone(selectedApt) ? (
+                                <div style={{ marginBottom: 4 }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => openExistingAptInPos(selectedApt)}
+                                        style={{
+                                            width: '100%',
+                                            height: 40,
+                                            borderRadius: 8,
+                                            border: '1px solid #a5b4fc',
+                                            background: '#eef2ff',
+                                            color: '#312e81',
+                                            fontSize: 13,
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {tm('bCardDetailView')}
+                                    </button>
+                                </div>
+                            ) : null}
                         </div>
+                        {(() => {
+                            const done =
+                                selectedApt.status === AppointmentStatus.COMPLETED || selectedApt.status === 'completed';
+                            if (!done) return null;
+                            const hasCustomer = !!(selectedApt.customer_id ?? selectedApt.client_id);
+                            return (
+                                <div
+                                    style={{
+                                        padding: '14px 20px 18px',
+                                        borderTop: '1px solid #e5e7eb',
+                                        background: '#fafafa',
+                                        flexShrink: 0,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: 10,
+                                    }}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => openExistingAptInPos(selectedApt)}
+                                        style={{
+                                            width: '100%',
+                                            height: 40,
+                                            borderRadius: 8,
+                                            border: '1px solid #a5b4fc',
+                                            background: '#eef2ff',
+                                            color: '#312e81',
+                                            fontSize: 13,
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {tm('bCardDetailView')}
+                                    </button>
+                                    <p style={{ fontSize: 10, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>{tm('bPanelRevertCompletionHint')}</p>
+                                    <button
+                                        type="button"
+                                        onClick={openSurveyFromDetailPanel}
+                                        disabled={!hasCustomer}
+                                        title={!hasCustomer ? tm('bPanelSurveyNeedCustomer') : undefined}
+                                        style={{
+                                            width: '100%',
+                                            height: 40,
+                                            borderRadius: 8,
+                                            border: 'none',
+                                            background: !hasCustomer ? '#d1d5db' : '#059669',
+                                            color: '#fff',
+                                            fontSize: 13,
+                                            fontWeight: 800,
+                                            cursor: !hasCustomer ? 'not-allowed' : 'pointer',
+                                        }}
+                                    >
+                                        {tm('bPanelRunSurvey')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={openRevertConfirmModal}
+                                        style={{
+                                            width: '100%',
+                                            height: 40,
+                                            borderRadius: 8,
+                                            border: '1px solid #fecaca',
+                                            background: '#fff',
+                                            color: '#b91c1c',
+                                            fontSize: 13,
+                                            fontWeight: 700,
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {tm('bPanelRevertCompletion')}
+                                    </button>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
 
-            {/* ── FEEDBACK MODAL (after completion) ───────────────────── */}
-            {feedbackApt && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-                    <div style={{
-                        background: '#fff',
-                        borderRadius: 14,
-                        width: '100%',
-                        maxWidth: activeSurvey && surveyQuestions.length ? 520 : 400,
-                        maxHeight: '90vh',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-                    }}>
-                        <div style={{ padding: '16px 20px', background: '#f0fdf4', borderBottom: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <CheckCircle2 size={20} color="#059669" />
-                            <div>
-                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{tm('bAppointmentCompletedTitle')}</p>
-                                <p style={{ fontSize: 11, color: '#6b7280' }}>{feedbackApt.customer_name} — {feedbackApt.service_name}</p>
-                            </div>
-                        </div>
-                        <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
-                            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
-                                {activeSurvey && surveyQuestions.length ? tm('bSurveyFillDynamic') : tm('bFeedbackOptional')}
-                            </p>
-                            {activeSurvey && surveyQuestions.length > 0
-                                ? surveyQuestions.map(q => {
-                                    const label = questionLabel(q, language);
-                                    if (q.question_type === 'rating') {
-                                        const max = Math.min(10, Math.max(2, q.scale_max || 5));
-                                        const cur = (dynAnswers[q.id] as number) ?? max;
-                                        return (
-                                            <div key={q.id} style={{ marginBottom: 12 }}>
-                                                <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                                    {Array.from({ length: max }, (_, i) => i + 1).map(star => (
-                                                        <button
-                                                            key={star}
-                                                            type="button"
-                                                            onClick={() => setDynAnswers(r => ({ ...r, [q.id]: star }))}
-                                                            style={{
-                                                                width: 30,
-                                                                height: 30,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                cursor: 'pointer',
-                                                                background: star <= cur ? '#fbbf24' : '#f3f4f6',
-                                                                color: star <= cur ? '#fff' : '#9ca3af',
-                                                                fontSize: 12,
-                                                                fontWeight: 800,
-                                                                transition: 'all 0.1s',
-                                                            }}
-                                                        >{star}</button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-                                    if (q.question_type === 'text') {
-                                        return (
-                                            <div key={q.id} style={{ marginBottom: 12 }}>
-                                                <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
-                                                <textarea
-                                                    value={(dynAnswers[q.id] as string) ?? ''}
-                                                    onChange={e => setDynAnswers(r => ({ ...r, [q.id]: e.target.value }))}
-                                                    rows={2}
-                                                    style={{
-                                                        width: '100%',
-                                                        border: '1px solid #e5e7eb',
-                                                        borderRadius: 6,
-                                                        padding: '8px 10px',
-                                                        fontSize: 12,
-                                                        resize: 'none',
-                                                        outline: 'none',
-                                                        boxSizing: 'border-box',
-                                                    }}
-                                                />
-                                            </div>
-                                        );
-                                    }
-                                    const yn = dynAnswers[q.id] as boolean;
-                                    return (
-                                        <div key={q.id} style={{ marginBottom: 12 }}>
-                                            <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label || '—'}</p>
-                                            <div style={{ display: 'flex', gap: 8 }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setDynAnswers(r => ({ ...r, [q.id]: true }))}
-                                                    style={{
-                                                        flex: 1,
-                                                        height: 34,
-                                                        borderRadius: 6,
-                                                        border: yn === true ? '2px solid #059669' : '1px solid #e5e7eb',
-                                                        background: yn === true ? '#ecfdf5' : '#f9fafb',
-                                                        fontSize: 12,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        color: '#374151',
-                                                    }}
-                                                >{tm('bSurveyYes')}</button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setDynAnswers(r => ({ ...r, [q.id]: false }))}
-                                                    style={{
-                                                        flex: 1,
-                                                        height: 34,
-                                                        borderRadius: 6,
-                                                        border: yn === false ? '2px solid #dc2626' : '1px solid #e5e7eb',
-                                                        background: yn === false ? '#fef2f2' : '#f9fafb',
-                                                        fontSize: 12,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        color: '#374151',
-                                                    }}
-                                                >{tm('bSurveyNo')}</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                                : ([
-                                    { key: 'service' as const, label: tm('bFeedbackService') },
-                                    { key: 'staff' as const, label: tm('bFeedbackSpecialist') },
-                                    { key: 'overall' as const, label: tm('bFeedbackGeneral') },
-                                ]).map(({ key, label }) => (
-                                    <div key={key} style={{ marginBottom: 12 }}>
-                                        <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
-                                        <div style={{ display: 'flex', gap: 6 }}>
-                                            {[1, 2, 3, 4, 5].map(star => (
-                                                <button
-                                                    key={star}
-                                                    type="button"
-                                                    onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
-                                                    style={{
-                                                        width: 32,
-                                                        height: 32,
-                                                        borderRadius: 6,
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        background: star <= feedbackRatings[key] ? '#fbbf24' : '#f3f4f6',
-                                                        color: star <= feedbackRatings[key] ? '#fff' : '#9ca3af',
-                                                        fontSize: 14,
-                                                        fontWeight: 800,
-                                                        transition: 'all 0.1s',
-                                                    }}
-                                                >★</button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            <textarea
-                                value={feedbackComment}
-                                onChange={e => setFeedbackComment(e.target.value)}
-                                placeholder={tm('bFeedbackComment')}
-                                rows={2}
-                                style={{
-                                    width: '100%',
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: 6,
-                                    padding: '8px 10px',
-                                    fontSize: 12,
-                                    resize: 'none',
-                                    outline: 'none',
-                                    boxSizing: 'border-box',
-                                    marginTop: 8,
-                                }}
-                            />
-                        </div>
-                        <div style={{ padding: '0 20px 20px', display: 'flex', gap: 10 }}>
-                            <button onClick={() => setFeedbackApt(null)} style={{ flex: 1, height: 38, borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                                {tm('bFeedbackSkip')}
-                            </button>
-                            <button onClick={handleFeedbackSubmit} disabled={feedbackSaving} style={{ flex: 2, height: 38, borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
-                                {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
-                            </button>
-                        </div>
-                    </div>
+            <RetailExFlatModal
+                open={!!priceEditApt && isAdmin()}
+                onClose={() => {
+                    if (!priceEditSaving) setPriceEditApt(null);
+                }}
+                title={tm('bAppointmentEditPriceTitle')}
+                subtitle={priceEditApt ? `${priceEditApt.customer_name ?? '—'} · ${priceEditApt.service_name ?? '—'}` : undefined}
+                headerIcon={<Banknote size={22} />}
+                maxWidthClass="max-w-md"
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('save')}
+                onConfirm={saveAppointmentPriceFromCard}
+                confirmDisabled={priceEditSaving}
+                confirmLoading={priceEditSaving}
+            >
+                <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="beauty-apt-price-edit">
+                        {tm('bAppointmentEditPriceHint')}
+                    </label>
+                    <input
+                        id="beauty-apt-price-edit"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={priceEditDraft}
+                        onChange={e => setPriceEditDraft(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                    />
                 </div>
-            )}
+            </RetailExFlatModal>
+
+            <RetailExFlatModal
+                open={!!revertModalApt}
+                onClose={closeRevertModal}
+                title={tm('bPanelRevertCompletion')}
+                subtitle={
+                    revertModalApt
+                        ? `${revertModalApt.customer_name ?? '—'} · ${revertModalApt.service_name ?? '—'}`
+                        : undefined
+                }
+                headerIcon={<Undo2 size={22} />}
+                maxWidthClass="max-w-md"
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('approve')}
+                onConfirm={() => void executeRevertCompletion()}
+                confirmDisabled={revertSaving}
+                confirmLoading={revertSaving}
+                closeOnBackdrop={!revertSaving}
+            >
+                <div className="space-y-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    <p>{tm('bPanelRevertCompletionConfirm')}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{tm('bPanelRevertCompletionHint')}</p>
+                </div>
+            </RetailExFlatModal>
+
+            {feedbackApt ? (
+                <BeautyFeedbackSurveyModal
+                    open
+                    onClose={() => setFeedbackApt(null)}
+                    customerId={String(feedbackApt.customer_id ?? feedbackApt.client_id ?? '')}
+                    customerName={feedbackApt.customer_name ?? undefined}
+                    appointmentId={feedbackApt.id}
+                    appointmentSubtitle={
+                        [feedbackApt.customer_name, feedbackApt.service_name].filter(Boolean).join(' — ') || null
+                    }
+                    variant="appointment_completed"
+                />
+            ) : null}
         </div>
     );
 }

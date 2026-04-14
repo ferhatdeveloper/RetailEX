@@ -10,6 +10,7 @@ import { RestaurantService, type DeliveryExpectedPaymentMethod } from '../../../
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import type { FoodDeliveryChannelId } from '../../../config/foodDeliveryChannels';
 import { FOOD_DELIVERY_CHANNELS, getFoodDeliveryChannelMeta } from '../../../config/foodDeliveryChannels';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 type DeliveryStatus = 'pending' | 'preparing' | 'on_way' | 'delivered';
 
@@ -47,6 +48,7 @@ interface DeliveryManagementProps {
 }
 
 export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }) => {
+    const tmR = useRestaurantModuleTm();
     const [searchQuery, setSearchQuery] = useState('');
     const [orders, setOrders] = useState<DeliveryOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -71,11 +73,11 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
             const rows = await RestaurantService.getDeliveryOrders();
             setOrders(rows as DeliveryOrder[]);
         } catch (e: any) {
-            setError(e?.message || 'Siparişler yüklenemedi');
+            setError(e?.message || tmR('resDeliveryLoadErr'));
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [tmR]);
 
     useEffect(() => {
         loadOrders();
@@ -95,7 +97,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                 // Bilgi: tutar seçilen ödeme türüne göre kasa veya bankaya işlendi
             }
         } catch (e: any) {
-            alert('Durum güncellenemedi: ' + (e?.message ?? e));
+            alert(tmR('resDeliveryStatusErr') + (e?.message ?? e));
         }
     };
 
@@ -104,7 +106,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
             await RestaurantService.updateDeliveryExpectedPaymentMethod(orderId, method);
             setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, paymentMethod: method } : o)));
         } catch (e: any) {
-            alert('Ödeme türü güncellenemedi: ' + (e?.message ?? e));
+            alert(tmR('resDeliveryPayErr') + (e?.message ?? e));
         }
     };
 
@@ -138,7 +140,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
             setShowNewModal(false);
             await loadOrders();
         } catch (e: any) {
-            alert('Sipariş oluşturulamadı: ' + (e?.message ?? e));
+            alert(tmR('resDeliveryCreateErr') + (e?.message ?? e));
         } finally {
             setSaving(false);
         }
@@ -154,10 +156,10 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
     };
     const getStatusLabel = (s: DeliveryStatus) => {
         switch (s) {
-            case 'pending':   return 'Onay Bekliyor';
-            case 'preparing': return 'Hazırlanıyor';
-            case 'on_way':    return 'Yolda';
-            case 'delivered': return 'Teslim Edildi';
+            case 'pending':   return tmR('resDelStatusPending');
+            case 'preparing': return tmR('resDelStatusPreparing');
+            case 'on_way':    return tmR('resDelStatusOnWay');
+            case 'delivered': return tmR('resDelStatusDelivered');
         }
     };
     const nextStatus = (s: DeliveryStatus): DeliveryStatus | null => {
@@ -167,18 +169,18 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
     };
     const nextLabel = (s: DeliveryStatus) => {
         switch (s) {
-            case 'pending':   return 'Hazırlamaya Başla';
-            case 'preparing': return 'Yola Çıkar';
-            case 'on_way':    return 'Teslim Et';
+            case 'pending':   return tmR('resDelNextPrepare');
+            case 'preparing': return tmR('resDelNextOnWay');
+            case 'on_way':    return tmR('resDelNextDeliver');
             default:          return '';
         }
     };
 
     const paymentMethodHint = (m: DeliveryExpectedPaymentMethod) => {
         switch (m) {
-            case 'card': return 'Teslimde → kasaya (kart)';
-            case 'transfer': return 'Teslimde → bankaya';
-            default: return 'Teslimde → kasaya (nakit)';
+            case 'card': return tmR('resDelPayHintCard');
+            case 'transfer': return tmR('resDelPayHintTransfer');
+            default: return tmR('resDelPayHintCash');
         }
     };
 
@@ -208,20 +210,20 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                     <button onClick={onBack}
                         className="flex items-center gap-2.5 px-6 py-3 bg-white/15 hover:bg-white/25 text-white rounded-2xl transition-all active:scale-95 border border-white/20 font-black uppercase text-[12px] group shrink-0 shadow-inner">
                         <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                        <span>Geri</span>
+                        <span>{tmR('resNavBackShort')}</span>
                     </button>
                     <div className="flex items-center gap-4 ml-4">
                         <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center border border-white/20">
                             <Bike className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none">Paket Servis</h2>
-                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-1">Delivery Management System</p>
+                            <h2 className="text-xl font-black italic tracking-tighter text-white uppercase leading-none">{tmR('resDeliveryTitle')}</h2>
+                            <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest mt-1">{tmR('resDeliverySubtitle')}</p>
                         </div>
                     </div>
                     <div className="relative flex-1 max-w-lg group ml-8">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 group-focus-within:text-white transition-colors" />
-                        <input type="text" placeholder="Müşteri, adres veya telefon ara..."
+                        <input type="text" placeholder={tmR('resDeliverySearchPh')}
                             className="w-full bg-white/10 border border-white/20 rounded-2xl h-12 pl-12 pr-4 text-sm focus:ring-2 focus:ring-white/30 text-white placeholder:text-white/35 outline-none font-medium"
                             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                     </div>
@@ -233,13 +235,13 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                     </button>
                     <div className="flex items-center gap-6 px-6 py-2 bg-black/20 rounded-2xl border border-white/10">
                         <div className="text-center">
-                            <p className="text-[9px] font-black text-white/50 uppercase tracking-widest leading-none">AKTİF PAKET</p>
+                            <p className="text-[9px] font-black text-white/50 uppercase tracking-widest leading-none">{tmR('resDeliveryActiveBadge')}</p>
                             <p className="text-lg font-black text-white leading-none mt-1">{orders.length}</p>
                         </div>
                     </div>
                     <button onClick={() => setShowNewModal(true)}
                         className="flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-2xl font-black text-[11px] uppercase hover:bg-slate-50 transition-all active:scale-95 shadow-lg">
-                        <Plus className="w-4 h-4" /> Yeni Paket
+                        <Plus className="w-4 h-4" /> {tmR('resDeliveryNewBtn')}
                     </button>
                 </div>
             </div>
@@ -256,7 +258,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                             : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
                     )}
                 >
-                    Tümü
+                    {tmR('resPosAllShort')}
                 </button>
                 {FOOD_DELIVERY_CHANNELS.map((c) => (
                     <button
@@ -282,7 +284,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                     <div className="flex items-center justify-center h-64">
                         <div className="text-center">
                             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                            <p className="text-gray-500 font-medium">Siparişler yükleniyor...</p>
+                            <p className="text-gray-500 font-medium">{tmR('resDeliveryLoading')}</p>
                         </div>
                     </div>
                 ) : error ? (
@@ -290,7 +292,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                         <div className="text-center">
                             <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-3" />
                             <p className="text-red-600 font-medium">{error}</p>
-                            <button onClick={loadOrders} className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Tekrar Dene</button>
+                            <button onClick={loadOrders} className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">{tmR('resDeliveryRetry')}</button>
                         </div>
                     </div>
                 ) : (
@@ -335,7 +337,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                         </div>
                                     )}
                                     {order.courier && (
-                                        <p className="text-[10px] text-purple-600 font-bold">Kurye: {order.courier}</p>
+                                        <p className="text-[10px] text-purple-600 font-bold">{tmR('resDelCourier')} {order.courier}</p>
                                     )}
                                     {order.itemsSummary && (
                                         <p className="text-[11px] text-slate-600 font-medium leading-snug line-clamp-3 border-t border-slate-100 pt-2 mt-1">
@@ -349,11 +351,11 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                             <Timer className="w-4 h-4 text-blue-500" />
                                         </div>
                                         <span className="text-xs font-black text-slate-700 tabular-nums">
-                                            {Math.floor((Date.now() - new Date(order.startTime).getTime()) / 60000)} dk
+                                            {Math.floor((Date.now() - new Date(order.startTime).getTime()) / 60000)} {tmR('resDelMinSuffix')}
                                         </span>
                                     </div>
                                     <div className="text-right">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase block leading-none mb-1.5 tracking-widest">ÖDENECEK</span>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase block leading-none mb-1.5 tracking-widest">{tmR('resDelDueLabel')}</span>
                                         <span className="text-xl font-black text-slate-900 tabular-nums leading-none">
                                             {formatMoneyAmount(order.total, { minFrac: 0, maxFrac: 2 })}
                                         </span>
@@ -363,12 +365,12 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                     </div>
                                 </div>
                                 <div className="shrink-0 mt-2 space-y-2">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ödeme türü (teslimde kasa/banka)</p>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{tmR('resDelPayTypeLabel')}</p>
                                     <div className="grid grid-cols-3 gap-2">
                                         {([
-                                            { id: 'cash' as const, Icon: Wallet, label: 'Nakit' },
-                                            { id: 'card' as const, Icon: CreditCard, label: 'Kart' },
-                                            { id: 'transfer' as const, Icon: Landmark, label: 'Havale' },
+                                            { id: 'cash' as const, Icon: Wallet, label: tmR('resDelPayCash') },
+                                            { id: 'card' as const, Icon: CreditCard, label: tmR('resDelPayCard') },
+                                            { id: 'transfer' as const, Icon: Landmark, label: tmR('resDelPayTransfer') },
                                         ]).map(({ id, Icon, label }) => (
                                             <button
                                                 key={id}
@@ -403,9 +405,9 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                             {nextLabel(order.deliveryStatus)}
                                         </button>
                                     ) : (
-                                        <span className="flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase text-slate-500 flex items-center justify-center bg-slate-100">Teslim edildi</span>
+                                        <span className="flex-1 py-3.5 rounded-2xl text-[11px] font-black uppercase text-slate-500 flex items-center justify-center bg-slate-100">{tmR('resDelDeliveredDone')}</span>
                                     )}
-                                    <button type="button" className="p-3.5 bg-white border-2 border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95 shadow-sm" title="Detay">
+                                    <button type="button" className="p-3.5 bg-white border-2 border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95 shadow-sm" title={tmR('resDelDetailTitle')}>
                                         <ChevronRight className="w-5 h-5" />
                                     </button>
                                 </div>
@@ -415,10 +417,10 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                         {filtered.length === 0 && !loading && (
                             <div className="col-span-full flex flex-col items-center justify-center py-24 text-slate-400">
                                 <Bike className="w-16 h-16 mb-4 opacity-30" />
-                                <p className="font-black uppercase tracking-widest text-sm">Aktif paket servis siparişi yok</p>
+                                <p className="font-black uppercase tracking-widest text-sm">{tmR('resDelEmpty')}</p>
                                 <button onClick={() => setShowNewModal(true)}
                                     className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-sm hover:bg-blue-700 transition-all">
-                                    İlk Siparişi Oluştur
+                                    {tmR('resDelFirstOrder')}
                                 </button>
                             </div>
                         )}
@@ -431,32 +433,32 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl">
                         <div className="flex items-center justify-between p-6 border-b">
-                            <h3 className="text-lg font-black text-slate-800">Yeni Paket Sipariş</h3>
+                            <h3 className="text-lg font-black text-slate-800">{tmR('resDelModalTitle')}</h3>
                             <button onClick={() => setShowNewModal(false)} className="p-2 hover:bg-slate-100 rounded-xl">
                                 <X className="w-5 h-5 text-slate-500" />
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Müşteri Adı *</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelCustomer')}</label>
                                 <input value={newForm.customerName} onChange={e => setNewForm(p => ({ ...p, customerName: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Ad Soyad" />
+                                    placeholder={tmR('resDelPhName')} />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Telefon</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelPhone')}</label>
                                 <input value={newForm.phone} onChange={e => setNewForm(p => ({ ...p, phone: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="0555 123 45 67" type="tel" />
+                                    placeholder={tmR('resDelPhPhone')} type="tel" />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Teslimat Adresi *</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelAddress')}</label>
                                 <textarea value={newForm.address} onChange={e => setNewForm(p => ({ ...p, address: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                    rows={3} placeholder="Cadde, Sokak, No, İlçe..." />
+                                    rows={3} placeholder={tmR('resDelPhAddress')} />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Platform / Kanal</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelPlatform')}</label>
                                 <select
                                     value={newForm.channel}
                                     onChange={e => setNewForm(p => ({ ...p, channel: e.target.value as FoodDeliveryChannelId }))}
@@ -468,38 +470,38 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Harici sipariş no (isteğe bağlı)</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelExtId')}</label>
                                 <input
                                     value={newForm.externalOrderId}
                                     onChange={e => setNewForm(p => ({ ...p, externalOrderId: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Örn. YS- veya platform sipariş kodu"
+                                    placeholder={tmR('resDelPhExtId')}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Ürün özeti (isteğe bağlı)</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelItems')}</label>
                                 <textarea
                                     value={newForm.itemsSummary}
                                     onChange={e => setNewForm(p => ({ ...p, itemsSummary: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                     rows={2}
-                                    placeholder="2x Döner, 1x Ayran..."
+                                    placeholder={tmR('resDelPhItems')}
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Tutar (isteğe bağlı)</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelAmount')}</label>
                                 <input
                                     value={newForm.totalAmount}
                                     onChange={e => setNewForm(p => ({ ...p, totalAmount: e.target.value }))}
                                     className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="0"
+                                    placeholder={tmR('resDelPhAmount')}
                                     inputMode="decimal"
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">Teslimde ödeme</label>
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest block mb-2">{tmR('resDelLabelPayOnDelivery')}</label>
                                 <p className="text-[10px] text-slate-500 mb-2 leading-snug">
-                                    Teslim edildiğinde tutar seçime göre kasa (nakit/kart) veya banka (havale) hesabına işlenir.
+                                    {tmR('resDelPayOnDeliveryHint')}
                                 </p>
                                 <div className="grid grid-cols-3 gap-2">
                                     <button
@@ -512,7 +514,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                                 : 'border-slate-200 bg-white text-slate-600'
                                         )}
                                     >
-                                        Nakit
+                                        {tmR('resDelPayCash')}
                                     </button>
                                     <button
                                         type="button"
@@ -524,7 +526,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                                 : 'border-slate-200 bg-white text-slate-600'
                                         )}
                                     >
-                                        Kart
+                                        {tmR('resDelPayCard')}
                                     </button>
                                     <button
                                         type="button"
@@ -536,7 +538,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                                                 : 'border-slate-200 bg-white text-slate-600'
                                         )}
                                     >
-                                        Havale
+                                        {tmR('resDelPayTransfer')}
                                     </button>
                                 </div>
                             </div>
@@ -544,11 +546,11 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                         <div className="p-6 border-t flex gap-3">
                             <button onClick={() => setShowNewModal(false)}
                                 className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">
-                                İptal
+                                {tmR('resDelModalCancel')}
                             </button>
                             <button onClick={handleCreateOrder} disabled={saving || !newForm.customerName.trim() || !newForm.address.trim()}
                                 className="flex-1 py-3 bg-blue-600 text-white rounded-xl text-sm font-black hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                                {saving ? 'Kaydediliyor...' : 'Sipariş Oluştur'}
+                                {saving ? tmR('resDelSaving') : tmR('resDelCreateBtn')}
                             </button>
                         </div>
                     </div>

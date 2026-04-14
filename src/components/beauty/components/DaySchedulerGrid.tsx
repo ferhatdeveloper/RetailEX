@@ -5,6 +5,12 @@ import React, { useMemo } from 'react';
 import { BeautyAppointment } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { CLINIC } from '../clinicDesignTokens';
+import {
+    groupBeautyQueueByCustomer,
+    mergeQueueGroupForCardDisplay,
+    suggestQueuePrefillTime,
+} from '../../../utils/beautyQueueOrder';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 
 const PX_PER_HOUR = 56;
 
@@ -82,6 +88,10 @@ export interface DaySchedulerGridProps {
     dayEndHour?: number;
     renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
     onEmptySlotClick?: (timeHHmm: string, dateYmd: string) => void;
+    /** Saat ekseni olmadan sıralı liste */
+    queueMode?: boolean;
+    /** Sıra modunda önerilen saat dilimi (toolbar dakika aralığı ile aynı) */
+    queueSnapMinutes?: number;
 }
 
 export function DaySchedulerGrid({
@@ -91,10 +101,15 @@ export function DaySchedulerGrid({
     dayEndHour = 21,
     renderAppointment,
     onEmptySlotClick,
+    queueMode = false,
+    queueSnapMinutes = 5,
 }: DaySchedulerGridProps) {
     const dayStr = formatLocalYmd(currentDate);
     const dayApts = useMemo(
-        () => appointments.filter(a => beautyAppointmentDateKey(a) === dayStr),
+        () =>
+            appointments.filter(
+                a => beautyAppointmentDateKey(a) === dayStr && beautyAptVisibleOnSchedule(a),
+            ),
         [appointments, dayStr]
     );
 
@@ -147,6 +162,57 @@ export function DaySchedulerGrid({
         const timeHHmm = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
         onEmptySlotClick(timeHHmm, dayStr);
     };
+
+    if (queueMode) {
+        const groups = groupBeautyQueueByCustomer(dayApts);
+        return (
+            <div
+                style={{
+                    maxWidth: 900,
+                    margin: '0 auto',
+                    background: CLINIC.surface,
+                    border: `1px solid ${CLINIC.border}`,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    boxShadow: CLINIC.shadowSm,
+                }}
+            >
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {groups.map(group => (
+                        <div key={group[0].id}>{renderAppointment(mergeQueueGroupForCardDisplay(group))}</div>
+                    ))}
+                    {onEmptySlotClick && (
+                        <button
+                            type="button"
+                            onClick={() =>
+                                onEmptySlotClick(
+                                    suggestQueuePrefillTime(appointments, dayStr, {
+                                        resource: 'none',
+                                        dayStartHour,
+                                        dayEndHour,
+                                        snapMinutes: queueSnapMinutes,
+                                    }),
+                                    dayStr
+                                )
+                            }
+                            style={{
+                                padding: '12px 16px',
+                                borderRadius: 8,
+                                border: `1px dashed ${CLINIC.border}`,
+                                background: CLINIC.surfaceMuted,
+                                color: CLINIC.textSub,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            +
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div

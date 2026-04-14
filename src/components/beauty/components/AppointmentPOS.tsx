@@ -12,10 +12,10 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users,
-    CalendarDays, CalendarClock, Clock, Cpu, Activity, CheckCircle2, Scissors, Package,
+    ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users, Banknote,
+    CalendarDays, CalendarClock, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
     Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
-    AlertTriangle, PanelLeft, Repeat,
+    PanelLeft, Repeat,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
@@ -42,9 +42,22 @@ import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
-import { formatLocalYmd } from '../../../utils/dateLocal';
+import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
+import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
+import { usePermission } from '../../../shared/hooks/usePermission';
 import '../ClinicStyles.css';
+
+/** Güzellik satış satırını randevuya bağlar; randevu iptalinde `beautyService` bu kayıtları ciro dışı işaretler. */
+function buildBeautySaleNotesWithAppointmentLink(baseNotes: string | undefined, appointmentId: string | undefined): string | undefined {
+    const parts = [
+        typeof baseNotes === 'string' ? baseNotes.trim() : '',
+        appointmentId?.trim() ? `rex_appt:${appointmentId.trim()}` : '',
+    ].filter((p) => p.length > 0);
+    return parts.length ? parts.join(' | ') : undefined;
+}
 
 const BEAUTY_CATEGORY_RAIL_KEY = 'retailex_beauty_pos_category_rail';
 type BeautyCategoryRailMode = 'chips' | 'sidebar';
@@ -142,8 +155,7 @@ interface BookingBlockModalState {
 
 /** Takvim çakışması: iptal / gelmedi kayıtları slotu meşgul sayma */
 function beautyAptBlocksCalendarSlot(e: BeautyAppointment): boolean {
-    const s = String(e.status ?? '').toLowerCase();
-    return s !== 'cancelled' && s !== 'canceled' && s !== 'no_show';
+    return beautyAptVisibleOnSchedule(e);
 }
 
 type SlotConflictDetail = {
@@ -247,6 +259,28 @@ const iStyle: React.CSSProperties = {
 };
 const selStyle: React.CSSProperties = { ...iStyle, cursor: 'pointer' };
 
+function parseAgeInput(raw: string): number | undefined {
+    const t = raw.trim();
+    if (!t) return undefined;
+    const n = parseInt(t, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 150) return undefined;
+    return n;
+}
+
+function emptyQuickAddCustomer() {
+    return {
+        name: '',
+        phone: '',
+        phone2: '',
+        age: '',
+        file_id: '',
+        email: '',
+        address: '',
+        occupation: '',
+        notes: '',
+    };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 const UNASSIGNED_RESOURCE = '__unassigned__';
 
@@ -272,6 +306,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const { products, loadProducts, updateStock } = useProductStore();
     const { tm, language: uiLanguage } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
+    const { isAdmin } = usePermission();
     const receiptFirmNr = useMemo(() => {
         const f = selectedFirm;
         if (!f) return undefined;
@@ -285,6 +320,15 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         { value: AppointmentStatus.CONFIRMED, label: tm('bAppointmentConfirmed') },
         { value: AppointmentStatus.IN_PROGRESS, label: tm('bAppointmentStarted') },
     ];
+    const appointmentStatusSelectOptions = useMemo(() => {
+        if (!existingAppointment?.id) return STATUS_OPTS;
+        return [
+            ...STATUS_OPTS,
+            { value: AppointmentStatus.COMPLETED, label: tm('bAppointmentCompleted') },
+            { value: AppointmentStatus.CANCELLED, label: tm('bAppointmentCancelled') },
+            { value: AppointmentStatus.NO_SHOW, label: tm('bStatusNoShow') },
+        ];
+    }, [existingAppointment?.id, tm]);
 
     const CATEGORY_TR: Record<string, string> = {
         laser: tm('bCatLaser'), hair_salon: tm('bCatHairSalon'), beauty: tm('bCatBeauty'),
@@ -316,7 +360,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const [showCustModal, setShowCustModal] = useState(false);
     const [custModalQ, setCustModalQ] = useState('');
     const [showAddForm, setShowAddForm] = useState(false);
-    const [newCust, setNewCust] = useState({ name: '', phone: '', email: '' });
+    const [newCust, setNewCust] = useState(emptyQuickAddCustomer);
     const [savingCust, setSavingCust] = useState(false);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
     /** Yeni eklenen hizmet satırlarına otomatik atanır; randevu için zorunlu. */
@@ -344,6 +388,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const [slotBrowseLoading, setSlotBrowseLoading] = useState(false);
     /** Sepet satırındaki hizmet için personel — liste modalı (uid) */
     const [staffLinePickerUid, setStaffLinePickerUid] = useState<string | null>(null);
+    /** Sepet satırı hizmet birim fiyatı — düzenleme modalı (uid) */
+    const [cartLinePriceUid, setCartLinePriceUid] = useState<string | null>(null);
+    const [cartLinePriceDraft, setCartLinePriceDraft] = useState('');
 
     // ── Appointment details ───────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
@@ -351,6 +398,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const [aptTime, setAptTime] = useState(safeTimeHHmm(prefillTime ?? '09:00'));
     const [aptDevice, setAptDevice] = useState('');
     const [aptNotes, setAptNotes] = useState('');
+    /** Fiş üstü — lazer/cihaz tedavi satırı (Derece / Atış) */
+    const [receiptTreatmentDegree, setReceiptTreatmentDegree] = useState('');
+    const [receiptTreatmentShots, setReceiptTreatmentShots] = useState('');
     const [aptStatus, setAptStatus] = useState<AppointmentStatus>(AppointmentStatus.SCHEDULED);
     const [aptOpen, setAptOpen] = useState(true);  // section collapse
     const [hydratedAppointmentId, setHydratedAppointmentId] = useState<string | null>(null);
@@ -362,6 +412,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const [monthlyModalLine, setMonthlyModalLine] = useState<CartLine | null>(null);
     const [monthlyForm, setMonthlyForm] = useState({ date: '', sessions: 1 });
     const [monthlyBusy, setMonthlyBusy] = useState(false);
+    const [cancelAptConfirmOpen, setCancelAptConfirmOpen] = useState(false);
+    const [cancelAptBusy, setCancelAptBusy] = useState(false);
 
     // ── Payment modal ─────────────────────────────────────────────────────
     const [showPay, setShowPay] = useState(false);
@@ -433,6 +485,13 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         const ok = cart.some(l => l.uid === staffLinePickerUid && l.type === 'service');
         if (!ok) setStaffLinePickerUid(null);
     }, [cart, staffLinePickerUid]);
+
+    /** Sepet satırı silinirse birim fiyat modalını kapat */
+    useEffect(() => {
+        if (!cartLinePriceUid) return;
+        const ok = cart.some(l => l.uid === cartLinePriceUid && l.type === 'service');
+        if (!ok) setCartLinePriceUid(null);
+    }, [cart, cartLinePriceUid]);
 
     /** Takvimden personel/cihaz sütunu ile açıldıysa önce bunu uygula */
     useEffect(() => {
@@ -605,8 +664,13 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         return mergedCustomers.filter(c =>
             c.name.toLowerCase().includes(q) ||
             (c.phone ?? '').includes(custModalQ) ||
+            (c.phone2 ?? '').includes(custModalQ) ||
             (c.email ?? '').toLowerCase().includes(q) ||
-            (c.code ?? '').toLowerCase().includes(q)
+            (c.code ?? '').toLowerCase().includes(q) ||
+            (c.address ?? '').toLowerCase().includes(q) ||
+            (c.notes ?? '').toLowerCase().includes(q) ||
+            (c.occupation ?? '').toLowerCase().includes(q) ||
+            (c.file_id ?? '').toLowerCase().includes(q)
         );
     }, [mergedCustomers, custModalQ]);
 
@@ -617,49 +681,112 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         }
         if (hydratedAppointmentId === existingAppointment.id) return;
 
-        const rawDate = String(existingAppointment.date ?? existingAppointment.appointment_date ?? '').trim();
-        const rawTime = String(existingAppointment.appointment_time ?? existingAppointment.time ?? '').trim();
-        const customerId = String(existingAppointment.customer_id ?? existingAppointment.client_id ?? '').trim();
-        const staffId = String(existingAppointment.staff_id ?? existingAppointment.specialist_id ?? '').trim() || undefined;
-        const serviceId = String(existingAppointment.service_id ?? '').trim();
+        const primary = existingAppointment;
+        let cancelled = false;
 
-        if (customerId) {
-            const picked = mergedCustomers.find(c => String(c.id) === customerId);
-            setCustomer(
-                picked ?? {
-                    id: customerId,
-                    name: String(existingAppointment.customer_name ?? tm('bCustomerFallbackName')),
-                    is_active: true,
-                } as BeautyCustomer
+        void (async () => {
+            const rawDate = String(primary.date ?? primary.appointment_date ?? '').trim();
+            const rawTime = String(primary.appointment_time ?? primary.time ?? '').trim();
+            const customerId = String(primary.customer_id ?? primary.client_id ?? '').trim();
+            const dayYmd = beautyAppointmentDateKey(primary) || safeDateYmd(rawDate, safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10)));
+
+            let pool: BeautyAppointment[] = [];
+            try {
+                pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+            } catch (e) {
+                logger.error('AppointmentPOS', 'hydrate: getAppointmentsInRange failed', e);
+                pool = [];
+            }
+            if (cancelled) return;
+
+            const siblings = findBeautyAppointmentsSameQueueGroup(primary, pool.length > 0 ? pool : [primary]);
+            const lines: CartLine[] = [];
+            for (const apt of siblings) {
+                const sid = String(apt.staff_id ?? apt.specialist_id ?? '').trim() || undefined;
+                const svcId = String(apt.service_id ?? '').trim();
+                const mapped = svcId ? services.find(s => String(s.id) === svcId) : undefined;
+                if (mapped) {
+                    lines.push({
+                        uid: uid(),
+                        type: 'service',
+                        item_id: mapped.id,
+                        name: mapped.name,
+                        unit_price: Number(apt.total_price ?? mapped.price ?? 0),
+                        qty: 1,
+                        color: mapped.color,
+                        duration_min: Math.max(1, Math.round(Number(apt.duration ?? mapped.duration_min ?? 30))),
+                        staff_id: sid,
+                    });
+                } else if (svcId || (apt.service_name ?? '').trim()) {
+                    lines.push({
+                        uid: uid(),
+                        type: 'service',
+                        item_id: svcId || `apt-${apt.id}`,
+                        name: String(apt.service_name ?? '—'),
+                        unit_price: Number(apt.total_price ?? 0),
+                        qty: 1,
+                        duration_min: Math.max(1, Math.round(Number(apt.duration ?? 30))),
+                        staff_id: sid,
+                    });
+                }
+            }
+
+            if (cancelled) return;
+
+            if (customerId) {
+                const picked = mergedCustomers.find(c => String(c.id) === customerId);
+                setCustomer(
+                    picked ?? {
+                        id: customerId,
+                        name: String(primary.customer_name ?? tm('bCustomerFallbackName')),
+                        is_active: true,
+                    } as BeautyCustomer
+                );
+            }
+
+            if (lines.length > 0) {
+                setCart(lines);
+            } else {
+                const serviceId = String(primary.service_id ?? '').trim();
+                const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
+                const staffId = String(primary.staff_id ?? primary.specialist_id ?? '').trim() || undefined;
+                if (mappedService) {
+                    setCart([{
+                        uid: uid(),
+                        type: 'service',
+                        item_id: mappedService.id,
+                        name: mappedService.name,
+                        unit_price: Number(primary.total_price ?? mappedService.price ?? 0),
+                        qty: 1,
+                        color: mappedService.color,
+                        duration_min: Number(primary.duration ?? mappedService.duration_min ?? 30),
+                        staff_id: staffId,
+                    }]);
+                }
+            }
+
+            const firstStaff = String(siblings[0]?.staff_id ?? siblings[0]?.specialist_id ?? '').trim() || undefined;
+            setDefaultSpecialistId(firstStaff ?? '');
+            setAptDate(safeDateYmd(rawDate, safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10))));
+            setAptTime(safeTimeHHmm(rawTime || prefillTime || '09:00'));
+            setAptDevice(String(primary.device_id ?? '').trim());
+            setAptNotes(String(primary.notes ?? ''));
+            const trSrc = siblings[0] ?? primary;
+            setReceiptTreatmentDegree(String(trSrc.treatment_degree ?? '').trim());
+            setReceiptTreatmentShots(String(trSrc.treatment_shots ?? '').trim());
+            setAptStatus(primary.status ?? AppointmentStatus.CONFIRMED);
+            const sumDur = siblings.reduce(
+                (s, a) => s + Math.max(1, Math.round(Number(a.duration) || 30)),
+                0
             );
-        }
+            setAptActualDurationMin(Math.max(1, sumDur || Math.round(Number(primary.duration) || 30)));
+            setHydratedAppointmentId(primary.id);
+        })();
 
-        const mappedService = serviceId ? services.find(s => String(s.id) === serviceId) : undefined;
-        if (mappedService) {
-            setCart([{
-                uid: uid(),
-                type: 'service',
-                item_id: mappedService.id,
-                name: mappedService.name,
-                unit_price: Number(existingAppointment.total_price ?? mappedService.price ?? 0),
-                qty: 1,
-                color: mappedService.color,
-                duration_min: Number(existingAppointment.duration ?? mappedService.duration_min ?? 30),
-                staff_id: staffId,
-            }]);
-        }
-
-        setDefaultSpecialistId(staffId ?? '');
-        setAptDate(safeDateYmd(rawDate, safeDateYmd(prefillDate ?? new Date().toISOString().slice(0, 10))));
-        setAptTime(safeTimeHHmm(rawTime || prefillTime || '09:00'));
-        setAptDevice(String(existingAppointment.device_id ?? '').trim());
-        setAptNotes(String(existingAppointment.notes ?? ''));
-        setAptStatus(existingAppointment.status ?? AppointmentStatus.CONFIRMED);
-        setAptActualDurationMin(
-            Math.max(1, Math.round(Number(existingAppointment.duration ?? mappedService?.duration_min ?? 30)))
-        );
-        setHydratedAppointmentId(existingAppointment.id);
-    }, [existingAppointment, hydratedAppointmentId, mergedCustomers, services, prefillDate, prefillTime]);
+        return () => {
+            cancelled = true;
+        };
+    }, [existingAppointment, hydratedAppointmentId, mergedCustomers, services, prefillDate, prefillTime, tm]);
 
     useEffect(() => {
         setExistingEditBaselineFlush(0);
@@ -669,7 +796,20 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         if (!newCust.name.trim()) return;
         setSavingCust(true);
         try {
-            const id = await beautyService.createCustomer({ name: newCust.name.trim(), phone: newCust.phone.trim() || undefined, email: newCust.email.trim() || undefined, is_active: true });
+            const trimmedAge = newCust.age.trim();
+            const ageNum = trimmedAge === '' ? undefined : parseAgeInput(newCust.age);
+            const id = await beautyService.createCustomer({
+                name: newCust.name.trim(),
+                phone: newCust.phone.trim() || undefined,
+                phone2: newCust.phone2.trim() || undefined,
+                email: newCust.email.trim() || undefined,
+                address: newCust.address.trim() || undefined,
+                occupation: newCust.occupation.trim() || undefined,
+                notes: newCust.notes.trim() || undefined,
+                file_id: newCust.file_id.trim() || undefined,
+                age: ageNum,
+                is_active: true,
+            });
             await loadCustomers();
             const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
             setCurrentAccountCustomers(
@@ -685,11 +825,23 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                     created_at: a.created_at,
                 } as BeautyCustomer))
             );
-            const created = { id, name: newCust.name.trim(), phone: newCust.phone.trim() || undefined, is_active: true } as BeautyCustomer;
+            const created = {
+                id,
+                name: newCust.name.trim(),
+                phone: newCust.phone.trim() || undefined,
+                phone2: newCust.phone2.trim() || undefined,
+                email: newCust.email.trim() || undefined,
+                address: newCust.address.trim() || undefined,
+                occupation: newCust.occupation.trim() || undefined,
+                notes: newCust.notes.trim() || undefined,
+                file_id: newCust.file_id.trim() || undefined,
+                age: ageNum ?? null,
+                is_active: true,
+            } as BeautyCustomer;
             setCustomer(created);
             setShowCustModal(false);
             setShowAddForm(false);
-            setNewCust({ name: '', phone: '', email: '' });
+            setNewCust(emptyQuickAddCustomer());
             toast.success(tm('bSaveCustomerOk'));
         } catch (e: unknown) {
             logger.error('createCustomer failed', e);
@@ -748,6 +900,36 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const chgQty = (uid: string, d: number) => setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
+    const saveCartLineUnitPrice = useCallback(() => {
+        if (!isAdmin()) {
+            setCartLinePriceUid(null);
+            return;
+        }
+        if (!cartLinePriceUid) return;
+        const line = cart.find(l => l.uid === cartLinePriceUid);
+        if (!line || line.type !== 'service') {
+            setCartLinePriceUid(null);
+            return;
+        }
+        const old = Number(line.unit_price ?? 0);
+        const raw = String(cartLinePriceDraft).replace(/\s/g, '').replace(',', '.');
+        const neu = Math.max(0, Number(raw) || 0);
+        if (neu === old) {
+            setCartLinePriceUid(null);
+            return;
+        }
+        setCart(c => c.map(l => (l.uid === cartLinePriceUid ? { ...l, unit_price: neu } : l)));
+        logger.info('AppointmentPOS', 'beauty_cart_line_unit_price_update', {
+            action: 'cart_service_line_unit_price',
+            lineUid: line.uid,
+            itemId: line.item_id,
+            serviceName: line.name,
+            oldUnitPrice: old,
+            newUnitPrice: neu,
+            qty: line.qty,
+        });
+        setCartLinePriceUid(null);
+    }, [cart, cartLinePriceUid, cartLinePriceDraft, isAdmin]);
     const pickDefaultSpecialist = (id: string) => {
         setDefaultSpecialistId(id);
         setCart(c =>
@@ -755,27 +937,93 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         );
     };
     const clearDefaultSpecialist = () => setDefaultSpecialistId('');
-    const clearCart = () => { setCart([]); setCustomer(null); setDiscount(0); };
+    const clearCart = () => {
+        setCart([]);
+        setCustomer(null);
+        setDiscount(0);
+        setReceiptTreatmentDegree('');
+        setReceiptTreatmentShots('');
+    };
 
     // ── Save actions ──────────────────────────────────────────────────────
     const canSave = cart.length > 0 && !!customer;
-    /** Tamamlanmış randevu: tekrar ödeme / yeni randevu kaydı yok */
-    const isExistingPaidComplete = useMemo(
-        () =>
-            !!existingAppointment?.id &&
-            (existingAppointment.status === AppointmentStatus.COMPLETED ||
-                existingAppointment.status === 'completed' ||
-                aptStatus === AppointmentStatus.COMPLETED ||
-                aptStatus === 'completed'),
-        [existingAppointment?.id, existingAppointment?.status, aptStatus],
-    );
+    /** Tamamlanmış randevu: tekrar ödeme / yeni randevu kaydı yok (iptal veya gelmedi seçildiyse güncelleme serbest) */
+    const isExistingPaidComplete = useMemo(() => {
+        if (!existingAppointment?.id) return false;
+        const uiTerminal =
+            aptStatus === AppointmentStatus.CANCELLED ||
+            aptStatus === AppointmentStatus.NO_SHOW ||
+            aptStatus === 'cancelled' ||
+            aptStatus === 'no_show';
+        if (uiTerminal) return false;
+        return (
+            existingAppointment.status === AppointmentStatus.COMPLETED ||
+            existingAppointment.status === 'completed' ||
+            aptStatus === AppointmentStatus.COMPLETED ||
+            aptStatus === 'completed'
+        );
+    }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
+
+    /** Tamamlanmış kayıt için baseline/dirty: iptal veya gelmedi seçilince takip açılır */
+    const suppressEditBaselineForCompletedVisit = useMemo(() => {
+        if (!existingAppointment?.id) return false;
+        if (
+            aptStatus === AppointmentStatus.CANCELLED ||
+            aptStatus === AppointmentStatus.NO_SHOW ||
+            aptStatus === 'cancelled' ||
+            aptStatus === 'no_show'
+        ) {
+            return false;
+        }
+        return (
+            existingAppointment.status === AppointmentStatus.COMPLETED ||
+            existingAppointment.status === 'completed' ||
+            aptStatus === AppointmentStatus.COMPLETED ||
+            aptStatus === 'completed'
+        );
+    }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
     const serviceLines = useMemo(() => cart.filter(l => l.type === 'service'), [cart]);
     /** Randevu: en az bir hizmet + her hizmet satırında personel (ürün/paket tek başına randevu oluşturmaz). */
     const allServicesStaffed = serviceLines.length === 0 || serviceLines.every(l => !!l.staff_id?.trim());
     const canBookApt = serviceLines.length > 0 && allServicesStaffed;
 
+    /** Kayıt / slot için satır başı dakika; tek satırda doğrudan gerçek süre, çoklu satırda plana orantılı bölünür. */
+    const lineBookingDurations = useMemo(() => {
+        if (serviceLines.length === 0) return [];
+        if (serviceLines.length === 1) {
+            return [Math.max(1, Math.round(aptActualDurationMin))];
+        }
+        const weights = serviceLines.map((l) =>
+            Math.max(1, Number(l.duration_min ?? 30) * Math.max(1, Number(l.qty ?? 1))),
+        );
+        const sumW = weights.reduce((s, w) => s + w, 0);
+        const targetRaw = Math.round(aptActualDurationMin);
+        const target = Math.max(serviceLines.length, Math.max(1, targetRaw));
+        const base = weights.map((w) => Math.max(1, Math.floor((target * w) / sumW)));
+        let sum = base.reduce((s, d) => s + d, 0);
+        let diff = target - sum;
+        const out = [...base];
+        const idxOrder = weights
+            .map((w, i) => ({ i, w }))
+            .sort((a, b) => b.w - a.w)
+            .map((x) => x.i);
+        let k = 0;
+        while (diff > 0) {
+            out[idxOrder[k % idxOrder.length]]++;
+            diff--;
+            k++;
+        }
+        while (diff < 0) {
+            const j = out.findIndex((d) => d > 1);
+            if (j < 0) break;
+            out[j]--;
+            diff++;
+        }
+        return out;
+    }, [serviceLines, aptActualDurationMin]);
+
     useEffect(() => {
-        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || isExistingPaidComplete) {
+        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || suppressEditBaselineForCompletedVisit) {
             setEditBaselineSnap(null);
             return;
         }
@@ -795,7 +1043,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         });
         // Baseline yalnızca randevu yüklenince veya başarılı güncellemeden sonra — form alanı değişince kaymaz
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [existingAppointment?.id, hydratedAppointmentId, existingEditBaselineFlush, isExistingPaidComplete]);
+    }, [existingAppointment?.id, hydratedAppointmentId, existingEditBaselineFlush, suppressEditBaselineForCompletedVisit]);
 
     const currentEditSnap = useMemo(
         (): ExistingEditSnap => ({
@@ -816,7 +1064,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     );
 
     const existingEditDirty = useMemo(() => {
-        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || isExistingPaidComplete || !editBaselineSnap) {
+        if (!existingAppointment?.id || hydratedAppointmentId !== existingAppointment.id || suppressEditBaselineForCompletedVisit || !editBaselineSnap) {
             return false;
         }
         const b = editBaselineSnap;
@@ -833,7 +1081,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             b.cartSig !== c.cartSig ||
             b.total !== c.total
         );
-    }, [existingAppointment?.id, hydratedAppointmentId, isExistingPaidComplete, editBaselineSnap, currentEditSnap]);
+    }, [existingAppointment?.id, hydratedAppointmentId, suppressEditBaselineForCompletedVisit, editBaselineSnap, currentEditSnap]);
 
     const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
 
@@ -971,6 +1219,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             notes: aptNotes,
             type: 'regular',
             is_package_session: false,
+            treatment_degree: receiptTreatmentDegree.trim() || null,
+            treatment_shots: receiptTreatmentShots.trim() || null,
         };
     };
 
@@ -999,14 +1249,12 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         const perStaffOffset = new Map<string, number>();
         const planned: ReturnType<typeof buildAptPayload>[] = [];
 
-        const singleSvc =
-            serviceLines.length === 1 && Math.max(1, Number(serviceLines[0]?.qty ?? 1)) === 1;
-        for (const line of serviceLines) {
+        for (let idx = 0; idx < serviceLines.length; idx++) {
+            const line = serviceLines[idx];
             const sid = String(line.staff_id ?? '').trim();
-            let d = Math.max(1, Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)));
-            if (singleSvc) {
-                d = Math.max(1, Math.round(aptActualDurationMin));
-            }
+            const d =
+                lineBookingDurations[idx] ??
+                Math.max(1, Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)));
             const offset = sid ? (perStaffOffset.get(sid) ?? 0) : 0;
             const startMin = baseStart + offset;
             if (sid) perStaffOffset.set(sid, offset + d);
@@ -1026,6 +1274,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 notes: aptNotes,
                 type: 'regular',
                 is_package_session: false,
+                treatment_degree: receiptTreatmentDegree.trim() || null,
+                treatment_shots: receiptTreatmentShots.trim() || null,
             });
         }
         return planned;
@@ -1076,7 +1326,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             const line = serviceLines[0];
             staffId = String(line.staff_id ?? '').trim();
             if (!staffId) return empty;
-            dur = Math.max(1, Math.round(aptActualDurationMin));
+            dur = Math.max(1, Math.round(lineBookingDurations[0] ?? aptActualDurationMin));
             devId = String(aptDevice ?? '').trim();
         } else if (serviceLines.length > 1) {
             const line = serviceLines[0];
@@ -1084,7 +1334,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             if (!staffId) return empty;
             dur = Math.max(
                 1,
-                Math.round(Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1))),
+                Math.round(
+                    lineBookingDurations[0] ??
+                        Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)),
+                ),
             );
             devId = String(aptDevice ?? '').trim();
         } else {
@@ -1221,7 +1474,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                           deviceId: String(aptDevice ?? '').trim(),
                           durationMin: Math.max(
                               1,
-                              Math.round(Number(firstLine.duration_min ?? 30) * Math.max(1, Number(firstLine.qty ?? 1))),
+                              Math.round(
+                                  lineBookingDurations[0] ??
+                                      Number(firstLine.duration_min ?? 30) *
+                                          Math.max(1, Number(firstLine.qty ?? 1)),
+                              ),
                           ),
                           anchorStartMin: baseMin ?? undefined,
                       };
@@ -1243,7 +1500,46 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     };
 
     const handleUpdateExistingAppointment = async () => {
-        if (!existingAppointment?.id || isExistingPaidComplete || !existingEditDirty || updateExistingBusy) return;
+        if (!existingAppointment?.id || updateExistingBusy) return;
+
+        const wantsTerminal =
+            aptStatus === AppointmentStatus.CANCELLED || aptStatus === AppointmentStatus.NO_SHOW;
+        const dbCompleted =
+            existingAppointment.status === AppointmentStatus.COMPLETED ||
+            existingAppointment.status === 'completed';
+        if (wantsTerminal && dbCompleted && customer) {
+            const prevSt = String(existingAppointment.status ?? '');
+            if (prevSt !== String(aptStatus)) {
+                if (serviceLines.length > 0 && !allServicesStaffed) {
+                    openBookingBlockModal('staff');
+                    return;
+                }
+                if (serviceLines.length > 0 && activeSpecialists.length === 0) {
+                    openBookingBlockModal('no_specialists');
+                    return;
+                }
+                setUpdateExistingBusy(true);
+                try {
+                    await updateAppointment(existingAppointment.id, {
+                        status: aptStatus,
+                        notes: aptNotes?.trim() ? aptNotes : null,
+                        treatment_degree: receiptTreatmentDegree.trim() || null,
+                        treatment_shots: receiptTreatmentShots.trim() || null,
+                    });
+                    toast.success(tm('bAppointmentUpdatedOk'));
+                    setExistingEditBaselineFlush((f) => f + 1);
+                } catch (e: unknown) {
+                    logger.crudError('AppointmentPOS', 'updateExistingAppointment', e);
+                    const msg = extractTechnicalError(e);
+                    openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
+                } finally {
+                    setUpdateExistingBusy(false);
+                }
+                return;
+            }
+        }
+
+        if (isExistingPaidComplete || !existingEditDirty) return;
         if (!canSave) return;
         if (serviceLines.length > 0 && !allServicesStaffed) {
             openBookingBlockModal('staff');
@@ -1255,7 +1551,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         }
         setUpdateExistingBusy(true);
         try {
-            if (serviceLines.length > 0) {
+            if (
+                serviceLines.length > 0 &&
+                aptStatus !== AppointmentStatus.CANCELLED &&
+                aptStatus !== AppointmentStatus.NO_SHOW
+            ) {
                 const planned = buildServiceAppointmentPayloads(aptStatus);
                 await ensureAppointmentSlotOk(planned);
             }
@@ -1272,6 +1572,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                 staff_id: firstSvc?.staff_id?.trim() || undefined,
                 service_id: serviceLines.length === 1 ? serviceLines[0]?.item_id : undefined,
+                treatment_degree: receiptTreatmentDegree.trim() || null,
+                treatment_shots: receiptTreatmentShots.trim() || null,
             });
             toast.success(tm('bAppointmentUpdatedOk'));
             setExistingEditBaselineFlush((f) => f + 1);
@@ -1294,6 +1596,26 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             setUpdateExistingBusy(false);
         }
     };
+
+    const runToolbarAppointmentCancel = useCallback(async () => {
+        if (!existingAppointment?.id) return;
+        setCancelAptBusy(true);
+        try {
+            await updateAppointment(existingAppointment.id, {
+                status: AppointmentStatus.CANCELLED,
+                notes: aptNotes?.trim() ? aptNotes : null,
+            });
+            setAptStatus(AppointmentStatus.CANCELLED);
+            toast.success(tm('bAptCancelSuccessToast'));
+            setCancelAptConfirmOpen(false);
+            setExistingEditBaselineFlush((f) => f + 1);
+        } catch (e: unknown) {
+            logger.crudError('AppointmentPOS', 'toolbarCancelAppointment', e);
+            toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
+        } finally {
+            setCancelAptBusy(false);
+        }
+    }, [existingAppointment, aptNotes, updateAppointment, tm]);
 
     const resolveBeautyCashierName = () => {
         const svc = cart.find(l => l.type === 'service' && l.staff_id?.trim());
@@ -1334,6 +1656,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 paymentMethod: 'pending',
                 cashier: resolveBeautyCashierName(),
                 beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+                beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
+                beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
             };
             setReceiptHeaderBanner(tm('bAppointmentReceiptBanner'));
             setCompletedSale(bookingSale);
@@ -1415,13 +1739,19 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
 
     const tryUpdateExistingAppointment = () => {
         if (updateExistingBusy || bookingBusy || bookingSubmitRef.current) return;
-        if (!existingAppointment?.id || isExistingPaidComplete) return;
-        if (!existingEditDirty) return;
+        if (!existingAppointment?.id) return;
+        const terminalFromCompleted =
+            (aptStatus === AppointmentStatus.CANCELLED || aptStatus === AppointmentStatus.NO_SHOW) &&
+            (existingAppointment.status === AppointmentStatus.COMPLETED ||
+                existingAppointment.status === 'completed') &&
+            String(existingAppointment.status ?? '') !== String(aptStatus);
+        if (isExistingPaidComplete && !terminalFromCompleted) return;
+        if (!existingEditDirty && !terminalFromCompleted) return;
         if (!customer) {
             openBookingBlockModal('customer');
             return;
         }
-        if (!cart.length) return;
+        if (!cart.length && !terminalFromCompleted) return;
         if (serviceLines.length > 0 && activeSpecialists.length === 0) {
             openBookingBlockModal('no_specialists');
             return;
@@ -1468,6 +1798,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 paymentMethod,
                 cashier: resolveBeautyCashierName(),
                 beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+                beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
+                beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
                 notes:
                     lang === 'en'
                         ? 'Interim bill'
@@ -1551,6 +1883,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                     status: AppointmentStatus.COMPLETED,
                     total_price: finalTotalSale,
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
+                    treatment_degree: receiptTreatmentDegree.trim() || null,
+                    treatment_shots: receiptTreatmentShots.trim() || null,
                 });
             } else if (canBookApt) {
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.CONFIRMED);
@@ -1590,18 +1924,92 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 staff_id: line.staff_id ?? null,
                 commission_amount: 0,
             }));
-            await beautyService.createSale({
-                customer_id: customer!.id,
-                customer_name: customer?.name,
-                subtotal,
-                discount: headerDiscount,
-                tax: 0,
-                total: finalTotalSale,
-                payment_method: paymentMethod,
-                payment_status: 'paid',
-                paid_amount: finalTotalSale,
-                remaining_amount: 0,
-            }, saleItems);
+
+            let separateLineInvoices = false;
+            try {
+                const cfg: any = await safeInvoke('get_app_config');
+                separateLineInvoices =
+                    cfg?.beauty_queue_separate_sale_per_line === true ||
+                    cfg?.beauty_queue_separate_sale_per_line === '1';
+            } catch {
+                /* no-op */
+            }
+
+            const saleNotesLink = buildBeautySaleNotesWithAppointmentLink(
+                aptNotes?.trim() || undefined,
+                existingAppointment?.id,
+            );
+
+            if (separateLineInvoices && cart.length > 1) {
+                for (let idx = 0; idx < cart.length; idx++) {
+                    const line = cart[idx];
+                    const gross = line.unit_price * line.qty;
+                    const disc = lineSplits[idx]?.discount ?? 0;
+                    const net = lineSplits[idx]?.total ?? gross;
+                    await beautyService.createSale(
+                        {
+                            customer_id: customer!.id,
+                            customer_name: customer?.name,
+                            subtotal: gross,
+                            discount: disc,
+                            tax: 0,
+                            total: net,
+                            payment_method: paymentMethod,
+                            payment_status: 'paid',
+                            paid_amount: net,
+                            remaining_amount: 0,
+                            notes: saleNotesLink,
+                        },
+                        [
+                            {
+                                item_type: line.type,
+                                item_id: line.item_id,
+                                name: line.name,
+                                quantity: line.qty,
+                                unit_price: line.unit_price,
+                                discount: disc,
+                                total: net,
+                                staff_id: line.staff_id ?? null,
+                                commission_amount: 0,
+                            },
+                        ],
+                        { skipErpAndLoyalty: true },
+                    );
+                }
+                await beautyService.syncBeautyCheckoutToErp(
+                    {
+                        customer_id: customer!.id,
+                        customer_name: customer?.name,
+                        subtotal,
+                        discount: headerDiscount,
+                        tax: 0,
+                        total: finalTotalSale,
+                        payment_method: paymentMethod,
+                        payment_status: 'paid',
+                        paid_amount: finalTotalSale,
+                        remaining_amount: 0,
+                        notes: (saleNotesLink ?? aptNotes?.trim()) || undefined,
+                    },
+                    saleItems,
+                );
+            } else {
+                await beautyService.createSale({
+                    customer_id: customer!.id,
+                    customer_name: customer?.name,
+                    subtotal,
+                    discount: headerDiscount,
+                    tax: 0,
+                    total: finalTotalSale,
+                    payment_method: paymentMethod,
+                    payment_status: 'paid',
+                    paid_amount: finalTotalSale,
+                    remaining_amount: 0,
+                    notes: saleNotesLink,
+                }, saleItems);
+            }
+
+            const splitInvoiceCount =
+                separateLineInvoices && cart.length > 1 ? cart.length : 0;
 
             for (const line of cart) {
                 if (line.type !== 'product') continue;
@@ -1626,6 +2034,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 cashier: resolveBeautyCashierName(),
                 notes: aptNotes?.trim() || undefined,
                 beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
+                beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
+                beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
             };
 
             setReceiptHeaderBanner(undefined);
@@ -1637,7 +2047,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             clearCart();
             void generateNewReceiptNumber();
             setShowPay(false);
-            toast.success(tm('bPaymentCompleted'));
+            if (splitInvoiceCount > 1) {
+                toast.success(tm('bBeautySplitInvoicesDone').replace('{n}', String(splitInvoiceCount)));
+            } else {
+                toast.success(tm('bPaymentCompleted'));
+            }
         } catch (e: unknown) {
             setShowPay(false);
             if (e instanceof SlotConflictError) {
@@ -1811,12 +2225,45 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     flex: 1,
                                 }}
                             >
-                                {STATUS_OPTS.map(o => (
+                                {appointmentStatusSelectOptions.map(o => (
                                     <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
                             </select>
                         </div>
                     </div>
+                    {existingAppointment?.id &&
+                        aptStatus !== AppointmentStatus.CANCELLED &&
+                        aptStatus !== 'cancelled' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'flex-end' }}>
+                            <Label>{'\u00a0'}</Label>
+                            <button
+                                type="button"
+                                onClick={() => setCancelAptConfirmOpen(true)}
+                                disabled={updateExistingBusy || cancelAptBusy || bookingBusy}
+                                title={tm('bAptCancelToolbarBtn')}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                    padding: '8px 12px',
+                                    borderRadius: 5,
+                                    border: '1px solid #fecaca',
+                                    background: '#fff',
+                                    color: '#b91c1c',
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    cursor:
+                                        updateExistingBusy || cancelAptBusy || bookingBusy ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    minHeight: 30,
+                                    opacity: updateExistingBusy || cancelAptBusy || bookingBusy ? 0.55 : 1,
+                                }}
+                            >
+                                {tm('bAptCancelToolbarBtn')}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -2234,16 +2681,20 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             backdropFilter: 'blur(8px)',
                             zIndex: 200,
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'flex-start',
                             justifyContent: 'center',
-                            padding: 20
+                            padding: 'max(16px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom))',
+                            overflowY: 'auto',
+                            WebkitOverflowScrolling: 'touch',
                         }}>
                             <div style={{
                                 background: '#fff',
                                 borderRadius: 20,
                                 width: '100%',
-                                maxWidth: 480,
-                                maxHeight: '85vh',
+                                maxWidth: showAddForm ? 520 : 480,
+                                maxHeight: 'min(85vh, calc(100dvh - 48px))',
+                                minHeight: 0,
+                                margin: 'auto 0',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -2309,12 +2760,13 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     </div>
                                 </div>
 
-                                {/* List Section */}
+                                {/* List Section — yeni kayıt formunda alan açılsın diye yükseklik sınırlı */}
                                 <div style={{
-                                    flex: 1,
+                                    flex: showAddForm ? '0 1 auto' : 1,
                                     overflowY: 'auto',
                                     padding: '0 12px 12px',
-                                    minHeight: 200
+                                    minHeight: showAddForm ? 0 : 200,
+                                    maxHeight: showAddForm ? 'min(22vh, 180px)' : undefined,
                                 }} className="custom-scrollbar">
                                     {filteredCusts.length === 0 ? (
                                         <div style={{ padding: '40px 0', textAlign: 'center' }}>
@@ -2382,11 +2834,12 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     )}
                                 </div>
 
-                                {/* Quick Add / Footer */}
+                                {/* Quick Add / Footer — butonlar her zaman görünsün */}
                                 <div style={{
                                     padding: '16px 24px 24px',
                                     borderTop: '1px solid #f3f4f6',
-                                    background: '#fafafa'
+                                    background: '#fafafa',
+                                    flexShrink: 0,
                                 }}>
                                     {!showAddForm ? (
                                         <button
@@ -2419,17 +2872,50 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             background: '#fff',
                                             padding: 16,
                                             borderRadius: 14,
-                                            border: '1px solid #e5e7eb'
+                                            border: '1px solid #e5e7eb',
+                                            minHeight: 0,
                                         }}>
-                                            <h4 style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#374151' }}>{tm('bFormNewRecord')}</h4>
-                                            <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder={tm('bPlaceholderNameRequired')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                                <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder={tm('bPhone')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
-                                                <input value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder={tm('bEmail')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                            <h4 style={{ margin: '0 0 5px', fontSize: 13, fontWeight: 700, color: '#374151', flexShrink: 0 }}>{tm('bFormNewRecord')}</h4>
+                                            <div style={{ maxHeight: 'min(36vh, 300px)', overflowY: 'auto', paddingRight: 4 }} className="custom-scrollbar">
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                                    <Field label={tm('custLabelFullName')}>
+                                                        <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder={tm('bPlaceholderNameRequired')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                    </Field>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                        <Field label={tm('custLabelPhone1')}>
+                                                            <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder={tm('bPhone')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        </Field>
+                                                        <Field label={tm('custLabelPhone2')}>
+                                                            <input value={newCust.phone2} onChange={e => setNewCust(p => ({ ...p, phone2: e.target.value }))} placeholder={tm('custPhPhone2')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        </Field>
+                                                    </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                        <Field label={tm('custLabelAge')}>
+                                                            <input type="number" min={0} max={150} value={newCust.age} onChange={e => setNewCust(p => ({ ...p, age: e.target.value }))} placeholder={tm('custPhAge')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        </Field>
+                                                        <Field label={tm('custLabelFileId')}>
+                                                            <input value={newCust.file_id} onChange={e => setNewCust(p => ({ ...p, file_id: e.target.value }))} placeholder={tm('custPhFileId')} style={{ ...iStyle, borderRadius: 10, height: 40 }} autoComplete="off" />
+                                                        </Field>
+                                                    </div>
+                                                    <Field label={tm('custLabelAddress')}>
+                                                        <textarea value={newCust.address} onChange={e => setNewCust(p => ({ ...p, address: e.target.value }))} placeholder={tm('custPhAddress')} rows={2} style={{ ...iStyle, height: 'auto', padding: '8px 10px', resize: 'vertical', lineHeight: 1.45, borderRadius: 10 }} />
+                                                    </Field>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                        <Field label={tm('custLabelOccupation')}>
+                                                            <input value={newCust.occupation} onChange={e => setNewCust(p => ({ ...p, occupation: e.target.value }))} placeholder={tm('custPhOccupation')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        </Field>
+                                                        <Field label={tm('custLabelEmail')}>
+                                                            <input type="email" value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder={tm('custPhEmail')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        </Field>
+                                                    </div>
+                                                    <Field label={tm('custLabelAbout')}>
+                                                        <textarea value={newCust.notes} onChange={e => setNewCust(p => ({ ...p, notes: e.target.value }))} placeholder={tm('custPhAbout')} rows={2} style={{ ...iStyle, height: 'auto', padding: '8px 10px', resize: 'vertical', lineHeight: 1.45, borderRadius: 10 }} />
+                                                    </Field>
+                                                </div>
                                             </div>
-                                            <div style={{ display: 'flex', gap: 8, marginTop: 5 }}>
-                                                <button onClick={() => { setShowAddForm(false); setNewCust({ name: '', phone: '', email: '' }); }} style={{ flex: 1, height: 38, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}>{tm('cancel')}</button>
-                                                <button onClick={handleSaveNewCustomer} disabled={!newCust.name.trim() || savingCust} style={{ flex: 1.5, height: 38, border: 'none', borderRadius: 10, background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: (!newCust.name.trim() || savingCust) ? 0.6 : 1 }}>
+                                            <div style={{ display: 'flex', gap: 8, marginTop: 5, flexShrink: 0, paddingTop: 4 }}>
+                                                <button type="button" onClick={() => { setShowAddForm(false); setNewCust(emptyQuickAddCustomer()); }} style={{ flex: 1, height: 42, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}>{tm('cancel')}</button>
+                                                <button type="button" onClick={handleSaveNewCustomer} disabled={!newCust.name.trim() || savingCust} style={{ flex: 1.5, height: 42, border: 'none', borderRadius: 10, background: '#7c3aed', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, opacity: (!newCust.name.trim() || savingCust) ? 0.6 : 1 }}>
                                                     {savingCust ? '...' : tm('bSaveCustomerButton')}
                                                 </button>
                                             </div>
@@ -2644,6 +3130,37 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                         >
                                                             <Users size={18} />
                                                         </button>
+                                                        {isAdmin() ? (
+                                                        <button
+                                                            type="button"
+                                                            title={tm('bAppointmentEditPriceTitleBtn')}
+                                                            aria-label={tm('bAppointmentEditPriceTitleBtn')}
+                                                            onClick={() => {
+                                                                queueMicrotask(() => {
+                                                                    setCartLinePriceUid(line.uid);
+                                                                    setCartLinePriceDraft(String(line.unit_price ?? 0));
+                                                                });
+                                                            }}
+                                                            style={{
+                                                                width: 44,
+                                                                height: 44,
+                                                                borderRadius: 10,
+                                                                border: '1px solid #a7f3d0',
+                                                                background: '#ecfdf5',
+                                                                cursor: 'pointer',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                color: '#059669',
+                                                                touchAction: 'manipulation',
+                                                                WebkitTapHighlightColor: 'transparent',
+                                                                flexShrink: 0,
+                                                                padding: 0,
+                                                            }}
+                                                        >
+                                                            <Banknote size={18} strokeWidth={2.25} />
+                                                        </button>
+                                                        ) : null}
                                                         <button
                                                             type="button"
                                                             title={tm('bCartMonthlyPlanButton')}
@@ -2701,7 +3218,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     <p style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>
                                         {tm('bPosSlotEditHint')}
                                     </p>
-                                    {serviceLines.length === 1 && (
+                                    {serviceLines.length > 0 && (
                                         <Field label={tm('bPosActualDurationLabel')}>
                                             <input
                                                 type="number"
@@ -2722,6 +3239,37 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             rows={2}
                                             style={{ ...iStyle, height: 'auto', padding: '6px 10px', resize: 'none', lineHeight: 1.5 }} />
                                     </Field>
+                                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                        <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                                            <Field label={tm('bReceiptTreatmentDegree')}>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={receiptTreatmentDegree}
+                                                    onChange={e => setReceiptTreatmentDegree(e.target.value)}
+                                                    placeholder="—"
+                                                    autoComplete="off"
+                                                    style={{ ...iStyle, height: 34 }}
+                                                />
+                                            </Field>
+                                        </div>
+                                        <div style={{ flex: '1 1 120px', minWidth: 0 }}>
+                                            <Field label={tm('bReceiptTreatmentShots')}>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    value={receiptTreatmentShots}
+                                                    onChange={e => setReceiptTreatmentShots(e.target.value)}
+                                                    placeholder="—"
+                                                    autoComplete="off"
+                                                    style={{ ...iStyle, height: 34 }}
+                                                />
+                                            </Field>
+                                        </div>
+                                    </div>
+                                    <p style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af', margin: 0, lineHeight: 1.4 }}>
+                                        {tm('bReceiptTreatmentHint')}
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -3202,6 +3750,57 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                     }}
                 />
             )}
+
+            <RetailExFlatModal
+                open={cancelAptConfirmOpen}
+                onClose={() => {
+                    if (!cancelAptBusy) setCancelAptConfirmOpen(false);
+                }}
+                title={tm('bAptCancelConfirmTitle')}
+                subtitle={tm('bAptCancelConfirmSubtitle')}
+                headerIcon={<AlertTriangle size={22} />}
+                maxWidthClass="max-w-md"
+                cancelLabel={tm('bAptCancelConfirmNo')}
+                confirmLabel={tm('bAptCancelConfirmYes')}
+                onConfirm={() => void runToolbarAppointmentCancel()}
+                confirmLoading={cancelAptBusy}
+                confirmDisabled={cancelAptBusy}
+            >
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {tm('bAptCancelConfirmBody')}
+                </p>
+            </RetailExFlatModal>
+
+            <RetailExFlatModal
+                open={!!cartLinePriceUid && isAdmin()}
+                onClose={() => setCartLinePriceUid(null)}
+                title={tm('bAppointmentEditPriceTitle')}
+                subtitle={
+                    cartLinePriceUid
+                        ? (cart.find(l => l.uid === cartLinePriceUid)?.name ?? undefined)
+                        : undefined
+                }
+                headerIcon={<Banknote size={22} />}
+                maxWidthClass="max-w-md"
+                cancelLabel={tm('cancel')}
+                confirmLabel={tm('save')}
+                onConfirm={saveCartLineUnitPrice}
+            >
+                <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200" htmlFor="beauty-pos-cart-line-unit-price">
+                        {tm('bAppointmentEditPriceHint')}
+                    </label>
+                    <input
+                        id="beauty-pos-cart-line-unit-price"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={cartLinePriceDraft}
+                        onChange={e => setCartLinePriceDraft(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-violet-500/30 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                    />
+                </div>
+            </RetailExFlatModal>
 
             <RetailExFlatModal
                 open={!!monthlyModalLine}

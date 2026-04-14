@@ -1,10 +1,24 @@
 /**
  * DevExpress WPF Scheduler "Group by Resource" benzeri: üstte kaynak başlıkları, günde sütun başına zaman çizgisi.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
+import { Plus } from 'lucide-react';
 import { AppointmentStatus, BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
+import {
+    compareBeautyQueueOrder,
+    groupBeautyQueueByCustomer,
+    mergeQueueGroupForCardDisplay,
+    sortBeautyAppointmentsQueue,
+    suggestQueuePrefillTime,
+} from '../../../utils/beautyQueueOrder';
 import { CLINIC } from '../clinicDesignTokens';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import {
+    beautySchedulerResourceColumnDropHandlers,
+    beautySchedulerResourceDragOverAllowDrop,
+    beautySchedulerResourceDragStartHandler,
+} from '../../../utils/beautySchedulerDragDrop';
 
 const PX_PER_HOUR = 52;
 const UNASSIGNED = '__unassigned__';
@@ -113,7 +127,9 @@ function buildStaffColumns(
     dayStr: string,
     unassignedLabel: string
 ): ColumnDef[] {
-    const dayApts = appointments.filter(a => beautyAppointmentDateKey(a) === dayStr);
+    const dayApts = appointments.filter(
+        a => beautyAppointmentDateKey(a) === dayStr && beautyAptVisibleOnSchedule(a),
+    );
     const hasUnassigned = dayApts.some(
         a => !(a.staff_id ?? a.specialist_id)?.trim()
     );
@@ -133,7 +149,9 @@ function buildDeviceColumns(
     dayStr: string,
     unassignedLabel: string
 ): ColumnDef[] {
-    const dayApts = appointments.filter(a => beautyAppointmentDateKey(a) === dayStr);
+    const dayApts = appointments.filter(
+        a => beautyAppointmentDateKey(a) === dayStr && beautyAptVisibleOnSchedule(a),
+    );
     const hasUnassigned = dayApts.some(a => !a.device_id?.trim());
     const cols: ColumnDef[] = devices
         .filter(d => d.is_active)
@@ -169,6 +187,11 @@ export interface ResourceGroupedDayViewProps {
     onEmptySlotClick?: (timeHHmm: string, dateYmd: string, resourceColumnId: string) => void;
     dayStartHour?: number;
     dayEndHour?: number;
+    queueMode?: boolean;
+    queueSnapMinutes?: number;
+    resourceDragKind?: 'device' | 'staff';
+    dragResourceTitle?: string;
+    onResourceColumnDrop?: (appointmentIds: string[], targetColumnId: string) => void;
 }
 
 export function ResourceGroupedDayView({
@@ -184,14 +207,23 @@ export function ResourceGroupedDayView({
     onEmptySlotClick,
     dayStartHour = 9,
     dayEndHour = 21,
+    queueMode = false,
+    queueSnapMinutes = 5,
+    resourceDragKind,
+    dragResourceTitle,
+    onResourceColumnDrop,
 }: ResourceGroupedDayViewProps) {
     const dayStr = formatLocalYmd(currentDate);
+    const scheduleApts = useMemo(
+        () => appointments.filter(beautyAptVisibleOnSchedule),
+        [appointments],
+    );
     const columns = useMemo(() => {
         if (mode === 'staff') {
-            return buildStaffColumns(specialists, appointments, dayStr, unassignedLabel);
+            return buildStaffColumns(specialists, scheduleApts, dayStr, unassignedLabel);
         }
-        return buildDeviceColumns(devices, appointments, dayStr, unassignedLabel);
-    }, [mode, specialists, devices, appointments, dayStr, unassignedLabel]);
+        return buildDeviceColumns(devices, scheduleApts, dayStr, unassignedLabel);
+    }, [mode, specialists, devices, scheduleApts, dayStr, unassignedLabel]);
 
     const totalMinutes = (dayEndHour - dayStartHour) * 60;
     const totalHeight = (dayEndHour - dayStartHour) * PX_PER_HOUR;
@@ -204,13 +236,13 @@ export function ResourceGroupedDayView({
     const colLayouts = useMemo(() => {
         const m = new Map<string, ReturnType<typeof layoutDayColumn>>();
         for (const col of columns) {
-            const apts = appointments.filter(
+            const apts = scheduleApts.filter(
                 a => beautyAppointmentDateKey(a) === dayStr && filterAptForColumn(a, col.id, mode)
             );
             m.set(col.id, layoutDayColumn(apts, dayStartHour, dayEndHour));
         }
         return m;
-    }, [columns, appointments, dayStr, mode, dayStartHour, dayEndHour]);
+    }, [columns, scheduleApts, dayStr, mode, dayStartHour, dayEndHour]);
 
     if (columns.length === 0) {
         return (
@@ -229,6 +261,152 @@ export function ResourceGroupedDayView({
                 }}
             >
                 {emptyResourcesMessage}
+            </div>
+        );
+    }
+
+    if (queueMode) {
+        const minWQ = columns.length * Math.max(140, Math.min(220, 900 / Math.max(1, columns.length)));
+        return (
+            <div
+                style={{
+                    margin: '0 auto',
+                    maxWidth: '100%',
+                    background: CLINIC.surface,
+                    border: `1px solid ${CLINIC.border}`,
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    boxShadow: CLINIC.shadowSm,
+                }}
+            >
+                <div style={{ overflowX: 'auto' }} className="custom-scrollbar">
+                    <div style={{ minWidth: minWQ, display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', borderBottom: `2px solid ${CLINIC.border}`, background: CLINIC.violetSurface }}>
+                            {columns.map(col => (
+                                <div
+                                    key={col.id}
+                                    style={{
+                                        flex: '1 1 140px',
+                                        minWidth: 120,
+                                        padding: '10px 8px',
+                                        borderRight: `1px solid ${CLINIC.border}`,
+                                        textAlign: 'center',
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        color: CLINIC.textPrimary,
+                                        background: CLINIC.surface,
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                        <span
+                                            style={{
+                                                width: 8,
+                                                height: 8,
+                                                borderRadius: 2,
+                                                background: col.accent || CLINIC.textMuted,
+                                                flexShrink: 0,
+                                            }}
+                                        />
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.name}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                            {columns.map(col => {
+                                const colApts = sortBeautyAppointmentsQueue(
+                                    scheduleApts.filter(
+                                        a => beautyAppointmentDateKey(a) === dayStr && filterAptForColumn(a, col.id, mode)
+                                    )
+                                );
+                                const colGroups = groupBeautyQueueByCustomer(colApts);
+                                const columnDrop =
+                                    resourceDragKind && onResourceColumnDrop
+                                        ? beautySchedulerResourceColumnDropHandlers({
+                                            acceptKind: resourceDragKind,
+                                            targetColumnId: col.id,
+                                            onDrop: ids => onResourceColumnDrop(ids, col.id),
+                                        })
+                                        : {};
+                                return (
+                                    <div
+                                        key={col.id}
+                                        {...columnDrop}
+                                        style={{
+                                            flex: '1 1 140px',
+                                            minWidth: 120,
+                                            borderRight: `1px solid ${CLINIC.border}`,
+                                            background: CLINIC.surface,
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: 10,
+                                            padding: 10,
+                                        }}
+                                    >
+                                        {colGroups.map(group => {
+                                            const merged = mergeQueueGroupForCardDisplay(group);
+                                            return (
+                                                <div
+                                                    key={group[0].id}
+                                                    {...columnDrop}
+                                                    draggable={!!(resourceDragKind && onResourceColumnDrop)}
+                                                    title={dragResourceTitle}
+                                                    onDragStart={
+                                                        resourceDragKind && onResourceColumnDrop
+                                                            ? beautySchedulerResourceDragStartHandler(
+                                                                resourceDragKind,
+                                                                group.map(g => g.id),
+                                                            )
+                                                            : undefined
+                                                    }
+                                                    style={
+                                                        resourceDragKind && onResourceColumnDrop
+                                                            ? { cursor: 'grab' }
+                                                            : undefined
+                                                    }
+                                                >
+                                                    {renderAppointment(merged)}
+                                                </div>
+                                            );
+                                        })}
+                                        {onEmptySlotClick && (
+                                            <div
+                                                role="presentation"
+                                                onClick={() =>
+                                                    onEmptySlotClick(
+                                                        suggestQueuePrefillTime(scheduleApts, dayStr, {
+                                                            resource:
+                                                                mode === 'staff'
+                                                                    ? { kind: 'staff', id: col.id === UNASSIGNED ? null : String(col.id) }
+                                                                    : { kind: 'device', id: col.id === UNASSIGNED ? null : String(col.id) },
+                                                            dayStartHour,
+                                                            dayEndHour,
+                                                            snapMinutes: queueSnapMinutes,
+                                                        }),
+                                                        dayStr,
+                                                        col.id
+                                                    )
+                                                }
+                                                style={{
+                                                    border: `1px dashed ${CLINIC.borderMuted}`,
+                                                    borderRadius: 8,
+                                                    padding: 10,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    cursor: 'pointer',
+                                                    color: CLINIC.textMuted,
+                                                }}
+                                            >
+                                                <Plus size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -345,6 +523,14 @@ export function ResourceGroupedDayView({
                                 const timeHHmm = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
                                 onEmptySlotClick(timeHHmm, dayStr, col.id);
                             };
+                            const columnDrop =
+                                resourceDragKind && onResourceColumnDrop
+                                    ? beautySchedulerResourceColumnDropHandlers({
+                                        acceptKind: resourceDragKind,
+                                        targetColumnId: col.id,
+                                        onDrop: ids => onResourceColumnDrop(ids, col.id),
+                                    })
+                                    : {};
 
                             return (
                                 <div
@@ -371,6 +557,7 @@ export function ResourceGroupedDayView({
                                     <div
                                         role="presentation"
                                         onClick={handleClick}
+                                        {...columnDrop}
                                         style={{
                                             position: 'absolute',
                                             inset: 0,
@@ -402,7 +589,24 @@ export function ResourceGroupedDayView({
                                                 }}
                                                 onClick={e => e.stopPropagation()}
                                             >
-                                                <div style={{ height: '100%', minHeight: 40, overflow: 'hidden', fontSize: 10 }}>
+                                                <div
+                                                    {...columnDrop}
+                                                    draggable={!!(resourceDragKind && onResourceColumnDrop)}
+                                                    title={dragResourceTitle}
+                                                    onDragStart={
+                                                        resourceDragKind && onResourceColumnDrop
+                                                            ? beautySchedulerResourceDragStartHandler(resourceDragKind, [apt.id])
+                                                            : undefined
+                                                    }
+                                                    style={{
+                                                        height: '100%',
+                                                        minHeight: 40,
+                                                        overflow: 'hidden',
+                                                        fontSize: 10,
+                                                        cursor:
+                                                            resourceDragKind && onResourceColumnDrop ? 'grab' : undefined,
+                                                    }}
+                                                >
                                                     {renderAppointment(apt)}
                                                 </div>
                                             </div>
@@ -434,6 +638,10 @@ export interface ResourceGroupedWeekMatrixProps {
     emptyResourcesMessage: string;
     onAppointmentClick: (apt: BeautyAppointment) => void;
     onCellNew?: (dateYmd: string, resourceColumnId: string) => void;
+    queueMode?: boolean;
+    resourceDragKind?: 'device' | 'staff';
+    dragResourceTitle?: string;
+    onResourceCellDrop?: (appointmentIds: string[], targetResourceColumnId: string, targetDateYmd: string) => void;
 }
 
 export function ResourceGroupedWeekMatrix({
@@ -448,7 +656,16 @@ export function ResourceGroupedWeekMatrix({
     emptyResourcesMessage,
     onAppointmentClick,
     onCellNew,
+    queueMode = false,
+    resourceDragKind,
+    dragResourceTitle,
+    onResourceCellDrop,
 }: ResourceGroupedWeekMatrixProps) {
+    const suppressCellClickRef = useRef(0);
+    const gridApts = useMemo(
+        () => appointments.filter(beautyAptVisibleOnSchedule),
+        [appointments],
+    );
     const weekDays = useMemo(() => {
         const days: Date[] = [];
         const startOfWeek = new Date(currentDate);
@@ -470,7 +687,7 @@ export function ResourceGroupedWeekMatrix({
             rows = specialists.filter(s => s.is_active).map(s => ({ id: s.id, name: s.name, accent: s.color || CLINIC.violet }));
             const hasUnassigned = weekDays.some(d => {
                 const ds = formatLocalYmd(d);
-                return appointments.some(
+                return gridApts.some(
                     a => beautyAppointmentDateKey(a) === ds && !(a.staff_id ?? a.specialist_id)?.trim()
                 );
             });
@@ -481,14 +698,14 @@ export function ResourceGroupedWeekMatrix({
             rows = devices.filter(d => d.is_active).map(d => ({ id: d.id, name: d.name, accent: CLINIC.violet }));
             const hasUnassigned = weekDays.some(d => {
                 const ds = formatLocalYmd(d);
-                return appointments.some(a => beautyAppointmentDateKey(a) === ds && !a.device_id?.trim());
+                return gridApts.some(a => beautyAppointmentDateKey(a) === ds && !a.device_id?.trim());
             });
             if (hasUnassigned) {
                 rows.push({ id: UNASSIGNED, name: unassignedLabel, accent: CLINIC.textMuted });
             }
         }
         return rows;
-    }, [mode, specialists, devices, appointments, weekDays, unassignedLabel]);
+    }, [mode, specialists, devices, gridApts, weekDays, unassignedLabel]);
 
     if (rowDefs.length === 0) {
         return (
@@ -591,16 +808,39 @@ export function ResourceGroupedWeekMatrix({
                             </div>
                             {weekDays.map(day => {
                                 const dateStr = formatLocalYmd(day);
-                                const cellApts = appointments.filter(a => {
+                                const cellApts = gridApts.filter(a => {
                                     if (beautyAppointmentDateKey(a) !== dateStr) return false;
                                     return filterAptForColumn(a, row.id, mode);
-                                }).sort((a, b) => aptTimeRaw(a).localeCompare(aptTimeRaw(b)));
+                                }).sort((a, b) =>
+                                    queueMode
+                                        ? compareBeautyQueueOrder(a, b)
+                                        : aptTimeRaw(a).localeCompare(aptTimeRaw(b))
+                                );
+                                const cellGroups = queueMode
+                                    ? groupBeautyQueueByCustomer(cellApts)
+                                    : cellApts.map(a => [a]);
+                                const shownGroups = cellGroups.slice(0, 4);
+                                const cellDrop =
+                                    resourceDragKind && onResourceCellDrop
+                                        ? beautySchedulerResourceColumnDropHandlers({
+                                            acceptKind: resourceDragKind,
+                                            targetColumnId: row.id,
+                                            onDrop: ids => {
+                                                suppressCellClickRef.current = Date.now() + 500;
+                                                onResourceCellDrop(ids, row.id, dateStr);
+                                            },
+                                        })
+                                        : {};
 
                                 return (
                                     <div
                                         key={dateStr}
                                         role="presentation"
-                                        onClick={() => onCellNew?.(dateStr, row.id)}
+                                        onClick={() => {
+                                            if (Date.now() < suppressCellClickRef.current) return;
+                                            onCellNew?.(dateStr, row.id);
+                                        }}
+                                        {...cellDrop}
                                         style={{
                                             padding: 6,
                                             borderRight: `1px solid ${CLINIC.gridLine}`,
@@ -610,15 +850,29 @@ export function ResourceGroupedWeekMatrix({
                                         }}
                                     >
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                            {cellApts.slice(0, 4).map(apt => {
+                                            {shownGroups.map((group, gi) => {
+                                                const apt = mergeQueueGroupForCardDisplay(group);
                                                 const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
                                                 return (
                                                 <button
-                                                    key={apt.id}
+                                                    key={group[0].id}
                                                     type="button"
+                                                    {...(resourceDragKind && onResourceCellDrop
+                                                        ? beautySchedulerResourceDragOverAllowDrop()
+                                                        : {})}
+                                                    draggable={!!(resourceDragKind && onResourceCellDrop)}
+                                                    title={dragResourceTitle}
+                                                    onDragStart={
+                                                        resourceDragKind && onResourceCellDrop
+                                                            ? beautySchedulerResourceDragStartHandler(
+                                                                resourceDragKind,
+                                                                group.map(g => g.id),
+                                                            )
+                                                            : undefined
+                                                    }
                                                     onClick={e => {
                                                         e.stopPropagation();
-                                                        onAppointmentClick(apt);
+                                                        onAppointmentClick(group[0]);
                                                     }}
                                                     style={{
                                                         textAlign: 'left',
@@ -628,19 +882,29 @@ export function ResourceGroupedWeekMatrix({
                                                         borderLeft: `3px solid ${done ? '#059669' : (apt.service_color || CLINIC.violet)}`,
                                                         background: done ? 'rgba(5, 150, 105, 0.12)' : CLINIC.surfaceMuted,
                                                         fontSize: 10,
-                                                        cursor: 'pointer',
+                                                        cursor:
+                                                            resourceDragKind && onResourceCellDrop ? 'grab' : 'pointer',
                                                     }}
                                                 >
-                                                    <div style={{ fontWeight: 700, color: CLINIC.textPrimary }}>{aptTimeRaw(apt).slice(0, 5)}</div>
+                                                    <div style={{ fontWeight: 700, color: CLINIC.textPrimary }}>
+                                                        {queueMode
+                                                            ? `#${gi + 1}`
+                                                            : aptTimeRaw(apt).slice(0, 5)}
+                                                    </div>
                                                     <div style={{ color: CLINIC.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                         {apt.customer_name ?? '—'}
                                                     </div>
+                                                    {queueMode && (apt.service_name ?? '').trim() ? (
+                                                        <div style={{ color: CLINIC.textMuted, fontSize: 9, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {apt.service_name}
+                                                        </div>
+                                                    ) : null}
                                                 </button>
                                                 );
                                             })}
-                                            {cellApts.length > 4 && (
+                                            {cellGroups.length > 4 && (
                                                 <div style={{ fontSize: 9, fontWeight: 700, color: CLINIC.textMuted, textAlign: 'center' }}>
-                                                    +{cellApts.length - 4}
+                                                    +{cellGroups.length - 4}
                                                 </div>
                                             )}
                                         </div>

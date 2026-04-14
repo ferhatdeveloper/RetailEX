@@ -19,6 +19,7 @@ import {
     DeleteOutlined,
     ClockCircleOutlined,
     ScissorOutlined,
+    FormOutlined,
 } from '@ant-design/icons';
 import { Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
@@ -27,12 +28,20 @@ import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
+import { beautyService } from '../../../services/beautyService';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
+
+/** RetailExFlatModal z≈2147483646; antd Select varsayılan popup daha altta kalıyor */
+const ANT_SELECT_POPUP_Z = 2147483647;
+const antSelectInFlatModal = {
+    getPopupContainer: () => document.body,
+    styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
+} as const;
 
 const CATEGORY_LABELS: Record<string, string> = {
     laser: 'Lazer',
@@ -67,6 +76,12 @@ export function ServiceManagement() {
     const { services, isLoading, loadServices, createService, updateService, deleteService } = useBeautyStore();
     const { tm } = useLanguage();
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+    const [bulkActionLoading, setBulkActionLoading] = useState(false);
+    const [bulkUpdateModalOpen, setBulkUpdateModalOpen] = useState(false);
+    const [bulkUpdateDuration, setBulkUpdateDuration] = useState(60);
+    const [bulkUpdateSessions, setBulkUpdateSessions] = useState(1);
+    const [bulkUpdateSaving, setBulkUpdateSaving] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautyService>>(EMPTY_FORM);
@@ -76,6 +91,10 @@ export function ServiceManagement() {
     useEffect(() => {
         loadServices();
     }, []);
+
+    useEffect(() => {
+        setSelectedRowKeys(keys => keys.filter(k => services.some(s => s.id === k)));
+    }, [services]);
 
     const categories = Object.values(ServiceCategory);
 
@@ -127,6 +146,90 @@ export function ServiceManagement() {
             toast.success(tm('bServiceDeleted'));
         } catch (e: unknown) {
             toast.error(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const openBulkUpdateModal = () => {
+        const firstKey = selectedRowKeys.length ? String(selectedRowKeys[0]) : '';
+        const sample = firstKey ? services.find(s => s.id === firstKey) : undefined;
+        setBulkUpdateDuration(Math.max(5, Number(sample?.duration_min) || 60));
+        setBulkUpdateSessions(Math.max(1, Math.min(99, Math.round(Number(sample?.default_sessions ?? 1)))));
+        setBulkUpdateModalOpen(true);
+    };
+
+    const handleBulkUpdateSave = async () => {
+        const durRounded = Math.round(Number(bulkUpdateDuration));
+        const sessionsRounded = Math.round(Number(bulkUpdateSessions));
+        if (!Number.isFinite(durRounded) || durRounded < 5) {
+            toast.error(tm('bBulkUpdateValidationDuration'));
+            throw new Error('validation');
+        }
+        const dur = durRounded;
+        const sessions = Number.isFinite(sessionsRounded)
+            ? Math.max(1, Math.min(99, sessionsRounded))
+            : 1;
+        const keys = selectedRowKeys.map(String);
+        if (keys.length === 0) {
+            setBulkUpdateModalOpen(false);
+            return;
+        }
+        setBulkUpdateSaving(true);
+        try {
+            const results = await Promise.allSettled(
+                keys.map(async id => {
+                    const s = services.find(x => x.id === id);
+                    if (!s) throw new Error('notfound');
+                    await beautyService.updateService(id, {
+                        ...s,
+                        duration_min: dur,
+                        default_sessions: sessions,
+                    });
+                }),
+            );
+            await loadServices();
+            const ok = results.filter(r => r.status === 'fulfilled').length;
+            const fail = results.length - ok;
+            if (ok > 0) {
+                toast.success(tm('bBulkUpdateSuccess').replace('{n}', String(ok)));
+            }
+            if (fail > 0) {
+                toast.error(tm('bBulkUpdatePartial').replace('{ok}', String(ok)).replace('{fail}', String(fail)));
+            }
+            setBulkUpdateModalOpen(false);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg !== 'validation') toast.error(msg);
+            throw e;
+        } finally {
+            setBulkUpdateSaving(false);
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        const keys = selectedRowKeys.map(String);
+        if (keys.length === 0) return;
+        setBulkActionLoading(true);
+        try {
+            const results = await Promise.allSettled(keys.map(id => deleteService(id)));
+            const ok = results.filter(r => r.status === 'fulfilled').length;
+            const fail = results.length - ok;
+            if (ok > 0) {
+                toast.success(tm('bBulkServicesDeleted').replace('{n}', String(ok)));
+            }
+            if (fail > 0) {
+                toast.error(tm('bBulkServicesDeletePartial').replace('{ok}', String(ok)).replace('{fail}', String(fail)));
+            }
+            setSelectedRowKeys(prev => {
+                if (fail === 0) return [];
+                const failedIds = new Set(
+                    keys.filter((_, i) => results[i].status === 'rejected'),
+                );
+                return prev.filter(k => failedIds.has(String(k)));
+            });
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            setBulkActionLoading(false);
         }
     };
 
@@ -298,6 +401,36 @@ export function ServiceManagement() {
                             </Space>
                         </div>
 
+                        {selectedRowKeys.length > 0 && (
+                            <div
+                                className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5"
+                                style={{ borderColor: RETAILEX_BORDER_SUBTLE, backgroundColor: 'rgba(114, 46, 209, 0.06)' }}
+                            >
+                                <Typography.Text className="text-sm" style={{ color: RETAILEX_TEXT_PRIMARY }}>
+                                    {tm('bBulkServicesSelected').replace('{n}', String(selectedRowKeys.length))}
+                                </Typography.Text>
+                                <Space wrap size="small">
+                                    <Button size="small" onClick={() => setSelectedRowKeys([])}>
+                                        {tm('bBulkClearSelection')}
+                                    </Button>
+                                    <Button size="small" type="primary" ghost icon={<FormOutlined />} onClick={openBulkUpdateModal}>
+                                        {tm('bBulkUpdateDurationSessions')}
+                                    </Button>
+                                    <Popconfirm
+                                        title={tm('bBulkDeleteServicesConfirm').replace('{n}', String(selectedRowKeys.length))}
+                                        okText={tm('delete')}
+                                        cancelText={tm('cancel')}
+                                        okButtonProps={{ loading: bulkActionLoading }}
+                                        onConfirm={handleBulkDelete}
+                                    >
+                                        <Button size="small" danger type="primary" ghost>
+                                            {tm('bBulkDeleteSelected')}
+                                        </Button>
+                                    </Popconfirm>
+                                </Space>
+                            </div>
+                        )}
+
                         <Table<BeautyService>
                             rowKey="id"
                             size="middle"
@@ -305,6 +438,12 @@ export function ServiceManagement() {
                             loading={isLoading}
                             columns={columns}
                             dataSource={filteredServices}
+                            rowSelection={{
+                                selectedRowKeys,
+                                onChange: setSelectedRowKeys,
+                                preserveSelectedRowKeys: true,
+                                columnWidth: 48,
+                            }}
                             rowClassName={record => (!record.is_active ? 'opacity-60' : '')}
                             pagination={{
                                 defaultPageSize: 20,
@@ -332,6 +471,49 @@ export function ServiceManagement() {
                         />
                     </Card>
                 </div>
+
+                <RetailExFlatModal
+                    open={bulkUpdateModalOpen}
+                    onClose={() => setBulkUpdateModalOpen(false)}
+                    title={tm('bBulkUpdateModalTitle')}
+                    subtitle={tm('bBulkUpdateModalSubtitle').replace('{n}', String(selectedRowKeys.length))}
+                    headerIcon={<ClockCircleOutlined className="text-xl" aria-hidden />}
+                    maxWidthClass="max-w-md"
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={bulkUpdateSaving ? tm('bSaving') : tm('bBulkUpdateApply')}
+                    confirmLoading={bulkUpdateSaving}
+                    onConfirm={async () => {
+                        try {
+                            await handleBulkUpdateSave();
+                        } catch {
+                            /* handled */
+                        }
+                    }}
+                >
+                    <div className="flex w-full flex-col gap-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <RetailExFlatFieldLabel required>{tm('bDurationMin')}</RetailExFlatFieldLabel>
+                                <InputNumber
+                                    className="w-full !rounded-2xl"
+                                    min={5}
+                                    value={bulkUpdateDuration}
+                                    onChange={v => setBulkUpdateDuration(Math.max(5, Number(v) || 5))}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel required>{tm('bServiceDefaultSessions')}</RetailExFlatFieldLabel>
+                                <InputNumber
+                                    className="w-full !rounded-2xl"
+                                    min={1}
+                                    max={99}
+                                    value={bulkUpdateSessions}
+                                    onChange={v => setBulkUpdateSessions(Math.max(1, Math.min(99, Number(v) || 1)))}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </RetailExFlatModal>
 
                 <RetailExFlatModal
                     open={showModal}
@@ -364,6 +546,7 @@ export function ServiceManagement() {
                             <div className="sm:col-span-2">
                                 <RetailExFlatFieldLabel>{tm('category')}</RetailExFlatFieldLabel>
                                 <Select
+                                    {...antSelectInFlatModal}
                                     className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
                                     value={editing.category ?? ServiceCategory.BEAUTY}
                                     onChange={v => setEditing(p => ({ ...p, category: v }))}

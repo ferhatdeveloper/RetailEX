@@ -422,63 +422,106 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
                   <span className="font-bold text-end break-words min-w-0">{sale.beautyDeviceName.trim()}</span>
                 </div>
               )}
+              {(() => {
+                const deg = (sale.beautyTreatmentDegree ?? '').trim();
+                const shots = (sale.beautyTreatmentShots ?? '').trim();
+                const hasBeautyLine = sale.items.some((i) => !!(i as SaleItem).beautyStaffName?.trim());
+                const show =
+                  !!sale.beautyDeviceName?.trim() || hasBeautyLine || !!deg || !!shots;
+                if (!show) return null;
+                return (
+                  <div className="flex justify-between gap-3 mt-1 text-[13px] font-extrabold text-gray-950 print:text-[11px]">
+                    <span className="min-w-0 flex-1">
+                      {t.receipt.treatmentDegreeLabel}:{' '}
+                      <span className="inline-block min-w-[4.5rem] border-b border-dotted border-gray-900 align-bottom tabular-nums">
+                        {deg || '\u00a0'}
+                      </span>
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap">
+                      {t.receipt.treatmentShotsLabel}:{' '}
+                      <span className="inline-block min-w-[3.5rem] border-b border-dotted border-gray-900 align-bottom tabular-nums">
+                        {shots || '\u00a0'}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
-            {/* Ürün / Adet / Tutar — sütunlar 80mm içinde kırpılmaz */}
-            <div className="text-[12px] mb-1 font-black text-gray-950 flex gap-1 border-b-[3px] border-black pb-1 print:text-[10px] print:font-black">
-              <span className="min-w-0 flex-1">{(t.receipt as any).productLabel ?? (selectedLang === 'en' ? 'Item' : 'Ürün')}</span>
-              <span className="w-9 shrink-0 text-center">{((t.receipt as any).qtyLabel ?? (selectedLang === 'en' ? 'Qty' : 'Adet'))}</span>
-              <span className="w-[4.75rem] shrink-0 text-end tabular-nums">{((t.receipt as any).amountLabel ?? (selectedLang === 'en' ? 'Amt' : 'Tutar'))}</span>
-            </div>
-            <div className="text-[14px] mb-2 w-full font-bold print:text-[11px]">
-              {sale.items.map((item, index) => (
-                <div key={index} className="flex gap-1 mb-1 items-start border-b-2 border-gray-500 pb-1 text-gray-950">
-                  <div className={`min-w-0 flex-1 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
-                    {(() => {
-                      const si = item as SaleItem;
-                      const beautyCtx = !!(si.beautyStaffName?.trim() || sale.beautyDeviceName?.trim());
-                      if (beautyCtx) {
-                        return (
-                          <>
-                            <div className="break-words" style={{ wordBreak: 'break-word' }}>
-                              <span className="text-[10px] font-black text-gray-600">{t.receipt.operation}: </span>
-                              <span className="font-extrabold break-words align-top">{lineProductName(item)}</span>
-                            </div>
-                            {si.beautyStaffName?.trim() ? (
-                              <div className="text-[11px] font-extrabold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
-                                {t.receipt.staff}: {si.beautyStaffName.trim()}
-                              </div>
-                            ) : null}
-                          </>
-                        );
-                      }
-                      return (
-                        <span className="font-extrabold break-words block" style={{ wordBreak: 'break-word' }}>
-                          {lineProductName(item)}
-                        </span>
-                      );
-                    })()}
-                    {item.variant && (item.variant.color || item.variant.size) && (
-                      <div className="text-[11px] font-extrabold text-gray-800 print:text-[10px] print:font-bold">{(item.variant as any).color} {(item.variant as any).size}</div>
-                    )}
-                    <span className="text-[11px] font-extrabold text-gray-800 block print:text-[10px] print:font-bold">
+            {/* Ürün / Adet / Tutar — tablo: yazdırma motorlarında flex bazen tek satıra yapıştırıyordu */}
+            <table className="receipt-items-table w-full table-fixed text-[12px] mb-2 font-bold text-gray-950 print:text-[11px] border-collapse">
+              <colgroup>
+                <col style={{ width: '58%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '28%' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-b-[3px] border-black">
+                  <th className={`py-1 pr-1 font-black text-left ${isRTL ? 'text-right' : 'text-left'}`}>
+                    {(t.receipt as any).productLabel ?? (selectedLang === 'en' ? 'Item' : 'Ürün')}
+                  </th>
+                  <th className="py-1 text-center font-black w-9">
+                    {(t.receipt as any).qtyLabel ?? (selectedLang === 'en' ? 'Qty' : 'Adet')}
+                  </th>
+                  <th className={`py-1 pl-1 font-black text-right tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
+                    {(t.receipt as any).amountLabel ?? (selectedLang === 'en' ? 'Amt' : 'Tutar')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.items.map((item, index) => (
+                  <tr key={index} className="border-b-2 border-gray-500 align-top">
+                    <td className={`py-1 pr-1 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
                       {(() => {
-                        const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
-                        const unit = (item as any).unit || 'Adet';
-                        const basePrice = mult > 1 ? item.price / mult : item.price;
-                        return mult > 1 ? `${item.quantity} ${unit} × ${formatNumber(basePrice, 0, true)}` : `${item.quantity} × ${formatNumber(item.price, 0, true)}`;
+                        const si = item as SaleItem;
+                        const beautyCtx = !!(si.beautyStaffName?.trim() || sale.beautyDeviceName?.trim());
+                        if (beautyCtx) {
+                          return (
+                            <>
+                              <div className="break-words" style={{ wordBreak: 'break-word' }}>
+                                <span className="text-[10px] font-black text-gray-600">{t.receipt.operation}: </span>
+                                <span className="font-extrabold break-words align-top">{lineProductName(item)}</span>
+                              </div>
+                              {si.beautyStaffName?.trim() ? (
+                                <div className="text-[11px] font-extrabold text-gray-900 mt-0.5 print:text-[10px] print:font-bold">
+                                  {t.receipt.staff}: {si.beautyStaffName.trim()}
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        }
+                        return (
+                          <span className="font-extrabold break-words block" style={{ wordBreak: 'break-word' }}>
+                            {lineProductName(item)}
+                          </span>
+                        );
                       })()}
-                    </span>
-                  </div>
-                  <span className="w-9 shrink-0 text-center text-[12px] font-black text-gray-950 pt-0.5 tabular-nums print:text-[10px] print:font-black">{item.quantity}</span>
-                  <span className="w-[4.75rem] shrink-0 text-end font-black whitespace-nowrap text-[14px] tabular-nums pt-0.5 print:text-[11px] print:font-black">
-                    {formatNumber(item.total, 0, true)} IQD
-                  </span>
-                </div>
-              ))}
-            </div>
+                      {item.variant && (item.variant.color || item.variant.size) && (
+                        <div className="text-[11px] font-extrabold text-gray-800 print:text-[10px] print:font-bold">
+                          {(item.variant as any).color} {(item.variant as any).size}
+                        </div>
+                      )}
+                      <span className="text-[11px] font-extrabold text-gray-800 block print:text-[10px] print:font-bold">
+                        {(() => {
+                          const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
+                          const unit = (item as any).unit || 'Adet';
+                          const basePrice = mult > 1 ? item.price / mult : item.price;
+                          return mult > 1 ? `${item.quantity} ${unit} × ${formatNumber(basePrice, 0, true)}` : `${item.quantity} × ${formatNumber(item.price, 0, true)}`;
+                        })()}
+                      </span>
+                    </td>
+                    <td className="py-1 text-center text-[12px] font-black tabular-nums print:text-[10px] align-top">
+                      {item.quantity}
+                    </td>
+                    <td className="py-1 text-end font-black whitespace-nowrap text-[14px] tabular-nums print:text-[11px] align-top">
+                      {formatNumber(item.total, 0, true)} IQD
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
             <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
@@ -670,6 +713,11 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
           }
           @page { size: 80mm auto; margin: 0; }
           .receipt-80mm { width: 80mm !important; max-width: 80mm !important; transform: none !important; }
+          #receipt-content .receipt-items-table {
+            width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+          }
           .print\\:hidden {
             display: none !important;
           }

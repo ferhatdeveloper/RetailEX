@@ -1,12 +1,18 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, CalendarDays, X } from 'lucide-react';
+import { Clock, CalendarDays, List, X } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus, BeautyAppointment } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { CLINIC } from '../clinicDesignTokens';
+import {
+    groupBeautyQueueByCustomer,
+    mergeQueueGroupForCardDisplay,
+    suggestQueuePrefillTime,
+} from '../../../utils/beautyQueueOrder';
+import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import '../ClinicStyles.css';
 
 function aptTimeRaw(apt: BeautyAppointment): string {
@@ -25,11 +31,16 @@ export interface WeekMonthViewsProps {
     onDayNavigate?: (day: Date) => void;
     /** Verilirse store yerine bu liste (ör. üst bileşenden arama filtresi). */
     appointmentsOverride?: BeautyAppointment[];
+    queueMode?: boolean;
+    queueSnapMinutes?: number;
 }
 
-export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNewAppointment, groupBy = 'none', workWeekOnly = false, appointmentsOverride }: WeekMonthViewsProps) {
+export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNewAppointment, groupBy = 'none', workWeekOnly = false, appointmentsOverride, queueMode = false, queueSnapMinutes = 5 }: WeekMonthViewsProps) {
     const { appointments: storeApts } = useBeautyStore();
-    const appointments = appointmentsOverride ?? storeApts;
+    const appointments = useMemo(
+        () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
+        [appointmentsOverride, storeApts],
+    );
 
     const getWeekDays = () => {
         const days = [];
@@ -72,48 +83,51 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                         })}
                     </div>
 
-                    {timeSlots.map((timeSlot) => (
-                        <div key={timeSlot} className="border-b border-gray-100 grid" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
-                            <div className="p-3 border-r border-gray-100 bg-gray-50/50 flex items-center justify-center font-medium text-xs text-gray-400">
-                                {timeSlot}
+                    {queueMode ? (
+                        <div className="border-b border-gray-100 grid" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
+                            <div className="p-3 border-r border-gray-100 bg-gray-50/50 flex items-center justify-center">
+                                <List size={16} className="text-gray-400" />
                             </div>
                             {weekDays.map((day, idx) => {
                                 const dateStr = formatLocalYmd(day);
-                                const slotHour = timeSlot.split(':')[0];
-                                const dayAppointments = appointments.filter(apt => {
-                                    if (beautyAppointmentDateKey(apt) !== dateStr) return false;
-                                    const raw = aptTimeRaw(apt);
-                                    return raw.startsWith(slotHour);
-                                });
-                                if (groupBy === 'staff' && dayAppointments.length > 0) {
-                                    // Handle grouping if needed, but for general view we show all
-                                }
-
+                                const dayAppointments = appointments.filter(apt => beautyAppointmentDateKey(apt) === dateStr);
+                                const dayGroups = groupBeautyQueueByCustomer(dayAppointments);
                                 return (
                                     <div
                                         key={idx}
                                         className="p-1 border-r border-gray-100 last:border-r-0 min-h-[80px] hover:bg-gray-50 transition-colors group relative"
-                                        onClick={() => onNewAppointment?.(timeSlot, dateStr)}
+                                        onClick={() =>
+                                            onNewAppointment?.(
+                                                suggestQueuePrefillTime(appointments, dateStr, {
+                                                    resource: 'none',
+                                                    snapMinutes: queueSnapMinutes,
+                                                }),
+                                                dateStr
+                                            )
+                                        }
                                     >
-                                        {dayAppointments.length > 0 ? (
+                                        {dayGroups.length > 0 ? (
                                             <div className="space-y-1">
-                                                {dayAppointments.map(apt => {
+                                                {dayGroups.map((group, ord) => {
+                                                    const apt = mergeQueueGroupForCardDisplay(group);
+                                                    const primary = group[0];
                                                     const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
-                                                    const accent = apt.service_color || '#9333ea';
+                                                    const accent = apt.service_color || primary.service_color || '#9333ea';
                                                     return (
-                                                    <div
-                                                        key={apt.id}
-                                                        onClick={(e) => { e.stopPropagation(); onAppointmentClick(apt); }}
-                                                        className="p-2 rounded-lg border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-all text-[10px]"
-                                                        style={{
-                                                            borderLeftColor: done ? '#059669' : accent,
-                                                            backgroundColor: done ? 'rgba(5, 150, 105, 0.16)' : `${accent}10`,
-                                                        }}
-                                                    >
-                                                        <div className="font-bold text-gray-900 truncate uppercase">{apt.customer_name ?? '—'}</div>
-                                                        <div className="text-gray-600 truncate mt-0.5">{apt.service_name ?? '—'}</div>
-                                                        <div className="text-[8px] text-gray-400 mt-0.5 font-medium">{apt.specialist_name ?? apt.staff_name ?? '—'}</div>
-                                                    </div>
+                                                        <div
+                                                            key={primary.id}
+                                                            onClick={(e) => { e.stopPropagation(); onAppointmentClick(primary); }}
+                                                            className="p-2 rounded-lg border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-all text-[10px]"
+                                                            style={{
+                                                                borderLeftColor: done ? '#059669' : accent,
+                                                                backgroundColor: done ? 'rgba(5, 150, 105, 0.16)' : `${accent}10`,
+                                                            }}
+                                                        >
+                                                            <div className="text-[8px] font-bold text-gray-400 mb-0.5">#{ord + 1}</div>
+                                                            <div className="font-bold text-gray-900 truncate uppercase">{apt.customer_name ?? '—'}</div>
+                                                            <div className="text-gray-600 truncate mt-0.5 leading-snug">{apt.service_name ?? '—'}</div>
+                                                            <div className="text-[8px] text-gray-400 mt-0.5 font-medium">{apt.specialist_name ?? apt.staff_name ?? '—'}</div>
+                                                        </div>
                                                     );
                                                 })}
                                             </div>
@@ -126,7 +140,63 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                                 );
                             })}
                         </div>
-                    ))}
+                    ) : (
+                        timeSlots.map((timeSlot) => (
+                            <div key={timeSlot} className="border-b border-gray-100 grid" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
+                                <div className="p-3 border-r border-gray-100 bg-gray-50/50 flex items-center justify-center font-medium text-xs text-gray-400">
+                                    {timeSlot}
+                                </div>
+                                {weekDays.map((day, idx) => {
+                                    const dateStr = formatLocalYmd(day);
+                                    const slotHour = timeSlot.split(':')[0];
+                                    const dayAppointments = appointments.filter(apt => {
+                                        if (beautyAppointmentDateKey(apt) !== dateStr) return false;
+                                        const raw = aptTimeRaw(apt);
+                                        return raw.startsWith(slotHour);
+                                    });
+                                    if (groupBy === 'staff' && dayAppointments.length > 0) {
+                                        // Handle grouping if needed, but for general view we show all
+                                    }
+
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className="p-1 border-r border-gray-100 last:border-r-0 min-h-[80px] hover:bg-gray-50 transition-colors group relative"
+                                            onClick={() => onNewAppointment?.(timeSlot, dateStr)}
+                                        >
+                                            {dayAppointments.length > 0 ? (
+                                                <div className="space-y-1">
+                                                    {dayAppointments.map(apt => {
+                                                        const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                        const accent = apt.service_color || '#9333ea';
+                                                        return (
+                                                        <div
+                                                            key={apt.id}
+                                                            onClick={(e) => { e.stopPropagation(); onAppointmentClick(apt); }}
+                                                            className="p-2 rounded-lg border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-all text-[10px]"
+                                                            style={{
+                                                                borderLeftColor: done ? '#059669' : accent,
+                                                                backgroundColor: done ? 'rgba(5, 150, 105, 0.16)' : `${accent}10`,
+                                                            }}
+                                                        >
+                                                            <div className="font-bold text-gray-900 truncate uppercase">{apt.customer_name ?? '—'}</div>
+                                                            <div className="text-gray-600 truncate mt-0.5">{apt.service_name ?? '—'}</div>
+                                                            <div className="text-[8px] text-gray-400 mt-0.5 font-medium">{apt.specialist_name ?? apt.staff_name ?? '—'}</div>
+                                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <div className="h-full w-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="w-6 h-6 rounded-full bg-[#ede9fe] text-[#7c3aed] flex items-center justify-center text-sm font-bold">+</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>
@@ -153,7 +223,10 @@ function computePopoverPosition(rect: DOMRect) {
 
 export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, onDayNavigate, appointmentsOverride }: WeekMonthViewsProps) {
     const { appointments: storeApts } = useBeautyStore();
-    const appointments = appointmentsOverride ?? storeApts;
+    const appointments = useMemo(
+        () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
+        [appointmentsOverride, storeApts],
+    );
     const { tm, language } = useLanguage();
 
     const monthTitle = useMemo(() => {
@@ -481,7 +554,10 @@ export function AgendaView({
     agendaDuration = 7,
 }: AgendaViewProps) {
     const { appointments: storeApts } = useBeautyStore();
-    const appointments = appointmentsOverride ?? storeApts;
+    const appointments = useMemo(
+        () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
+        [appointmentsOverride, storeApts],
+    );
     const { tm } = useLanguage();
 
     const days = useMemo(() => {
