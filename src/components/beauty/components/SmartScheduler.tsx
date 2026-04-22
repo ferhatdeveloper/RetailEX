@@ -1918,7 +1918,7 @@ export function SmartScheduler() {
                                                 onClick={() => handleStatusChange(selectedApt, opt.status)}
                                                 disabled={isCurrent}
                                                 style={{
-                                                    width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
+                                                    width: '100%', padding: '9px 14px', borderRadius: 6,
                                                     background: isCurrent ? opt.bg : '#fff',
                                                     border: isCurrent ? `1px solid ${opt.color}33` : '1px solid #eceff3',
                                                     color: isCurrent ? opt.color : '#6b7280',
