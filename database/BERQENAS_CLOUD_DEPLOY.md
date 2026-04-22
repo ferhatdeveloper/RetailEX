@@ -231,3 +231,15 @@ Master şema uygulandıktan sonra:
 - **RetailEX uygulamasını** buluta bağlamak için: Web’de “remote”/“online” modda **remote host** = `172.20.0.10`, **database** = kiracı adınız (ör. `bestcom_db`), **user** = `postgres`, **password** = `root_password_2026` olacak şekilde ayarlayın (VPN açıkken erişim gerekir).
 
 Bu dosyayı güvenli bir yerde saklayarak sunucuyu sıfırladığınızda veya yeni makineye taşındığınızda aynı adımları tekrarlayabilirsiniz.
+
+---
+
+## 6. GitHub → VPS otomatik web güncelleme
+
+`main` dalına push (belirtilen yollar değiştiyse) **GitHub Actions** ile VPS’te `berqenas-deploy-web.sh` çalışır: `git pull`, imaj derleme, `retailex_frontend` / Caddy yenileme.
+
+1. Repo → **Settings → Secrets and variables → Actions** → `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (private key) ekleyin. İsteğe bağlı: `VPS_INSTALL_DIR` (varsayılan `/opt/berqenas-cloud`).
+2. VPS’te SSH public key, Actions’ın kullandığı private key ile eşleşmeli (`authorized_keys`).
+3. İş akışı: `.github/workflows/deploy-vps-web.yml`. Manuel tetik: **Actions → Deploy web to VPS → Run workflow**.
+
+Sadece veritabanı migration’ı otomatikleştirmek için ayrı bir iş akışı eklemedik; DB için `berqenas-repo-pull-and-migrate.sh` veya cron kullanılabilir.

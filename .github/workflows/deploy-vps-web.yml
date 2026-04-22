@@ -1,0 +1,54 @@
+# main'e push sonrası VPS'te git pull + Docker imaj + frontend (ve varsa Caddy) yenileme.
+#
+# GitHub → Settings → Secrets and variables → Actions:
+#   VPS_HOST          VPS genel IPv4 veya DNS (ornek: 72.60.182.107)
+#   VPS_USER          SSH kullanici (ornek: root)
+#   VPS_SSH_KEY       VPS'e erisim icin private key (tam PEM/ed25519 metni)
+#
+# Istege bagli:
+#   VPS_INSTALL_DIR   Varsayilan: /opt/berqenas-cloud (farkli ise secret olarak tam yol)
+#
+# VPS'te bir kez: hedef kullanicinin authorized_keys icinde Actions'taki public key olmali.
+# Repo yolu: ${INSTALL_DIR}/projects/retailex  (berqenas-deploy-web.sh ile ayni)
+
+name: Deploy web to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps-web
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: SSH — pull, build, yeniden baslat
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 40m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            INSTALL_DIR="${{ secrets.VPS_INSTALL_DIR }}"
+            if [[ -z "${INSTALL_DIR// }" ]]; then
+              INSTALL_DIR="/opt/berqenas-cloud"
+            fi
+            export INSTALL_DIR
+            export RETAILEX_GIT_URL="https://github.com/${{ github.repository }}.git"
+            export RETAILEX_GIT_BRANCH="main"
+            DEPLOY="${INSTALL_DIR}/projects/retailex/database/scripts/berqenas-deploy-web.sh"
+            if [[ ! -f "$DEPLOY" ]]; then
+              echo "Hata: $DEPLOY yok. VPS'te ilk kurulumu tamamlayin." >&2
+              exit 1
+            fi
+            chmod +x "$DEPLOY"
+            bash "$DEPLOY"
