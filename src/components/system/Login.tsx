@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Monitor, LifeBuoy, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save } from 'lucide-react';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
@@ -24,6 +24,13 @@ const IT_PASS = "30031993";
 import { supabase } from '../../utils/supabase/client';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+/** firms.firm_nr ile aynı biçim (örn. 2 → 002) — tenant ön seçimi için */
+function normalizeTenantFirmNr(v: string | number | undefined | null): string {
+  const d = String(v ?? '').replace(/\D/g, '');
+  if (!d) return '';
+  return d.length <= 3 ? d.padStart(3, '0') : d;
+}
 
 export function Login({ onLogin }: LoginProps) {
   const { t, language, setLanguage } = useLanguage();
@@ -72,10 +79,8 @@ export function Login({ onLogin }: LoginProps) {
   const { login: authLogin } = useAuth();
   const navigate = useNavigate();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showSupport, setShowSupport] = useState(false);
-  const [hwId, setHwId] = useState(t.waiting);
-  const [p2pStatus, setP2pStatus] = useState<'idle' | 'connecting' | 'connected'>('idle');
-  const [vpnIp, setVpnIp] = useState<string>('');
+  const [showTenantFirmIdModal, setShowTenantFirmIdModal] = useState(false);
+  const [tenantFirmIdDraft, setTenantFirmIdDraft] = useState('');
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
   const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
@@ -117,14 +122,6 @@ export function Login({ onLogin }: LoginProps) {
       }
     };
     loadCurrentConfig();
-
-    if (isTauri) {
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('get_system_id').then((id: any) => setHwId(id)).catch(() => setHwId('RE-NODE-001'));
-      });
-    } else {
-      setHwId('WEB-NODE-001');
-    }
 
     // Subscribe to logs
     const unsubscribe = logger.subscribe((newLog) => {
@@ -704,7 +701,16 @@ export function Login({ onLogin }: LoginProps) {
 
             {/* Toolpad */}
             <div className="absolute top-4 right-4 z-20 flex gap-1">
-              <button type="button" onClick={() => setShowSupport(true)} className="p-2.5 bg-red-500/20 hover:bg-red-500/30 rounded-sm border border-red-500/10 transition-all backdrop-blur-md">
+              <button
+                type="button"
+                title="Tenant firma kodu"
+                onClick={() => {
+                  const fromStorage = localStorage.getItem('exretail_selected_firma_id');
+                  setTenantFirmIdDraft(fromStorage || selectedFirmNr || '');
+                  setShowTenantFirmIdModal(true);
+                }}
+                className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
+              >
                 <Building2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
               </button>
               <button type="button" onClick={() => setShowLanguageSelector(true)} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md">
@@ -712,9 +718,6 @@ export function Login({ onLogin }: LoginProps) {
               </button>
               <button type="button" onClick={() => navigate('/infra-settings')} className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md">
                 <Gear className="w-3.5 h-3.5" />
-              </button>
-              <button type="button" onClick={() => setShowSupport(true)} className="p-2.5 bg-red-500/20 hover:bg-red-500/30 rounded-sm border border-red-500/10 transition-all backdrop-blur-md">
-                <Monitor className="w-3.5 h-3.5" />
               </button>
               <button
                 type="button"
@@ -1028,56 +1031,80 @@ export function Login({ onLogin }: LoginProps) {
         />
       )}
 
-      {showSupport && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center z-[1000] p-4">
-          <div className={`w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-900' : 'bg-white'} border shadow-3xl rounded-sm transition-all`}>
-            <div className="p-6 bg-red-800 flex items-center justify-between border-b border-white/10">
-              <div className="flex items-center gap-4 text-white">
-                <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                  <LifeBuoy className="w-4 h-4" />
-                </div>
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t.supportCenter}</span>
-              </div>
-              <CloseIcon className="w-5 h-5 text-white cursor-pointer hover:rotate-90 transition-transform" onClick={() => setShowSupport(false)} />
-            </div>
-            <div className="p-10 space-y-10">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest px-1">{t.hwid}</label>
-                <div className="flex gap-2">
-                  <div className={`flex-1 p-6 font-mono text-2xl font-black border-2 tracking-tighter rounded-sm ${darkMode ? 'bg-black border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200 text-blue-600'}`}>{hwId}</div>
-                  <button onClick={() => { navigator.clipboard.writeText(hwId); toast.success('Kimlik Kopyalandı'); }} className="px-6 bg-blue-600 text-white font-black text-[10px] hover:bg-blue-500 transition-colors uppercase rounded-sm">{t.copy}</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className={`p-6 border-2 flex flex-col items-center gap-3 rounded-sm ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-100'}`}>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center border-4 ${p2pStatus === 'connected' ? 'bg-green-500 border-green-200' : 'bg-gray-600 border-gray-500 animate-pulse'}`}>
-                    <Activity className="w-5 h-5 text-white" />
+      {showTenantFirmIdModal && (
+        <div
+          className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowTenantFirmIdModal(false)}
+        >
+          <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
+            <div
+              className="bg-white rounded-[2rem] w-full max-w-md max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-black uppercase tracking-tight truncate">Tenant firma kodu</h2>
+                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Giriş öncesi firma tanımlayıcı</p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <span className="block text-[8px] font-black uppercase tracking-tighter leading-none opacity-50 mb-1">{t.status}</span>
-                    <span className="text-[10px] font-black uppercase">{p2pStatus === 'connected' ? t.online : t.waiting}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowTenantFirmIdModal(false)}
+                    className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
+                    aria-label="Kapat"
+                  >
+                    <CloseIcon className="w-5 h-5" />
+                  </button>
                 </div>
-                <button onClick={async () => {
-                  try {
-                    if (isTauri) {
-                      const { invoke } = await import('@tauri-apps/api/core');
-                      await invoke('enable_remote_support');
-                      toast.success('Hızlı destek isteği merkeze iletildi.');
-                    } else {
-                      toast.info('Hızlı destek sadece masaüstü uygulamasında mevcuttur.');
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Firma ID / firma numarası</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={tenantFirmIdDraft}
+                  onChange={(e) => setTenantFirmIdDraft(e.target.value)}
+                  placeholder="Örn. 001"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium"
+                />
+                <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
+                  Bu değer oturum öncesi seçili firma olarak kaydedilir (ör. çok kiracılı kurulumlarda doğru veritabanı şeması eşlemesi için).
+                </p>
+              </div>
+              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowTenantFirmIdModal(false)}
+                  className="flex-1 py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
+                >
+                  İptal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nr = normalizeTenantFirmNr(tenantFirmIdDraft);
+                    if (!nr) {
+                      toast.error('Geçerli bir firma numarası girin.');
+                      return;
                     }
-                  } catch (e) { toast.error('Hata: ' + e); }
-                }} className="p-6 bg-blue-700 text-white hover:bg-blue-600 transition-all flex flex-col items-center gap-3 font-black uppercase text-[10px] rounded-sm group">
-                  <Monitor className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                  <span>{t.startSupport}</span>
+                    localStorage.setItem('exretail_selected_firma_id', nr);
+                    setSelectedFirmNr(nr);
+                    setShowTenantFirmIdModal(false);
+                    toast.success('Firma kodu kaydedildi.');
+                    void loadFirms();
+                  }}
+                  className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                >
+                  Kaydet
                 </button>
               </div>
-              <p className={`p-4 border-l-4 text-[9px] font-bold uppercase leading-relaxed ${darkMode ? 'bg-gray-800 border-yellow-600/50 text-gray-400' : 'bg-yellow-50 border-yellow-500 text-yellow-800'}`}>
-                Dikkat: Uzaktan destek başlatıldığında teknik ekibe sınırlı erişim yetkisi vermiş olursunuz.
-              </p>
             </div>
-            <button onClick={() => setShowSupport(false)} className="w-full py-5 text-[10px] font-black uppercase text-gray-500 border-t border-gray-800 hover:text-white transition-colors tracking-widest">Pencereyi Kapat</button>
           </div>
         </div>
       )}
