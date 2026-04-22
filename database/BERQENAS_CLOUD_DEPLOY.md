@@ -48,7 +48,29 @@ sudo bash berqenas-cloud-install.sh
 
 **Tek parça “tam kurulum” (eski `sudo bash -c` stiline denk):** `database/scripts/berqenas-vps-full-paste.sh` — Docker + Postgres + pgAdmin + isteğe bağlı WireGuard (`SERVERURL=berqenas.cloud`) + tüm DB’ler + `authenticator` + `merkez_db.tenant_registry`. **Etkileşimli sorular:** terminal açıksa önce “VPN kurulsun mu?” (E/h), sonra “RetailEX Web GitHub URL?” (boş = atla). Otomasyon: `ENABLE_VPN=0 RETAILEX_GIT_URL=https://github.com/kullanici/RetailEX.git sudo -E bash berqenas-vps-full-paste.sh`
 
-Web dağıtımı `database/scripts/berqenas-deploy-web.sh` ile: repoyu `INSTALL_DIR/projects/retailex` altına klonlar, `Dockerfile.frontend` ile imaj üretir. Varsayılan olarak **Caddy** **80/443** ile **https://retailex.app** sunar; aynı frontend konteyneri **8080** (veya `RETAILEX_WEB_PORT`) üzerinden **http://VPS’nin genel IPv4 adresi:8080** ile de erişilebilir. `RETAILEX_PUBLIC_DOMAIN` bilinçli olarak boş bırakılırsa yalnızca **http://VPS_IP:8080** kalır.
+Web dağıtımı `database/scripts/berqenas-deploy-web.sh` ile: repoyu `INSTALL_DIR/projects/retailex` altına klonlar, `Dockerfile.frontend` ile imaj üretir. Varsayılan olarak **Caddy** **80/443** ile **https://retailex.app** sunar; aynı frontend konteyneri **8080** (veya `RETAILEX_WEB_PORT`) üzerinden **http://VPS’nin genel IPv4 adresi:8080** ile de erişilebilir. `RETAILEX_PUBLIC_DOMAIN` bilinçli olarak boş bırakılırsa yalnızca **http://VPS_IP:8080** kalır. Caddy yapılandırması **üzerine yazılmaz**; aynı dosyaya ikinci bir site (ör. EXFIN PDKS) eklenebilir.
+
+### EXFIN PDKS (Flutter web, `exfinpdks.com`) aynı VPS’te
+
+- **DNS:** `exfinpdks.com` **A kaydı** → sunucunun genel IPv4 (RetailEX ile aynı IP olabilir).
+- **Dockerfile:** RetailEX reposunda `database/docker/Dockerfile.exfinpdks-web` — build **context** olarak EXFINPDKS klonu (`INSTALL_DIR/projects/exfinpdks`) kullanılır.
+- **Konteynerler:** `exfinpdks_frontend` (Nginx); TLS için mevcut `retailex_caddy` kullanılır (yoksa bu betik Caddy’yi başlatır). Doğrudan erişim: **http://VPS_IP:8091** (`EXFINPDKS_WEB_PORT`).
+
+```bash
+cd /opt/RetailEX/database/scripts   # RetailEX klon yolu sizde farkli olabilir
+chmod +x berqenas-deploy-exfinpdks-web.sh
+sudo bash berqenas-deploy-exfinpdks-web.sh
+# Sadece IP/port (TLS yok): sudo env EXFINPDKS_PUBLIC_DOMAIN= bash berqenas-deploy-exfinpdks-web.sh
+```
+
+| Ortam | Varsayılan |
+|--------|------------|
+| `EXFINPDKS_GIT_URL` | `https://github.com/ferhatdeveloper/EXFINPDKS.git` |
+| `EXFINPDKS_PUBLIC_DOMAIN` | `exfinpdks.com` (boş = yalnızca port) |
+| `EXFINPDKS_WEB_PORT` | `8091` |
+| `EXFINPDKS_DOCKERFILE` | Bulunamazsa `/opt/RetailEX/database/docker/...` veya bu scriptin oldugu repo kokunden aranir |
+
+EXFINPDKS reposunda **`.dockerignore`** (build baglamini kucultmek; gizli anahtar dosyalarini disarida tutmak) kullanmaniz onerilir; ornek RetailEX disindaki EXFIN klonunuza eklenebilir.
 
 ```bash
 cd /path/to/RetailEX/database/scripts

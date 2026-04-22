@@ -1,0 +1,35 @@
+# EXFIN PDKS — Flutter web (build context = EXFINPDKS repo kökü)
+# VPS: docker build -f /opt/RetailEX/database/docker/Dockerfile.exfinpdks-web /opt/berqenas-cloud/projects/exfinpdks
+#
+# pubspec CI ile uyum: .github/workflows/deploy.yml FLUTTER_VERSION
+FROM ghcr.io/cirruslabs/flutter:stable AS build
+WORKDIR /app
+
+COPY pubspec.yaml pubspec.lock* ./
+RUN flutter pub get
+
+COPY . .
+RUN dart run build_runner build --delete-conflicting-outputs
+RUN flutter build web --release
+
+FROM nginx:alpine
+RUN rm -f /etc/nginx/conf.d/default.conf && \
+  printf '%s\n' \
+  'server {' \
+  '    listen 80;' \
+  '    server_name _;' \
+  '    root /usr/share/nginx/html;' \
+  '    index index.html;' \
+  '    gzip on;' \
+  '    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;' \
+  '    location / {' \
+  '        try_files $uri $uri/ /index.html;' \
+  '    }' \
+  '    location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {' \
+  '        expires 7d;' \
+  '        add_header Cache-Control "public, immutable";' \
+  '    }' \
+  '}' > /etc/nginx/conf.d/default.conf
+COPY --from=build /app/build/web /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

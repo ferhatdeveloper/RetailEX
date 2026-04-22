@@ -71,12 +71,18 @@ if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]]; then
     retailex-web:latest
 
   mkdir -p "${INSTALL_DIR}/caddy"
-  cat >"${INSTALL_DIR}/caddy/Caddyfile" <<EOF
-${RETAILEX_PUBLIC_DOMAIN} {
-  encode gzip zstd
-  reverse_proxy retailex_frontend:80
-}
-EOF
+  CADDYFILE="${INSTALL_DIR}/caddy/Caddyfile"
+  [[ -f "$CADDYFILE" ]] || touch "$CADDYFILE"
+  # Uzerine yazma: exfinpdks.com vb. diger site bloklari korunur
+  if ! grep -qF "${RETAILEX_PUBLIC_DOMAIN} {" "$CADDYFILE" 2>/dev/null; then
+    {
+      echo ""
+      echo "${RETAILEX_PUBLIC_DOMAIN} {"
+      echo "  encode gzip zstd"
+      echo "  reverse_proxy retailex_frontend:80"
+      echo "}"
+    } >>"$CADDYFILE"
+  fi
 
   docker rm -f retailex_caddy 2>/dev/null || true
   docker volume create retailex_caddy_data >/dev/null 2>&1 || true
