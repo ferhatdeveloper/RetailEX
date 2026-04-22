@@ -25,10 +25,13 @@ psql_exec() {
 # (db_adı açıklama)
 DATABASES=(
   "merkez_db|MERKEZ — kiracı / firma kayıt"
-  "aqua_beauty_db|Aqua Beauty — clinic (güzellik)"
-  "qubocoffe_db|Qubo Coffee — restoran"
-  "dismarco_db|DISMARCO — HRM"
+  "dismarco_pdks|DISMARCO PDKS"
+  "aqua_beauty|Aqua Beauty — clinic"
+  "m10_pdks|M10 PDKS"
   "bestcom_db|BESTCOM — HRM"
+  "siti_pdks|Siti PDKS"
+  "pdks_demo|PDKS Demo"
+  "retailex_demo|RetailEX Demo"
 )
 
 echo "=== Veritabanları oluşturuluyor ($CONTAINER) ==="
@@ -70,4 +73,4 @@ echo "pgAdmin / psql ile bağlantı: host 172.20.0.10 (Docker ağı; VPN açıks
 echo "RetailEX master şema: her uygulama DB'sine ayrı ayrı 000_master_schema.sql uygulanmalı (ihtiyaca göre)."
 echo "PostgREST (her DB ayrı port): database/docker/docker-compose.postgrest-per-db.yml — BERQENAS_CLOUD_DEPLOY.md §2"
 echo "  Örnek: docker compose -f docker-compose.yml -f docker-compose.postgrest-per-db.yml up -d"
-echo "  UFW: ufw allow 3002:3006/tcp"
+echo "  UFW: ufw allow 3002:3009/tcp"

@@ -6,6 +6,7 @@
 #
 # Ön koşul: Her hedef DB'de 007_postgrest_anon_role.sql çalışmış olmalı (anon rolü).
 # Şifre: Ana compose ile aynı — .env içinde POSTGRES_PASSWORD veya varsayılan.
+# DB seti: merkez_db … siti_pdks, pdks_demo, retailex_demo → portlar 3002–3009.
 
 x-postgrest-env: &postgrest-env
   PGRST_DB_ANON_ROLE: anon
@@ -29,6 +30,20 @@ services:
     networks:
       berqenas_net: {}
 
+  postgrest_dismarco_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_dismarco_pdks
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/dismarco_pdks
+    ports:
+      - "0.0.0.0:3003:3000"
+    networks:
+      berqenas_net: {}
+
   postgrest_aqua_beauty:
     image: postgrest/postgrest:v12.2.0
     container_name: saas_postgrest_aqua_beauty
@@ -37,35 +52,21 @@ services:
       - postgres
     environment:
       <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/aqua_beauty_db
-    ports:
-      - "0.0.0.0:3003:3000"
-    networks:
-      berqenas_net: {}
-
-  postgrest_qubocoffe:
-    image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_qubocoffe
-    restart: always
-    depends_on:
-      - postgres
-    environment:
-      <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/qubocoffe_db
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/aqua_beauty
     ports:
       - "0.0.0.0:3004:3000"
     networks:
       berqenas_net: {}
 
-  postgrest_dismarco:
+  postgrest_m10_pdks:
     image: postgrest/postgrest:v12.2.0
-    container_name: saas_postgrest_dismarco
+    container_name: saas_postgrest_m10_pdks
     restart: always
     depends_on:
       - postgres
     environment:
       <<: *postgrest-env
-      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/dismarco_db
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/m10_pdks
     ports:
       - "0.0.0.0:3005:3000"
     networks:
@@ -82,5 +83,47 @@ services:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/bestcom_db
     ports:
       - "0.0.0.0:3006:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_siti_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_siti_pdks
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/siti_pdks
+    ports:
+      - "0.0.0.0:3007:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_pdks_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_pdks_demo
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/pdks_demo
+    ports:
+      - "0.0.0.0:3008:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_retailex_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_retailex_demo
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/retailex_demo
+    ports:
+      - "0.0.0.0:3009:3000"
     networks:
       berqenas_net: {}

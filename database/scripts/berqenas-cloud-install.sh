@@ -17,13 +17,20 @@
 #   PGADMIN_DEFAULT_EMAIL=...
 #   PGADMIN_DEFAULT_PASSWORD=...
 #   ENABLE_POSTGREST=0|1           # 1: database/docker/docker-compose.postgrest-per-db.yml ile compose up
+#   EXPOSE_PUBLIC=0|1              # 1: pgAdmin (+ isteğe bagli Postgres) internete host portu ile acilir; UFW kurali eklenir
+#   PGADMIN_HOST_PORT=5050         # EXPOSE_PUBLIC=1 iken host portu (pgAdmin web)
+#   EXPOSE_POSTGRES_PUBLIC=0|1     # EXPOSE_PUBLIC=1 iken 5432 yayini (varsayilan 1). Sadece pgAdmin: 0 verin.
 #   RETAILEX_GIT_URL=...           # RetailEX Web otomatik: GitHub HTTPS (bos = atla)
 #   RETAILEX_GIT_BRANCH=main
+#   RETAILEX_PUBLIC_DOMAIN=       # bos + export: sadece :8080. Ayarlanmamis + tek basina deploy: retailex.app
 #
 set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
 ENABLE_POSTGREST="${ENABLE_POSTGREST:-0}"
+EXPOSE_PUBLIC="${EXPOSE_PUBLIC:-0}"
+PGADMIN_HOST_PORT="${PGADMIN_HOST_PORT:-5050}"
+EXPOSE_POSTGRES_PUBLIC="${EXPOSE_POSTGRES_PUBLIC:-1}"
 SERVERURL="${SERVERURL:-berqenas.cloud}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-root_password_2026}"
 PGADMIN_DEFAULT_EMAIL="${PGADMIN_DEFAULT_EMAIL:-ferhatdeveloper@gmail.com}"
@@ -35,10 +42,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! [[ -v ENABLE_VPN ]]; then
   if [[ -t 0 ]]; then
-    read -r -p "WireGuard (VPN) kurulsun mu? [e/H] (bos=Hayir): " _vpn_ans
-    case "${_vpn_ans,,}" in e|evet|y|yes) ENABLE_VPN=1 ;; *) ENABLE_VPN=0 ;; esac
+    read -r -p "WireGuard (VPN) kurulsun mu? [E/h]: " _vpn_ans
+    case "${_vpn_ans,,}" in h|hayir|n|no) ENABLE_VPN=0 ;; *) ENABLE_VPN=1 ;; esac
   else
-    ENABLE_VPN=0
+    ENABLE_VPN=1
   fi
 fi
 
@@ -49,8 +56,9 @@ RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-}"
 POSTGREST_COMPOSE="${POSTGREST_COMPOSE:-${SCRIPT_DIR}/../docker/docker-compose.postgrest-per-db.yml}"
 
 echo "=== Berqenas Cloud kurulumu ==="
-echo "Dizin: $INSTALL_DIR | ENABLE_VPN=$ENABLE_VPN | ENABLE_POSTGREST=$ENABLE_POSTGREST"
+echo "Dizin: $INSTALL_DIR | ENABLE_VPN=$ENABLE_VPN | ENABLE_POSTGREST=$ENABLE_POSTGREST | EXPOSE_PUBLIC=$EXPOSE_PUBLIC"
 [[ "$ENABLE_VPN" == "1" ]] && echo "WireGuard SERVERURL (istemci endpoint): $SERVERURL"
+[[ "$EXPOSE_PUBLIC" == "1" ]] && echo "UYARI: EXPOSE_PUBLIC=1 — pgAdmin (ve varsayilan olarak Postgres) tum arayuzlerde dinlenir; guclu parola ve guncelleme sart."
 
 apt-get update -y
 apt-get upgrade -y
@@ -73,6 +81,10 @@ COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
   echo "    networks:"
   echo "      berqenas_net:"
   echo "        ipv4_address: 172.20.0.10"
+  if [[ "$EXPOSE_PUBLIC" == "1" ]] && [[ "$EXPOSE_POSTGRES_PUBLIC" != "0" ]]; then
+    echo "    ports:"
+    echo "      - \"0.0.0.0:5432:5432\""
+  fi
   echo ""
   echo "  pgadmin:"
   echo "    image: dpage/pgadmin4"
@@ -86,6 +98,10 @@ COMPOSE_FILE="${INSTALL_DIR}/docker-compose.yml"
   echo "        ipv4_address: 172.20.0.20"
   echo "    depends_on:"
   echo "      - postgres"
+  if [[ "$EXPOSE_PUBLIC" == "1" ]]; then
+    echo "    ports:"
+    echo "      - \"0.0.0.0:${PGADMIN_HOST_PORT}:80\""
+  fi
   echo ""
 
   if [[ "$ENABLE_VPN" == "1" ]]; then
@@ -153,12 +169,18 @@ if [[ "$ENABLE_VPN" == "1" ]]; then
   ufw allow 51820/udp
 fi
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  ufw allow 3002:3006/tcp
+  ufw allow 3002:3009/tcp
+fi
+if [[ "$EXPOSE_PUBLIC" == "1" ]]; then
+  ufw allow "${PGADMIN_HOST_PORT}/tcp"
+  if [[ "$EXPOSE_POSTGRES_PUBLIC" != "0" ]]; then
+    ufw allow 5432/tcp
+  fi
 fi
 ufw --force enable
 
 if [[ -n "${RETAILEX_GIT_URL}" ]]; then
-  export RETAILEX_GIT_URL RETAILEX_GIT_BRANCH INSTALL_DIR RETAILEX_WEB_PORT
+  export RETAILEX_GIT_URL RETAILEX_GIT_BRANCH INSTALL_DIR RETAILEX_WEB_PORT RETAILEX_PUBLIC_DOMAIN
   if [[ -f "${SCRIPT_DIR}/berqenas-deploy-web.sh" ]]; then
     bash "${SCRIPT_DIR}/berqenas-deploy-web.sh" || echo "Uyari: RetailEX Web deploy basarisiz."
   else
@@ -169,17 +191,31 @@ fi
 echo ""
 echo "=== TAMAMLANDI ==="
 echo "Postgres (Docker agi): 172.20.0.10:5432  kullanici: postgres"
-echo "pgAdmin (yalnizca Docker agi icinden): http://172.20.0.20 — host postgres veya 172.20.0.10"
+if [[ "$EXPOSE_PUBLIC" == "1" ]]; then
+  echo "pgAdmin (internet): http://SUNUCU_IP:${PGADMIN_HOST_PORT} — konteyner icinden ayrica http://172.20.0.20"
+  if [[ "$EXPOSE_POSTGRES_PUBLIC" != "0" ]]; then
+    echo "Postgres (internet): SUNUCU_IP:5432 — guclu parola ve gereksizse EXPOSE_POSTGRES_PUBLIC=0 ile kapat"
+  fi
+else
+  echo "pgAdmin (yalnizca Docker agi icinden): http://172.20.0.20 — host postgres veya 172.20.0.10"
+fi
 if [[ "$ENABLE_VPN" == "1" ]]; then
   echo "WireGuard endpoint (istemci baglantisi): ${SERVERURL}:51820 — peer conf icinde Endpoint bu alan adina ayarlanir."
   echo "VPN conf: docker exec -it saas_vpn cat /config/peer_admin/peer_admin.conf"
   echo "      (veya: docker exec -it saas_vpn /app/show-peer admin)"
 else
-  echo "VPN: kapali (ENABLE_VPN=0). pgAdmin'e hosttan dogrudan port acilmadi; gerekirse pgadmin servisine \"5050:80\" portu ekleyin."
+  echo "VPN: kapali (ENABLE_VPN=0)."
+  [[ "$EXPOSE_PUBLIC" != "1" ]] && echo "pgAdmin dis erisim icin: EXPOSE_PUBLIC=1 veya SSH tuneli / manuel ports."
 fi
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  echo "PostgREST: 3002-3006 TCP (detay: database/BERQENAS_CLOUD_DEPLOY.md)"
+  echo "PostgREST: 3002-3009 TCP — merkez + kiracı DB (detay: database/BERQENAS_CLOUD_DEPLOY.md)"
 fi
 if [[ -n "${RETAILEX_GIT_URL:-}" ]]; then
-  echo "RetailEX Web: http://berqenas.cloud:${RETAILEX_WEB_PORT} (DNS ve port ${RETAILEX_WEB_PORT}/tcp)"
+  if [[ ! -v RETAILEX_PUBLIC_DOMAIN ]]; then
+    echo "RetailEX Web: https://retailex.app + http://SUNUCU_IP:${RETAILEX_WEB_PORT} — veya RETAILEX_PUBLIC_DOMAIN= ile yalniz port"
+  elif [[ -z "${RETAILEX_PUBLIC_DOMAIN}" ]]; then
+    echo "RetailEX Web: :${RETAILEX_WEB_PORT}/tcp (RETAILEX_PUBLIC_DOMAIN bos)"
+  else
+    echo "RetailEX Web: https://${RETAILEX_PUBLIC_DOMAIN} + http://SUNUCU_IP:${RETAILEX_WEB_PORT}"
+  fi
 fi

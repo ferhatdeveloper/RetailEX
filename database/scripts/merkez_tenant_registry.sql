@@ -27,11 +27,14 @@ COMMENT ON TABLE tenant_registry IS 'Bulut kiracıları: kod, modül ve hedef Po
 -- Idempotent seed (code üzerinden)
 INSERT INTO tenant_registry (code, display_name, module, database_name, notes)
 VALUES
-  ('merkez',     'Merkez kayıt',           'tenant_registry', 'merkez_db',     'Kiracı meta verisi'),
-  ('aqua_beauty','Aqua Beauty',            'clinic',          'aqua_beauty_db', 'Klinik / güzellik'),
-  ('qubocoffe',  'Qubo Coffee',            'restaurant',      'qubocoffe_db',  'Restoran'),
-  ('dismarco',   'DISMARCO',               'hrm',             'dismarco_db',   'İK / HRM'),
-  ('bestcom',    'BESTCOM',                'hrm',             'bestcom_db',    'İK / HRM')
+  ('merkez',        'Merkez kayıt',    'tenant_registry', 'merkez_db',       'Kiracı meta verisi'),
+  ('aqua_beauty',   'Aqua Beauty',     'clinic',            'aqua_beauty',     'Güzellik'),
+  ('dismarco_pdks', 'DISMARCO PDKS',  'pdks',              'dismarco_pdks',   'PDKS'),
+  ('m10_pdks',      'M10 PDKS',       'pdks',              'm10_pdks',        'PDKS'),
+  ('bestcom',       'BESTCOM',        'hrm',               'bestcom_db',      'İK / HRM'),
+  ('siti_pdks',     'Siti PDKS',      'pdks',              'siti_pdks',       'PDKS'),
+  ('pdks_demo',     'PDKS Demo',      'pdks',              'pdks_demo',       'Demo'),
+  ('retailex_demo', 'RetailEX Demo', 'retail',            'retailex_demo',   'Demo')
 ON CONFLICT (code) DO UPDATE SET
   display_name  = EXCLUDED.display_name,
   module        = EXCLUDED.module,

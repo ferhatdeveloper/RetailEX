@@ -6,7 +6,10 @@
 #   RETAILEX_GIT_URL   — zorunlu (https://github.com/kullanici/RetailEX.git)
 #   RETAILEX_GIT_BRANCH — varsayılan: main
 #   INSTALL_DIR        — varsayılan: /opt/berqenas-cloud
-#   RETAILEX_WEB_PORT  — varsayılan: 8080
+#   RETAILEX_WEB_PORT  — varsayılan 8080. Alan adı (Caddy) açıkken de aynı port hostta acilir: http://GENEL_IP:8080
+#   RETAILEX_PUBLIC_DOMAIN — bos: sadece :RETAILEX_WEB_PORT. Dolu: Caddy 80/443 + HTTPS (varsayılan
+#                            betik tek basina calistirilirken: retailex.app). Tamamen kapatmak icin
+#                            once export RETAILEX_PUBLIC_DOMAIN=
 #
 #   sudo RETAILEX_GIT_URL=https://github.com/org/RetailEX.git bash berqenas-deploy-web.sh
 
@@ -22,6 +25,11 @@ RETAILEX_GIT_BRANCH="${RETAILEX_GIT_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
 RETAILEX_WEB_PORT="${RETAILEX_WEB_PORT:-8080}"
 TARGET="${INSTALL_DIR}/projects/retailex"
+
+# Bos = sadece RETAILEX_WEB_PORT; ayarlanmamis = retailex.app (Caddy + TLS)
+if [[ -z "${RETAILEX_PUBLIC_DOMAIN+x}" ]]; then
+  RETAILEX_PUBLIC_DOMAIN=retailex.app
+fi
 
 command -v git >/dev/null 2>&1 || apt-get install -y git
 
@@ -52,13 +60,56 @@ if [[ -z "${WEB_NET:-}" ]]; then
 fi
 
 docker rm -f retailex_frontend 2>/dev/null || true
-docker run -d \
-  --name retailex_frontend \
-  --restart always \
-  -p "0.0.0.0:${RETAILEX_WEB_PORT}:80" \
-  --network "${WEB_NET}" \
-  retailex-web:latest
 
-ufw allow "${RETAILEX_WEB_PORT}/tcp" 2>/dev/null || true
+if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]]; then
+  echo "=== RetailEX Web (Caddy https://${RETAILEX_PUBLIC_DOMAIN} + http://GENEL_IP:${RETAILEX_WEB_PORT}) ==="
+  docker run -d \
+    --name retailex_frontend \
+    --restart always \
+    -p "0.0.0.0:${RETAILEX_WEB_PORT}:80" \
+    --network "${WEB_NET}" \
+    retailex-web:latest
 
-echo "RetailEX Web: http://$(hostname -f 2>/dev/null || echo SUNUCU):${RETAILEX_WEB_PORT} (alan adi DNS ile eslesmeli)"
+  mkdir -p "${INSTALL_DIR}/caddy"
+  cat >"${INSTALL_DIR}/caddy/Caddyfile" <<EOF
+${RETAILEX_PUBLIC_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy retailex_frontend:80
+}
+EOF
+
+  docker rm -f retailex_caddy 2>/dev/null || true
+  docker volume create retailex_caddy_data >/dev/null 2>&1 || true
+  docker run -d \
+    --name retailex_caddy \
+    --restart always \
+    -p "0.0.0.0:80:80" \
+    -p "0.0.0.0:443:443" \
+    -p "0.0.0.0:443:443/udp" \
+    --network "${WEB_NET}" \
+    -v "${INSTALL_DIR}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+    -v retailex_caddy_data:/data \
+    caddy:2.8-alpine
+
+  ufw allow 80/tcp 2>/dev/null || true
+  ufw allow 443/tcp 2>/dev/null || true
+  ufw allow 443/udp 2>/dev/null || true
+  ufw allow "${RETAILEX_WEB_PORT}/tcp" 2>/dev/null || true
+
+  echo "RetailEX Web: https://${RETAILEX_PUBLIC_DOMAIN}"
+  echo "Ayrica dogrudan IP: http://SUNUCU_IPV4:${RETAILEX_WEB_PORT} (aynı konteyner)"
+  echo "DNS: A kaydi ${RETAILEX_PUBLIC_DOMAIN} -> bu sunucunun genel IPv4 adresi (ACME icin sart)."
+  echo "Not: VPS saglayici panelindeki guvenlik duvari aciksa 80/443 ve ${RETAILEX_WEB_PORT}/tcp kurallarini orada da ekleyin."
+else
+  echo "=== RetailEX Web (dogrudan host portu :${RETAILEX_WEB_PORT}) ==="
+  docker rm -f retailex_caddy 2>/dev/null || true
+  docker run -d \
+    --name retailex_frontend \
+    --restart always \
+    -p "0.0.0.0:${RETAILEX_WEB_PORT}:80" \
+    --network "${WEB_NET}" \
+    retailex-web:latest
+
+  ufw allow "${RETAILEX_WEB_PORT}/tcp" 2>/dev/null || true
+  echo "RetailEX Web: http://$(hostname -f 2>/dev/null || echo SUNUCU):${RETAILEX_WEB_PORT}"
+fi

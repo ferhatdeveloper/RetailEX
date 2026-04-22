@@ -6,16 +6,16 @@
 #
 # --- Seçenek A — SQL zaten sunucuda (/opt/berqenas-cloud/000_master_schema.sql) ---
 #   docker cp /opt/berqenas-cloud/000_master_schema.sql saas_postgres:/tmp/000_master_schema.sql \
-#     && docker exec saas_postgres psql -U postgres -d retailex_db -f /tmp/000_master_schema.sql
+#     && docker exec saas_postgres psql -U postgres -d bestcom_db -f /tmp/000_master_schema.sql
 #
 # --- Seçenek B — Repo klonluysa ---
 #   cd .../RetailEX/database/scripts && chmod +x berqenas-apply-master.sh && ./berqenas-apply-master.sh
 #
-# Ortam: PG_CONTAINER PG_DATABASE PG_USER (varsayılan: saas_postgres, retailex_db, postgres)
+# Ortam: PG_CONTAINER PG_DATABASE PG_USER (varsayılan: saas_postgres, bestcom_db, postgres)
 
 set -e
 CONTAINER="${PG_CONTAINER:-saas_postgres}"
-DB="${PG_DATABASE:-retailex_db}"
+DB="${PG_DATABASE:-bestcom_db}"
 USER="${PG_USER:-postgres}"
 
 # Script'in yanındaki migrations klasörü veya /opt/berqenas-cloud
