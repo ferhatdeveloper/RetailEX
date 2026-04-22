@@ -1,5 +1,5 @@
-# EXFIN PDKS — Flutter web (build context = EXFINPDKS repo kökü)
-# VPS: docker build -f /opt/RetailEX/database/docker/Dockerfile.exfinpdks-web /opt/berqenas-cloud/projects/exfinpdks
+# EXFIN PDKS — Flutter web (build context = yalnizca git ile klonlanan EXFINPDKS repo kokleri)
+# Ornek: docker build -f .../Dockerfile.exfinpdks-web /opt/berqenas-cloud/projects/exfinpdks
 #
 # pubspec CI ile uyum: .github/workflows/deploy.yml FLUTTER_VERSION
 FROM ghcr.io/cirruslabs/flutter:stable AS build

@@ -53,7 +53,8 @@ Web dağıtımı `database/scripts/berqenas-deploy-web.sh` ile: repoyu `INSTALL_
 ### EXFIN PDKS (Flutter web, `exfinpdks.com`) aynı VPS’te
 
 - **DNS:** `exfinpdks.com` **A kaydı** → sunucunun genel IPv4 (RetailEX ile aynı IP olabilir).
-- **Dockerfile:** RetailEX reposunda `database/docker/Dockerfile.exfinpdks-web` — build **context** olarak EXFINPDKS klonu (`INSTALL_DIR/projects/exfinpdks`) kullanılır.
+- **Kaynak kod:** Yalnızca **`EXFINPDKS_GIT_URL`** (varsayılan `https://github.com/ferhatdeveloper/EXFINPDKS.git`) ile `git clone` / `git pull` — yerel geliştirici dizini kullanılmaz.
+- **Dockerfile:** RetailEX reposunda `database/docker/Dockerfile.exfinpdks-web` — build **context** olarak sunucudaki klon (`INSTALL_DIR/projects/exfinpdks`) kullanılır.
 - **Konteynerler:** `exfinpdks_frontend` (Nginx); TLS için mevcut `retailex_caddy` kullanılır (yoksa bu betik Caddy’yi başlatır). Doğrudan erişim: **http://VPS_IP:8091** (`EXFINPDKS_WEB_PORT`).
 
 ```bash
@@ -68,9 +69,9 @@ sudo bash berqenas-deploy-exfinpdks-web.sh
 | `EXFINPDKS_GIT_URL` | `https://github.com/ferhatdeveloper/EXFINPDKS.git` |
 | `EXFINPDKS_PUBLIC_DOMAIN` | `exfinpdks.com` (boş = yalnızca port) |
 | `EXFINPDKS_WEB_PORT` | `8091` |
-| `EXFINPDKS_DOCKERFILE` | Bulunamazsa `/opt/RetailEX/database/docker/...` veya bu scriptin oldugu repo kokunden aranir |
+| `EXFINPDKS_DOCKERFILE` | Varsayılan: `berqenas-deploy-exfinpdks-web.sh` ile aynı RetailEX kopyasındaki `database/docker/Dockerfile.exfinpdks-web` (tam yol `EXFINPDKS_DOCKERFILE` ile geçersiz kılınabilir). |
 
-EXFINPDKS reposunda **`.dockerignore`** (build baglamini kucultmek; gizli anahtar dosyalarini disarida tutmak) kullanmaniz onerilir; ornek RetailEX disindaki EXFIN klonunuza eklenebilir.
+EXFINPDKS GitHub deposunda **`.dockerignore`** (build bağlamını küçültmek; gizli anahtar dosyalarını dışarıda tutmak) kullanmanız önerilir; dosya **Git’e push** edilmeli ki klonla sunucuya gelsin.
 
 ```bash
 cd /path/to/RetailEX/database/scripts

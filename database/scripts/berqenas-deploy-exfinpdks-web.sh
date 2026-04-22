@@ -10,7 +10,8 @@
 #   EXFINPDKS_PUBLIC_DOMAIN — varsayılan: exfinpdks.com (bos: sadece EXFINPDKS_WEB_PORT, Caddy yok)
 #   EXFINPDKS_WEB_PORT      — varsayılan: 8091 (RetailEX 8080 ile çakışmasın)
 #   INSTALL_DIR             — /opt/berqenas-cloud
-#   EXFINPDKS_DOCKERFILE    — varsayılan: RetailEX klonundaki database/docker/Dockerfile.exfinpdks-web
+#   EXFINPDKS_DOCKERFILE    — varsayılan: bu betikle aynı RetailEX repodaki database/docker/Dockerfile.exfinpdks-web
+#                             (EXFIN kaynak kodu asla yerel bir dizinden okunmaz; daima EXFINPDKS_GIT_URL klonu.)
 #
 # Örnek:
 #   cd /opt/RetailEX/database/scripts && sudo bash berqenas-deploy-exfinpdks-web.sh
@@ -28,22 +29,11 @@ if ! [[ -v EXFINPDKS_PUBLIC_DOMAIN ]]; then
   EXFINPDKS_PUBLIC_DOMAIN=exfinpdks.com
 fi
 
-RETAIL_ROOT_CAND=(
-  "/opt/RetailEX"
-  "${SCRIPT_DIR}/../.."
-)
-EXFINPDKS_DOCKERFILE="${EXFINPDKS_DOCKERFILE:-}"
-if [[ -z "${EXFINPDKS_DOCKERFILE}" ]]; then
-  for base in "${RETAIL_ROOT_CAND[@]}"; do
-    f="${base}/database/docker/Dockerfile.exfinpdks-web"
-    if [[ -f "$f" ]]; then
-      EXFINPDKS_DOCKERFILE="$f"
-      break
-    fi
-  done
-fi
-if [[ -z "${EXFINPDKS_DOCKERFILE}" ]] || [[ ! -f "${EXFINPDKS_DOCKERFILE}" ]]; then
-  echo "Hata: Dockerfile.exfinpdks-web bulunamadi. EXFINPDKS_DOCKERFILE=/tam/yol ile verin." >&2
+_EXFIN_DF_DEFAULT="$(cd "${SCRIPT_DIR}/../docker" && pwd)/Dockerfile.exfinpdks-web"
+EXFINPDKS_DOCKERFILE="${EXFINPDKS_DOCKERFILE:-${_EXFIN_DF_DEFAULT}}"
+if [[ ! -f "${EXFINPDKS_DOCKERFILE}" ]]; then
+  echo "Hata: Dockerfile.exfinpdks-web bulunamadi: ${EXFINPDKS_DOCKERFILE}" >&2
+  echo "RetailEX reposunu bu betikle birlikte kullanin veya EXFINPDKS_DOCKERFILE=/tam/yol verin." >&2
   exit 1
 fi
 
@@ -53,6 +43,7 @@ mkdir -p "${INSTALL_DIR}/projects"
 
 if [[ -d "${TARGET}/.git" ]]; then
   echo "Guncelleniyor: ${TARGET}"
+  git -C "${TARGET}" remote set-url origin "${EXFINPDKS_GIT_URL}"
   git -C "${TARGET}" fetch origin "${EXFINPDKS_GIT_BRANCH}"
   git -C "${TARGET}" reset --hard "origin/${EXFINPDKS_GIT_BRANCH}"
 else
