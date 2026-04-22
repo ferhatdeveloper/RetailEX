@@ -10,6 +10,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --legacy-peer-deps
 
 COPY . .
+ENV SKIP_POSTGRES_REMOTE_ENABLE=1
 RUN npm run build
 
 FROM nginx:alpine
