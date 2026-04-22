@@ -1,10 +1,9 @@
 # EXFIN PDKS — Flutter web (build context = yalnizca git ile klonlanan EXFINPDKS repo kokleri)
 # Ornek: docker build -f .../Dockerfile.exfinpdks-web /opt/berqenas-cloud/projects/exfinpdks
 #
-# Flutter: stable (3.41+) + google_fonts 6.3.0 = FontWeight const map derleme hatasi; bu yuzden 3.32.x pin
-# google_fonts: lock 6.3.0 ise 6.3.2+ yukselt (changelog: FontWeight map non-const)
-# Etiket: CI'deki 3.32.5 serisi; ghcr'da 3.32.8 dogrulanmis
-FROM ghcr.io/cirruslabs/flutter:3.32.8 AS build
+# Dart >=3.9: local_auth vb. (3.32 imaji Dart 3.8 -> cozumleme hatasi)
+# Flutter 3.41 + google_fonts 6.3.0: FontWeight const map -> tam kaynak kopyadan sonra pub upgrade google_fonts
+FROM ghcr.io/cirruslabs/flutter:3.41.7 AS build
 WORKDIR /app
 
 COPY pubspec.yaml pubspec.lock* ./
