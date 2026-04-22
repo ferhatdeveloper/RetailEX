@@ -50,6 +50,18 @@ sudo bash berqenas-cloud-install.sh
 
 Web dağıtımı `database/scripts/berqenas-deploy-web.sh` ile: repoyu `INSTALL_DIR/projects/retailex` altına klonlar, `Dockerfile.frontend` ile imaj üretir. Varsayılan olarak **Caddy** **80/443** ile **https://retailex.app** sunar; aynı frontend konteyneri **8080** (veya `RETAILEX_WEB_PORT`) üzerinden **http://VPS’nin genel IPv4 adresi:8080** ile de erişilebilir. `RETAILEX_PUBLIC_DOMAIN` bilinçli olarak boş bırakılırsa yalnızca **http://VPS_IP:8080** kalır. Caddy yapılandırması **üzerine yazılmaz**; aynı dosyaya ikinci bir site (ör. EXFIN PDKS) eklenebilir.
 
+### `retailex.app` canlı siteyi güncellemek
+
+1. **DNS:** Alan adı sağlayıcıda `retailex.app` **A** kaydı sunucunun genel IPv4’üne (VPS) işaret etmeli; Let’s Encrypt için şart.
+2. **GitHub Actions:** `main`’e push edildiğinde `.github/workflows/deploy-vps-web.yml` çalışır (`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` secrets tanımlı olmalı). İş akışı `RETAILEX_PUBLIC_DOMAIN=retailex.app` ile `berqenas-deploy-web.sh` çalıştırır.
+3. **Manuel (SSH):** RetailEX klonu `/opt/RetailEX` ise:
+
+```bash
+cd /opt/RetailEX && git fetch origin main && git reset --hard origin/main && sudo env RETAILEX_GIT_URL="https://github.com/ferhatdeveloper/RetailEX.git" RETAILEX_PUBLIC_DOMAIN="retailex.app" bash database/scripts/berqenas-deploy-web.sh
+```
+
+Berqenas yığınında web klonu `INSTALL_DIR/projects/retailex` altındaysa ve betik oradaysa, `deploy-vps-web.yml` içindeki `DEPLOY` yolu ile aynı mantık kullanılır.
+
 ### EXFIN PDKS (Flutter web, `exfinpdks.com`) aynı VPS’te
 
 - **DNS:** `exfinpdks.com` **A kaydı** → sunucunun genel IPv4 (RetailEX ile aynı IP olabilir).

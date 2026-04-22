@@ -45,6 +45,7 @@ jobs:
             export INSTALL_DIR
             export RETAILEX_GIT_URL="https://github.com/${{ github.repository }}.git"
             export RETAILEX_GIT_BRANCH="main"
+            export RETAILEX_PUBLIC_DOMAIN="retailex.app"
             DEPLOY="${INSTALL_DIR}/projects/retailex/database/scripts/berqenas-deploy-web.sh"
             if [[ ! -f "$DEPLOY" ]]; then
               echo "Hata: $DEPLOY yok. VPS'te ilk kurulumu tamamlayin." >&2

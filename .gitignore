@@ -13,6 +13,9 @@ dist/
 .next/
 out/
 
+# Cursor / Claude yerel worktree (repoya eklenmez)
+.claude/
+
 # Misc
 .DS_Store
 *.pem
