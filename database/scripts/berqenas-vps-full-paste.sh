@@ -34,10 +34,10 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
 
 if ! [[ -v ENABLE_VPN ]]; then
   if [[ -t 0 ]]; then
-    read -r -p "WireGuard (VPN) kurulsun mu? [E/h]: " _vpn_ans
-    case "${_vpn_ans,,}" in h|hayir|n|no) ENABLE_VPN=0 ;; *) ENABLE_VPN=1 ;; esac
+    read -r -p "WireGuard (VPN) kurulsun mu? [e/H] (bos=Hayir): " _vpn_ans
+    case "${_vpn_ans,,}" in e|evet|y|yes) ENABLE_VPN=1 ;; *) ENABLE_VPN=0 ;; esac
   else
-    ENABLE_VPN=1
+    ENABLE_VPN=0
   fi
 fi
 

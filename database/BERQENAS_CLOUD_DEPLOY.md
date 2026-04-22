@@ -33,7 +33,7 @@ sudo bash berqenas-vps-full-paste.sh
 
 | Ortam değişkeni | Varsayılan | Açıklama |
 |-----------------|------------|----------|
-| `ENABLE_VPN` | `1` | `0` → WireGuard servisi yazılmaz / kalkırılmaz; UFW’de 51820 açılmaz. |
+| `ENABLE_VPN` | `0` | `1` → WireGuard eklenir; UFW’de 51820/udp açılır. Sorulduğunda Enter = kapalı. |
 | `ENABLE_POSTGREST` | `0` | `1` → `docker-compose.postgrest-per-db.yml` ile birlikte `docker compose up` (3002–3006, UFW). |
 | `INSTALL_DIR` | `/opt/berqenas-cloud` | Veri ve compose dosyaları. |
 | `SERVERURL` | `berqenas.cloud` | `ENABLE_VPN=1` iken WireGuard istemci endpoint’i (linuxserver/wireguard). DNS A → VPS IP. |
