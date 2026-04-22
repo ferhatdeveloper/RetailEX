@@ -11,15 +11,25 @@ REPO_SSH="${REPO_SSH:-git@github.com:ferhatdeveloper/RetailEX.git}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt}"
 TARGET_DIR="${TARGET_DIR:-${INSTALL_ROOT}/RetailEX}"
 
+# curl ... | bash: script stdin'den aktiginda "read" stdin'i kirer; sifreleri her zaman TTY'den oku.
+TTY="${TTY:-/dev/tty}"
+if [[ ! -r "$TTY" ]]; then
+  echo "Hata: ${TTY} okunamiyor. SSH oturumunda calistirin veya scripti indirip: bash berqenas-one-liner-bootstrap.sh" >&2
+  exit 1
+fi
+
+# set -u: bos cevaplarda bile atanmis olsun
+PGPW="" PGAEM="" PGAPW="" AUTHPW="" GHTOK=""
+
 echo "=== Berqenas / RetailEX — tam kurulum ==="
-read -rsp "PostgreSQL kullanici 'postgres' sifresi: " PGPW
+read -rsp "PostgreSQL kullanici 'postgres' sifresi: " PGPW <"$TTY"
 echo
-read -rp "pgAdmin e-posta: " PGAEM
-read -rsp "pgAdmin sifresi: " PGAPW
+read -rp "pgAdmin e-posta: " PGAEM <"$TTY"
+read -rsp "pgAdmin sifresi: " PGAPW <"$TTY"
 echo
-read -rsp "PostgreSQL rol 'authenticator' sifresi (PostgREST): " AUTHPW
+read -rsp "PostgreSQL rol 'authenticator' sifresi (PostgREST): " AUTHPW <"$TTY"
 echo
-read -rsp "GitHub PAT (repo private ise; public ise Enter): " GHTOK
+read -rsp "GitHub PAT (repo private ise; public ise Enter): " GHTOK <"$TTY"
 echo
 
 export DEBIAN_FRONTEND=noninteractive

@@ -1,10 +1,18 @@
 /**
  * NSIS / kurulum: RetailEX_PostgreSQLRemote.exe icin release derlemesi.
  * tools/postgresql-remote-enable (Rust) — Windows'ta tauri:build oncesi calisir.
+ *
+ * Docker / Linux (yalnizca Vite web imaji): Dockerfile'da
+ *   ENV SKIP_POSTGRES_REMOTE_ENABLE=1
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+if (process.env.SKIP_POSTGRES_REMOTE_ENABLE === "1") {
+  console.log("build-postgres-remote-enable: atlandi (SKIP_POSTGRES_REMOTE_ENABLE=1)");
+  process.exit(0);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
