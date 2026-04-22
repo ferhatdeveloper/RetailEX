@@ -2,7 +2,8 @@
 # Build: docker build -f Dockerfile.frontend -t retailex-web .
 # Çalıştır: berqenas docker-compose ile veya: docker run -p 8080:80 retailex-web
 
-FROM node:20-alpine AS build
+# @capacitor/cli 8+ engines: node >= 22
+FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
