@@ -6,11 +6,9 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-# antd 6 + @ant-design/pro-components peer uyumsuzluğu; VPS/Docker build icin gerekli
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 COPY . .
-ENV SKIP_POSTGRES_REMOTE_ENABLE=1
 RUN npm run build
 
 FROM nginx:alpine
