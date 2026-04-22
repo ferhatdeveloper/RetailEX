@@ -8,7 +8,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { buildBeautySpanPlacements, isBeautySpanContinuation } from '../../../utils/beautyScheduleGrid';
 import '../ClinicStyles.css';
 import { QueueModeResourceList } from './QueueModeResourceList';
-import { groupBeautyQueueByCustomer, suggestQueuePrefillTime } from '../../../utils/beautyQueueOrder';
+import { customerQueueGroupKey, groupBeautyQueueByCustomer, suggestQueuePrefillTime } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import {
     beautySchedulerResourceColumnDropHandlers,
@@ -24,6 +24,8 @@ interface StaffTimelineViewProps {
     /** Saat ızgarası yerine sıra numarasına göre liste (kayıt / saat sırası) */
     queueMode?: boolean;
     queueSnapMinutes?: number;
+    /** Açıkken aynı müşterinin ardışık satırlarını tek kartta birleştir */
+    mergeConsecutiveByCustomer?: boolean;
     /** Personel sütunları arasında sürükleyip taşıma */
     resourceDragKind?: 'staff';
     dragResourceTitle?: string;
@@ -31,6 +33,78 @@ interface StaffTimelineViewProps {
 }
 
 const UNASSIGNED_ID = '__unassigned__';
+
+function parseHhmmToMinutes(raw: string | undefined): number | null {
+    const s = String(raw ?? '').trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    return hh * 60 + mm;
+}
+
+function formatMinutesToHhmm(total: number): string {
+    const hh = Math.floor(total / 60);
+    const mm = total % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function mergeConsecutiveCustomerAppointments(appointments: BeautyAppointment[]): BeautyAppointment[] {
+    if (appointments.length <= 1) return appointments;
+    const sorted = [...appointments].sort((a, b) => {
+        const sa = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
+        const sb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
+        if (sa !== sb) return sa - sb;
+        return String(a.id).localeCompare(String(b.id));
+    });
+
+    const result: BeautyAppointment[] = [];
+    for (const apt of sorted) {
+        const start = parseHhmmToMinutes(apt.appointment_time ?? apt.time);
+        if (start === null) {
+            result.push(apt);
+            continue;
+        }
+        const prev = result[result.length - 1];
+        if (!prev) {
+            result.push(apt);
+            continue;
+        }
+        const prevStart = parseHhmmToMinutes(prev.appointment_time ?? prev.time);
+        const prevDuration = Math.max(1, Number(prev.duration) || 30);
+        if (prevStart === null) {
+            result.push(apt);
+            continue;
+        }
+        const prevEnd = prevStart + prevDuration;
+        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
+        const isContiguous = start <= prevEnd;
+        if (!sameCustomer || !isContiguous) {
+            result.push(apt);
+            continue;
+        }
+
+        const mergedStart = Math.min(prevStart, start);
+        const mergedEnd = Math.max(prevEnd, start + Math.max(1, Number(apt.duration) || 30));
+        const services = [
+            ...(prev.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
+            ...(apt.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
+        ];
+        const uniqueServices = [...new Set(services)];
+        const merged: BeautyAppointment = {
+            ...prev,
+            appointment_time: formatMinutesToHhmm(mergedStart),
+            time: formatMinutesToHhmm(mergedStart),
+            duration: Math.max(1, mergedEnd - mergedStart),
+            total_price: Number(prev.total_price ?? 0) + Number(apt.total_price ?? 0),
+            service_name: uniqueServices.join(' · '),
+        };
+        result[result.length - 1] = merged;
+    }
+
+    return result;
+}
 
 export function StaffTimelineView({
     currentDate,
@@ -40,6 +114,7 @@ export function StaffTimelineView({
     appointmentsOverride,
     queueMode = false,
     queueSnapMinutes = 5,
+    mergeConsecutiveByCustomer = true,
     resourceDragKind,
     dragResourceTitle,
     onResourceColumnDrop,
@@ -109,6 +184,9 @@ export function StaffTimelineView({
                 if (isUnassigned) return !(String(a.staff_id ?? a.specialist_id ?? '').trim());
                 return String(a.staff_id ?? a.specialist_id ?? '') === String(col.id);
             });
+            const mergedForTimeline = mergeConsecutiveByCustomer
+                ? mergeConsecutiveCustomerAppointments(colApts)
+                : colApts;
 
             const revenue = isUnassigned
                 ? 0
@@ -119,13 +197,13 @@ export function StaffTimelineView({
             return {
                 col,
                 isUnassigned,
-                appointments: colApts,
+                appointments: queueMode ? colApts : mergedForTimeline,
                 revenue,
                 commission,
                 rate,
             };
         });
-    }, [columns, dayAppointments]);
+    }, [columns, dayAppointments, mergeConsecutiveByCustomer]);
 
     const formatCurrency = (amount: number) =>
         new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);

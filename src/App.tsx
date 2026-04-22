@@ -15,6 +15,7 @@ import { useRestaurantStore } from './components/restaurant/store/useRestaurantS
 import { Loader2, Monitor } from 'lucide-react';
 import SetupWizard from './components/system/SetupWizard';
 import { NeonLogo } from './components/ui/NeonLogo';
+import { readNeonProductLineFromStorage } from './utils/neonProductLine';
 import { supabase } from './utils/supabase/client';
 import { AdminElevationPrompt } from './components/system/AdminElevationPrompt';
 import { listen } from '@tauri-apps/api/event';
@@ -310,12 +311,12 @@ function App() {
     return (
       <div className="fixed inset-0 flex items-center justify-center animate-in fade-in duration-300 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="text-center flex flex-col items-center gap-6">
-          <NeonLogo size="lg" className="animate-pulse" />
+          <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
           <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
           {installingPg && (
             <p className="text-slate-300 text-sm animate-pulse">Veritabanı hazırlanıyor, lütfen bekleyin.</p>
           )}
-          <p className="text-slate-400 text-sm">RetailEX başlatılıyor...</p>
+          <p className="text-slate-400 text-sm">Uygulama başlatılıyor...</p>
           <div className="text-blue-400/80 text-xs font-mono tracking-widest uppercase">v{version}</div>
         </div>
       </div>
@@ -335,7 +336,7 @@ function App() {
           {isConfigured === null || authLoading ? (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
               <div className="text-center flex flex-col items-center gap-6">
-                <NeonLogo size="lg" className="animate-pulse" />
+                <NeonLogo size="lg" className="animate-pulse justify-center" productLine={readNeonProductLineFromStorage()} />
                 <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
                 <p className="text-slate-400 text-sm">Yükleniyor...</p>
               </div>

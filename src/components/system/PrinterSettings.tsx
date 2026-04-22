@@ -330,7 +330,10 @@ export function PrinterSettings() {
                 </label>
 
                 <div>
-                  <label className="block text-sm text-gray-700 mb-2">Varsayılan Fiş Dili</label>
+                  <label className="block text-sm text-gray-700 mb-2">Varsayılan fiş dili (yerel yedek)</label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Birincil ayar: Sistem Yönetimi → Fiş / Firma Bilgisi → “Varsayılan fiş dili”. Orada “Uygulama dili” veya boş bırakıldıysa buradaki seçenek kullanılır.
+                  </p>
                   <select
                     value={config.defaultLanguage || 'tr'}
                     onChange={(e) => setConfig({ ...config, defaultLanguage: e.target.value as any })}

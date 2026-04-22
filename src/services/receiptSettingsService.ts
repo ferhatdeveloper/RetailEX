@@ -6,6 +6,33 @@ import { postgres, ERP_SETTINGS } from './postgres';
 /** Fiş / önizleme dilleri — POS fişi ve çeviri anahtarları ile uyumlu */
 export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku';
 
+const RECEIPT_LANG_CODES: readonly ReceiptLangCode[] = ['tr', 'en', 'ar', 'ku'];
+
+export function isReceiptLangCode(s: string | undefined | null): s is ReceiptLangCode {
+  return !!s && (RECEIPT_LANG_CODES as readonly string[]).includes(s);
+}
+
+/**
+ * Fiş dil önceliği: Sistem Yönetimi → Fiş / Firma (`defaultReceiptLanguage`) →
+ * yazıcı yerel ayarı (`retailos-printer-settings.defaultLanguage`) → uygulama dili → tr.
+ */
+export function resolveDefaultReceiptLang(
+  receiptSettings: Pick<ReceiptSettings, 'defaultReceiptLanguage'>,
+  uiLanguage: string,
+  printerDefaultLanguage?: string | null
+): ReceiptLangCode {
+  if (isReceiptLangCode(receiptSettings.defaultReceiptLanguage)) {
+    return receiptSettings.defaultReceiptLanguage;
+  }
+  if (isReceiptLangCode(printerDefaultLanguage)) {
+    return printerDefaultLanguage;
+  }
+  if (isReceiptLangCode(uiLanguage)) {
+    return uiLanguage;
+  }
+  return 'tr';
+}
+
 export interface ReceiptSettings {
   companyName?: string;
   companyAddress?: string;

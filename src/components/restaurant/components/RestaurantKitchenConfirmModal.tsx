@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, ChefHat, CheckCircle, Info, Clock, Utensils } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { ChefHat, CheckCircle, Info, Clock, Utensils } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 type KitchenStatus = 'pending' | 'cooking' | 'ready' | 'served';
 
@@ -14,13 +15,6 @@ interface RestaurantKitchenConfirmModalProps {
     fmt: (num: number) => string;
 }
 
-const STATUS_CONFIG: Record<KitchenStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-    pending: { label: 'Bekliyor', color: '#b45309', bg: '#fef3c7', icon: <Clock className="w-3 h-3" /> },
-    cooking: { label: 'Mutfakta', color: '#ea580c', bg: '#ffedd5', icon: <ChefHat className="w-3 h-3" /> },
-    ready: { label: 'Hazır', color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="w-3 h-3" /> },
-    served: { label: 'Servis Edildi', color: '#7c3aed', bg: '#f5f3ff', icon: <Utensils className="w-3 h-3" /> },
-};
-
 export function RestaurantKitchenConfirmModal({
     cart,
     table,
@@ -30,6 +24,37 @@ export function RestaurantKitchenConfirmModal({
     onConfirm,
     fmt
 }: RestaurantKitchenConfirmModalProps) {
+    const tm = useRestaurantModuleTm();
+
+    const statusConfig = useMemo(
+        (): Record<KitchenStatus, { label: string; color: string; bg: string; icon: React.ReactNode }> => ({
+            pending: {
+                label: tm('resKitchenLineStatusPending'),
+                color: '#b45309',
+                bg: '#fef3c7',
+                icon: <Clock className="w-3 h-3" />,
+            },
+            cooking: {
+                label: tm('resKitchenLineStatusCooking'),
+                color: '#ea580c',
+                bg: '#ffedd5',
+                icon: <ChefHat className="w-3 h-3" />,
+            },
+            ready: {
+                label: tm('resKitchenLineStatusReady'),
+                color: '#16a34a',
+                bg: '#dcfce7',
+                icon: <CheckCircle className="w-3 h-3" />,
+            },
+            served: {
+                label: tm('resKitchenLineStatusServed'),
+                color: '#7c3aed',
+                bg: '#f5f3ff',
+                icon: <Utensils className="w-3 h-3" />,
+            },
+        }),
+        [tm]
+    );
     // Sadece henüz gönderilmemiş (pending) satırlar
     const pendingItems = cart.filter(item => !item.kitchenStatus || item.kitchenStatus === 'pending');
     const sentItems = cart.filter(item => item.kitchenStatus && item.kitchenStatus !== 'pending');
@@ -40,7 +65,7 @@ export function RestaurantKitchenConfirmModal({
         const pIdx = plate ? plates.indexOf(plate) : -1;
         const pal = pIdx >= 0 ? platePalette[pIdx % platePalette.length] : null;
         const ks: KitchenStatus = item.kitchenStatus || 'pending';
-        const sc = STATUS_CONFIG[ks];
+        const sc = statusConfig[ks];
 
         return (
             <div
@@ -99,9 +124,11 @@ export function RestaurantKitchenConfirmModal({
                             <ChefHat className="w-6 h-6" />
                         </div>
                         <div>
-                            <h3 className="text-xl font-black uppercase tracking-tight leading-none">Mutfağa Gönder</h3>
+                            <h3 className="text-xl font-black uppercase tracking-tight leading-none">{tm('resKitchenConfirmTitle')}</h3>
                             <p className="text-[10px] text-white/70 font-black uppercase tracking-widest mt-1.5">
-                                {table ? `Masa ${table.number}` : 'YENİ SİPARİŞ'}
+                                {table
+                                    ? tm('resKitchenConfirmSubtitleTable').replace('{n}', String(table.number))
+                                    : tm('resKitchenConfirmSubtitleNewOrder')}
                             </p>
                         </div>
                     </div>
@@ -115,7 +142,7 @@ export function RestaurantKitchenConfirmModal({
                                 <Info className="w-4 h-4" />
                             </div>
                             <p className="text-[11px] font-bold text-emerald-700 leading-tight uppercase tracking-wider">
-                                {pendingCount} yeni ürün mutfağa gönderilecek.
+                                {tm('resKitchenConfirmPendingSummary').replace('{n}', String(pendingCount))}
                             </p>
                         </div>
                     ) : (
@@ -124,7 +151,7 @@ export function RestaurantKitchenConfirmModal({
                                 <ChefHat className="w-4 h-4" />
                             </div>
                             <p className="text-[11px] font-bold text-amber-700 leading-tight uppercase tracking-wider">
-                                Tüm ürünler zaten mutfağa gönderildi.
+                                {tm('resKitchenConfirmAllSent')}
                             </p>
                         </div>
                     )}
@@ -146,7 +173,7 @@ export function RestaurantKitchenConfirmModal({
                         onClick={onClose}
                         className="flex-1 px-6 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] hover:bg-slate-100 transition-all active:scale-95 shadow-sm"
                     >
-                        İPTAL
+                        {tm('resKitchenConfirmCancel')}
                     </button>
                     <button
                         onClick={onConfirm}
@@ -154,7 +181,8 @@ export function RestaurantKitchenConfirmModal({
                         className="flex-1 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-[12px] flex items-center justify-center gap-2 shadow-xl shadow-emerald-200 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <ChefHat className="w-5 h-5" />
-                        GÖNDER {pendingCount > 0 && `(${pendingCount})`}
+                        {tm('resKitchenConfirmSend')}
+                        {pendingCount > 0 && ` (${pendingCount})`}
                     </button>
                 </div>
             </div>

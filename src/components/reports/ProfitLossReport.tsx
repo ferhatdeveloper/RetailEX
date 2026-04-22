@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { TrendingUp, Package, ShoppingCart, Calendar, Filter, Loader2 } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface SalesData {
   rowKey: string;
@@ -19,6 +20,7 @@ interface SalesData {
 
 export function ProfitLossReport() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
+  const { tm, language } = useLanguage();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reportType, setReportType] = useState<'product' | 'category' | 'daily' | 'monthly'>('product');
@@ -194,16 +196,18 @@ export function ProfitLossReport() {
         const code = r.product_code || '';
         const name = r.product_name || '';
         let displayName = name;
+        const loc =
+          language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : language === 'en' ? 'en-GB' : 'tr-TR';
         if (reportType === 'daily' && /^\d{4}-\d{2}-\d{2}$/.test(name)) {
           const [y, m, d] = name.split('-').map(Number);
-          displayName = new Date(y, m - 1, d).toLocaleDateString('tr-TR', {
+          displayName = new Date(y, m - 1, d).toLocaleDateString(loc, {
             day: 'numeric',
             month: 'long',
             year: 'numeric',
           });
         } else if (reportType === 'monthly' && /^\d{4}-\d{2}$/.test(name)) {
           const [y, mo] = name.split('-').map(Number);
-          displayName = new Date(y, mo - 1, 1).toLocaleDateString('tr-TR', {
+          displayName = new Date(y, mo - 1, 1).toLocaleDateString(loc, {
             month: 'long',
             year: 'numeric',
           });
@@ -223,12 +227,12 @@ export function ProfitLossReport() {
       setSalesData(mapped);
     } catch (err: any) {
       console.error('[ProfitLossReport] loadData failed:', err);
-      toast.error(err?.message || 'Kar-zarar raporu yüklenemedi');
+      toast.error(err?.message || tm('reportsPlLoadError'));
       setSalesData([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedFirma, selectedDonem, startDate, endDate, reportType]);
+  }, [selectedFirma, selectedDonem, startDate, endDate, reportType, language, tm]);
 
   useEffect(() => {
     void loadData();
@@ -239,23 +243,24 @@ export function ProfitLossReport() {
   const totalProfit = salesData.reduce((sum, item) => sum + item.profit, 0);
   const averageMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
-  const sectionTitle =
-    reportType === 'category'
-      ? 'Kategori Bazlı Kar Analizi'
-      : reportType === 'daily'
-        ? 'Günlük Kar Analizi'
-        : reportType === 'monthly'
-          ? 'Aylık Kar Analizi'
-          : 'Ürün Bazlı Kar Analizi';
+  const sectionTitle = useMemo(() => {
+    if (reportType === 'category') return tm('reportsPlSectionCategory');
+    if (reportType === 'daily') return tm('reportsPlSectionDaily');
+    if (reportType === 'monthly') return tm('reportsPlSectionMonthly');
+    return tm('reportsPlSectionProduct');
+  }, [reportType, tm]);
 
-  const firstColLabel =
-    reportType === 'category' ? 'Kategori' : reportType === 'daily' || reportType === 'monthly' ? 'Dönem' : 'Ürün';
+  const firstColLabel = useMemo(() => {
+    if (reportType === 'category') return tm('reportsPlColCategory');
+    if (reportType === 'daily' || reportType === 'monthly') return tm('reportsPlColPeriod');
+    return tm('reportsPlColProduct');
+  }, [reportType, tm]);
 
   if (!selectedFirma || !selectedDonem) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-amber-900 text-sm">
-          Kar-zarar raporu için üst menüden <strong>firma</strong> ve <strong>dönem</strong> seçin. Tarihler seçili döneme göre doldurulur.
+          {tm('reportsPlNeedFirmPeriod')}
         </p>
       </div>
     );
@@ -268,7 +273,7 @@ export function ProfitLossReport() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
-              Başlangıç Tarihi
+              {tm('reportsPlStartDate')}
             </label>
             <input
               type="date"
@@ -280,7 +285,7 @@ export function ProfitLossReport() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
-              Bitiş Tarihi
+              {tm('reportsPlEndDate')}
             </label>
             <input
               type="date"
@@ -292,17 +297,17 @@ export function ProfitLossReport() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Filter className="w-4 h-4 inline mr-1" />
-              Rapor Türü
+              {tm('reportsPlReportType')}
             </label>
             <select
               value={reportType}
               onChange={(e) => setReportType(e.target.value as typeof reportType)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="product">Ürün Bazlı</option>
-              <option value="category">Kategori Bazlı</option>
-              <option value="daily">Günlük</option>
-              <option value="monthly">Aylık</option>
+              <option value="product">{tm('reportsPlProductBased')}</option>
+              <option value="category">{tm('reportsPlCategoryBased')}</option>
+              <option value="daily">{tm('reportsPlDaily')}</option>
+              <option value="monthly">{tm('reportsPlMonthly')}</option>
             </select>
           </div>
         </div>
@@ -312,7 +317,7 @@ export function ProfitLossReport() {
         <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Toplam Gelir</p>
+              <p className="text-sm text-gray-600">{tm('reportsPlTotalRevenue')}</p>
               <p className="text-2xl font-bold text-blue-600">
                 {formatNumber(totalRevenue, 2, false)} {reportCurrency}
               </p>
@@ -326,7 +331,7 @@ export function ProfitLossReport() {
         <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Toplam Maliyet</p>
+              <p className="text-sm text-gray-600">{tm('reportsPlTotalCost')}</p>
               <p className="text-2xl font-bold text-orange-600">
                 {formatNumber(totalCost, 2, false)} {reportCurrency}
               </p>
@@ -340,11 +345,11 @@ export function ProfitLossReport() {
         <div className="bg-white rounded-lg border-2 border-green-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Brüt Kar</p>
+              <p className="text-sm text-gray-600">{tm('reportsPlGrossProfit')}</p>
               <p className="text-2xl font-bold text-green-600">
                 {formatNumber(totalProfit, 2, false)} {reportCurrency}
               </p>
-              <p className="text-xs text-gray-500 mt-1">Marj: %{formatNumber(averageMargin, 2, false)}</p>
+              <p className="text-xs text-gray-500 mt-1">{tm('reportsPlMarginPct')}: %{formatNumber(averageMargin, 2, false)}</p>
             </div>
             <div className="bg-green-100 rounded-full p-3">
               <TrendingUp className="w-6 h-6 text-green-600" />
@@ -364,18 +369,18 @@ export function ProfitLossReport() {
         <div className="overflow-auto">
           {salesData.length === 0 && !loading ? (
             <div className="p-8 text-center text-gray-400">
-              Kayıt bulunamadı (seçilen tarih aralığında tamamlanmış satış yok veya veri henüz işlenmedi).
+              {tm('reportsPlNoData')}
             </div>
           ) : (
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm">{firstColLabel}</th>
-                  <th className="px-4 py-3 text-right text-sm">Miktar</th>
-                  <th className="px-4 py-3 text-right text-sm">Gelir</th>
-                  <th className="px-4 py-3 text-right text-sm">Maliyet</th>
-                  <th className="px-4 py-3 text-right text-sm">Kar</th>
-                  <th className="px-4 py-3 text-right text-sm">Marj</th>
+                  <th className="px-4 py-3 text-right text-sm">{tm('reportsPlQty')}</th>
+                  <th className="px-4 py-3 text-right text-sm">{tm('reportsPlRevenue')}</th>
+                  <th className="px-4 py-3 text-right text-sm">{tm('reportsPlCost')}</th>
+                  <th className="px-4 py-3 text-right text-sm">{tm('reportsPlProfit')}</th>
+                  <th className="px-4 py-3 text-right text-sm">{tm('reportsPlMarginCol')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -420,7 +425,7 @@ export function ProfitLossReport() {
                 ))}
                 {salesData.length > 0 && (
                   <tr className="bg-gray-50 font-bold">
-                    <td className="px-4 py-3 text-sm">TOPLAM</td>
+                    <td className="px-4 py-3 text-sm">{tm('reportsTotalUpper')}</td>
                     <td className="px-4 py-3 text-right text-sm">
                       {salesData.reduce((sum, item) => sum + item.quantity, 0)}
                     </td>

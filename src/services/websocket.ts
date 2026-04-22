@@ -141,7 +141,12 @@ export class WebSocketService {
 
       setTimeout(() => {
         if (this.userId && this.storeId) {
-          this.connect(this.userId, this.storeId);
+          this.connect(this.userId, this.storeId).catch((err) => {
+            // Reconnect denemelerinde promise rejection'ı yut; handleReconnect zaten tekrar deneyecek.
+            if (this.reconnectAttempts <= 1) {
+              logger.warn('[WS] Reconnect attempt failed:', err);
+            }
+          });
         }
       }, delay);
     } else {

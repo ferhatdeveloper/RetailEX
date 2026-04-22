@@ -1,10 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
-    UserCog, BarChart3, Bell, Search, Plus,
+    UserCog, BarChart3, Bell, Search,
     ChevronLeft, ChevronRight, Box, Megaphone,
-    Sparkles, Settings2, ShoppingBag, Globe, ClipboardList, Layers, Repeat,
+    Sparkles, Settings2, Globe, ClipboardList, Layers, LayoutGrid,
+    Clock, LogOut, Smile, Activity, Baby, Apple, Banknote,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
 import { formatLocalYmd } from '../../utils/dateLocal';
@@ -20,15 +22,52 @@ import { ServiceRecipeManagement } from './components/ServiceRecipeManagement';
 import { StaffManagement } from './components/StaffManagement';
 import { DeviceManagement } from './components/DeviceManagement';
 import { ReportsModule } from '../reports/ReportsModule';
+import { ExpenseManagement } from '../accounting/reports/ExpenseManagement';
 import type { Product, Sale } from '../../core/types';
 import { LeadManagement } from './components/LeadManagement';
-import { AppointmentPOS } from './components/AppointmentPOS';
 import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
-import { MonthlySessionSeriesModule } from './components/MonthlySessionSeriesModule';
+import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/ClinicErpSpecialtyContext';
+import { getLandingTabForSpecialty } from './clinicShellNavConfig';
+import { DentalChartScreen } from './specialty/DentalChartScreen';
+import { PhysioBodyScreen } from './specialty/PhysioBodyScreen';
+import { ObstetricsScreen } from './specialty/ObstetricsScreen';
+import { DietitianScreen } from './specialty/DietitianScreen';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
+import { FirmSelector } from '../system/FirmSelector';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
 import './ClinicStyles.css';
+
+function beautyShellLocale(lang: string): string {
+    if (lang === 'tr') return 'tr-TR';
+    if (lang === 'ar') return 'ar-SA';
+    if (lang === 'ku') return 'ku-IQ';
+    return 'en-US';
+}
+
+/** Ana ERP mavi çubuğu yokken — tarih/saat modalı (MainLayout ile aynı) */
+function BeautyShellClockButton({ onOpen, locale }: { onOpen: () => void; locale: string }) {
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const id = window.setInterval(() => setNow(new Date()), 1000);
+        return () => window.clearInterval(id);
+    }, []);
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            className="flex items-center justify-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs tabular-nums h-8 px-2 sm:px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 text-slate-700 font-semibold shadow-sm shrink-0 whitespace-nowrap"
+        >
+            <Calendar className="w-3.5 h-3.5 shrink-0 text-violet-600" aria-hidden />
+            <span className="hidden md:inline">
+                {now.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+            <span className="hidden md:inline text-violet-300" aria-hidden>•</span>
+            <Clock className="w-3.5 h-3.5 shrink-0 text-violet-600" aria-hidden />
+            <span>{now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}</span>
+        </button>
+    );
+}
 
 // Sidebar constants
 const SIDEBAR_W = 220;
@@ -38,10 +77,18 @@ export type BeautyModuleProps = {
     /** Back office ile aynı ERP raporları (satış / ürün) */
     sales?: Sale[];
     products?: Product[];
+    /** Ana kabukta (MainLayout) yönetim/backoffice — şifre veya rol ile aynı akış */
+    onRequestManagementAccess?: () => void;
+    /** Üst mavi çubuk gizliyken: firma/dönem, saat/tarih modalı, çıkış */
+    clinicSessionBar?: {
+        onLogout: () => void;
+        onOpenClockModal: () => void;
+    };
 };
 
-export default function BeautyModule({ sales = [], products = [] }: BeautyModuleProps) {
-    const { tm, language } = useLanguage();
+function BeautyModuleShell({ sales = [], products = [], onRequestManagementAccess, clinicSessionBar }: BeautyModuleProps) {
+    const { tm, t, language } = useLanguage();
+    const { specialty } = useClinicErpSpecialty();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [beautyClientDetailId, setBeautyClientDetailId] = useState<string | null>(null);
     const [collapsed, setCollapsed] = useState(false);
@@ -56,46 +103,107 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
     /** CRM’den gelen randevu hizmeti — POS’ta sepete otomatik */
     const [wizardServiceId, setWizardServiceId] = useState('');
 
-    const MENU_GROUPS = useMemo(() => [
-        {
-            title: tm('bShellMenuGeneral'),
-            items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
-        },
-        {
-            title: tm('bShellMenuOperations'),
-            items: [
-                { id: 'clients', icon: Users, label: tm('bShellNavClients') },
-                { id: 'calendar', icon: Calendar, label: tm('bShellNavCalendar') },
-                { id: 'pos', icon: ShoppingBag, label: tm('bShellNavPOS') },
-            ],
-        },
-        {
-            title: tm('bShellMenuDefinitions'),
-            items: [
-                { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
-                { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
-                { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
-                { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
-                { id: 'surveys', icon: ClipboardList, label: tm('bSatisfactionSurveysTitle') },
-            ],
-        },
-        {
-            title: tm('bShellMenuManagement'),
-            items: [
-                { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
-                { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
-                { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
-                { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
-                { id: 'monthly_series', icon: Repeat, label: tm('bShellNavMonthlySeries') },
-            ],
-        },
-    ], [language]);
+    const MENU_GROUPS = useMemo(() => {
+        /** Diş yazılımı tipi akış: özet → randevu/hasta önce → FDI tedavi → katalog → yönetim */
+        if (specialty === 'dental') {
+            return [
+                {
+                    title: tm('bShellMenuGeneral'),
+                    items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
+                },
+                {
+                    title: tm('bShellMenuDentalOperations'),
+                    items: [
+                        { id: 'calendar', icon: Calendar, label: tm('bShellNavCalendar') },
+                        { id: 'clients', icon: Users, label: tm('bShellNavClients') },
+                    ],
+                },
+                {
+                    title: tm('bShellMenuClinicalDental'),
+                    items: [{ id: 'dental_chart', icon: Smile, label: tm('bShellNavDental') }],
+                },
+                {
+                    title: tm('bShellMenuDefinitions'),
+                    items: [
+                        { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
+                        { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
+                        { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
+                        { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
+                        { id: 'surveys', icon: ClipboardList, label: tm('bSatisfactionSurveysTitle') },
+                    ],
+                },
+                {
+                    title: tm('bShellMenuManagement'),
+                    items: [
+                        { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
+                        { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
+                        { id: 'expenses', icon: Banknote, label: 'Giderler' },
+                        { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
+                        { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
+                    ],
+                },
+            ];
+        }
+
+        const clinicalItems: { id: string; icon: LucideIcon; label: string }[] = [];
+        if (specialty === 'physiotherapy') {
+            clinicalItems.push({ id: 'physio_body', icon: Activity, label: tm('bShellNavPhysio') });
+        }
+        if (specialty === 'obstetrics') {
+            clinicalItems.push({ id: 'obstetrics', icon: Baby, label: tm('bShellNavObstetrics') });
+        }
+        if (specialty === 'dietitian') {
+            clinicalItems.push({ id: 'dietitian', icon: Apple, label: tm('bShellNavDietitian') });
+        }
+
+        const groups: {
+            title: string;
+            items: { id: string; icon: LucideIcon; label: string }[];
+        }[] = [
+            {
+                title: tm('bShellMenuGeneral'),
+                items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
+            },
+            {
+                title: tm('bShellMenuOperations'),
+                items: [
+                    { id: 'clients', icon: Users, label: tm('bShellNavClients') },
+                    { id: 'calendar', icon: Calendar, label: tm('bShellNavCalendar') },
+                ],
+            },
+        ];
+        if (clinicalItems.length > 0) {
+            groups.push({ title: tm('bShellMenuClinicalTools'), items: clinicalItems });
+        }
+        groups.push(
+            {
+                title: tm('bShellMenuDefinitions'),
+                items: [
+                    { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
+                    { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
+                    { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
+                    { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
+                    { id: 'surveys', icon: ClipboardList, label: tm('bSatisfactionSurveysTitle') },
+                ],
+            },
+            {
+                title: tm('bShellMenuManagement'),
+                items: [
+                    { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
+                    { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
+                    { id: 'expenses', icon: Banknote, label: 'Giderler' },
+                    { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
+                    { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
+                ],
+            }
+        );
+        return groups;
+    }, [specialty, language, tm]);
 
     const PAGE_TITLES = useMemo((): Record<string, string> => ({
         dashboard: tm('dashboard'),
         clients: tm('bShellNavClients'),
         calendar: tm('bShellNavCalendar'),
-        pos: tm('bShellNavPOS'),
         services: tm('bShellNavServices'),
         service_recipes: tm('bShellNavServiceRecipes'),
         packages: tm('bShellNavPackages'),
@@ -103,10 +211,14 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
         surveys: tm('bSatisfactionSurveysTitle'),
         staff: tm('bShellNavStaff'),
         leads: tm('bShellNavLeads'),
+        expenses: 'Giderler',
         reports: tm('bShellNavReports'),
         clinic_ops: tm('bShellNavClinicOps'),
-        monthly_series: tm('bMonthlySeriesTitle'),
-    }), [language]);
+        dental_chart: tm('bShellNavDental'),
+        physio_body: tm('bShellNavPhysio'),
+        obstetrics: tm('bShellNavObstetrics'),
+        dietitian: tm('bShellNavDietitian'),
+    }), [language, tm]);
 
     React.useEffect(() => {
         const today = formatLocalYmd(new Date());
@@ -119,6 +231,36 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
     React.useEffect(() => {
         if (activeTab !== 'clients') setBeautyClientDetailId(null);
     }, [activeTab]);
+
+    /** Uzmanlık değişince artık geçersiz klinik sekmesinde kalma */
+    React.useEffect(() => {
+        const map: Record<string, string | undefined> = {
+            dental_chart: 'dental',
+            physio_body: 'physiotherapy',
+            obstetrics: 'obstetrics',
+            dietitian: 'dietitian',
+        };
+        const need = map[activeTab];
+        if (need && specialty !== need) {
+            setActiveTab('dashboard');
+        }
+    }, [specialty, activeTab]);
+
+    /**
+     * Klinik türü seçilince (ör. diş) ilgili çalışma ekranına geç.
+     * `__init__`: ilk yüklemede localStorage’daki `dental` vb. için doğru sekmeyi aç.
+     */
+    const prevSpecialtyRef = React.useRef<typeof specialty | '__init__'>('__init__');
+    React.useEffect(() => {
+        const prev = prevSpecialtyRef.current;
+        prevSpecialtyRef.current = specialty;
+        if (prev === '__init__') {
+            setActiveTab(getLandingTabForSpecialty(specialty));
+            return;
+        }
+        if (prev === specialty) return;
+        setActiveTab(getLandingTabForSpecialty(specialty));
+    }, [specialty]);
 
     React.useEffect(() => {
         const prefillCallerSearch = (phone?: string) => {
@@ -208,14 +350,23 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                 >
                     <div
                         className="flex items-center justify-center shrink-0"
-                        style={{ width: 28, height: 28, background: '#7c3aed', borderRadius: 6 }}
+                        style={{
+                            width: 28,
+                            height: 28,
+                            background: specialty === 'dental' ? '#0ea5e9' : '#7c3aed',
+                            borderRadius: 6,
+                        }}
                     >
-                        <Sparkles size={14} color="#fff" />
+                        {specialty === 'dental' ? <Smile size={14} color="#fff" /> : <Sparkles size={14} color="#fff" />}
                     </div>
                     {!collapsed && (
                         <div className="ml-2.5 min-w-0">
-                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>{tm('bShellBrandTitle')}</p>
-                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{tm('bShellBrandSubtitle')}</p>
+                            <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+                                {specialty === 'dental' ? tm('bShellBrandTitleDental') : tm('bShellBrandTitle')}
+                            </p>
+                            <p style={{ color: 'rgba(167,139,250,0.5)', fontWeight: 700, fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                                {specialty === 'dental' ? tm('bShellBrandSubtitleDental') : tm('bShellBrandSubtitle')}
+                            </p>
                         </div>
                     )}
                     <button
@@ -285,6 +436,40 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                     ))}
                 </nav>
 
+                {onRequestManagementAccess && (
+                    <div style={{ padding: '0 0 10px', flexShrink: 0 }}>
+                        <button
+                            type="button"
+                            onClick={() => onRequestManagementAccess()}
+                            title={collapsed ? t.management : undefined}
+                            style={{
+                                display: 'flex', alignItems: 'center',
+                                width: '100%', padding: collapsed ? '7px 0' : '7px 12px',
+                                marginBottom: 1,
+                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                gap: 9,
+                                background: 'transparent',
+                                borderLeft: '2px solid transparent',
+                                color: 'rgba(196,181,253,0.65)',
+                                fontSize: 13, fontWeight: 600,
+                                cursor: 'pointer', border: 'none', outline: 'none',
+                                transition: 'background 0.12s, color 0.12s',
+                            }}
+                            onMouseEnter={e => {
+                                e.currentTarget.style.background = 'rgba(124,58,237,0.12)';
+                                e.currentTarget.style.color = 'rgba(221,214,254,0.9)';
+                            }}
+                            onMouseLeave={e => {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.color = 'rgba(196,181,253,0.65)';
+                            }}
+                        >
+                            <LayoutGrid size={15} style={{ flexShrink: 0, opacity: 0.7 }} />
+                            {!collapsed && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.management}</span>}
+                        </button>
+                    </div>
+                )}
+
                 {/* User */}
                 <div style={{ borderTop: '1px solid #1f0f3a', padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -335,7 +520,25 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-end min-w-0">
+                        {clinicSessionBar && (
+                            <>
+                                <FirmSelector triggerVariant="clinic" />
+                                <BeautyShellClockButton
+                                    onOpen={clinicSessionBar.onOpenClockModal}
+                                    locale={beautyShellLocale(language)}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={clinicSessionBar.onLogout}
+                                    title={t.logout}
+                                    aria-label={t.logout}
+                                    className="flex items-center justify-center h-8 w-8 sm:w-9 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-700 shadow-sm shrink-0"
+                                >
+                                    <LogOut size={15} aria-hidden />
+                                </button>
+                            </>
+                        )}
                         {/* Search */}
                         <div className="relative hidden lg:block">
                             <Search
@@ -375,33 +578,6 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                         >
                             <Globe size={14} />
                         </button>
-
-                        {/* CTA */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setWizardDate(formatLocalYmd(new Date()));
-                                setWizardTime('09:00');
-                                setWizardStaffId('');
-                                setWizardDeviceId('');
-                                setWizardServiceId('');
-                                setShowNewAptWizard(true);
-                            }}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                height: 32, padding: '0 12px',
-                                background: '#7c3aed', color: '#fff',
-                                fontSize: 12, fontWeight: 700,
-                                border: 'none', borderRadius: 6, cursor: 'pointer',
-                                letterSpacing: '0.02em',
-                                transition: 'background 0.12s',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.background = '#6d28d9')}
-                            onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
-                        >
-                            <Plus size={13} />
-                            {tm('bShellNewAppointment')}
-                        </button>
                     </div>
                 </header>
 
@@ -409,7 +585,6 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                 <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {activeTab === 'dashboard' && <ClinicDashboard />}
                     {activeTab === 'calendar' && <SmartScheduler />}
-                    {activeTab === 'pos' && <AppointmentPOS />}
                     {activeTab === 'clients' && (
                         beautyClientDetailId ? (
                             <ClientCustomerDetailPage
@@ -427,13 +602,17 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                     {activeTab === 'devices' && <DeviceManagement />}
                     {activeTab === 'surveys' && <SatisfactionSurveyManagement />}
                     {activeTab === 'leads' && <LeadManagement />}
+                    {activeTab === 'expenses' && <ExpenseManagement />}
                     {activeTab === 'reports' && (
                         <div className="h-full min-h-[min(100dvh,1200px)] min-w-0">
                             <ReportsModule sales={sales} products={products} initialBusinessType="beauty" />
                         </div>
                     )}
                     {activeTab === 'clinic_ops' && <ClinicOperationsHub />}
-                    {activeTab === 'monthly_series' && <MonthlySessionSeriesModule />}
+                    {activeTab === 'dental_chart' && <DentalChartScreen />}
+                    {activeTab === 'physio_body' && <PhysioBodyScreen />}
+                    {activeTab === 'obstetrics' && <ObstetricsScreen />}
+                    {activeTab === 'dietitian' && <DietitianScreen />}
                 </main>
             </div>
 
@@ -526,5 +705,13 @@ export default function BeautyModule({ sales = [], products = [] }: BeautyModule
                 </div>
             </RetailExFlatModal>
         </div>
+    );
+}
+
+export default function BeautyModule(props: BeautyModuleProps) {
+    return (
+        <ClinicErpSpecialtyProvider>
+            <BeautyModuleShell {...props} />
+        </ClinicErpSpecialtyProvider>
     );
 }

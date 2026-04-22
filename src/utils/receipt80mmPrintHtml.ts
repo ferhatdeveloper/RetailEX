@@ -5,6 +5,7 @@
 import type { Sale, SaleItem } from '../core/types/models';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
+import { receiptNotesForDisplay } from './receiptNotes';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku';
 
@@ -51,6 +52,7 @@ type RText = {
   qr: string;
   treatmentDegree: string;
   treatmentShots: string;
+  noteLabel: string;
 };
 
 const TEXT: Record<Receipt80mmPrintLocale, RText> = {
@@ -82,6 +84,7 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     qr: 'QR',
     treatmentDegree: 'Derece',
     treatmentShots: 'Atış',
+    noteLabel: 'NOT',
   },
   en: {
     receiptNo: 'RECEIPT NO',
@@ -111,6 +114,7 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     qr: 'QR',
     treatmentDegree: 'Degree',
     treatmentShots: 'Shots',
+    noteLabel: 'NOTE',
   },
   ar: {
     receiptNo: 'رقم الإيصال',
@@ -140,6 +144,7 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     qr: 'QR',
     treatmentDegree: 'الدرجة',
     treatmentShots: 'الطلقات',
+    noteLabel: 'ملاحظة',
   },
   ku: {
     receiptNo: 'ژ. پسوولە',
@@ -169,6 +174,7 @@ const TEXT: Record<Receipt80mmPrintLocale, RText> = {
     qr: 'QR',
     treatmentDegree: 'پلە',
     treatmentShots: 'تەقینەوە',
+    noteLabel: 'تێبینی',
   },
 };
 
@@ -189,6 +195,18 @@ function itemSubline(item: SaleItem): string {
     return `${item.quantity} ${unit} × ${formatNumber(basePrice, 0, true)}`;
   }
   return `${item.quantity} × ${formatNumber(item.price, 0, true)}`;
+}
+
+function resolveReceiptDeviceName(sale: Sale): string {
+  const beautyDevice = typeof (sale as any).beautyDeviceName === 'string' ? (sale as any).beautyDeviceName.trim() : '';
+  if (beautyDevice) return beautyDevice;
+  const rawDevice =
+    (typeof (sale as any).deviceName === 'string' && (sale as any).deviceName.trim())
+    || (typeof (sale as any).device_name === 'string' && (sale as any).device_name.trim())
+    || (typeof (sale as any).deviceId === 'string' && (sale as any).deviceId.trim())
+    || (typeof (sale as any).device_id === 'string' && (sale as any).device_id.trim())
+    || (typeof sale.storeId === 'string' && sale.storeId.trim());
+  return rawDevice || '';
 }
 
 export type Receipt80mmPrintPaymentData = {
@@ -283,22 +301,30 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
       `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0"><span>${escapeHtml(T.table)}:</span><span style="font-weight:800">${escapeHtml(String(sale.table))}</span></div>`
     );
   }
-  const beautyDeviceRow = sale.beautyDeviceName?.trim();
-  if (beautyDeviceRow) {
+  const deviceRow = resolveReceiptDeviceName(sale);
+  if (deviceRow) {
     metaRows.push(
-      `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0;gap:6px"><span style="font-weight:800;flex-shrink:0">${escapeHtml(T.device)}:</span><span style="font-weight:700;text-align:end;word-break:break-word">${escapeHtml(beautyDeviceRow)}</span></div>`
+      `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0;gap:6px"><span style="font-weight:800;flex-shrink:0">${escapeHtml(T.device)}:</span><span style="font-weight:700;text-align:end;word-break:break-word">${escapeHtml(deviceRow)}</span></div>`
     );
   }
 
   const degVal = (sale.beautyTreatmentDegree ?? '').trim();
   const shotsVal = (sale.beautyTreatmentShots ?? '').trim();
   const hasBeautyLine = (sale.items || []).some((item) => !!(item.beautyStaffName ?? '').trim());
-  const showTreatmentRow = !!beautyDeviceRow || hasBeautyLine || !!degVal || !!shotsVal;
+  const showTreatmentRow = !!deviceRow || hasBeautyLine || !!degVal || !!shotsVal;
   const treatmentRowHtml = showTreatmentRow
     ? `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10px;font-weight:700;margin:4px 0 6px"><tr>
 <td style="width:52%;vertical-align:bottom;text-align:${ta};padding:2px 4px 2px 0">${escapeHtml(T.treatmentDegree)}:&nbsp;<span style="display:inline-block;min-width:4.5em;border-bottom:1px dotted #000">${degVal ? escapeHtml(degVal) : '&#160;'}</span></td>
 <td style="width:48%;vertical-align:bottom;text-align:end;padding:2px 0">${escapeHtml(T.treatmentShots)}:&nbsp;<span style="display:inline-block;min-width:4em;border-bottom:1px dotted #000">${shotsVal ? escapeHtml(shotsVal) : '&#160;'}</span></td>
 </tr></table>`
+    : '';
+
+  const notePlain = receiptNotesForDisplay(sale.notes);
+  const notesBlockHtml = notePlain
+    ? `<div style="font-size:10px;font-weight:700;line-height:1.35;margin:8px 0 4px;word-break:break-word;padding-top:6px;border-top:1px dashed #6b7280">
+  <div style="font-weight:800;margin-bottom:3px">${escapeHtml(T.noteLabel)}</div>
+  <div style="font-weight:600;white-space:pre-wrap">${escapeHtml(notePlain)}</div>
+</div>`
     : '';
 
   const itemRows = (sale.items || [])
@@ -309,7 +335,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
           ? `<div style="font-size:9px;font-weight:700;color:#374151">${escapeHtml(String((item.variant as any).color || ''))} ${escapeHtml(String((item.variant as any).size || ''))}</div>`
           : '';
       const staff = item.beautyStaffName?.trim();
-      const beautyCtx = !!(staff || beautyDeviceRow);
+      const beautyCtx = !!(staff || deviceRow);
       const nameBlock = beautyCtx
         ? `<div><span style="font-size:8px;font-weight:800;color:#4b5563">${escapeHtml(T.operation)}: </span><span style="font-weight:800;font-size:10px">${escapeHtml(item.productName || '')}</span>${staff ? `<div style="font-size:9px;font-weight:800;margin-top:3px;color:#111">${escapeHtml(T.staff)}: ${escapeHtml(staff)}</div>` : ''}</div>`
         : `<span style="font-weight:800;font-size:10px;display:block">${escapeHtml(item.productName || '')}</span>`;
@@ -384,6 +410,7 @@ ${variantExtra}
   ${bannerHtml}
   ${metaRows.join('')}
   ${treatmentRowHtml}
+  ${notesBlockHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   ${itemsTableHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>

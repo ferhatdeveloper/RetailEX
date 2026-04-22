@@ -5,6 +5,7 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { WarehouseTransferModule } from '../warehouse/WarehouseTransferModule';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { WavePickingModule } from '../../wms/WavePickingModule';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface StockModuleProps {
   products: Product[];
@@ -12,6 +13,8 @@ interface StockModuleProps {
 }
 
 export function StockModule({ products, setProducts }: StockModuleProps) {
+  const { tm } = useLanguage();
+  const dateLocale = tm('localeCode');
   const [selectedTab, setSelectedTab] = useState<'overview' | 'movements' | 'count' | 'transfer' | 'picking'>('overview');
   const [showStockUpdateModal, setShowStockUpdateModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -84,21 +87,23 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4" />
-            <h2 className="text-sm">Stok & Envanter</h2>
-            <span className="text-orange-100 text-[10px] ml-2">• {totalItems} ürün</span>
+            <h2 className="text-sm">{tm('invStockInventoryTitle')}</h2>
+            <span className="text-orange-100 text-[10px] ml-2">
+              {tm('invProductCountBadge').replace('{n}', String(totalItems))}
+            </span>
           </div>
           <div className="flex gap-1.5">
             <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <Download className="w-3 h-3" />
-              Dışa Aktar
+              {tm('export')}
             </button>
             <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <Upload className="w-3 h-3" />
-              İçe Aktar
+              {tm('import')}
             </button>
             <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <Printer className="w-3 h-3" />
-              Yazdır
+              {tm('print')}
             </button>
           </div>
         </div>
@@ -114,7 +119,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
-            Stok Durumu
+            {tm('stockStatus')}
           </button>
           <button
             onClick={() => setSelectedTab('movements')}
@@ -123,7 +128,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
-            Stok Hareketleri
+            {tm('stockMovements')}
           </button>
           <button
             onClick={() => setSelectedTab('count')}
@@ -132,7 +137,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
-            Sayım & Fire
+            {tm('invTabCountWaste')}
           </button>
           <button
             onClick={() => setSelectedTab('transfer')}
@@ -141,7 +146,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
-            Depo Transferi
+            {tm('invTabWarehouseTransferSingle')}
           </button>
           <button
             onClick={() => setSelectedTab('picking')}
@@ -150,7 +155,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
           >
-            Sipariş Toplama (Picking)
+            {tm('invTabOrderPicking')}
           </button>
         </div>
       </div>
@@ -161,40 +166,42 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
             {/* Kurumsal Özet Panel */}
             <div className="bg-white border border-gray-300 rounded mb-3">
               <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-                <h3 className="text-[11px] text-gray-700">Stok Durumu Özeti</h3>
+                <h3 className="text-[11px] text-gray-700">{tm('invStockSummaryTitle')}</h3>
               </div>
               <div className="grid grid-cols-4 divide-x divide-gray-200">
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <Package className="w-4 h-4 text-blue-600" />
-                    <span className="text-[10px] text-gray-600">Toplam Stok Miktarı</span>
+                    <span className="text-[10px] text-gray-600">{tm('invTotalStockQty')}</span>
                   </div>
                   <div className="text-base text-gray-900">{formatNumber(totalItems, 0, false)}</div>
-                  <div className="text-[9px] text-gray-500 mt-0.5">{products.length} farklı ürün</div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">
+                    {tm('invDistinctProducts').replace('{n}', String(products.length))}
+                  </div>
                 </div>
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <TrendingDown className="w-4 h-4 text-green-600" />
-                    <span className="text-[10px] text-gray-600">Toplam Envanter (Alış)</span>
+                    <span className="text-[10px] text-gray-600">{tm('invTotalInventoryPurchase')}</span>
                   </div>
                   <div className="text-base text-green-600">{formatNumber(totalCostValue, 0, false)} IQD</div>
-                  <div className="text-[9px] text-gray-500 mt-0.5">Maliyet bazlı</div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">{tm('invCostBased')}</div>
                 </div>
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <AlertTriangle className="w-4 h-4 text-purple-600" />
-                    <span className="text-[10px] text-gray-600">Düşük Stok</span>
+                    <span className="text-[10px] text-gray-600">{tm('invLowStock')}</span>
                   </div>
                   <div className="text-base text-purple-600">{lowStockCount}</div>
-                  <div className="text-[9px] text-gray-500 mt-0.5">Ürün sipariş gerekiyor</div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">{tm('invLowStockHint')}</div>
                 </div>
                 <div className="p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <ArrowLeftRight className="w-4 h-4 text-red-600" />
-                    <span className="text-[10px] text-gray-600">Kritik Stok</span>
+                    <span className="text-[10px] text-gray-600">{tm('invCriticalStock')}</span>
                   </div>
                   <div className="text-base text-red-600">{criticalStockCount}</div>
-                  <div className="text-[9px] text-gray-500 mt-0.5">Acil sipariş gerekli</div>
+                  <div className="text-[9px] text-gray-500 mt-0.5">{tm('invCriticalUrgentOrder')}</div>
                 </div>
               </div>
             </div>
@@ -202,41 +209,37 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
             {/* Stock Status Table - Minimal */}
             <div className="bg-white border border-gray-300">
               <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-                <h3 className="text-[11px] text-gray-700">Detaylı Stok Durumu</h3>
+                <h3 className="text-[11px] text-gray-700">{tm('invDetailedStockStatus')}</h3>
               </div>
               <div className="overflow-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-[#E3F2FD] border-b border-gray-300">
-                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">ÜRÜN KODU</th>
-                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">ÜRÜN ADI</th>
-                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">KATEGORİ</th>
-                      <th className="px-2 py-1 text-center text-[10px] text-gray-700 border-r border-gray-300">MEVCUT STOK</th>
-                      <th className="px-2 py-1 text-right text-[10px] text-gray-700 border-r border-gray-300">BİRİM MALİYET</th>
-                      <th className="px-2 py-1 text-right text-[10px] text-gray-700 border-r border-gray-300">STOK DEĞERİ</th>
-                      <th className="px-2 py-1 text-center text-[10px] text-gray-700 border-r border-gray-300">DURUM</th>
-                      <th className="px-2 py-1 text-center text-[10px] text-gray-700">İŞLEM</th>
+                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">{tm('invThProductCode')}</th>
+                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">{tm('invThProductName')}</th>
+                      <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">{tm('invThCategory')}</th>
+                      <th className="px-2 py-1 text-center text-[10px] text-gray-700 border-r border-gray-300">{tm('invThCurrentStock')}</th>
+                      <th className="px-2 py-1 text-right text-[10px] text-gray-700 border-r border-gray-300">{tm('invThUnitCost')}</th>
+                      <th className="px-2 py-1 text-right text-[10px] text-gray-700 border-r border-gray-300">{tm('invThStockValue')}</th>
+                      <th className="px-2 py-1 text-center text-[10px] text-gray-700 border-r border-gray-300">{tm('invThStatus')}</th>
+                      <th className="px-2 py-1 text-center text-[10px] text-gray-700">{tm('invThAction')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {products.map(product => {
                       const stockValue = product.stock * product.cost;
-                      let status = 'normal';
                       let statusColor = 'bg-green-100 text-green-700';
-                      let statusText = 'Normal';
+                      let statusText = tm('invStatusNormal');
 
                       if (product.stock === 0) {
-                        status = 'out';
                         statusColor = 'bg-gray-100 text-gray-700';
-                        statusText = 'Tükendi';
+                        statusText = tm('invStatusDepleted');
                       } else if (product.stock < 10) {
-                        status = 'critical';
                         statusColor = 'bg-red-100 text-red-700';
-                        statusText = 'Kritik';
+                        statusText = tm('invStatusCritical');
                       } else if (product.stock < 30) {
-                        status = 'low';
                         statusColor = 'bg-yellow-100 text-yellow-700';
-                        statusText = 'Düşük';
+                        statusText = tm('invStatusLow');
                       }
 
                       return (
@@ -272,7 +275,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                               }}
                               className="px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-xs"
                             >
-                              Güncelle
+                              {tm('update')}
                             </button>
                           </td>
                         </tr>
@@ -286,47 +289,49 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
             {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                <h4 className="text-sm text-gray-600 mb-4">Stok Değer Özeti</h4>
+                <h4 className="text-sm text-gray-600 mb-4">{tm('invValueSummaryTitle')}</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Maliyet Değeri:</span>
+                    <span className="text-sm text-gray-600">{tm('invCostValueLbl')}</span>
                     <span className="text-blue-600">{formatNumber(totalCostValue, 2, false)} IQD</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Satış Değeri:</span>
+                    <span className="text-sm text-gray-600">{tm('invSaleValueLbl')}</span>
                     <span className="text-green-600">{formatNumber(totalSaleValue, 2, false)} IQD</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t">
-                    <span className="text-sm">Potansiyel Kar:</span>
+                    <span className="text-sm">{tm('invPotentialProfitLbl')}</span>
                     <span className="text-purple-600">{formatNumber(totalSaleValue - totalCostValue, 2, false)} IQD</span>
                   </div>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                <h4 className="text-sm text-gray-600 mb-4">Stok Durumu Dağılımı</h4>
+                <h4 className="text-sm text-gray-600 mb-4">{tm('invDistributionTitle')}</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Normal Stok:</span>
-                    <span className="text-green-600">{products.filter(p => p.stock >= 30).length} ürün</span>
+                    <span className="text-sm text-gray-600">{tm('invNormalStockLbl')}</span>
+                    <span className="text-green-600">
+                      {tm('invProductsCount').replace('{n}', String(products.filter(p => p.stock >= 30).length))}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Düşük Stok:</span>
-                    <span className="text-yellow-600">{lowStockCount} ürün</span>
+                    <span className="text-sm text-gray-600">{tm('invLowStockLbl')}</span>
+                    <span className="text-yellow-600">{tm('invProductsCount').replace('{n}', String(lowStockCount))}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Kritik Stok:</span>
-                    <span className="text-red-600">{criticalStockCount} ürün</span>
+                    <span className="text-sm text-gray-600">{tm('invCriticalStockLbl')}</span>
+                    <span className="text-red-600">{tm('invProductsCount').replace('{n}', String(criticalStockCount))}</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t">
-                    <span className="text-sm">Tükenen:</span>
-                    <span className="text-gray-600">{outOfStockCount} ürün</span>
+                    <span className="text-sm">{tm('invDepletedLbl')}</span>
+                    <span className="text-gray-600">{tm('invProductsCount').replace('{n}', String(outOfStockCount))}</span>
                   </div>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
-                <h4 className="text-sm text-gray-600 mb-4">Kategori Dağılımı</h4>
+                <h4 className="text-sm text-gray-600 mb-4">{tm('invCategoryDistTitle')}</h4>
                 <div className="space-y-3">
                   {Array.from(new Set(products.map(p => p.category))).slice(0, 4).map((category, index) => {
                     const categoryProducts = products.filter(p => p.category === category);
@@ -334,7 +339,9 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                     return (
                       <div key={`category-${category}-${index}`} className="flex justify-between">
                         <span className="text-sm text-gray-600">{category}:</span>
-                        <span className="text-sm text-gray-600">{categoryStock} ürün</span>
+                        <span className="text-sm text-gray-600">
+                          {tm('invProductsCount').replace('{n}', String(categoryStock))}
+                        </span>
                       </div>
                     );
                   })}
@@ -348,8 +355,8 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
           <div className="bg-white rounded-xl shadow-lg border border-gray-200">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h3 className="text-xl">Stok Hareketleri</h3>
-                <p className="text-sm text-gray-600 mt-1">Tüm giriş-çıkış kayıtları</p>
+                <h3 className="text-xl">{tm('stockMovements')}</h3>
+                <p className="text-sm text-gray-600 mt-1">{tm('invMovementsSubtitle')}</p>
               </div>
               <div className="flex gap-2">
                 <select 
@@ -357,14 +364,14 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                   value={movementFilter}
                   onChange={(e) => setMovementFilter(e.target.value)}
                 >
-                  <option value="all">Tüm Hareketler</option>
-                  <option value="in">Sadece Girişler</option>
-                  <option value="out">Sadece Çıkışlar</option>
-                  <option value="transfer">Transferler</option>
+                  <option value="all">{tm('invMovFilterAll')}</option>
+                  <option value="in">{tm('invMovFilterIn')}</option>
+                  <option value="out">{tm('invMovFilterOut')}</option>
+                  <option value="transfer">{tm('invMovFilterTransfer')}</option>
                 </select>
                 <input 
                   type="text" 
-                  placeholder="Ürün veya döküman no ara..."
+                  placeholder={tm('invMovSearchPlaceholder')}
                   className="px-3 py-1.5 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 outline-none w-64"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -375,16 +382,16 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               <table className="w-full">
                 <thead className="bg-[#f8fafc] border-b-2 border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">DÖKÜMAN NO</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">TARİH/SAAT</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">ÜRÜN</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">TİP</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">MİKTAR</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">FİYAT</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">MALİYET</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">KAR</th>
-                    <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-700">KUR</th>
-                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">AÇIKLAMA</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">{tm('invThDocumentNo')}</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">{tm('invThDateTime')}</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">{tm('invThProduct')}</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">{tm('invThType')}</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">{tm('invThQty')}</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">{tm('invThPrice')}</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">{tm('invThCost')}</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-700">{tm('invThProfit')}</th>
+                    <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-700">{tm('invThFx')}</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-700">{tm('invThNotes')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -413,10 +420,10 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                         <tr key={item.id} className="hover:bg-[#f1f5f9] transition-colors border-b border-gray-100">
                           <td className="px-4 py-2 text-[11px] font-medium text-blue-700">{movement.document_no || '-'}</td>
                           <td className="px-4 py-2 text-[11px] text-gray-500">
-                            {movement.movement_date ? new Date(movement.movement_date).toLocaleString('tr-TR') : '-'}
+                            {movement.movement_date ? new Date(movement.movement_date).toLocaleString(dateLocale) : '-'}
                           </td>
                           <td className="px-4 py-2 text-[11px]">
-                            <span className="font-semibold block">{item.product_name || 'Bilinmeyen Ürün'}</span>
+                            <span className="font-semibold block">{item.product_name || tm('invUnknownProduct')}</span>
                             <span className="text-[10px] text-gray-400">{item.product_code}</span>
                           </td>
                           <td className="px-4 py-2">
@@ -424,7 +431,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                               isOutgoing ? 'bg-red-100 text-red-700' :
                                 'bg-blue-100 text-blue-700'
                               }`}>
-                              {isIncoming ? 'Giriş' : isOutgoing ? 'Çıkış' : movement.movement_type}
+                              {isIncoming ? tm('invMovTypeIn') : isOutgoing ? tm('invMovTypeOut') : movement.movement_type}
                             </span>
                           </td>
                           <td className="px-4 py-2 text-right text-[11px] font-bold">
@@ -453,14 +460,14 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
         {selectedTab === 'count' && (
           <div className="bg-white rounded-xl shadow-lg border border-gray-200">
             <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl">Stok Sayımı & Fire Yönetimi</h3>
-              <p className="text-sm text-gray-600 mt-1">Envanter sayımı ve fire kayıtları</p>
+              <h3 className="text-xl">{tm('invCountTabTitle')}</h3>
+              <p className="text-sm text-gray-600 mt-1">{tm('invCountTabSubtitle')}</p>
             </div>
             <div className="p-6">
               <div className="text-center py-12">
                 <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600">Stok sayım modülü yakında eklenecek</p>
-                <p className="text-sm text-gray-500 mt-2">Bu özellik geliştirilme aşamasında</p>
+                <p className="text-gray-600">{tm('invCountComingSoon')}</p>
+                <p className="text-sm text-gray-500 mt-2">{tm('invCountInDev')}</p>
               </div>
             </div>
           </div>
@@ -482,18 +489,18 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg w-full max-w-md">
             <div className="p-6 border-b bg-gradient-to-r from-orange-600 to-orange-700 text-white">
-              <h3 className="text-xl">Stok Güncelle</h3>
+              <h3 className="text-xl">{tm('invUpdateStockTitle')}</h3>
               <p className="text-sm text-orange-100 mt-1">{selectedProduct?.name}</p>
             </div>
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Mevcut Stok</label>
+                <label className="block text-sm text-gray-700 mb-1">{tm('invCurrentStockLbl')}</label>
                 <p className="text-2xl text-blue-600">{selectedProduct?.stock} {selectedProduct?.unit}</p>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 mb-1">İşlem Tipi</label>
+                <label className="block text-sm text-gray-700 mb-1">{tm('invOpTypeLbl')}</label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => setUpdateType('add')}
@@ -502,7 +509,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                       : 'border-gray-300 hover:border-green-600'
                       }`}
                   >
-                    Ekle
+                    {tm('invOpAdd')}
                   </button>
                   <button
                     onClick={() => setUpdateType('subtract')}
@@ -511,7 +518,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                       : 'border-gray-300 hover:border-red-600'
                       }`}
                   >
-                    Çıkar
+                    {tm('invOpSubtract')}
                   </button>
                   <button
                     onClick={() => setUpdateType('set')}
@@ -520,13 +527,13 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                       : 'border-gray-300 hover:border-blue-600'
                       }`}
                   >
-                    Ayarla
+                    {tm('invOpSet')}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Miktar</label>
+                <label className="block text-sm text-gray-700 mb-1">{tm('invQtyLbl')}</label>
                 <input
                   type="number"
                   value={updateQuantity}
@@ -537,20 +544,20 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-700 mb-1">Açıklama</label>
+                <label className="block text-sm text-gray-700 mb-1">{tm('invNotesLbl')}</label>
                 <textarea
                   value={updateNote}
                   onChange={(e) => setUpdateNote(e.target.value)}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="İşlem açıklaması (opsiyonel)"
+                  placeholder={tm('invNotesPlaceholder')}
                 />
               </div>
 
               {updateQuantity > 0 && (
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="text-sm text-gray-700">
-                    Yeni Stok:{' '}
+                    {tm('invNewStockPreview')}{' '}
                     <span className="text-blue-600">
                       {updateType === 'add'
                         ? (selectedProduct?.stock || 0) + updateQuantity
@@ -570,7 +577,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                 disabled={updateQuantity <= 0}
                 className="flex-1 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
               >
-                Güncelle
+                {tm('update')}
               </button>
               <button
                 onClick={() => {
@@ -581,7 +588,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                 }}
                 className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                İptal
+                {tm('cancel')}
               </button>
             </div>
           </div>

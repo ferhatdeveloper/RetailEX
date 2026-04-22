@@ -18,8 +18,10 @@ import { PrinterProfile, PrinterRouting } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/components/ui/utils';
 import { mergeWindowsPrinterNameIntoLocalStorage } from '@/utils/tauriPrintSettings';
+import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export const RestaurantPrinterSettings: React.FC = () => {
+    const tm = useRestaurantModuleTm();
     const {
         printerProfiles,
         printerRoutes,
@@ -92,9 +94,9 @@ export const RestaurantPrinterSettings: React.FC = () => {
         <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Yazıcı Yönetimi</h1>
-                    <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">
-                        Mutfak, Bar ve Kasa — profiller ve kategori rotaları veritabanında (firma bazlı) saklanır
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">{tm('restPrintTitle')}</h1>
+                    <p className="text-slate-500 font-bold mt-1 text-[10px] tracking-widest">
+                        {tm('restPrintSubtitle')}
                     </p>
                 </div>
                 <button
@@ -102,7 +104,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                     className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs transition-all shadow-xl shadow-blue-200 active:scale-95"
                 >
                     <Plus className="w-4 h-4" />
-                    Yeni Yazıcı Ekle
+                    {tm('restPrintAdd')}
                 </button>
             </div>
 
@@ -113,7 +115,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
                                 <Printer className="w-6 h-6" />
                             </div>
-                            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Yazıcı Listesi</h2>
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight">{tm('restPrintListTitle')}</h2>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -145,7 +147,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             {printerProfiles.length === 0 && (
                                 <div className="col-span-2 py-12 text-center border-2 border-dashed border-slate-100 rounded-[32px]">
                                     <Printer className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                    <p className="text-slate-400 font-bold uppercase text-xs">Tanımlı yazıcı bulunamadı</p>
+                                    <p className="text-slate-400 font-bold text-xs">{tm('restPrintEmpty')}</p>
                                 </div>
                             )}
                         </div>
@@ -158,16 +160,13 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                 <RefreshCcw className="w-6 h-6" aria-hidden />
                             </div>
                             <div className="min-w-0">
-                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Ortak Yazıcı</h2>
-                                <p className="text-sm text-slate-600 mt-1.5 leading-snug">
-                                    Hesap fişi ve varsayılan çıktı için bu profili seçin (tercihen <span className="font-semibold text-slate-800">Sistem yazıcısı</span>).
-                                    Mutfakta kategori rotası yoksa yedek olarak da kullanılır.
-                                </p>
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight">{tm('restPrintCommonTitle')}</h2>
+                                <p className="text-sm text-slate-600 mt-1.5 leading-snug">{tm('restPrintCommonHint')}</p>
                             </div>
                         </div>
 
-                        <label htmlFor="rest-common-printer-select" className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                            Profil seçimi
+                        <label htmlFor="rest-common-printer-select" className="block text-xs font-bold text-slate-500 tracking-wide mb-2">
+                            {tm('restPrintProfileSelect')}
                         </label>
                         <select
                             id="rest-common-printer-select"
@@ -180,7 +179,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                 'shadow-inner'
                             )}
                         >
-                            <option value="">Devre Dışı (yalnızca genel fiş yazıcısı — Yönetim / Yazıcı Ayarları)</option>
+                            <option value="">{tm('restPrintCommonDisabledOpt')}</option>
                             {printerProfiles.map((p) => (
                                 <option key={p.id} value={p.id}>
                                     {p.name}
@@ -190,7 +189,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                         </select>
                         {printerProfiles.length === 0 ? (
                             <p className="mt-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                                Önce «Yeni Yazıcı Ekle» ile en az bir profil oluşturun; liste burada görünür.
+                                {tm('restPrintCommonWarn')}
                             </p>
                         ) : null}
                 </div>
@@ -201,28 +200,24 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">
                                 <Tag className="w-6 h-6" />
                             </div>
-                            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Kategori Rotalama</h2>
+                            <h2 className="text-xl font-black text-slate-800 tracking-tight">{tm('restPrintRouteTitle')}</h2>
                         </div>
 
-                        <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-                            Her ürün kategorisi için mutfak çıktısının gideceği yazıcı profilini seçin. Liste, ürün stoğundaki kategori alanlarından oluşur.
-                        </p>
+                        <p className="text-sm text-slate-600 mb-4 leading-relaxed">{tm('restPrintRouteHint')}</p>
 
                         <div className="space-y-4">
                             {categories.length === 0 ? (
                                 <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
                                     <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                                    <p className="text-slate-800 font-semibold text-sm mb-1">Henüz kategori yok</p>
-                                    <p className="text-slate-600 text-xs mb-4 max-w-md mx-auto">
-                                        Ürünler yüklenmediyse veya tüm ürünlerde kategori alanı boşsa bu liste görünmez. Stokta kategorisi olan ürünler yüklendikten sonra burada satırlar belirir.
-                                    </p>
+                                    <p className="text-slate-800 font-semibold text-sm mb-1">{tm('restPrintNoCategoriesTitle')}</p>
+                                    <p className="text-slate-600 text-xs mb-4 max-w-md mx-auto">{tm('restPrintNoCategoriesBody')}</p>
                                     <button
                                         type="button"
                                         onClick={() => void refreshMenuFromProducts()}
                                         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
                                     >
                                         <RefreshCcw className="w-4 h-4" />
-                                        Ürün menüsünü yeniden yükle
+                                        {tm('restPrintReloadMenu')}
                                     </button>
                                 </div>
                             ) : (
@@ -251,7 +246,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                                 }}
                                                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl min-h-12 px-4 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                             >
-                                                <option value="">İstasyon seçin…</option>
+                                                <option value="">{tm('restPrintStationPlaceholder')}</option>
                                                 {printerProfiles.map((p) => (
                                                     <option key={p.id} value={p.id}>
                                                         {p.name}
@@ -270,55 +265,55 @@ export const RestaurantPrinterSettings: React.FC = () => {
             {editingProfile && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[40px] w-full max-w-md p-10 shadow-2xl animate-in zoom-in-95 duration-300">
-                        <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight mb-8">Yazıcı Düzenle</h3>
+                        <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-8">{tm('restPrintModalTitle')}</h3>
 
                         <div className="space-y-6">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] pl-1">Yazıcı Adı</label>
+                                <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintNameLabel')}</label>
                                 <input
                                     type="text"
                                     value={editingProfile.name || ''}
                                     onChange={(e) => setEditingProfile({ ...editingProfile, name: e.target.value })}
                                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="Örn: Mutfak-1"
+                                    placeholder={tm('restPrintNamePh')}
                                 />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] pl-1">Bağlantı</label>
+                                    <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintConnLabel')}</label>
                                     <select
                                         value={editingProfile.connection || 'network'}
                                         onChange={(e) => setEditingProfile({ ...editingProfile, connection: e.target.value as any })}
                                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="network">Network (IP)</option>
-                                        <option value="usb">USB</option>
-                                        <option value="system">Sistem Yazıcısı</option>
+                                        <option value="network">{tm('restPrintConnNetwork')}</option>
+                                        <option value="usb">{tm('restPrintConnUsb')}</option>
+                                        <option value="system">{tm('restPrintConnSystem')}</option>
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] pl-1">Tür</label>
+                                    <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintTypeLabel')}</label>
                                     <select
                                         value={editingProfile.type || 'thermal'}
                                         onChange={(e) => setEditingProfile({ ...editingProfile, type: e.target.value as any })}
                                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="thermal">Thermal (80mm)</option>
-                                        <option value="standard">Standard (A4)</option>
+                                        <option value="thermal">{tm('restPrintTypeThermal')}</option>
+                                        <option value="standard">{tm('restPrintTypeStandard')}</option>
                                     </select>
                                 </div>
                             </div>
 
                             {editingProfile.connection === 'system' && (
                                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] pl-1">Windows Yazıcı Listesi</label>
+                                    <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintWinList')}</label>
                                     <select
                                         value={editingProfile.systemName || ''}
                                         onChange={(e) => setEditingProfile({ ...editingProfile, systemName: e.target.value, name: editingProfile.name || e.target.value })}
                                         className="w-full bg-blue-50 border border-blue-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        <option value="">Yazıcı Seçin...</option>
+                                        <option value="">{tm('restPrintWinPick')}</option>
                                         {systemPrinters.map((p: any) => (
                                             <option key={p.Name} value={p.Name}>{p.Name}</option>
                                         ))}
@@ -328,7 +323,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
 
                             {editingProfile.connection === 'network' && (
                                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] pl-1">IP Adresi</label>
+                                    <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintIpLabel')}</label>
                                     <input
                                         type="text"
                                         value={(editingProfile as any).address || ''}
@@ -344,13 +339,13 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                     onClick={() => setEditingProfile(null)}
                                     className="flex-1 px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black uppercase text-xs transition-all"
                                 >
-                                    İptal
+                                    {tm('restPrintCancel')}
                                 </button>
                                 <button
                                     onClick={handleSaveProfile}
                                     className="flex-1 px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs transition-all shadow-xl shadow-blue-200"
                                 >
-                                    Kaydet
+                                    {tm('restPrintSave')}
                                 </button>
                             </div>
                         </div>

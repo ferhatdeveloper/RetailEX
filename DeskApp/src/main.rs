@@ -2,6 +2,8 @@
 
 mod db_ops;
 mod db_utils;
+mod schema_gap;
+mod sql_migration_split;
 mod mssql;
 mod sync;
 mod remote_input;
@@ -334,8 +336,7 @@ async fn pg_query(
                             if let Ok(u) = Uuid::parse_str(s) {
                                 u.to_sql(ty, out)
                             } else {
-                                // Fallback: send as text and let PG cast
-                                s.to_sql(&Type::TEXT, out)
+                                Err(format!("invalid UUID parameter: {}", s).into())
                             }
                         },
                         // Date
@@ -1735,7 +1736,7 @@ fn main() {
         get_supabase_functions, get_supabase_views, get_supabase_triggers, get_supabase_policies,
         dump_supabase_to_sql, pg_execute_file,
         pg_query, pg_execute, read_init_sqls,
-        db_ops::create_database, db_ops::run_migrations, db_ops::open_migration_log, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
+        db_ops::create_database, db_ops::run_migrations, db_ops::open_migration_log, db_ops::diagnose_schema_gaps_cmd, db_ops::init_firm_schema, db_ops::init_period_schema, db_ops::check_db_status, db_ops::get_db_version,
         db_ops::pg_execute_supabase_dump,
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info,
         verify_license, check_update_status,

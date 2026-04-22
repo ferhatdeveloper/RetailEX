@@ -16,6 +16,8 @@ import {
     Checkbox,
     Alert,
     Progress,
+    Segmented,
+    Select,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -66,7 +68,14 @@ import {
 } from '../../../theme/retailexAntdTheme';
 
 const EMPTY_FORM: Partial<BeautyCustomer> = {
-    name: '', phone: '', email: '', address: '', city: '', notes: '',
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    notes: '',
+    customer_tier: 'normal',
+    gender: null,
 };
 
 const APT_STATUS_TM: Record<string, string> = {
@@ -106,7 +115,18 @@ function packageSortMs(p: BeautyPackagePurchase): number {
 type UnifiedHistoryRow =
     | { key: string; kind: 'appointment'; sortMs: number; appointment: BeautyAppointment }
     | { key: string; kind: 'sale'; sortMs: number; sale: BeautySale }
-    | { key: string; kind: 'package'; sortMs: number; purchase: BeautyPackagePurchase };
+    | { key: string; kind: 'package'; sortMs: number; purchase: BeautyPackagePurchase }
+    | {
+          key: string;
+          kind: 'service_fee';
+          sortMs: number;
+          amount: number;
+          contextTitle: string;
+          detailText: string;
+          dateDisplay: string;
+          /** Randevu / satış satırıyla aynı not (filtre: hizmet ücreti) */
+          notesDisplay: string;
+      };
 
 export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerDetailPageProps) {
     const { customers, packages, isLoading, loadCustomers, loadPackages, updateCustomer } = useBeautyStore();
@@ -134,6 +154,9 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [salesHistory, setSalesHistory] = useState<BeautySale[]>([]);
     const [histLoading, setHistLoading] = useState(false);
     const [surveyModalOpen, setSurveyModalOpen] = useState(false);
+    const [historyKindFilter, setHistoryKindFilter] = useState<
+        'all' | 'appointment' | 'service_fee' | 'sale' | 'package'
+    >('service_fee');
 
     useEffect(() => {
         loadCustomers();
@@ -259,6 +282,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
 
     useEffect(() => {
         setSurveyModalOpen(false);
+    }, [customerId]);
+
+    useEffect(() => {
+        setHistoryKindFilter('service_fee');
     }, [customerId]);
 
     useEffect(() => {
@@ -400,10 +427,31 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         return k ? tm(k) : s;
     }, [tm]);
 
+    const aptStatusLabel = useCallback((status: string) => {
+        const k = APT_STATUS_TM[status];
+        return k ? tm(k) : status;
+    }, [tm]);
+
     const unifiedCustomerHistory = useMemo((): UnifiedHistoryRow[] => {
-        const rows: UnifiedHistoryRow[] = [];
+        const appointmentWhenStr = (a: BeautyAppointment) => {
+            const d = a.appointment_date ?? a.date;
+            if (!d) return '-';
+            const datePart = new Date(d).toLocaleDateString(dateLocale);
+            const t = a.appointment_time ?? a.time;
+            if (t) return `${datePart} ${t.slice(0, 5)}`;
+            return datePart;
+        };
+        const saleWhenStr = (created?: string) => {
+            if (!created) return '-';
+            const dt = new Date(created);
+            if (Number.isNaN(dt.getTime())) return '-';
+            return dt.toLocaleString(dateLocale, { dateStyle: 'short', timeStyle: 'short' });
+        };
+
+        type Primary = Extract<UnifiedHistoryRow, { kind: 'appointment' | 'sale' | 'package' }>;
+        const primaries: Primary[] = [];
         for (const a of pastAppointments) {
-            rows.push({
+            primaries.push({
                 key: `apt-${a.id}`,
                 kind: 'appointment',
                 sortMs: appointmentSortMs(a),
@@ -411,25 +459,110 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             });
         }
         for (const s of salesHistory) {
-            rows.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
+            primaries.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
         }
         for (const p of customerPackages) {
-            rows.push({
+            primaries.push({
                 key: `pkg-${p.id}`,
                 kind: 'package',
                 sortMs: packageSortMs(p),
                 purchase: p,
             });
         }
-        return rows.sort((x, y) => y.sortMs - x.sortMs);
-    }, [pastAppointments, salesHistory, customerPackages]);
+        primaries.sort((x, y) => y.sortMs - x.sortMs);
+
+        const rows: UnifiedHistoryRow[] = [];
+        for (const row of primaries) {
+            rows.push(row);
+            if (row.kind === 'appointment') {
+                const a = row.appointment;
+                const aptNotes = String(a.notes ?? '').trim();
+                rows.push({
+                    key: `apt-${a.id}-fee`,
+                    kind: 'service_fee',
+                    sortMs: row.sortMs,
+                    amount: Number(a.total_price ?? 0),
+                    contextTitle: a.service_name ?? '—',
+                    detailText: `${aptStatusLabel(String(a.status))} · ${a.specialist_name ?? '—'}`,
+                    dateDisplay: appointmentWhenStr(a),
+                    notesDisplay: aptNotes,
+                });
+            } else if (row.kind === 'sale') {
+                const s = row.sale;
+                const payDet = `${paymentMethodLabel(String(s.payment_method ?? ''))} · ${paymentStatusLabel(String(s.payment_status))}`;
+                const whenStr = saleWhenStr(s.created_at);
+                const saleNotes = String(s.notes ?? '').trim();
+                const items = s.items?.length ? s.items : null;
+                if (items) {
+                    items.forEach((it, idx) => {
+                        rows.push({
+                            key: `sale-${s.id}-fee-${it.id ?? idx}`,
+                            kind: 'service_fee',
+                            sortMs: row.sortMs,
+                            amount: Number(it.total ?? 0),
+                            contextTitle: it.name || tm('bHistoryTypeSale'),
+                            detailText: payDet,
+                            dateDisplay: whenStr,
+                            notesDisplay: saleNotes,
+                        });
+                    });
+                } else {
+                    rows.push({
+                        key: `sale-${s.id}-fee`,
+                        kind: 'service_fee',
+                        sortMs: row.sortMs,
+                        amount: Number(s.total ?? 0),
+                        contextTitle: s.invoice_number ? `${s.invoice_number}` : tm('bHistoryTypeSale'),
+                        detailText: payDet,
+                        dateDisplay: whenStr,
+                        notesDisplay: saleNotes,
+                    });
+                }
+            } else {
+                const p = row.purchase;
+                const isExpired = p.expiry_date && new Date(p.expiry_date) < new Date();
+                const st = isExpired
+                    ? tm('bExpired')
+                    : p.status === 'active'
+                      ? tm('bStatusActive')
+                      : tm('bConsumed');
+                const pkgDet = `${tm('bExpiry')}: ${p.expiry_date ? new Date(p.expiry_date).toLocaleDateString(dateLocale) : '—'} · ${st}`;
+                rows.push({
+                    key: `pkg-${p.id}-fee`,
+                    kind: 'service_fee',
+                    sortMs: row.sortMs,
+                    amount: Number(p.sale_price ?? 0),
+                    contextTitle: p.package_name ?? tm('bPackage'),
+                    detailText: pkgDet,
+                    dateDisplay: p.purchase_date ? new Date(p.purchase_date).toLocaleDateString(dateLocale) : '-',
+                    notesDisplay: '',
+                });
+            }
+        }
+        return rows;
+    }, [
+        pastAppointments,
+        salesHistory,
+        customerPackages,
+        tm,
+        dateLocale,
+        paymentMethodLabel,
+        paymentStatusLabel,
+        aptStatusLabel,
+    ]);
+
+    const filteredUnifiedHistory = useMemo(() => {
+        if (historyKindFilter === 'all') return unifiedCustomerHistory;
+        return unifiedCustomerHistory.filter(r => {
+            if (historyKindFilter === 'appointment') return r.kind === 'appointment';
+            if (historyKindFilter === 'service_fee') return r.kind === 'service_fee';
+            if (historyKindFilter === 'sale') return r.kind === 'sale';
+            if (historyKindFilter === 'package') return r.kind === 'package';
+            return true;
+        });
+    }, [unifiedCustomerHistory, historyKindFilter]);
 
     const formatCurrency = (n?: number) => formatMoneyAmount(n ?? 0, { minFrac: 0, maxFrac: 0 });
-
-    const aptStatusLabel = useCallback((status: string) => {
-        const k = APT_STATUS_TM[status];
-        return k ? tm(k) : status;
-    }, [tm]);
 
     const showLoader = !selected && (isLoading || !erpAccountsLoaded);
     const showMissing = !selected && erpAccountsLoaded && !isLoading;
@@ -464,6 +597,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 key: 'when',
                 width: 200,
                 render: (_, row) => {
+                    if (row.kind === 'service_fee') return row.dateDisplay;
                     if (row.kind === 'appointment') {
                         const a = row.appointment;
                         return formatDateTime(a.appointment_date ?? a.date, a.appointment_time ?? a.time);
@@ -477,6 +611,9 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 key: 'typ',
                 width: 120,
                 render: (_, row) => {
+                    if (row.kind === 'service_fee') {
+                        return <Tag color="gold">{tm('bHistoryTypeServiceFee')}</Tag>;
+                    }
                     const label =
                         row.kind === 'appointment'
                             ? tm('bHistoryTypeAppointment')
@@ -493,16 +630,62 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 key: 'desc',
                 ellipsis: true,
                 render: (_, row) => {
+                    if (row.kind === 'service_fee') {
+                        return row.contextTitle;
+                    }
                     if (row.kind === 'appointment') {
                         return row.appointment.service_name ?? '—';
                     }
                     if (row.kind === 'sale') {
                         const s = row.sale;
-                        const inv = s.invoice_number ? `${s.invoice_number} · ` : '';
-                        return `${inv}${formatCurrency(s.total)}`;
+                        return s.invoice_number ? String(s.invoice_number) : '—';
                     }
                     const p = row.purchase;
                     return `${p.package_name ?? tm('bPackage')} · ${p.used_sessions}/${p.total_sessions} ${tm('bSessions')}`;
+                },
+            },
+            {
+                title: tm('bHistoryColNotes'),
+                key: 'notes',
+                width: 220,
+                ellipsis: true,
+                render: (_, row) => {
+                    const raw =
+                        row.kind === 'appointment'
+                            ? String(row.appointment.notes ?? '').trim()
+                            : row.kind === 'sale'
+                              ? String(row.sale.notes ?? '').trim()
+                              : row.kind === 'service_fee'
+                                ? row.notesDisplay.trim()
+                                : '';
+                    if (!raw) return '—';
+                    return (
+                        <Typography.Paragraph
+                            className="!mb-0 whitespace-pre-wrap text-xs"
+                            style={{ maxWidth: 220 }}
+                            ellipsis={{ rows: 2, expandable: true, symbol: '…' }}
+                        >
+                            {raw}
+                        </Typography.Paragraph>
+                    );
+                },
+            },
+            {
+                title: tm('bHistoryColPrice'),
+                key: 'price',
+                width: 120,
+                align: 'right' as const,
+                render: (_, row) => {
+                    if (row.kind === 'service_fee') {
+                        return <Typography.Text strong>{formatCurrency(row.amount)}</Typography.Text>;
+                    }
+                    if (row.kind === 'appointment') {
+                        return formatCurrency(row.appointment.total_price);
+                    }
+                    if (row.kind === 'sale') {
+                        return <Typography.Text strong>{formatCurrency(row.sale.total)}</Typography.Text>;
+                    }
+                    return formatCurrency(row.purchase.sale_price);
                 },
             },
             {
@@ -510,6 +693,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 key: 'det',
                 ellipsis: true,
                 render: (_, row) => {
+                    if (row.kind === 'service_fee') return row.detailText;
                     if (row.kind === 'appointment') {
                         const a = row.appointment;
                         return `${aptStatusLabel(String(a.status))} · ${a.specialist_name ?? '—'}`;
@@ -530,6 +714,51 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             },
         ],
         [tm, formatDate, formatDateTime, formatIsoDateTime, formatCurrency, paymentMethodLabel, paymentStatusLabel, aptStatusLabel],
+    );
+
+    const serviceFeeQuickColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
+        () => [
+            {
+                title: tm('bHistoryColDate'),
+                key: 'when',
+                width: 180,
+                render: (_, row) => {
+                    if (row.kind === 'service_fee') return row.dateDisplay;
+                    if (row.kind === 'appointment') {
+                        const a = row.appointment;
+                        return formatDateTime(a.appointment_date ?? a.date, a.appointment_time ?? a.time);
+                    }
+                    if (row.kind === 'sale') return formatIsoDateTime(row.sale.created_at);
+                    return formatDate(row.purchase.purchase_date);
+                },
+            },
+            {
+                title: tm('bHistoryColDescription'),
+                key: 'desc',
+                ellipsis: true,
+                render: (_, row) => {
+                    if (row.kind === 'service_fee') return row.contextTitle;
+                    if (row.kind === 'appointment') return row.appointment.service_name ?? '—';
+                    if (row.kind === 'sale') return row.sale.invoice_number ? String(row.sale.invoice_number) : '—';
+                    return row.purchase.package_name ?? tm('bPackage');
+                },
+            },
+            {
+                title: tm('bHistoryColPrice'),
+                key: 'price',
+                width: 120,
+                align: 'right' as const,
+                render: (_, row) => {
+                    if (row.kind === 'service_fee') {
+                        return <Typography.Text strong>{formatCurrency(row.amount)}</Typography.Text>;
+                    }
+                    if (row.kind === 'appointment') return formatCurrency(row.appointment.total_price);
+                    if (row.kind === 'sale') return <Typography.Text strong>{formatCurrency(row.sale.total)}</Typography.Text>;
+                    return formatCurrency(row.purchase.sale_price);
+                },
+            },
+        ],
+        [tm, formatDate, formatDateTime, formatIsoDateTime, formatCurrency],
     );
 
     const leadColumns: ColumnsType<BeautyLead> = useMemo(
@@ -703,13 +932,29 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                   ),
                   children: (
                       <Card bordered className="!shadow-none" styles={{ body: { padding: 0 } }}>
+                          <div className="flex flex-wrap items-center gap-2 border-b border-[#f0f0f0] px-3 py-2">
+                              <Segmented
+                                  size="small"
+                                  value={historyKindFilter}
+                                  onChange={val =>
+                                      setHistoryKindFilter(val as 'all' | 'appointment' | 'service_fee' | 'sale' | 'package')
+                                  }
+                                  options={[
+                                      { label: tm('bHistoryFilterAll'), value: 'all' },
+                                      { label: tm('bHistoryFilterAppointment'), value: 'appointment' },
+                                      { label: tm('bHistoryFilterServiceFee'), value: 'service_fee' },
+                                      { label: tm('bHistoryFilterSale'), value: 'sale' },
+                                      { label: tm('bHistoryFilterPackage'), value: 'package' },
+                                  ]}
+                              />
+                          </div>
                           <Table<UnifiedHistoryRow>
                               size="middle"
                               bordered
                               rowKey="key"
                               loading={histLoading || pkgLoading}
-                              columns={historyColumns}
-                              dataSource={unifiedCustomerHistory}
+                              columns={historyKindFilter === 'service_fee' ? serviceFeeQuickColumns : historyColumns}
+                              dataSource={filteredUnifiedHistory}
                               pagination={{ pageSize: 10, showSizeChanger: true }}
                               locale={{ emptyText: tm('bEmptyHistorySection') }}
                           />
@@ -833,9 +1078,45 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                               expandable={{
                                   expandedRowRender: sale =>
                                       sale.items && sale.items.length > 0 ? (
-                                          <Typography.Text type="secondary" className="text-xs">
-                                              {sale.items.map(i => i.name).filter(Boolean).join(', ')}
-                                          </Typography.Text>
+                                          <Table
+                                              size="small"
+                                              bordered
+                                              pagination={false}
+                                              rowKey={(item, idx) => String(item.id ?? idx)}
+                                              dataSource={sale.items}
+                                              columns={[
+                                                  {
+                                                      title: tm('bHistoryColDescription'),
+                                                      key: 'name',
+                                                      render: (_, item) => item.name || '—',
+                                                  },
+                                                  {
+                                                      title: tm('quantity'),
+                                                      key: 'qty',
+                                                      width: 100,
+                                                      align: 'right' as const,
+                                                      render: (_, item) => Number(item.quantity ?? 0),
+                                                  },
+                                                  {
+                                                      title: tm('price'),
+                                                      key: 'unit',
+                                                      width: 130,
+                                                      align: 'right' as const,
+                                                      render: (_, item) => formatCurrency(Number(item.unit_price ?? 0)),
+                                                  },
+                                                  {
+                                                      title: tm('bHistoryColPrice'),
+                                                      key: 'tot',
+                                                      width: 130,
+                                                      align: 'right' as const,
+                                                      render: (_, item) => (
+                                                          <Typography.Text strong>
+                                                              {formatCurrency(Number(item.total ?? 0))}
+                                                          </Typography.Text>
+                                                      ),
+                                                  },
+                                              ]}
+                                          />
                                       ) : null,
                                   rowExpandable: sale => !!(sale.items && sale.items.length),
                               }}
@@ -980,7 +1261,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             <Typography.Title level={4} className="!mb-1 !text-lg">
                                                 {selected.name}
                                             </Typography.Title>
-                                            {(selected.points ?? 0) >= 1000 && <Tag color="gold">{tm('bVipCustomer')}</Tag>}
+                                            {(selected.customer_tier === 'vip' ||
+                                                (selected.points ?? 0) >= 1000) && (
+                                                <Tag color="gold">{tm('bVipCustomer')}</Tag>
+                                            )}
                                         </Space>
                                         {selected.code && (
                                             <Typography.Text type="secondary" className="text-sm">
@@ -1025,6 +1309,28 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                 </Space>
                                             ),
                                             children: selected.city || '—',
+                                        },
+                                        {
+                                            key: 'gender',
+                                            label: tm('bGender'),
+                                            children: (() => {
+                                                const g = selected.gender;
+                                                if (!g) return '—';
+                                                if (g === 'female') return tm('bGenderFemale');
+                                                if (g === 'male') return tm('bGenderMale');
+                                                if (g === 'other') return tm('bGenderOther');
+                                                return String(g);
+                                            })(),
+                                        },
+                                        {
+                                            key: 'customer_tier',
+                                            label: tm('bCustomerTier'),
+                                            children:
+                                                selected.customer_tier === 'vip' ? (
+                                                    <Tag color="gold">{tm('bCustomerTierVip')}</Tag>
+                                                ) : (
+                                                    tm('bCustomerTierNormal')
+                                                ),
                                         },
                                         {
                                             key: 'balance',
@@ -1188,6 +1494,45 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                 onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
                                 placeholder={tm('bCustomerNamePlaceholder')}
                             />
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
+                                <Select
+                                    className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
+                                    allowClear
+                                    placeholder={tm('bGenderPlaceholder')}
+                                    value={editing.gender ?? undefined}
+                                    onChange={v =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            gender: (v as BeautyCustomer['gender']) ?? null,
+                                        }))
+                                    }
+                                    options={[
+                                        { value: 'female', label: tm('bGenderFemale') },
+                                        { value: 'male', label: tm('bGenderMale') },
+                                        { value: 'other', label: tm('bGenderOther') },
+                                    ]}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bCustomerTier')}</RetailExFlatFieldLabel>
+                                <Segmented
+                                    block
+                                    value={editing.customer_tier === 'vip' ? 'vip' : 'normal'}
+                                    onChange={v =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            customer_tier: v === 'vip' ? 'vip' : 'normal',
+                                        }))
+                                    }
+                                    options={[
+                                        { label: tm('bCustomerTierNormal'), value: 'normal' },
+                                        { label: tm('bCustomerTierVip'), value: 'vip' },
+                                    ]}
+                                />
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>

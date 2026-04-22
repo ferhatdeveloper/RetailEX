@@ -1,6 +1,6 @@
 [package]
 name = "retailex"
-version = "0.1.65"
+version = "0.1.69"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -73,6 +73,7 @@ dotenv = "0.15"
 thiserror = "1.0"
 futures-lite = "2.1"
 serialport = "4.6"
+regex = "1.10"
 
 
 [[bin]]

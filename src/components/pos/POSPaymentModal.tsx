@@ -1,8 +1,10 @@
 import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { formatCurrency, formatNumber } from '../../utils/currency';
@@ -125,25 +127,48 @@ export function POSPaymentModal({
   
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
-  const [receiptLanguage, setReceiptLanguage] = useState<string>(useLanguage().language);
+  const { t, language: uiLanguage } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const receiptFirmNr = useMemo(() => {
+    const f = selectedFirm;
+    if (!f) return undefined;
+    const raw = f.firm_nr ?? f.firma_kodu ?? (f.nr != null ? String(f.nr) : '');
+    const s = String(raw).trim().padStart(3, '0').slice(0, 10);
+    return s || undefined;
+  }, [selectedFirm]);
+  const [receiptLanguage, setReceiptLanguage] = useState<string>(uiLanguage);
   const [showReceiptPreview, setShowReceiptPreview] = useState(defaultShowReceiptPreview);
 
   useEffect(() => {
-    const savedPrinter = localStorage.getItem('retailos-printer-settings');
-    if (savedPrinter) {
-      try {
+    let cancelled = false;
+    let printerDefault: string | undefined;
+    try {
+      const savedPrinter = localStorage.getItem('retailos-printer-settings');
+      if (savedPrinter) {
         const config = JSON.parse(savedPrinter);
         if (config.autoPrint !== undefined) setAutoPrint(config.autoPrint);
-        if (config.defaultLanguage) setReceiptLanguage(config.defaultLanguage);
-      } catch (err) {
-        console.error('Failed to parse printer settings:', err);
+        printerDefault = config.defaultLanguage;
       }
+    } catch (err) {
+      console.error('Failed to parse printer settings:', err);
     }
-  }, []);
+    void (async () => {
+      let rs: Awaited<ReturnType<typeof getReceiptSettings>> = {};
+      try {
+        rs = await getReceiptSettings(receiptFirmNr);
+      } catch {
+        /* ignore */
+      }
+      if (cancelled) return;
+      setReceiptLanguage(resolveDefaultReceiptLang(rs, uiLanguage, printerDefault));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [receiptFirmNr, uiLanguage]);
   const [isLoading, setIsLoading] = useState(false);
   const [draftPrintLoading, setDraftPrintLoading] = useState(false);
 
-  const { t } = useLanguage();
   const { darkMode } = useTheme();
 
   // Load active payment providers
@@ -886,7 +911,7 @@ export function POSPaymentModal({
                     className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition-all"
                   />
                   <span className={`text-sm font-medium transition-colors ${darkMode ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-blue-600'}`}>
-                    Fiş önizlemesi göster
+                    {t.showReceiptPreviewLabel}
                   </span>
                 </label>
               </>

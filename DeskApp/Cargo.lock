@@ -7923,7 +7923,7 @@ dependencies = [
 
 [[package]]
 name = "retailex"
-version = "0.1.65"
+version = "0.1.69"
 dependencies = [
  "aes-gcm",
  "amq-protocol",
@@ -7945,6 +7945,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.6.4",
  "redis",
+ "regex",
  "reqwest 0.11.27",
  "rusqlite",
  "rust_decimal",

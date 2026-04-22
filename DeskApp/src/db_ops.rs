@@ -77,6 +77,40 @@ pub async fn create_database(config: AppConfig, target: Option<String>) -> Resul
     Ok(())
 }
 
+/// Wizard / migration runner ile aynı arama sırası (dev + Tauri resource).
+pub fn resolve_migrations_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let mut search_paths = Vec::new();
+    search_paths.push(std::path::PathBuf::from("database/migrations"));
+    search_paths.push(std::path::PathBuf::from("../database/migrations"));
+    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
+        search_paths.push(res);
+    }
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        search_paths.push(resource_dir.join("database").join("migrations"));
+        search_paths.push(resource_dir.join("migrations"));
+        search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
+    }
+
+    let mut attempted_paths = Vec::new();
+    for path in search_paths {
+        attempted_paths.push(path.to_string_lossy().to_string());
+        if path.exists() && path.is_dir() {
+            println!("Migration directory found: {:?}", path);
+            if let Ok(entries) = std::fs::read_dir(&path) {
+                let count = entries.filter_map(|e| e.ok()).count();
+                println!("Total files in migration directory: {}", count);
+            }
+            return Ok(path);
+        }
+    }
+    Err(format!(
+        "Migration klasörü bulunamadı!\nDenenen yollar:\n{}",
+        attempted_paths.join("\n")
+    ))
+}
 
 pub async fn apply_migrations_internal(
     app: &tauri::AppHandle, 
@@ -153,16 +187,14 @@ pub async fn apply_migrations_internal(
         &[]
     ).await.map_err(|e| format!("sys_migrations tablosuna app_version kolonu eklenemedi: {}", e))?;
 
-    // 2c. Pre-create auth schema + extensions so migration scripts that
-    //     reference auth.users or uuid_generate_v4() don't fail on a fresh DB.
+    // 2c. Pre-create auth schema so migration scripts that reference auth.users
+    //     don't fail on a fresh DB. UUID: gen_random_uuid() (PG13+, contrib gerekmez).
     let _ = client.batch_execute("
-        CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
-        CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";
         CREATE SCHEMA IF NOT EXISTS auth;
         CREATE SCHEMA IF NOT EXISTS rest;
         CREATE SCHEMA IF NOT EXISTS beauty;
         CREATE TABLE IF NOT EXISTS auth.users (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             email VARCHAR(255) UNIQUE,
             encrypted_password VARCHAR(255),
             raw_user_meta_data JSONB,
@@ -172,73 +204,22 @@ pub async fn apply_migrations_internal(
     ").await;
 
     // 3. Find Migration Files
-    let mut search_paths = Vec::new();
-    
-    // Dev paths (relative to CWD)
-    search_paths.push(std::path::PathBuf::from("database/migrations"));
-    search_paths.push(std::path::PathBuf::from("../database/migrations"));
-    
-    // Resource paths (Tauri Resolver)
-    // 1. Resolve relative to migrations directly
-    if let Ok(res) = app.path().resolve("database/migrations", BaseDirectory::Resource) {
-        search_paths.push(res);
-    }
-    
-    // 2. Resolve relative to _up_ (common in bundling)
-    if let Ok(res) = app.path().resolve("_up_/database/migrations", BaseDirectory::Resource) {
-        search_paths.push(res);
-    }
-
-    // 3. Fallback to resource_dir manual joins
-    if let Ok(resource_dir) = app.path().resource_dir() {
-        search_paths.push(resource_dir.join("database").join("migrations"));
-        search_paths.push(resource_dir.join("migrations"));
-        search_paths.push(resource_dir.join("_up_").join("database").join("migrations"));
-    }
-
-    let mut found_path = None;
-    let mut attempted_paths = Vec::new();
-
-    for path in search_paths {
-        attempted_paths.push(path.to_string_lossy().to_string());
-        if path.exists() && path.is_dir() {
-            println!("Migration directory found: {:?}", path);
-            
-            // Log file count in directory
-            if let Ok(entries) = std::fs::read_dir(&path) {
-                let count = entries.filter_map(|e| e.ok()).count();
-                println!("Total files in migration directory: {}", count);
-            }
-
-            found_path = Some(path);
-            break;
-        }
-    }
+    let migration_dir = resolve_migrations_dir(app)?;
 
     let mut migration_files = Vec::new();
-    let _migration_dir = if let Some(dir) = found_path {
-        let dir_path = dir.clone(); // Store for later use
-        let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
-        for entry in entries {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("sql") {
-                let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                if let Some(version_part) = filename.split('_').next() {
-                    // Only include numbered migrations (e.g. 001_...)
-                    if version_part.chars().all(|c| c.is_ascii_digit()) && !version_part.is_empty() {
-                        migration_files.push((version_part.to_string(), filename, path));
-                    }
+    let entries = std::fs::read_dir(&migration_dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("sql") {
+            let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            if let Some(version_part) = filename.split('_').next() {
+                if version_part.chars().all(|c| c.is_ascii_digit()) && !version_part.is_empty() {
+                    migration_files.push((version_part.to_string(), filename, path));
                 }
             }
         }
-        dir_path
-    } else {
-        return Err(format!(
-            "Migration klasörü bulunamadı!\nDenenen yollar:\n{}", 
-            attempted_paths.join("\n")
-        ));
-    };
+    }
 
     // Sort by full filename (e.g. 001_schema.sql < 003_auth_setup.sql < 004_auth_patch.sql)
     // This prevents ordering ambiguity when multiple files share the same numeric prefix.
@@ -298,15 +279,54 @@ pub async fn apply_migrations_internal(
                 }
             };
             
-            // ── Auto-sanitize SQL for idempotency ──────────────────
-            let sql = raw_sql
-                .replace("CREATE OR REPLACE TRIGGER ", "CREATE TRIGGER ")
-                .replace("CREATE TRIGGER ", "CREATE OR REPLACE TRIGGER ");
-            
-            // Execute SQL
-            if let Err(e) = client.batch_execute(&sql).await {
-                let err_msg = format_pg_error(e);
-                println!("❌ Migration hatası ({}): {}", name, err_msg);
+            // UTF-8 BOM + tek dev batch_execute yerine ifade-ifade: uzun script / PG 15 ile
+            // daha iyi hata ayiklama ve "db error" yerine dogru satir mesaji.
+            let sql = crate::sql_migration_split::strip_utf8_bom(&raw_sql);
+            let statements = crate::sql_migration_split::split_postgres_statements(sql);
+            let total_st = statements.len();
+            let mut migration_err: Option<String> = None;
+
+            if let Err(e) = client.batch_execute("BEGIN").await {
+                migration_err = Some(format!("BEGIN basarisiz: {}", format_pg_error(e)));
+            }
+
+            if migration_err.is_none() {
+                for (idx, stmt) in statements.iter().enumerate() {
+                    if stmt.trim().is_empty() {
+                        continue;
+                    }
+                    if let Err(e) = client.batch_execute(stmt).await {
+                        let err_msg = format_pg_error(e);
+                        let head: String =
+                            stmt.chars().take(200).collect::<String>().replace('\n', " ");
+                        migration_err = Some(format!(
+                            "{} | Ifade {}/{} (baslangic): {}",
+                            err_msg,
+                            idx + 1,
+                            total_st,
+                            head
+                        ));
+                        println!(
+                            "❌ Migration hatası ({}), ifade {}/{}: {}",
+                            name,
+                            idx + 1,
+                            total_st,
+                            err_msg
+                        );
+                        let _ = client.batch_execute("ROLLBACK").await;
+                        break;
+                    }
+                }
+            }
+
+            if migration_err.is_none() {
+                if let Err(e) = client.batch_execute("COMMIT").await {
+                    migration_err = Some(format!("COMMIT basarisiz: {}", format_pg_error(e)));
+                    let _ = client.batch_execute("ROLLBACK").await;
+                }
+            }
+
+            if let Some(err_msg) = migration_err {
                 report.push(MigrationStatus {
                     name: name.clone(),
                     status: "Error".to_string(),
@@ -353,7 +373,63 @@ pub async fn apply_migrations_internal(
         }
     }
 
+    match crate::schema_gap::diagnose_schema_gaps(&client, &migration_dir).await {
+        Ok(rep) => {
+            crate::schema_gap::write_schema_gap_log(&rep);
+            if !rep.eksik_kolonlar.is_empty() {
+                println!(
+                    "⚠️ Şema: {} eksik kolon (schema_gaps.json, sql_toplu)",
+                    rep.eksik_kolonlar.len()
+                );
+            }
+        }
+        Err(e) => println!("⚠️ Şema gap tanılama atlandı: {}", e),
+    }
+
     Ok(json_report)
+}
+
+/// Migration klasöründeki ADD COLUMN beklentileri ile DB'yi karşılaştırır; `schema_gaps.json` yazar.
+#[command]
+pub async fn diagnose_schema_gaps_cmd(
+    app: tauri::AppHandle,
+    config: AppConfig,
+    target: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tokio_postgres::NoTls;
+    let migration_dir = resolve_migrations_dir(&app)?;
+    let is_remote = target.as_deref() == Some("remote");
+    let (db_path, user, pass) = if is_remote {
+        (&config.remote_db, &config.pg_remote_user, &config.pg_remote_pass)
+    } else {
+        (&config.local_db, &config.pg_local_user, &config.pg_local_pass)
+    };
+    let host_part = db_path.split(':').next().unwrap_or("localhost");
+    let host_port_str = db_path.split('/').next().unwrap_or("localhost:5432");
+    let port = if let Some(p) = host_port_str.split(':').nth(1) {
+        p.parse::<u16>().unwrap_or(5432)
+    } else {
+        5432
+    };
+    let db_name = db_path.split('/').last().unwrap_or("retailex_local");
+    let mut pg_config = tokio_postgres::Config::new();
+    pg_config
+        .host(host_part)
+        .port(port)
+        .user(user)
+        .password(pass)
+        .dbname(db_name)
+        .connect_timeout(std::time::Duration::from_secs(10));
+    let (client, connection) = pg_config
+        .connect(NoTls)
+        .await
+        .map_err(|e| format!("DB bağlantısı: {}", format_pg_error(e)))?;
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    let report = crate::schema_gap::diagnose_schema_gaps(&client, &migration_dir).await?;
+    crate::schema_gap::write_schema_gap_log(&report);
+    serde_json::to_value(&report).map_err(|e| e.to_string())
 }
 
 #[command]

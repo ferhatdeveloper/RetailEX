@@ -122,7 +122,10 @@ export interface Customer {
   phone2?: string;      // İkinci telefon
   age?: number | null;
   file_id?: string | null;
+  gender?: string | null;
+  customer_tier?: 'normal' | 'vip' | string | null;
   occupation?: string | null;
+  heard_from?: string | null;
   email: string;
   address: string;
   district?: string;    // İlçe

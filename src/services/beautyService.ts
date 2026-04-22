@@ -46,6 +46,7 @@ import {
     BeautyPatientPhoto,
     BeautyAuditLogEntry,
     BeautyClinicAnalytics,
+    type BeautyAppointmentClinicalData,
 } from '../types/beauty';
 
 /** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
@@ -147,6 +148,34 @@ function erpFirmNrForRow(): string {
     return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
 }
 
+/** `beauty_appointments.clinical_data` JSONB satırını nesneye çevirir */
+function parseClinicalDataRow(raw: unknown): BeautyAppointmentClinicalData | null {
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'string') {
+        try {
+            const o = JSON.parse(raw) as unknown;
+            if (typeof o === 'object' && o != null && !Array.isArray(o)) {
+                return o as BeautyAppointmentClinicalData;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+        return raw as BeautyAppointmentClinicalData;
+    }
+    return null;
+}
+
+function clinicalDataForPgInput(a: Partial<BeautyAppointment>): Record<string, unknown> {
+    const raw = a.clinical_data;
+    if (raw != null && typeof raw === 'object' && !Array.isArray(raw)) {
+        return raw as Record<string, unknown>;
+    }
+    return {};
+}
+
 /** UUID string (güvenli IN listesi) */
 function filterUuidIds(ids: string[]): string[] {
     const uuidRe = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -190,8 +219,11 @@ async function fetchBeautyAppointmentsForIds(
         `,
         [...parts, fn, nameForCorp],
     );
-    return rows;
-}
+        return rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => ({
+            ...r,
+            clinical_data: parseClinicalDataRow(r.clinical_data) ?? undefined,
+        })) as BeautyAppointment[];
+    }
 
 /** Aynı firmada ünvanı birebir eşleşen tüm müşteri kartları (profil geçmişi genişletme) */
 async function fetchCustomerIdsByExactFirmName(displayName: string): Promise<string[]> {
@@ -540,7 +572,8 @@ export const beautyService = {
         const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(`
             SELECT
-                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.file_id, c.occupation, c.email,
+                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.file_id, c.occupation,
+                c.gender, c.customer_tier, c.heard_from, c.email,
                 c.address, c.city, c.points, c.total_spent, c.balance,
                 c.is_active, c.notes, c.created_at,
                 COUNT(a.id)::int          AS appointment_count,
@@ -570,7 +603,7 @@ export const beautyService = {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(
-            `SELECT id, code, name, phone, phone2, age, file_id, occupation, email, address, city, points, total_spent, balance, is_active, notes
+            `SELECT id, code, name, phone, phone2, age, file_id, occupation, gender, customer_tier, heard_from, email, address, city, points, total_spent, balance, is_active, notes
              FROM ${t}
              WHERE is_active = true AND lpad(trim(firm_nr::text), 3, '0') = $2
                AND (
@@ -599,11 +632,16 @@ export const beautyService = {
             data.file_id != null && String(data.file_id).trim() !== ''
                 ? String(data.file_id).trim()
                 : null;
+        const g = String(data.gender ?? '').trim().toLowerCase();
+        const genderVal = g === 'female' || g === 'male' || g === 'other' ? g : null;
+        const tierRaw = String(data.customer_tier ?? 'normal').trim().toLowerCase();
+        const tierVal = tierRaw === 'vip' ? 'vip' : 'normal';
         await postgres.query(
             `INSERT INTO ${t} (
-               id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, file_id, occupation, is_active
+               id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, file_id, occupation,
+               gender, customer_tier, heard_from, is_active
              )
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)`,
             [
                 id,
                 fn,
@@ -618,6 +656,9 @@ export const beautyService = {
                 ageVal,
                 fileIdVal,
                 data.occupation?.trim() || null,
+                genderVal,
+                tierVal,
+                data.heard_from?.trim() || null,
             ]
         );
         return id;
@@ -649,6 +690,17 @@ export const beautyService = {
             );
         }
         if (data.occupation !== undefined) push('occupation', data.occupation?.trim() || null);
+        if (data.gender !== undefined) {
+            const g = String(data.gender ?? '').trim().toLowerCase();
+            push('gender', g === 'female' || g === 'male' || g === 'other' ? g : null);
+        }
+        if (data.customer_tier !== undefined) {
+            const t = String(data.customer_tier ?? 'normal').trim().toLowerCase();
+            push('customer_tier', t === 'vip' ? 'vip' : 'normal');
+        }
+        if (data.heard_from !== undefined) {
+            push('heard_from', data.heard_from?.trim() || null);
+        }
         if (data.age !== undefined) {
             if (data.age === null) push('age', null);
             else {
@@ -956,6 +1008,7 @@ export const beautyService = {
                 a.pre_visit_activity_at,
                 a.treatment_degree,
                 a.treatment_shots,
+                a.clinical_data,
                 a.created_at,
                 COALESCE(s.name, rs.name)   AS service_name,
                 COALESCE(s.color, '#6366f1') AS service_color,
@@ -974,7 +1027,10 @@ export const beautyService = {
         `;
         const fn = erpFirmNrForRow();
         const result = await postgres.query(query, [startDate, endDate, fn]);
-        return result.rows;
+        return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => ({
+            ...r,
+            clinical_data: parseClinicalDataRow(r.clinical_data) ?? undefined,
+        })) as BeautyAppointment[];
     },
 
     async createAppointment(appointment: Partial<BeautyAppointment>): Promise<string> {
@@ -995,8 +1051,8 @@ export const beautyService = {
                 appointment_date, appointment_time, duration,
                 status, type, notes, total_price, commission_amount, is_package_session, package_purchase_id,
                 branch_id, room_id, tele_meeting_url, booking_channel, corporate_account_id,
-                session_series_id, treatment_degree, treatment_shots
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+                session_series_id, treatment_degree, treatment_shots, clinical_data
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
         `, [
             id,
             pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
@@ -1026,6 +1082,7 @@ export const beautyService = {
             appointment.treatment_shots != null && String(appointment.treatment_shots).trim() !== ''
                 ? String(appointment.treatment_shots).trim()
                 : null,
+            clinicalDataForPgInput(appointment),
         ]);
         return id;
     },
@@ -1067,6 +1124,7 @@ export const beautyService = {
                 : String(shotsRaw).trim() === ''
                     ? null
                     : String(shotsRaw).trim();
+        const clinicalJson = clinicalDataForPgInput(merged);
 
         await postgres.query(
             `UPDATE ${table}
@@ -1075,7 +1133,7 @@ export const beautyService = {
                  notes=$11, total_price=$12,
                  branch_id=$13, room_id=$14, tele_meeting_url=$15, booking_channel=$16, corporate_account_id=$17,
                  confirmation_call_at=$18, pre_visit_activity_at=$19,
-                 treatment_degree=$20, treatment_shots=$21,
+                 treatment_degree=$20, treatment_shots=$21, clinical_data=$22::jsonb,
                  updated_at=NOW()
              WHERE id=$1`,
             [id,
@@ -1098,7 +1156,8 @@ export const beautyService = {
              pgTimestamptzOrNull(merged.confirmation_call_at),
              pgTimestamptzOrNull(merged.pre_visit_activity_at),
              treatmentDegree,
-             treatmentShots]
+             treatmentShots,
+             JSON.stringify(clinicalJson)]
         );
         if (statusStr === 'cancelled') {
             await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
@@ -1181,6 +1240,7 @@ export const beautyService = {
                 a.pre_visit_activity_at,
                 a.treatment_degree,
                 a.treatment_shots,
+                a.clinical_data,
                 COALESCE(s.name, rs.name) AS service_name,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name AS customer_name
@@ -1192,7 +1252,13 @@ export const beautyService = {
             LEFT JOIN ${postgres.getCardTableName('customers')} c ON a.client_id = c.id
             WHERE a.id = $1
         `, [id, erpFirmNrForRow()]);
-        return rows[0] ?? null;
+        const row = rows[0] as (BeautyAppointment & { clinical_data?: unknown }) | undefined;
+        if (!row) return null;
+        const { clinical_data: rawCd, ...rest } = row;
+        return {
+            ...rest,
+            clinical_data: parseClinicalDataRow(rawCd) ?? undefined,
+        };
     },
 
     async getAppointmentsByCustomer(
@@ -2164,6 +2230,44 @@ export const beautyService = {
     },
 
     /**
+     * Excel / yedek: yerel gün aralığında güzellik satışları + kalemler + müşteri kodu.
+     * `payment_status` filtresi yok (paid / pending / cancelled hepsi listelenir; Excel’de süzebilirsiniz).
+     */
+    async getSalesWithItemsForExportRange(startYmd: string, endYmd: string): Promise<BeautySale[]> {
+        const { startIso } = localYmdToIsoRange(startYmd);
+        const { endIso } = localYmdToIsoRange(endYmd);
+        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+        const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+        const ct = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
+        const { rows: salesRows } = await postgres.query(
+            `SELECT s.*, c.name AS customer_name, c.code AS customer_code
+             FROM ${st} s
+             LEFT JOIN ${ct} c ON s.customer_id = c.id AND lpad(trim(c.firm_nr::text), 3, '0') = $3
+             WHERE s.created_at >= $1 AND s.created_at <= $2
+             ORDER BY s.created_at DESC
+             LIMIT 50000`,
+            [startIso, endIso, fn]
+        );
+        if (!salesRows.length) return [];
+        const saleIds = salesRows.map((s: { id: string }) => s.id);
+        const { rows: allItems } = await postgres.query(
+            `SELECT * FROM ${it} WHERE sale_id = ANY($1::uuid[])`,
+            [saleIds]
+        );
+        const bySale = new Map<string, BeautySaleItem[]>();
+        for (const row of allItems) {
+            const arr = bySale.get(row.sale_id) ?? [];
+            arr.push(row as BeautySaleItem);
+            bySale.set(row.sale_id, arr);
+        }
+        return salesRows.map((s: BeautySale & { customer_code?: string }) => ({
+            ...s,
+            items: bySale.get(s.id) ?? [],
+        }));
+    },
+
+    /**
      * Güzellik satışı + kalemler. `skipErpAndLoyalty`: yalnızca beauty şeması (kalem ayrı fiş);
      * sonra `syncBeautyCheckoutToErp` ile tek tahsilat.
      */
@@ -2473,6 +2577,7 @@ export const beautyService = {
                whatsapp_instance_id = $14,
                whatsapp_phone_id = $15,
                default_reminder_channel = $16,
+               allow_staff_slot_overlap = COALESCE($17, false),
                updated_at = NOW()
              WHERE id = $1`,
             [
@@ -2492,6 +2597,7 @@ export const beautyService = {
                 merged.whatsapp_instance_id ?? null,
                 merged.whatsapp_phone_id ?? null,
                 (merged.default_reminder_channel || 'sms').toString().toLowerCase(),
+                merged.allow_staff_slot_overlap ?? false,
             ]
         );
     },

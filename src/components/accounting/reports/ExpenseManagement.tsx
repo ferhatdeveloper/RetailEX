@@ -20,7 +20,7 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../../services/api/expenses';
-import { costCenterAPI, type CostCenter } from '../../../services/api/costCenters';
+import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 
 interface ExpenseLocal extends Expense {
   store_name?: string;
@@ -30,26 +30,31 @@ interface ExpenseLocal extends Expense {
 interface ExpenseCategory {
   id: string;
   name: string;
-  icon: string;
   color: string;
 }
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = [
-  { id: 'rent', name: 'Kira', icon: 'ğŸ¢', color: 'bg-blue-100 text-blue-700' },
-  { id: 'salary', name: 'Maaş', icon: 'ğŸ‘¥', color: 'bg-green-100 text-green-700' },
-  { id: 'electricity', name: 'Elektrik', icon: '⚡', color: 'bg-yellow-100 text-yellow-700' },
-  { id: 'water', name: 'Su', icon: 'ğŸ’§', color: 'bg-cyan-100 text-cyan-700' },
-  { id: 'internet', name: 'İnternet', icon: 'ğŸŒ', color: 'bg-purple-100 text-purple-700' },
-  { id: 'phone', name: 'Telefon', icon: 'ğŸ“', color: 'bg-indigo-100 text-indigo-700' },
-  { id: 'maintenance', name: 'Bakım-Onarım', icon: 'ğŸ”§', color: 'bg-orange-100 text-orange-700' },
-  { id: 'cleaning', name: 'Temizlik', icon: 'ğŸ§¹', color: 'bg-pink-100 text-pink-700' },
-  { id: 'marketing', name: 'Pazarlama', icon: 'ğŸ“¢', color: 'bg-red-100 text-red-700' },
-  { id: 'supplies', name: 'Malzeme', icon: 'ğŸ“¦', color: 'bg-gray-100 text-gray-700' },
-  { id: 'transport', name: 'Ulaşım', icon: 'ğŸš—', color: 'bg-teal-100 text-teal-700' },
-  { id: 'tax', name: 'Vergi', icon: '💰', color: 'bg-amber-100 text-amber-700' },
-  { id: 'insurance', name: 'Sigorta', icon: 'ğŸ›¡ï¸', color: 'bg-lime-100 text-lime-700' },
-  { id: 'other', name: 'Diğer', icon: 'ğŸ“‹', color: 'bg-slate-100 text-slate-700' },
+  { id: 'rent', name: 'Kira', color: 'bg-blue-100 text-blue-700' },
+  { id: 'salary', name: 'Maaş', color: 'bg-green-100 text-green-700' },
+  { id: 'electricity', name: 'Elektrik', color: 'bg-yellow-100 text-yellow-700' },
+  { id: 'water', name: 'Su', color: 'bg-cyan-100 text-cyan-700' },
+  { id: 'internet', name: 'İnternet', color: 'bg-purple-100 text-purple-700' },
+  { id: 'phone', name: 'Telefon', color: 'bg-indigo-100 text-indigo-700' },
+  { id: 'maintenance', name: 'Bakım-Onarım', color: 'bg-orange-100 text-orange-700' },
+  { id: 'cleaning', name: 'Temizlik', color: 'bg-pink-100 text-pink-700' },
+  { id: 'marketing', name: 'Pazarlama', color: 'bg-red-100 text-red-700' },
+  { id: 'supplies', name: 'Malzeme', color: 'bg-gray-100 text-gray-700' },
+  { id: 'transport', name: 'Ulaşım', color: 'bg-teal-100 text-teal-700' },
+  { id: 'tax', name: 'Vergi', color: 'bg-amber-100 text-amber-700' },
+  { id: 'insurance', name: 'Sigorta', color: 'bg-lime-100 text-lime-700' },
+  { id: 'other', name: 'Diğer', color: 'bg-slate-100 text-slate-700' },
 ];
+
+const CATEGORY_FALLBACK: ExpenseCategory = {
+  id: 'custom',
+  name: 'Özel Kategori',
+  color: 'bg-slate-100 text-slate-700'
+};
 
 export function ExpenseManagement() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -60,7 +65,7 @@ export function ExpenseManagement() {
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterStore, setFilterStore] = useState<string>('all');
+  const [filterStore] = useState<string>('all');
   const [filterDateFrom, setFilterDateFrom] = useState<string>('');
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
@@ -74,25 +79,31 @@ export function ExpenseManagement() {
     document_number: '',
     store_id: '',
     cost_center_id: '',
+    cash_register_id: '',
     expense_date: new Date().toISOString().split('T')[0],
     notes: '',
   });
 
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [kasalar, setKasalar] = useState<Kasa[]>([]);
 
   useEffect(() => {
     loadExpenses();
-    loadCostCenters();
+    loadKasalar();
   }, []);
 
-  const loadCostCenters = async () => {
+  const loadKasalar = async () => {
     try {
-      const centers = await costCenterAPI.getAll();
-      setCostCenters(centers);
+      const data = await fetchKasalar({ aktif: true });
+      setKasalar(data);
     } catch (error) {
-      console.error('Error loading cost centers:', error);
+      console.error('Error loading cash registers:', error);
     }
   };
+
+  useEffect(() => {
+    if (!showExpenseModal || editingExpense || !kasalar.length) return;
+    setFormData(prev => prev.cash_register_id ? prev : { ...prev, cash_register_id: kasalar[0].id });
+  }, [showExpenseModal, editingExpense, kasalar]);
 
   const loadExpenses = async () => {
     setLoading(true);
@@ -119,6 +130,7 @@ export function ExpenseManagement() {
       document_number: '',
       store_id: '',
       cost_center_id: '',
+      cash_register_id: kasalar[0]?.id || '',
       expense_date: new Date().toISOString().split('T')[0],
       notes: '',
     });
@@ -135,6 +147,7 @@ export function ExpenseManagement() {
       document_number: expense.document_number || '',
       store_id: expense.store_id,
       cost_center_id: expense.cost_center_id || '',
+      cash_register_id: expense.cash_register_id || '',
       expense_date: expense.expense_date,
       notes: expense.notes || '',
     });
@@ -155,6 +168,18 @@ export function ExpenseManagement() {
 
   const handleSaveExpense = async () => {
     try {
+      if (!formData.category.trim()) {
+        alert('Kategori zorunludur.');
+        return;
+      }
+      if (!formData.description.trim()) {
+        alert('Açıklama zorunludur.');
+        return;
+      }
+      if (!formData.amount || Number.isNaN(parseFloat(formData.amount))) {
+        alert('Geçerli bir tutar giriniz.');
+        return;
+      }
       const data = {
         ...formData,
         amount: parseFloat(formData.amount),
@@ -175,8 +200,30 @@ export function ExpenseManagement() {
     }
   };
 
-  const getCategoryInfo = (categoryId: string) => {
-    return EXPENSE_CATEGORIES.find(c => c.id === categoryId) || EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1];
+  const normalizeCategory = (value: string) => value.trim().toLocaleLowerCase('tr-TR');
+
+  const getCategoryInfo = (categoryValue: string) => {
+    const trimmed = String(categoryValue || '').trim();
+    if (!trimmed) return CATEGORY_FALLBACK;
+    return (
+      EXPENSE_CATEGORIES.find(c => c.id === trimmed || normalizeCategory(c.name) === normalizeCategory(trimmed)) ||
+      CATEGORY_FALLBACK
+    );
+  };
+
+  const categoryLabel = (categoryValue: string) => {
+    const trimmed = String(categoryValue || '').trim();
+    if (!trimmed) return CATEGORY_FALLBACK.name;
+    const info = getCategoryInfo(trimmed);
+    if (info.id === 'custom') return trimmed;
+    return info.name;
+  };
+
+  const categoryKey = (categoryValue: string) => {
+    const trimmed = String(categoryValue || '').trim();
+    if (!trimmed) return '';
+    const info = getCategoryInfo(trimmed);
+    return info.id === 'custom' ? normalizeCategory(trimmed) : info.id;
   };
 
   const columnHelper = createColumnHelper<ExpenseLocal>();
@@ -193,8 +240,7 @@ export function ExpenseManagement() {
         const cat = getCategoryInfo(info.getValue());
         return (
           <span className={`px-3 py-1 rounded-full text-xs font-medium ${cat.color} inline-flex items-center gap-1`}>
-            <span>{cat.icon}</span>
-            <span>{cat.name}</span>
+            <span>{categoryLabel(info.getValue())}</span>
           </span>
         );
       },
@@ -287,7 +333,7 @@ export function ExpenseManagement() {
   const filteredExpenses = expenses.filter(expense => {
     const matchesSearch = expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       expense.document_number?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || expense.category === filterCategory;
+    const matchesCategory = filterCategory === 'all' || categoryKey(expense.category) === categoryKey(filterCategory);
     const matchesStore = filterStore === 'all' || expense.store_id === filterStore;
     const matchesDate = (!filterDateFrom || expense.expense_date >= filterDateFrom) &&
       (!filterDateTo || expense.expense_date <= filterDateTo);
@@ -353,7 +399,7 @@ export function ExpenseManagement() {
                 >
                   <option value="all">Tüm Kategoriler</option>
                   {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -379,7 +425,6 @@ export function ExpenseManagement() {
                 <button
                   onClick={() => {
                     setFilterCategory('all');
-                    setFilterStore('all');
                     setFilterDateFrom('');
                     setFilterDateTo('');
                   }}
@@ -480,16 +525,18 @@ export function ExpenseManagement() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Kategori *
                     </label>
-                    <select
+                    <input
+                      list="expense-category-options"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      placeholder="Kategori yazın veya seçin"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                    >
-                      <option value="">Kategori Seçin</option>
+                    />
+                    <datalist id="expense-category-options">
                       {EXPENSE_CATEGORIES.map(cat => (
-                        <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
+                        <option key={cat.id} value={cat.name} />
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -562,16 +609,16 @@ export function ExpenseManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Masraf Merkezi
+                      Masraf Merkezi (Kasa)
                     </label>
                     <select
-                      value={formData.cost_center_id}
-                      onChange={(e) => setFormData({ ...formData, cost_center_id: e.target.value })}
+                      value={formData.cash_register_id}
+                      onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                     >
-                      <option value="">Merkez Seçin</option>
-                      {costCenters.map(cc => (
-                        <option key={cc.id} value={cc.id}>{cc.name} ({cc.code})</option>
+                      {kasalar.length === 0 && <option value="">Kasa bulunamadı</option>}
+                      {kasalar.map(kasa => (
+                        <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
                       ))}
                     </select>
                   </div>

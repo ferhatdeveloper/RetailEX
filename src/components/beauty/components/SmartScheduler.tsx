@@ -29,7 +29,13 @@ import {
     getWorkWeekRangeLocal,
     getAgendaRangeLocal,
 } from '../../../utils/dateLocal';
-import { compareBeautyQueueOrder, groupBeautyQueueByCustomer, suggestQueuePrefillTime } from '../../../utils/beautyQueueOrder';
+import {
+    compareBeautyQueueOrder,
+    customerQueueGroupKey,
+    findBeautyAppointmentsSameQueueGroup,
+    groupBeautyQueueByCustomer,
+    suggestQueuePrefillTime,
+} from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import '../ClinicStyles.css';
 import { CLINIC } from '../clinicDesignTokens';
@@ -42,6 +48,7 @@ import {
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
+import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list';
 type GroupMode = 'none' | 'staff' | 'device';
@@ -50,6 +57,78 @@ const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as
 const LS_BEAUTY_SLOT = 'retailex.beauty.slotIntervalMin';
 const LS_BEAUTY_QUEUE = 'retailex.beauty.queueMode';
 const LS_BEAUTY_SEP = 'retailex.beauty.separateLineInvoices';
+
+function parseHhmmToMinutes(raw: string | undefined): number | null {
+    const s = String(raw ?? '').trim();
+    const m = s.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+    return hh * 60 + mm;
+}
+
+function formatMinutesToHhmm(total: number): string {
+    const hh = Math.floor(total / 60);
+    const mm = total % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function mergeConsecutiveCustomerAppointments(appointments: BeautyAppointment[]): BeautyAppointment[] {
+    if (appointments.length <= 1) return appointments;
+    const sorted = [...appointments].sort((a, b) => {
+        const sa = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
+        const sb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
+        if (sa !== sb) return sa - sb;
+        return String(a.id).localeCompare(String(b.id));
+    });
+
+    const result: BeautyAppointment[] = [];
+    for (const apt of sorted) {
+        const start = parseHhmmToMinutes(apt.appointment_time ?? apt.time);
+        if (start === null) {
+            result.push(apt);
+            continue;
+        }
+        const prev = result[result.length - 1];
+        if (!prev) {
+            result.push(apt);
+            continue;
+        }
+        const prevStart = parseHhmmToMinutes(prev.appointment_time ?? prev.time);
+        const prevDuration = Math.max(1, Number(prev.duration) || 30);
+        if (prevStart === null) {
+            result.push(apt);
+            continue;
+        }
+        const prevEnd = prevStart + prevDuration;
+        const sameCustomer = customerQueueGroupKey(prev) === customerQueueGroupKey(apt);
+        const isContiguous = start <= prevEnd;
+        if (!sameCustomer || !isContiguous) {
+            result.push(apt);
+            continue;
+        }
+
+        const mergedStart = Math.min(prevStart, start);
+        const mergedEnd = Math.max(prevEnd, start + Math.max(1, Number(apt.duration) || 30));
+        const services = [
+            ...(prev.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
+            ...(apt.service_name ?? '').split('·').map(s => s.trim()).filter(Boolean),
+        ];
+        const uniqueServices = [...new Set(services)];
+        const merged: BeautyAppointment = {
+            ...prev,
+            appointment_time: formatMinutesToHhmm(mergedStart),
+            time: formatMinutesToHhmm(mergedStart),
+            duration: Math.max(1, mergedEnd - mergedStart),
+            total_price: Number(prev.total_price ?? 0) + Number(apt.total_price ?? 0),
+            service_name: uniqueServices.join(' · '),
+        };
+        result[result.length - 1] = merged;
+    }
+
+    return result;
+}
 
 function readBeautyToolbarPrefs(): { slot: number; queue: boolean; sep: boolean } | null {
     if (typeof window === 'undefined' || !IS_BROWSER) return null;
@@ -119,6 +198,8 @@ export function SmartScheduler() {
     const [priceEditDraft, setPriceEditDraft] = useState('');
     const [priceEditSaving, setPriceEditSaving] = useState(false);
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
+    /** Randevu yan paneli: özet alanları vs. uzmanlık şeması */
+    const [aptDetailTab, setAptDetailTab] = useState<'summary' | 'clinical'>('summary');
 
     // Full-page new appointment state
     const [showNewPage,     setShowNewPage]     = useState(false);
@@ -138,6 +219,7 @@ export function SmartScheduler() {
     const [revertSaving, setRevertSaving] = useState(false);
     const [treatmentDegreeDraft, setTreatmentDegreeDraft] = useState('');
     const [treatmentShotsDraft, setTreatmentShotsDraft] = useState('');
+    const [treatmentDurationDraft, setTreatmentDurationDraft] = useState('');
     const [treatmentFieldsSaving, setTreatmentFieldsSaving] = useState(false);
 
     useEffect(() => {
@@ -148,15 +230,30 @@ export function SmartScheduler() {
         });
     }, [appointments]);
 
+    /** POS tam ekranda `clinical_data` vb. güncellenince düzenlenen randevu satırını tazele */
+    useEffect(() => {
+        setEditingApt(prev => {
+            if (!prev) return null;
+            const next = appointments.find(a => a.id === prev.id);
+            return next ? { ...next } : prev;
+        });
+    }, [appointments]);
+
     useEffect(() => {
         if (!selectedApt) {
             setTreatmentDegreeDraft('');
             setTreatmentShotsDraft('');
+            setTreatmentDurationDraft('');
             return;
         }
         setTreatmentDegreeDraft(String(selectedApt.treatment_degree ?? ''));
         setTreatmentShotsDraft(String(selectedApt.treatment_shots ?? ''));
-    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots]);
+        setTreatmentDurationDraft(
+            Number.isFinite(Number(selectedApt.duration)) && Number(selectedApt.duration) > 0
+                ? String(Math.round(Number(selectedApt.duration)))
+                : '',
+        );
+    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots, selectedApt?.duration]);
 
     useEffect(() => {
         loadSpecialists();
@@ -334,6 +431,10 @@ export function SmartScheduler() {
         return () => window.removeEventListener('beauty-open-new-appointment', onShellOpen);
     }, []);
 
+    useEffect(() => {
+        setAptDetailTab('summary');
+    }, [selectedApt?.id]);
+
     const openExistingAptInPos = (apt: BeautyAppointment) => {
         setPrefillTime((apt.appointment_time ?? apt.time ?? '09:00').slice(0, 5));
         setNewPrefillDate(beautyAppointmentDateKey(apt) || null);
@@ -348,10 +449,9 @@ export function SmartScheduler() {
     const isBeautyAppointmentDone = (apt: BeautyAppointment) =>
         apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
 
-    /** Tamamlanan: sağ detay paneli; diğerleri: POS tam ekran */
+    /** Takvim kartı: her durumda yan detay paneli (POS panelden açılır) */
     const handleAppointmentPrimaryClick = (apt: BeautyAppointment) => {
-        if (isBeautyAppointmentDone(apt)) setSelectedApt(apt);
-        else openExistingAptInPos(apt);
+        setSelectedApt(apt);
     };
 
     const openAppointmentDetailPanel = (apt: BeautyAppointment, e?: React.MouseEvent) => {
@@ -379,7 +479,23 @@ export function SmartScheduler() {
     };
 
     const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
-        await updateAppointmentStatus(apt.id, newStatus);
+        if (newStatus === AppointmentStatus.CANCELLED) {
+            const dayYmd = beautyAppointmentDateKey(apt);
+            const dayPool = dayYmd
+                ? appointments.filter(a => beautyAppointmentDateKey(a) === dayYmd)
+                : appointments;
+            const siblings = findBeautyAppointmentsSameQueueGroup(
+                apt,
+                dayPool.length > 0 ? dayPool : [apt],
+            );
+            const targets = siblings.length > 0 ? siblings : [apt];
+            for (const sib of targets) {
+                if (!sib?.id) continue;
+                await updateAppointmentStatus(sib.id, AppointmentStatus.CANCELLED);
+            }
+        } else {
+            await updateAppointmentStatus(apt.id, newStatus);
+        }
         if (newStatus === AppointmentStatus.COMPLETED) {
             setSelectedApt({ ...apt, status: newStatus });
         } else {
@@ -397,12 +513,90 @@ export function SmartScheduler() {
 
     const saveTreatmentFieldsFromPanel = async () => {
         if (!selectedApt) return;
+        const durationNum = Number(treatmentDurationDraft);
+        const normalizedDuration =
+            Number.isFinite(durationNum) && durationNum > 0 ? Math.round(durationNum) : null;
         setTreatmentFieldsSaving(true);
         try {
-            await updateAppointment(selectedApt.id, {
+            const basePatch = {
                 treatment_degree: treatmentDegreeDraft.trim() || null,
                 treatment_shots: treatmentShotsDraft.trim() || null,
+            };
+            const canDistributeGroupDuration =
+                !beautySeparateLineInvoices && normalizedDuration !== null && normalizedDuration > 0;
+
+            if (!canDistributeGroupDuration) {
+                await updateAppointment(selectedApt.id, {
+                    ...basePatch,
+                    duration: normalizedDuration,
+                });
+                return;
+            }
+
+            const dayYmd = beautyAppointmentDateKey(selectedApt);
+            const dayPool = dayYmd
+                ? appointments.filter(a => beautyAppointmentDateKey(a) === dayYmd)
+                : appointments;
+            const siblings = findBeautyAppointmentsSameQueueGroup(
+                selectedApt,
+                dayPool.length > 0 ? dayPool : [selectedApt],
+            );
+            if (siblings.length <= 1) {
+                await updateAppointment(selectedApt.id, {
+                    ...basePatch,
+                    duration: normalizedDuration,
+                });
+                return;
+            }
+
+            const sortedSiblings = [...siblings].sort((a, b) => {
+                const sa = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
+                const sb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
+                if (sa !== sb) return sa - sb;
+                return String(a.id).localeCompare(String(b.id));
             });
+            const weights = sortedSiblings.map((apt) => Math.max(1, Math.round(Number(apt.duration) || 30)));
+            const sumW = weights.reduce((s, w) => s + w, 0);
+            const target = Math.max(sortedSiblings.length, normalizedDuration);
+            const parts = weights.map((w) => Math.max(1, Math.floor((target * w) / sumW)));
+            let diff = target - parts.reduce((s, d) => s + d, 0);
+            const idxOrder = weights
+                .map((w, i) => ({ w, i }))
+                .sort((a, b) => b.w - a.w)
+                .map(x => x.i);
+            let k = 0;
+            while (diff > 0) {
+                parts[idxOrder[k % idxOrder.length]]++;
+                diff--;
+                k++;
+            }
+            while (diff < 0) {
+                const j = parts.findIndex(d => d > 1);
+                if (j < 0) break;
+                parts[j]--;
+                diff++;
+            }
+
+            const firstStart =
+                parseHhmmToMinutes(sortedSiblings[0]?.appointment_time ?? sortedSiblings[0]?.time) ??
+                parseHhmmToMinutes(selectedApt.appointment_time ?? selectedApt.time) ??
+                9 * 60;
+            let cursor = firstStart;
+            for (let i = 0; i < sortedSiblings.length; i++) {
+                const sib = sortedSiblings[i];
+                const nextDuration = Math.max(1, parts[i] ?? 1);
+                const patch: Partial<BeautyAppointment> = {
+                    duration: nextDuration,
+                    appointment_time: formatMinutesToHhmm(cursor),
+                    time: formatMinutesToHhmm(cursor),
+                };
+                if (sib.id === selectedApt.id) {
+                    patch.treatment_degree = basePatch.treatment_degree;
+                    patch.treatment_shots = basePatch.treatment_shots;
+                }
+                await updateAppointment(sib.id, patch);
+                cursor += nextDuration;
+            }
         } catch (e: unknown) {
             logger.crudError('SmartScheduler', 'saveTreatmentFields', e);
         } finally {
@@ -1103,6 +1297,7 @@ export function SmartScheduler() {
                                 timeSlots={timeSlots}
                                 queueMode={beautyQueueMode}
                                 queueSnapMinutes={schedulerSlotMin}
+                                mergeConsecutiveByCustomer={!beautySeparateLineInvoices}
                                 appointmentsOverride={visibleAppointments}
                                 onAppointmentClick={handleAppointmentPrimaryClick}
                                 resourceDragKind="staff"
@@ -1136,7 +1331,12 @@ export function SmartScheduler() {
                                             ? !a.device_id
                                             : String(a.device_id ?? '') === String(device.id))
                                     );
-                                    const devQueueRows = beautyQueueMode ? groupBeautyQueueByCustomer(devApts).length : devApts.length;
+                                    const devTimelineApts = beautyQueueMode || beautySeparateLineInvoices
+                                        ? devApts
+                                        : mergeConsecutiveCustomerAppointments(devApts);
+                                    const devQueueRows = beautyQueueMode
+                                        ? groupBeautyQueueByCustomer(devApts).length
+                                        : devTimelineApts.length;
                                     return (
                                         <div key={device.id} style={{ flexShrink: 0, width: 260, background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                             <div style={{ padding: '10px 14px', borderBottom: '1px solid #e8e4f0', background: '#f5f3ff', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1185,7 +1385,7 @@ export function SmartScheduler() {
                                                     />
                                                 ) : (() => {
                                                     const SLOT_H = 52;
-                                                    const spanPlacements = buildBeautySpanPlacements(devApts, timeSlots, schedulerSlotMin, slotBucket);
+                                                    const spanPlacements = buildBeautySpanPlacements(devTimelineApts, timeSlots, schedulerSlotMin, slotBucket);
                                                     return (
                                                         <div style={{ display: 'flex', minHeight: timeSlots.length * SLOT_H }}>
                                                             <div style={{ width: 44, flexShrink: 0, borderRight: '1px solid #f3f4f6' }}>
@@ -1469,7 +1669,15 @@ export function SmartScheduler() {
                     onClick={() => setSelectedApt(null)}
                 >
                     <div
-                        style={{ width: 360, height: '100%', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+                        style={{
+                            width: 'min(100vw, 520px)',
+                            height: '100%',
+                            background: '#fff',
+                            boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                        }}
                         onClick={e => e.stopPropagation()}
                     >
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f7f6fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1480,11 +1688,48 @@ export function SmartScheduler() {
                             <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>
                         <div
-                            style={{ padding: 20, flex: 1, minHeight: 0, overflowY: 'auto' }}
+                            style={{
+                                display: 'flex',
+                                gap: 8,
+                                padding: '10px 20px 12px',
+                                borderBottom: '1px solid #e5e7eb',
+                                background: '#fafafa',
+                                flexShrink: 0,
+                            }}
+                        >
+                            {(['summary', 'clinical'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    onClick={() => setAptDetailTab(tab)}
+                                    style={{
+                                        flex: 1,
+                                        padding: '8px 10px',
+                                        borderRadius: 8,
+                                        border: aptDetailTab === tab ? '1px solid #6366f1' : '1px solid #e5e7eb',
+                                        background: aptDetailTab === tab ? '#eef2ff' : '#fff',
+                                        color: aptDetailTab === tab ? '#312e81' : '#6b7280',
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {tab === 'summary' ? tm('bPanelTabSummary') : tm('bPanelTabClinical')}
+                                </button>
+                            ))}
+                        </div>
+                        <div
+                            style={{ padding: aptDetailTab === 'clinical' ? 12 : 20, flex: 1, minHeight: 0, overflowY: 'auto' }}
                             className="custom-scrollbar"
                         >
+                            {aptDetailTab === 'clinical' ? (
+                                <ClinicDetailClinicalEmbed
+                                    appointment={{ id: selectedApt.id, clinical_data: selectedApt.clinical_data }}
+                                />
+                            ) : (
+                                <>
                             <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelOperationDetails')}</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                                 {(() => {
                                     const dk = beautyAppointmentDateKey(selectedApt);
                                     let dateShown = '—';
@@ -1534,7 +1779,7 @@ export function SmartScheduler() {
                                                 },
                                                 ...(created ? [{ label: tm('createdAt'), value: created }] : []),
                                             ].map(({ label, value }) => (
-                                                <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
+                                                <div key={label} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '8px 10px' }}>
                                                     <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
                                                     <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</div>
                                                 </div>
@@ -1543,29 +1788,34 @@ export function SmartScheduler() {
                                     );
                                 })()}
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
                                 {[
                                     { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
                                     { label: tm('bDuration'),      value: `${selectedApt.duration ?? 30}${tm('bDkSuffix')}` },
                                     { label: tm('bDeviceView'),    value: selectedApt.device_name ?? '—' },
                                     { label: tm('bPriceHeader'),   value: (selectedApt.total_price ?? 0) > 0 ? formatMoneyAmount(selectedApt.total_price!, { minFrac: 0, maxFrac: 0 }) : '—' },
                                 ].map(({ label, value }) => (
-                                    <div key={label} style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px' }}>
+                                    <div key={label} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '8px 10px' }}>
                                         <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{label}</p>
                                         <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
                                     </div>
                                 ))}
                             </div>
-                            <div style={{ marginBottom: 18 }}>
+                            <div style={{ marginBottom: 16 }}>
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelTreatmentFieldsTitle')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                     <div>
-                                        <label htmlFor="beauty-panel-treatment-degree" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentDegree')}</label>
+                                        <label htmlFor="beauty-panel-treatment-duration" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>
+                                            {tm('bDuration')} ({tm('bDkSuffix')})
+                                        </label>
                                         <input
-                                            id="beauty-panel-treatment-degree"
-                                            type="text"
-                                            value={treatmentDegreeDraft}
-                                            onChange={e => setTreatmentDegreeDraft(e.target.value)}
+                                            id="beauty-panel-treatment-duration"
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            inputMode="numeric"
+                                            value={treatmentDurationDraft}
+                                            onChange={e => setTreatmentDurationDraft(e.target.value)}
                                             autoComplete="off"
                                             style={{
                                                 width: '100%',
@@ -1580,27 +1830,50 @@ export function SmartScheduler() {
                                             }}
                                         />
                                     </div>
-                                    <div>
-                                        <label htmlFor="beauty-panel-treatment-shots" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentShots')}</label>
-                                        <input
-                                            id="beauty-panel-treatment-shots"
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={treatmentShotsDraft}
-                                            onChange={e => setTreatmentShotsDraft(e.target.value)}
-                                            autoComplete="off"
-                                            style={{
-                                                width: '100%',
-                                                boxSizing: 'border-box',
-                                                border: '1px solid #e5e7eb',
-                                                borderRadius: 6,
-                                                padding: '8px 10px',
-                                                fontSize: 13,
-                                                fontWeight: 600,
-                                                color: '#111827',
-                                                outline: 'none',
-                                            }}
-                                        />
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                        <div>
+                                            <label htmlFor="beauty-panel-treatment-degree" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentDegree')}</label>
+                                            <input
+                                                id="beauty-panel-treatment-degree"
+                                                type="text"
+                                                value={treatmentDegreeDraft}
+                                                onChange={e => setTreatmentDegreeDraft(e.target.value)}
+                                                autoComplete="off"
+                                                style={{
+                                                    width: '100%',
+                                                    boxSizing: 'border-box',
+                                                    border: '1px solid #e5e7eb',
+                                                    borderRadius: 6,
+                                                    padding: '8px 10px',
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    color: '#111827',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="beauty-panel-treatment-shots" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentShots')}</label>
+                                            <input
+                                                id="beauty-panel-treatment-shots"
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={treatmentShotsDraft}
+                                                onChange={e => setTreatmentShotsDraft(e.target.value)}
+                                                autoComplete="off"
+                                                style={{
+                                                    width: '100%',
+                                                    boxSizing: 'border-box',
+                                                    border: '1px solid #e5e7eb',
+                                                    borderRadius: 6,
+                                                    padding: '8px 10px',
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    color: '#111827',
+                                                    outline: 'none',
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                     <button
                                         type="button"
@@ -1623,12 +1896,12 @@ export function SmartScheduler() {
                                 </div>
                             </div>
                             {selectedApt.notes && (
-                                <div style={{ background: '#f7f6fb', borderRadius: 6, padding: '10px 12px', marginBottom: 18 }}>
+                                <div style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
                                     <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{tm('bNotes')}</p>
                                     <p style={{ fontSize: 12, color: '#374151' }}>{selectedApt.notes}</p>
                                 </div>
                             )}
-                            <div style={{ marginBottom: 14 }}>
+                            <div style={{ marginBottom: 10 }}>
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bUpdateStatus')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {([
@@ -1646,11 +1919,12 @@ export function SmartScheduler() {
                                                 disabled={isCurrent}
                                                 style={{
                                                     width: '100%', padding: '9px 14px', borderRadius: 6, border: 'none',
-                                                    background: isCurrent ? opt.bg : '#f9fafb',
+                                                    background: isCurrent ? opt.bg : '#fff',
+                                                    border: isCurrent ? `1px solid ${opt.color}33` : '1px solid #eceff3',
                                                     color: isCurrent ? opt.color : '#6b7280',
                                                     fontSize: 12, fontWeight: 700, cursor: isCurrent ? 'default' : 'pointer',
                                                     textAlign: 'left',
-                                                    outline: isCurrent ? `2px solid ${opt.color}40` : 'none',
+                                                    outline: 'none',
                                                     transition: 'all 0.1s',
                                                 }}
                                             >
@@ -1660,28 +1934,37 @@ export function SmartScheduler() {
                                     })}
                                 </div>
                             </div>
-                            {!isBeautyAppointmentDone(selectedApt) ? (
-                                <div style={{ marginBottom: 4 }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => openExistingAptInPos(selectedApt)}
-                                        style={{
-                                            width: '100%',
-                                            height: 40,
-                                            borderRadius: 8,
-                                            border: '1px solid #a5b4fc',
-                                            background: '#eef2ff',
-                                            color: '#312e81',
-                                            fontSize: 13,
-                                            fontWeight: 800,
-                                            cursor: 'pointer',
-                                        }}
-                                    >
-                                        {tm('bCardDetailView')}
-                                    </button>
-                                </div>
-                            ) : null}
+                                </>
+                            )}
                         </div>
+                        {!isBeautyAppointmentDone(selectedApt) ? (
+                            <div
+                                style={{
+                                    padding: '12px 20px 16px',
+                                    borderTop: '1px solid #e5e7eb',
+                                    background: '#fafafa',
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => openExistingAptInPos(selectedApt)}
+                                    style={{
+                                        width: '100%',
+                                        height: 40,
+                                        borderRadius: 8,
+                                        border: '1px solid #a5b4fc',
+                                        background: '#eef2ff',
+                                        color: '#312e81',
+                                        fontSize: 13,
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    {tm('bCardOpenInPos')}
+                                </button>
+                            </div>
+                        ) : null}
                         {(() => {
                             const done =
                                 selectedApt.status === AppointmentStatus.COMPLETED || selectedApt.status === 'completed';
@@ -1714,7 +1997,7 @@ export function SmartScheduler() {
                                             cursor: 'pointer',
                                         }}
                                     >
-                                        {tm('bCardDetailView')}
+                                        {tm('bCardOpenInPos')}
                                     </button>
                                     <p style={{ fontSize: 10, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>{tm('bPanelRevertCompletionHint')}</p>
                                     <button

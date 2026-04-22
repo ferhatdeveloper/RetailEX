@@ -235,6 +235,8 @@ export interface Translations {
     /** Lazer / cihaz fiş satırı */
     treatmentDegreeLabel: string;
     treatmentShotsLabel: string;
+    /** Randevu / satış notu (fiş üst bilgisi) */
+    noteLabel: string;
     subtotal: string;
     discount: string;
     campaign: string;
@@ -256,6 +258,8 @@ export interface Translations {
   autoPrintReceipt: string;
   /** Fiş önizleme: yazdırmadan kapat */
   closeWithoutPrinting: string;
+  /** Ödeme modalı: fiş önizlemesi göster (checkbox) */
+  showReceiptPreviewLabel: string;
   /** Market POS ödeme: otomatik yazdırma yok, fiş ekranında yazdır */
   posReceiptDeferredPrintHint: string;
   /** Ödeme modalı: hesabı kapatmadan yazdır (Restoran) */
@@ -1965,6 +1969,7 @@ export const translations: any = {
       operation: 'İŞLEM',
       treatmentDegreeLabel: 'Derece',
       treatmentShotsLabel: 'Atış',
+      noteLabel: 'NOT',
       subtotal: 'ARA TOPLAM',
       discount: 'İNDİRİM',
       campaign: 'KAMPANYA',
@@ -1985,6 +1990,7 @@ export const translations: any = {
     okLabel: 'Tamam',
     autoPrintReceipt: 'Fişi Otomatik Yazdır',
     closeWithoutPrinting: 'Yazdırmadan kapat',
+    showReceiptPreviewLabel: 'Fiş önizlemesi göster',
     posReceiptDeferredPrintHint:
       'Fiş yazdırma satıştan sonra açılan fiş ekranındaki «Yazdır» ile yapılır; çift yazdırma ve ekstra WebView penceresi oluşmaz.',
     posPrintDraftHint: 'Hesabı kapatmadan adisyon: alttaki «Yazdır» doğrudan yazıcıya gönderir (ekranda önizleme yok).',
@@ -4079,6 +4085,7 @@ export const translations: any = {
       operation: 'SERVICE',
       treatmentDegreeLabel: 'Degree',
       treatmentShotsLabel: 'Shots',
+      noteLabel: 'NOTE',
       subtotal: 'SUBTOTAL',
       discount: 'DISCOUNT',
       campaign: 'CAMPAIGN',
@@ -4099,6 +4106,7 @@ export const translations: any = {
     okLabel: 'OK',
     autoPrintReceipt: 'Auto Print Receipt',
     closeWithoutPrinting: 'Close without printing',
+    showReceiptPreviewLabel: 'Show receipt preview',
     posReceiptDeferredPrintHint:
       'Print the receipt from the «Print» button on the receipt screen after the sale; this avoids duplicate printing and extra WebView dialogs.',
     posPrintDraftHint: '«Print» below sends the bill directly to the printer (no on-screen preview).',
@@ -5319,7 +5327,7 @@ export const translations: any = {
     totalProduct: 'إجمالي المنتجات',
     totalProductsDashboard: 'Toplam Ürün',
     totalPurchases: 'إجمالي المشتريات',
-    totalRevenue: 'Toplam Ciro',
+    totalRevenue: 'إجمالي الإيرادات',
     totalRevenueLabel: 'إجمالي الإيرادات',
     totalSale: 'إجمالي البيع',
     totalSales: 'المجموع',
@@ -5411,6 +5419,7 @@ export const translations: any = {
       operation: 'الخدمة',
       treatmentDegreeLabel: 'الدرجة',
       treatmentShotsLabel: 'الطلقات',
+      noteLabel: 'ملاحظة',
       subtotal: 'المجموع الفرعي',
       discount: 'الخصم',
       campaign: 'الحملة',
@@ -5431,6 +5440,7 @@ export const translations: any = {
     okLabel: 'تم',
     autoPrintReceipt: 'طباعة الإيصال تلقائياً',
     closeWithoutPrinting: 'إغلاق بدون طباعة',
+    showReceiptPreviewLabel: 'عرض معاينة الإيصال',
     posReceiptDeferredPrintHint:
       'اطبع الإيصال من زر «طباعة» في شاشة الإيصال بعد البيع؛ يمنع الطباعة المزدوجة ونوافذ WebView الإضافية.',
     posPrintDraftHint: '«طباعة» في الأسفل ترسل مباشرة للطابعة دون معاينة على الشاشة.',
@@ -6791,6 +6801,7 @@ export const translations: any = {
       operation: 'خزمەت',
       treatmentDegreeLabel: 'پلە',
       treatmentShotsLabel: 'تەقینەوە',
+      noteLabel: 'تێبینی',
       subtotal: 'کۆی گشتی',
       discount: 'داشکاندن',
       campaign: 'کەمپەین',
@@ -6811,6 +6822,7 @@ export const translations: any = {
     okLabel: 'باشە',
     autoPrintReceipt: 'چاپکردنی وەسڵ بە خۆکار',
     closeWithoutPrinting: 'داخستن بەبێ چاپ',
+    showReceiptPreviewLabel: 'پێشبینینی وەسڵ پیشان بدە',
     posReceiptDeferredPrintHint:
       'چاپکردنی وەسڵ لە دوای فرۆشتن لە شاشەی وەسڵ بە دوگمەی «چاپ»؛ دووبارە چاپ و پەنجەرەی زیادەی WebView ڕێگە دەگرێت.',
     posPrintDraftHint: '«چاپ» ڕاستەوخۆ بۆ چاپکەر دەنێرێت (بێ پێشبینین لەسەر شاشە).',

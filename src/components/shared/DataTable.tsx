@@ -1,6 +1,8 @@
 ﻿// Advanced DataTable Component - Enterprise Grade
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { moduleTranslations } from '../../locales/module-translations';
 import { 
   ChevronDown, 
   ChevronUp,
@@ -67,7 +69,17 @@ export function DataTable<T extends Record<string, any>>({
   emptyMessage = 'Veri bulunamadı',
   className = ''
 }: DataTableProps<T>) {
+  const { language, tm: globalTm } = useLanguage();
+  const tm = useCallback(
+    (key: string) => moduleTranslations[key]?.[language as 'tr' | 'en' | 'ar' | 'ku'] || globalTm(key),
+    [language, globalTm]
+  );
+
   const [columns, setColumns] = useState(initialColumns);
+
+  useEffect(() => {
+    setColumns(initialColumns);
+  }, [initialColumns]);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -254,7 +266,7 @@ export function DataTable<T extends Record<string, any>>({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Tabloda ara..."
+                placeholder={tm('dataTableSearchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -273,7 +285,7 @@ export function DataTable<T extends Record<string, any>>({
           {/* Selected count */}
           {selectable && selectedRows.size > 0 && (
             <div className="text-sm text-gray-600">
-              {selectedRows.size} seçili
+              {tm('dataTableSelectedCount').replace('{n}', String(selectedRows.size))}
             </div>
           )}
         </div>
@@ -286,7 +298,7 @@ export function DataTable<T extends Record<string, any>>({
               className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
             >
               <Download className="h-4 w-4" />
-              <span>Export</span>
+              <span>{tm('dataTableExport')}</span>
             </button>
           )}
 
@@ -295,7 +307,7 @@ export function DataTable<T extends Record<string, any>>({
             className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm"
           >
             <Settings className="h-4 w-4" />
-            <span>Sütunlar</span>
+            <span>{tm('dataTableColumns')}</span>
           </button>
         </div>
       </div>
@@ -303,7 +315,7 @@ export function DataTable<T extends Record<string, any>>({
       {/* Column Settings Dropdown */}
       {showColumnSettings && (
         <div className="absolute right-4 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-3">
-          <div className="text-sm font-medium text-gray-900 mb-2">Sütun Görünürlüğü</div>
+          <div className="text-sm font-medium text-gray-900 mb-2">{tm('dataTableColumnVisibility')}</div>
           <div className="space-y-1 max-h-64 overflow-auto">
             {columns.map(col => (
               <label
@@ -409,7 +421,7 @@ export function DataTable<T extends Record<string, any>>({
                 >
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                    <span>Yükleniyor...</span>
+                    <span>{tm('dataTableLoading')}</span>
                   </div>
                 </td>
               </tr>
@@ -465,9 +477,9 @@ export function DataTable<T extends Record<string, any>>({
       {/* Footer */}
       <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-between text-sm text-gray-600">
         <div>
-          Toplam {sortedData.length} kayıt
+          {tm('dataTableFooterTotal').replace('{n}', String(sortedData.length))}
           {searchQuery || Object.keys(filters).length > 0 ? (
-            <span> ({data.length} kayıttan filtrelendi)</span>
+            <span> {tm('dataTableFooterFiltered').replace('{total}', String(data.length))}</span>
           ) : null}
         </div>
       </div>

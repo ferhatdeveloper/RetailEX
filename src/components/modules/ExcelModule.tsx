@@ -1,7 +1,7 @@
 /**
  * ExcelModule - Kapsamlı Excel İçe/Dışa Aktarım Modülü
  * Desteklenen varlıklar: Ürünler, Cari Hesaplar, Varyantlar, Hizmet Kartları,
- *                        Tedarikçiler, Kategoriler, Stok Hareketleri
+ *                        Tedarikçiler, Kategoriler, Güzellik Randevuları, Güzellik Tahsilatları, Stok Hareketleri
  */
 
 import { useState, useCallback } from 'react';
@@ -12,7 +12,7 @@ import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
   AlertCircle, Loader2, Package, Users, Layers, Wrench,
-  Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info
+  Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info, Calendar, CreditCard
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { productAPI } from '../../services/api/products';
@@ -27,10 +27,19 @@ import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import { useProductStore } from '../../store/useProductStore';
 import { useCustomerStore } from '../../store/useCustomerStore';
 import { useRestaurantStore } from '../restaurant/store/useRestaurantStore';
+import { beautyService } from '../../services/beautyService';
 
 // ─── Tip tanımları ────────────────────────────────────────────────────────────
 
-type EntityType = 'products' | 'current-accounts' | 'variants' | 'services' | 'suppliers' | 'categories';
+type EntityType =
+  | 'products'
+  | 'current-accounts'
+  | 'variants'
+  | 'services'
+  | 'suppliers'
+  | 'categories'
+  | 'beauty-appointments'
+  | 'beauty-sales';
 
 interface ImportResult {
   total: number;
@@ -235,6 +244,64 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
       { 'Kategori Kodu*': 'KAT-003', 'Kategori Adı*': 'Aksesuar', 'Açıklama': 'Aksesuar ürünleri', 'Aktif (E/H)': 'E' },
     ],
   },
+  'beauty-appointments': {
+    label: 'Güzellik Randevuları',
+    sheetName: 'Güzellik Randevuları',
+    sample: [
+      {
+        'Randevu ID': '',
+        'Müşteri Kodu': 'C-001',
+        'Müşteri Telefon': '',
+        'Müşteri Adı': '',
+        'Hizmet Adı*': 'Cilt Bakımı',
+        'Hizmet Kodu': '',
+        'Tarih*': '2026-04-20',
+        'Saat*': '10:30',
+        'Süre (dk)': 45,
+        'Uzman Adı': 'Ayşe Yılmaz',
+        'Durum': 'scheduled',
+        'Tutar': 1500,
+        'Notlar': 'İlk seans',
+      },
+      {
+        'Randevu ID': '',
+        'Müşteri Kodu': '',
+        'Müşteri Telefon': '+90 532 000 0000',
+        'Müşteri Adı': '',
+        'Hizmet Adı*': 'Lazer Epilasyon',
+        'Hizmet Kodu': '',
+        'Tarih*': '2026-04-21',
+        'Saat*': '14:00',
+        'Süre (dk)': 30,
+        'Uzman Adı': '',
+        'Durum': 'confirmed',
+        'Tutar': 0,
+        'Notlar': '',
+      },
+    ],
+  },
+  'beauty-sales': {
+    label: 'Güzellik Tahsilatları',
+    sheetName: 'Tahsilat Ozeti',
+    sample: [
+      {
+        'Satış ID': '(dışa aktarımda dolu)',
+        'Fatura No': 'BEA-2026-XXXX',
+        'Tarih': '2026-04-19 14:30:00',
+        'Müşteri Kodu': 'C-001',
+        'Müşteri Adı': 'Örnek Müşteri',
+        'Ara Toplam': 1000,
+        'İndirim': 0,
+        'KDV': 180,
+        'Toplam': 1180,
+        'Ödenen': 1180,
+        'Kalan': 0,
+        'Ödeme Şekli': 'cash',
+        'Ödeme Durumu': 'paid',
+        'Notlar': '',
+      },
+    ],
+  },
 };
 
 // ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
@@ -267,6 +334,12 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
   } else if (entityType === 'categories') {
     keyMap['Kategori Kodu'] = 'Kategori Kodu*';
     keyMap['Kategori Adı'] = 'Kategori Adı*';
+  } else if (entityType === 'beauty-appointments') {
+    keyMap['Hizmet Adı'] = 'Hizmet Adı*';
+    keyMap['Tarih'] = 'Tarih*';
+    keyMap['Saat'] = 'Saat*';
+  } else if (entityType === 'beauty-sales') {
+    /* yalnızca dışa aktarım */
   }
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(row)) {
@@ -330,6 +403,70 @@ function strFromExcel(val: any): string {
   return String(val ?? '').trim();
 }
 
+/** Excel hücresinden YYYY-MM-DD (veya dd.mm.yyyy, seri sayı) */
+function parseAppointmentDate(val: unknown): string | null {
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return val.toISOString().slice(0, 10);
+  }
+  const s = strFromExcel(val);
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const tr = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (tr) {
+    const d = tr[1].padStart(2, '0');
+    const m = tr[2].padStart(2, '0');
+    const y = tr[3];
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof val === 'number' && Number.isFinite(val) && val > 20000 && val < 60000) {
+    const epoch = new Date(1899, 11, 30);
+    const dt = new Date(epoch.getTime() + val * 86400000);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+/** Excel hücresinden HH:mm:ss veya HH:mm (TIME / kesir) */
+function parseAppointmentTime(val: unknown): string | null {
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    const hh = val.getHours();
+    const mm = val.getMinutes();
+    const ss = val.getSeconds();
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  }
+  const s = strFromExcel(val);
+  if (s) {
+    const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      const hh = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+      const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+      const ss = m[3] != null ? Math.min(59, Math.max(0, parseInt(m[3], 10))) : 0;
+      return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    }
+  }
+  if (typeof val === 'number' && Number.isFinite(val) && val >= 0 && val < 1) {
+    const secs = Math.round(val * 86400) % 86400;
+    const hh = Math.floor(secs / 3600);
+    const mm = Math.floor((secs % 3600) / 60);
+    const sec = secs % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+function formatAppointmentTimeForExcel(t: unknown): string {
+  if (t == null || t === '') return '';
+  const s = String(t).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) {
+    const hh = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const mm = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+  return s.slice(0, 8);
+}
+
 /** Excel satırından ürün görsel adresi — `rex_{firma}_products.image_url` alanına yazılır (POS/restoran önce image_url_cdn kullanır). */
 function productImageUrlFromExcelRow(row: Record<string, any>): string {
   const keys = [
@@ -364,6 +501,20 @@ async function downloadExcel(sheetName: string, data: any[], fileName: string) {
   });
   if (!savePath) return; // kullanıcı iptal etti
 
+  await writeFile(savePath, buf);
+}
+
+function sheetColWidths(keys: string[], maxW = 34): { wch: number }[] {
+  return keys.map((k) => ({ wch: Math.min(Math.max(k.length + 2, 10), maxW) }));
+}
+
+async function downloadExcelWorkbook(wb: XLSX.WorkBook, fileName: string) {
+  const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const savePath = await save({
+    defaultPath: fileName,
+    filters: [{ name: 'Excel Dosyası', extensions: ['xlsx'] }],
+  });
+  if (!savePath) return;
   await writeFile(savePath, buf);
 }
 
@@ -478,6 +629,141 @@ async function exportCategories(): Promise<void> {
     'Aktif (E/H)': r.is_active ? 'E' : 'H',
   }));
   await downloadExcel('Kategoriler', data, `Kategoriler_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+async function exportBeautyAppointments(): Promise<void> {
+  const end = new Date();
+  end.setDate(end.getDate() + 366);
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 5);
+  const startStr = start.toISOString().slice(0, 10);
+  const endStr = end.toISOString().slice(0, 10);
+  const [list, customers, services] = await Promise.all([
+    beautyService.getAppointmentsInRange(startStr, endStr),
+    beautyService.getCustomers(),
+    beautyService.getServices(),
+  ]);
+  const codeByCustomerId = new Map<string, string>();
+  const phoneByCustomerId = new Map<string, string>();
+  for (const c of customers) {
+    codeByCustomerId.set(String(c.id), String(c.code || '').trim());
+    phoneByCustomerId.set(String(c.id), String(c.phone || '').trim());
+  }
+  const svcMeta = new Map<string, { code: string }>();
+  for (const s of services) {
+    const r = s as Record<string, unknown>;
+    const code =
+      r.code != null
+        ? String(r.code).trim()
+        : r.product_code != null
+          ? String(r.product_code).trim()
+          : '';
+    svcMeta.set(String(s.id), { code });
+  }
+  if (list.length === 0) {
+    throw new Error('Dışa aktarılacak randevu bulunamadı (son 5 yıl ile bir yıl ileri aralığında).');
+  }
+  const data = list.map((a) => {
+    const cid = String(a.customer_id ?? a.client_id ?? '');
+    const svc = a.service_id ? svcMeta.get(String(a.service_id)) : undefined;
+    const ymd = String(a.date ?? a.appointment_date ?? '').slice(0, 10);
+    return {
+      'Randevu ID': a.id,
+      'Müşteri Kodu': codeByCustomerId.get(cid) ?? '',
+      'Müşteri Telefon': phoneByCustomerId.get(cid) ?? '',
+      'Müşteri Adı': a.customer_name ?? '',
+      'Hizmet Adı*': a.service_name ?? '',
+      'Hizmet Kodu': svc?.code ?? '',
+      'Tarih*': ymd,
+      'Saat*': formatAppointmentTimeForExcel(a.time ?? a.appointment_time),
+      'Süre (dk)': a.duration ?? 30,
+      'Uzman Adı': a.specialist_name ?? '',
+      'Durum': String(a.status ?? 'scheduled'),
+      'Tutar': Number(a.total_price ?? 0),
+      'Notlar': a.notes ?? '',
+    };
+  });
+  await downloadExcel(
+    'Güzellik Randevuları',
+    data,
+    `Guzellik_Randevular_${new Date().toISOString().split('T')[0]}.xlsx`
+  );
+}
+
+async function exportBeautySales(): Promise<void> {
+  const end = new Date();
+  const endStr = end.toISOString().slice(0, 10);
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 5);
+  const startStr = start.toISOString().slice(0, 10);
+  const sales = await beautyService.getSalesWithItemsForExportRange(startStr, endStr);
+  if (sales.length === 0) {
+    throw new Error('Dışa aktarılacak güzellik tahsilatı bulunamadı (son 5 yıl).');
+  }
+
+  const summary = sales.map((s) => {
+    const ext = s as { customer_code?: string };
+    const created = s.created_at ? String(s.created_at).replace('T', ' ').slice(0, 19) : '';
+    return {
+      'Satış ID': s.id,
+      'Fatura No': s.invoice_number ?? '',
+      'Tarih': created,
+      'Müşteri Kodu': ext.customer_code ?? '',
+      'Müşteri Adı': s.customer_name ?? '',
+      'Ara Toplam': Number(s.subtotal ?? 0),
+      'İndirim': Number(s.discount ?? 0),
+      'KDV': Number(s.tax ?? 0),
+      'Toplam': Number(s.total ?? 0),
+      'Ödenen': Number(s.paid_amount ?? 0),
+      'Kalan': Number(s.remaining_amount ?? 0),
+      'Ödeme Şekli': s.payment_method ?? '',
+      'Ödeme Durumu': s.payment_status ?? '',
+      'Notlar': s.notes ?? '',
+    };
+  });
+
+  const itemHeader = {
+    'Satış ID': '',
+    'Fatura No': '',
+    'Kalem Adı': '',
+    'Tür': '',
+    'Miktar': '',
+    'Birim Fiyat': '',
+    'İndirim': '',
+    'Satır Toplamı': '',
+    'Komisyon': '',
+  };
+  const itemRows: Record<string, string | number>[] = [];
+  for (const s of sales) {
+    const inv = s.invoice_number ?? '';
+    for (const it of s.items ?? []) {
+      itemRows.push({
+        'Satış ID': s.id,
+        'Fatura No': inv,
+        'Kalem Adı': it.name ?? '',
+        'Tür': it.item_type ?? '',
+        'Miktar': Number(it.quantity ?? 0),
+        'Birim Fiyat': Number(it.unit_price ?? 0),
+        'İndirim': Number(it.discount ?? 0),
+        'Satır Toplamı': Number(it.total ?? 0),
+        'Komisyon': Number(it.commission_amount ?? 0),
+      });
+    }
+  }
+  const itemsSheetData = itemRows.length > 0 ? itemRows : [itemHeader];
+
+  const wb = XLSX.utils.book_new();
+  const wsSummary = XLSX.utils.json_to_sheet(summary);
+  const sumKeys = Object.keys(summary[0] ?? {});
+  wsSummary['!cols'] = sheetColWidths(sumKeys);
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Tahsilat Ozeti');
+
+  const wsItems = XLSX.utils.json_to_sheet(itemsSheetData);
+  const itemKeys = Object.keys(itemsSheetData[0] ?? {});
+  wsItems['!cols'] = sheetColWidths(itemKeys);
+  XLSX.utils.book_append_sheet(wb, wsItems, 'Kalemler');
+
+  await downloadExcelWorkbook(wb, `Guzellik_Tahsilatlar_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 // ─── İçe aktarım fonksiyonları ────────────────────────────────────────────────
@@ -816,6 +1102,107 @@ async function importCategories(rows: any[]): Promise<ImportResult> {
   return result;
 }
 
+async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
+  const result: ImportResult = { total: rows.length, success: 0, failed: 0, errors: [] };
+  const [customers, services, specialists] = await Promise.all([
+    beautyService.getCustomers(),
+    beautyService.getServices(),
+    beautyService.getSpecialists(),
+  ]);
+  const byCode = new Map<string, string>();
+  const byPhone = new Map<string, string>();
+  const pushPhone = (digits: string, id: string) => {
+    if (digits.length >= 8 && !byPhone.has(digits)) byPhone.set(digits, id);
+  };
+  for (const c of customers) {
+    const id = String(c.id);
+    const code = String(c.code || '').trim().toUpperCase();
+    if (code) byCode.set(code, id);
+    pushPhone(String(c.phone || '').replace(/\D/g, ''), id);
+    pushPhone(String((c as { phone2?: string }).phone2 || '').replace(/\D/g, ''), id);
+  }
+  const byServiceName = new Map<string, string>();
+  const byServiceCode = new Map<string, string>();
+  for (const s of services) {
+    const r = s as Record<string, unknown>;
+    const nm = String(s.name || '').trim().toLowerCase();
+    if (nm && !byServiceName.has(nm)) byServiceName.set(nm, String(s.id));
+    const cd = String(r.code ?? r.product_code ?? '').trim().toUpperCase();
+    if (cd && !byServiceCode.has(cd)) byServiceCode.set(cd, String(s.id));
+  }
+  const bySpecName = new Map<string, string>();
+  for (const sp of specialists) {
+    if (sp.is_active === false) continue;
+    const nm = String(sp.name || '').trim().toLowerCase();
+    if (nm) bySpecName.set(nm, String(sp.id));
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNum = i + 2;
+    const row = normalizeRowKeys(rows[i], 'beauty-appointments');
+    try {
+      const custCode = strFromExcel(row['Müşteri Kodu']);
+      const custPhone = strFromExcel(row['Müşteri Telefon']);
+      let customerId: string | null = null;
+      if (custCode) customerId = byCode.get(custCode.toUpperCase()) ?? null;
+      if (!customerId && custPhone) {
+        const dig = custPhone.replace(/\D/g, '');
+        if (dig.length >= 8) customerId = byPhone.get(dig) ?? null;
+      }
+      if (!customerId) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: 'Müşteri bulunamadı (Müşteri Kodu veya Müşteri Telefon zorunlu; sistemde kayıtlı olmalı).' });
+        continue;
+      }
+      const svcName = strFromExcel(row['Hizmet Adı*']);
+      const svcCode = strFromExcel(row['Hizmet Kodu']);
+      let serviceId: string | null = null;
+      if (svcCode) serviceId = byServiceCode.get(svcCode.toUpperCase()) ?? null;
+      if (!serviceId && svcName) serviceId = byServiceName.get(svcName.toLowerCase()) ?? null;
+      if (!serviceId) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: 'Hizmet bulunamadı (Hizmet Adı veya Hizmet Kodu; sistemdeki ad/kod ile birebir eşleşmeli).' });
+        continue;
+      }
+      const dateStr = parseAppointmentDate(row['Tarih*']);
+      const timeStr = parseAppointmentTime(row['Saat*']);
+      if (!dateStr || !timeStr) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: 'Tarih veya Saat okunamadı (YYYY-MM-DD ve HH:mm önerilir).' });
+        continue;
+      }
+      const specName = strFromExcel(row['Uzman Adı']).toLowerCase();
+      const staffId = specName ? (bySpecName.get(specName) ?? null) : null;
+      if (specName && !staffId) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: `Uzman bulunamadı: "${row['Uzman Adı'] || specName}"` });
+        continue;
+      }
+      const duration = Math.max(1, Math.round(numFromExcel(row['Süre (dk)'], 30)) || 30);
+      const statusRaw = (strFromExcel(row['Durum']).toLowerCase() || 'scheduled').slice(0, 20);
+      const totalPrice = numFromExcel(row['Tutar'], 0);
+      const notes = strFromExcel(row['Notlar']) || undefined;
+
+      await beautyService.createAppointment({
+        customer_id: customerId,
+        service_id: serviceId,
+        staff_id: staffId ?? undefined,
+        date: dateStr,
+        time: timeStr,
+        duration,
+        status: statusRaw as any,
+        notes,
+        total_price: totalPrice,
+      });
+      result.success++;
+    } catch (err: any) {
+      result.failed++;
+      result.errors.push({ row: rowNum, message: err?.message || 'Randevu oluşturulamadı.' });
+    }
+  }
+  return result;
+}
+
 // ─── Tab konfigürasyonu ───────────────────────────────────────────────────────
 
 interface TabConfig {
@@ -894,6 +1281,29 @@ const TABS: TabConfig[] = [
     borderColor: 'border-rose-200',
     exportFn: exportCategories,
     importFn: importCategories,
+  },
+  {
+    id: 'beauty-appointments',
+    label: 'beautyAppointmentsEntities',
+    icon: Calendar,
+    color: 'text-fuchsia-600',
+    bgColor: 'bg-fuchsia-50',
+    borderColor: 'border-fuchsia-200',
+    exportFn: exportBeautyAppointments,
+    importFn: importBeautyAppointments,
+    importNote:
+      'Müşteri sistemde (güzellik CRM) kayıtlı olmalı: Müşteri Kodu veya telefon (en az 8 rakam) ile eşlenir. Hizmet adı/kodu güzellik hizmet listesiyle aynı olmalı. Durum: scheduled, confirmed, in_progress, completed, cancelled, no_show. Uzman adı doluysa kullanıcı listesindeki adla birebir eşleşmeli. Her içe aktarım yeni randevu oluşturur.',
+  },
+  {
+    id: 'beauty-sales',
+    label: 'beautySalesEntities',
+    icon: CreditCard,
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    exportFn: exportBeautySales,
+    importNote:
+      'Yalnızca dışa aktarım: Güzellik POS / tahsilat kayıtları Excel’e aktarılır. Ödeme satırları içe aktarılmaz (çift kayıt ve muhasebe tutarlılığı).',
   },
 ];
 
@@ -988,7 +1398,10 @@ export function ExcelModule() {
     reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = XLSX.read(data, {
+          type: 'array',
+          cellDates: tab.id === 'beauty-appointments',
+        });
         const worksheet = getSheetForImport(workbook, tab.id);
         if (!worksheet) {
           showNotification({ type: 'error', message: 'Excel sayfası bulunamadı.' });

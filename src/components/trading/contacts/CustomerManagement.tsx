@@ -11,6 +11,8 @@ interface CustomerManagementProps {
   sales?: Sale[];
 }
 
+const DEFAULT_HEARD_FROM_OPTIONS = ['Instagram', 'Tavsiye', 'Google', 'Facebook', 'Diğer'];
+
 export function CustomerManagement({ customers, setCustomers, sales = [] }: CustomerManagementProps) {
   const addCustomer = useCustomerStore((state) => state.addCustomer);
   const updateCustomer = useCustomerStore((state) => state.updateCustomer);
@@ -20,11 +22,21 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [heardFromOptions, setHeardFromOptions] = useState<string[]>(DEFAULT_HEARD_FROM_OPTIONS);
+  const [heardFromDraft, setHeardFromDraft] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    phone2: '',
+    age: '',
+    file_id: '',
+    gender: '',
+    customer_tier: 'normal',
+    occupation: '',
+    heard_from: '',
     email: '',
-    address: ''
+    address: '',
+    notes: ''
   });
 
   const filteredCustomers = customers.filter(customer =>
@@ -39,30 +51,58 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
       setFormData({
         name: customer.name,
         phone: customer.phone,
+        phone2: customer.phone2 || '',
+        age: customer.age != null ? String(customer.age) : '',
+        file_id: customer.file_id || '',
+        gender: customer.gender || '',
+        customer_tier: customer.customer_tier || 'normal',
+        occupation: customer.occupation || '',
+        heard_from: customer.heard_from || '',
         email: customer.email,
-        address: customer.address
+        address: customer.address,
+        notes: customer.notes || ''
       });
     } else {
       setEditingCustomer(null);
       setFormData({
         name: '',
         phone: '',
+        phone2: '',
+        age: '',
+        file_id: '',
+        gender: '',
+        customer_tier: 'normal',
+        occupation: '',
+        heard_from: '',
         email: '',
-        address: ''
+        address: '',
+        notes: ''
       });
     }
     setShowModal(true);
+  };
+
+  const addHeardFromOption = () => {
+    const candidate = heardFromDraft.trim();
+    if (!candidate) return;
+    setHeardFromOptions((prev) => (prev.includes(candidate) ? prev : [...prev, candidate]));
+    setFormData((prev) => ({ ...prev, heard_from: candidate }));
+    setHeardFromDraft('');
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (editingCustomer) {
-      updateCustomer(editingCustomer.id, formData);
+      updateCustomer(editingCustomer.id, {
+        ...formData,
+        age: formData.age.trim() === '' ? null : Number(formData.age)
+      });
     } else {
       const newCustomer: Customer = {
         ...formData,
         id: String(Date.now()),
+        age: formData.age.trim() === '' ? null : Number(formData.age),
         totalPurchases: 0
       };
       addCustomer(newCustomer);
@@ -242,7 +282,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
           <div className="bg-white w-full max-w-2xl">
             <div className="p-3 border-b bg-gradient-to-r from-blue-600 to-blue-700 text-white flex items-center justify-between">
               <h3 className="text-base">
-                {editingCustomer ? 'Müşteri Düzenle' : 'Yeni Müşteri Ekle'}
+                {editingCustomer ? 'Müşteri Düzenle' : 'Yeni Kayıt'}
               </h3>
             </div>
             
@@ -260,12 +300,83 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Telefon *</label>
+                    <label className="block text-sm text-gray-700 mb-1">Telefon 1 *</label>
                     <input
                       type="tel"
                       required
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Telefon 2 (isteğe bağlı)</label>
+                    <input
+                      type="tel"
+                      value={formData.phone2}
+                      onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
+                      placeholder="İkinci telefon (isteğe bağlı)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Yaş</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.age}
+                      onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                      placeholder="Örn. 35"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Dosya No</label>
+                    <input
+                      type="text"
+                      value={formData.file_id}
+                      onChange={(e) => setFormData({ ...formData, file_id: e.target.value })}
+                      placeholder="Dosya / kart no"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Cinsiyet</label>
+                    <select
+                      value={formData.gender}
+                      onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Seçiniz</option>
+                      <option value="erkek">Erkek</option>
+                      <option value="kadin">Kadın</option>
+                      <option value="diger">Diğer</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Müşteri Tipi</label>
+                    <select
+                      value={formData.customer_tier}
+                      onChange={(e) => setFormData({ ...formData, customer_tier: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="vip">VIP</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Meslek</label>
+                    <input
+                      type="text"
+                      value={formData.occupation}
+                      onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                      placeholder="Meslek veya unvan"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -281,6 +392,41 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                   </div>
                 </div>
                 <div>
+                  <label className="block text-sm text-gray-700 mb-1">Bizi nereden duydunuz?</label>
+                  <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <select
+                      value={formData.heard_from}
+                      onChange={(e) => setFormData({ ...formData, heard_from: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Seçiniz</option>
+                      {heardFromOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addHeardFromOption}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold"
+                    >
+                      + Ekle
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={heardFromDraft}
+                    onChange={(e) => setHeardFromDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addHeardFromOption();
+                      }
+                    }}
+                    placeholder="Örn. Instagram, tavsiye, Google..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-2"
+                  />
+                </div>
+                <div>
                   <label className="block text-sm text-gray-700 mb-1">Adres</label>
                   <textarea
                     value={formData.address}
@@ -289,21 +435,31 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Müşteri Hakkında</label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    rows={3}
+                    placeholder="Tercihler, notlar, özel durumlar..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
               
               <div className="flex gap-3 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingCustomer ? 'Güncelle' : 'Kaydet'}
-                </button>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   İptal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {editingCustomer ? 'Güncelle' : 'Müşteriyi Kaydet'}
                 </button>
               </div>
             </form>

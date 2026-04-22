@@ -10,6 +10,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { toast } from 'sonner';
 import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
+import { readNeonProductLineFromStorage } from '../../utils/neonProductLine';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
 import type { ConnectionProvider, ConnectionMode } from '../../services/postgres';
 
@@ -737,7 +738,7 @@ export function Login({ onLogin }: LoginProps) {
             <div className="relative z-10 flex flex-col items-center py-10">
               <div className="relative flex flex-col items-center gap-6">
                 {/* Unified Neon Logo from SetupWizard */}
-                <NeonLogo variant="full" size="xl" />
+                <NeonLogo variant="full" size="xl" productLine={readNeonProductLineFromStorage()} />
 
                 {/* Secondary Accent */}
                 <div className="flex items-center gap-4 w-full opacity-80">

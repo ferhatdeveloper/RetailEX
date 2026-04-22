@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMem
 import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2 } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -45,6 +45,32 @@ import {
   getShellModuleFallbackOrder,
   isMainModuleVisible,
 } from '../../utils/mainModuleVisibility';
+import { NeonLogo } from '../ui/NeonLogo';
+import type { NeonLogoProductLine } from '../ui/NeonLogo';
+
+/** Lazy chunk yüklenirken — modüle göre marka (RetailEx / RestEx / ClinicEx) */
+function ModuleLazySplash({
+  productLine,
+  accent,
+  subtitle,
+}: {
+  productLine: NeonLogoProductLine;
+  accent: 'blue' | 'orange' | 'violet';
+  subtitle: string;
+}) {
+  const spin = accent === 'orange' ? 'text-orange-400' : accent === 'violet' ? 'text-violet-400' : 'text-blue-400';
+  const sub = accent === 'orange' ? 'text-orange-300' : accent === 'violet' ? 'text-violet-300' : 'text-blue-300';
+  return (
+    <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 animate-in fade-in duration-200">
+      <div className="text-center flex flex-col items-center gap-6 px-4">
+        <NeonLogo variant="full" size="lg" productLine={productLine} className="justify-center" />
+        <Loader2 className={`w-10 h-10 animate-spin ${spin}`} />
+        <p className={`text-sm font-medium ${sub}`}>{subtitle}</p>
+        <p className="text-slate-400 text-sm">Yükleniyor...</p>
+      </div>
+    </div>
+  );
+}
 
 /** Üst çubukta saat/tarih — interval yalnızca bu düğümü yeniler, tüm MainLayout + POS'u değil */
 function MainLayoutClockButton({ onOpenModal }: { onOpenModal: () => void }) {
@@ -795,7 +821,7 @@ export function MainLayout({
       } as React.CSSProperties}
     >
       {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
-      {!(isMobile && currentModule === 'pos') && currentModule !== 'restaurant' && (
+      {!(isMobile && currentModule === 'pos') && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
         <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
             {/* Left — Logo (büyük kutu + başlık) */}
@@ -1191,12 +1217,7 @@ export function MainLayout({
         {currentModule === 'pos' ? (
           // POS ekranında sadece MarketPOS göster (mobil otomatik geçiş yok)
           <Suspense fallback={
-            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-blue-600 font-medium">Loading POS...</p>
-              </div>
-            </div>
+            <ModuleLazySplash productLine="retail" accent="blue" subtitle="Mağaza POS yükleniyor..." />
           }>
             <MarketPOS
               products={products}
@@ -1221,12 +1242,7 @@ export function MainLayout({
           </Suspense>
         ) : currentModule === 'wms' ? (
           <Suspense fallback={
-            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-blue-600 font-medium">WMS Yükleniyor...</p>
-              </div>
-            </div>
+            <ModuleLazySplash productLine="retail" accent="blue" subtitle="Depo (WMS) yükleniyor..." />
           }>
             <WarehouseManagement
               onNavigateToModule={(module: 'pos' | 'management') => {
@@ -1249,12 +1265,7 @@ export function MainLayout({
           />
         ) : currentModule === 'restaurant' ? (
           <Suspense fallback={
-            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-orange-600 font-medium">Restoran Modülü Yükleniyor...</p>
-              </div>
-            </div>
+            <ModuleLazySplash productLine="restaurant" accent="orange" subtitle="Restoran modülü yükleniyor..." />
           }>
             <RestaurantMain
               products={products}
@@ -1273,14 +1284,17 @@ export function MainLayout({
           </Suspense>
         ) : currentModule === 'beauty' ? (
           <Suspense fallback={
-            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-purple-600 font-medium">{tm('bBeautyLoadingMain')}</p>
-              </div>
-            </div>
+            <ModuleLazySplash productLine="clinic" accent="violet" subtitle={tm('bBeautyLoadingMain')} />
           }>
-            <BeautyMain sales={sales} products={products} />
+            <BeautyMain
+              sales={sales}
+              products={products}
+              onRequestManagementAccess={requestManagementAccess}
+              clinicSessionBar={{
+                onLogout,
+                onOpenClockModal: () => setShowDateModal(true),
+              }}
+            />
           </Suspense>
         ) : (
           <ManagementModule

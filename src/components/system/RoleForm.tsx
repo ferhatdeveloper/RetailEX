@@ -1,129 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Shield, CheckCircle, AlertCircle, Check } from 'lucide-react';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
 import { Permission, PermissionAction } from '../../services/rbacService';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { logger } from '../../services/loggingService';
-
-// Module structure definition
-interface ModuleConfig {
-    id: string; // The permission module ID e.g. 'restaurant.pos'
-    name: string;
-    description: string;
-    availableActions: PermissionAction[];
-}
-
-interface ModuleGroup {
-    id: string;
-    name: string;
-    icon: string;
-    color: string;
-    modules: ModuleConfig[];
-}
-
-
-const MODULE_GROUPS: ModuleGroup[] = [
-    {
-        id: 'rest',
-        name: 'Restoran ve Ağırlama',
-        icon: '🍽️',
-        color: 'rose',
-        modules: [
-            { id: 'restaurant.pos', name: 'Masa Servis (POS)', description: 'Masa yönetimi, sipariş alımı ve adisyon', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'restaurant.delivery', name: 'Paket Servis', description: 'Çağrı merkezi ve kurye takibi', availableActions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
-            { id: 'restaurant.takeaway', name: 'Gel-Al Servis', description: 'Hızlı öde-geç işlemleri', availableActions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
-            { id: 'restaurant.kds', name: 'Mutfak Paneli (KDS)', description: 'Mutfak hazırlık ve bildirim ekranı', availableActions: ['READ', 'UPDATE', 'EXECUTE'] },
-            { id: 'restaurant.recipes', name: 'Reçete ve Maliyet', description: 'Ürün içerikleri, reçeteler ve maliyet analizi', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'restaurant.reservations', name: 'Rezervasyon Yönetimi', description: 'Masa rezervasyonu ve müşteri yerleşimi', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'restaurant.reports', name: 'Restoran Analizleri', description: 'Restoran bazlı ciro ve verimlilik raporları', availableActions: ['READ', 'EXECUTE'] },
-            { id: 'restaurant.settings', name: 'Restoran Parametreleri', description: 'Bölge, masa ve yazıcı tanımları', availableActions: ['READ', 'UPDATE'] },
-        ]
-    },
-    {
-        id: 'pos',
-        name: 'Market ve Perakende Satış',
-        icon: '🛒',
-        color: 'emerald',
-        modules: [
-            { id: 'pos', name: 'Market POS', description: 'Hızlı barkodlu satış arayüzü', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'sales-returns', name: 'İade ve Değişim', description: 'Satış iade fişleri ve müşteri iadeleri', availableActions: ['READ', 'CREATE', 'EXECUTE'] },
-            { id: 'campaigns', name: 'Kampanya Yönetimi', description: 'Promosyon, indirim ve kampanya kurguları', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'loyalty', name: 'Sadakat Sistemi', description: 'Müşteri puanları ve sadakat programları', availableActions: ['READ', 'CREATE', 'UPDATE'] },
-            { id: 'gift-cards', name: 'Hediye Çekleri', description: 'Sanal ve fiziksel hediye çeki yönetimi', availableActions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] }
-        ]
-    },
-    {
-        id: 'wms',
-        name: 'Stok ve Depo Yönetimi (WMS)',
-        icon: '📦',
-        color: 'blue',
-        modules: [
-            { id: 'products', name: 'Ürün ve Malzeme Kartları', description: 'Malzeme, hizmet ve ticari mal tanımları', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'stock', name: 'Envanter Hareketleri', description: 'Giriş, çıkış, sarf ve fire fişleri', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'store-transfer', name: 'Depolar Arası Sevk', description: 'Şubeler arası transfer ve onay süreci', availableActions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
-            { id: 'purchase', name: 'Satınalma Yönetimi', description: 'Tedarikçi siparişleri ve alım süreci', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'inventory-check', name: 'Sayım ve Kontrol', description: 'Periyodik ve anlık envanter sayımları', availableActions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] }
-        ]
-    },
-    {
-        id: 'finance',
-        name: 'Finans ve Muhasebe',
-        icon: '💰',
-        color: 'orange',
-        modules: [
-            { id: 'finance.cash', name: 'Kasa Yönetimi', description: 'Nakit giriş/çıkış ve kasa bakiyeleri', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'finance.bank', name: 'Banka İşlemleri', description: 'Banka havale, eft ve pos işlemleri', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'accounting', name: 'Genel Muhasebe', description: 'Yevmiye fişleri ve hesap planı', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'customers', name: 'Müşteri (Cari) Hesapları', description: 'Müşteri bakiyeleri ve ekstreleri', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'suppliers', name: 'Tedarikçi Hesapları', description: 'Tedarikçi borç takibi ve ödemeler', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'invoices', name: 'Fatura Yönetimi', description: 'E-Fatura, E-Arşiv ve kağıt fatura takibi', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'] },
-            { id: 'mizan', name: 'Mali Tablolar', description: 'Mizan, bilanço ve kâr-zarar raporları', availableActions: ['READ', 'EXECUTE'] }
-        ]
-    },
-    {
-        id: 'backoffice',
-        name: 'Yönetim ve Sistem Kuruluşu',
-        icon: '🛡️',
-        color: 'purple',
-        modules: [
-            { id: 'dashboard', name: 'Yönetici Dashboard', description: 'KPI göstergeleri ve canlı istatistikler', availableActions: ['READ'] },
-            { id: 'management', name: 'Backoffice Ana Giriş', description: 'Yönetim modülüne genel erişim', availableActions: ['READ'] },
-            { id: 'users.roles', name: 'Kullanıcı ve Yetki', description: 'Kullanıcı tanımları ve RBAC yetkilendirme', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] },
-            { id: 'reports.advanced', name: 'Gelişmiş Raporlama', description: 'Dashboard ve dinamik rapor tasarlayıcı', availableActions: ['READ', 'EXECUTE'] },
-            { id: 'settings.system', name: 'Sistem Yapılandırması', description: 'Şirket ayarları ve cihaz tanımları', availableActions: ['READ', 'UPDATE'] },
-            { id: 'crm', name: 'Müşteri İlişkileri (CRM)', description: 'Aday müşteri ve satış fırsatı takibi', availableActions: ['READ', 'CREATE', 'UPDATE', 'DELETE'] }
-        ]
-    }
-];
+import { buildRbacModuleGroups, RBAC_ACTION_TM_KEYS } from '../../locales/rbacCatalog';
 
 export function RoleForm() {
     const navigate = useNavigate();
     const { id } = useParams();
     const isEditing = Boolean(id);
-    const { tm } = useLanguage();
+    const { language, tm } = useLanguage();
 
-    const ACTION_LABELS: Record<PermissionAction, string> = {
-        READ: tm('actionView'),
-        CREATE: tm('actionCreate'),
-        UPDATE: tm('actionUpdate'),
-        DELETE: tm('actionDelete'),
-        EXECUTE: tm('actionExecute')
-    };
+    const MODULE_GROUPS = useMemo(() => buildRbacModuleGroups(tm), [language, tm]);
+
+    const ACTION_LABELS: Record<PermissionAction, string> = useMemo(
+        () => ({
+            READ: tm(RBAC_ACTION_TM_KEYS.READ),
+            CREATE: tm(RBAC_ACTION_TM_KEYS.CREATE),
+            UPDATE: tm(RBAC_ACTION_TM_KEYS.UPDATE),
+            DELETE: tm(RBAC_ACTION_TM_KEYS.DELETE),
+            EXECUTE: tm(RBAC_ACTION_TM_KEYS.EXECUTE),
+        }),
+        [language, tm]
+    );
 
     const [loading, setLoading] = useState(isEditing);
     const [saving, setSaving] = useState(false);
     const [role, setRole] = useState<RoleType | null>(null);
 
     // Advanced form state
-    const LANDING_OPTIONS: { value: string; label: string }[] = [
-        { value: '', label: tm('landingDefault') || 'Ana sayfa (varsayılan)' },
-        { value: 'restaurant', label: 'Restoran' },
-        { value: 'pos', label: 'POS' },
-        { value: 'management', label: 'Yönetim' },
-        { value: 'wms', label: 'Depo (WMS)' },
-        { value: 'beauty', label: 'Güzellik' }
-    ];
+    const LANDING_OPTIONS: { value: string; label: string }[] = useMemo(
+        () => [
+            { value: '', label: tm('landingDefault') },
+            { value: 'restaurant', label: tm('roleLandingRestaurant') },
+            { value: 'pos', label: tm('roleLandingPos') },
+            { value: 'management', label: tm('roleLandingManagement') },
+            { value: 'wms', label: tm('roleLandingWms') },
+            { value: 'beauty', label: tm('roleLandingBeauty') },
+        ],
+        [language, tm]
+    );
 
     const [formData, setFormData] = useState({
         name: '',
@@ -183,12 +101,12 @@ export function RoleForm() {
                     landing_route: existingRole.landing_route ?? ''
                 });
             } else {
-                alert('Rol bulunamadı.');
+                alert(tm('roleFormRoleNotFound'));
                 navigate('/system/roles');
             }
         } catch (error) {
             console.error('Error loading role:', error);
-            alert('Rol bilgileri yüklenirken hata oluştu.');
+            alert(tm('roleFormLoadError'));
         } finally {
             setLoading(false);
         }
@@ -213,7 +131,7 @@ export function RoleForm() {
             navigate(-1);
         } catch (error) {
             logger.crudError('RoleForm', isEditing ? 'updateRole' : 'createRole', error);
-            alert('Rol kaydedilirken bir hata oluştu.');
+            alert(tm('roleFormSaveError'));
         } finally {
             setSaving(false);
         }
@@ -362,7 +280,7 @@ export function RoleForm() {
 
                                 <div>
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                                        {tm('landingPage') || 'Giriş sonrası yönlendirilecek sayfa'}
+                                        {tm('landingPage')}
                                     </label>
                                     <select
                                         value={formData.landing_route}
@@ -429,10 +347,13 @@ export function RoleForm() {
                                 <div className="mb-6">
                                     <h4 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-4">
                                         <span className="p-3 bg-white outline outline-1 outline-slate-200 shadow-sm rounded-2xl text-3xl">{group.icon}</span>
-                                        {group.name} Yetki Matrisi
+                                        {group.name}
+                                        {tm('roleFormMatrixSuffix')}
                                     </h4>
                                     <p className="text-slate-500 mt-2 font-medium max-w-3xl leading-relaxed">
-                                        Bu sayfada <strong className="text-slate-700">{group.name}</strong> sistemine ait tüm işlem adımlarını detaylıca yetkilendirebilirsiniz. Matris üzerinde dilediğiniz eylemlere tıklayarak izin verin.
+                                        {tm('roleFormMatrixIntroPrefix')}
+                                        <strong className="text-slate-700">{group.name}</strong>
+                                        {tm('roleFormMatrixIntroSuffix')}
                                     </p>
                                 </div>
 
@@ -441,8 +362,8 @@ export function RoleForm() {
                                         <table className="w-full text-left border-collapse min-w-[800px]">
                                             <thead>
                                                 <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black tracking-widest text-slate-400 uppercase">
-                                                    <th className="p-5">Modül / Alt Servis</th>
-                                                    <th className="text-center p-3 w-20 bg-slate-100/50">TÜMÜ</th>
+                                                    <th className="p-5">{tm('roleFormThModule')}</th>
+                                                    <th className="text-center p-3 w-20 bg-slate-100/50">{tm('roleFormThAll')}</th>
                                                     {['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE'].map((act) => (
                                                         <th key={act} className="text-center p-3 w-24">
                                                             {ACTION_LABELS[act as PermissionAction]}
@@ -478,7 +399,7 @@ export function RoleForm() {
                                                                 const hoverBorderClass = act === 'DELETE' ? 'hover:border-red-400' : 'hover:border-blue-400';
 
                                                                 return (
-                                                                    <td key={act} className="p-3 text-center align-middle">
+                                                                    <td key={actStr} className="p-3 text-center align-middle">
                                                                         {isAvailable ? (
                                                                             <label className="cursor-pointer mx-auto block w-max mt-1 relative group/chk">
                                                                                 <input

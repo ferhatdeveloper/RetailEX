@@ -1,0 +1,42 @@
+---
+description: Windows Tauri release — npm run tauri:build ile otomatik Authenticode imzalama
+alwaysApply: true
+---
+
+# RetailEX — Windows kod imzalama (`npm run tauri:build`)
+
+## Beklenen davranış
+- **`npm run tauri:build`** zinciri **`node scripts/tauri-windows-signing-prep.mjs`** çalıştırır; Windows’ta mümkünse **`DeskApp/tauri.windows.conf.json`** üretilir ve Tauri **`retailex.exe`**, yardımcı exe’ler ve **NSIS `*_setup.exe`** dosyalarını imzalar.
+- **Varsayılan:** Ortamda thumbprint / PFX / DigiCert `SM_*` yoksa, **Windows sertifika mağazası** (`Cert:\CurrentUser\My`, `-CodeSigningCert`) taranır; **tek** eşleşen kod imzalama sertifikası varsa thumbprint otomatik yazılır.
+- **Kapatma:** Tamamen imzasız derleme için kökte **`WINDOWS_CODESIGN_DISABLE=1`** (`.env.signing` veya ortam). Yalnızca mağaza taramasını kapatmak için **`WINDOWS_CODESIGN_AUTO=0`** (thumbprint / PFX / `SM_*` ile devam).
+
+## Gizli bilgi ve depo
+- **`/.env.signing`** — isteğe bağlı; şablon **`.env.signing.example`**. **Asla commit edilmez** (`.gitignore`).
+- **`/DeskApp/tauri.windows.conf.json`** — yerel birleştirme çıktısı; **commit edilmez**.
+
+## Öncelik sırası (prep script)
+1. `WINDOWS_CODESIGN_THUMBPRINT` / `WINDOWS_CERTIFICATE_THUMBPRINT`
+2. `SM_CERT_FINGERPRINT` (+ isteğe `smctl windows certsync`)
+3. `WINDOWS_CODESIGN_PFX` + `WINDOWS_CODESIGN_PFX_PASSWORD`
+4. Mağaza taraması (varsayılan açık; `WINDOWS_CODESIGN_AUTO=0` ile kapat)
+5. Birden fazla kod-imza sertifikası: **`WINDOWS_CODESIGN_SUBJECT_CONTAINS`** veya açık thumbprint
+
+## Tauri yapılandırması
+- Asıl ayarlar **`/DeskApp/tauri.conf.json`** → `bundle.windows.digestAlgorithm`, `timestampUrl`.
+- Sürüm ve ön adımlar: kök **`package.json`** → `tauri:build` / `prebuild` (bkz. `app-version-single-source` kuralı).
+
+## Kurulum (setup.exe) hiç açılmıyor / müşteri PC
+- **Akıllı Uygulama Denetimi (SAC)** açıksa, imzasız veya Microsoft’un “bilinen” listesinde olmayan exe **çalıştırılmadan** engellenir; bazen **pencere görünmeden** biter. Bu, setup’un “bozuk” olması değil; **Windows politikasıdır**. Çözüm: **kamu CA kod imzalama (tercihen EV)** + dağıtımda doğru `*_setup.exe` + müşteri tarafında gerekirse **SAC / Defender uygulama denetimi** politikası (KOBİ’de genelde SAC kapatılır veya yayıncı izin listesi).
+- **İnternet’ten indirildiyse** “Mark of the Web” engeli olabilir: dosyaya sağ tık → **Özellikler** → altta **Engellemeyi kaldır** — veya repo kökündeki **`scripts/customer-unblock-setup.ps1`** ile `Unblock-File` + yönetici başlatma.
+- Doğrulama: `Get-AuthenticodeSignature '...\retailex_*_x64-setup.exe'` → **NotSigned** ise müşteriye yanlış kopya gidiyor demektir; derleme makinesinde `npm run tauri:build` imza adımını kontrol edin.
+
+## Kurulum dosyasında imza (müşteri bilgisayarı)
+- **Authenticode imzası `*_setup.exe` dosyasının içindedir** (ayrı bir “imza dosyası” kopyalamaya gerek yok). Müşteriye yalnızca bu exe’yi verin.
+- **Kendi PC’nizde açılıp müşteride Akıllı Uygulama Denetimi (SAC) engelliyorsa** yaygın nedenler:
+  1. Müşteriye giden dosya **imzasız** veya **eski imzasız** bir kopya (farklı klasör / zip / USB). Çözüm: `npm run tauri:build` çıktısındaki **`DeskApp/target/release/bundle/nsis/retailex_*_x64-setup.exe`** dosyasını doğrudan kullanın; derleme sonunda **`verify-windows-installer-signature.mjs`** `NotSigned` ise build **hata ile biter**.
+  2. İmza **geçerli** ama SAC “bilinen uygulama” listesinde değil — **kamu CA’dan OV/EV kod imzalama**, zaman damgası ve Microsoft tarafında **itibar** gerekir; **EV** sertifikası genelde daha az uyarı. SAC’yi kapatmak müşteri politikasıdır, uygulama koduyla otomatik aşılamaz.
+- Müşteri PC’de kontrol: PowerShell `Get-AuthenticodeSignature '...\retailex_*_x64-setup.exe'` → **Status: Valid** ve yayıncı konusu görülmeli.
+
+## Ajan / geliştirici notu
+- Windows dışı platformlarda prep ve imza doğrulama atlanır (normal).
+- Script yalnızca mevcut sertifikayı Tauri’ye bağlar; **SAC / SmartScreen** davranışı Microsoft politikası ve sertifika türü ile belirlenir.

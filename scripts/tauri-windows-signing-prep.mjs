@@ -4,6 +4,8 @@
  *  1) WINDOWS_CODESIGN_THUMBPRINT veya WINDOWS_CERTIFICATE_THUMBPRINT
  *  2) SM_CERT_FINGERPRINT + smctl windows certsync (DigiCert ONE / KeyLocker)
  *  3) WINDOWS_CODESIGN_PFX + WINDOWS_CODESIGN_PFX_PASSWORD (.pfx yerel dosya)
+ *  4) Varsayilan (Windows): Cert magazasi -CodeSigningCert taramasi (tek eslesme veya SUBJECT_CONTAINS).
+ *     WINDOWS_CODESIGN_AUTO=0|false|off|no → magaza taramasini kapat (yalnizca thumbprint/pfx/sm).
  *
  * Kok dizinde .env.signing yuklenir (satir bazli KEY=VAL, # yorum).
  * WINDOWS_CODESIGN_DISABLE=1 → tauri.windows.conf.json silinir (imzasiz build).
@@ -107,6 +109,71 @@ Write-Output $c.Thumbprint`;
   }
 }
 
+/** Windows kod imza sertifikasi: CurrentUser\\My (varsayilan acik; AUTO=0 ile kapat) */
+function thumbFromWindowsCertStore() {
+  const autoRaw = (process.env.WINDOWS_CODESIGN_AUTO || "").trim().toLowerCase();
+  if (
+    autoRaw === "0" ||
+    autoRaw === "false" ||
+    autoRaw === "off" ||
+    autoRaw === "no"
+  ) {
+    return "";
+  }
+
+  let store = (process.env.WINDOWS_CODESIGN_STORE || "CurrentUser").trim();
+  if (store !== "CurrentUser" && store !== "LocalMachine") {
+    console.warn(
+      "[tauri-windows-signing] WINDOWS_CODESIGN_STORE: CurrentUser veya LocalMachine olmali; CurrentUser kullanildi."
+    );
+    store = "CurrentUser";
+  }
+
+  const subFilter = (process.env.WINDOWS_CODESIGN_SUBJECT_CONTAINS || "").trim();
+  const subEsc = subFilter.replace(/'/g, "''");
+  const ps = `$ErrorActionPreference = 'SilentlyContinue'
+$sub = '${subEsc}'
+$certs = @(Get-ChildItem -Path Cert:\\${store}\\My -CodeSigningCert -ErrorAction SilentlyContinue)
+if ($sub) { $certs = @($certs | Where-Object { $_.Subject -like ('*' + $sub + '*') }) }
+if (-not $certs -or $certs.Count -eq 0) { Write-Output '[]' }
+else { $certs | Select-Object Thumbprint, Subject | ConvertTo-Json -Compress }`;
+
+  try {
+    const raw = execFileSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], {
+      encoding: "utf8",
+    }).trim();
+    if (!raw || raw === "[]") {
+      console.warn(
+        "[tauri-windows-signing] Kod-imza sertifikasi bulunamadi (Cert:\\" +
+          store +
+          "\\My). .pfx / thumbprint veya WINDOWS_CODESIGN_SUBJECT_CONTAINS deneyin."
+      );
+      return "";
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.warn("[tauri-windows-signing] Cert store JSON parse hatasi.");
+      return "";
+    }
+    const arr = Array.isArray(parsed) ? parsed : [parsed];
+    if (arr.length > 1) {
+      console.warn(
+        "[tauri-windows-signing] Birden fazla kod-imza sertifikasi; WINDOWS_CODESIGN_SUBJECT_CONTAINS veya WINDOWS_CODESIGN_THUMBPRINT kullanin."
+      );
+      return "";
+    }
+    const t = String(arr[0].Thumbprint || "").replace(/\s/g, "").toUpperCase();
+    const subj = String(arr[0].Subject || "").slice(0, 100);
+    console.log("[tauri-windows-signing] Kod imza (magaza):", subj || t);
+    return t;
+  } catch (e) {
+    console.warn("[tauri-windows-signing] Cert store okunamadi:", e.message);
+    return "";
+  }
+}
+
 function main() {
   loadEnvSigning();
 
@@ -162,6 +229,10 @@ function main() {
     thumb = thumbFromPfx(pfxPath, pfxPassword);
   }
 
+  if (!thumb) {
+    thumb = thumbFromWindowsCertStore();
+  }
+
   if (thumb) {
     writeConf(thumb);
     return;
@@ -173,7 +244,7 @@ function main() {
     );
   } else {
     console.log(
-      "[tauri-windows-signing] Imza yapilandirmasi yok (.env.signing veya WINDOWS_CODESIGN_* / SM_CERT_FINGERPRINT); imzasiz Windows build."
+      "[tauri-windows-signing] Imza yok: thumbprint/pfx/sm yok ve magazada tek kod-imza sertifikasi bulunamadi (veya WINDOWS_CODESIGN_AUTO=0). Imzasiz Windows build."
     );
   }
 }

@@ -1,9 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, Plus, Minus, X, Trash2, User, CreditCard, Banknote, Smartphone, ShoppingBag, Grid3x3, ArrowLeft, Tag, RefreshCw, FileText, Truck, Send, FileCheck, Menu, Camera, Database, Globe } from 'lucide-react';
 import type { Product, Customer, Sale, SaleItem, Campaign } from '../../App';
 import { BarcodeScanner, type BarcodeScanResult } from '../inventory/stock/BarcodeScanner';
 import { formatNumber } from '../../utils/formatNumber';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/receiptSettingsService';
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
@@ -19,6 +22,15 @@ interface MobilePOSProps {
 
 export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBack }: MobilePOSProps) {
   const { darkMode } = useTheme();
+  const { language: uiLanguage } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const receiptFirmNr = useMemo(() => {
+    const f = selectedFirm;
+    if (!f) return undefined;
+    const raw = f.firm_nr ?? f.firma_kodu ?? (f.nr != null ? String(f.nr) : '');
+    const s = String(raw).trim().padStart(3, '0').slice(0, 10);
+    return s || undefined;
+  }, [selectedFirm]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -38,17 +50,32 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const [receiptLanguage, setReceiptLanguage] = useState<'tr' | 'en' | 'ar' | 'ku'>('tr');
 
   useEffect(() => {
-    const savedPrinter = localStorage.getItem('retailos-printer-settings');
-    if (savedPrinter) {
-      try {
+    let cancelled = false;
+    let printerDefault: string | undefined;
+    try {
+      const savedPrinter = localStorage.getItem('retailos-printer-settings');
+      if (savedPrinter) {
         const config = JSON.parse(savedPrinter);
         if (config.autoPrint !== undefined) setAutoPrint(config.autoPrint);
-        if (config.defaultLanguage) setReceiptLanguage(config.defaultLanguage);
-      } catch (err) {
-        console.error('Failed to parse printer settings:', err);
+        printerDefault = config.defaultLanguage;
       }
+    } catch (err) {
+      console.error('Failed to parse printer settings:', err);
     }
-  }, []);
+    void (async () => {
+      let rs: Awaited<ReturnType<typeof getReceiptSettings>> = {};
+      try {
+        rs = await getReceiptSettings(receiptFirmNr);
+      } catch {
+        /* ignore */
+      }
+      if (cancelled) return;
+      setReceiptLanguage(resolveDefaultReceiptLang(rs, uiLanguage, printerDefault));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [receiptFirmNr, uiLanguage]);
 
   // Exchange rate state
   const [exchangeRate, setExchangeRate] = useState<number>(1310);

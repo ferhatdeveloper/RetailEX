@@ -10,6 +10,7 @@ import { useProductStore } from '../../store/useProductStore';
 import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
+import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -28,6 +29,18 @@ type ReceiptLang = (typeof RECEIPT_LANGS)[number];
 
 function isReceiptLang(s: string | undefined): s is ReceiptLang {
   return !!s && (RECEIPT_LANGS as readonly string[]).includes(s);
+}
+
+function resolveReceiptDeviceName(sale: Sale): string {
+  const beautyDevice = typeof (sale as any).beautyDeviceName === 'string' ? (sale as any).beautyDeviceName.trim() : '';
+  if (beautyDevice) return beautyDevice;
+  const rawDevice =
+    (typeof (sale as any).deviceName === 'string' && (sale as any).deviceName.trim())
+    || (typeof (sale as any).device_name === 'string' && (sale as any).device_name.trim())
+    || (typeof (sale as any).deviceId === 'string' && (sale as any).deviceId.trim())
+    || (typeof (sale as any).device_id === 'string' && (sale as any).device_id.trim())
+    || (typeof sale.storeId === 'string' && sale.storeId.trim());
+  return rawDevice || '';
 }
 
 export function Receipt80mm({ sale, paymentData, onClose, printImmediately = false, initialPrintLanguage, headerBanner }: Receipt80mmProps) {
@@ -97,6 +110,7 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
   }, [selectedLang, allTranslations, currentSystemLang]);
 
   const isRTL = selectedLang === 'ar' || selectedLang === 'ku';
+  const receiptDeviceName = resolveReceiptDeviceName(sale);
 
   // Add null/undefined checks
   if (!sale || !paymentData) {
@@ -416,10 +430,10 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
                   <span className="font-bold">{sale.table}</span>
                 </div>
               )}
-              {sale.beautyDeviceName?.trim() && (
+              {receiptDeviceName && (
                 <div className="flex justify-between gap-2">
                   <span className="font-extrabold shrink-0">{t.receipt.device}:</span>
-                  <span className="font-bold text-end break-words min-w-0">{sale.beautyDeviceName.trim()}</span>
+                  <span className="font-bold text-end break-words min-w-0">{receiptDeviceName}</span>
                 </div>
               )}
               {(() => {
@@ -427,7 +441,7 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
                 const shots = (sale.beautyTreatmentShots ?? '').trim();
                 const hasBeautyLine = sale.items.some((i) => !!(i as SaleItem).beautyStaffName?.trim());
                 const show =
-                  !!sale.beautyDeviceName?.trim() || hasBeautyLine || !!deg || !!shots;
+                  !!receiptDeviceName || hasBeautyLine || !!deg || !!shots;
                 if (!show) return null;
                 return (
                   <div className="flex justify-between gap-3 mt-1 text-[13px] font-extrabold text-gray-950 print:text-[11px]">
@@ -443,6 +457,18 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
                         {shots || '\u00a0'}
                       </span>
                     </span>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const noteText = receiptNotesForDisplay(sale.notes);
+                if (!noteText) return null;
+                return (
+                  <div
+                    className={`mt-2 pt-2 border-t border-dashed border-gray-500 text-[12px] text-gray-950 print:text-[10px] ${isRTL ? 'text-right' : 'text-left'}`}
+                  >
+                    <div className="font-extrabold mb-1 print:font-black">{t.receipt.noteLabel}</div>
+                    <div className="font-bold whitespace-pre-wrap break-words leading-snug print:font-semibold">{noteText}</div>
                   </div>
                 );
               })()}
@@ -476,7 +502,7 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
                     <td className={`py-1 pr-1 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
                       {(() => {
                         const si = item as SaleItem;
-                        const beautyCtx = !!(si.beautyStaffName?.trim() || sale.beautyDeviceName?.trim());
+                        const beautyCtx = !!(si.beautyStaffName?.trim() || receiptDeviceName);
                         if (beautyCtx) {
                           return (
                             <>

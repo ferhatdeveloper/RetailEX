@@ -89,6 +89,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(userObj);
           useAuthStore.getState().login(userObj as any);
 
+          // Son sekme kaydı yoksa rol iniş modülünü yaz (splash / MainLayout ile uyum)
+          try {
+            const savedMod = (localStorage.getItem('retailex_active_module') || '').trim();
+            if (!savedMod) {
+              let landing: string | null = null;
+              for (const r of resolvedRoles as { landingRoute?: string; landing_route?: string }[]) {
+                const lr = r?.landingRoute ?? r?.landing_route;
+                if (lr != null && String(lr).trim() !== '') {
+                  landing = String(lr).trim();
+                  break;
+                }
+              }
+              if (
+                landing &&
+                ['restaurant', 'pos', 'management', 'wms', 'beauty', 'mobile-pos'].includes(landing)
+              ) {
+                localStorage.setItem('retailex_active_module', landing);
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+
           // Restore firm and period context from session
           // Try to get from localStorage metadata or re-query user
           try {

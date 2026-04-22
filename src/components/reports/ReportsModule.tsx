@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
@@ -13,14 +13,15 @@ import { useProductStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { moduleTranslations } from '../../locales/module-translations';
+import { moduleTranslations, translate as translateModule, type Language as ModuleLanguage } from '../../locales/module-translations';
 import {
   BarChart, Bar, LineChart, Line, PieChart as RePieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
-import type { BeautyAppointment } from '../../types/beauty';
+import { expenseAPI } from '../../services/api/expenses';
+import type { BeautyAppointment, BeautySale } from '../../types/beauty';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
@@ -150,6 +151,16 @@ function restOrderToSaleForReceipt(o: any): Sale {
 
 function isSaleRowUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || '').trim());
+}
+
+function isRemovedSaleStatus(status: unknown): boolean {
+  const st = String(status ?? '').toLowerCase();
+  return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+}
+
+function resolveDailyRowDeviceName(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  return raw || '-';
 }
 
 /** `closed_at` / `opened_at` null iken `new Date(null)` epoch (1970) üretir; raporda gösterme. */
@@ -284,6 +295,67 @@ function buildComparisonWindows(period: 'week' | 'month', todayKey: string): Com
 
 type BusinessType = 'retail' | 'market' | 'restaurant' | 'beauty';
 
+const REPORTS_BUSINESS_TYPE_STORAGE_KEY = 'retailex_reports_business_type';
+
+function parseStoredReportsBusinessType(): BusinessType | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(REPORTS_BUSINESS_TYPE_STORAGE_KEY);
+    if (v === 'retail' || v === 'market' || v === 'restaurant' || v === 'beauty') return v;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function resolveInitialReportsBusinessType(initial: BusinessType): BusinessType {
+  if (initial !== 'retail') return initial;
+  return parseStoredReportsBusinessType() ?? 'retail';
+}
+
+/** ERP fişlerinden detaylı satış grupları (perakende / market / güzellik). */
+function buildErpDetailedSaleGroups(salesDay: Sale[], tm: (key: string) => string) {
+  return salesDay.map((sale) => {
+    const orderId = String(sale.receiptNumber ?? sale.id ?? '—');
+    const open = formatRestReportDateTime(sale.date);
+    const close = sale.created_at ? formatRestReportDateTime(sale.created_at) : open;
+    const tableLabel = sale.table != null && String(sale.table).trim() !== '' ? String(sale.table) : '—';
+    const cari =
+      sale.customerName != null && String(sale.customerName).trim() !== ''
+        ? String(sale.customerName)
+        : tm('resTicketWalkIn');
+    let statusLabel = tm('reportsDetStatusCompleted');
+    if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
+    else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
+    const rows = (sale.items || []).map((it) => ({
+      open,
+      close,
+      table: tableLabel,
+      product: String(it.productName ?? '—'),
+      cari,
+      qty: Number(it.quantity ?? 0),
+      price: Number(it.price ?? 0),
+      total: Number(it.total ?? 0),
+      status: statusLabel,
+      statusClosed: false,
+    }));
+    const qtySum = rows.reduce((s, r) => s + r.qty, 0);
+    const lineTotal = rows.reduce((s, r) => s + r.total, 0);
+    const discount = Number(sale.discount ?? 0);
+    const totalForSummary = lineTotal > 0 ? lineTotal : Number(sale.total ?? 0);
+    return {
+      id: orderId,
+      items: rows,
+      summary: {
+        qty: qtySum,
+        total: totalForSummary,
+        discount,
+        count: rows.length,
+      },
+    };
+  });
+}
+
 /** Kasa durumu: yalnızca seçili gün bugünse POS/restoran persist açılış tutarı. */
 function readOpeningCashForReports(businessType: BusinessType): number {
   if (typeof window === 'undefined') return 0;
@@ -311,11 +383,13 @@ type DailyUnifiedRow = {
   receiptNumber: string;
   date: string;
   cashier?: string;
+  deviceName?: string;
   customerName?: string;
   beforeDiscount: number;
   total: number;
   discount: number;
   paymentMethod: string;
+  status?: string;
   erpSale?: Sale;
   restOrder?: any;
 };
@@ -341,7 +415,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report';
+  'beauty-service-report' | 'beauty-cancelled-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -362,6 +436,24 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'turnover-reports',
 ]);
 
+/** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
+const RESTAURANT_ONLY_REPORT_KEYS = new Set<string>([
+  'product-reports',
+  'category-reports',
+  'staff-reports',
+  'staff-performance',
+  'table-reports',
+  'payment-reports',
+  'discount-reports',
+  'sales-movements',
+  'receipts',
+  'courier-reports',
+  'cash-register-reports',
+  'turnover-reports',
+]);
+
+const BEAUTY_ONLY_REPORT_KEYS = new Set<string>(['beauty-service-report', 'beauty-cancelled-report']);
+
 function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
   return groups.map((group) => {
     if (group?.type === 'group' && Array.isArray(group.children)) {
@@ -377,7 +469,7 @@ function filterReportMenuGroups(groups: { type?: string; children?: { key?: stri
 }
 
 export function ReportsModule({ sales, products, initialBusinessType = 'retail' }: ReportsModuleProps) {
-  const { language, tm: globalTm } = useLanguage();
+  const { language, t, tm: globalTm } = useLanguage();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
   const { hasPermission } = usePermission();
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
@@ -389,6 +481,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     getReportingCurrency();
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
   const [selectedDate, setSelectedDate] = useState(localTodayDateKey);
+  const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
+  const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
+  const [reportConfirmMessage, setReportConfirmMessage] = useState('');
+  const reportConfirmResolverRef = useRef<((approved: boolean) => void) | null>(null);
+  const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
+  const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
   const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
   const [loadingComparisonOrders, setLoadingComparisonOrders] = useState(false);
@@ -396,7 +494,34 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [businessType, setBusinessType] = useState<BusinessType>(initialBusinessType);
+  const [businessType, setBusinessType] = useState<BusinessType>(() =>
+    resolveInitialReportsBusinessType(initialBusinessType)
+  );
+
+  useEffect(() => {
+    if (initialBusinessType !== 'retail') {
+      setBusinessType(initialBusinessType);
+    }
+  }, [initialBusinessType]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(REPORTS_BUSINESS_TYPE_STORAGE_KEY, businessType);
+    } catch {
+      /* ignore */
+    }
+  }, [businessType]);
+
+  useEffect(() => {
+    if (RESTAURANT_ONLY_REPORT_KEYS.has(selectedTab) && businessType !== 'restaurant') {
+      setSelectedTab('daily');
+      return;
+    }
+    if (BEAUTY_ONLY_REPORT_KEYS.has(selectedTab) && businessType !== 'beauty') {
+      setSelectedTab('daily');
+    }
+  }, [businessType, selectedTab]);
+
   const [restOrders, setRestOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
@@ -438,6 +563,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   });
   const [beautyServiceTo, setBeautyServiceTo] = useState(() => localTodayDateKey());
   const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
+  const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
   const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
   const [beautyCrmModalAppointment, setBeautyCrmModalAppointment] = useState<BeautyAppointment | null>(null);
   /** Boş = tüm hizmetler; aksi halde beauty_services.id */
@@ -452,12 +578,26 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   }, [selectedTab]);
 
   const reloadBeautyServiceReport = useCallback(() => {
-    if (businessType !== 'beauty' || selectedTab !== 'beauty-service-report' || !selectedFirm) return;
+    if (businessType !== 'beauty' || (selectedTab !== 'beauty-service-report' && selectedTab !== 'beauty-cancelled-report') || !selectedFirm) return;
     setLoadingBeautyServiceReport(true);
-    beautyService
-      .getAppointmentsInRange(beautyServiceFrom, beautyServiceTo)
-      .then((rows) => setBeautyServiceAppointments(Array.isArray(rows) ? rows : []))
-      .catch(() => setBeautyServiceAppointments([]))
+    Promise.allSettled([
+      beautyService.getAppointmentsInRange(beautyServiceFrom, beautyServiceTo),
+      beautyService.getSalesWithItemsForExportRange(beautyServiceFrom, beautyServiceTo),
+    ])
+      .then(([appointmentsResult, salesResult]) => {
+        if (appointmentsResult.status === 'fulfilled') {
+          setBeautyServiceAppointments(Array.isArray(appointmentsResult.value) ? appointmentsResult.value : []);
+        } else {
+          setBeautyServiceAppointments([]);
+        }
+
+        if (salesResult.status === 'fulfilled') {
+          setBeautyServiceSales(Array.isArray(salesResult.value) ? salesResult.value : []);
+        } else {
+          // Ödeme raporu hata alsa da işlem/randevu raporu çalışmaya devam etsin.
+          setBeautyServiceSales([]);
+        }
+      })
       .finally(() => setLoadingBeautyServiceReport(false));
   }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo]);
 
@@ -563,6 +703,35 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     void loadRestOrdersForSelectedDate();
   }, [loadRestOrdersForSelectedDate]);
 
+  // Gün sonu / kasa durumu / Z raporu için: seçili gün gider toplamları
+  useEffect(() => {
+    let cancelled = false;
+    const loadCashExpenses = async () => {
+      try {
+        const rows = await expenseAPI.getAll({ startDate: selectedDate, endDate: selectedDate });
+        if (cancelled) return;
+        const allRows = Array.isArray(rows) ? rows : [];
+        const totalCash = allRows.reduce((sum, row) => {
+          const method = String((row as any)?.payment_method ?? '').trim().toLowerCase();
+          const isCash = method === 'cash' || method === 'nakit';
+          return isCash ? sum + (Number((row as any)?.amount) || 0) : sum;
+        }, 0);
+        const totalAll = allRows.reduce((sum, row) => sum + (Number((row as any)?.amount) || 0), 0);
+        setCashExpensesForSelectedDate(totalCash);
+        setTotalExpensesForSelectedDate(totalAll);
+      } catch {
+        if (!cancelled) {
+          setCashExpensesForSelectedDate(0);
+          setTotalExpensesForSelectedDate(0);
+        }
+      }
+    };
+    void loadCashExpenses();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, selectedTab]);
+
   // Restoran — Ürün Satış Adedi (ürün raporları sekmesi)
   useEffect(() => {
     if (selectedTab !== 'product-reports' || businessType !== 'restaurant' || !selectedFirm) {
@@ -658,7 +827,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   }, [reloadBeautyServiceReport]);
 
   useEffect(() => {
-    if (businessType !== 'beauty' || selectedTab !== 'beauty-service-report') return;
+    if (businessType !== 'beauty' || (selectedTab !== 'beauty-service-report' && selectedTab !== 'beauty-cancelled-report')) return;
     void loadBeautyServicesCatalog();
   }, [businessType, selectedTab, loadBeautyServicesCatalog]);
 
@@ -723,10 +892,45 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       }));
   }, [beautyServiceAppointments, beautyServiceFilterId]);
 
+  /** İptal edilen ödemeler (beauty_sales.payment_status = cancelled/refunded) */
+  const beautyCancelledPayments = useMemo(() => {
+    const isCancelledPayment = (raw: unknown) => {
+      const st = String(raw ?? '').trim().toLowerCase();
+      return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+    };
+
+    return (beautyServiceSales || [])
+      .filter((s) => {
+        if (!isCancelledPayment((s as any).payment_status)) return false;
+        if (beautyServiceFilterId) {
+          const items = Array.isArray(s.items) ? s.items : [];
+          const hasService = items.some((it) =>
+            String(it.item_type ?? '').toLowerCase() === 'service' &&
+            String(it.item_id ?? '') === String(beautyServiceFilterId)
+          );
+          if (!hasService) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+  }, [beautyServiceSales, beautyServiceFilterId]);
+
   /** Dönem karşılaştırması: ERP `sales` veya (restoran) fiş yoksa `comparisonOrders` */
   const comparisonBundle = useMemo(() => {
     const todayKey = localTodayDateKey();
-    const windows = buildComparisonWindows(comparisonPeriod, todayKey);
+    const windowsRaw = buildComparisonWindows(comparisonPeriod, todayKey);
+    const lang = language as ModuleLanguage;
+    const windows = {
+      ...windowsRaw,
+      currentPeriodLabel: translateModule(
+        comparisonPeriod === 'week' ? 'reportsPeriodThisWeek' : 'reportsPeriodThisMonth',
+        lang
+      ),
+      previousPeriodLabel: translateModule(
+        comparisonPeriod === 'week' ? 'reportsPeriodLastWeek' : 'reportsPeriodLastMonthSameRange',
+        lang
+      ),
+    };
     const { currentFrom, currentTo, previousFrom, previousTo, currentPeriodLabel, previousPeriodLabel } = windows;
 
     const salesInUnion = (sales || []).filter((s) => {
@@ -827,12 +1031,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     };
 
     const chartCountData = [
-      { name: 'Satış (adet)', onceki: prev.totalSales, guncel: curr.totalSales },
-      { name: 'Müşteri', onceki: prev.customerCount, guncel: curr.customerCount },
+      { name: translateModule('reportsComparisonChartSalesQty', lang), onceki: prev.totalSales, guncel: curr.totalSales },
+      { name: translateModule('reportsComparisonChartCustomer', lang), onceki: prev.customerCount, guncel: curr.customerCount },
     ];
     const chartMoneyData = [
-      { name: 'Ciro', onceki: prev.totalRevenue, guncel: curr.totalRevenue },
-      { name: 'Ort. fiş', onceki: prev.avgSale, guncel: curr.avgSale },
+      { name: translateModule('reportsComparisonChartRevenue', lang), onceki: prev.totalRevenue, guncel: curr.totalRevenue },
+      { name: translateModule('reportsComparisonChartAvgTicket', lang), onceki: prev.avgSale, guncel: curr.avgSale },
     ];
 
     const productKeys = new Set<string>();
@@ -885,7 +1089,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       chartMoneyData,
       productRows,
     };
-  }, [sales, comparisonPeriod, businessType, comparisonOrders]);
+  }, [sales, comparisonPeriod, businessType, comparisonOrders, language]);
 
   const salesForAnalysis = useMemo(() => {
     if (!sales?.length) return [] as Sale[];
@@ -902,6 +1106,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   };
 
   const dailySales = getDailySales();
+  const dailySalesActive = useMemo(
+    () => dailySales.filter((s) => !isRemovedSaleStatus(s.status)),
+    [dailySales]
+  );
 
   /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
   const restOrdersClosedOnSelectedDate = useMemo(() => {
@@ -918,13 +1126,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   let dailyDiscount: number;
   if (businessType === 'restaurant') {
     /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
-    if (dailySales.length > 0) {
-      dailyTotal = dailySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCash = dailySales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCard = dailySales
+    if (dailySalesActive.length > 0) {
+      dailyTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCash = dailySalesActive.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCard = dailySalesActive
         .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyDiscount = dailySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
+      dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
       dailyTotal = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
       let restCash = 0;
@@ -943,12 +1151,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       );
     }
   } else {
-    dailyTotal = dailySales.reduce((sum, s) => sum + s.total, 0);
-    dailyCash = dailySales.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-    dailyCard = dailySales
+    dailyTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
+    dailyCash = dailySalesActive.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
+    dailyCard = dailySalesActive
       .filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway')
       .reduce((sum, s) => sum + s.total, 0);
-    dailyDiscount = dailySales.reduce((sum, s) => sum + s.discount, 0);
+    dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
   }
 
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
@@ -960,11 +1168,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         receiptNumber: s.receiptNumber,
         date: s.date,
         cashier: s.cashier,
+        deviceName: resolveDailyRowDeviceName(
+          (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
+        ),
         customerName: s.customerName,
         beforeDiscount: erpSaleBeforeDiscount(s),
         total: Number(s.total) || 0,
         discount: Number(s.discount) || 0,
         paymentMethod: s.paymentMethod,
+        status: String(s.status ?? 'completed'),
         erpSale: s,
       }));
     }
@@ -976,11 +1188,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           receiptNumber: s.receiptNumber,
           date: s.date,
           cashier: s.cashier,
+          deviceName: resolveDailyRowDeviceName(
+            (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
+          ),
           customerName: s.customerName,
           beforeDiscount: erpSaleBeforeDiscount(s),
           total: Number(s.total) || 0,
           discount: Number(s.discount) || 0,
           paymentMethod: s.paymentMethod,
+          status: String(s.status ?? 'completed'),
           erpSale: s,
         }))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -999,11 +1215,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           receiptNumber: String(o.order_no || `ADİSYON-${String(o.id).slice(0, 8)}`),
           date: o.closed_at || o.closedAt || o.opened_at,
           cashier: o.waiter || '-',
+          deviceName: resolveDailyRowDeviceName((o as any).device_name ?? (o as any).terminal_name ?? (o as any).table_no),
           customerName: o.customer_name || '-',
           beforeDiscount: restOrderBeforeDiscount(o),
           total: net,
           discount: disc,
           paymentMethod,
+          status: 'completed',
           restOrder: o,
         };
       })
@@ -1029,6 +1247,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         }) as Sale
     );
   }, [businessType, dailySales, dailyUnifiedRows]);
+
+  const dailyVisibleRows = useMemo(() => {
+    if (!dailyShowOnlyRemoved) return dailyUnifiedRows.filter((r) => !isRemovedSaleStatus(r.status));
+    return dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
+  }, [dailyUnifiedRows, dailyShowOnlyRemoved]);
+
+  const dailyActiveRows = useMemo(
+    () => dailyUnifiedRows.filter((r) => !isRemovedSaleStatus(r.status)),
+    [dailyUnifiedRows]
+  );
 
   const closeDailyRowReceiptModal = useCallback(() => {
     setDailyRowReceiptModal(null);
@@ -1121,38 +1349,64 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
   }, [dailyRowReceiptHtml, tm]);
 
+  const confirmReportAction = useCallback((message: string) => {
+    return new Promise<boolean>((resolve) => {
+      reportConfirmResolverRef.current = resolve;
+      setReportConfirmMessage(message);
+      setReportConfirmOpen(true);
+    });
+  }, []);
+
+  const resolveReportConfirm = useCallback((approved: boolean) => {
+    setReportConfirmOpen(false);
+    const resolver = reportConfirmResolverRef.current;
+    reportConfirmResolverRef.current = null;
+    if (resolver) resolver(approved);
+  }, []);
+
   const handleDeleteDailyErpSale = useCallback(async () => {
     const inv = dailyRowReceiptModal?.erpSale;
     const id = inv?.id && isSaleRowUuid(String(inv.id)) ? String(inv.id).trim() : '';
     if (!id || !inv?.receiptNumber) return;
-    if (!window.confirm(tm('reportConfirmDeleteErpSale').replace('{n}', String(inv.receiptNumber)))) return;
+    const approved = await confirmReportAction(
+      tm('reportConfirmDeleteErpSale').replace('{n}', String(inv.receiptNumber))
+    );
+    if (!approved) return;
     try {
       const { invoicesAPI } = await import('../../services/api/invoices');
-      const ok = await invoicesAPI.delete(id);
+      // Fiziksel silme yerine iade/iptal: kayıt raporlarda görünmeye devam eder.
+      const ok = await invoicesAPI.refund(id, {
+        firmNr: (inv as any).firmNr,
+        periodNr: (inv as any).periodNr,
+        receiptNumber: inv.receiptNumber,
+      });
       if (!ok) {
-        toast.error(tm('reportToastInvoiceDeleteFail'));
+        console.error('[ReportsModule] refund returned false', { id, receipt: inv.receiptNumber });
+        toast.error(tm('reportToastCancelOrderFail'));
         return;
       }
       const { useSaleStore } = await import('../../store');
-      useSaleStore.getState().removeSaleById(id);
       await useSaleStore.getState().loadSales(500);
       if (businessType === 'restaurant') {
         await loadRestOrdersForSelectedDate();
       }
-      toast.success(tm('reportToastInvoiceDeleted'));
+      toast.success(tm('invoiceCancelled'));
       closeDailyRowReceiptModal();
     } catch (e: any) {
       console.error('[ReportsModule] Fatura silme:', e);
       toast.error(e?.message || tm('reportToastDeleteFail'));
     }
-  }, [businessType, closeDailyRowReceiptModal, dailyRowReceiptModal?.erpSale, loadRestOrdersForSelectedDate, tm]);
+  }, [businessType, closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal?.erpSale, loadRestOrdersForSelectedDate, tm]);
 
   const handleDeleteDailyRestOrder = useCallback(async () => {
     const o = dailyRowReceiptModal?.restOrder;
     const id = o?.id != null ? String(o.id).trim() : '';
     const orderNo = dailyRowReceiptModal?.receiptNumber || id;
     if (!id) return;
-    if (!window.confirm(tm('reportConfirmCancelRestOrder').replace('{n}', String(orderNo)))) {
+    const approved = await confirmReportAction(
+      tm('reportConfirmCancelRestOrder').replace('{n}', String(orderNo))
+    );
+    if (!approved) {
       return;
     }
     try {
@@ -1164,12 +1418,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       console.error('[ReportsModule] Adisyon iptal:', e);
       toast.error(e?.message || tm('reportToastCancelOrderFail'));
     }
-  }, [closeDailyRowReceiptModal, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
+  }, [closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
 
   // Z Report — restoranda tutarlar Perakende Satışlar (ERP) ile aynı; o gün ERP fişi yoksa kapalı adisyonlar
   const generateZReport = () => {
     const reportDay = selectedDate;
-    const todaySales = sales.filter(s => localCalendarDateKey(s.date) === reportDay);
+    const allDaySales = sales.filter((s) => localCalendarDateKey(s.date) === reportDay);
+    const removedDaySales = allDaySales.filter((s) => isRemovedSaleStatus(s.status));
+    const todaySales = sales.filter(
+      (s) => localCalendarDateKey(s.date) === reportDay && !isRemovedSaleStatus(s.status)
+    );
+    const removedAmount = removedDaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 
     if (businessType === 'restaurant') {
       if (todaySales.length > 0) {
@@ -1187,13 +1446,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           totalSales: todaySales.length,
           amountBeforeDiscount,
           totalAmount,
+          totalExpenses: totalExpensesForSelectedDate,
+          netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
           cashAmount,
           cardAmount,
           totalDiscount,
           firstSale: todaySales[0].receiptNumber,
           lastSale: todaySales[todaySales.length - 1].receiptNumber,
-          canceledSales: 0,
-          refundAmount: 0,
+          canceledSales: removedDaySales.length,
+          refundAmount: removedAmount,
         };
       }
       const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
@@ -1214,13 +1475,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         totalSales: ro.length,
         amountBeforeDiscount,
         totalAmount,
+        totalExpenses: totalExpensesForSelectedDate,
+        netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
         cashAmount,
         cardAmount,
         totalDiscount,
         firstSale: ro.length > 0 ? String(ro[0].order_no || ro[0].id || '-') : '-',
         lastSale: ro.length > 0 ? String(ro[ro.length - 1].order_no || ro[ro.length - 1].id || '-') : '-',
-        canceledSales: 0,
-        refundAmount: 0,
+        canceledSales: removedDaySales.length,
+        refundAmount: removedAmount,
       };
     }
 
@@ -1239,13 +1502,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       totalSales: todaySales.length,
       amountBeforeDiscount,
       totalAmount,
+      totalExpenses: totalExpensesForSelectedDate,
+      netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
       cashAmount,
       cardAmount,
       totalDiscount,
       firstSale: todaySales.length > 0 ? todaySales[0].receiptNumber : '-',
       lastSale: todaySales.length > 0 ? todaySales[todaySales.length - 1].receiptNumber : '-',
-      canceledSales: 0,
-      refundAmount: 0,
+      canceledSales: removedDaySales.length,
+      refundAmount: removedAmount,
     };
   };
 
@@ -1291,6 +1556,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }>();
 
     sales.forEach(sale => {
+      if (localCalendarDateKey(sale.date) !== selectedDate) return;
       sale.items.forEach(item => {
         const existing = productMap.get(item.productId);
         if (existing) {
@@ -1330,85 +1596,55 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       const card = { amount: cardAmt, count: cardCnt, percentage: pct(cardAmt) };
       const transfer = { amount: transferAmt, count: transferCnt, percentage: pct(transferAmt) };
       const chartData = [
-        { name: 'Nakit', value: cashAmt, count: cashCnt },
-        { name: 'Kredi Kartı', value: cardAmt, count: cardCnt },
-        { name: 'Havale/EFT', value: transferAmt, count: transferCnt },
+        { name: tm('reportsPaymentPieCash'), value: cashAmt, count: cashCnt },
+        { name: tm('reportsPaymentPieCard'), value: cardAmt, count: cardCnt },
+        { name: tm('reportsPaymentPieTransfer'), value: transferAmt, count: transferCnt },
       ].filter((d) => d.value > 0);
       return { chartData, cash, card, transfer };
     };
 
-    if (businessType === 'restaurant') {
-      let cashAmt = 0;
-      let cardAmt = 0;
-      let transferAmt = 0;
-      let cashCnt = 0;
-      let cardCnt = 0;
-      let transferCnt = 0;
-      for (const row of dailyUnifiedRows) {
-        const n = Number(row.total) || 0;
-        if (n <= 0) continue;
-        if (row.paymentMethod === 'cash') {
-          cashAmt += n;
-          cashCnt += 1;
-        } else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') {
-          cardAmt += n;
-          cardCnt += 1;
-        } else {
-          transferAmt += n;
-          transferCnt += 1;
-        }
+    let cashAmt = 0;
+    let cardAmt = 0;
+    let transferAmt = 0;
+    let cashCnt = 0;
+    let cardCnt = 0;
+    let transferCnt = 0;
+    for (const row of dailyActiveRows) {
+      const n = Number(row.total) || 0;
+      if (n <= 0) continue;
+      if (row.paymentMethod === 'cash') {
+        cashAmt += n;
+        cashCnt += 1;
+      } else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') {
+        cardAmt += n;
+        cardCnt += 1;
+      } else {
+        transferAmt += n;
+        transferCnt += 1;
       }
-      return finalize(cashAmt, cashCnt, cardAmt, cardCnt, transferAmt, transferCnt);
     }
-
-    if (!sales || !Array.isArray(sales)) {
-      const e = emptyBucket();
-      return { chartData: [], cash: e, card: e, transfer: e };
-    }
-    const cashSales = sales.filter((s) => s.paymentMethod === 'cash');
-    const cardSales = sales.filter((s) => s.paymentMethod === 'card' || s.paymentMethod === 'gateway');
-    const transferSales = sales.filter((s) => s.paymentMethod === 'transfer');
-    const cashAmt = cashSales.reduce((sum, s) => sum + s.total, 0);
-    const cardAmt = cardSales.reduce((sum, s) => sum + s.total, 0);
-    const transferAmt = transferSales.reduce((sum, s) => sum + s.total, 0);
-    return finalize(cashAmt, cashSales.length, cardAmt, cardSales.length, transferAmt, transferSales.length);
+    return finalize(cashAmt, cashCnt, cardAmt, cardCnt, transferAmt, transferCnt);
   };
 
   const getCashierPerformance = () => {
-    if (businessType === 'restaurant') {
-      const cashierMap = new Map<string, any>();
-      dailyUnifiedRows.forEach((row) => {
-        const name = String(row.cashier || '').trim() || 'Bilinmeyen Kasiyer';
-        const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
-        existing.salesCount += 1;
-        existing.totalRevenue += row.total;
-        existing.avgSale = existing.totalRevenue / existing.salesCount;
-        if (row.paymentMethod === 'cash') existing.cashSales += row.total;
-        else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += row.total;
-        cashierMap.set(name, existing);
-      });
-      return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    }
-
-    if (!sales || !Array.isArray(sales)) return [];
     const cashierMap = new Map<string, any>();
-    sales.forEach(sale => {
-      const name = sale.cashier || 'Bilinmeyen Kasiyer';
+    dailyActiveRows.forEach((row) => {
+      const name = String(row.cashier || '').trim() || 'Bilinmeyen Kasiyer';
       const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
       existing.salesCount += 1;
-      existing.totalRevenue += sale.total;
+      existing.totalRevenue += row.total;
       existing.avgSale = existing.totalRevenue / existing.salesCount;
-      if (sale.paymentMethod === 'cash') existing.cashSales += sale.total;
-      else existing.cardSales += sale.total;
+      if (row.paymentMethod === 'cash') existing.cashSales += row.total;
+      else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += row.total;
       cashierMap.set(name, existing);
     });
     return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
   };
 
-  const getRestaurantStats = () => {
-    if (businessType !== 'restaurant') return null;
-    const totalSales = dailyUnifiedRows.reduce((sum, r) => sum + r.total, 0);
-    const payments = dailyUnifiedRows.reduce((acc: any, r) => {
+  /** Seçili günün birleşik satırından özet — tüm iş kolu yapıları (ERP + gerekiyorsa restoran). */
+  const computeDayReportStats = () => {
+    const totalSales = dailyActiveRows.reduce((sum, r) => sum + r.total, 0);
+    const payments = dailyActiveRows.reduce((acc: Record<string, number>, r) => {
       const bucket =
         r.paymentMethod === 'cash'
           ? 'NAKİT'
@@ -1418,20 +1654,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       acc[bucket] = (acc[bucket] || 0) + r.total;
       return acc;
     }, {});
-    const discountTotal =
-      dailySales.length > 0
-        ? dailySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0)
-        : restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + Number((o as any).discount_amount || 0), 0);
-
+    const discountTotal = dailyActiveRows.reduce((sum, r) => sum + (Number(r.discount) || 0), 0);
     return {
       totalSales,
       payments,
       discountTotal,
-      orderCount: dailyUnifiedRows.length
+      orderCount: dailyActiveRows.length,
     };
   };
 
-  const restStats = getRestaurantStats();
+  const restStats = computeDayReportStats();
   const zReport = generateZReport();
   const productSales = getProductSales();
   const cashierPerformance = getCashierPerformance();
@@ -1546,22 +1778,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       }
     };
 
-    if (businessType === 'restaurant') {
-      for (const row of dailyUnifiedRows) {
-        const t = new Date(row.date).getTime();
-        if (!Number.isFinite(t) || t <= 0) continue;
-        const hour = new Date(row.date).getHours();
-        bump(hour, Number(row.total) || 0);
-      }
-    } else {
-      const list = sales && Array.isArray(sales) ? sales : [];
-      for (const sale of list) {
-        if (localCalendarDateKey(sale.date) !== selectedDate) continue;
-        const t = new Date(sale.date).getTime();
-        if (!Number.isFinite(t) || t <= 0) continue;
-        const hour = new Date(sale.date).getHours();
-        bump(hour, Number(sale.total) || 0);
-      }
+    for (const row of dailyUnifiedRows) {
+      const t = new Date(row.date).getTime();
+      if (!Number.isFinite(t) || t <= 0) continue;
+      const hour = new Date(row.date).getHours();
+      bump(hour, Number(row.total) || 0);
     }
 
     return Array.from(hourlyMap.entries())
@@ -1583,23 +1804,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     const todayKey = localTodayDateKey();
     const openingCash =
       selectedDate === todayKey ? readOpeningCashForReports(businessType) : 0;
-    const expenses = 0;
+    const expenses = cashExpensesForSelectedDate;
     const closingCash = openingCash + cashTotal - expenses;
 
     const map = new Map<string, number>();
-    if (businessType === 'restaurant') {
-      for (const row of dailyUnifiedRows) {
-        if (row.paymentMethod !== 'card' && row.paymentMethod !== 'gateway') continue;
-        const label = row.paymentMethod === 'gateway' ? 'Sanal POS' : 'Kredi kartı';
-        map.set(label, (map.get(label) || 0) + (Number(row.total) || 0));
-      }
-    } else if (sales && Array.isArray(sales)) {
-      for (const s of sales) {
-        if (localCalendarDateKey(s.date) !== selectedDate) continue;
-        if (s.paymentMethod !== 'card' && s.paymentMethod !== 'gateway') continue;
-        const label = s.paymentMethod === 'gateway' ? 'Sanal POS' : 'Kredi kartı';
-        map.set(label, (map.get(label) || 0) + (Number(s.total) || 0));
-      }
+    for (const row of dailyUnifiedRows) {
+      if (row.paymentMethod !== 'card' && row.paymentMethod !== 'gateway') continue;
+      const label = row.paymentMethod === 'gateway' ? 'Sanal POS' : 'Kredi kartı';
+      map.set(label, (map.get(label) || 0) + (Number(row.total) || 0));
     }
 
     let cards = Array.from(map.entries())
@@ -1788,16 +2000,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         let bucket: string;
         let bucketKey: 'fresh' | 'normal' | 'slow' | 'critical';
         if (days <= 30) {
-          bucket = '0–30 gün (hareketli)';
+          bucket = tm('reportsStockAgeBucketFreshLong');
           bucketKey = 'fresh';
         } else if (days <= 90) {
-          bucket = '31–90 gün';
+          bucket = tm('reportsStockAgeBucket31');
           bucketKey = 'normal';
         } else if (days <= 180) {
-          bucket = '91–180 gün';
+          bucket = tm('reportsStockAgeBucket91180');
           bucketKey = 'slow';
         } else {
-          bucket = '180+ gün / kayıtlı satış yok';
+          bucket = tm('reportsStockAgeBucket180');
           bucketKey = 'critical';
         }
 
@@ -1824,9 +2036,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       totalSkus: rows.length,
       totalValue: rows.reduce((s, r) => s + r.value, 0),
       hint:
-        businessType === 'restaurant'
-          ? 'Son satış tarihi, seçili güne yüklenen kapalı siparişlere göre hesaplanır. Tarih aralığını genişletmek için günlük rapor tarihini değiştirin.'
-          : 'Son satış tarihi, uygulamadaki satış geçmişine göre hesaplanır.',
+        businessType === 'restaurant' ? tm('reportsStockAgeHintRest') : tm('reportsStockAgeHintRetail'),
     };
     return { rows, summary, lowStockThreshold };
   };
@@ -1920,8 +2130,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       periodDays,
       hint:
         businessType === 'restaurant'
-          ? `Dönem: yaklaşık ${periodDays} gün (yüklü kapalı siparişler). Stok / satış oranı mevcut stok ile tahminidir.`
-          : `Dönem: satış kayıtlarında ${periodDays} farklı gün. Yıllıklandırılmış devir = (günlük ort. satış × 365) / stok.`,
+          ? tm('reportsStockTurnHintRest').replace('{n}', String(periodDays))
+          : tm('reportsStockTurnHintRetail').replace('{n}', String(periodDays)),
     };
   };
 
@@ -1992,9 +2202,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     });
 
     const chartData = [
-      { name: 'A grubu', value: valueByClass.A, fill: '#16a34a' },
-      { name: 'B grubu', value: valueByClass.B, fill: '#ca8a04' },
-      { name: 'C grubu', value: valueByClass.C, fill: '#64748b' },
+      { name: tm('reportsAbcClassGroupA'), value: valueByClass.A, fill: '#16a34a' },
+      { name: tm('reportsAbcClassGroupB'), value: valueByClass.B, fill: '#ca8a04' },
+      { name: tm('reportsAbcClassGroupC'), value: valueByClass.C, fill: '#64748b' },
     ].filter(d => d.value > 0);
 
     return {
@@ -2002,51 +2212,28 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       totalMetric,
       valueByClass,
       chartData,
-      hint:
-        'Sınıflandırma: dönem satış cirosu olan ürünlerde ciro, satışı olmayanlarda stok değeri (stok × fiyat) metrik alınır. Kümülatif %80 → A, %95’e kadar → B, kalan → C.',
+      hint: tm('reportsAbcHint'),
     };
   };
 
-  // Payment Distribution Summary
+  // Payment Distribution Summary — seçili gün, birleşik satır (tüm yapılar)
   const getPaymentSummary = () => {
-    if (businessType === 'restaurant') {
-      const stats = restStats || { totalSales: 0, payments: {}, orderCount: 0 };
-      const totalSales = stats.totalSales;
-      const cashAmount = stats.payments['NAKİT'] || 0;
-      const cardAmount = stats.payments['POS'] || 0;
-      const otherAmount = totalSales - cashAmount - cardAmount;
-
-      return {
-        total: stats.orderCount,
-        cash: { count: 0, amount: cashAmount, percentage: totalSales > 0 ? (cashAmount / totalSales * 100) : 0 },
-        card: { count: 0, amount: cardAmount, percentage: totalSales > 0 ? (cardAmount / totalSales * 100) : 0 },
-        transfer: { count: 0, amount: otherAmount, percentage: totalSales > 0 ? (otherAmount / totalSales * 100) : 0 },
-        chartData: [
-          { name: 'Nakit', value: cashAmount, count: 0, fill: '#10b981' },
-          { name: 'Kart', value: cardAmount, count: 0, fill: '#3b82f6' },
-          { name: 'Diğer', value: otherAmount, count: 0, fill: '#f59e0b' },
-        ]
-      };
-    }
-
-    const list = sales && Array.isArray(sales) ? sales : [];
-    const totalSales = list.length;
-    const cashAmount = list.filter(s => s.paymentMethod === 'cash').reduce((sum, s) => sum + s.total, 0);
-    const cardAmount = list.filter(s => s.paymentMethod === 'card' || s.paymentMethod === 'gateway').reduce((sum, s) => sum + s.total, 0);
-    const transferAmount = list.filter(s => s.paymentMethod === 'transfer').reduce((sum, s) => sum + s.total, 0);
-    const sumAmt = cashAmount + cardAmount + transferAmount;
-    const pct = (n: number) => (sumAmt > 0 ? (n / sumAmt) * 100 : 0);
+    const stats = restStats;
+    const totalSales = stats.totalSales;
+    const cashAmount = stats.payments['NAKİT'] || 0;
+    const cardAmount = stats.payments['POS'] || 0;
+    const otherAmount = Math.max(0, totalSales - cashAmount - cardAmount);
 
     return {
-      total: totalSales,
-      cash: { count: 0, amount: cashAmount, percentage: pct(cashAmount) },
-      card: { count: 0, amount: cardAmount, percentage: pct(cardAmount) },
-      transfer: { count: 0, amount: transferAmount, percentage: pct(transferAmount) },
+      total: stats.orderCount,
+      cash: { count: 0, amount: cashAmount, percentage: totalSales > 0 ? (cashAmount / totalSales) * 100 : 0 },
+      card: { count: 0, amount: cardAmount, percentage: totalSales > 0 ? (cardAmount / totalSales) * 100 : 0 },
+      transfer: { count: 0, amount: otherAmount, percentage: totalSales > 0 ? (otherAmount / totalSales) * 100 : 0 },
       chartData: [
-        { name: 'Nakit', value: cashAmount, count: 0, fill: '#10b981' },
-        { name: 'Kart', value: cardAmount, count: 0, fill: '#3b82f6' },
-        { name: 'Transfer', value: transferAmount, count: 0, fill: '#f59e0b' },
-      ]
+        { name: tm('reportsPaymentPieCash'), value: cashAmount, count: 0, fill: '#10b981' },
+        { name: tm('reportsPaymentPieCard'), value: cardAmount, count: 0, fill: '#3b82f6' },
+        { name: tm('reportsPaymentOther'), value: otherAmount, count: 0, fill: '#f59e0b' },
+      ],
     };
   };
 
@@ -2061,6 +2248,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   /** Günlük rapor — A4 veya 80 mm termal */
   const printDailySalesReport = (format: DailyReportPrintFormat) => {
+    const lang = language as ModuleLanguage;
+    const L = (key: string) => translateModule(key, lang);
     const dateLabel = new Date(selectedDate + 'T12:00:00').toLocaleDateString('tr-TR', {
       weekday: 'long',
       year: 'numeric',
@@ -2068,20 +2257,23 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       day: 'numeric',
     });
 
-    const saleRowsA4 = dailyUnifiedRows
+    const removedRows = dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
+
+    const saleRowsA4 = dailyActiveRows
       .map((row) => {
         const pmLabel =
           row.paymentMethod === 'cash'
-            ? 'Nakit'
+            ? L('cashLabel')
             : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-              ? 'Kart'
-              : 'Diğer';
+              ? L('cardLabel')
+              : L('reportsPaymentOther');
         const before = row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0));
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
           <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
           <td>${escHtml(row.cashier || '—')}</td>
+          <td>${escHtml(row.deviceName || '—')}</td>
           <td>${escHtml(row.customerName || '—')}</td>
           <td style="text-align:right">${formatNumber(before, 2, false)}</td>
           <td style="text-align:right">${formatNumber(row.discount ?? 0, 2, false)}</td>
@@ -2104,31 +2296,31 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         )
         .join('');
       restBlockA4 = `
-        <h3 style="margin-top:20px;font-size:14px">Restoran siparişleri (${escHtml(selectedDate)})</h3>
+        <h3 style="margin-top:20px;font-size:14px">${escHtml(L('reportsPrintRestOrdersBlock').replace('{date}', selectedDate))}</h3>
         <table class="t">
-          <thead><tr><th>Fiş / No</th><th style="text-align:right">Tutar</th><th>Ödeme</th></tr></thead>
+          <thead><tr><th>${escHtml(L('reportsPrintReceiptSlashNo'))}</th><th style="text-align:right">${escHtml(L('reportsPrintAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
           <tbody>${oRows}</tbody>
         </table>`;
     }
 
-    const saleBlocks80 = dailyUnifiedRows
+    const saleBlocks80 = dailyActiveRows
       .map((row) => {
         const pm =
           row.paymentMethod === 'cash'
-            ? 'Nakit'
+            ? L('cashLabel')
             : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-              ? 'Kart'
-              : 'Diğer';
+              ? L('cardLabel')
+              : L('reportsPaymentOther');
         const net = formatNumber(row.total, 2, false);
         const disc = formatNumber(row.discount ?? 0, 2, false);
         const before = formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
         return `
     <div class="sale-block">
       <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</span></div>
-      <div class="sub wrap">${escHtml(row.cashier || '—')} · ${escHtml(row.customerName || '—')}</div>
-      <div class="row"><span>Önce</span><span>${before}</span></div>
-      <div class="row"><span>İndirim</span><span>${disc}</span></div>
-      <div class="row bold"><span>Net · ${pm}</span><span>${net}</span></div>
+      <div class="sub wrap">${escHtml(row.cashier || '—')} · ${escHtml(row.deviceName || '—')} · ${escHtml(row.customerName || '—')}</div>
+      <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
+      <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
+      <div class="row bold"><span>${escHtml(L('reportsPrintNetWithPm').replace('{pm}', pm))}</span><span>${net}</span></div>
     </div>
     <div class="divider light"></div>`;
       })
@@ -2148,17 +2340,33 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         .join('');
       restBlock80 = `
         <div class="divider"></div>
-        <div class="center bold">RESTORAN SİPARİŞLERİ (${escHtml(selectedDate)})</div>
+        <div class="center bold">${escHtml(L('reportsPrintRestOrdersBlock80').replace('{date}', selectedDate))}</div>
         ${oBlocks}`;
     }
 
+    const removedRowsA4 = removedRows
+      .map((row) => {
+        const before = row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0));
+        const st = String(row.status ?? '').toLowerCase();
+        const statusLabel = st === 'refunded' ? L('reportsDetStatusRefunded') : L('reportsDetStatusCancelled');
+        return `
+        <tr>
+          <td>${escHtml(row.receiptNumber)}</td>
+          <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(statusLabel)}</td>
+          <td style="text-align:right">${formatNumber(before, 2, false)}</td>
+          <td style="text-align:right">${formatNumber(row.total, 2, false)}</td>
+        </tr>`;
+      })
+      .join('');
+
     const emptySales80 =
-      dailyUnifiedRows.length === 0
-        ? '<div class="center muted" style="margin:3mm 0">Kayıt yok</div>'
+      dailyActiveRows.length === 0
+        ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
         : saleBlocks80;
 
     const htmlA4 = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Günlük Satış — ${selectedDate}</title>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${selectedDate}</title>
 <style>
   @media print {
     @page { size: A4 portrait; margin: 12mm; }
@@ -2173,26 +2381,36 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   .t th, .t td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
   .t thead { background: #f8fafc; }
 </style></head><body>
-  <h1>Günlük satış raporu</h1>
+  <h1>${escHtml(L('reportsPrintDailyTitle'))}</h1>
   <p class="muted">${escHtml(dateLabel)}</p>
   <div class="grid">
-    <div class="card"><div>İşlem adedi</div><strong>${dailyUnifiedRows.length}</strong></div>
-    <div class="card"><div>Toplam ciro</div><strong>${formatNumber(dailyTotal, 2, false)}</strong></div>
-    <div class="card"><div>Toplam indirim</div><strong>${formatNumber(dailyDiscount, 2, false)}</strong></div>
-    <div class="card"><div>Nakit</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
-    <div class="card"><div>Kart</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyActiveRows.length}</strong></div>
+    <div class="card"><div>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</div><strong>${removedRows.length}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(dailyTotal, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(dailyDiscount, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
   </div>
-  <h3 style="font-size:14px;margin:0 0 8px">POS satış satırları</h3>
+  <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
-    <thead><tr><th>Fiş</th><th>Saat</th><th>Kasiyer</th><th>Müşteri</th><th style="text-align:right">İndirim öncesi</th><th style="text-align:right">İndirim</th><th style="text-align:right">Net</th><th>Ödeme</th></tr></thead>
-    <tbody>${saleRowsA4 || '<tr><td colspan="8" style="text-align:center;color:#64748b">Kayıt yok</td></tr>'}</tbody>
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
+    <tbody>${saleRowsA4 || `<tr><td colspan="9" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
   </table>
+  ${
+    removedRowsA4
+      ? `<h3 style="font-size:14px;margin:16px 0 8px">${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</h3>
+  <table class="t">
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('status'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th></tr></thead>
+    <tbody>${removedRowsA4}</tbody>
+  </table>`
+      : ''
+  }
   ${restBlockA4}
-  <p class="muted" style="margin-top:20px;font-size:10px;text-align:center">RetailEX · Günlük rapor</p>
+  <p class="muted" style="margin-top:20px;font-size:10px;text-align:center">${escHtml(L('reportsPrintFooter'))}</p>
 </body></html>`;
 
     const html80 = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Günlük Satış — ${selectedDate}</title>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${selectedDate}</title>
 <style>
   /* 80 mm termal: ortada durmasın — önizleme ve yazdırmada sola yaslı tek sütun */
   html {
@@ -2242,20 +2460,21 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   .sale-block { margin-top: 2mm; }
   .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
 </style></head><body>
-  <div class="center bold large">GÜNLÜK SATIŞ RAPORU</div>
+  <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>
   <div class="center small">${escHtml(dateLabel)}</div>
   <div class="divider"></div>
-  <div class="row"><span>İşlem adedi</span><span class="bold">${dailyUnifiedRows.length}</span></div>
-  <div class="row"><span>Toplam ciro</span><span class="bold">${formatNumber(dailyTotal, 2, false)}</span></div>
-  <div class="row"><span>Toplam indirim</span><span>${formatNumber(dailyDiscount, 2, false)}</span></div>
-  <div class="row"><span>Nakit</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
-  <div class="row"><span>Kart</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyActiveRows.length}</span></div>
+  <div class="row"><span>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</span><span class="bold">${removedRows.length}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(dailyTotal, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(dailyDiscount, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
   <div class="divider"></div>
-  <div class="section-title">POS SATIŞ DETAYI</div>
+  <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
   ${restBlock80}
   <div class="divider"></div>
-  <div class="center small" style="margin-top:2mm">RetailEX · Günlük rapor</div>
+  <div class="center small" style="margin-top:2mm">${escHtml(L('reportsPrintFooter'))}</div>
 </body></html>`;
 
     const html = format === 'a4' ? htmlA4 : html80;
@@ -2346,8 +2565,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           .large { font-size: 14px; }
           .divider { border-top: 1px dashed #000; margin: 3mm 0; }
           .row { display: flex; justify-content: space-between; margin: 1mm 0; }
+          .row .label { color: #111; }
+          .row .value { font-weight: 700; }
           .header { margin-bottom: 3mm; }
           .small { font-size: 9px; color: #444; }
+          .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
+          .muted { color: #555; }
+          .formula { border: 1px dashed #222; padding: 2mm; border-radius: 2mm; margin-top: 2mm; }
+          .formula .row { margin: 0.8mm 0; }
+          .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
         </style>
       </head>
       <body>
@@ -2369,53 +2595,63 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         
         <div class="divider"></div>
         
-        <div class="center bold">SATIŞ ÖZETİ</div>
+        <div class="section-title">SATIŞ ÖZETİ</div>
         
         <div class="row">
-          <span>Toplam İşlem:</span>
-          <span class="bold">${zReport.totalSales}</span>
+          <span class="label">Toplam İşlem:</span>
+          <span class="value">${zReport.totalSales}</span>
         </div>
         <div class="row">
-          <span>İndirim öncesi (brüt):</span>
-          <span class="bold">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
+          <span class="label">Brüt Satış:</span>
+          <span class="value">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span>Toplam indirim:</span>
+          <span class="label">İndirim (-):</span>
           <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span>Net ciro:</span>
-          <span class="bold">${formatNumber(zReport.totalAmount, 2, false)}</span>
+          <span class="label">${escHtml(tm('reportsDetStatusCancelled'))} / ${escHtml(tm('reportsDetStatusRefunded'))} (-):</span>
+          <span>${formatNumber(zReport.refundAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span>İlk Fiş No:</span>
+          <span class="label">Toplam gider (-):</span>
+          <span>${formatNumber(zReport.totalExpenses, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">${escHtml(tm('reportsDetStatusCancelled'))} / ${escHtml(tm('reportsDetStatusRefunded'))} adet:</span>
+          <span>${zReport.canceledSales}</span>
+        </div>
+        <div class="row">
+          <span class="label">İlk Fiş No:</span>
           <span>${zReport.firstSale}</span>
         </div>
         <div class="row">
-          <span>Son Fiş No:</span>
+          <span class="label">Son Fiş No:</span>
           <span>${zReport.lastSale}</span>
         </div>
         
         <div class="divider"></div>
         ${restaurantProductBlock}
-        <div class="center bold">ÖDEME ÖZETİ</div>
+        <div class="section-title">ÖDEME ÖZETİ</div>
         
         <div class="row">
-          <span>Nakit:</span>
-          <span>${formatNumber(zReport.cashAmount, 2, false)}</span>
+          <span class="label">Nakit:</span>
+          <span class="value">${formatNumber(zReport.cashAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span>Kart:</span>
+          <span class="label">Kart:</span>
           <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
         </div>
         
         <div class="divider"></div>
-        
-        <div class="row bold large">
-          <span>NET CİRO:</span>
-          <span>${formatNumber(zReport.totalAmount, 2, false)}</span>
+
+        <div class="section-title">HESAP ÖZETİ</div>
+        <div class="formula">
+          <div class="row"><span class="label">Nakit + Kart tahsilat</span><span>${formatNumber(zReport.totalAmount, 2, false)}</span></div>
+          <div class="row"><span class="label">Toplam gider</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
+          <div class="row final"><span>GİDER SONRASI NET</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
-        <div class="center small" style="margin-top:1mm">İndirim sonrası tahsilat toplamı</div>
+        <div class="center small muted" style="margin-top:1mm">Bu tutar günlük tahsilat eksi günlük giderdir.</div>
         
         <div class="divider"></div>
         
@@ -3043,19 +3279,22 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
           { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
           { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
-        ] : businessType === 'beauty' ? [
-          { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
-          { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
-          { key: 'analysis', label: tm('analiz'), icon: <PieChartOutlined /> },
-        ] : [
-          { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
-          { key: 'analysis', label: tm('analiz'), icon: <PieChartOutlined /> },
-        ]
+        ] : businessType === 'beauty'
+          ? [
+            { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
+            { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
+          ]
+          : []
       }
     ]);
   };
 
   const menuItems = getMenuItems();
+  const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
+  const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
+  const defaultOpenKeys = businessType === 'beauty'
+    ? ['grp-general', 'grp-sales', 'grp-business-specific']
+    : ['grp-general', 'grp-sales'];
 
   return (
     <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color)}>
@@ -3085,7 +3324,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           <Menu
             mode="inline"
             selectedKeys={[selectedTab]}
-            defaultOpenKeys={['grp-general', 'grp-sales']}
+            defaultOpenKeys={defaultOpenKeys}
             onClick={({ key }) => setSelectedTab(key as ReportTab)}
             items={menuItems}
             className="border-none py-2"
@@ -3102,7 +3341,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               <p className="text-xs text-slate-500 font-medium">{tm('checkDataAndPerformance')}</p>
             </div>
             <div className="flex items-center gap-3">
-              {/* Ekstra butonlar buraya gelebilir, örneğin genel dışa aktar */}
+              <label className="flex items-center gap-2 text-xs text-slate-600 whitespace-nowrap">
+                <span className="font-semibold">{tm('reportsBusinessLine')}</span>
+                <Select<BusinessType>
+                  value={businessType}
+                  onChange={(v) => setBusinessType(v)}
+                  style={{ minWidth: 152 }}
+                  options={[
+                    { value: 'retail', label: tm('resTileRetail') },
+                    { value: 'market', label: tm('reportsBizMarket') },
+                    { value: 'restaurant', label: tm('restaurant') },
+                    { value: 'beauty', label: tm('bCatBeauty') },
+                  ]}
+                />
+              </label>
             </div>
           </div>
 
@@ -3116,7 +3368,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2">
                         <Calendar className="w-5 h-5 text-gray-600" />
-                        <span>Tarih Seçin:</span>
+                        <span>{tm('selectDate')}</span>
                       </label>
                       <input
                         type="date"
@@ -3128,8 +3380,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <Dropdown
                       menu={{
                         items: [
-                          { key: 'a4', label: 'A4 sayfa' },
-                          { key: '80mm', label: '80 mm termal fiş' },
+                          { key: 'a4', label: tm('reportsPrintA4') },
+                          { key: '80mm', label: tm('reportsPrint80mm') },
                         ],
                         onClick: ({ key }) =>
                           printDailySalesReport(key as 'a4' | '80mm'),
@@ -3137,7 +3389,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       trigger={['click']}
                     >
                       <Button type="primary" icon={<PrinterOutlined />}>
-                        Yazdır <CaretDownOutlined />
+                        {t.print} <CaretDownOutlined />
                       </Button>
                     </Dropdown>
                   </div>
@@ -3148,8 +3400,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Toplam Satış</p>
-                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyUnifiedRows.length}</p>
+                        <p className="text-sm text-gray-600">{tm('totalSales')}</p>
+                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.length}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}: {dailyUnifiedRows.length - dailyActiveRows.length}
+                        </p>
                       </div>
                       <ShoppingCart className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
@@ -3158,7 +3413,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Toplam Ciro</p>
+                        <p className="text-sm text-gray-600">{tm('totalRevenueLabel')}</p>
                         <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyTotal, 2, false)}</p>
                       </div>
                       <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
@@ -3168,7 +3423,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Toplam İndirim</p>
+                        <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
                         <p className="text-2xl font-bold mt-1 text-orange-600">{formatNumber(dailyDiscount, 2, false)}</p>
                       </div>
                       <Percent className="w-12 h-12 text-orange-400 opacity-30" />
@@ -3178,7 +3433,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Nakit</p>
+                        <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
                         <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCash, 2, false)}</p>
                       </div>
                       <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
@@ -3188,7 +3443,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Kart</p>
+                        <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
                         <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCard, 2, false)}</p>
                       </div>
                       <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
@@ -3200,26 +3455,36 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 <div className="bg-white rounded-lg border">
                   <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="text-lg">Satış Detayları</h3>
-                      <p className="text-xs text-slate-500 mt-1">Satıra tıklayarak fiş önizlemesi açılır.</p>
+                      <h3 className="text-lg">{tm('salesDetails')}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{tm('reportsClickRowReceiptPreview')}</p>
                     </div>
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={dailyShowOnlyRemoved}
+                        onChange={(e) => setDailyShowOnlyRemoved(e.target.checked)}
+                      />
+                      {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}
+                    </label>
                   </div>
                   <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                     <table className="w-full min-w-[1020px]">
                       <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="px-4 py-3 text-left text-sm">Fiş No</th>
-                          <th className="px-4 py-3 text-left text-sm">Saat</th>
-                          <th className="px-4 py-3 text-left text-sm">Kasiyer</th>
-                          <th className="px-4 py-3 text-left text-sm">Müşteri</th>
-                          <th className="px-4 py-3 text-right text-sm">İndirim öncesi</th>
-                          <th className="px-4 py-3 text-right text-sm">İndirim</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold">Net tutar</th>
-                          <th className="px-4 py-3 text-left text-sm">Ödeme</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('reportsDeviceLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('customerLabel_rep')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('reportsBeforeDiscount')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('reportsColDiscount')}</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold">{tm('reportsNetAmount')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('status')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {dailyUnifiedRows.map((row) => (
+                        {dailyVisibleRows.map((row) => (
                           <tr
                             key={row.key}
                             role="button"
@@ -3238,6 +3503,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                               {new Date(row.date).toLocaleTimeString('tr-TR')}
                             </td>
                             <td className="px-4 py-3 text-sm">{row.cashier || '-'}</td>
+                            <td className="px-4 py-3 text-sm">{row.deviceName || '-'}</td>
                             <td className="px-4 py-3 text-sm">{row.customerName || '-'}</td>
                             <td className="px-4 py-3 text-right text-sm text-slate-700 tabular-nums">
                               {formatNumber(row.beforeDiscount ?? (row.total + (row.discount ?? 0)), 2, false)}
@@ -3257,14 +3523,39 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                 }`}
                               >
                                 {row.paymentMethod === 'cash'
-                                  ? 'Nakit'
+                                  ? tm('cashLabel')
                                   : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-                                    ? 'Kart'
-                                    : 'Diğer'}
+                                    ? tm('cardLabel')
+                                    : tm('reportsPaymentOther')}
                               </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const st = String(row.status ?? 'completed').toLowerCase();
+                                const isCancelled = st === 'cancelled' || st === 'canceled';
+                                const isRefunded = st === 'refunded';
+                                const label = isCancelled
+                                  ? tm('reportsDetStatusCancelled')
+                                  : isRefunded
+                                    ? tm('reportsDetStatusRefunded')
+                                    : tm('reportsDetStatusCompleted');
+                                const cls = isCancelled
+                                  ? 'bg-red-100 text-red-700'
+                                  : isRefunded
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-emerald-100 text-emerald-700';
+                                return <span className={`px-2 py-1 rounded text-xs font-semibold ${cls}`}>{label}</span>;
+                              })()}
                             </td>
                           </tr>
                         ))}
+                        {dailyVisibleRows.length === 0 && (
+                          <tr>
+                            <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                              {tm('noDataFound')}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -3273,10 +3564,22 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             )}
 
             <Modal
+              open={reportConfirmOpen}
+              title="Onay"
+              onOk={() => resolveReportConfirm(true)}
+              onCancel={() => resolveReportConfirm(false)}
+              okText="Evet"
+              cancelText="Vazgeç"
+              destroyOnClose
+            >
+              <div className="whitespace-pre-line text-sm text-slate-700">{reportConfirmMessage}</div>
+            </Modal>
+
+            <Modal
               title={
                 dailyRowReceiptModal
-                  ? `Fiş — ${dailyRowReceiptModal.receiptNumber}`
-                  : 'Fiş'
+                  ? `${t.receiptTitle} — ${dailyRowReceiptModal.receiptNumber}`
+                  : t.receiptTitle
               }
               open={dailyRowReceiptModal != null}
               onCancel={closeDailyRowReceiptModal}
@@ -3290,7 +3593,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     dailyRowReceiptModal.erpSale &&
                     isSaleRowUuid(String(dailyRowReceiptModal.erpSale.id)) && (
                       <Button danger onClick={() => void handleDeleteDailyErpSale()}>
-                        Faturayı sil
+                        {tm('reportsDeleteInvoiceBtn')}
                       </Button>
                     )}
                   {canDeleteErpSale &&
@@ -3298,14 +3601,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     dailyRowReceiptModal.restOrder?.id != null &&
                     String(dailyRowReceiptModal.restOrder.id).trim() !== '' && (
                       <Button danger onClick={() => void handleDeleteDailyRestOrder()}>
-                        Adisyon kaydını iptal et
+                        {tm('reportsCancelRestOrderBtn')}
                       </Button>
                     )}
                   <Button onClick={printDailyRowReceipt} disabled={!dailyRowReceiptHtml || dailyRowReceiptLoading}>
-                    Yazdır
+                    {t.print}
                   </Button>
                   <Button type="primary" onClick={closeDailyRowReceiptModal}>
-                    Kapat
+                    {t.close}
                   </Button>
                 </div>
               }
@@ -3327,7 +3630,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 >
                   <iframe
                     key={`${dailyRowReceiptModal?.receiptNumber ?? 'r'}-${dailyRowReceiptHtml.length}`}
-                    title="Fiş önizleme"
+                    title={tm('reportsReceiptPreviewTitle')}
                     className="w-full border-0 bg-white"
                     style={{ height: dailyRowReceiptPreviewH, minHeight: 280, display: 'block' }}
                     srcDoc={dailyRowReceiptHtml}
@@ -3351,7 +3654,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   />
                 </div>
               ) : !dailyRowReceiptLoading ? (
-                <p className="text-sm text-slate-500">Önizleme yok.</p>
+                <p className="text-sm text-slate-500">{tm('reportsNoPreview')}</p>
               ) : null}
             </Modal>
 
@@ -3360,7 +3663,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 <div className="bg-white rounded-lg border">
                   <div className="p-6 border-b flex items-center justify-between">
                     <div>
-                      <h3 className="text-xl">Gün Sonu Z Raporu</h3>
+                      <h3 className="text-xl">{tm('reportsZReportDayEndTitle')}</h3>
                       <p className="text-sm text-gray-600 mt-1">
                         {new Date(zReport.date).toLocaleDateString('tr-TR', {
                           weekday: 'long',
@@ -3375,47 +3678,55 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     >
                       <Download className="w-5 h-5" />
-                      Yazdır
+                      {t.print}
                     </button>
                   </div>
 
                   <div className="p-6 space-y-6">
                     {/* Sales Summary */}
                     <div>
-                      <h4 className="text-sm text-gray-600 mb-3">SATIŞ ÖZETİ</h4>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsSalesSummarySection')}</h4>
                       <p className="text-xs text-slate-500 mb-3">
-                        Ciro: indirim öncesi (brüt) → indirim → net (tahsil edilen tutarlar toplamı).
+                        {tm('reportsSalesSummaryFootnote')}
                       </p>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600">Toplam İşlem</p>
+                          <p className="text-sm text-gray-600">{tm('reportsTotalTransactions')}</p>
                           <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
                         </div>
                         <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                          <p className="text-sm text-gray-600">İndirim öncesi (brüt)</p>
+                          <p className="text-sm text-gray-600">{tm('reportsBeforeDiscountGross')}</p>
                           <p className="text-2xl font-bold text-slate-800 mt-1">{formatNumber(zReport.amountBeforeDiscount, 2, false)}</p>
                         </div>
                         <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-                          <p className="text-sm text-gray-600">Toplam İndirim</p>
+                          <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
                           <p className="text-2xl font-bold text-orange-600 mt-1">{formatNumber(zReport.totalDiscount, 2, false)}</p>
                         </div>
                         <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                          <p className="text-sm text-gray-600">Net Ciro</p>
+                          <p className="text-sm text-gray-600">{tm('reportsNetTurnover')}</p>
                           <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.totalAmount, 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-rose-50 rounded-lg border border-rose-100">
+                          <p className="text-sm text-gray-600">Toplam gider</p>
+                          <p className="text-2xl font-bold text-rose-700 mt-1">{formatNumber(zReport.totalExpenses, 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                          <p className="text-sm text-gray-600">Gider sonrası net</p>
+                          <p className="text-2xl font-bold text-indigo-700 mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
                         </div>
                       </div>
                     </div>
 
                     {/* Payment Summary */}
                     <div>
-                      <h4 className="text-sm text-gray-600 mb-3">ÖDEME ÖZETİ</h4>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsPaymentSummarySection')}</h4>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <span>Nakit Ödemeler</span>
+                          <span>{tm('reportsCashPayments')}</span>
                           <span className="text-lg">{formatNumber(zReport.cashAmount, 2, false)}</span>
                         </div>
                         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <span>Kart Ödemeleri</span>
+                          <span>{tm('reportsCardPayments')}</span>
                           <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
                         </div>
                       </div>
@@ -3423,14 +3734,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                     {/* Receipt Range */}
                     <div>
-                      <h4 className="text-sm text-gray-600 mb-3">FİŞ ARALIĞI</h4>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsReceiptRangeSection')}</h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600">İlk Fiş</p>
+                          <p className="text-sm text-gray-600">{tm('reportsFirstReceipt')}</p>
                           <p className="text-lg mt-1">{zReport.firstSale}</p>
                         </div>
                         <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600">Son Fiş</p>
+                          <p className="text-sm text-gray-600">{tm('reportsLastReceipt')}</p>
                           <p className="text-lg mt-1">{zReport.lastSale}</p>
                         </div>
                       </div>
@@ -3563,11 +3874,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                    Kategori dağılımı, üstteki <strong>tarih seçicisindeki güne</strong> göre hesaplanır.
+                    {tm('reportsCategoryByDateHint')}
                   </p>
                   {categories.length === 0 ? (
                     <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
-                      Bu gün için kategori satışı bulunamadı (veya ürün–kategori eşlemesi yok).
+                      {tm('reportsCategoryNoSalesEmpty')}
                     </div>
                   ) : (
                   <div className="grid grid-cols-2 gap-4">
@@ -3646,11 +3957,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                    Saatlik dağılım, <strong>seçili güne</strong> ait fiş/adisyon saatine göre (yerel saat) hesaplanır.
+                    {tm('reportsHourlyByDateHint')}
                   </p>
                   {hourlyData.length === 0 ? (
                     <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
-                      Bu gün için saatlik satış kaydı yok.
+                      {tm('reportsHourlyNoSalesEmpty')}
                     </div>
                   ) : (
                   <>
@@ -3829,7 +4140,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div>
                           <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
                           <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">{paymentDist.cash.count} işlem ({paymentDist.cash.percentage.toFixed(1)}%)</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.cash.count))
+                              .replace('{pct}', paymentDist.cash.percentage.toFixed(1))}
+                          </p>
                         </div>
                         <Banknote className="w-12 h-12 text-green-600 opacity-20" />
                       </div>
@@ -3839,7 +4154,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div>
                           <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
                           <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">{paymentDist.card.count} işlem ({paymentDist.card.percentage.toFixed(1)}%)</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.card.count))
+                              .replace('{pct}', paymentDist.card.percentage.toFixed(1))}
+                          </p>
                         </div>
                         <CreditCard className="w-12 h-12 text-blue-600 opacity-20" />
                       </div>
@@ -3849,7 +4168,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div>
                           <p className="text-sm text-gray-600">{tm('transferLabel')}</p>
                           <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">{paymentDist.transfer.count} işlem ({paymentDist.transfer.percentage.toFixed(1)}%)</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.transfer.count))
+                              .replace('{pct}', paymentDist.transfer.percentage.toFixed(1))}
+                          </p>
                         </div>
                         <CreditCard className="w-12 h-12 text-orange-600 opacity-20" />
                       </div>
@@ -3859,7 +4182,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg border p-4">
                     <h3 className="text-lg mb-4 flex items-center gap-2">
                       <PieChartIcon className="w-5 h-5 text-blue-600" />
-                      Ödeme Yöntemi Dağılımı
+                      {t.paymentMethodDistribution}
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       <ResponsiveContainer width="100%" height={300}>
@@ -3890,7 +4213,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </div>
                             <div className="text-right">
                               <p className="font-semibold">{formatNumber(item.value, 2, false)} {reportCurrency}</p>
-                              <p className="text-xs text-gray-500">{item.count} işlem</p>
+                              <p className="text-xs text-gray-500">{tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}</p>
                             </div>
                           </div>
                         ))}
@@ -3908,14 +4231,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-                    İndirimler, yüklü satış fişlerindeki <strong>indirim alanı</strong> üzerinden gruplanır (tüm dönem).
+                    {tm('reportsDiscountReportIntro')}
                   </p>
                   <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Toplam İndirim Tutarı</p>
+                        <p className="text-sm text-gray-600">{tm('reportsDiscountTotalAmountCol')}</p>
                         <p className="text-3xl text-orange-600 mt-1 font-bold">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</p>
-                        <p className="text-xs text-gray-500 mt-1">{totalCount} işlemde uygulandı</p>
+                        <p className="text-xs text-gray-500 mt-1">{tm('reportsDiscountAppliedCount').replace('{count}', String(totalCount))}</p>
                       </div>
                       <Percent className="w-16 h-16 text-orange-600 opacity-20" />
                     </div>
@@ -3923,25 +4246,25 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                   {discounts.length === 0 ? (
                     <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
-                      Kayıtlı fişlerde indirim satırı yok.
+                      {tm('reportsDiscountNoLinesEmpty')}
                     </div>
                   ) : (
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b">
                       <h3 className="text-lg flex items-center gap-2">
                         <Percent className="w-5 h-5 text-orange-600" />
-                        İndirim Detayları
+                        {tm('reportsDiscountDetailsTitle')}
                       </h3>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[800px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">İndirim Türü</th>
-                            <th className="px-4 py-3 text-right text-sm">İşlem Sayısı</th>
-                            <th className="px-4 py-3 text-right text-sm">Toplam İndirim</th>
-                            <th className="px-4 py-3 text-right text-sm">Ortalama İndirim</th>
-                            <th className="px-4 py-3 text-right text-sm">Oran</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
@@ -3967,7 +4290,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </tr>
                           ))}
                           <tr className="bg-gray-50 font-bold">
-                            <td className="px-4 py-3">TOPLAM</td>
+                            <td className="px-4 py-3">{tm('reportsTotalUpper')}</td>
                             <td className="px-4 py-3 text-right">{totalCount}</td>
                             <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</td>
                             <td className="px-4 py-3 text-right">
@@ -3991,14 +4314,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {stockReportLoading && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      Ürün listesi veritabanından güncelleniyor…
+                      {tm('reportsStockLoadingProducts')}
                     </div>
                   )}
                   <div className="grid grid-cols-4 gap-4">
                     <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Toplam Ürün</p>
+                          <p className="text-sm text-gray-600">{tm('reportsTotalProducts')}</p>
                           <p className="text-3xl text-blue-600 mt-1 font-bold">{stockStatus.totalProducts}</p>
                         </div>
                         <Package className="w-12 h-12 text-blue-600 opacity-20" />
@@ -4007,7 +4330,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="bg-white rounded-lg border-2 border-red-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Tükendi</p>
+                          <p className="text-sm text-gray-600">{tm('reportsOutOfStock')}</p>
                           <p className="text-3xl text-red-600 mt-1 font-bold">{stockStatus.outOfStock}</p>
                         </div>
                         <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
@@ -4016,7 +4339,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Düşük Stok</p>
+                          <p className="text-sm text-gray-600">{tm('reportsLowStock')}</p>
                           <p className="text-3xl text-orange-600 mt-1 font-bold">{stockStatus.lowStock}</p>
                         </div>
                         <TrendingDown className="w-12 h-12 text-orange-600 opacity-20" />
@@ -4025,7 +4348,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">Stok Değeri</p>
+                          <p className="text-sm text-gray-600">{tm('reportsStockValue')}</p>
                           <p className="text-xl text-green-600 mt-1 font-bold">{formatNumber(stockStatus.totalStockValue, 2, false)} {reportCurrency}</p>
                         </div>
                         <Banknote className="w-12 h-12 text-green-600 opacity-20" />
@@ -4037,30 +4360,30 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="p-4 border-b flex items-center justify-between">
                       <h3 className="text-lg flex items-center gap-2">
                         <AlertCircle className="w-5 h-5 text-orange-600" />
-                        Düşük Stok Uyarıları
+                        {tm('reportsLowStockAlertsTitle')}
                       </h3>
                       <span className="text-sm text-gray-600">
-                        Varsayılan kritik seviye: {stockStatus.lowStockThreshold} adet (ürün min. stoku tanımlıysa o geçerli)
+                        {tm('reportsLowStockThresholdHint').replace('{n}', String(stockStatus.lowStockThreshold))}
                       </span>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[900px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                            <th className="px-4 py-3 text-right text-sm">Mevcut Stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Min. Stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Fiyat</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok Değeri</th>
-                            <th className="px-4 py-3 text-center text-sm">Durum</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
+                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {stockStatus.lowStockItems.length === 0 ? (
                             <tr>
                               <td colSpan={7} className="px-4 py-10 text-center text-gray-500 text-sm">
-                                Düşük stokta ürün yok.
+                                {tm('reportsNoLowStockProducts')}
                               </td>
                             </tr>
                           ) : (
@@ -4083,9 +4406,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                 <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} {reportCurrency}</td>
                                 <td className="px-4 py-3 text-center">
                                   {item.stock === 0 ? (
-                                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">Tükendi</span>
+                                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">{tm('reportsOutOfStock')}</span>
                                   ) : (
-                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Düşük</span>
+                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">{tm('reportsLowBadge')}</span>
                                   )}
                                 </td>
                               </tr>
@@ -4105,8 +4428,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               const rangeLine = `${formatIsoDateTr(w.previousFrom)} – ${formatIsoDateTr(w.previousTo)} · ${formatIsoDateTr(w.currentFrom)} – ${formatIsoDateTr(w.currentTo)}`;
               const srcLabel =
                 comparison.dataSource === 'erp'
-                  ? 'Kaynak: ERP satış fişleri (store’daki satış listesi)'
-                  : 'Kaynak: Restoran kapalı adisyonları';
+                  ? tm('reportsComparisonSourceErp')
+                  : tm('reportsComparisonSourceRest');
               const trendClass = (ch: number) =>
                 ch > 0 ? 'text-green-600' : ch < 0 ? 'text-red-600' : 'text-gray-500';
               const trendArrow = (ch: number) => (ch > 0 ? '↑' : ch < 0 ? '↓' : '→');
@@ -4116,7 +4439,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {businessType === 'restaurant' && loadingComparisonOrders && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      Kapalı adisyonlar yükleniyor…
+                      {tm('reportsLoadingClosedOrders')}
                     </div>
                   )}
                   <div className="bg-white rounded-lg border p-4">
@@ -4124,7 +4447,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <div>
                         <h3 className="text-lg flex items-center gap-2">
                           <BarChart3 className="w-5 h-5 text-purple-600" />
-                          Dönem Karşılaştırması
+                          {tm('reportsPeriodComparisonTitle')}
                         </h3>
                         <p className="text-xs text-gray-500 mt-1">{rangeLine}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{srcLabel}</p>
@@ -4134,14 +4457,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         onChange={(e) => setComparisonPeriod(e.target.value as 'week' | 'month')}
                         className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 shrink-0"
                       >
-                        <option value="week">Haftalık</option>
-                        <option value="month">Aylık</option>
+                        <option value="week">{tm('reportsPeriodWeekly')}</option>
+                        <option value="month">{tm('reportsPeriodMonthly')}</option>
                       </select>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                       <div className="bg-gray-50 rounded-lg p-4 border-2 border-blue-200">
-                        <p className="text-sm text-gray-600 mb-2">Toplam Satış</p>
+                        <p className="text-sm text-gray-600 mb-2">{tm('totalSales')}</p>
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-bold text-blue-600">{comparison.current.totalSales}</p>
                           <span className={`text-sm font-semibold ${trendClass(comparison.change.sales)}`}>
@@ -4152,7 +4475,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       </div>
 
                       <div className="bg-gray-50 rounded-lg p-4 border-2 border-green-200">
-                        <p className="text-sm text-gray-600 mb-2">Toplam Ciro</p>
+                        <p className="text-sm text-gray-600 mb-2">{tm('totalRevenueLabel')}</p>
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-bold text-green-600">{formatNumber(comparison.current.totalRevenue, 0, false)} {reportCurrency}</p>
                           <span className={`text-sm font-semibold ${trendClass(comparison.change.revenue)}`}>
@@ -4163,7 +4486,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       </div>
 
                       <div className="bg-gray-50 rounded-lg p-4 border-2 border-purple-200">
-                        <p className="text-sm text-gray-600 mb-2">Ortalama Satış</p>
+                        <p className="text-sm text-gray-600 mb-2">{tm('reportsAvgSaleShort')}</p>
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-bold text-purple-600">{formatNumber(comparison.current.avgSale, 0, false)} {reportCurrency}</p>
                           <span className={`text-sm font-semibold ${trendClass(comparison.change.avgSale)}`}>
@@ -4174,7 +4497,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       </div>
 
                       <div className="bg-gray-50 rounded-lg p-4 border-2 border-orange-200">
-                        <p className="text-sm text-gray-600 mb-2">Müşteri Sayısı</p>
+                        <p className="text-sm text-gray-600 mb-2">{tm('reportsCustomerCountLabel')}</p>
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-bold text-orange-600">{comparison.current.customerCount}</p>
                           <span className={`text-sm font-semibold ${trendClass(comparison.change.customerCount)}`}>
@@ -4286,10 +4609,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
               const getExpiryStatus = (expiryDate: string) => {
                 const days = getDaysUntilExpiry(expiryDate);
-                if (days < 0) return { status: 'expired', color: 'red', label: 'Süresi Geçmiş' };
-                if (days <= 7) return { status: 'critical', color: 'red', label: 'Kritik' };
-                if (days <= 30) return { status: 'warning', color: 'orange', label: 'Yakında' };
-                return { status: 'normal', color: 'yellow', label: 'Normal' };
+                if (days < 0) return { status: 'expired', color: 'red', label: tm('reportsExpiringStatusExpired') };
+                if (days <= 7) return { status: 'critical', color: 'red', label: tm('reportsExpiringStatusCritical') };
+                if (days <= 30) return { status: 'warning', color: 'orange', label: tm('reportsExpiringStatusSoon') };
+                return { status: 'normal', color: 'yellow', label: tm('reportsExpiringStatusNormal') };
               };
 
               const expiredCount = expiringProducts.filter(p => p.expiry_date && getDaysUntilExpiry(p.expiry_date) < 0).length;
@@ -4315,20 +4638,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-orange-600" />
-                        Son Kullanma Tarihi Yaklaşanlar
+                        {tm('reportsExpiringTitle')}
                       </h3>
                       <div className="flex items-center gap-3">
-                        <label className="text-sm text-gray-600">Gün:</label>
+                        <label className="text-sm text-gray-600">{tm('reportsExpiringDayColon')}</label>
                         <select
                           value={expiringDays}
                           onChange={(e) => setExpiringDays(Number(e.target.value))}
                           className="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm"
                         >
-                          <option value={7}>7 Gün</option>
-                          <option value={15}>15 Gün</option>
-                          <option value={30}>30 Gün</option>
-                          <option value={60}>60 Gün</option>
-                          <option value={90}>90 Gün</option>
+                          <option value={7}>{tm('reportsExpiringDaysOption').replace('{n}', '7')}</option>
+                          <option value={15}>{tm('reportsExpiringDaysOption').replace('{n}', '15')}</option>
+                          <option value={30}>{tm('reportsExpiringDaysOption').replace('{n}', '30')}</option>
+                          <option value={60}>{tm('reportsExpiringDaysOption').replace('{n}', '60')}</option>
+                          <option value={90}>{tm('reportsExpiringDaysOption').replace('{n}', '90')}</option>
                         </select>
                       </div>
                     </div>
@@ -4337,7 +4660,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <div className="bg-red-50 rounded-lg border-2 border-red-200 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-600">Süresi Geçmiş</p>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringExpired')}</p>
                             <p className="text-3xl text-red-600 mt-1 font-bold">{expiredCount}</p>
                           </div>
                           <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
@@ -4346,7 +4669,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <div className="bg-orange-50 rounded-lg border-2 border-orange-200 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-600">Kritik (≤7 gün)</p>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringCritical7')}</p>
                             <p className="text-3xl text-orange-600 mt-1 font-bold">{criticalCount}</p>
                           </div>
                           <AlertTriangle className="w-12 h-12 text-orange-600 opacity-20" />
@@ -4355,7 +4678,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <div className="bg-yellow-50 rounded-lg border-2 border-yellow-200 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-600">Yakında (≤30 gün)</p>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringSoon30')}</p>
                             <p className="text-3xl text-yellow-600 mt-1 font-bold">{warningCount}</p>
                           </div>
                           <Clock className="w-12 h-12 text-yellow-600 opacity-20" />
@@ -4364,7 +4687,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       <div className="bg-blue-50 rounded-lg border-2 border-blue-200 p-4">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm text-gray-600">Toplam Değer</p>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringTotalValue')}</p>
                             <p className="text-xl text-blue-600 mt-1 font-bold">{formatNumber(totalValue, 2, false)} {reportCurrency}</p>
                           </div>
                           <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
@@ -4376,39 +4699,39 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {/* Products Table */}
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b flex items-center justify-between">
-                      <h4 className="text-md font-semibold">Ürün Listesi</h4>
+                      <h4 className="text-md font-semibold">{tm('reportsExpiringProductList')}</h4>
                       {loadingExpiring && (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                          Yükleniyor...
+                          {tm('reportsExpiringLoading')}
                         </div>
                       )}
                     </div>
                     {loadingExpiring ? (
                       <div className="p-8 text-center">
                         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                        <p className="text-gray-600">Yükleniyor...</p>
+                        <p className="text-gray-600">{tm('reportsExpiringLoading')}</p>
                       </div>
                     ) : expiringProducts.length === 0 ? (
                       <div className="p-8 text-center">
                         <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-600">Son {expiringDays} gün içinde son kullanma tarihi yaklaşan ürün bulunamadı.</p>
+                        <p className="text-gray-600">{tm('reportsExpiringEmpty').replace('{n}', String(expiringDays))}</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                         <table className="w-full min-w-[1000px]">
                           <thead className="bg-gray-50 border-b sticky top-0">
                             <tr>
-                              <th className="px-4 py-3 text-left text-sm">Ürün Kodu</th>
-                              <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
-                              <th className="px-4 py-3 text-left text-sm">Lot/Seri No</th>
-                              <th className="px-4 py-3 text-left text-sm">Depo</th>
-                              <th className="px-4 py-3 text-right text-sm">Miktar</th>
-                              <th className="px-4 py-3 text-left text-sm">Son Kullanma Tarihi</th>
-                              <th className="px-4 py-3 text-right text-sm">Kalan Gün</th>
-                              <th className="px-4 py-3 text-right text-sm">Birim Maliyet</th>
-                              <th className="px-4 py-3 text-right text-sm">Toplam Değer</th>
-                              <th className="px-4 py-3 text-center text-sm">Durum</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThProductCode')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsThProductName')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThLotSerial')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThExpiryDate')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringThRemainingDays')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
+                              <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -4433,8 +4756,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                       </div>
                                     </td>
                                     <td className="px-4 py-3 text-sm">
-                                      {product.lot_no && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Lot: {product.lot_no}</span>}
-                                      {product.serial_no && <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">Seri: {product.serial_no}</span>}
+                                      {product.lot_no && (
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                          {tm('reportsExpiringLotPrefix')} {product.lot_no}
+                                        </span>
+                                      )}
+                                      {product.serial_no && (
+                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">
+                                          {tm('reportsExpiringSerialPrefix')} {product.serial_no}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-4 py-3 text-sm">{product.warehouse_name || '-'}</td>
                                     <td className="px-4 py-3 text-right">
@@ -4446,7 +4777,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                       <div className="flex items-center gap-2">
                                         <Calendar className="w-4 h-4 text-gray-400" />
                                         <span className="text-sm">
-                                          {new Date(product.expiry_date).toLocaleDateString('tr-TR')}
+                                          {new Date(product.expiry_date).toLocaleDateString(tm('localeCode'))}
                                         </span>
                                       </div>
                                     </td>
@@ -4459,7 +4790,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                             ? 'bg-yellow-100 text-yellow-700'
                                             : 'bg-green-100 text-green-700'
                                         }`}>
-                                        {days < 0 ? `${Math.abs(days)} gün geçmiş` : `${days} gün`}
+                                        {days < 0
+                                          ? tm('reportsExpiringDaysOverdue').replace('{n}', String(Math.abs(days)))
+                                          : tm('reportsDaysWithN').replace('{n}', String(days))}
                                       </span>
                                     </td>
                                     <td className="px-4 py-3 text-right text-sm">{formatNumber(product.unit_cost || 0, 2, false)} {reportCurrency}</td>
@@ -4480,14 +4813,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             {expiringProducts.filter(p => !p.expiry_date).length > 0 && (
                               <tr className="bg-gray-50">
                                 <td colSpan={10} className="px-4 py-3 text-center text-sm text-gray-500">
-                                  {expiringProducts.filter(p => !p.expiry_date).length} ürün için son kullanma tarihi belirtilmemiş
+                                  {tm('reportsExpiringNoExpiryNote').replace(
+                                    '{n}',
+                                    String(expiringProducts.filter(p => !p.expiry_date).length)
+                                  )}
                                 </td>
                               </tr>
                             )}
                           </tbody>
                           <tfoot className="bg-gray-50 border-t">
                             <tr>
-                              <td colSpan={8} className="px-4 py-3 text-right font-semibold">TOPLAM:</td>
+                              <td colSpan={8} className="px-4 py-3 text-right font-semibold">{tm('reportsFooterTotalUpper')}</td>
                               <td className="px-4 py-3 text-right font-bold text-green-600">{formatNumber(totalValue, 2, false)} {reportCurrency}</td>
                               <td></td>
                             </tr>
@@ -4529,30 +4865,30 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {stockReportLoading && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      Ürün listesi güncelleniyor…
+                      {tm('reportsStockListUpdating')}
                     </div>
                   )}
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{ag.summary.hint}</p>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div className="bg-white rounded-lg border border-green-200 p-3">
-                      <p className="text-xs text-gray-600">0–30 gün</p>
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard03')}</p>
                       <p className="text-2xl font-bold text-green-700">{ag.summary.fresh}</p>
-                      <p className="text-[10px] text-gray-500">SKU</p>
+                      <p className="text-[10px] text-gray-500">{tm('reportsStockAgeSkuLabel')}</p>
                     </div>
                     <div className="bg-white rounded-lg border border-amber-200 p-3">
-                      <p className="text-xs text-gray-600">31–90 gün</p>
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard3190')}</p>
                       <p className="text-2xl font-bold text-amber-700">{ag.summary.normal}</p>
                     </div>
                     <div className="bg-white rounded-lg border border-orange-200 p-3">
-                      <p className="text-xs text-gray-600">91–180 gün</p>
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard91180')}</p>
                       <p className="text-2xl font-bold text-orange-700">{ag.summary.slow}</p>
                     </div>
                     <div className="bg-white rounded-lg border border-red-200 p-3">
-                      <p className="text-xs text-gray-600">180+ / satış yok</p>
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard180Plus')}</p>
                       <p className="text-2xl font-bold text-red-700">{ag.summary.critical}</p>
                     </div>
                     <div className="bg-white rounded-lg border border-blue-200 p-3 md:col-span-1 col-span-2">
-                      <p className="text-xs text-gray-600">Stoklu SKU / değer</p>
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeSkuValue')}</p>
                       <p className="text-lg font-bold text-blue-700">{ag.summary.totalSkus}</p>
                       <p className="text-sm font-semibold text-slate-700">{formatNumber(ag.summary.totalValue, 2, false)} {reportCurrency}</p>
                     </div>
@@ -4560,25 +4896,25 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b flex items-center gap-2">
                       <Clock className="w-5 h-5 text-red-600" />
-                      <h3 className="text-lg font-semibold">Stok yaşlandırma detayı</h3>
+                      <h3 className="text-lg font-semibold">{tm('reportsStockAgeDetailTitle')}</h3>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[880px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Ürün</th>
-                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Son hareket</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok değeri</th>
-                            <th className="px-4 py-3 text-center text-sm">Kova</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {ag.rows.length === 0 ? (
                             <tr>
                               <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                Stoklu ürün yok veya liste henüz yüklenmedi.
+                                {tm('reportsStockAgeEmpty')}
                               </td>
                             </tr>
                           ) : (
@@ -4587,7 +4923,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                 <td className="px-4 py-3 font-medium">{r.name}</td>
                                 <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
                                 <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{r.daysSinceMovement} gün</td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement))}
+                                </td>
                                 <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.value, 2, false)} {reportCurrency}</td>
                                 <td className="px-4 py-3 text-center">
                                   <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>{r.bucket}</span>
@@ -4610,35 +4948,37 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {stockReportLoading && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      Ürün listesi güncelleniyor…
+                      {tm('reportsStockListUpdating')}
                     </div>
                   )}
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{to.hint}</p>
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b flex items-center gap-2">
                       <TrendingUp className="w-5 h-5 text-blue-600" />
-                      <h3 className="text-lg font-semibold">Stok dönüş hızı</h3>
-                      <span className="text-sm text-gray-500 ml-auto">Dönem: ~{to.periodDays} gün</span>
+                      <h3 className="text-lg font-semibold">{tm('reportsStockTurnTitle')}</h3>
+                      <span className="text-sm text-gray-500 ml-auto">
+                        {tm('reportsStockTurnPeriodApprox').replace('{n}', String(to.periodDays))}
+                      </span>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[960px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Ürün</th>
-                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                            <th className="px-4 py-3 text-right text-sm">Satış (adet)</th>
-                            <th className="px-4 py-3 text-right text-sm">Ciro</th>
-                            <th className="px-4 py-3 text-right text-sm">Mevcut stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Satış / stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Yıllık devir (tahm.)</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok günü</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {to.rows.length === 0 ? (
                             <tr>
                               <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                Stoklu ürün veya satış kalemi bulunamadı.
+                                {tm('reportsStockTurnEmpty')}
                               </td>
                             </tr>
                           ) : (
@@ -4656,7 +4996,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                   {r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false)}
                                 </td>
                                 <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600">
-                                  {r.daysCover == null ? '—' : `${formatNumber(r.daysCover, 1, false)} gün`}
+                                  {r.daysCover == null
+                                    ? '—'
+                                    : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false))}
                                 </td>
                               </tr>
                             ))
@@ -4677,7 +5019,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {stockReportLoading && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      Ürün listesi güncelleniyor…
+                      {tm('reportsStockListUpdating')}
                     </div>
                   )}
                   <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{abc.hint}</p>
@@ -4685,10 +5027,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="bg-white rounded-lg border p-4">
                       <h3 className="text-lg mb-2 flex items-center gap-2">
                         <PieChartIcon className="w-5 h-5 text-amber-600" />
-                        ABC — değer dağılımı
+                        {tm('reportsAbcChartTitle')}
                       </h3>
                       {abc.chartData.length === 0 ? (
-                        <p className="text-sm text-gray-500 py-8 text-center">Sınıflandırılacak stok/satış verisi yok.</p>
+                        <p className="text-sm text-gray-500 py-8 text-center">{tm('reportsAbcNoChartData')}</p>
                       ) : (
                         <div className="h-[300px] w-full min-w-0">
                           <ResponsiveContainer width="100%" height="100%">
@@ -4718,23 +5060,23 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="bg-white rounded-lg border p-4">
                       <h3 className="text-lg mb-4 flex items-center gap-2">
                         <Award className="w-5 h-5 text-yellow-600" />
-                        Özet
+                        {tm('reportsAbcSummaryTitle')}
                       </h3>
                       <div className="space-y-3 text-sm">
                         <div className="flex justify-between border-b pb-2">
-                          <span className="text-gray-600">Toplam metrik</span>
+                          <span className="text-gray-600">{tm('reportsAbcTotalMetric')}</span>
                           <span className="font-semibold">{formatNumber(abc.totalMetric, 2, false)} {reportCurrency}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-green-700 font-medium">A grubu</span>
+                          <span className="text-green-700 font-medium">{tm('reportsAbcClassGroupA')}</span>
                           <span>{formatNumber(abc.valueByClass.A, 2, false)} {reportCurrency}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-amber-700 font-medium">B grubu</span>
+                          <span className="text-amber-700 font-medium">{tm('reportsAbcClassGroupB')}</span>
                           <span>{formatNumber(abc.valueByClass.B, 2, false)} {reportCurrency}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-600 font-medium">C grubu</span>
+                          <span className="text-slate-600 font-medium">{tm('reportsAbcClassGroupC')}</span>
                           <span>{formatNumber(abc.valueByClass.C, 2, false)} {reportCurrency}</span>
                         </div>
                       </div>
@@ -4743,27 +5085,27 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-lg border">
                     <div className="p-4 border-b flex items-center gap-2">
                       <ApartmentOutlined className="text-lg text-orange-500" />
-                      <h3 className="text-lg font-semibold">Ürün bazında ABC</h3>
+                      <h3 className="text-lg font-semibold">{tm('reportsAbcTableTitle')}</h3>
                     </div>
                     <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[800px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
                           <tr>
-                            <th className="px-4 py-3 text-left text-sm">Sınıf</th>
-                            <th className="px-4 py-3 text-left text-sm">Ürün</th>
-                            <th className="px-4 py-3 text-left text-sm">Kategori</th>
-                            <th className="px-4 py-3 text-right text-sm">Ciro (dönem)</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok</th>
-                            <th className="px-4 py-3 text-right text-sm">Stok değeri</th>
-                            <th className="px-4 py-3 text-right text-sm">Metrik</th>
-                            <th className="px-4 py-3 text-right text-sm">Kümülatif %</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y">
                           {abc.rows.length === 0 ? (
                             <tr>
                               <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                Gösterilecek ürün yok.
+                                {tm('reportsAbcEmptyRows')}
                               </td>
                             </tr>
                           ) : (
@@ -4800,7 +5142,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               );
             })()}
 
-            {selectedTab === 'beauty-service-report' && (
+            {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
                   <div className="flex flex-col gap-1">
@@ -4849,115 +5191,127 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     {tm('refresh')}
                   </Button>
                   <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
-                    {tm('beautyServiceBreakdownHint')} {tm('beautyServiceRowCrmHint')} {tm('beautyServiceHeaderCrmHint')}
+                    {isBeautyCancelledReportTab
+                      ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
+                      : `${tm('beautyServiceBreakdownHint')} ${tm('beautyServiceRowCrmHint')} ${tm('beautyServiceHeaderCrmHint')}`}
                   </p>
                 </div>
 
-                <Spin spinning={loadingBeautyServiceReport}>
-                  {beautyServiceGrouped.length === 0 ? (
-                    <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
-                      {tm('noDataFound')}
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {beautyServiceGrouped.map((g) => (
-                        <div
-                          key={g.serviceName}
-                          className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
-                        >
+                {isBeautyServiceReportTab && (
+                  <Spin spinning={loadingBeautyServiceReport}>
+                    {beautyServiceGrouped.length === 0 ? (
+                      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                        {tm('noDataFound')}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {beautyServiceGrouped.map((g) => (
                           <div
-                            role="button"
-                            tabIndex={0}
-                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold cursor-pointer select-none hover:brightness-110 transition-[filter]"
-                            style={{ backgroundColor: bizConfig.color }}
-                            title={tm('beautyServiceHeaderCrmHint')}
-                            onClick={() => {
-                              const first = g.items[0];
-                              if (first) setBeautyCrmModalAppointment(first);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
+                            key={g.serviceName}
+                            className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+                          >
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold cursor-pointer select-none hover:brightness-110 transition-[filter]"
+                              style={{ backgroundColor: bizConfig.color }}
+                              title={tm('beautyServiceHeaderCrmHint')}
+                              onClick={() => {
                                 const first = g.items[0];
                                 if (first) setBeautyCrmModalAppointment(first);
-                              }
-                            }}
-                          >
-                            <span className="text-base">{g.serviceName}</span>
-                            <span className="text-sm font-semibold opacity-95">
-                              {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
-                            </span>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="bg-slate-50 border-b border-slate-100 text-left text-xs uppercase text-slate-500">
-                                  <th className="px-4 py-2 font-semibold">{tm('date')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('customer')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('bStaffView')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('bDeviceView')}</th>
-                                  <th className="px-4 py-2 font-semibold text-right">{tm('amount')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('status')}</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {g.items.map((a) => (
-                                  <tr
-                                    key={a.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => setBeautyCrmModalAppointment(a)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        setBeautyCrmModalAppointment(a);
-                                      }
-                                    }}
-                                    className="cursor-pointer hover:bg-pink-50/90"
-                                  >
-                                    <td className="px-4 py-2.5 tabular-nums text-slate-700 whitespace-nowrap">
-                                      {String(a.date ?? a.appointment_date ?? '—')}
-                                      {a.time || a.appointment_time
-                                        ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
-                                        : ''}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
-                                      {String(a.customer_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
-                                      {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
-                                      {String(a.device_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900">
-                                      {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
-                                    </td>
-                                    <td className="px-4 py-2.5 text-slate-600 text-xs capitalize">
-                                      {String(a.status ?? '—')}
-                                    </td>
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  const first = g.items[0];
+                                  if (first) setBeautyCrmModalAppointment(first);
+                                }
+                              }}
+                            >
+                              <span className="text-base">{g.serviceName}</span>
+                              <span className="text-sm font-semibold opacity-95">
+                                {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[13px]">
+                                <thead>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('status')}</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {g.items.map((a) => (
+                                    <tr
+                                      key={a.id}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => setBeautyCrmModalAppointment(a)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          setBeautyCrmModalAppointment(a);
+                                        }
+                                      }}
+                                      className="cursor-pointer hover:bg-pink-50/90"
+                                    >
+                                      <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                        {String(a.date ?? a.appointment_date ?? '—')}
+                                        {a.time || a.appointment_time
+                                          ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
+                                          : ''}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-900 font-medium">
+                                        {String(a.customer_name ?? '').trim() || '—'}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-900 font-medium">
+                                        {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-900 font-medium">
+                                        {String(a.device_name ?? '').trim() || '—'}
+                                      </td>
+                                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                        {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                          {String(a.status ?? '—')}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </Spin>
+                        ))}
+                      </div>
+                    )}
+                  </Spin>
+                )}
 
-                {beautyCancelledGrouped.length > 0 && (
+                {isBeautyCancelledReportTab && beautyCancelledGrouped.length === 0 && beautyCancelledPayments.length === 0 && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                    {tm('noDataFound')}
+                  </div>
+                )}
+
+                {isBeautyCancelledReportTab && beautyCancelledGrouped.length > 0 && (
                   <div className="space-y-4 mt-10">
                     <div>
-                      <h3 className="text-base font-black text-slate-800">{tm('beautyCancelledAppointmentsSection')}</h3>
-                      <p className="text-xs text-slate-500 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
+                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledAppointmentsSection')}</h3>
+                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
                     </div>
                     <div className="space-y-6">
                       {beautyCancelledGrouped.map((g) => (
                         <div
                           key={`cx-${g.serviceName}`}
-                          className="bg-white rounded-xl border border-red-100 overflow-hidden shadow-sm"
+                          className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm"
                         >
                           <div
                             className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold bg-red-700/90"
@@ -4969,15 +5323,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </span>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
+                            <table className="w-full text-[13px]">
                               <thead>
-                                <tr className="bg-slate-50 border-b border-slate-100 text-left text-xs uppercase text-slate-500">
-                                  <th className="px-4 py-2 font-semibold">{tm('date')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('customer')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('bStaffView')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('bDeviceView')}</th>
-                                  <th className="px-4 py-2 font-semibold text-right">{tm('amount')}</th>
-                                  <th className="px-4 py-2 font-semibold">{tm('status')}</th>
+                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('status')}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
@@ -4995,26 +5349,28 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                     }}
                                     className="cursor-pointer hover:bg-red-50/80"
                                   >
-                                    <td className="px-4 py-2.5 tabular-nums text-slate-700 whitespace-nowrap">
+                                    <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
                                       {String(a.date ?? a.appointment_date ?? '—')}
                                       {a.time || a.appointment_time
                                         ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
                                         : ''}
                                     </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
                                       {String(a.customer_name ?? '').trim() || '—'}
                                     </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
                                       {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
                                     </td>
-                                    <td className="px-4 py-2.5 text-slate-800">
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
                                       {String(a.device_name ?? '').trim() || '—'}
                                     </td>
-                                    <td className="px-4 py-2.5 text-right tabular-nums font-medium text-slate-900">
+                                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
                                       {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
                                     </td>
-                                    <td className="px-4 py-2.5 text-slate-600 text-xs capitalize">
-                                      {String(a.status ?? '—')}
+                                    <td className="px-4 py-3">
+                                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                        {String(a.status ?? '—')}
+                                      </span>
                                     </td>
                                   </tr>
                                 ))}
@@ -5023,6 +5379,57 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {isBeautyCancelledReportTab && beautyCancelledPayments.length > 0 && (
+                  <div className="space-y-4 mt-10">
+                    <div>
+                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledPaymentsSection')}</h3>
+                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledPaymentsHint')}</p>
+                    </div>
+                    <div className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-[13px]">
+                          <thead>
+                            <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                              <th className="px-4 py-3 font-black">{tm('date')}</th>
+                              <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                              <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                              <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                              <th className="px-4 py-3 font-black">{tm('status')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {beautyCancelledPayments.map((s) => {
+                              const rawSt = String((s as any).payment_status ?? '').toLowerCase();
+                              const statusLabel = rawSt === 'refunded' ? tm('reportsDetStatusRefunded') : tm('cancelled');
+                              return (
+                                <tr key={s.id} className="hover:bg-red-50/70">
+                                  <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                    {String(s.created_at ?? '').replace('T', ' ').slice(0, 16)}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-900 font-medium">
+                                    {String(s.customer_name ?? '').trim() || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-900 font-medium">
+                                    {String(s.payment_method ?? '—')}
+                                  </td>
+                                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                    {formatNumber(Number(s.total ?? 0), 2, false)} {reportCurrency}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                      {statusLabel}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -5063,11 +5470,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full min-w-0">
                     {/* Left: Pie Chart */}
                     <div className="xl:col-span-5 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Ödeme Tipi Dağılımı</h3>
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsPaymentTypeDistribution')}</h3>
                       <div className="h-[350px] min-h-[280px] w-full min-w-0">
                         {paymentDist.chartData.length === 0 ? (
                           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-400">
-                            Ödeme dağılımı için pozitif tutar bulunamadı.
+                            {tm('reportsPaymentDistNoPositive')}
                           </div>
                         ) : (
                           <ResponsiveContainer width="100%" height="100%">
@@ -5098,22 +5505,38 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="xl:col-span-7 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                       <div className="space-y-1">
                         {(() => {
-                          const stats = businessType === 'restaurant' ? restStats : {
-                            totalSales: dailyTotal,
-                            payments: { 'NAKİT': dailyCash, 'POS': dailyCard },
-                            discountTotal: dailyDiscount
-                          };
+                          const stats = restStats;
                           const multinet = stats?.payments?.['MULTİNET'] || 0;
+                          const mv = (salesAmt: number) =>
+                            tm('reportsExecMovementLine')
+                              .replace('{sales}', formatNumber(salesAmt, 2, false))
+                              .replace('{out}', '0,00')
+                              .replace('{in}', '0,00');
                           const items = [
-                            { label: 'Cariye aktarılan', value: 0, sub: 'Satış: 0,00, Çıkış: 0,00, Giriş: 0,00', color: 'text-slate-600' },
-                            { label: 'NAKİT', value: stats?.payments?.['NAKİT'] || 0, sub: `Satış: ${formatNumber(stats?.payments?.['NAKİT'] || 0, 2, false)}, Çıkış: 0,00, Giriş: 0,00`, color: 'text-slate-800 font-bold' },
-                            { label: 'POS', value: stats?.payments?.['POS'] || 0, sub: `Satış: ${formatNumber(stats?.payments?.['POS'] || 0, 2, false)}, Çıkış: 0,00, Giriş: 0,00`, color: 'text-slate-800' },
-                            { label: 'MULTİNET', value: multinet, sub: `Satış: ${formatNumber(multinet, 2, false)}, Çıkış: 0,00, Giriş: 0,00`, color: 'text-slate-800' },
-                            { label: 'Servis Ücreti', value: 0.00, color: 'text-red-500' },
-                            { label: 'Açık Masalar', value: 0.00, color: 'text-green-500' },
-                            { label: 'Genel Toplam', value: stats?.totalSales || 0, color: 'text-amber-500 font-black' },
-                            { label: 'Tahsilat Toplam', value: stats?.totalSales || 0, color: 'text-red-500' },
-                            { label: 'Satışlar Toplamı', value: stats?.totalSales || 0, color: 'text-blue-500' },
+                            {
+                              label: tm('reportsExecTransferredToCurrent'),
+                              value: 0,
+                              sub: tm('reportsExecNoIntegrationData'),
+                              color: 'text-slate-600',
+                            },
+                            { label: tm('reportsExecCashUpper'), value: stats?.payments?.['NAKİT'] || 0, sub: mv(stats?.payments?.['NAKİT'] || 0), color: 'text-slate-800 font-bold' },
+                            { label: tm('reportsExecPos'), value: stats?.payments?.['POS'] || 0, sub: mv(stats?.payments?.['POS'] || 0), color: 'text-slate-800' },
+                            { label: tm('reportsExecMultinet'), value: multinet, sub: mv(multinet), color: 'text-slate-800' },
+                            { label: tm('reportsExecServiceFee'), value: 0.00, color: 'text-red-500' },
+                            {
+                              label: tm('reportsExecOpenTables'),
+                              value: 0.0,
+                              sub: tm('reportsExecOpenTablesSub'),
+                              color: 'text-green-500',
+                            },
+                            { label: tm('reportsExecGrandTotal'), value: stats?.totalSales || 0, color: 'text-amber-500 font-black' },
+                            { label: tm('reportsExecCollectionTotal'), value: stats?.totalSales || 0, color: 'text-red-500' },
+                            {
+                              label: tm('reportsEodSalesGrossTotal'),
+                              value: stats?.totalSales || 0,
+                              sub: tm('reportsEodNetTurnoverPlusDiscount'),
+                              color: 'text-blue-500',
+                            },
                           ];
 
                           return items.map((item, i) => (
@@ -5136,10 +5559,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 items-center pt-3 border-t border-slate-100 text-purple-600 font-bold">
                           <div className="flex items-center gap-2 min-w-0">
                             <TagsOutlined className="shrink-0" />
-                            <span className="text-sm">İndirim Toplam</span>
+                            <span className="text-sm">{tm('reportsExecDiscountTotal')}</span>
                           </div>
                           <span className="text-sm tabular-nums text-right whitespace-nowrap shrink-0">
-                            {formatNumber(businessType === 'restaurant' ? (restStats?.discountTotal || 0) : dailyDiscount, 2, false)}
+                            {formatNumber(restStats.discountTotal, 2, false)}
                           </span>
                         </div>
                       </div>
@@ -5148,7 +5571,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                   {/* Middle: Yemek Entegrasyonları (Bar Chart) */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Yemek Entegrasyonları Satış Dağılımı</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsFoodIntegrationSalesDist')}</h3>
                     <div className="h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={[
@@ -5168,7 +5591,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                   {/* Lower Section: Category Sales (Bar Chart) */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kategori Bazlı Satış Dağılımı</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCategorySalesDist')}</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={categories.slice(0, 5).map(c => ({ name: c.name, value: c.totalRevenue }))}>
@@ -5188,7 +5611,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
                   {/* Region Table Section (Bar Chart) */}
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Bölge Masa Tablosu</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsRegionTableChart')}</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={[
@@ -5221,7 +5644,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   {/* Footer Section: Cashier and Department Summaries */}
                   <div className="grid grid-cols-2 gap-6 pb-6">
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kasiyer İşlem Özeti</h3>
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCashierTxnSummary')}</h3>
                       <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <RePieChart>
@@ -5241,7 +5664,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       </div>
                     </div>
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Bölüm İşlem Özeti</h3>
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsDeptTxnSummary')}</h3>
                       <div className="h-[300px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <RePieChart>
@@ -5272,54 +5695,159 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             {selectedTab === 'end-of-day' && (() => {
               const paymentDist: any = getPaymentDistribution();
               const pieData = paymentDist.chartData as { name: string; value: number }[];
-              const st = restStats || { totalSales: 0, payments: {} as Record<string, number>, discountTotal: 0 };
+              const st = restStats;
               const paySum = Object.values(st.payments).reduce((a: number, v: any) => a + Number(v || 0), 0);
               const grossSales = st.totalSales + st.discountTotal;
               const paymentRows = Object.entries(st.payments)
                 .filter(([, v]) => Number(v) > 0)
                 .sort((a, b) => Number(b[1]) - Number(a[1]));
               const COLORS = ['#90caf9', '#81c784', '#ce93d8', '#ffab91', '#4db6ac'];
+              const paymentBucketLabel = (rawKey: string) => {
+                const x = String(rawKey || '').trim();
+                if (isRestaurantPaymentCashLike(x)) return tm('reportsExecCashUpper');
+                if (x.toUpperCase() === 'POS') return tm('reportsExecPos');
+                if (/MULT[İI]NET/i.test(x)) return tm('reportsExecMultinet');
+                if (isRestaurantPaymentCardLike(x)) return tm('reportsPaymentPieCard');
+                return x;
+              };
               return (
                 <div className="space-y-6 w-full min-w-0">
-                  {/* Top Summary Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                    {(() => {
-                      const totalGuests = restOrders.reduce((sum, o) => sum + (o.guest_count || 2), 0);
-                      const totalItems = restOrders.reduce((sum, o) => sum + (o.items?.length || 0), 0);
-                      const takeawayOrders = restOrders.filter(o => o.table_id === 'TAKEAWAY');
-                      const tableOrders = restOrders.filter(o => o.table_id !== 'TAKEAWAY' && o.table_id !== 'RETAIL');
-                      const retailOrders = restOrders.filter(o => o.table_id === 'RETAIL');
+                  {/* Top Summary Cards — restoran: adisyon kanalı; diğer yapılar: seçili gün ERP birleşik özet */}
+                  <div
+                    className={
+                      businessType === 'restaurant'
+                        ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4'
+                        : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4'
+                    }
+                  >
+                    {businessType === 'restaurant'
+                      ? (() => {
+                          const totalGuests = restOrders.reduce((sum, o) => sum + (o.guest_count || 2), 0);
+                          const totalItems = restOrders.reduce((sum, o) => sum + (o.items?.length || 0), 0);
+                          const takeawayOrders = restOrders.filter((o) => o.table_id === 'TAKEAWAY');
+                          const tableOrders = restOrders.filter((o) => o.table_id !== 'TAKEAWAY' && o.table_id !== 'RETAIL');
+                          const retailOrders = restOrders.filter((o) => o.table_id === 'RETAIL');
 
-                      return [
-                        { label: 'Kişi Sayısı', value: totalGuests, icon: <TeamOutlined className="text-blue-200" />, color: 'border-blue-50' },
-                        { label: 'Toplam Sipariş', value: businessType === 'restaurant' ? dailyUnifiedRows.length : restOrders.length, sub: `${totalItems} ürün`, icon: <HistoryOutlined className="text-purple-200" />, color: 'border-purple-50' },
-                        { label: 'Servis (Masa)', value: tableOrders.length, sub: `${tableOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <ApartmentOutlined className="text-orange-200" />, color: 'border-orange-50' },
-                        { label: 'Paket Servis', value: takeawayOrders.length, sub: `${takeawayOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <Package className="text-red-200" />, color: 'border-red-50' },
-                        { label: 'Perakende', value: retailOrders.length, sub: `${retailOrders.reduce((s, o) => s + (o.items?.length || 0), 0)} ürün`, icon: <ShoppingCart className="text-green-200" />, color: 'border-green-50' },
-                        { label: 'Self Servis', value: '0', sub: '0 ürün', icon: <PieChartIcon className="text-pink-200" />, color: 'border-pink-50' },
-                      ].map((card, i) => (
-                        <div key={i} className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}>
-                          <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                            {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                          return [
+                            { label: tm('reportsEodGuestCount'), value: totalGuests, icon: <TeamOutlined className="text-blue-200" />, color: 'border-blue-50' },
+                            {
+                              label: tm('reportsEodTotalOrders'),
+                              value: dailyUnifiedRows.length,
+                              sub: tm('reportsEodProductCountTicket').replace('{n}', String(totalItems)),
+                              icon: <HistoryOutlined className="text-purple-200" />,
+                              color: 'border-purple-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelTableService'),
+                              value: tableOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(tableOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <ApartmentOutlined className="text-orange-200" />,
+                              color: 'border-orange-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelPackage'),
+                              value: takeawayOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(takeawayOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <Package className="text-red-200" />,
+                              color: 'border-red-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelRetail'),
+                              value: retailOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(retailOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <ShoppingCart className="text-green-200" />,
+                              color: 'border-green-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelSelfService'),
+                              value: '0',
+                              sub: tm('reportsEodProductCountZero'),
+                              icon: <PieChartIcon className="text-pink-200" />,
+                              color: 'border-pink-50',
+                            },
+                          ].map((card, i) => (
+                            <div
+                              key={i}
+                              className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}
+                            >
+                              <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                              </div>
+                              <p className="text-[11px] font-bold text-slate-400 mb-1">{card.label}</p>
+                              <p className="text-2xl font-black text-blue-600">{card.value}</p>
+                              {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
+                              <div className="mt-2 flex justify-center">{React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}</div>
+                            </div>
+                          ));
+                        })()
+                      : [
+                          {
+                            label: tm('reportsEodErpSlipLines'),
+                            value: dailyUnifiedRows.length,
+                            sub: tm('reportsEodSelectedDay'),
+                            icon: <HistoryOutlined className="text-purple-200" />,
+                            color: 'border-purple-50',
+                          },
+                          {
+                            label: tm('reportsEodNetRevenue'),
+                            value: formatNumber(st.totalSales, 2, false),
+                            sub: reportCurrency,
+                            icon: <Banknote className="text-amber-200" />,
+                            color: 'border-amber-50',
+                          },
+                          {
+                            label: tm('reportsPaymentPieCash'),
+                            value: formatNumber(st.payments['NAKİT'] || 0, 2, false),
+                            sub: reportCurrency,
+                            icon: <Banknote className="text-green-200" />,
+                            color: 'border-green-50',
+                          },
+                          {
+                            label: tm('reportsEodCardPosShort'),
+                            value: formatNumber(st.payments['POS'] || 0, 2, false),
+                            sub: reportCurrency,
+                            icon: <CreditCard className="text-blue-200" />,
+                            color: 'border-blue-50',
+                          },
+                          {
+                            label: tm('reportsEodDiscountShort'),
+                            value: formatNumber(st.discountTotal, 2, false),
+                            sub: reportCurrency,
+                            icon: <TagsOutlined className="text-orange-200" />,
+                            color: 'border-orange-50',
+                          },
+                        ].map((card, i) => (
+                          <div
+                            key={`erp-${i}`}
+                            className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}
+                          >
+                            <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                              {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                            </div>
+                            <p className="text-[11px] font-bold text-slate-400 mb-1">{card.label}</p>
+                            <p className="text-2xl font-black text-blue-600">{card.value}</p>
+                            {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
+                            <div className="mt-2 flex justify-center">{React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}</div>
                           </div>
-                          <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">{card.label}</p>
-                          <p className="text-2xl font-black text-blue-600">{card.value}</p>
-                          {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
-                          <div className="mt-2 flex justify-center">
-                            {React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}
-                          </div>
-                        </div>
-                      ));
-                    })()}
+                        ))}
                   </div>
 
                   <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full min-w-0">
                     <div className="xl:col-span-6 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Ödeme Tipi Dağılımı</h3>
+                      <h3 className="text-sm font-bold text-slate-500 tracking-wider mb-6">{tm('reportsPaymentTypeDistribution')}</h3>
                       <div className="h-[350px] min-h-[280px] w-full min-w-0">
                         {pieData.length === 0 ? (
                           <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-400">
-                            Bu tarih için kapalı sipariş veya pozitif tahsilat tutarı yok; ödeme dağılımı gösterilemiyor.
+                            {businessType === 'restaurant' ? tm('reportsEodPieEmptyRestaurant') : tm('reportsEodPieEmptyRetail')}
                           </div>
                         ) : (
                           <ResponsiveContainer width="100%" height="100%">
@@ -5347,18 +5875,33 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="xl:col-span-6 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                       <div className="space-y-1">
                         {[
-                          { label: 'Cariye aktarılan', value: 0, sub: 'Entegrasyon verisi yok', color: 'text-slate-600' },
+                          {
+                            label: tm('reportsExecTransferredToCurrent'),
+                            value: 0,
+                            sub: tm('reportsExecNoIntegrationData'),
+                            color: 'text-slate-600',
+                          },
                           ...paymentRows.map(([label, val]) => ({
-                            label,
+                            label: paymentBucketLabel(label),
                             value: Number(val),
-                            sub: `Tahsilat: ${formatNumber(Number(val), 2, false)}`,
-                            color: isRestaurantPaymentCashLike(label) ? 'text-slate-800 font-black' : 'text-slate-800'
+                            sub: tm('reportsEodRowSubTahsilat').replace('{amount}', formatNumber(Number(val), 2, false)),
+                            color: isRestaurantPaymentCashLike(label) ? 'text-slate-800 font-black' : 'text-slate-800',
                           })),
-                          { label: 'Servis Ücreti', value: 0, color: 'text-red-500' },
-                          { label: 'Açık Masalar', value: 0, sub: 'Anlık masa bakiyesi bu raporda yok', color: 'text-green-500' },
-                          { label: 'Genel Toplam', value: st.totalSales, color: 'text-amber-500 font-black' },
-                          { label: 'Tahsilat Toplam', value: paySum, color: 'text-red-500' },
-                          { label: 'Satışlar Toplamı (brüt)', value: grossSales, sub: 'Net ciro + indirim', color: 'text-blue-500' },
+                          { label: tm('reportsExecServiceFee'), value: 0, color: 'text-red-500' },
+                          {
+                            label: tm('reportsExecOpenTables'),
+                            value: 0,
+                            sub: tm('reportsExecOpenTablesSub'),
+                            color: 'text-green-500',
+                          },
+                          { label: tm('reportsExecGrandTotal'), value: st.totalSales, color: 'text-amber-500 font-black' },
+                          { label: tm('reportsExecCollectionTotal'), value: paySum, color: 'text-red-500' },
+                          {
+                            label: tm('reportsEodSalesGrossTotal'),
+                            value: grossSales,
+                            sub: tm('reportsEodNetTurnoverPlusDiscount'),
+                            color: 'text-blue-500',
+                          },
                         ].map((item, i) => (
                           <div
                             key={i}
@@ -5378,7 +5921,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 items-center pt-3 border-t border-slate-100 text-purple-600 font-bold">
                           <div className="flex items-center gap-2 min-w-0">
                             <TagsOutlined className="shrink-0" />
-                            <span className="text-sm uppercase font-black">İndirim Toplam</span>
+                            <span className="text-sm font-black">{tm('reportsExecDiscountTotal')}</span>
                           </div>
                           <span className="text-sm tabular-nums text-right whitespace-nowrap shrink-0">
                             {formatNumber(st.discountTotal, 2, false)}
@@ -5392,11 +5935,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             })()}
 
             {selectedTab === 'cash-report' && (() => {
-              const payments = restOrders.reduce((acc: any, o) => {
-                const method = restOrderPaymentMethod(o);
-                acc[method] = (acc[method] || 0) + restOrderNetAmount(o);
-                return acc;
-              }, {});
+              const payments = restStats.payments;
 
               const chartData = Object.entries(payments).map(([name, value]: [string, any]) => ({
                 name,
@@ -5407,7 +5946,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kasa Hareket Raporları</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCashMovementTitle')}</h3>
                     <div className="h-[250px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData}>
@@ -5425,11 +5964,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
                       <div className="flex items-center gap-2">
                         <HistoryOutlined />
-                        <span>Açıklama</span>
+                        <span>{tm('reportsCashColDesc')}</span>
                       </div>
                       <div className="flex gap-20">
-                        <span>Miktar</span>
-                        <span>Tutar</span>
+                        <span>{tm('reportsCashColQty')}</span>
+                        <span>{tm('reportsCashColAmount')}</span>
                       </div>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -5443,7 +5982,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         </div>
                       ))}
                       <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
-                        <span className="text-sm font-bold text-slate-700">Toplamlar</span>
+                        <span className="text-sm font-bold text-slate-700">{tm('reportsTotalsRow')}</span>
                         <div className="flex gap-20">
                           <span className="text-sm font-bold">-</span>
                           <span className="text-sm font-bold">{formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
@@ -5576,7 +6115,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">En Çok Satan Ürünler</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsTopSellingProductsTitle')}</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData}>
@@ -5594,11 +6133,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
                       <div className="flex items-center gap-2">
                         <ShoppingCart className="w-4 h-4" />
-                        <span>Ürün Adı</span>
+                        <span>{tm('reportsThProductName')}</span>
                       </div>
                       <div className="flex gap-20">
-                        <span>Miktar</span>
-                        <span>Toplam Tutar</span>
+                        <span>{tm('reportsThQty')}</span>
+                        <span>{tm('reportsTotalAmountQty')}</span>
                       </div>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -5606,16 +6145,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <React.Fragment key={i}>
                           <div className="p-2 text-white font-bold text-[10px] uppercase pl-4" style={{ backgroundColor: `${bizConfig.color}cc` }}>{prod.product.name}</div>
                           <div className="p-2 flex justify-between items-center pl-8 border-b" style={{ backgroundColor: `${bizConfig.color}11`, borderColor: `${bizConfig.color}22` }}>
-                            <span className="text-xs font-bold text-slate-500">Satış Verisi</span>
+                            <span className="text-xs font-bold text-slate-500">{tm('reportsProductSalesRowLabel')}</span>
                             <div className="flex gap-20 font-bold text-xs">
-                              <span>{formatNumber(prod.quantity, 2, false)} Adet</span>
+                              <span>{tm('reportsQtyWithUnit').replace('{n}', formatNumber(prod.quantity, 2, false))}</span>
                               <span>{formatNumber(prod.revenue, 2, false)}</span>
                             </div>
                           </div>
                         </React.Fragment>
                       ))}
                       <div className="p-3 flex justify-between items-center bg-slate-100 font-bold border-t-2 border-slate-200">
-                        <span className="text-sm font-bold text-slate-700">Genel Toplam</span>
+                        <span className="text-sm font-bold text-slate-700">{tm('reportsGrandTotal')}</span>
                         <div className="flex gap-20">
                           <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.quantity || 0), 0), 2, false)}</span>
                           <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.revenue || 0), 0), 2, false)}</span>
@@ -5634,7 +6173,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               return (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Kategori Raporları</h3>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('kategoriRaporlari')}</h3>
                     <div className="h-[300px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={categories.map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}>
@@ -5652,11 +6191,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
                       <div className="flex items-center gap-2">
                         <PieChartIcon className="w-4 h-4" />
-                        <span>Kategori Adı</span>
+                        <span>{tm('reportsCategoryNameCol')}</span>
                       </div>
                       <div className="flex gap-20">
-                        <span>Miktar</span>
-                        <span>Toplam Tutar</span>
+                        <span>{tm('reportsThQty')}</span>
+                        <span>{tm('reportsTotalAmountQty')}</span>
                       </div>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -5673,7 +6212,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </div>
                           ))}
                           <div className="p-2 flex justify-between items-center bg-amber-50 pl-8 font-bold border-b border-amber-200">
-                            <span className="text-xs text-amber-700">Kategori Toplamı</span>
+                            <span className="text-xs text-amber-700">{tm('reportsCategoryTotalLine')}</span>
                             <div className="flex gap-20 text-xs text-amber-700">
                               <span>{formatNumber(cat.totalQuantity, 2, false)}</span>
                               <span>{formatNumber(cat.totalRevenue, 2, false)}</span>
@@ -5682,7 +6221,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         </React.Fragment>
                       ))}
                       <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
-                        <span className="text-sm">Genel Toplam</span>
+                        <span className="text-sm">{tm('reportsGrandTotal')}</span>
                         <div className="flex gap-20">
                           <span>{formatNumber(categories.reduce((s, c) => s + c.totalQuantity, 0), 2, false)}</span>
                           <span>{formatNumber(categories.reduce((s, c) => s + c.totalRevenue, 0), 2, false)}</span>
@@ -5712,8 +6251,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       const cari =
                         order.customer_name != null && String(order.customer_name).trim() !== ''
                           ? String(order.customer_name)
-                          : 'Peşin Satış';
-                      const statusLabel = order.status === 'closed' ? 'Kapalı' : 'Aktif';
+                          : tm('resTicketWalkIn');
+                      const statusClosed = order.status === 'closed';
+                      const statusLabel = statusClosed ? tm('closed') : tm('active');
                       const rows = visibleItems.map((it: any) => ({
                         open,
                         close,
@@ -5724,6 +6264,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         price: Number(it.unit_price ?? it.unitPrice ?? 0),
                         total: Number(it.subtotal ?? 0),
                         status: statusLabel,
+                        statusClosed,
                       }));
                       const qtySum = rows.reduce((s, r) => s + r.qty, 0);
                       const lineTotal = rows.reduce((s, r) => s + r.total, 0);
@@ -5740,20 +6281,29 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         },
                       };
                     })
-                  : [];
+                  : buildErpDetailedSaleGroups(dailySales, tm);
 
               const totalLineCount = detailedGroups.reduce((s, g) => s + g.items.length, 0);
 
               return (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-4 flex-1">
+                    <div className="flex items-center gap-4 flex-1 flex-wrap">
+                      <label className="flex items-center gap-2 text-xs text-slate-600">
+                        <span className="font-semibold shrink-0">{tm('bHistoryColDate')}</span>
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
+                        />
+                      </label>
                       <Input
-                        placeholder="Aranacak kelime giriniz"
+                        placeholder={tm('reportsSearchKeywordPlaceholder')}
                         prefix={<SearchOutlined className="text-slate-400" />}
                         className="max-w-md border-slate-200"
                       />
-                      <Button icon={<FilterOutlined />}>Filtre</Button>
+                      <Button icon={<FilterOutlined />}>{tm('resFloorFilterLabel')}</Button>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button icon={<MailOutlined />} type="text" />
@@ -5766,36 +6316,34 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-[11px]">
                     <div className="flex items-center gap-2 p-2 bg-slate-50 border-b border-slate-100 italic text-slate-500">
                       <HistoryOutlined className="w-3 h-3" />
-                      <span>Detaylar</span>
+                      <span>{tm('reportsSectionDetails')}</span>
                       {loadingOrders && businessType === 'restaurant' && (
-                        <span className="text-amber-600 not-italic">Yükleniyor…</span>
+                        <span className="text-amber-600 not-italic">{tm('reportsLoadingShort')}</span>
                       )}
                     </div>
 
                     {/* Table Header */}
                     <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 font-bold text-blue-600 uppercase tracking-tighter">
-                      <div className="col-span-1">Açılış za...</div>
-                      <div className="col-span-1">Kapanış ...</div>
-                      <div className="col-span-1">Sipariş No</div>
-                      <div className="col-span-1">Masa Adı</div>
-                      <div className="col-span-1">Ürün Adı</div>
-                      <div className="col-span-1">Cari</div>
-                      <div className="col-span-1 text-center">Miktar</div>
-                      <div className="col-span-1">Birim Fiyat</div>
-                      <div className="col-span-1">Satır Topl...</div>
-                      <div className="col-span-1">Durum</div>
-                      <div className="col-span-2">Satır Öze...</div>
+                      <div className="col-span-1">{tm('reportsThOpenTime')}</div>
+                      <div className="col-span-1">{tm('reportsThCloseTime')}</div>
+                      <div className="col-span-1">{tm('reportsThOrderNo')}</div>
+                      <div className="col-span-1">{tm('reportsThTableName')}</div>
+                      <div className="col-span-1">{tm('reportsThProductName')}</div>
+                      <div className="col-span-1">{tm('reportsThCari')}</div>
+                      <div className="col-span-1 text-center">{tm('reportsThQty')}</div>
+                      <div className="col-span-1">{tm('reportsThUnitPrice')}</div>
+                      <div className="col-span-1">{tm('reportsThLineTotal')}</div>
+                      <div className="col-span-1">{tm('rptTargetColStatus')}</div>
+                      <div className="col-span-2">{tm('reportsThLineNote')}</div>
                     </div>
 
-                    {businessType !== 'restaurant' ? (
-                      <div className="p-8 text-center text-slate-500 text-sm">
-                        Detaylı satış satır listesi restoran modunda, seçili güne ait siparişlerden üretilir.
-                      </div>
-                    ) : loadingOrders ? (
-                      <div className="p-8 text-center text-slate-500 text-sm">Siparişler yükleniyor…</div>
+                    {businessType === 'restaurant' && loadingOrders ? (
+                      <div className="p-8 text-center text-slate-500 text-sm">{tm('reportsOrdersLoading')}</div>
                     ) : detailedGroups.length === 0 ? (
                       <div className="p-8 text-center text-slate-500 text-sm">
-                        Bu tarih için sipariş bulunamadı.
+                        {businessType === 'restaurant'
+                          ? tm('reportsNoOrdersForDate')
+                          : tm('reportsNoSalesForDate')}
                       </div>
                     ) : (
                       detailedGroups.map((group, idx) => (
@@ -5803,12 +6351,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           <div className="bg-slate-50/50 p-2 flex justify-between items-center">
                             <div className="flex items-center gap-2">
                               <CaretDownOutlined className="text-red-500 w-3 h-3" />
-                              <span className="text-red-600 font-bold">Sipariş No : {group.id}</span>
+                              <span className="text-red-600 font-bold">
+                                {tm('reportsOrderNoLine').replace('{id}', group.id)}
+                              </span>
                             </div>
                             <div className="flex items-center gap-4 text-[10px]">
                               <span className="text-green-600 font-bold">
-                                (Miktar {group.summary.qty.toFixed(1)}, Tutar {group.summary.total.toFixed(2)}, İndirim{' '}
-                                {group.summary.discount.toFixed(1)})
+                                {tm('reportsOrderLineSummary')
+                                  .replace('{qty}', group.summary.qty.toFixed(1))
+                                  .replace('{total}', group.summary.total.toFixed(2))
+                                  .replace('{disc}', group.summary.discount.toFixed(1))}
                               </span>
                               <span className="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-black">
                                 {group.summary.count}
@@ -5816,9 +6368,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             </div>
                           </div>
                           {group.items.length === 0 ? (
-                            <div className="p-3 text-slate-400 italic border-b border-slate-50">Kalem yok</div>
+                            <div className="p-3 text-slate-400 italic border-b border-slate-50">{tm('reportsNoLineItems')}</div>
                           ) : (
-                            group.items.map((item, i) => (
+                            group.items.map((item: any, i) => (
                               <div
                                 key={i}
                                 className="grid grid-cols-12 gap-2 p-2 hover:bg-red-50/10 text-slate-600 transition-colors border-b border-slate-50 last:border-0"
@@ -5833,7 +6385,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                 <div className="col-span-1 font-bold">{formatNumber(Number(item.price), 2, false)}</div>
                                 <div className="col-span-1 font-black">{formatNumber(Number(item.total), 2, false)}</div>
                                 <div
-                                  className={`col-span-1 font-bold ${item.status === 'Kapalı' ? 'text-slate-600' : 'text-green-500'}`}
+                                  className={`col-span-1 font-bold ${
+                                    item.statusClosed ? 'text-slate-600' : 'text-green-500'
+                                  }`}
                                 >
                                   {item.status}
                                 </div>
@@ -5845,7 +6399,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       ))
                     )}
                     <div className="p-2 bg-slate-100 flex justify-end items-center font-bold text-slate-500 border-t border-slate-200">
-                      <span>Toplam Kayıt : {totalLineCount}</span>
+                      <span>{tm('reportsTotalRecordsCount').replace('{n}', String(totalLineCount))}</span>
                     </div>
                   </div>
                 </div>
@@ -5853,23 +6407,39 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             })()}
 
             {selectedTab === 'analysis' && (() => {
-              const cards: { title: string; kind: AnalysisReportKind }[] = [
-                { title: 'Aylara Göre Satışlar', kind: 'sales-by-month' },
-                { title: 'Kullanıcıya Göre Ciro Toplamları', kind: 'user-turnover' },
-                { title: 'Kategoriye Göre Aylık Satış Toplamları', kind: 'category-monthly-revenue' },
-                { title: 'Ürüne Göre Aylık Satış Miktarları', kind: 'product-monthly-qty' },
+              const baseCards: { title: string; kind: AnalysisReportKind }[] = [
+                { title: tm('rptAnalysisSalesByMonth'), kind: 'sales-by-month' },
+                { title: tm('rptAnalysisUserTurnover'), kind: 'user-turnover' },
+                { title: tm('rptAnalysisCategoryMonthlyRevenue'), kind: 'category-monthly-revenue' },
+                { title: tm('rptAnalysisProductMonthlyQty'), kind: 'product-monthly-qty' },
                 { title: tm('resProductQtyAnalysisCard'), kind: 'product-sales-range' },
-                { title: 'Kategoriye Göre Aylık Satış Miktarları', kind: 'category-monthly-qty' },
-                { title: 'Bölümlere Göre Satış Toplamları', kind: 'section-turnover' },
-                { title: 'Bölgelere Göre Satış Toplamları', kind: 'region-turnover' },
-                { title: 'Masalara Göre Satış Toplamları', kind: 'table-turnover' },
-                { title: 'Aylara Göre Tahsilat Toplamları', kind: 'collections-by-month' },
+                { title: tm('rptAnalysisCategoryMonthlyQty'), kind: 'category-monthly-qty' },
+                { title: tm('rptAnalysisSectionTurnover'), kind: 'section-turnover' },
+                { title: tm('rptAnalysisRegionTurnover'), kind: 'region-turnover' },
+                { title: tm('rptAnalysisTableTurnover'), kind: 'table-turnover' },
+                { title: tm('rptAnalysisCollectionsByMonth'), kind: 'collections-by-month' },
               ];
+              const cards =
+                businessType === 'restaurant'
+                  ? baseCards
+                  : businessType === 'beauty'
+                    ? baseCards.map((c) =>
+                        c.kind === 'user-turnover'
+                          ? { ...c, title: tm('rptAnalysisBeautyStaffTurnover') }
+                          : c
+                      )
+                    : baseCards.map((c) => {
+                        if (c.kind === 'section-turnover')
+                          return { ...c, title: tm('rptAnalysisErpCategoryProductTurnover') };
+                        if (c.kind === 'table-turnover') return { ...c, title: tm('rptAnalysisErpTableNoteTurnover') };
+                        if (c.kind === 'user-turnover') return { ...c, title: tm('rptAnalysisErpCashierTurnover') };
+                        return c;
+                      });
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4">
                     <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                      Başlangıç
+                      {tm('dateFrom')}
                       <input
                         type="date"
                         value={analysisDateFrom}
@@ -5878,7 +6448,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                      Bitiş
+                      {tm('dateTo')}
                       <input
                         type="date"
                         value={analysisDateTo}
@@ -5888,7 +6458,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     </label>
                     {businessType === 'restaurant' && loadingAnalysisOrders && (
                       <span className="text-xs text-slate-500 flex items-center gap-2 pb-2">
-                        <Spin size="small" /> Veri yükleniyor…
+                        <Spin size="small" /> {tm('reportsAnalysisDataLoading')}
                       </span>
                     )}
                   </div>
@@ -5918,7 +6488,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               footer={
                 <div className="flex justify-end border-t border-slate-100 pt-3">
                   <Button type="primary" size="large" onClick={() => setAnalysisModal(null)}>
-                    Kapat
+                    {tm('close')}
                   </Button>
                 </div>
               }

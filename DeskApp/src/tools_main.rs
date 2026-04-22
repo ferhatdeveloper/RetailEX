@@ -73,7 +73,40 @@ fn list_scripts(install_dir: &Path) {
         let ok = p.exists();
         println!("  [{}] {}", if ok { "OK" } else { "--" }, n);
     }
+    let pgexe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+    println!(
+        "  [{}] {}",
+        if pgexe.exists() { "OK" } else { "--" },
+        "RetailEX_PostgreSQLRemote.exe"
+    );
     println!();
+}
+
+/// Yonetici (UAC) ile RetailEX_PostgreSQLRemote.exe — argümansız menü icin.
+fn run_postgres_remote_elevated(install_dir: &Path) -> i32 {
+    let exe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+    if !exe.exists() {
+        eprintln!(
+            "[RetailEX_Tools] Bulunamadı: {} — tam kurulum (NSIS) veya projede cargo build.",
+            exe.display()
+        );
+        return 1;
+    }
+    let fp = exe.to_string_lossy().replace('\'', "''");
+    let script = format!(
+        "if (-not (Test-Path -LiteralPath '{fp}')) {{ exit 1 }}; Start-Process -LiteralPath '{fp}' -Verb RunAs -Wait"
+    );
+    let st = match Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .status()
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[RetailEX_Tools] powershell: {}", e);
+            return 1;
+        }
+    };
+    st.code().unwrap_or(1)
 }
 
 fn pause() {
@@ -92,6 +125,7 @@ fn menu_loop(install_dir: &Path) -> i32 {
         println!("3) SQL Bridge kur / onar (install-bridge.ps1)");
         println!("4) Yönetim menüsü (retailex-admin.ps1)");
         println!("5) PostgreSQL uzaktan erisim (pg-windows-expose-remote.ps1)");
+        println!("6) PostgreSQL LAN (.exe, UAC) — RetailEX_PostgreSQLRemote.exe");
         println!("L) Script listesini yenile");
         println!("0) Çıkış");
         print!("Secim: ");
@@ -114,6 +148,7 @@ fn menu_loop(install_dir: &Path) -> i32 {
             "3" => run_ps1(install_dir, "install-bridge.ps1", &[]),
             "4" => run_ps1(install_dir, "retailex-admin.ps1", &["-Menu".into()]),
             "5" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &[]),
+            "6" => run_postgres_remote_elevated(install_dir),
             "l" => {
                 println!();
                 continue;
@@ -151,10 +186,29 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
             run_ps1(install_dir, "retailex-admin.ps1", &v)
         }
         "pg" | "expose" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &args[1..].to_vec()),
+        "pg-remote" | "pgexe" => {
+            let exe = install_dir.join("RetailEX_PostgreSQLRemote.exe");
+            if !exe.exists() {
+                eprintln!("RetailEX_PostgreSQLRemote.exe yok: {}", exe.display());
+                return 1;
+            }
+            let mut c = Command::new(&exe);
+            for a in &args[1..] {
+                c.arg(a);
+            }
+            match c.status() {
+                Ok(s) => s.code().unwrap_or(1),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    1
+                }
+            }
+        }
         "help" | "-h" | "/?" => {
             println!(
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
-                 Komutlar: services | bridge-npm | bridge | admin | pg\n\
+                 Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
+                 pg-remote: RetailEX_PostgreSQLRemote.exe (argümanları iletir; yönetici gerekir)\n\
                  Argümansız açılırsa etkileşimli menü."
             );
             0

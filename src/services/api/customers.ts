@@ -136,10 +136,10 @@ export const customerAPI = {
 
       const { rows } = await postgres.query(
         `INSERT INTO ${tableName} (
-           code, name, phone, phone2, email, address, notes, age, occupation, file_id,
+           code, name, phone, phone2, email, address, notes, age, occupation, file_id, gender, customer_tier, heard_from,
            points, total_spent, is_active, firm_nr
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
         [
           customer.code || '',
           customer.name,
@@ -151,6 +151,9 @@ export const customerAPI = {
           ageSafe,
           customer.occupation || '',
           fileIdSafe,
+          customer.gender || null,
+          customer.customer_tier === 'vip' ? 'vip' : 'normal',
+          customer.heard_from || null,
           customer.points || 0,
           customer.totalSpent || 0,
           true,
@@ -317,6 +320,9 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
       ? String(dbCustomer.file_id).trim()
       : undefined,
     occupation: dbCustomer.occupation || undefined,
+    gender: dbCustomer.gender || undefined,
+    customer_tier: dbCustomer.customer_tier || undefined,
+    heard_from: dbCustomer.heard_from || undefined,
     points: dbCustomer.points || 0,
     totalSpent: parseFloat(dbCustomer.total_spent || 0),
     balance: parseFloat(dbCustomer.balance || 0),

@@ -218,15 +218,13 @@ const SetupWizard: React.FC = () => {
 
     const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
 
-    /** Logo/Nebim gibi gerçek ERP verisi kullanılacaksa demo seed çalıştırılmamalı. */
-    const logoIntegrationReady =
-        !config.skip_integration &&
-        Boolean(String(config.erp_firm_nr || '').trim()) &&
-        Boolean(String(config.erp_period_nr || '').trim());
+    /** Logo Objects (MSSQL) ile gerçek veri: örnek seed çakışmasın. Sadece firma/period dolu olması Logo değildir. */
+    const demoSeedConflictsWithLogoObjects =
+        !config.skip_integration && Boolean(config.logo_objects_active);
 
     useEffect(() => {
-        if (logoIntegrationReady && loadDemoData) setLoadDemoData(false);
-    }, [logoIntegrationReady, loadDemoData]);
+        if (demoSeedConflictsWithLogoObjects && loadDemoData) setLoadDemoData(false);
+    }, [demoSeedConflictsWithLogoObjects, loadDemoData]);
 
     /** Bağımsız mod + terminal + merkez DB: yeni firma formu atlanır; doğrudan uzak PostgreSQL ayarları. */
     const skipStandaloneFirmStep =
@@ -1207,13 +1205,23 @@ const SetupWizard: React.FC = () => {
                         await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak migrations atlandı.');
                         setDbInitialized(true);
                     } else {
-                        // Demo seed (001_demo_data.sql) yalnızca kutu işaretliyse; Logo/Nebim gerçek ERP verisi kullanır
+                        // Demo seed (001_demo_data.sql) yalnızca kutu işaretliyse; Nebim veya Logo Objects ile gerçek veri hedefleniyorsa atlanır
                         const migrationLoadDemo =
                             loadDemoData === true &&
-                            !logoIntegrationReady &&
+                            !demoSeedConflictsWithLogoObjects &&
                             !config.is_nebim_migration;
                         if (loadDemoData && !migrationLoadDemo) {
-                            await emit('sync-event', 'ℹ️ Logo seçili: örnek (demo) veri yüklenmedi. Stok/cari vb. gerçek veriler bir sonraki adımda Logo ERP (MSSQL) veritabanından aktarılacak.');
+                            if (config.is_nebim_migration) {
+                                await emit(
+                                    'sync-event',
+                                    'ℹ️ Nebim hızlı geçiş seçildi: örnek (demo) veri yüklenmedi; veriler Nebim aktarımından gelir.'
+                                );
+                            } else if (demoSeedConflictsWithLogoObjects) {
+                                await emit(
+                                    'sync-event',
+                                    'ℹ️ Logo Objects etkin: örnek (demo) veri yüklenmedi. Stok/cari vb. gerçek veriler Logo ERP (MSSQL) senkronu ile gelir.'
+                                );
+                            }
                         }
                         const migrationResult = await safeInvoke('run_migrations', {
                             config,
@@ -2408,11 +2416,11 @@ const SetupWizard: React.FC = () => {
 
                                                 {/* Demo seed: yalnızca kutu işaretliyse 001_demo_data.sql — Logo ile karıştırma; Logo verisi ayrıca MSSQL'den gelir */}
                                                 <div className="pt-4 border-t border-white/5">
-                                                    <label className={`flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 transition-all group ${logoIntegrationReady ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-500/40'}`}>
+                                                    <label className={`flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 transition-all group ${demoSeedConflictsWithLogoObjects ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-500/40'}`}>
                                                         <input
                                                             type="checkbox"
                                                             checked={loadDemoData}
-                                                            disabled={logoIntegrationReady}
+                                                            disabled={demoSeedConflictsWithLogoObjects}
                                                             onChange={(e) => setLoadDemoData(e.target.checked)}
                                                             className="w-5 h-5 rounded border-2 border-purple-500/50 bg-slate-900/60 checked:bg-purple-600 checked:border-purple-600 focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer disabled:cursor-not-allowed"
                                                         />
@@ -2422,9 +2430,9 @@ const SetupWizard: React.FC = () => {
                                                                 <span className="px-2 py-0.5 bg-purple-600/20 text-purple-400 text-[9px] font-black uppercase tracking-wider rounded-full">Opsiyonel test verisi</span>
                                                             </div>
                                                             <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                                                                {logoIntegrationReady
-                                                                    ? 'Logo ile firma seçtiniz: cari/stok vb. gerçek veriler Logo ERP (MSSQL) veritabanından senkronize edilir; bu kutu sadece RetailEX içi örnek veri içindir ve Logo kurulumunda kapalıdır.'
-                                                                    : 'Logo kullanmıyorsanız: sadece bu kutuyu işaretlerseniz örnek ürün/cari yüklenir. Logo kullanacaksanız önce ERP bağlantısında firma seçin — gerçek veri oradan gelir.'}
+                                                                {demoSeedConflictsWithLogoObjects
+                                                                    ? 'Logo Objects etkin: cari/stok vb. gerçek veriler MSSQL senkronundan gelir; örnek (demo) veri bu kurulumda devre dışıdır.'
+                                                                    : 'İşaretlerseniz 001_demo_data.sql ile örnek ürün/cari vb. yüklenir. Logo Objects ile gerçek ERP senkronu kullanacaksanız önce Objects’i etkinleştirin — o zaman demo kutusu kapanır.'}
                                                             </p>
                                                         </div>
                                                         <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center group-hover:bg-purple-600/30 transition-all">

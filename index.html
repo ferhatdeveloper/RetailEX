@@ -77,6 +77,14 @@
       margin-left: 2px;
     }
 
+    .logo-text.splash-clinic .ex {
+      color: #a78bfa;
+    }
+
+    .logo-text.splash-restaurant .ex {
+      color: #fb923c;
+    }
+
     .loading-bar-container {
       width: 180px;
       height: 2px;
@@ -162,16 +170,67 @@
           filter="url(#loaderGlow)" class="pulse-animation" />
         <rect x="70" y="35" width="8" height="30" fill="url(#loaderGrad)" rx="2" opacity="0.8" />
       </svg>
-      <div class="logo-text">
-        <span class="retail">Retail</span><span class="ex">Ex</span>
+      <div class="logo-text" id="splash-brand">
+        <span class="retail" id="splash-brand-left">Retail</span><span class="ex" id="splash-brand-ex">Ex</span>
       </div>
     </div>
-    <div class="loader-spinner" aria-hidden="true"></div>
+    <div class="loader-spinner" id="splash-spinner" aria-hidden="true"></div>
     <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">RetailEX başlatılıyor...</div>
   </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
+    (function () {
+      function landingFromSession() {
+        try {
+          var raw = localStorage.getItem('exretail_session');
+          if (!raw) return null;
+          var session = JSON.parse(raw);
+          var roles = session && session.user && session.user.roles;
+          if (!Array.isArray(roles)) return null;
+          for (var i = 0; i < roles.length; i++) {
+            var lr = roles[i].landingRoute || roles[i].landing_route;
+            if (lr && String(lr).trim()) return String(lr).trim();
+          }
+        } catch (e) { }
+        return null;
+      }
+      function splashProductKind() {
+        try {
+          var mod = (localStorage.getItem('retailex_active_module') || '').trim();
+          if (mod === 'beauty' || mod === 'restaurant') return mod === 'beauty' ? 'clinic' : 'restaurant';
+          var land = landingFromSession();
+          if (land === 'beauty' || land === 'restaurant') return land === 'beauty' ? 'clinic' : 'restaurant';
+        } catch (e2) { }
+        return 'retail';
+      }
+      var kind = splashProductKind();
+      var leftEl = document.getElementById('splash-brand-left');
+      var exEl = document.getElementById('splash-brand-ex');
+      var brandBox = document.getElementById('splash-brand');
+      var spin = document.getElementById('splash-spinner');
+      if (leftEl && exEl && brandBox) {
+        if (kind === 'clinic') {
+          leftEl.textContent = 'Clinic';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-clinic');
+        } else if (kind === 'restaurant') {
+          leftEl.textContent = 'Rest';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-restaurant');
+        }
+      }
+      if (spin) {
+        if (kind === 'clinic') {
+          spin.style.borderColor = 'rgba(167, 139, 250, 0.25)';
+          spin.style.borderTopColor = '#a78bfa';
+        } else if (kind === 'restaurant') {
+          spin.style.borderColor = 'rgba(251, 146, 60, 0.25)';
+          spin.style.borderTopColor = '#fb923c';
+        }
+      }
+    })();
+
     var loaderEl = document.getElementById('app-loader');
     var loadingTextEl = document.getElementById('loading-text');
     var isRefresh = !!sessionStorage.getItem('retailex_splash_seen');

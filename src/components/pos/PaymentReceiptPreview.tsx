@@ -69,6 +69,20 @@ export function PaymentReceiptPreview({
     return methods[method] || method;
   };
 
+  const resolveDeviceName = () => {
+    const beautyDevice = typeof (sale as any).beautyDeviceName === 'string' ? (sale as any).beautyDeviceName.trim() : '';
+    if (beautyDevice) return beautyDevice;
+    const rawDevice =
+      (typeof (sale as any).deviceName === 'string' && (sale as any).deviceName.trim())
+      || (typeof (sale as any).device_name === 'string' && (sale as any).device_name.trim())
+      || (typeof (sale as any).deviceId === 'string' && (sale as any).deviceId.trim())
+      || (typeof (sale as any).device_id === 'string' && (sale as any).device_id.trim())
+      || (typeof sale.storeId === 'string' && sale.storeId.trim());
+    return rawDevice || '';
+  };
+
+  const deviceName = resolveDeviceName();
+
   return (
     <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-white text-black' : 'bg-white text-black'} shadow-lg rounded-lg overflow-hidden`}>
       {/* Header */}
@@ -93,6 +107,12 @@ export function PaymentReceiptPreview({
           <span className="text-gray-600">KASİYER:</span>
           <span>{sale.cashier || 'Sistem Yöneticisi'}</span>
         </div>
+        {deviceName && (
+          <div className="flex justify-between">
+            <span className="text-gray-600">CİHAZ:</span>
+            <span>{deviceName}</span>
+          </div>
+        )}
         {sale.table && (
           <div className="flex justify-between font-bold text-blue-700">
             <span className="text-gray-600">MASA:</span>

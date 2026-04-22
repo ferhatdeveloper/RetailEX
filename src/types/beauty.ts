@@ -1,3 +1,16 @@
+/** Randevu `clinical_data` JSONB — diş / fizik / KD / diyet (sunucu kalıcı) */
+export type ToothClinicalState = 'ok' | 'watch' | 'treat';
+
+export interface BeautyAppointmentClinicalData {
+    dental?: {
+        permanent?: Record<string, ToothClinicalState>;
+        deciduous?: Record<string, ToothClinicalState>;
+    };
+    physiotherapy?: { active_zone?: string | null };
+    obstetrics?: { weeks?: number };
+    dietitian?: { kcal?: number };
+}
+
 export enum AppointmentStatus {
     SCHEDULED = 'scheduled',
     CONFIRMED = 'confirmed',
@@ -5,6 +18,29 @@ export enum AppointmentStatus {
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
     NO_SHOW = 'no_show'
+}
+
+/**
+ * Clinic ERP uzmanlık modu — varsayılan güzellik; klinik operasyon ekranından değiştirilir.
+ * Firma bazlı `localStorage` ile saklanır (sunucu şeması sonraki adımda genişletilebilir).
+ */
+export type ClinicErpSpecialty =
+    | 'beauty_default'
+    | 'dental'
+    | 'physiotherapy'
+    | 'obstetrics'
+    | 'dietitian';
+
+export const CLINIC_ERP_SPECIALTY_IDS: ClinicErpSpecialty[] = [
+    'beauty_default',
+    'dental',
+    'physiotherapy',
+    'obstetrics',
+    'dietitian',
+];
+
+export function isClinicErpSpecialty(v: string | null | undefined): v is ClinicErpSpecialty {
+    return CLINIC_ERP_SPECIALTY_IDS.includes(v as ClinicErpSpecialty);
 }
 
 export enum ServiceCategory {
@@ -167,6 +203,8 @@ export interface BeautyAppointment {
     treatment_degree?: string | null;
     /** Kullanılan atış sayısı veya notasyon (metin) */
     treatment_shots?: string | null;
+    /** Klinik şema ve paneller (PostgreSQL JSONB) */
+    clinical_data?: BeautyAppointmentClinicalData | null;
 }
 
 export interface BeautyBranch {
@@ -189,6 +227,8 @@ export interface BeautyRoom {
 export interface BeautyPortalSettings {
     id: string;
     online_booking_enabled: boolean;
+    /** Açıkken aynı personele aynı saat diliminde birden fazla randevu / işlem (iç POS; cihaz çakışması ayrıca kontrol edilir) */
+    allow_staff_slot_overlap?: boolean;
     public_slug?: string;
     public_token: string;
     reminder_hours_before: number;
@@ -471,6 +511,11 @@ export interface BeautyCustomer {
     age?: number | null;
     file_id?: string | null;
     occupation?: string | null;
+    /** female | male | other — boş bırakılabilir */
+    gender?: 'female' | 'male' | 'other' | null;
+    /** Güzellik CRM: standart veya VIP müşteri */
+    customer_tier?: 'normal' | 'vip' | null;
+    heard_from?: string | null;
     email?: string;
     address?: string;
     city?: string;

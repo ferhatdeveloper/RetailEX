@@ -10,8 +10,16 @@ import {
 } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { formatIsoDateTr } from '../../utils/localCalendarDate';
+import { cn } from '../ui/utils';
 
-export function FirmSelector() {
+export type FirmSelectorTriggerVariant = 'topbar' | 'clinic';
+
+interface FirmSelectorProps {
+    /** clinic: açık arka planlı üst çubuk (Güzellik kabuğu); topbar: mavi ERP çubuğu */
+    triggerVariant?: FirmSelectorTriggerVariant;
+}
+
+export function FirmSelector({ triggerVariant = 'topbar' }: FirmSelectorProps) {
     const [isOpen, setIsOpen] = useState(false);
     const {
         selectedFirm,
@@ -28,19 +36,25 @@ export function FirmSelector() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="flex items-center gap-2 text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded transition-colors"
+                className={cn(
+                    'flex items-center gap-2 rounded transition-colors shrink-0',
+                    triggerVariant === 'topbar' &&
+                        'text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-2',
+                    triggerVariant === 'clinic' &&
+                        'text-xs h-8 px-2 sm:px-2.5 border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 text-slate-700 font-semibold shadow-sm'
+                )}
                 onClick={() => setIsOpen(true)}
             >
-                <Building2 className="h-4 w-4" />
-                <span className="hidden md:inline">
+                <Building2 className={cn('h-4 w-4', triggerVariant === 'clinic' && 'text-violet-700')} />
+                <span className="hidden md:inline max-w-[140px] truncate">
                     {selectedFirm?.name || selectedFirm?.firm_nr || 'Firma Seç'}
                 </span>
                 <span className="md:hidden">
                     {selectedFirm?.firm_nr || '---'}
                 </span>
-                <span className="text-blue-200">•</span>
-                <Calendar className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">
+                <span className={triggerVariant === 'topbar' ? 'text-blue-200' : 'text-violet-300'}>•</span>
+                <Calendar className={cn('h-3.5 w-3.5', triggerVariant === 'clinic' && 'text-violet-600')} />
+                <span className="hidden sm:inline whitespace-nowrap">
                     {selectedPeriod?.nr ? `Dönem ${selectedPeriod.nr}` : 'Dönem Seç'}
                 </span>
                 <ChevronDown className="h-3 w-3 opacity-50" />

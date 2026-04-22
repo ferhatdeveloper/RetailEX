@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## Teknoloji
 - Frontend: React 18, TypeScript, Vite 6. State: Zustand + TanStack React Query. UI: Radix, shadcn, Ant Design 6.
-- DB: PostgreSQL 16. ORM yok — ham SQL, `PostgresConnection` (services/postgres.ts).
+- DB: PostgreSQL **15+** (Windows x64 örn. **15.17**; 16+ uyumlu). ORM yok — ham SQL, `PostgresConnection` (services/postgres.ts).
 - Web: `pg_bridge` (Hono proxy, `npm run bridge` → :3001). Tauri: doğrudan Rust ile PG.
 - i18n: i18next, tr/en/ar/ku. Modül çevirileri `tm('bKey')`, güzellik prefix `b`.
 

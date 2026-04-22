@@ -431,7 +431,7 @@ function ReceiptSettingsView() {
           Fiş / Firma Bilgisi
         </h3>
         <p className="text-gray-600 mb-6 text-sm">
-          Hesap ve mutfak fişlerinde görünecek firma bilgisi, logo, varsayılan fiş dili ve ürün adı için kullanılacak veritabanı alanları.
+          Hesap (adisyon), mutfak fişi, ödeme ekranı fişi ve 80 mm önizlemede kullanılacak firma bilgisi, logo, varsayılan fiş dili ve ürün adı alanları.
         </p>
 
         {toast && (
@@ -505,7 +505,7 @@ function ReceiptSettingsView() {
           <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4 space-y-4">
             <h4 className="text-sm font-semibold text-gray-900">Fiş dili ve ürün adı alanları</h4>
             <p className="text-xs text-gray-600">
-              POS’ta fiş açılışında kullanılacak varsayılan dil. Ürün adı: her dil için `rex_*_products` tablosundaki alan adını seçin (ör. İngilizce için <code className="bg-white px-1 rounded">description_en</code>).
+              Restoran ve Market POS’ta fiş / önizleme açılışında kullanılacak varsayılan dil (mutfak fişi ve ödeme fişi dahil). “Uygulama dili” seçiliyse arayüz dili kullanılır; yoksa yazıcı ayarındaki yerel varsayılan yedeklenir. Ürün adı: her dil için `rex_*_products` tablosundaki alan adını seçin (ör. İngilizce için <code className="bg-white px-1 rounded">description_en</code>).
             </p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Varsayılan fiş dili</label>

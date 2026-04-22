@@ -10,7 +10,7 @@
  *   [Ödeme Tamamla]   → hizmet varsa randevu + satış; sadece ürün/paket ise yalnızca beauty satışı (+ ürün stok düşümü)
  */
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import {
     ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users, Banknote,
     CalendarDays, CalendarClock, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
-import type { BeautyAppointment, BeautyCustomer } from '../../../types/beauty';
+import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -45,9 +45,12 @@ import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
 import { usePermission } from '../../../shared/hooks/usePermission';
+import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
+import { DentalChartScreen } from '../specialty/DentalChartScreen';
 import '../ClinicStyles.css';
 
 /** Güzellik satış satırını randevuya bağlar; randevu iptalinde `beautyService` bu kayıtları ciro dışı işaretler. */
@@ -274,12 +277,17 @@ function emptyQuickAddCustomer() {
         phone2: '',
         age: '',
         file_id: '',
+        heard_from: '',
         email: '',
         address: '',
         occupation: '',
         notes: '',
+        gender: '' as '' | 'female' | 'male' | 'other',
+        customer_tier: 'normal' as 'normal' | 'vip',
     };
 }
+
+const QUICK_ADD_HEARD_FROM_STORAGE_KEY = 'beauty_quick_add_heard_from_options_v1';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const UNASSIGNED_RESOURCE = '__unassigned__';
@@ -307,6 +315,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const { tm, language: uiLanguage } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
     const { isAdmin } = usePermission();
+    const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
+    const isDentalMode = clinicSpec === 'dental';
     const receiptFirmNr = useMemo(() => {
         const f = selectedFirm;
         if (!f) return undefined;
@@ -330,11 +340,35 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         ];
     }, [existingAppointment?.id, tm]);
 
-    const CATEGORY_TR: Record<string, string> = {
-        laser: tm('bCatLaser'), hair_salon: tm('bCatHairSalon'), beauty: tm('bCatBeauty'),
-        botox: tm('bCatBotox'), filler: tm('bCatFiller'), massage: tm('bCatMassage'),
-        skincare: tm('bCatSkincare'), makeup: tm('bCatMakeup'), nails: tm('bCatNails'), spa: tm('bCatSpa'),
-    };
+    const posServiceCategoryLabels = useMemo((): Record<string, string> => {
+        const base: Record<string, string> = {
+            laser: tm('bCatLaser'),
+            hair_salon: tm('bCatHairSalon'),
+            beauty: tm('bCatBeauty'),
+            botox: tm('bCatBotox'),
+            filler: tm('bCatFiller'),
+            massage: tm('bCatMassage'),
+            skincare: tm('bCatSkincare'),
+            makeup: tm('bCatMakeup'),
+            nails: tm('bCatNails'),
+            spa: tm('bCatSpa'),
+            physical_therapy: tm('bClinicSpec_physiotherapy'),
+        };
+        if (!isDentalMode) return base;
+        return {
+            ...base,
+            diagnostic: tm('bCatDentalDiagnostic'),
+            endodontics: tm('bCatDentalEndo'),
+            periodontics: tm('bCatDentalPerio'),
+            surgery: tm('bCatDentalSurgery'),
+            prosthodontics: tm('bCatDentalProstho'),
+            orthodontics: tm('bCatDentalOrtho'),
+            pedodontics: tm('bCatDentalPedo'),
+            preventive: tm('bCatDentalPreventive'),
+            implant: tm('bCatDentalImplant'),
+            restorative: tm('bCatDentalRestorative'),
+        };
+    }, [tm, isDentalMode]);
 
     // ── Left panel state ─────────────────────────────────────────────────
     const [tab, setTab] = useState<'services' | 'packages' | 'products'>('services');
@@ -361,6 +395,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const [custModalQ, setCustModalQ] = useState('');
     const [showAddForm, setShowAddForm] = useState(false);
     const [newCust, setNewCust] = useState(emptyQuickAddCustomer);
+    const [heardFromOptions, setHeardFromOptions] = useState<string[]>([]);
+    const [heardFromDraft, setHeardFromDraft] = useState('');
     const [savingCust, setSavingCust] = useState(false);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
     /** Yeni eklenen hizmet satırlarına otomatik atanır; randevu için zorunlu. */
@@ -391,6 +427,48 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     /** Sepet satırı hizmet birim fiyatı — düzenleme modalı (uid) */
     const [cartLinePriceUid, setCartLinePriceUid] = useState<string | null>(null);
     const [cartLinePriceDraft, setCartLinePriceDraft] = useState('');
+
+    useEffect(() => {
+        const defaultOpts = ['Instagram', 'Google', 'Tavsiye', 'Yoldan Geçerken', 'WhatsApp', 'Diğer'];
+        try {
+            const raw = localStorage.getItem(QUICK_ADD_HEARD_FROM_STORAGE_KEY);
+            if (!raw) {
+                setHeardFromOptions(defaultOpts);
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) {
+                setHeardFromOptions(defaultOpts);
+                return;
+            }
+            const merged = Array.from(
+                new Set(
+                    [...defaultOpts, ...parsed]
+                        .map((v) => String(v ?? '').trim())
+                        .filter(Boolean)
+                )
+            );
+            setHeardFromOptions(merged);
+        } catch {
+            setHeardFromOptions(defaultOpts);
+        }
+    }, []);
+
+    const addHeardFromOption = useCallback(() => {
+        const label = heardFromDraft.trim();
+        if (!label) return;
+        setHeardFromOptions((prev) => {
+            const merged = Array.from(new Set([...prev, label]));
+            try {
+                localStorage.setItem(QUICK_ADD_HEARD_FROM_STORAGE_KEY, JSON.stringify(merged));
+            } catch {
+                // no-op
+            }
+            return merged;
+        });
+        setNewCust((p) => ({ ...p, heard_from: label }));
+        setHeardFromDraft('');
+    }, [heardFromDraft]);
 
     // ── Appointment details ───────────────────────────────────────────────
     const today = new Date().toISOString().split('T')[0];
@@ -449,11 +527,38 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     /** prefillServiceId ile otomatik eklenen satırı yalnızca bir kez */
     const didAddPrefillServiceRef = useRef(false);
     const [bookingBusy, setBookingBusy] = useState(false);
+    /** Firma ayarı: aynı personele aynı saatte birden fazla randevu / işlem */
+    const [allowStaffSlotOverlap, setAllowStaffSlotOverlap] = useState(false);
+
+    const refreshPortalOverlapSetting = useCallback(() => {
+        void (async () => {
+            try {
+                const ps = await beautyService.getPortalSettings();
+                setAllowStaffSlotOverlap(normalizeAllowStaffSlotOverlap(ps));
+            } catch {
+                setAllowStaffSlotOverlap(false);
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
+        const onPortalUpdated = () => refreshPortalOverlapSetting();
+        const onVis = () => {
+            if (document.visibilityState === 'visible') refreshPortalOverlapSetting();
+        };
+        window.addEventListener('retailex-beauty-portal-updated', onPortalUpdated);
+        document.addEventListener('visibilitychange', onVis);
+        return () => {
+            window.removeEventListener('retailex-beauty-portal-updated', onPortalUpdated);
+            document.removeEventListener('visibilitychange', onVis);
+        };
+    }, [refreshPortalOverlapSetting]);
 
     useEffect(() => {
         loadServices(); loadPackages(); loadSpecialists();
         loadCustomers(); loadDevices();
         void loadProducts(true);
+        refreshPortalOverlapSetting();
         void (async () => {
             try {
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
@@ -798,6 +903,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         try {
             const trimmedAge = newCust.age.trim();
             const ageNum = trimmedAge === '' ? undefined : parseAgeInput(newCust.age);
+            const g = String(newCust.gender ?? '').trim().toLowerCase();
+            const genderVal =
+                g === 'female' || g === 'male' || g === 'other' ? (g as 'female' | 'male' | 'other') : undefined;
             const id = await beautyService.createCustomer({
                 name: newCust.name.trim(),
                 phone: newCust.phone.trim() || undefined,
@@ -807,7 +915,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 occupation: newCust.occupation.trim() || undefined,
                 notes: newCust.notes.trim() || undefined,
                 file_id: newCust.file_id.trim() || undefined,
+                heard_from: newCust.heard_from.trim() || undefined,
                 age: ageNum,
+                gender: genderVal,
+                customer_tier: newCust.customer_tier === 'vip' ? 'vip' : 'normal',
                 is_active: true,
             });
             await loadCustomers();
@@ -835,7 +946,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 occupation: newCust.occupation.trim() || undefined,
                 notes: newCust.notes.trim() || undefined,
                 file_id: newCust.file_id.trim() || undefined,
+                heard_from: newCust.heard_from.trim() || undefined,
                 age: ageNum ?? null,
+                gender: genderVal ?? null,
+                customer_tier: newCust.customer_tier === 'vip' ? 'vip' : 'normal',
                 is_active: true,
             } as BeautyCustomer;
             setCustomer(created);
@@ -900,7 +1014,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const chgQty = (uid: string, d: number) => setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
-    const saveCartLineUnitPrice = useCallback(() => {
+    const saveCartLineUnitPrice = useCallback(async () => {
         if (!isAdmin()) {
             setCartLinePriceUid(null);
             return;
@@ -912,11 +1026,67 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             return;
         }
         const old = Number(line.unit_price ?? 0);
-        const raw = String(cartLinePriceDraft).replace(/\s/g, '').replace(',', '.');
-        const neu = Math.max(0, Number(raw) || 0);
+        const raw = String(cartLinePriceDraft ?? '').trim();
+        const compact = raw.replace(/\s/g, '');
+        let normalized = compact;
+        if (compact.includes(',') && compact.includes('.')) {
+            // Son görülen ayırıcıyı ondalık kabul et, diğerini binlik temizle
+            const lastComma = compact.lastIndexOf(',');
+            const lastDot = compact.lastIndexOf('.');
+            if (lastComma > lastDot) {
+                normalized = compact.replace(/\./g, '').replace(',', '.');
+            } else {
+                normalized = compact.replace(/,/g, '');
+            }
+        } else if (compact.includes(',')) {
+            normalized = compact.replace(/\./g, '').replace(',', '.');
+        } else if (/^\d{1,3}(\.\d{3})+$/.test(compact)) {
+            // TR binlik formatı: 1.250 / 12.500
+            normalized = compact.replace(/\./g, '');
+        }
+        const parsed = Number(normalized);
+        if (!Number.isFinite(parsed)) {
+            toast.error(tm('bInvalidPrice'));
+            return;
+        }
+        const neu = Math.max(0, parsed);
         if (neu === old) {
             setCartLinePriceUid(null);
             return;
+        }
+        if (existingAppointment?.id) {
+            try {
+                const dayYmd =
+                    beautyAppointmentDateKey(existingAppointment) ||
+                    safeDateYmd(aptDate);
+                let pool: BeautyAppointment[] = [];
+                try {
+                    pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+                } catch {
+                    pool = [];
+                }
+                const siblings = findBeautyAppointmentsSameQueueGroup(
+                    existingAppointment,
+                    pool.length > 0 ? pool : [existingAppointment],
+                );
+                const lineServiceId = String(line.item_id ?? '').trim();
+                const lineStaffId = String(line.staff_id ?? '').trim();
+                const target =
+                    siblings.find((a) =>
+                        String(a.service_id ?? '').trim() === lineServiceId &&
+                        String(a.staff_id ?? a.specialist_id ?? '').trim() === lineStaffId,
+                    ) ??
+                    siblings.find((a) => String(a.service_id ?? '').trim() === lineServiceId) ??
+                    siblings.find((a) => a.id === existingAppointment.id) ??
+                    siblings[0];
+                if (target?.id) {
+                    await updateAppointment(target.id, { total_price: neu });
+                }
+            } catch (e: unknown) {
+                logger.crudError('AppointmentPOS', 'saveCartLineUnitPrice: persist', e);
+                toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
+                return;
+            }
         }
         setCart(c => c.map(l => (l.uid === cartLinePriceUid ? { ...l, unit_price: neu } : l)));
         logger.info('AppointmentPOS', 'beauty_cart_line_unit_price_update', {
@@ -929,7 +1099,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             qty: line.qty,
         });
         setCartLinePriceUid(null);
-    }, [cart, cartLinePriceUid, cartLinePriceDraft, isAdmin]);
+    }, [cart, cartLinePriceUid, cartLinePriceDraft, isAdmin, existingAppointment, aptDate, updateAppointment, tm]);
     const pickDefaultSpecialist = (id: string) => {
         setDefaultSpecialistId(id);
         setCart(c =>
@@ -1289,6 +1459,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         deviceId: string,
         existing: BeautyAppointment[],
         excludeAptId?: string,
+        staffOverlapAllowed: boolean = allowStaffSlotOverlap,
     ): boolean => {
         for (const e of existing) {
             if (!beautyAptBlocksCalendarSlot(e)) continue;
@@ -1299,7 +1470,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             if (!overlaps(startMin, dur, eStart, eDur)) continue;
             const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
             const eDev = String(e.device_id ?? '').trim();
-            if (staffId && eSid === staffId) return false;
+            if (staffId && eSid === staffId && !staffOverlapAllowed) return false;
             if (String(deviceId ?? '').trim() && eDev === String(deviceId).trim()) return false;
         }
         return true;
@@ -1310,6 +1481,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const buildSlotSuggestionsSync = (
         existing: BeautyAppointment[],
         hint?: SlotSegHint,
+        staffOverlapAllowed: boolean = allowStaffSlotOverlap,
     ): { sameDeviceSlots: string[]; otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }> } => {
         const empty = {
             sameDeviceSlots: [] as string[],
@@ -1353,7 +1525,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         const scanTo = multi && anchor != null ? Math.min(WORK_END, anchor + 120 + dur) : WORK_END;
         const sameDeviceSlots: string[] = [];
         for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
-            if (slotSegmentFree(t, dur, staffId, devId, existing, exId)) {
+            if (slotSegmentFree(t, dur, staffId, devId, existing, exId, staffOverlapAllowed)) {
                 sameDeviceSlots.push(minToHhmm(t));
                 if (sameDeviceSlots.length >= 40) break;
             }
@@ -1363,7 +1535,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             const did = String(d.id);
             if (devId && did === devId) continue;
             for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
-                if (slotSegmentFree(t, dur, staffId, did, existing, exId)) {
+                if (slotSegmentFree(t, dur, staffId, did, existing, exId, staffOverlapAllowed)) {
                     other.push({
                         deviceId: d.id,
                         deviceLabel: (d.name && String(d.name).trim()) || did,
@@ -1380,10 +1552,30 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     /** Personel ve cihaz üzerinde çakışma kontrolü; önerilerle SlotConflictError */
     const ensureAppointmentSlotOk = async (planned: ReturnType<typeof buildAptPayload>[]) => {
         if (planned.length === 0) return;
+        let overlapLive = allowStaffSlotOverlap;
+        try {
+            const ps = await beautyService.getPortalSettings();
+            overlapLive = normalizeAllowStaffSlotOverlap(ps);
+            setAllowStaffSlotOverlap(overlapLive);
+        } catch {
+            /* mevcut state */
+        }
         const day = safeDateYmd(aptDate);
         const existingRaw = await beautyService.getAppointmentsInRange(day, day);
         const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
         const exId = existingAppointment?.id;
+        const excludedIds = new Set<string>();
+        if (exId) excludedIds.add(String(exId));
+        if (existingAppointment?.id) {
+            const siblings = findBeautyAppointmentsSameQueueGroup(
+                existingAppointment,
+                existingRaw.length > 0 ? existingRaw : [existingAppointment],
+            );
+            for (const sib of siblings) {
+                if (!sib?.id) continue;
+                excludedIds.add(String(sib.id));
+            }
+        }
 
         for (const p of planned) {
             const sid = String(p.staff_id ?? '').trim();
@@ -1393,7 +1585,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             if (pStart == null) continue;
 
             const clash = existing.find((e) => {
-                if (exId && String(e.id) === String(exId)) return false;
+                if (excludedIds.has(String(e.id))) return false;
                 const eStart = hhmmToMin(String(e.appointment_time ?? e.time ?? ''));
                 if (eStart == null) return false;
                 const eDur = Math.max(1, Number(e.duration ?? 30));
@@ -1402,21 +1594,26 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 const eDev = String(e.device_id ?? '').trim();
                 const staffClash = !!(sid && eSid === sid);
                 const devClash = !!(dev && eDev === dev);
+                if (overlapLive) return devClash;
                 return staffClash || devClash;
             });
 
             if (clash) {
-                const sug = buildSlotSuggestionsSync(existing, {
-                    staffId: sid,
-                    deviceId: dev,
-                    durationMin: pDur,
-                    anchorStartMin: pStart,
-                });
+                const sug = buildSlotSuggestionsSync(
+                    existing,
+                    {
+                        staffId: sid,
+                        deviceId: dev,
+                        durationMin: pDur,
+                        anchorStartMin: pStart,
+                    },
+                    overlapLive,
+                );
                 const eSid = String(clash.staff_id ?? clash.specialist_id ?? '').trim();
                 const eDev = String(clash.device_id ?? '').trim();
                 const overlapStaff = !!(sid && eSid === sid);
                 const overlapDev = !!(dev && eDev === dev);
-                if (overlapStaff) {
+                const throwStaff = () => {
                     const staffName = specialists.find((s) => s.id === sid)?.name ?? sid;
                     throw new SlotConflictError(
                         tm('bErrTimeConflict').replace('{staff}', staffName).replace('{time}', String(p.time)),
@@ -1427,8 +1624,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             otherDeviceSuggestions: sug.otherDeviceSuggestions,
                         },
                     );
-                }
-                if (overlapDev) {
+                };
+                const throwDev = () => {
                     const dname = devices.find((d) => String(d.id) === dev)?.name ?? dev;
                     throw new SlotConflictError(
                         tm('bErrSlotDeviceBusy').replace('{device}', dname).replace('{time}', String(p.time)),
@@ -1439,15 +1636,25 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             otherDeviceSuggestions: sug.otherDeviceSuggestions,
                         },
                     );
+                };
+                if (overlapLive) {
+                    if (overlapDev) throwDev();
+                    else if (overlapStaff) throwStaff();
+                } else {
+                    if (overlapStaff) throwStaff();
+                    else if (overlapDev) throwDev();
                 }
             }
         }
     };
 
     const applySuggestedSlot = (time: string, deviceId?: string) => {
-        setAptTime(safeTimeHHmm(time));
-        if (deviceId) setAptDevice(String(deviceId));
-        setSlotSuggestModal((s) => ({ ...s, open: false }));
+        const t = safeTimeHHmm(time);
+        flushSync(() => {
+            setAptTime(t);
+            if (deviceId) setAptDevice(String(deviceId));
+            setSlotSuggestModal((s) => ({ ...s, open: false }));
+        });
     };
 
     const browseFreeSlots = async () => {
@@ -1461,6 +1668,14 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         }
         setSlotBrowseLoading(true);
         try {
+            let overlapLive = allowStaffSlotOverlap;
+            try {
+                const ps = await beautyService.getPortalSettings();
+                overlapLive = normalizeAllowStaffSlotOverlap(ps);
+                setAllowStaffSlotOverlap(overlapLive);
+            } catch {
+                /* state */
+            }
             const day = safeDateYmd(aptDate);
             const existingRaw = await beautyService.getAppointmentsInRange(day, day);
             const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
@@ -1482,7 +1697,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                           ),
                           anchorStartMin: baseMin ?? undefined,
                       };
-            const sug = buildSlotSuggestionsSync(existing, hint);
+            const sug = buildSlotSuggestionsSync(existing, hint, overlapLive);
             setSlotSuggestModal({
                 open: true,
                 title: tm('bSlotBrowseTitle'),
@@ -1560,6 +1775,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 await ensureAppointmentSlotOk(planned);
             }
             const firstSvc = serviceLines[0];
+            const firstSvcTotal =
+                firstSvc
+                    ? Number(firstSvc.unit_price ?? 0) * Math.max(1, Number(firstSvc.qty ?? 1))
+                    : total;
             await updateAppointment(existingAppointment.id, {
                 appointment_date: safeDateYmd(aptDate),
                 appointment_time: safeTimeHHmm(aptTime),
@@ -1568,7 +1787,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 device_id: aptDevice || null,
                 notes: aptNotes || null,
                 status: aptStatus,
-                total_price: total,
+                total_price: firstSvcTotal,
                 duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                 staff_id: firstSvc?.staff_id?.trim() || undefined,
                 service_id: serviceLines.length === 1 ? serviceLines[0]?.item_id : undefined,
@@ -1601,10 +1820,27 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         if (!existingAppointment?.id) return;
         setCancelAptBusy(true);
         try {
-            await updateAppointment(existingAppointment.id, {
-                status: AppointmentStatus.CANCELLED,
-                notes: aptNotes?.trim() ? aptNotes : null,
-            });
+            const dayYmd =
+                beautyAppointmentDateKey(existingAppointment) ||
+                safeDateYmd(aptDate);
+            let pool: BeautyAppointment[] = [];
+            try {
+                pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+            } catch {
+                pool = [];
+            }
+            const siblings = findBeautyAppointmentsSameQueueGroup(
+                existingAppointment,
+                pool.length > 0 ? pool : [existingAppointment],
+            );
+            const targets = siblings.length > 0 ? siblings : [existingAppointment];
+            for (const sib of targets) {
+                if (!sib?.id) continue;
+                await updateAppointment(sib.id, {
+                    status: AppointmentStatus.CANCELLED,
+                    notes: aptNotes?.trim() ? aptNotes : null,
+                });
+            }
             setAptStatus(AppointmentStatus.CANCELLED);
             toast.success(tm('bAptCancelSuccessToast'));
             setCancelAptConfirmOpen(false);
@@ -1615,7 +1851,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
         } finally {
             setCancelAptBusy(false);
         }
-    }, [existingAppointment, aptNotes, updateAppointment, tm]);
+    }, [existingAppointment, aptNotes, updateAppointment, tm, aptDate]);
 
     const resolveBeautyCashierName = () => {
         const svc = cart.find(l => l.type === 'service' && l.staff_id?.trim());
@@ -1655,6 +1891,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 total,
                 paymentMethod: 'pending',
                 cashier: resolveBeautyCashierName(),
+                notes: aptNotes?.trim() || undefined,
                 beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,
                 beautyTreatmentDegree: receiptTreatmentDegree.trim() || undefined,
                 beautyTreatmentShots: receiptTreatmentShots.trim() || undefined,
@@ -1869,6 +2106,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             const headerDiscount = discAmt + extraDiscount;
 
             if (existingAppointment?.id) {
+                const firstSvc = serviceLines[0];
+                const firstSvcTotal =
+                    firstSvc
+                        ? Number(firstSvc.unit_price ?? 0) * Math.max(1, Number(firstSvc.qty ?? 1))
+                        : finalTotalSale;
                 if (serviceLines.length > 0) {
                     const plannedPay = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                     await ensureAppointmentSlotOk(plannedPay);
@@ -1881,13 +2123,33 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                     device_id: aptDevice || null,
                     notes: aptNotes || null,
                     status: AppointmentStatus.COMPLETED,
-                    total_price: finalTotalSale,
+                    total_price: firstSvcTotal,
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
                     treatment_degree: receiptTreatmentDegree.trim() || null,
                     treatment_shots: receiptTreatmentShots.trim() || null,
                 });
+
+                // Ayrı satış fişi açık olsa da ödeme tek işlemde alındığında
+                // aynı kuyruk grubundaki tüm hizmet randevularını kapat.
+                try {
+                    const dayYmd = beautyAppointmentDateKey(existingAppointment)
+                        || safeDateYmd(aptDate);
+                    const pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+                    const siblings = findBeautyAppointmentsSameQueueGroup(
+                        existingAppointment,
+                        pool.length > 0 ? pool : [existingAppointment],
+                    );
+                    for (const sib of siblings) {
+                        if (!sib?.id || sib.id === existingAppointment.id) continue;
+                        if (sib.status === AppointmentStatus.COMPLETED || sib.status === 'completed') continue;
+                        await updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED });
+                    }
+                } catch (syncErr) {
+                    logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
+                }
             } else if (canBookApt) {
-                const planned = buildServiceAppointmentPayloads(AppointmentStatus.CONFIRMED);
+                // Direkt ödeme ile açılan işlemde randevu da kapalı (completed) oluşturulmalı.
+                const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                 await ensureAppointmentSlotOk(planned);
                 for (const p of planned) {
                     await createAppointment(p);
@@ -2118,7 +2380,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 )}
                 <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                     <p style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0 }}>
-                        {onBack ? tm('bAppointmentPOS') : tm('bPOSRegisterTitle')}
+                        {onBack
+                            ? isDentalMode
+                                ? tm('bAppointmentPOSDental')
+                                : tm('bAppointmentPOS')
+                            : tm('bPOSRegisterTitle')}
                     </p>
                 </div>
 
@@ -2175,14 +2441,14 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                         </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, maxWidth: 220 }}>
-                        <Label>{tm('bDiagDevice')}</Label>
+                        <Label>{isDentalMode ? tm('bPosDentalUnitLabel') : tm('bDiagDevice')}</Label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '4px 8px 4px 10px', minWidth: 0 }}>
                             <Cpu size={12} color="#7c3aed" style={{ flexShrink: 0 }} />
                             <select
                                 value={aptDevice}
                                 onChange={e => setAptDevice(String(e.target.value))}
-                                title={tm('bDiagDevice')}
-                                aria-label={tm('bDiagDevice')}
+                                title={isDentalMode ? tm('bPosDentalUnitLabel') : tm('bDiagDevice')}
+                                aria-label={isDentalMode ? tm('bPosDentalUnitLabel') : tm('bDiagDevice')}
                                 style={{
                                     border: 'none',
                                     background: 'transparent',
@@ -2196,7 +2462,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     flex: 1,
                                 }}
                             >
-                                <option value="">{tm('bDeviceSelectPlaceholder')}</option>
+                                <option value="">{isDentalMode ? tm('bDeviceSelectPlaceholderDental') : tm('bDeviceSelectPlaceholder')}</option>
                                 {devices.filter(d => d.is_active).map(d => (
                                     <option key={d.id} value={String(d.id)}>{d.name}</option>
                                 ))}
@@ -2279,7 +2545,15 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             <div style={{ flex: '1 1 220px', minWidth: 200, maxWidth: 480, position: 'relative' }}>
                                 <Search size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }} />
                                 <input value={svcQ} onChange={e => setSvcQ(e.target.value)}
-                                    placeholder={tab === 'products' ? tm('bSearchProductsPlaceholder') : tab === 'packages' ? tm('bSearchPackagesPlaceholder') : tm('bSearchServicesPlaceholder')}
+                                    placeholder={
+                                        tab === 'products'
+                                            ? tm('bSearchProductsPlaceholder')
+                                            : tab === 'packages'
+                                              ? tm('bSearchPackagesPlaceholder')
+                                              : isDentalMode
+                                                ? tm('bSearchServicesPlaceholderDental')
+                                                : tm('bSearchServicesPlaceholder')
+                                    }
                                     style={{
                                         ...iStyle,
                                         paddingLeft: 40,
@@ -2408,7 +2682,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
                                             minHeight: 40, touchAction: 'manipulation',
                                         }}>
-                                            {cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat)}
+                                            {cat === 'all' ? tm('bAll') : (posServiceCategoryLabels[cat] ?? cat)}
                                         </button>
                                     ))}
                                 </div>
@@ -2461,7 +2735,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 {(tab === 'services' ? ['all', ...categories] : ['all', ...productCategories]).map(cat => {
                                     const sel = category === cat;
                                     const isTeal = tab === 'products';
-                                    const label = cat === 'all' ? tm('bAll') : (tab === 'services' ? (CATEGORY_TR[cat] ?? cat) : cat);
+                                    const label = cat === 'all' ? tm('bAll') : (tab === 'services' ? (posServiceCategoryLabels[cat] ?? cat) : cat);
                                     return (
                                         <button
                                             key={cat}
@@ -2508,7 +2782,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             >
                                 <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{svc.name}</p>
                                 <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase' }}>
-                                    {CATEGORY_TR[svc.category] ?? svc.category} · {svc.duration_min}{tm('bDkSuffix')}
+                                    {posServiceCategoryLabels[svc.category] ?? svc.category} · {svc.duration_min}{tm('bDkSuffix')}
                                 </p>
                                 <p style={{ fontSize: 13, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                             </button>
@@ -2897,6 +3171,40 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                             <input value={newCust.file_id} onChange={e => setNewCust(p => ({ ...p, file_id: e.target.value }))} placeholder={tm('custPhFileId')} style={{ ...iStyle, borderRadius: 10, height: 40 }} autoComplete="off" />
                                                         </Field>
                                                     </div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                        <Field label={tm('bGender')}>
+                                                            <select
+                                                                value={newCust.gender}
+                                                                onChange={e =>
+                                                                    setNewCust(p => ({
+                                                                        ...p,
+                                                                        gender: e.target.value as typeof p.gender,
+                                                                    }))
+                                                                }
+                                                                style={{ ...selStyle, borderRadius: 10, height: 40 }}
+                                                            >
+                                                                <option value="">{tm('bGenderPlaceholder')}</option>
+                                                                <option value="female">{tm('bGenderFemale')}</option>
+                                                                <option value="male">{tm('bGenderMale')}</option>
+                                                                <option value="other">{tm('bGenderOther')}</option>
+                                                            </select>
+                                                        </Field>
+                                                        <Field label={tm('bCustomerTier')}>
+                                                            <select
+                                                                value={newCust.customer_tier}
+                                                                onChange={e =>
+                                                                    setNewCust(p => ({
+                                                                        ...p,
+                                                                        customer_tier: e.target.value === 'vip' ? 'vip' : 'normal',
+                                                                    }))
+                                                                }
+                                                                style={{ ...selStyle, borderRadius: 10, height: 40 }}
+                                                            >
+                                                                <option value="normal">{tm('bCustomerTierNormal')}</option>
+                                                                <option value="vip">{tm('bCustomerTierVip')}</option>
+                                                            </select>
+                                                        </Field>
+                                                    </div>
                                                     <Field label={tm('custLabelAddress')}>
                                                         <textarea value={newCust.address} onChange={e => setNewCust(p => ({ ...p, address: e.target.value }))} placeholder={tm('custPhAddress')} rows={2} style={{ ...iStyle, height: 'auto', padding: '8px 10px', resize: 'vertical', lineHeight: 1.45, borderRadius: 10 }} />
                                                     </Field>
@@ -2908,6 +3216,49 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                             <input type="email" value={newCust.email} onChange={e => setNewCust(p => ({ ...p, email: e.target.value }))} placeholder={tm('custPhEmail')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
                                                     </div>
+                                                    <Field label={tm('custLabelHeardFrom')}>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+                                                            <select
+                                                                value={newCust.heard_from}
+                                                                onChange={e => setNewCust(p => ({ ...p, heard_from: e.target.value }))}
+                                                                style={{ ...selStyle, borderRadius: 10, height: 40 }}
+                                                            >
+                                                                <option value="">{tm('custGenderSelect')}</option>
+                                                                {heardFromOptions.map((opt) => (
+                                                                    <option key={opt} value={opt}>{opt}</option>
+                                                                ))}
+                                                            </select>
+                                                            <button
+                                                                type="button"
+                                                                onClick={addHeardFromOption}
+                                                                style={{
+                                                                    height: 40,
+                                                                    padding: '0 12px',
+                                                                    border: '1px solid #e5e7eb',
+                                                                    borderRadius: 10,
+                                                                    background: '#fff',
+                                                                    color: '#374151',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: 12,
+                                                                    fontWeight: 700,
+                                                                }}
+                                                            >
+                                                                + Ekle
+                                                            </button>
+                                                        </div>
+                                                        <input
+                                                            value={heardFromDraft}
+                                                            onChange={e => setHeardFromDraft(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    addHeardFromOption();
+                                                                }
+                                                            }}
+                                                            placeholder={tm('custPhHeardFrom')}
+                                                            style={{ ...iStyle, borderRadius: 10, height: 36, marginTop: 6 }}
+                                                        />
+                                                    </Field>
                                                     <Field label={tm('custLabelAbout')}>
                                                         <textarea value={newCust.notes} onChange={e => setNewCust(p => ({ ...p, notes: e.target.value }))} placeholder={tm('custPhAbout')} rows={2} style={{ ...iStyle, height: 'auto', padding: '8px 10px', resize: 'vertical', lineHeight: 1.45, borderRadius: 10 }} />
                                                     </Field>
@@ -3239,9 +3590,36 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             rows={2}
                                             style={{ ...iStyle, height: 'auto', padding: '6px 10px', resize: 'none', lineHeight: 1.5 }} />
                                     </Field>
+                                    {isDentalMode && existingAppointment?.id ? (
+                                        <div style={{ marginTop: 4 }}>
+                                            <p style={{ fontSize: 10, fontWeight: 700, color: '#0c4a6e', margin: '0 0 6px' }}>
+                                                {tm('bPosDentalChartInPosTitle')}
+                                            </p>
+                                            <div
+                                                className="rounded-xl border border-sky-100 bg-sky-50/50 overflow-hidden"
+                                                style={{ maxHeight: 280, overflowY: 'auto' }}
+                                            >
+                                                <DentalChartScreen
+                                                    compact
+                                                    showHeader={false}
+                                                    initialDental={existingAppointment.clinical_data?.dental}
+                                                    onPersistDental={async dental => {
+                                                        const prev =
+                                                            existingAppointment.clinical_data &&
+                                                            typeof existingAppointment.clinical_data === 'object'
+                                                                ? existingAppointment.clinical_data
+                                                                : {};
+                                                        await updateAppointment(existingAppointment.id, {
+                                                            clinical_data: { ...prev, dental } as BeautyAppointmentClinicalData,
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : null}
                                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                         <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                                            <Field label={tm('bReceiptTreatmentDegree')}>
+                                            <Field label={isDentalMode ? tm('bReceiptTreatmentDegreeDental') : tm('bReceiptTreatmentDegree')}>
                                                 <input
                                                     type="text"
                                                     inputMode="decimal"
@@ -3254,7 +3632,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             </Field>
                                         </div>
                                         <div style={{ flex: '1 1 120px', minWidth: 0 }}>
-                                            <Field label={tm('bReceiptTreatmentShots')}>
+                                            <Field label={isDentalMode ? tm('bReceiptTreatmentShotsDental') : tm('bReceiptTreatmentShots')}>
                                                 <input
                                                     type="text"
                                                     inputMode="numeric"
@@ -3268,7 +3646,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                         </div>
                                     </div>
                                     <p style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af', margin: 0, lineHeight: 1.4 }}>
-                                        {tm('bReceiptTreatmentHint')}
+                                        {isDentalMode ? tm('bReceiptTreatmentHintDental') : tm('bReceiptTreatmentHint')}
                                     </p>
                                 </div>
                             )}
@@ -3882,7 +4260,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 {tm('bSlotFreeOnSelection')}
                             </p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                {slotSuggestModal.sameDeviceSlots.slice(0, 28).map((t) => (
+                                {slotSuggestModal.sameDeviceSlots.slice(0, 28).map((t) => {
+                                    const sel = t === safeTimeHHmm(aptTime);
+                                    return (
                                     <button
                                         key={t}
                                         type="button"
@@ -3890,17 +4270,19 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                         style={{
                                             padding: '6px 12px',
                                             borderRadius: 8,
-                                            border: '1px solid #ddd6fe',
-                                            background: '#f5f3ff',
+                                            border: sel ? '2px solid #7c3aed' : '1px solid #ddd6fe',
+                                            background: sel ? '#ede9fe' : '#f5f3ff',
                                             color: '#5b21b6',
                                             fontSize: 13,
                                             fontWeight: 800,
                                             cursor: 'pointer',
+                                            boxShadow: sel ? '0 0 0 1px rgba(124,58,237,0.25)' : undefined,
                                         }}
                                     >
                                         {t}
                                     </button>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -3938,6 +4320,9 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                         slotSuggestModal.otherDeviceSuggestions.length === 0 && (
                         <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{tm('bSlotNoFreeFound')}</p>
                     )}
+                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.45 }}>
+                        {tm('bSlotConflictHintFooter')}
+                    </p>
                 </div>
             </RetailExFlatModal>
         </div>

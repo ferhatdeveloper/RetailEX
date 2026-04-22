@@ -1,12 +1,26 @@
 import React from 'react';
 
+/** Mağaza / Market: RetailEx · Restoran: RestEx · Güzellik: ClinicEx */
+export type NeonLogoProductLine = 'retail' | 'restaurant' | 'clinic';
+
 interface NeonLogoProps {
     className?: string;
     variant?: 'full' | 'icon' | 'badge';
     size?: 'sm' | 'md' | 'lg' | 'xl';
+    productLine?: NeonLogoProductLine;
 }
 
-export const NeonLogo: React.FC<NeonLogoProps> = ({ className = '', variant = 'full', size = 'md' }) => {
+const PRODUCT_LINES: Record<
+    NeonLogoProductLine,
+    { left: string; right: string; rightClass: string }
+> = {
+    retail: { left: 'Retail', right: 'Ex', rightClass: 'text-blue-500 font-black italic ml-0.5' },
+    restaurant: { left: 'Rest', right: 'Ex', rightClass: 'text-orange-400 font-black italic ml-0.5' },
+    clinic: { left: 'Clinic', right: 'Ex', rightClass: 'text-violet-400 font-black italic ml-0.5' },
+};
+
+export const NeonLogo: React.FC<NeonLogoProps> = ({ className = '', variant = 'full', size = 'md', productLine = 'retail' }) => {
+    const brand = PRODUCT_LINES[productLine];
     // Sizes
     const sizeClasses = {
         sm: 'text-lg',
@@ -69,8 +83,8 @@ export const NeonLogo: React.FC<NeonLogoProps> = ({ className = '', variant = 'f
             {/* Premium Typography */}
             {variant === 'full' && (
                 <div className={`flex items-baseline ${sizeClasses[size]} tracking-tight`}>
-                    <span className="text-white font-extrabold">Retail</span>
-                    <span className="text-blue-500 font-black italic ml-0.5">Ex</span>
+                    <span className="text-white font-extrabold">{brand.left}</span>
+                    <span className={brand.rightClass}>{brand.right}</span>
                 </div>
             )}
         </div>

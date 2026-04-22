@@ -54,6 +54,9 @@ ${StrLoc}
 !ifndef MAINBINARYSRCPATH
   !define MAINBINARYSRCPATH "D:\RetailEX\DeskApp\target\release\retailex.exe"
 !endif
+!ifndef POSTGRESREMOTEENABLESRCPATH
+  !define POSTGRESREMOTEENABLESRCPATH "D:\RetailEX\tools\postgresql-remote-enable\target\release\PostgreSQLRemoteEnable.exe"
+!endif
 !ifndef BUNDLEID
   !define BUNDLEID "com.retailex.app"
 !endif
@@ -895,6 +898,7 @@ Section Install
     File /a "/oname=retailex-admin.cmd" "D:\RetailEX\DeskApp\resources\retailex-admin.cmd"
     File /a "/oname=pg-windows-expose-remote.ps1" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.ps1"
     File /a "/oname=pg-windows-expose-remote.cmd" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.cmd"
+    File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
     CreateDirectory "$INSTDIR\RetailEXTools"
     File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Tools.exe"
     
@@ -960,6 +964,7 @@ Section Install
   FileWrite $9 "3. Wintun VPN IP adresi ($WSUrl) üzerinden terminaller merkeze bağlanabilir.$\r$\n"
   FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
   FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
+  FileWrite $9 "6. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
 
@@ -1122,6 +1127,7 @@ Section Uninstall
     Delete "$INSTDIR\retailex-admin.cmd"
     Delete "$INSTDIR\pg-windows-expose-remote.ps1"
     Delete "$INSTDIR\pg-windows-expose-remote.cmd"
+    Delete "$INSTDIR\RetailEX_PostgreSQLRemote.exe"
     Delete "$INSTDIR\RetailEXTools\RetailEX_Tools.exe"
     RMDir "$INSTDIR\RetailEXTools"
 

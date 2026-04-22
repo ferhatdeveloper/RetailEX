@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Building2, Globe, Bell, ClipboardList, Users, Briefcase,
-    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera,
+    Package, Layers, Link2, Activity, FileWarning, Stethoscope, Camera, LayoutTemplate,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,22 +10,41 @@ import { beautyService } from '../../../services/beautyService';
 import { useAuth } from '../../../contexts/AuthContext';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import type { BeautyClinicAnalytics } from '../../../types/beauty';
-
-const TABS = [
-    { id: 'overview', label: 'Özet', icon: Activity },
-    { id: 'portal', label: 'Portal & talepler', icon: Globe },
-    { id: 'locations', label: 'Şube / oda', icon: Building2 },
-    { id: 'wait', label: 'Bekleme & kurumsal', icon: Users },
-    { id: 'clinical', label: 'Klinik not & foto', icon: Stethoscope },
-    { id: 'stock', label: 'Sarf & parti', icon: Package },
-    { id: 'biz', label: 'Üyelik & kampanya', icon: Briefcase },
-    { id: 'integrations', label: 'Entegrasyon', icon: Link2 },
-    { id: 'audit', label: 'Denetim', icon: FileWarning },
-] as const;
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { ClinicSpecialtyModePanel } from './ClinicSpecialtyModePanel';
+import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 
 export function ClinicOperationsHub() {
     const { user } = useAuth();
-    const [tab, setTab] = useState<(typeof TABS)[number]['id']>('overview');
+    const { tm } = useLanguage();
+    const TABS = useMemo(
+        () =>
+            [
+                { id: 'overview' as const, label: 'Özet', icon: Activity },
+                { id: 'specialty' as const, label: tm('bClinicSpecialtyTab'), icon: LayoutTemplate },
+                { id: 'portal' as const, label: 'Portal & talepler', icon: Globe },
+                { id: 'locations' as const, label: 'Şube / oda', icon: Building2 },
+                { id: 'wait' as const, label: 'Bekleme & kurumsal', icon: Users },
+                { id: 'clinical' as const, label: 'Klinik not & foto', icon: Stethoscope },
+                { id: 'stock' as const, label: 'Sarf & parti', icon: Package },
+                { id: 'biz' as const, label: 'Üyelik & kampanya', icon: Briefcase },
+                { id: 'integrations' as const, label: 'Entegrasyon', icon: Link2 },
+                { id: 'audit' as const, label: 'Denetim', icon: FileWarning },
+            ] as const,
+        [tm]
+    );
+    type HubTabId =
+        | 'overview'
+        | 'specialty'
+        | 'portal'
+        | 'locations'
+        | 'wait'
+        | 'clinical'
+        | 'stock'
+        | 'biz'
+        | 'integrations'
+        | 'audit';
+    const [tab, setTab] = useState<HubTabId>('overview');
     const [analytics, setAnalytics] = useState<BeautyClinicAnalytics | null>(null);
     const [loading, setLoading] = useState(false);
     const [portalUrl, setPortalUrl] = useState('');
@@ -61,7 +80,7 @@ export function ClinicOperationsHub() {
                         <button
                             key={t.id}
                             type="button"
-                            onClick={() => setTab(t.id)}
+                            onClick={() => setTab(t.id as HubTabId)}
                             className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors"
                             style={{
                                 background: active ? '#7c3aed' : '#fff',
@@ -79,6 +98,7 @@ export function ClinicOperationsHub() {
             {tab === 'overview' && (
                 <OverviewPanel analytics={analytics} loading={loading} onRefresh={refresh} />
             )}
+            {tab === 'specialty' && <ClinicSpecialtyModePanel />}
             {tab === 'portal' && (
                 <PortalPanel portalUrl={portalUrl} onRefresh={refresh} userId={user?.id} />
             )}
@@ -189,11 +209,14 @@ function PortalPanel({
     const [embedStatus, setEmbedStatus] = useState<string>('');
     const [embedErr, setEmbedErr] = useState<string | null>(null);
     const [requests, setRequests] = useState<Awaited<ReturnType<typeof beautyService.listBookingRequests>>>([]);
+    const [allowStaffSlotOverlap, setAllowStaffSlotOverlap] = useState(false);
+    const { tm } = useLanguage();
 
     const loadAll = useCallback(async () => {
         const p = await beautyService.getPortalSettings();
         if (p) {
             setEnabled(!!p.online_booking_enabled);
+            setAllowStaffSlotOverlap(normalizeAllowStaffSlotOverlap(p));
             setSlug(p.public_slug ?? '');
             setHours(p.reminder_hours_before ?? 24);
             setSmsUser(p.sms_user ?? '');
@@ -279,6 +302,7 @@ function PortalPanel({
     const saveAll = async () => {
         await beautyService.updatePortalSettings({
             online_booking_enabled: enabled,
+            allow_staff_slot_overlap: allowStaffSlotOverlap,
             public_slug: slug || undefined,
             reminder_hours_before: hours,
             sms_template: smsTemplate || undefined,
@@ -295,6 +319,9 @@ function PortalPanel({
         });
         onRefresh();
         void loadAll();
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('retailex-beauty-portal-updated'));
+        }
         alert('Kaydedildi.');
     };
 
@@ -305,6 +332,18 @@ function PortalPanel({
                 <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
                     Web üzerinden randevu talebi açık
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        className="mt-0.5 shrink-0"
+                        checked={allowStaffSlotOverlap}
+                        onChange={e => setAllowStaffSlotOverlap(e.target.checked)}
+                    />
+                    <span>
+                        <span className="font-medium text-slate-800">{tm('bPortalAllowStaffSlotOverlap')}</span>
+                        <span className="block text-xs text-slate-500 mt-1">{tm('bPortalAllowStaffSlotOverlapHint')}</span>
+                    </span>
                 </label>
                 <div className="grid gap-2 md:grid-cols-2">
                     <div>

@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.65",
+      "version": "0.1.69",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -119,7 +119,7 @@
       "scripts": {
             "dev": "vite",
             "start": "vite",
-            "prebuild": "node scripts/sync-app-version.mjs && node scripts/sync-pg-expose.mjs",
+            "prebuild": "node scripts/sync-app-version.mjs && node scripts/sync-pg-expose.mjs && node scripts/build-postgres-remote-enable.mjs",
             "build": "vite build",
             "build:analyze": "vite build --mode analyze",
             "preview": "vite preview",
@@ -129,7 +129,7 @@
             "tauri": "tauri",
             "sumatra:fetch": "powershell -NoProfile -ExecutionPolicy Bypass -File DeskApp/scripts/fetch-sumatra-portable.ps1",
             "tauri:dev": "cd DeskApp && tauri dev",
-            "tauri:build": "npm run prebuild && npm run sumatra:fetch && node scripts/tauri-windows-signing-prep.mjs && cd DeskApp && tauri build",
+            "tauri:build": "npm run prebuild && npm run sumatra:fetch && node scripts/tauri-windows-signing-prep.mjs && cd DeskApp && tauri build && cd .. && node scripts/verify-windows-installer-signature.mjs",
             "tauri:windows-signing:example": "node -e \"const fs=require('fs');const p='DeskApp/tauri.windows.conf.json';if(fs.existsSync(p))throw new Error(p+' zaten var');fs.copyFileSync('DeskApp/tauri.windows.conf.json.example',p);console.log(p+' olusturuldu; certificateThumbprint doldurun.');\"",
             "electron:dev": "electron ./src/electron/main.js --dev",
             "bridge": "npx tsx src/services/pg_bridge.ts",

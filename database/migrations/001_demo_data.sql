@@ -85,7 +85,7 @@ WHERE code IS NULL OR code = '';
 
 -- Ek birim seti: Şişe (500ml = 1 şişe, kasa = 24 şişe)
 DO $$
-DECLARE v_uid UUID := uuid_generate_v4();
+DECLARE v_uid UUID := gen_random_uuid();
 BEGIN
   INSERT INTO rex_001_unitsets (id, code, name, is_active) VALUES (v_uid, '05-SISE24', 'Şişe (24li Kasa)', true) ON CONFLICT (code) DO NOTHING;
   INSERT INTO rex_001_unitsetl (unitset_id, item_code, code, name, main_unit, conv_fact1)

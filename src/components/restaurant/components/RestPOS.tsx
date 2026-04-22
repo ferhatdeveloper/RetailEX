@@ -8,7 +8,6 @@ import {
     Banknote,
     CreditCard,
     Landmark,
-    Ticket,
     LayoutGrid,
     Monitor,
     MessageSquareMore,
@@ -71,7 +70,12 @@ import type { Product, Customer, Campaign, User as UserType, Sale } from '../../
 import type { CartItem } from '../../pos/types';
 import type { Table, Staff, RestaurantCallerIdPickRequest } from '../types';
 import { RestaurantService, type DeliveryExpectedPaymentMethod } from '../../../services/restaurant';
-import { getReceiptSettings, invalidateReceiptSettingsCache, type ReceiptSettings } from '../../../services/receiptSettingsService';
+import {
+    getReceiptSettings,
+    invalidateReceiptSettingsCache,
+    resolveDefaultReceiptLang,
+    type ReceiptSettings,
+} from '../../../services/receiptSettingsService';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
@@ -226,6 +230,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
     /** Alt grup yokken ana listede kalıp sadece ürün filtrelemek için (iç görünüme girilmez) */
     const [catMainSolo, setCatMainSolo] = useState<string | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
+    const cartRef = useRef<CartItem[]>(cart);
+    cartRef.current = cart;
+    const notePersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [expandedCartItem, setExpandedCartItem] = useState<number | null>(null);
     const [cartView, setCartView] = useState<'table' | 'card'>('card');
     const [orderDiscount, setOrderDiscount] = useState(0);
@@ -286,20 +293,46 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         if (cart.length === 0) return;
         setPrint80ReceiptType('bill');
         void (async () => {
+            let printerDef: string | undefined;
+            try {
+                const raw = localStorage.getItem('retailos-printer-settings');
+                if (raw) printerDef = JSON.parse(raw).defaultLanguage;
+            } catch {
+                /* ignore */
+            }
             try {
                 const rs = await getReceiptSettings(receiptFirmNr);
-                const def = rs.defaultReceiptLanguage;
-                if (def && isKitchenReceiptLang(def)) {
-                    setPrint80Lang(def);
-                } else {
-                    setPrint80Lang(isKitchenReceiptLang(uiLanguage) ? uiLanguage : 'tr');
-                }
+                setPrint80Lang(resolveDefaultReceiptLang(rs, uiLanguage, printerDef));
             } catch {
-                setPrint80Lang(isKitchenReceiptLang(uiLanguage) ? uiLanguage : 'tr');
+                setPrint80Lang(resolveDefaultReceiptLang({}, uiLanguage, printerDef));
             }
             setShowPrint80ChoiceModal(true);
         })();
     };
+
+    /** Fiş ayarı / firma / UI dili — 80mm mutfak & adisyon dil seçicisi */
+    useEffect(() => {
+        let cancelled = false;
+        let printerDef: string | undefined;
+        try {
+            const raw = localStorage.getItem('retailos-printer-settings');
+            if (raw) printerDef = JSON.parse(raw).defaultLanguage;
+        } catch {
+            /* ignore */
+        }
+        void (async () => {
+            try {
+                const rs = await getReceiptSettings(receiptFirmNr);
+                if (cancelled) return;
+                setPrint80Lang(resolveDefaultReceiptLang(rs, uiLanguage, printerDef));
+            } catch {
+                if (!cancelled) setPrint80Lang(resolveDefaultReceiptLang({}, uiLanguage, printerDef));
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [receiptFirmNr, uiLanguage]);
 
     const resolveTableLabelForPrint = (): string => {
         if (table?.number !== undefined && String(table.number).trim() !== '') return String(table.number);
@@ -312,6 +345,48 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         const next = [...cart];
         (next[idx] as any).note = note;
         setCart(next);
+
+        if (posMode !== 'table' || !table?.id) return;
+        const row = next[idx];
+        if (!row) return;
+        const merged = (row as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+        const ids: string[] =
+            Array.isArray(merged) && merged.length > 0
+                ? merged.map((m) => m.id).filter(Boolean)
+                : (row as any).id
+                  ? [String((row as any).id)]
+                  : [];
+        if (ids.length === 0) return;
+
+        const tableId = table.id;
+        const idxSnapshot = idx;
+        if (notePersistTimerRef.current) clearTimeout(notePersistTimerRef.current);
+        notePersistTimerRef.current = setTimeout(() => {
+            notePersistTimerRef.current = null;
+            void (async () => {
+                try {
+                    const rowNow = cartRef.current[idxSnapshot];
+                    if (!rowNow) return;
+                    const mNow = (rowNow as any).mergedOrderItemIds as { id: string; quantity: number }[] | undefined;
+                    const idsNow: string[] =
+                        Array.isArray(mNow) && mNow.length > 0
+                            ? mNow.map((m) => m.id).filter(Boolean)
+                            : (rowNow as any).id
+                              ? [String((rowNow as any).id)]
+                              : [];
+                    if (idsNow.length === 0) return;
+                    const raw = typeof (rowNow as any).note === 'string' ? (rowNow as any).note : '';
+                    const payload = raw.trim() === '' ? null : raw;
+                    for (const id of idsNow) {
+                        await RestaurantService.updateOrderItem(id, { note: payload });
+                    }
+                    await refreshTableOrders(tableId);
+                } catch (e) {
+                    console.error('[RestPOS] urun notu kaydedilemedi:', e);
+                    notify(tmR('resPosErrNoteSave'), 'error');
+                }
+            })();
+        }, 450);
     };
 
     /* ── Tabak sistemi ── */
@@ -572,17 +647,26 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         lastRefreshEmptyTableIdRef.current = null; // başarılı yüklemede sıfırla ki başka masada tekrar deneyebilsin
         const raw = orders
             .filter((o: any) => !o.isVoid)
-            .map((o: any) => ({
-                ...({ id: o.id } as any),
-                product: { id: o.menuItemId, name: o.name, price: o.price, category: '' } as any,
-                quantity: o.quantity,
-                price: o.price,
-                subtotal: o.price * o.quantity,
-                discount: 0,
-                kitchenStatus: (o.status === 'pending' ? 'pending'
-                    : o.status === 'cooking' ? 'cooking' : 'served') as CartItem['kitchenStatus'],
-                ...(o.sourceTableNumber && { sourceTableNumber: o.sourceTableNumber, sourceTableId: o.sourceTableId })
-            } as CartItem));
+            .map((o: any) => {
+                const dbNote =
+                    typeof o.options === 'string'
+                        ? o.options
+                        : typeof o.notes === 'string'
+                          ? o.notes
+                          : '';
+                return {
+                    ...({ id: o.id } as any),
+                    product: { id: o.menuItemId, name: o.name, price: o.price, category: '' } as any,
+                    quantity: o.quantity,
+                    price: o.price,
+                    subtotal: o.price * o.quantity,
+                    discount: 0,
+                    kitchenStatus: (o.status === 'pending' ? 'pending'
+                        : o.status === 'cooking' ? 'cooking' : 'served') as CartItem['kitchenStatus'],
+                    ...(dbNote.trim() ? { note: dbNote } : {}),
+                    ...(o.sourceTableNumber && { sourceTableNumber: o.sourceTableNumber, sourceTableId: o.sourceTableId }),
+                } as CartItem;
+            });
         // Aynı ürün + aynı kaynak + aynı mutfak durumu → tek satırda birleştir
         // Birleştirilmiş her satırın id+quantity listesi saklanır (iptal/void için hepsi iptal edilebilsin)
         const key = (c: CartItem) =>
@@ -899,14 +983,24 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     const newId = await addItemToTable(table!.id, itemPayload, dq);
                     // Yeni eklenen kaleme DB id'sini yaz (iptal / masaya taşı için); merge ise mergedOrderItemIds'e ekle
                     if (newId) {
+                        let noteToPersist: string | undefined;
                         setCart(c => c.map(it => {
                             if (it.product.id !== product.id) return it;
                             if (activePlate ? (it as any).plate !== activePlate : (it as any).plate) return it;
                             const ex = it as any;
-                            if (!ex.id) return { ...it, id: newId };
+                            if (!ex.id) {
+                                const n = typeof ex.note === 'string' ? ex.note.trim() : '';
+                                if (n) noteToPersist = n;
+                                return { ...it, id: newId };
+                            }
                             const merged = ex.mergedOrderItemIds ?? [{ id: ex.id, quantity: 1 }];
                             return { ...it, mergedOrderItemIds: [...merged, { id: newId, quantity: dq }] };
                         }));
+                        if (noteToPersist) {
+                            void RestaurantService.updateOrderItem(newId, { note: noteToPersist }).catch((err) => {
+                                console.error('[RestPOS] yeni satır notu DB’ye yazılamadı:', err);
+                            });
+                        }
                     }
                 } catch (err: any) {
                     console.error('[RestPOS] addToCart db error:', err);
@@ -2101,8 +2195,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             <div className="flex-1 flex items-center justify-center">
                                 <div className="text-center opacity-40">
                                     <div className="text-6xl mb-4">🛒</div>
-                                    <p className="text-slate-500 font-bold uppercase tracking-wider text-sm">Sipariş Boş</p>
-                                    <p className="text-[11px] mt-1 text-slate-500 font-medium tracking-wide">Ürün eklemek için sol taraftaki menüyü kullanın</p>
+                                    <p className="text-slate-500 font-bold uppercase tracking-wider text-sm">{tmR('resOrderEmptyTitle')}</p>
+                                    <p className="text-[11px] mt-1 text-slate-500 font-medium tracking-wide">{tmR('resOrderEmptyHint')}</p>
                                 </div>
                             </div>
                         ) : cartView === 'card' ? (
@@ -2129,7 +2223,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             <div className="absolute top-0 left-0 bottom-0 w-1 shadow-[2px_0_10px_rgba(0,0,0,0.05)]" style={{ backgroundColor: plateColor }} />
 
                                             <div
-                                                className={cn("flex items-center p-2.5 gap-3 cursor-pointer", selectionMode ? "pl-2" : "pl-4")}
+                                                dir="ltr"
+                                                className={cn(
+                                                    "relative flex items-center p-2.5 gap-3 cursor-pointer",
+                                                    selectionMode ? "pl-2" : "pl-4"
+                                                )}
                                                 onMouseDown={() => {
                                                     if (selectionMode) return;
                                                     longPressTimerRef.current = setTimeout(() => {
@@ -2183,8 +2281,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                     <div className="text-[8px] font-black opacity-80 leading-none mt-0.5 uppercase tracking-tighter">{item.product.unit || 'ADET'}</div>
                                                 </div>
 
-                                                <div className="flex-1 min-w-0 pr-12 flex items-center">
-                                                    <div className="flex flex-col gap-0.5 min-w-0">
+                                                <div className="flex-1 min-w-0 pr-11 flex items-center min-h-[44px]">
+                                                    <div className="flex flex-col gap-0.5 min-w-0 text-left items-start">
                                                         <h4 className="font-extrabold text-slate-900 truncate text-[14px] leading-tight tracking-tight">{item.product.name}</h4>
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <div className="text-[14px] font-black text-blue-600 tabular-nums leading-none">
@@ -2237,7 +2335,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); openVoidForCartItem(idx); }}
                                                     style={{ backgroundColor: '#dc2626' }}
-                                                    className="absolute top-0 right-0 bottom-0 w-10 flex items-center justify-center transition-all active:scale-95"
+                                                    className="absolute inset-y-0 right-0 w-10 shrink-0 flex items-center justify-center transition-all active:scale-95 rounded-r-[14px]"
                                                     title={tmR('resPosVoidReturnTitle')}
                                                 >
                                                     <Minus className="w-6 h-6 text-white font-black" />
@@ -2482,7 +2580,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     <div className="shrink-0 bg-white border-t border-slate-200 p-5 space-y-3 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] relative z-20">
                         <div className="space-y-2">
                             <div className="flex justify-between text-slate-500 items-center">
-                                <span className="text-[12px] font-bold uppercase tracking-widest opacity-60">Ara Toplam</span>
+                                <span className="text-[12px] font-bold tracking-widest opacity-60">{tmR('resPosTotalsSubtotal')}</span>
                                 <span className="text-[14px] font-black tabular-nums">{fmt(subtotal)}</span>
                             </div>
                             {orderDiscount > 0 && (
@@ -2504,7 +2602,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                         <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                             <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">GÜNCEL TOPLAM</span>
+                                <span className="text-[10px] font-black text-slate-400 tracking-[0.2em] mb-1">{tmR('resPosTotalsCurrentTotal')}</span>
                                 <div className="flex items-center gap-2">
                                     <Calculator className="w-5 h-5 text-blue-600 drop-shadow-sm" />
                                     <span className="font-black text-slate-900 text-[15px] uppercase tracking-tighter">{tmR('resPosNetPayment')}</span>
@@ -2526,7 +2624,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-emerald-500 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <Banknote className="w-6 h-6 text-emerald-600 group-hover:text-white transition-colors" />
-                            <span className="text-[11px] font-black uppercase tracking-widest">NAKİT</span>
+                            <span className="text-[11px] font-black tracking-widest">{tmR('resPosPayCash')}</span>
                         </button>
                         <button
                             onClick={handleOpenPayment}
@@ -2534,15 +2632,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-blue-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
                         >
                             <CreditCard className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
-                            <span className="text-[11px] font-black uppercase tracking-widest">K. KARTI</span>
-                        </button>
-                        <button
-                            onClick={handleOpenPayment}
-                            disabled={cart.length === 0}
-                            className="flex-1 flex flex-col items-center justify-center gap-1.5 py-5 hover:bg-indigo-600 hover:text-white group transition-all active:scale-95 disabled:opacity-40 border-r border-slate-200"
-                        >
-                            <Ticket className="w-6 h-6 text-indigo-600 group-hover:text-white transition-colors" />
-                            <span className="text-[11px] font-black uppercase tracking-widest">YEMEK ÇEKI</span>
+                            <span className="text-[11px] font-black tracking-widest">{tmR('resPosPayCard')}</span>
                         </button>
                         <button
                             onClick={handleOpenPayment}
@@ -3247,7 +3337,7 @@ function PlateBadge({
             )}
             title={tmR('resPosClickChangePlate')}
         >
-            {plate ?? '—'}
+            {plate ?? <Plus className="w-3 h-3 opacity-60" strokeWidth={2.5} aria-hidden />}
         </button>
     );
 }

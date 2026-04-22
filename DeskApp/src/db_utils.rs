@@ -2,17 +2,23 @@ use tokio_postgres::Error;
 
 pub fn format_pg_error(e: Error) -> String {
     let mut details = Vec::new();
-    
-    // Standard error code (e.g., 28P01)
+
+    // Standard error code (e.g., 28P01, 42601)
     if let Some(code) = e.code() {
         details.push(format!("Code: {}", code.code()));
     }
 
-    // Main message
-    details.push(format!("Message: {}", e.to_string()));
+    // tokio_postgres::Error Display = "db error" (Kind::Db); asıl metin DbError::Display içinde.
+    let primary = e
+        .as_db_error()
+        .map(|d| format!("{}", d))
+        .unwrap_or_else(|| e.to_string());
+    details.push(format!("Message: {}", primary));
 
-    // Detailed diagnostic info from PostgreSQL
     if let Some(db_err) = e.as_db_error() {
+        if let Some(pos) = db_err.position() {
+            details.push(format!("Position: {:?}", pos));
+        }
         if let Some(detail) = db_err.detail() {
             details.push(format!("Detail: {}", detail));
         }

@@ -8,6 +8,8 @@ import {
     Typography,
     Avatar,
     Tag,
+    Select,
+    Segmented,
 } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -35,7 +37,14 @@ import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 
 const EMPTY_FORM: Partial<BeautyCustomer> = {
-    name: '', phone: '', email: '', address: '', city: '', notes: '',
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    notes: '',
+    customer_tier: 'normal',
+    gender: null,
 };
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
@@ -166,6 +175,11 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                         <div>
                             <Typography.Text strong className="block text-[#262626]">
                                 {c.name}
+                                {(c.customer_tier === 'vip' || Number(c.points ?? 0) >= 1000) && (
+                                    <Tag color="gold" className="ml-1 align-middle text-[10px] leading-tight">
+                                        {tm('bCustomerTierVip')}
+                                    </Tag>
+                                )}
                             </Typography.Text>
                             {c.balance != null && Number(c.balance) !== 0 && (
                                 <Typography.Text type="secondary" className="text-xs">
@@ -247,7 +261,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 ),
             },
         ],
-        [tm],
+        [tm, formatCurrency],
     );
 
     return (
@@ -353,6 +367,45 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                 onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
                                 placeholder={tm('bCustomerNamePlaceholder')}
                             />
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
+                                <Select
+                                    className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
+                                    allowClear
+                                    placeholder={tm('bGenderPlaceholder')}
+                                    value={editing.gender ?? undefined}
+                                    onChange={v =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            gender: (v as BeautyCustomer['gender']) ?? null,
+                                        }))
+                                    }
+                                    options={[
+                                        { value: 'female', label: tm('bGenderFemale') },
+                                        { value: 'male', label: tm('bGenderMale') },
+                                        { value: 'other', label: tm('bGenderOther') },
+                                    ]}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bCustomerTier')}</RetailExFlatFieldLabel>
+                                <Segmented
+                                    block
+                                    value={editing.customer_tier === 'vip' ? 'vip' : 'normal'}
+                                    onChange={v =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            customer_tier: v === 'vip' ? 'vip' : 'normal',
+                                        }))
+                                    }
+                                    options={[
+                                        { label: tm('bCustomerTierNormal'), value: 'normal' },
+                                        { label: tm('bCustomerTierVip'), value: 'vip' },
+                                    ]}
+                                />
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>

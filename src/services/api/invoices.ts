@@ -908,12 +908,28 @@ export const invoicesAPI = {
    * Refund invoice (POS style status update)
    * Ideally this should be a new Return Invoice, but for quick POS actions we might just flag it.
    */
-  async refund(id: string): Promise<boolean> {
+  async refund(
+    id: string,
+    context?: { firmNr?: string | number | null; periodNr?: string | number | null; receiptNumber?: string | null }
+  ): Promise<boolean> {
     try {
       const firmNr = ERP_SETTINGS.firmNr;
+      const saleId = String(id ?? '').trim();
+      if (!saleId) return false;
 
       // Faturayı getir → bakiyeyi geri al
-      const invoice = await this.getById(id);
+      let invoice: Invoice | null = null;
+      try {
+        invoice = await this.getById(saleId);
+      } catch (e) {
+        console.warn('[InvoicesAPI] refund getById skipped:', e);
+        invoice = null;
+      }
+      const saleFirmNr = normalizeFirmNrForRow(context?.firmNr ?? (invoice as any)?.firma_id ?? firmNr);
+      const salePeriodNr = normalizePeriodNrForRow(context?.periodNr ?? (invoice as any)?.donem_id ?? ERP_SETTINGS.periodNr);
+      const saleReceiptNo =
+        String(context?.receiptNumber ?? invoice?.invoice_no ?? '').trim();
+      const saleQueryOpts = { firmNr: saleFirmNr, periodNr: salePeriodNr };
       if (invoice) {
         const accountId = invoice.customer_id || invoice.supplier_id;
         const amount = Number(invoice.total_amount || invoice.total || 0);
@@ -924,22 +940,83 @@ export const invoicesAPI = {
           ) {
             await postgres.query(
               `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
-              [amount, accountId, firmNr]
+              [amount, accountId, saleFirmNr],
+              saleQueryOpts
             ).catch(() => { });
           } else if (invoice.invoice_category === 'Alis') {
             await postgres.query(
               `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
-              [amount, accountId]
+              [amount, accountId],
+              saleQueryOpts
             ).catch(() => { });
           }
         }
       }
 
-      const { rowCount } = await postgres.query(
-        `UPDATE sales SET status = 'refunded' WHERE id = $1 AND firm_nr = $2`,
-        [id, String(firmNr)]
-      );
-      return (rowCount || 0) > 0;
+      const attempts: Array<{ sql: string; params: unknown[]; options?: { firmNr?: string; periodNr?: string } }> = [
+        {
+          sql: `UPDATE sales
+                SET status = 'refunded'
+                WHERE id::text = $1::text
+                  AND lpad(trim(firm_nr::text), 3, '0') = lpad(trim($2::text), 3, '0')
+                RETURNING id`,
+          params: [saleId, String(saleFirmNr ?? '').trim()],
+          options: saleQueryOpts,
+        },
+        {
+          sql: `UPDATE sales
+                SET status = 'refunded'
+                WHERE id::text = $1::text
+                RETURNING id`,
+          params: [saleId],
+          options: saleQueryOpts,
+        },
+        {
+          sql: `UPDATE sales
+                SET status = 'refunded'
+                WHERE id::text = $1::text
+                RETURNING id`,
+          params: [saleId],
+        },
+        ...(saleReceiptNo
+          ? [
+              {
+                sql: `UPDATE sales
+                      SET status = 'refunded'
+                      WHERE fiche_no::text = $1::text
+                      RETURNING id`,
+                params: [saleReceiptNo],
+                options: saleQueryOpts,
+              },
+              {
+                sql: `UPDATE sales
+                      SET status = 'refunded'
+                      WHERE fiche_no::text = $1::text
+                      RETURNING id`,
+                params: [saleReceiptNo],
+              },
+            ]
+          : []),
+        {
+          sql: `UPDATE sales
+                SET status = 'refunded', updated_at = NOW()
+                WHERE id::text = $1::text
+                RETURNING id`,
+          params: [saleId],
+          options: saleQueryOpts,
+        },
+      ];
+
+      for (const attempt of attempts) {
+        try {
+          const { rowCount } = await postgres.query(attempt.sql, attempt.params as any[], attempt.options);
+          if ((rowCount || 0) > 0) return true;
+        } catch (e) {
+          console.warn('[InvoicesAPI] refund update attempt failed:', e);
+        }
+      }
+
+      return false;
     } catch (error) {
       console.error('[InvoicesAPI] refund failed:', error);
       return false;

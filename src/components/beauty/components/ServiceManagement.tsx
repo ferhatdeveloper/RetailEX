@@ -29,6 +29,7 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
+import { categoryAPI, type Category } from '../../../services/api/masterData';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
@@ -75,6 +76,7 @@ const EMPTY_FORM: Partial<BeautyService> = {
 export function ServiceManagement() {
     const { services, isLoading, loadServices, createService, updateService, deleteService } = useBeautyStore();
     const { tm } = useLanguage();
+    const [backofficeCategories, setBackofficeCategories] = useState<Category[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
     const [bulkActionLoading, setBulkActionLoading] = useState(false);
@@ -93,10 +95,42 @@ export function ServiceManagement() {
     }, []);
 
     useEffect(() => {
+        let mounted = true;
+        const loadBackofficeCategories = async () => {
+            try {
+                const rows = await categoryAPI.getAll();
+                if (!mounted) return;
+                setBackofficeCategories(rows.filter(r => String(r.name ?? '').trim().length > 0));
+            } catch {
+                if (!mounted) return;
+                setBackofficeCategories([]);
+            }
+        };
+        loadBackofficeCategories();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    useEffect(() => {
         setSelectedRowKeys(keys => keys.filter(k => services.some(s => s.id === k)));
     }, [services]);
 
-    const categories = Object.values(ServiceCategory);
+    const categories = useMemo(() => {
+        const staticFallback = Object.values(ServiceCategory).map(c => ({
+            value: c,
+            label: CATEGORY_LABELS[c] ?? c,
+        }));
+        if (backofficeCategories.length === 0) return staticFallback;
+        return backofficeCategories.map(cat => {
+            const code = String(cat.code ?? '').trim();
+            const name = String(cat.name ?? '').trim();
+            return {
+                value: code.length ? code : name,
+                label: name || code,
+            };
+        });
+    }, [backofficeCategories]);
 
     const filteredServices = useMemo(
         () =>
@@ -390,12 +424,12 @@ export function ServiceManagement() {
                                 </Button>
                                 {categories.map(cat => (
                                     <Button
-                                        key={cat}
-                                        type={selectedCategory === cat ? 'primary' : 'default'}
+                                        key={cat.value}
+                                        type={selectedCategory === cat.value ? 'primary' : 'default'}
                                         size="small"
-                                        onClick={() => setSelectedCategory(cat)}
+                                        onClick={() => setSelectedCategory(cat.value)}
                                     >
-                                        {CATEGORY_LABELS[cat] ?? cat}
+                                        {cat.label}
                                     </Button>
                                 ))}
                             </Space>
@@ -550,7 +584,7 @@ export function ServiceManagement() {
                                     className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
                                     value={editing.category ?? ServiceCategory.BEAUTY}
                                     onChange={v => setEditing(p => ({ ...p, category: v }))}
-                                    options={categories.map(c => ({ value: c, label: CATEGORY_LABELS[c] ?? c }))}
+                                    options={categories}
                                 />
                             </div>
                         </div>

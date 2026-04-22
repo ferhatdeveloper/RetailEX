@@ -21,9 +21,13 @@ const emptyCustomerForm = () => ({
   code: '',
   name: '',
   phone: '',
+  city: '',
   phone2: '',
   age: '',
   file_id: '',
+  gender: '',
+  customer_tier: 'normal',
+  heard_from: '',
   email: '',
   address: '',
   occupation: '',
@@ -145,6 +149,9 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     (c.address && c.address.toLowerCase().includes(q)) ||
     (c.notes && c.notes.toLowerCase().includes(q)) ||
     (c.occupation && c.occupation.toLowerCase().includes(q)) ||
+    (c.gender && c.gender.toLowerCase().includes(q)) ||
+    (c.customer_tier && c.customer_tier.toLowerCase().includes(q)) ||
+    (c.heard_from && c.heard_from.toLowerCase().includes(q)) ||
     (c.age != null && String(c.age).includes(searchQuery.trim()))
   );
 
@@ -180,6 +187,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         code: formData.code,
         name: formData.name,
         phone: formData.phone,
+        city: formData.city.trim() || undefined,
         phone2: formData.phone2.trim() || undefined,
         email: formData.email,
         address: formData.address,
@@ -187,6 +195,9 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         occupation: formData.occupation.trim() || undefined,
         file_id: formData.file_id.trim() || undefined,
         age: ageVal,
+        gender: formData.gender.trim() || undefined,
+        customer_tier: formData.customer_tier === 'vip' ? 'vip' : 'normal',
+        heard_from: formData.heard_from.trim() || undefined,
         taxNumber: formData.taxNumber,
         taxOffice: formData.taxOffice,
         company: formData.company,
@@ -210,9 +221,13 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       code: customer.code || '',
       name: customer.name,
       phone: customer.phone || '',
+      city: customer.city || '',
       phone2: customer.phone2 || '',
       age: customer.age != null ? String(customer.age) : '',
       file_id: customer.file_id || '',
+      gender: customer.gender || '',
+      customer_tier: customer.customer_tier === 'vip' ? 'vip' : 'normal',
+      heard_from: customer.heard_from || '',
       email: customer.email || '',
       address: customer.address || '',
       occupation: customer.occupation || '',
@@ -240,6 +255,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         code: formData.code,
         name: formData.name,
         phone: formData.phone,
+        city: formData.city.trim() === '' ? (null as any) : formData.city.trim(),
         phone2: formData.phone2.trim() === '' ? (null as any) : formData.phone2.trim(),
         email: formData.email,
         address: formData.address,
@@ -247,6 +263,9 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         occupation: formData.occupation.trim() === '' ? (null as any) : formData.occupation.trim(),
         file_id: formData.file_id.trim() === '' ? (null as any) : formData.file_id.trim(),
         age: ageForDb as any,
+        gender: formData.gender.trim() === '' ? (null as any) : formData.gender.trim(),
+        customer_tier: formData.customer_tier === 'vip' ? 'vip' : 'normal',
+        heard_from: formData.heard_from.trim() === '' ? (null as any) : formData.heard_from.trim(),
         taxNumber: formData.taxNumber,
         taxOffice: formData.taxOffice,
         company: formData.company
@@ -619,6 +638,19 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t.cityLabel || 'Şehir'}</label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={t.cityLabel || 'Şehir'}
+                  />
+                </div>
+              </div>
+
+              <div className="md:w-1/2">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelPhone2')}</label>
                   <input
                     type="tel"
@@ -656,6 +688,33 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelGender')}</label>
+                  <select
+                    value={formData.gender}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">{tm('custGenderSelect')}</option>
+                    <option value="male">{tm('custGenderMale')}</option>
+                    <option value="female">{tm('custGenderFemale')}</option>
+                    <option value="other">{tm('custGenderOther')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelTier')}</label>
+                  <select
+                    value={formData.customer_tier}
+                    onChange={(e) => setFormData({ ...formData, customer_tier: e.target.value === 'vip' ? 'vip' : 'normal' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="normal">{tm('custTierNormal')}</option>
+                    <option value="vip">{tm('custTierVip')}</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelAddress')}</label>
                 <textarea
@@ -689,6 +748,17 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                     placeholder={tm('custPhEmail')}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelHeardFrom')}</label>
+                <input
+                  type="text"
+                  value={formData.heard_from}
+                  onChange={(e) => setFormData({ ...formData, heard_from: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={tm('custPhHeardFrom')}
+                />
               </div>
 
               <div>
@@ -810,6 +880,36 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                       )}
                     </div>
                   )}
+                  {(selectedCustomer.gender || selectedCustomer.customer_tier) && (
+                    <div className="flex gap-4 flex-wrap">
+                      {selectedCustomer.gender && (
+                        <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[140px]">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelGender')}</p>
+                          <p className="text-gray-900">
+                            {selectedCustomer.gender === 'male'
+                              ? tm('custGenderMale')
+                              : selectedCustomer.gender === 'female'
+                                ? tm('custGenderFemale')
+                                : tm('custGenderOther')}
+                          </p>
+                        </div>
+                      )}
+                      {selectedCustomer.customer_tier && (
+                        <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[140px]">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelTier')}</p>
+                          <p className="text-gray-900">
+                            {selectedCustomer.customer_tier === 'vip' ? tm('custTierVip') : tm('custTierNormal')}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {selectedCustomer.heard_from && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelHeardFrom')}</p>
+                      <p className="text-gray-900">{selectedCustomer.heard_from}</p>
+                    </div>
+                  )}
                   <div className="flex gap-4 flex-wrap">
                     {selectedCustomer.email && (
                       <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[140px]">
@@ -841,6 +941,12 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelAddress')}</p>
                       <p className="text-gray-900">{selectedCustomer.address}</p>
+                    </div>
+                  )}
+                  {selectedCustomer.city && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{t.cityLabel || 'Şehir'}</p>
+                      <p className="text-gray-900">{selectedCustomer.city}</p>
                     </div>
                   )}
                   {selectedCustomer.notes && (
