@@ -243,3 +243,25 @@ Bu dosyayı güvenli bir yerde saklayarak sunucuyu sıfırladığınızda veya y
 3. İş akışı: `.github/workflows/deploy-vps-web.yml`. Manuel tetik: **Actions → Deploy web to VPS → Run workflow**.
 
 Sadece veritabanı migration’ı otomatikleştirmek için ayrı bir iş akışı eklemedik; DB için `berqenas-repo-pull-and-migrate.sh` veya cron kullanılabilir.
+
+---
+
+## 7. Tüm kiracı DB’lere alan / migration (önce yedek)
+
+Varsayılan kiracı listesi `database/scripts/berqenas-cloud-dbs.inc.sh` içinde tek yerde toplanır (`merkez_db`, `dismarco_pdks`, `aqua_beauty`, …).
+
+| Betik | Ne yapar |
+|-------|----------|
+| `berqenas-repo-pull-and-migrate.sh` | Git pull → **seçilen her DB için `pg_dump -Fc` yedeği** (`${INSTALL_DIR}/backups/<tarih-saat>/`) → `run-pending-migrations.mjs`. `BACKUP_BEFORE_MIGRATE=0` ile yedek atlanır. `MIGRATE_DRY=1` hem yedek hem migrate dry-run. |
+| `berqenas-apply-sql-all-dbs.sh` | Tek bir `.sql` dosyasını (`SQL_FILE=...`) seçilen tüm DB’lere `psql -f` ile uygular; önce aynı yedek mantığı. Elle yazılmış `ALTER TABLE` gibi durumlar için. |
+
+Etkileşimli hedef seçimi her iki betikte de `TENANT_DBS` boşken menü ile yapılır (`a` = hepsi, numaralar, `m` = manuel isimler).
+
+**Uyarı:** `merkez_db` şeması retail tablolarını içermeyebilir; aynı migration’ı tüm listeye basmadan önce SQL’in her hedefte anlamlı olduğundan emin olun veya menüden **retailex_demo**, **aqua_beauty** vb. alt küme seçin.
+
+**Yedek geri yükleme örneği** (tek DB):
+
+```bash
+docker cp /opt/berqenas-cloud/backups/20260422_153000/retailex_demo.dump saas_postgres:/tmp/r.dump
+docker exec saas_postgres pg_restore -U postgres --clean --if-exists -d retailex_demo /tmp/r.dump
+```

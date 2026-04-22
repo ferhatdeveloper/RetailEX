@@ -1,26 +1,21 @@
 #!/usr/bin/env bash
-# VPS: RetailEX reposunu GitHub'dan günceller, ardından seçilen PostgreSQL
-# veritabanlarında bekleyen numaralı migration'ları uygular (002+, 000/001 hariç).
+# VPS: RetailEX reposunu GitHub'dan günceller; seçilen DB'lerde önce pg_dump yedeği,
+# ardından bekleyen numaralı migration'ları uygular (run-pending-migrations.mjs).
 #
-# Ön koşul: saas_postgres ayakta; repo yolu TARGET (varsayılan INSTALL_DIR/projects/retailex).
-# Migration takibi: public.schema_migrations (database/scripts/run-pending-migrations.mjs).
+# Ön koşul: saas_postgres ayakta; repo TARGET (varsayılan INSTALL_DIR/projects/retailex).
 #
 # Kullanım:
 #   bash berqenas-repo-pull-and-migrate.sh
-#   TENANT_DBS="bestcom_db retailex_demo" bash berqenas-repo-pull-and-migrate.sh   # etkileşimsiz
-#   sudo RETAILEX_GIT_URL=https://github.com/org/RetailEX.git bash berqenas-repo-pull-and-migrate.sh
+#   TENANT_DBS="bestcom_db retailex_demo" bash berqenas-repo-pull-and-migrate.sh
+#   BACKUP_BEFORE_MIGRATE=0 bash berqenas-repo-pull-and-migrate.sh   # yedek alma
+#   MIGRATE_DRY=1 bash berqenas-repo-pull-and-migrate.sh              # yedek + migrate dry-run
 #
 # Ortam:
-#   INSTALL_DIR          — varsayılan: /opt/berqenas-cloud
-#   RETAILEX_GIT_URL     — ilk klon için
-#   RETAILEX_GIT_BRANCH  — varsayılan: main
-#   TENANT_DBS           — boşlukla ayrılmış DB listesi (doluysa soru sorulmaz)
-#   POSTGRES_CONTAINER   — varsayılan: saas_postgres
-#   POSTGRES_PASSWORD    — .env veya root_password_2026
-#   MIGRATE_DRY          — 1 ise --dry-run
+#   INSTALL_DIR, RETAILEX_GIT_URL, RETAILEX_GIT_BRANCH, TENANT_DBS, POSTGRES_CONTAINER,
+#   POSTGRES_PASSWORD, MIGRATE_DRY, BACKUP_BEFORE_MIGRATE (varsayılan 1), BACKUP_ROOT
 #
-# Etkileşimli mod: TENANT_DBS tanımlı değilse veya boşsa, terminalde (tty) menü sunulur.
-# Otomasyon (cron/SSH -T): TENANT_DBS boşsa tüm varsayılan Berqenas DB'leri seçilir.
+# Şema uyarısı: merkez_db ile retail/pdks DB'leri aynı tabloları paylaşmayabilir; migration
+# dosyası tüm hedeflerde çalışacak şekilde yazılmalı veya TENANT_DBS ile alt küme seçin.
 
 set -euo pipefail
 
@@ -29,18 +24,6 @@ RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-}"
 RETAILEX_GIT_BRANCH="${RETAILEX_GIT_BRANCH:-main}"
 TARGET="${INSTALL_DIR}/projects/retailex"
 CONTAINER="${POSTGRES_CONTAINER:-saas_postgres}"
-
-# Berqenas Cloud ile uyumlu varsayılan kiracı DB sırası (numaralar menüde buna göre)
-BERQENAS_DEFAULT_DBS=(
-  merkez_db
-  dismarco_pdks
-  aqua_beauty
-  m10_pdks
-  bestcom_db
-  siti_pdks
-  pdks_demo
-  retailex_demo
-)
 
 if [[ -f "${INSTALL_DIR}/.env" ]]; then
   set -a
@@ -51,66 +34,11 @@ fi
 
 PGPASS="${POSTGRES_PASSWORD:-root_password_2026}"
 
-# TENANT_DBS: ortamda doluysa olduğu gibi; boş + tty → menü; boş + !tty → hepsi
-if [[ -n "${TENANT_DBS:-}" ]]; then
-  echo "=== Hedef DB'ler (TENANT_DBS): ${TENANT_DBS} ==="
-elif [[ -t 0 ]]; then
-  echo ""
-  echo "=== Hangi veritabanlarına migration uygulansın? ==="
-  echo "  a) Tümü (${#BERQENAS_DEFAULT_DBS[@]} adet — Berqenas varsayılan listesi)"
-  i=1
-  for d in "${BERQENAS_DEFAULT_DBS[@]}"; do
-    printf "  %2d) %s\n" "$i" "$d"
-    ((i++)) || true
-  done
-  echo "  m) Manuel — boşlukla veritabanı adları yaz"
-  echo ""
-  read -r -p "Seçim [a]: " _pick
-  _pick="${_pick:-a}"
-  case "${_pick,,}" in
-    a|all|tum|"")
-      TENANT_DBS="${BERQENAS_DEFAULT_DBS[*]}"
-      echo "→ Seçilen: tümü"
-      ;;
-    m|manuel)
-      read -r -p "Veritabanı adları (boşlukla): " TENANT_DBS
-      if [[ -z "${TENANT_DBS// }" ]]; then
-        echo "Hata: Manuel liste boş." >&2
-        exit 1
-      fi
-      echo "→ Seçilen: ${TENANT_DBS}"
-      ;;
-    *)
-      _sel="${_pick//,/ }"
-      while [[ "$_sel" == *"  "* ]]; do _sel="${_sel//  / }"; done
-      _chosen=()
-      read -ra _parts <<< "$_sel"
-      for _tok in "${_parts[@]}"; do
-        if [[ "$_tok" =~ ^[0-9]+$ ]]; then
-          _idx=$((10#_tok - 1))
-          if ((_idx >= 0 && _idx < ${#BERQENAS_DEFAULT_DBS[@]})); then
-            _chosen+=("${BERQENAS_DEFAULT_DBS[_idx]}")
-          else
-            echo "Hata: Geçersiz numara '${_tok}' (1-${#BERQENAS_DEFAULT_DBS[@]})." >&2
-            exit 1
-          fi
-        else
-          echo "Hata: Tanınmayan seçim '${_pick}'. a, m veya 1,3,8 gibi numaralar kullanın." >&2
-          exit 1
-        fi
-      done
-      if [[ ${#_chosen[@]} -eq 0 ]]; then
-        echo "Hata: Hiç veritabanı seçilmedi." >&2
-        exit 1
-      fi
-      TENANT_DBS="${_chosen[*]}"
-      echo "→ Seçilen: ${TENANT_DBS}"
-      ;;
-  esac
-else
-  TENANT_DBS="${BERQENAS_DEFAULT_DBS[*]}"
-  echo "=== TTY yok — TENANT_DBS tüm varsayılanlar: ${TENANT_DBS} ==="
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=berqenas-cloud-dbs.inc.sh
+source "${SCRIPT_DIR}/berqenas-cloud-dbs.inc.sh"
+
+berqenas_pick_tenant_dbs || exit 1
 
 WEB_NET=$(docker inspect "$CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
 if [[ -z "${WEB_NET:-}" ]]; then
@@ -139,6 +67,15 @@ if [[ ! -f "${TARGET}/database/scripts/run-pending-migrations.mjs" ]]; then
   exit 1
 fi
 
+BACKUP_BEFORE_MIGRATE="${BACKUP_BEFORE_MIGRATE:-1}"
+if [[ "${MIGRATE_DRY:-0}" == "1" ]]; then
+  echo "=== MIGRATE_DRY=1 — yedek alınmıyor (dry-run) ==="
+elif [[ "${BACKUP_BEFORE_MIGRATE}" != "0" ]]; then
+  berqenas_backup_databases "$CONTAINER" "$PGPASS" "${BACKUP_ROOT:-${INSTALL_DIR}/backups}"
+else
+  echo "=== BACKUP_BEFORE_MIGRATE=0 — yedek atlandı ==="
+fi
+
 DRY_FLAG=()
 if [[ "${MIGRATE_DRY:-0}" == "1" ]]; then
   DRY_FLAG=(--dry-run)
@@ -163,4 +100,4 @@ for db in ${TENANT_DBS}; do
       node database/scripts/run-pending-migrations.mjs --env-only ${DRY_FLAG[*]:-}"
 done
 
-echo "=== Tamam ==="
+echo "=== Tamam (son yedek dizini: ${BERQENAS_LAST_BACKUP_DIR:-dry-run veya yedek yok}) ==="
