@@ -27,6 +27,16 @@ function normalizeBaseUrl(input: string): string {
   return (input || '').trim().replace(/\/+$/, '');
 }
 
+function ensureUrlProtocol(input: string): string {
+  const s = (input || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) return s;
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${s}`;
+  }
+  return `http://${s}`;
+}
+
 /**
  * Modal / .env satırı yanlış yapıştırıldığında: `VITE_MERKEZ_REST_URL=http://host:3002` → sadece URL.
  */
@@ -36,7 +46,7 @@ export function sanitizeMerkezRestUrlInput(input: string): string {
   const m = s.match(/^VITE_MERKEZ_REST_URL\s*=\s*(.+)$/i);
   if (m) s = m[1].trim();
   s = s.replace(/^['"]+|['"]+$/g, '');
-  return s.trim();
+  return ensureUrlProtocol(s.trim());
 }
 
 /**
@@ -82,6 +92,11 @@ export async function fetchTenantRegistryRow(tenantInput: string): Promise<Tenan
   const base = getMerkezRestBaseUrl();
   const q = tenantInput.trim();
   if (!q) throw new Error('Kiracı kodu veya ID boş olamaz.');
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(base)) {
+    throw new Error(
+      `HTTPS sayfada HTTP merkez adresi kullanılamaz: ${base}. HTTPS bir API domaini kullanın veya geçici test için HTTP web adresinden açın.`
+    );
+  }
 
   const filter = UUID_RE.test(q) ? `id=eq.${encodeURIComponent(q)}` : `code=eq.${encodeURIComponent(q)}`;
   const url = `${base}/tenant_registry?${filter}&select=*`;

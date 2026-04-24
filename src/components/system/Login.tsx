@@ -1039,7 +1039,7 @@ export function Login({ onLogin }: LoginProps) {
 
       {showTenantFirmIdModal && (
         <div
-          className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setShowTenantFirmIdModal(false)}
         >
           <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
@@ -1115,6 +1115,10 @@ export function Login({ onLogin }: LoginProps) {
                         '../../services/merkezTenantRegistry'
                       );
                       const clean = sanitizeMerkezRestUrlInput(merkezUrl).replace(/\/+$/, '');
+                      if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(clean)) {
+                        toast.error('HTTPS sayfada HTTP merkez adresi kullanılamaz. HTTPS URL girin.');
+                        return;
+                      }
                       localStorage.setItem('merkez_postgrest_base_url', clean);
                     }
                     setIsMerkezTenantLoading(true);
