@@ -19,8 +19,12 @@
 
 set -euo pipefail
 
-# BuildKit: daha hizli cache + "legacy builder deprecated" uyarisini azaltir
-export DOCKER_BUILDKIT=1
+# BuildKit ancak docker-buildx-plugin kuruluysa (aksi halde: "buildx component is missing")
+if docker buildx version >/dev/null 2>&1; then
+  export DOCKER_BUILDKIT=1
+else
+  export DOCKER_BUILDKIT=0
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

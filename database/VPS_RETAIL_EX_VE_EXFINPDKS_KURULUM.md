@@ -135,6 +135,8 @@ Dosya: **`.github/workflows/deploy-vps-web.yml`**
 
 **Tarayıcı hâlâ `api.retailex.app/api/pg_query` veya eski CORS gösteriyorsa:** Eski JS önbelleği — `retailex.app` için site verilerini temizleyin veya gizli pencerede açın; VPS’te `berqenas-deploy-web.sh` ile son imajı yeniden kurun (`docker ps` içinde `retailex_bridge` olmalı).
 
+**`ERROR: BuildKit is enabled but the buildx component is missing`:** `berqenas-deploy-web.sh` artık `docker buildx` yoksa otomatik eski derleyiciye düşer. İsterseniz: `apt-get install -y docker-buildx-plugin` (ve `systemctl restart docker`).
+
 ---
 
 ## 6. EXFIN PDKS — sadece güncelleme
