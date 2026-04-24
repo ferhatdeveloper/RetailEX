@@ -57,7 +57,9 @@ else
 fi
 
 cd "${TARGET_DIR}/database/scripts"
-chmod +x berqenas-saas-from-zero.sh berqenas-vps-full-paste.sh berqenas-deploy-web.sh
+chmod +x berqenas-saas-from-zero.sh berqenas-vps-full-paste.sh berqenas-deploy-web.sh \
+  berqenas-vps-fresh-install-all.sh berqenas-caddy-merge-merkez-api.sh \
+  berqenas-deploy-exfinpdks-web.sh 2>/dev/null || true
 
 export POSTGRES_PASSWORD="${PGPW}"
 export PGADMIN_DEFAULT_EMAIL="${PGAEM}"
@@ -65,4 +67,4 @@ export PGADMIN_DEFAULT_PASSWORD="${PGAPW}"
 export AUTHENTICATOR_PASSWORD="${AUTHPW}"
 export RETAILEX_GIT_URL="${REPO_HTTPS}"
 
-exec bash "${TARGET_DIR}/database/scripts/berqenas-saas-from-zero.sh"
+exec bash "${TARGET_DIR}/database/scripts/berqenas-vps-fresh-install-all.sh"

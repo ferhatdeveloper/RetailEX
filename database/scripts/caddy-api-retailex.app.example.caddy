@@ -1,4 +1,5 @@
 # Örnek: https://api.retailex.app — sağlık kontrolü + PostgREST (merkez / kiracı)
+# Üretimde tercihen: berqenas-deploy-web.sh → berqenas-caddy-merge-merkez-api.sh otomatik ekler.
 #
 # Kullanım:
 # 1) DNS: api.retailex.app A kaydı → VPS IPv4

@@ -253,6 +253,14 @@ ON CONFLICT (code) DO UPDATE SET
   updated_at    = now();
 EOSQL
 
+_ANON_SQL="${SCRIPT_DIR}/merkez_db_anon_minimal.sql"
+if [[ -f "${_ANON_SQL}" ]]; then
+  echo "=== merkez_db: anon + tenant_registry SELECT (PostgREST) ==="
+  docker exec -i saas_postgres psql -U postgres -d merkez_db -v ON_ERROR_STOP=1 <"${_ANON_SQL}" || {
+    echo "Uyari: merkez_db_anon_minimal.sql calistirilamadi." >&2
+  }
+fi
+
 ufw default deny incoming
 ufw allow 22/tcp
 if [[ "$ENABLE_VPN" == "1" ]]; then

@@ -10,10 +10,15 @@
 #   RETAILEX_PUBLIC_DOMAIN — bos: sadece :RETAILEX_WEB_PORT. Dolu: Caddy 80/443 + HTTPS (varsayılan
 #                            betik tek basina calistirilirken: retailex.app). Tamamen kapatmak icin
 #                            once export RETAILEX_PUBLIC_DOMAIN=
+#   SKIP_MERKEZ_API=1      — api.<domain> Caddy blogu ve VITE_MERKEZ_REST_URL build arg atlanir
+#   MERKEZ_API_PUBLIC_DOMAIN — varsayılan: api.${RETAILEX_PUBLIC_DOMAIN} (ör. api.retailex.app)
+#   VITE_MERKEZ_REST_URL   — doluysa MERKEZ_API_PUBLIC_DOMAIN yerine dogrudan build arg olarak kullanilir
 #
 #   sudo RETAILEX_GIT_URL=https://github.com/org/RetailEX.git bash berqenas-deploy-web.sh
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-}"
 if [[ -z "$RETAILEX_GIT_URL" ]]; then
@@ -51,7 +56,16 @@ if [[ ! -f "${TARGET}/Dockerfile.frontend" ]]; then
 fi
 
 cd "${TARGET}"
-docker build -f Dockerfile.frontend -t retailex-web:latest .
+
+VITE_BUILD_ARG=()
+if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]] && [[ "${SKIP_MERKEZ_API:-0}" != "1" ]]; then
+  _api_dom="${MERKEZ_API_PUBLIC_DOMAIN:-api.${RETAILEX_PUBLIC_DOMAIN}}"
+  _vite="${VITE_MERKEZ_REST_URL:-https://${_api_dom}/merkez}"
+  VITE_BUILD_ARG=(--build-arg "VITE_MERKEZ_REST_URL=${_vite}")
+  echo "Docker build: VITE_MERKEZ_REST_URL=${_vite}"
+fi
+
+docker build -f Dockerfile.frontend "${VITE_BUILD_ARG[@]}" -t retailex-web:latest .
 
 WEB_NET=$(docker inspect saas_postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
 if [[ -z "${WEB_NET:-}" ]]; then
@@ -101,6 +115,21 @@ if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]]; then
   ufw allow 443/tcp 2>/dev/null || true
   ufw allow 443/udp 2>/dev/null || true
   ufw allow "${RETAILEX_WEB_PORT}/tcp" 2>/dev/null || true
+
+  if [[ "${SKIP_MERKEZ_API:-0}" != "1" ]]; then
+    export INSTALL_DIR MERKEZ_API_PUBLIC_DOMAIN="${MERKEZ_API_PUBLIC_DOMAIN:-api.${RETAILEX_PUBLIC_DOMAIN}}"
+    if [[ -f "${SCRIPT_DIR}/berqenas-caddy-merge-merkez-api.sh" ]]; then
+      bash "${SCRIPT_DIR}/berqenas-caddy-merge-merkez-api.sh" || echo "Uyari: api subdomain Caddy birlestirme basarisiz."
+    fi
+    _api="${MERKEZ_API_PUBLIC_DOMAIN}"
+    if docker ps -q -f name=saas_postgres | grep -q .; then
+      docker exec -i saas_postgres psql -U postgres -d merkez_db -c \
+        "UPDATE tenant_registry SET connection_provider='rest_api', rest_base_url='https://${_api}/aqua', updated_at=now() WHERE code='aqua_beauty';" \
+        2>/dev/null || true
+    fi
+    echo "Merkez API (Caddy): https://${_api}/ — ornek PostgREST: https://${_api}/merkez/tenant_registry?select=code"
+    echo "DNS: A kaydi ${_api} -> bu sunucunun genel IPv4 (Let's Encrypt icin)."
+  fi
 
   echo "RetailEX Web: https://${RETAILEX_PUBLIC_DOMAIN}"
   echo "Ayrica dogrudan IP: http://SUNUCU_IPV4:${RETAILEX_WEB_PORT} (aynı konteyner)"

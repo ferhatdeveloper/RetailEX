@@ -12,6 +12,9 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 ENV SKIP_POSTGRES_REMOTE_ENABLE=1
+# VPS: merkez PostgREST HTTPS tabanı (örn. https://api.retailex.app/merkez) — bos ise build zamanı env yok
+ARG VITE_MERKEZ_REST_URL=
+ENV VITE_MERKEZ_REST_URL=${VITE_MERKEZ_REST_URL}
 RUN npm run build
 
 FROM nginx:alpine
