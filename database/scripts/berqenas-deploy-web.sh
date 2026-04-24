@@ -19,6 +19,9 @@
 
 set -euo pipefail
 
+# BuildKit: daha hizli cache + "legacy builder deprecated" uyarisini azaltir
+export DOCKER_BUILDKIT=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-}"
