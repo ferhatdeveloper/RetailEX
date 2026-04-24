@@ -15,6 +15,9 @@ ENV SKIP_POSTGRES_REMOTE_ENABLE=1
 # VPS: merkez PostgREST HTTPS tabanı (örn. https://api.retailex.app/merkez) — bos ise build zamanı env yok
 ARG VITE_MERKEZ_REST_URL=
 ENV VITE_MERKEZ_REST_URL=${VITE_MERKEZ_REST_URL}
+# Koprü her zaman web ile aynı origin (Nginx /api → retailex_bridge); api.* alt alanına asla sabitlemeyin
+ARG VITE_BRIDGE_URL=
+ENV VITE_BRIDGE_URL=${VITE_BRIDGE_URL}
 RUN npm run build
 
 FROM nginx:alpine

@@ -133,6 +133,8 @@ Dosya: **`.github/workflows/deploy-vps-web.yml`**
 
 **Not:** İş akışı `RETAILEX_PUBLIC_DOMAIN=retailex.app` ve `RETAILEX_GIT_URL=https://github.com/<bu_repo>.git` export eder; fork’ta repo URL’si otomatik uyarlanır.
 
+**Tarayıcı hâlâ `api.retailex.app/api/pg_query` veya eski CORS gösteriyorsa:** Eski JS önbelleği — `retailex.app` için site verilerini temizleyin veya gizli pencerede açın; VPS’te `berqenas-deploy-web.sh` ile son imajı yeniden kurun (`docker ps` içinde `retailex_bridge` olmalı).
+
 ---
 
 ## 6. EXFIN PDKS — sadece güncelleme

@@ -7,11 +7,31 @@ import { APP_VERSION } from '../core/version';
 export const IS_TAURI = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 export const IS_BROWSER = !IS_TAURI;
 
-const BRIDGE_URL_OVERRIDE =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_BRIDGE_URL
+const BRIDGE_URL_OVERRIDE_RAW =
+  typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_BRIDGE_URL
     ? String((import.meta as any).env.VITE_BRIDGE_URL)
-    : ''
-  ).trim();
+    : '';
+
+/** api.retailex.app yalnızca PostgREST (Caddy); pg_bridge burada yok. Eski build'de yanlış VITE_BRIDGE_URL gömülüyse yok say. */
+function effectiveBridgeUrlOverride(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s || typeof window === 'undefined') return s;
+  try {
+    const u = new URL(s.startsWith('http') ? s : `${window.location.protocol}//${s}`);
+    const h = u.hostname.toLowerCase();
+    if (h === 'api.retailex.app') {
+      console.warn(
+        '[RetailEX] VITE_BRIDGE_URL api.retailex.app geçersiz (PostgREST alanı); köprü için sayfa origin kullanılıyor.'
+      );
+      return '';
+    }
+  } catch {
+    /* göreli veya bozuk URL — olduğu gibi bırak */
+  }
+  return s;
+}
+
+const BRIDGE_URL_OVERRIDE = effectiveBridgeUrlOverride(BRIDGE_URL_OVERRIDE_RAW);
 
 /**
  * Safely invoke a Tauri command. 

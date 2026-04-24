@@ -58,11 +58,11 @@ fi
 
 cd "${TARGET}"
 
-VITE_BUILD_ARG=()
+VITE_BUILD_ARG=(--build-arg "VITE_BRIDGE_URL=")
 if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]] && [[ "${SKIP_MERKEZ_API:-0}" != "1" ]]; then
   _api_dom="${MERKEZ_API_PUBLIC_DOMAIN:-api.${RETAILEX_PUBLIC_DOMAIN}}"
   _vite="${VITE_MERKEZ_REST_URL:-https://${_api_dom}/merkez}"
-  VITE_BUILD_ARG=(--build-arg "VITE_MERKEZ_REST_URL=${_vite}")
+  VITE_BUILD_ARG+=(--build-arg "VITE_MERKEZ_REST_URL=${_vite}")
   echo "Docker build: VITE_MERKEZ_REST_URL=${_vite}"
 fi
 
