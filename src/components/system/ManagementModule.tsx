@@ -119,7 +119,6 @@ import SupabaseMigrationModule from './SupabaseMigrationModule';
 import { StoreManagementDashboard } from './StoreManagementDashboard';
 import { SecurityModulesWeb } from './SecurityModulesWeb';
 import { ReportDetailFullPage } from '../reports/ReportDetailFullPage';
-import { DatabaseSettings } from './DatabaseSettings';
 import { DemoDataManager } from './DemoDataManager';
 import AuditTrailModule from '../modules/AuditTrailModule';
 import { WavePickingModule } from '../wms/WavePickingModule';
@@ -191,7 +190,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
   'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
-  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'db-migrations' | 'store-management' | 'security-modules' | 'database-settings' | 'demo-data' |
+  'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'db-migrations' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
@@ -1240,8 +1239,6 @@ export function ManagementModule({
           return <DatabaseMigrations onBack={() => setCurrentScreen('dashboard')} />;
         case 'store-management':
           return <StoreManagementDashboard />;
-        case 'database-settings':
-          return <DatabaseSettings />;
         case 'demo-data':
           return <DemoDataManager />;
         case 'firm-period-definitions':

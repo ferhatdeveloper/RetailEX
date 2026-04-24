@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, Settings as Gear, ArrowLeft, X as CloseIcon, Monitor, Activity, Terminal as ConsoleIcon, Database } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, Monitor, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { DatabaseSettings } from './DatabaseSettings';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
 import { SystemMonitoringModule } from './SystemMonitoringModule';
@@ -14,7 +13,7 @@ const IT_PASS = "30031993";
 export function InfrastructureSettingsPage() {
     const [infraPassword, setInfraPassword] = useState('');
     const [infraAuthRole, setInfraAuthRole] = useState<'admin' | 'it' | null>(null);
-    const [activeTab, setActiveTab] = useState<'diagnostics' | 'database' | 'remote'>('diagnostics');
+    const [activeTab, setActiveTab] = useState<'diagnostics' | 'remote'>('diagnostics');
     const [selectedPeer, setSelectedPeer] = useState<any>(null);
     const { darkMode } = useTheme();
     const navigate = useNavigate();
@@ -97,16 +96,6 @@ export function InfrastructureSettingsPage() {
                         <Monitor className="w-4 h-4" />
                         CİHAZ YÖNETİMİ / MANAGEMENT
                     </button>
-                    <button
-                        onClick={() => setActiveTab('database')}
-                        className={`px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] transition-all border-b-2 flex items-center gap-3 ${activeTab === 'database'
-                            ? 'border-blue-500 text-blue-500 bg-blue-500/5'
-                            : 'border-transparent text-gray-500 hover:text-gray-300'
-                            }`}
-                    >
-                        <Database className="w-4 h-4" />
-                        VERİTABANI AYARLARI / DATABASE
-                    </button>
                 </div>
             )}
 
@@ -141,30 +130,10 @@ export function InfrastructureSettingsPage() {
                     </div>
                 ) : (
                     <div className="max-w-7xl mx-auto p-6 animate-in fade-in duration-500">
-                        {infraAuthRole === 'it' && activeTab === 'diagnostics' ? (
-                            <SystemMonitoringModule />
-                        ) : activeTab === 'remote' ? (
+                        {activeTab === 'remote' ? (
                             <RemoteControlGrid onConnect={(peer) => setSelectedPeer(peer)} />
                         ) : (
-                            <>
-                                <div className={`mb-6 p-4 border-l-4 border-blue-600 ${darkMode ? 'bg-gray-900 shadow-xl' : 'bg-white shadow-sm'}`}>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <Gear className="w-5 h-5 text-blue-500" />
-                                            <div>
-                                                <span className="text-xs font-black uppercase tracking-widest block">Sistem Konfigürasyonu</span>
-                                                <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Zorunlu ayarlar ve veritabanı eşitleme</span>
-                                            </div>
-                                        </div>
-                                        {infraAuthRole === 'it' && (
-                                            <div className="text-[9px] font-mono text-gray-600 bg-black/20 px-2 py-1 border border-gray-800">
-                                                RE-INFRA-NODE: {window.crypto.randomUUID().slice(0, 8).toUpperCase()}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <DatabaseSettings />
-                            </>
+                            <SystemMonitoringModule />
                         )}
                     </div>
                 )}

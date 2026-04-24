@@ -281,7 +281,6 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: 'Firma/Dönem Tanımları', screen: 'firm-period-definitions', icon: Building },
             { label: 'Workflow Otomasyonu', screen: 'workflow-automation', icon: Zap, badge: 'AI' },
             { label: 'Demo Veri Yönetimi', screen: 'demo-data', icon: Database, badge: 'TEST' },
-            { label: 'Database Altyapısı', screen: 'database-settings', icon: Database, badge: 'YENİ' },
             { label: 'ExSecureGate (Güvenlik)', screen: 'security-modules', icon: Shield, badge: 'BETA' },
             { label: 'Genel Ayarlar', screen: 'generalsettings', icon: Settings },
             { label: 'Kullanıcı Yönetimi', screen: 'usermanagement', icon: UserCheck },
