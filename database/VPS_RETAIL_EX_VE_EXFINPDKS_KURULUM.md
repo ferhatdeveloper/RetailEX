@@ -76,9 +76,11 @@ sudo env RETAILEX_GIT_URL="https://github.com/ferhatdeveloper/RetailEX.git" \
 
 ---
 
-## 5. RetailEX web — sadece güncelleme
+## 5. RetailEX web — güncelleme
 
 DNS: `retailex.app` A → VPS IPv4.
+
+### 5.1 Manuel (SSH ile sunucuda)
 
 ```bash
 cd /opt/berqenas-cloud/projects/retailex   # veya /opt/RetailEX
@@ -88,7 +90,48 @@ sudo env RETAILEX_GIT_URL="https://github.com/ferhatdeveloper/RetailEX.git" \
   bash database/scripts/berqenas-deploy-web.sh
 ```
 
-GitHub Actions: `.github/workflows/deploy-vps-web.yml`; secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`.
+### 5.2 GitHub Actions ile otomatik deploy
+
+Dosya: **`.github/workflows/deploy-vps-web.yml`**
+
+**Ne zaman çalışır?**
+
+- `main` dalına **push** her geldiğinde.
+- İsterseniz elle: repo → **Actions** → **Deploy web to VPS** → **Run workflow**.
+
+**Sunucuda ön koşul (bir kez):**
+
+- İlk kurulumda `berqenas-deploy-web.sh` en az bir kez çalışmış olmalı; klon yolu:
+  **`${INSTALL_DIR}/projects/retailex`** (varsayılan `INSTALL_DIR=/opt/berqenas-cloud` →  
+  `/opt/berqenas-cloud/projects/retailex/database/scripts/berqenas-deploy-web.sh` dosyası gerçekten var olmalı).
+- VPS’te SSH ile giriş yaptığınız kullanıcı, bu betiği **sudo veya root** ile çalıştırabiliyor olmalı (iş akışı `root` kullanıyorsa sorun yok; `ubuntu` ise `sudo` NOPASSWD veya betiği root’a taşıyın).
+
+**GitHub’da secret tanımlama**
+
+1. Repo: **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+2. Aşağıdakileri ekleyin:
+
+| Secret | Örnek | Açıklama |
+|--------|--------|----------|
+| `VPS_HOST` | `72.60.182.107` veya `ssh.sizin-domain.com` | SSH hedefi |
+| `VPS_USER` | `root` | SSH kullanıcısı |
+| `VPS_SSH_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----` … tam metin | **Özel** anahtar (public tarafı VPS’e) |
+| `VPS_INSTALL_DIR` *(isteğe bağlı)* | `/opt/berqenas-cloud` | Boş bırakılırsa betik bu yolu kullanır; klon farklı dizindeyse buraya tam `INSTALL_DIR` yazın |
+
+**SSH anahtarı üretme (özet)**
+
+- Kendi bilgisayarınızda veya geçici olarak:  
+  `ssh-keygen -t ed25519 -f ./gha-vps-deploy -C "github-actions-retailex" -N ""`  
+- **`gha-vps-deploy`** içeriğini → GitHub secret **`VPS_SSH_KEY`** olarak yapıştırın.  
+- **`gha-vps-deploy.pub`** satırını VPS’te hedef kullanıcının **`~/.ssh/authorized_keys`** dosyasına ekleyin (aynı kullanıcı = `VPS_USER`).
+
+**Doğrulama**
+
+- Push sonrası **Actions** sekmesinde yeşil iş; logda `berqenas-deploy-web.sh` çıktısı ve Docker build görünür.
+- Hata: `DEPLOY ... yok` → VPS’te klon yolu yanlış; `VPS_INSTALL_DIR` veya sunucuda `projects/retailex` oluşturun (`berqenas-deploy-web.sh` bir kez çalıştırın).
+- Hata: **Permission denied (publickey)** → `authorized_keys` / kullanıcı / `VPS_SSH_KEY` eşleşmesi.
+
+**Not:** İş akışı `RETAILEX_PUBLIC_DOMAIN=retailex.app` ve `RETAILEX_GIT_URL=https://github.com/<bu_repo>.git` export eder; fork’ta repo URL’si otomatik uyarlanır.
 
 ---
 

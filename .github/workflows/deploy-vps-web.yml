@@ -1,15 +1,15 @@
-# main'e push sonrası VPS'te git pull + Docker imaj + frontend (ve varsa Caddy) yenileme.
+# main'e push veya "Run workflow" ile: VPS'te git pull + Docker build + frontend + Caddy/api birlestirme.
 #
 # GitHub → Settings → Secrets and variables → Actions:
-#   VPS_HOST          VPS genel IPv4 veya DNS (ornek: 72.60.182.107)
+#   VPS_HOST          VPS IPv4 veya DNS
 #   VPS_USER          SSH kullanici (ornek: root)
-#   VPS_SSH_KEY       VPS'e erisim icin private key (tam PEM/ed25519 metni)
+#   VPS_SSH_KEY       Ozel anahtar tam metin (-----BEGIN ... PRIVATE KEY-----)
+#   VPS_INSTALL_DIR   (istege bagli) Bos ise /opt/berqenas-cloud
 #
-# Istege bagli:
-#   VPS_INSTALL_DIR   Varsayilan: /opt/berqenas-cloud (farkli ise secret olarak tam yol)
+# VPS on kosul: /opt/berqenas-cloud/projects/retailex/database/scripts/berqenas-deploy-web.sh
+#   (ilk kurulum: database/VPS_RETAIL_EX_VE_EXFINPDKS_KURULUM.md — bolum 5.2)
 #
-# VPS'te bir kez: hedef kullanicinin authorized_keys icinde Actions'taki public key olmali.
-# Repo yolu: ${INSTALL_DIR}/projects/retailex  (berqenas-deploy-web.sh ile ayni)
+# authorized_keys: VPS_USER hesabina, VPS_SSH_KEY'in public karsiligi eklenmis olmali.
 
 name: Deploy web to VPS
 
@@ -38,6 +38,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+            echo "=== GitHub Actions deploy: ${{ github.repository }} @ ${{ github.sha }} ==="
             INSTALL_DIR="${{ secrets.VPS_INSTALL_DIR }}"
             if [[ -z "${INSTALL_DIR// }" ]]; then
               INSTALL_DIR="/opt/berqenas-cloud"
