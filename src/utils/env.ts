@@ -88,5 +88,11 @@ export const getBridgeUrl = () => {
     return window.location.origin.replace(/\/+$/, '');
   }
 
-  return isLocalHost ? 'http://localhost:3001' : 'https://api.retailex.app';
+  // Uretim (retailex.app + Docker nginx): /api/* aynı origin uzerinden retailex_bridge'e proxy edilir.
+  // api.retailex.app yalnizca PostgREST (merkez/kiracı); buraya pg_query yonlendirmeyin (CORS / 404).
+  if (!isLocalHost) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+
+  return 'http://localhost:3001';
 };

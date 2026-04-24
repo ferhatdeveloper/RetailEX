@@ -9,7 +9,7 @@ Bu dosya **RetailEX** (`retailex.app`), **HTTPS API alt alanı** (`api.retailex.
 | Bileşen | Açıklama |
 |--------|----------|
 | **Berqenas stack** | Docker: PostgreSQL, pgAdmin, PostgREST (kiracı DB başına portlar 3002–3009), UFW. |
-| **RetailEX web** | `Dockerfile.frontend` ile imaj; konteyner `retailex_frontend`. TLS: **Caddy** (`retailex_caddy`). Varsayılan: **https://retailex.app** + **http://SUNUCU_IP:8080**. |
+| **RetailEX web** | `Dockerfile.frontend` + **Nginx** `/api/*` → **`retailex_bridge`** (Dockerfile.bridge, Hono `pg_query`). Konteynerler: `retailex_frontend`, `retailex_bridge`. TLS: **Caddy** (`retailex_caddy`). **https://retailex.app** + **http://SUNUCU_IP:8080**. |
 | **Merkez API (HTTPS)** | Caddy’de **`api.<RETAILEX_PUBLIC_DOMAIN>`** (ör. `api.retailex.app`): kökte JSON sağlık cevabı; **`/merkez/*`** → `saas_postgrest_merkez`, **`/aqua/*`** → `saas_postgrest_aqua_beauty`. Web imajı build sırasında **`VITE_MERKEZ_REST_URL=https://api.../merkez`** ile üretilir (Mixed Content önlenir). |
 | **merkez_db** | `tenant_registry` tablosu; PostgREST için **`anon`** rolüne yalnızca `tenant_registry` **SELECT** (`merkez_db_anon_minimal.sql`). |
 | **EXFIN PDKS web** | `database/docker/Dockerfile.exfinpdks-web`; kaynak `EXFINPDKS` GitHub klonu; konteyner `exfinpdks_frontend`. Varsayılan: **https://exfinpdks.com**, **http://SUNUCU_IP:8091**. |

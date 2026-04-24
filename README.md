@@ -352,8 +352,8 @@ npm run tauri:build    # Masaüstü .exe installer
 npm run deploy         # Vercel'e deploy (retailex.app)
 ```
 
-- Production host: `https://retailex.app`
-- API/Bridge host: `https://api.retailex.app`
+- Production host: `https://retailex.app` (statik web + Nginx üzerinden `/api/*` → `retailex_bridge` pg köprüsü)
+- Merkez PostgREST (HTTPS): `https://api.retailex.app/merkez` (Caddy; tarayıcıda `VITE_MERKEZ_REST_URL` / modal)
 
 ---
 

@@ -1088,7 +1088,7 @@ export function Login({ onLogin }: LoginProps) {
                   autoComplete="off"
                   value={merkezBaseUrlDraft}
                   onChange={(e) => setMerkezBaseUrlDraft(e.target.value)}
-                  placeholder="Sadece URL, örn: http://72.60.182.107:3002"
+                  placeholder="Örn: https://api.retailex.app/merkez (PostgREST tabanı; /merkez şart)"
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-xs"
                 />
                 <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">

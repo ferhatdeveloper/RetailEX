@@ -13,6 +13,7 @@
 #   SKIP_MERKEZ_API=1      — api.<domain> Caddy blogu ve VITE_MERKEZ_REST_URL build arg atlanir
 #   MERKEZ_API_PUBLIC_DOMAIN — varsayılan: api.${RETAILEX_PUBLIC_DOMAIN} (ör. api.retailex.app)
 #   VITE_MERKEZ_REST_URL   — doluysa MERKEZ_API_PUBLIC_DOMAIN yerine dogrudan build arg olarak kullanilir
+#   SKIP_BRIDGE=1          — retailex_bridge konteyneri baslatilmaz (nginx /api 502 verir; sadece test)
 #
 #   sudo RETAILEX_GIT_URL=https://github.com/org/RetailEX.git bash berqenas-deploy-web.sh
 
@@ -67,13 +68,28 @@ fi
 
 docker build -f Dockerfile.frontend "${VITE_BUILD_ARG[@]}" -t retailex-web:latest .
 
+if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; then
+  echo "=== pg_bridge imaji (retailex-bridge) ==="
+  docker build -f Dockerfile.bridge -t retailex-bridge:latest "${TARGET}"
+fi
+
 WEB_NET=$(docker inspect saas_postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
 if [[ -z "${WEB_NET:-}" ]]; then
   echo "Hata: saas_postgres bulunamadi veya ag adi okunamadi." >&2
   exit 1
 fi
 
-docker rm -f retailex_frontend 2>/dev/null || true
+docker rm -f retailex_frontend retailex_bridge 2>/dev/null || true
+
+if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; then
+  echo "=== pg_bridge konteyneri: retailex_bridge ==="
+  docker run -d \
+    --name retailex_bridge \
+    --restart always \
+    --network "${WEB_NET}" \
+    retailex-bridge:latest
+  sleep 2
+fi
 
 if [[ -n "${RETAILEX_PUBLIC_DOMAIN}" ]]; then
   echo "=== RetailEX Web (Caddy https://${RETAILEX_PUBLIC_DOMAIN} + http://GENEL_IP:${RETAILEX_WEB_PORT}) ==="
