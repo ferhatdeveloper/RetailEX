@@ -2,7 +2,8 @@
 FROM node:20-alpine
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# antd 6 + @ant-design/pro-components — Dockerfile.frontend ile aynı (VPS bridge imaji)
+RUN npm ci --legacy-peer-deps
 COPY . .
 ENV NODE_ENV=production
 EXPOSE 3001
