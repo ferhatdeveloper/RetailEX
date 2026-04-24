@@ -103,11 +103,12 @@ export async function fetchTenantRegistryRow(tenantInput: string): Promise<Tenan
 
   let res: Response;
   try {
+    // Accept-Profile göndermeyin: tarayıcı preflight'ta PostgREST CORS listesinde olmayınca
+    // (retailex.app → api.retailex.app) istek bloklanır. tenant_registry public şemada.
     res = await fetch(url, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        'Accept-Profile': 'public',
       },
     });
   } catch (e: unknown) {
@@ -115,7 +116,7 @@ export async function fetchTenantRegistryRow(tenantInput: string): Promise<Tenan
     const hint =
       'Adres: ' +
       base +
-      ' — Yerelde :3002 dinlemiyorsa veya CORS kapalıysa oluşur. Opsiyonel alana tam merkez PostgREST URL yazın veya .env ile VITE_MERKEZ_REST_URL tanımlayın.';
+      ' — Ağ/CORS: farklı origin (ör. retailex.app → api.retailex.app) veya güvenlik duvarı. Merkez URL’yi https://api.../merkez yapın; .env ile VITE_MERKEZ_REST_URL tanımlanabilir.';
     throw new Error(`Merkeze erişilemedi (${msg}). ${hint}`);
   }
 
