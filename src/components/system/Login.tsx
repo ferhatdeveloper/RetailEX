@@ -81,6 +81,8 @@ export function Login({ onLogin }: LoginProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTenantFirmIdModal, setShowTenantFirmIdModal] = useState(false);
   const [tenantFirmIdDraft, setTenantFirmIdDraft] = useState('');
+  const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState('');
+  const [isMerkezTenantLoading, setIsMerkezTenantLoading] = useState(false);
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
   const [showFactoryResetModal, setShowFactoryResetModal] = useState(false);
@@ -190,8 +192,9 @@ export function Login({ onLogin }: LoginProps) {
   const loadFirms = async () => {
     try {
       setLoadingFirms(true);
+      const { DB_SETTINGS } = await import('../../services/postgres');
 
-      if (connectionProvider === 'rest_api') {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('../../services/api/postgrestClient');
         const rows = await postgrest.get(
           '/firms',
@@ -541,8 +544,9 @@ export function Login({ onLogin }: LoginProps) {
   const loadStores = async (firmNr: string) => {
     try {
       setLoadingStores(true);
+      const { DB_SETTINGS } = await import('../../services/postgres');
 
-      if (connectionProvider === 'rest_api') {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('../../services/api/postgrestClient');
         const rows = await postgrest.get(
           '/stores',
@@ -580,7 +584,8 @@ export function Login({ onLogin }: LoginProps) {
     if (trimmedPassword === INFRA_PASS || trimmedPassword === IT_PASS) return true;
 
     try {
-      if (connectionProvider === 'rest_api') {
+      const { DB_SETTINGS } = await import('../../services/postgres');
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('../../services/api/postgrestClient');
         const rpcRes: any = await postgrest.post(
           '/rpc/verify_login',
@@ -707,6 +712,7 @@ export function Login({ onLogin }: LoginProps) {
                 onClick={() => {
                   const fromStorage = localStorage.getItem('exretail_selected_firma_id');
                   setTenantFirmIdDraft(fromStorage || selectedFirmNr || '');
+                  setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || '');
                   setShowTenantFirmIdModal(true);
                 }}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
@@ -1048,8 +1054,8 @@ export function Login({ onLogin }: LoginProps) {
                       <Building2 className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-lg font-black uppercase tracking-tight truncate">Tenant firma kodu</h2>
-                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Giriş öncesi firma tanımlayıcı</p>
+                      <h2 className="text-lg font-black uppercase tracking-tight truncate">Kiracı / firma bağlantısı</h2>
+                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Merkez kayıt veya ERP firma no</p>
                     </div>
                   </div>
                   <button
@@ -1063,46 +1069,139 @@ export function Login({ onLogin }: LoginProps) {
                 </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Firma ID / firma numarası</label>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Merkez kiracı kodu veya kayıt UUID
+                </label>
                 <input
                   type="text"
-                  inputMode="numeric"
                   autoComplete="off"
                   value={tenantFirmIdDraft}
                   onChange={(e) => setTenantFirmIdDraft(e.target.value)}
-                  placeholder="Örn. 001"
+                  placeholder="Örn. aqua_beauty veya tenant_registry.id"
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium"
                 />
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 mt-4">
+                  Merkez PostgREST adresi (opsiyonel)
+                </label>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={merkezBaseUrlDraft}
+                  onChange={(e) => setMerkezBaseUrlDraft(e.target.value)}
+                  placeholder="Sadece URL, örn: http://72.60.182.107:3002"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-xs"
+                />
                 <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-                  Bu değer oturum öncesi seçili firma olarak kaydedilir (ör. çok kiracılı kurulumlarda doğru veritabanı şeması eşlemesi için).
+                  <strong className="text-slate-600">Merkezden bağlan:</strong> merkez_db PostgREST üzerinden tenant_registry okunur; hedef kiracının{' '}
+                  <code className="text-[10px] bg-slate-100 px-1 rounded">rest_base_url</code> ve bağlantı bilgileri uygulanır.
+                </p>
+                <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
+                  <strong className="text-slate-600">Sadece ERP firma no:</strong> Aşağıdaki &quot;Firma no kaydet&quot; yalnızca seçili firma numarasını (001) localStorage&apos;a yazar; veritabanı sunucusunu değiştirmez.
                 </p>
               </div>
-              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowTenantFirmIdModal(false)}
-                  className="flex-1 py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
-                >
-                  İptal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nr = normalizeTenantFirmNr(tenantFirmIdDraft);
-                    if (!nr) {
-                      toast.error('Geçerli bir firma numarası girin.');
+                  disabled={isMerkezTenantLoading}
+                  onClick={async () => {
+                    const raw = tenantFirmIdDraft.trim();
+                    if (!raw) {
+                      toast.error('Kiracı kodu veya UUID girin.');
                       return;
                     }
-                    localStorage.setItem('exretail_selected_firma_id', nr);
-                    setSelectedFirmNr(nr);
-                    setShowTenantFirmIdModal(false);
-                    toast.success('Firma kodu kaydedildi.');
-                    void loadFirms();
+                    const merkezUrl = merkezBaseUrlDraft.trim();
+                    if (merkezUrl) {
+                      const { sanitizeMerkezRestUrlInput } = await import(
+                        '../../services/merkezTenantRegistry'
+                      );
+                      const clean = sanitizeMerkezRestUrlInput(merkezUrl).replace(/\/+$/, '');
+                      localStorage.setItem('merkez_postgrest_base_url', clean);
+                    }
+                    setIsMerkezTenantLoading(true);
+                    try {
+                      const { fetchTenantRegistryRow, tenantRowToAppConfigPatch } = await import(
+                        '../../services/merkezTenantRegistry'
+                      );
+                      const row = await fetchTenantRegistryRow(raw);
+                      let preserve = '';
+                      let prev: Record<string, unknown> = {};
+                      if (isTauri) {
+                        const { invoke } = await import('@tauri-apps/api/core');
+                        prev = (await invoke('get_app_config')) as Record<string, unknown>;
+                        preserve = String(prev.pg_remote_pass ?? '');
+                      } else {
+                        const s = localStorage.getItem('retailex_web_config');
+                        if (s) {
+                          try {
+                            prev = JSON.parse(s) as Record<string, unknown>;
+                            preserve = String(prev.pg_remote_pass ?? '');
+                          } catch {
+                            prev = {};
+                          }
+                        }
+                      }
+                      const patch = tenantRowToAppConfigPatch(row, {
+                        preserveDbPassword: preserve,
+                        forTauri: isTauri,
+                      });
+                      const merged = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
+                      if (isTauri) {
+                        const { invoke } = await import('@tauri-apps/api/core');
+                        await invoke('save_app_config', { config: merged });
+                      } else {
+                        localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+                        localStorage.setItem('exretail_firma_donem_configured', 'true');
+                      }
+                      const { initializeFromSQLite } = await import('../../services/postgres');
+                      await initializeFromSQLite(isTauri ? merged : undefined);
+                      setConnectionProvider(
+                        (merged.connection_provider as ConnectionProvider) || 'rest_api'
+                      );
+                      setRemoteRestUrl(String(merged.remote_rest_url || ''));
+                      setDbConnectionMode('online');
+                      setShowTenantFirmIdModal(false);
+                      toast.success(`Kiracı uygulandı: ${row.display_name} (${row.code})`);
+                      void loadFirms();
+                      void loadUsers();
+                    } catch (e: any) {
+                      toast.error(e?.message || String(e));
+                    } finally {
+                      setIsMerkezTenantLoading(false);
+                    }
                   }}
-                  className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                  className="w-full py-3.5 rounded-2xl bg-indigo-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-indigo-200/40 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
                 >
-                  Kaydet
+                  {isMerkezTenantLoading ? 'Merkez sorgulanıyor…' : 'Merkezden bağlan'}
                 </button>
+                <div className="flex gap-4">
+                  <button
+                    type="button"
+                    disabled={isMerkezTenantLoading}
+                    onClick={() => setShowTenantFirmIdModal(false)}
+                    className="flex-1 py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isMerkezTenantLoading}
+                    onClick={() => {
+                      const nr = normalizeTenantFirmNr(tenantFirmIdDraft);
+                      if (!nr) {
+                        toast.error('Geçerli bir firma numarası girin (örn. 001).');
+                        return;
+                      }
+                      localStorage.setItem('exretail_selected_firma_id', nr);
+                      setSelectedFirmNr(nr);
+                      setShowTenantFirmIdModal(false);
+                      toast.success('Firma numarası kaydedildi.');
+                      void loadFirms();
+                    }}
+                    className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                  >
+                    Firma no kaydet
+                  </button>
+                </div>
               </div>
             </div>
           </div>

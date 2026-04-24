@@ -9,6 +9,8 @@
  *   PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT — CONFIG_DB yoksa veya --env-only
  *
  * Kullanım: npm run db:migrate
+ *           npm run db:migrate -- bestcom_db
+ *           npm run db:migrate -- --db bestcom_db
  *           node database/scripts/run-pending-migrations.mjs --dry-run
  *           node database/scripts/run-pending-migrations.mjs --env-only
  */
@@ -251,8 +253,21 @@ async function runSqlWithPgClient(pg, filePath) {
 }
 
 async function main() {
-  const dryRun = process.argv.includes('--dry-run');
-  const envOnly = process.argv.includes('--env-only');
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+  const envOnly = args.includes('--env-only');
+  const dbFlagIndex = args.indexOf('--db');
+  const dbFromFlag =
+    dbFlagIndex >= 0 && args[dbFlagIndex + 1]
+      ? args[dbFlagIndex + 1]
+      : null;
+  const dbFromPositional = args.find((a) => !a.startsWith('-')) || null;
+  const dbOverride = dbFromFlag || dbFromPositional;
+
+  if (dbOverride) {
+    process.env.PGDATABASE = dbOverride;
+    console.log(`[db:migrate] Veritabanı override: ${dbOverride}`);
+  }
 
   let pg;
   if (envOnly) {
