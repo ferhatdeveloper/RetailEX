@@ -62,7 +62,7 @@ mv "$_tmp" "$CADDYFILE"
 
 IFS=',' read -r -a _allowed_origins <<<"${MERKEZ_API_ALLOWED_ORIGINS}"
 _allow_methods="GET,POST,PUT,PATCH,DELETE,OPTIONS"
-_allow_headers="Authorization,Content-Type,apikey,Prefer,Accept,Origin"
+_allow_headers="Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
 
 {
   echo ""

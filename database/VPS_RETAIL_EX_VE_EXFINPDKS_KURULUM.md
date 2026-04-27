@@ -37,6 +37,8 @@ Bu akış sırasıyla:
 2. **`berqenas-vps-fresh-install-all.sh`** → **`berqenas-saas-from-zero.sh`** → **`berqenas-vps-full-paste.sh`**: Docker stack, veritabanları, PostgREST, `merkez_db` + `tenant_registry` + `anon` SQL.
 3. **`berqenas-deploy-web.sh`**: `INSTALL_DIR/projects/retailex` klonu, frontend imajı (**`VITE_MERKEZ_REST_URL`** ile), Caddy, **`berqenas-caddy-merge-merkez-api.sh`** ile API alt alanı, `aqua_beauty` için `rest_base_url` güncellemesi.
 4. Varsayılan olarak **`DEPLOY_EXFINPDKS=1`**: **`berqenas-deploy-exfinpdks-web.sh`** (EXFIN web + Caddy’de `exfinpdks.com`).
+5. PostgREST erişimi için `anon` rolü ve varsayılan `SELECT/EXECUTE` izinleri uygulanır; `aqua_beauty` için `public.verify_login` + `logic.verify_login` RPC fonksiyonları bootstrap edilir.
+6. Tenant bağlantısından sonra `tenant_registry.module` değeri web config'e yazılır (`tenant_module`) ve açılış ekranı modül tipine göre yönlendirilir (ör. `clinic` -> `beauty`, `restaurant` -> `restaurant`, `retail` -> `management`).
 
 EXFIN’i kurmadan sadece RetailEX yığını için:
 

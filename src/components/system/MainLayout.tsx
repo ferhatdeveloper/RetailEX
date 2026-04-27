@@ -166,11 +166,35 @@ export function MainLayout({
 
   // Kullanıcı rolüne göre başlangıç modülünü belirle
   const getInitialModule = (): Module => {
+    const pickBySystemType = (): Module | null => {
+      try {
+        const rawCfg = localStorage.getItem('retailex_web_config');
+        if (!rawCfg) return null;
+        const cfg = JSON.parse(rawCfg) as { system_type?: string; tenant_module?: string };
+        const systemType = String(cfg.system_type || '').toLowerCase();
+        const tenantModule = String(cfg.tenant_module || '').toLowerCase();
+        const mapped: Module | null =
+          systemType === 'beauty' || tenantModule === 'clinic' ? 'beauty' :
+          systemType === 'restaurant' || tenantModule === 'restaurant' ? 'restaurant' :
+          systemType === 'wms' ? 'wms' :
+          systemType === 'market' ? 'pos' :
+          systemType === 'retail' || tenantModule === 'retail' ? 'management' :
+          null;
+        if (mapped && isMainModuleVisible(mapped)) return mapped;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
     const rawSaved = localStorage.getItem('retailex_active_module');
     const savedModule = (rawSaved === 'backoffice' ? 'management' : rawSaved) as Module;
     if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
       if (isMainModuleVisible(savedModule)) return savedModule;
     }
+
+    const moduleByTenant = pickBySystemType();
+    if (moduleByTenant) return moduleByTenant;
 
     // 0b. Garson / Waiter rolü — koşulsuz restoran
     const primaryRoleName = (currentUser?.roles?.[0]?.name || currentUser?.role || '').toLowerCase();

@@ -166,6 +166,7 @@ export function tenantRowToAppConfigPatch(
     is_configured: true,
     db_mode: 'online',
     system_type,
+    tenant_module: row.module,
     connection_provider: provider,
     merkez_tenant_code: row.code,
     merkez_tenant_id: row.id,

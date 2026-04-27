@@ -192,6 +192,7 @@ for db in "${DATABASES[@]}"; do
 done
 
 docker exec -t saas_postgres psql -U postgres -d postgres -c "CREATE ROLE authenticator WITH LOGIN NOINHERIT PASSWORD '${AUTH_PASS}';" 2>/dev/null || true
+docker exec -t saas_postgres psql -U postgres -d postgres -c "CREATE ROLE anon NOLOGIN;" 2>/dev/null || true
 
 for db in "${DATABASES[@]}"; do
   docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT CONNECT ON DATABASE ${db} TO authenticator;"
@@ -199,7 +200,86 @@ for db in "${DATABASES[@]}"; do
   docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT CREATE ON SCHEMA public TO authenticator;"
   docker exec -t saas_postgres psql -U postgres -d "${db}" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticator;"
   docker exec -t saas_postgres psql -U postgres -d "${db}" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticator;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT CONNECT ON DATABASE ${db} TO anon;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT USAGE ON SCHEMA public TO anon;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO anon;"
+  docker exec -t saas_postgres psql -U postgres -d "${db}" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon;"
 done
+
+# Aqua Beauty tenant: verify_login RPC + logic wrapper (PostgREST /rpc/verify_login).
+docker exec -i saas_postgres psql -U postgres -d aqua_beauty -v ON_ERROR_STOP=1 <<'EOSQL'
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE SCHEMA IF NOT EXISTS logic;
+
+DROP FUNCTION IF EXISTS public.verify_login(text,text,text);
+CREATE OR REPLACE FUNCTION public.verify_login(
+  firm_nr text,
+  password text,
+  username text
+)
+RETURNS TABLE(
+  out_username text,
+  out_full_name text,
+  out_role text,
+  out_user_id uuid,
+  out_firm_nr text
+)
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  SELECT
+    u.username::text,
+    COALESCE(u.full_name, u.username)::text,
+    COALESCE(r.name, u.role)::text,
+    u.id::uuid,
+    COALESCE(u.firm_nr, verify_login.firm_nr)::text
+  FROM public.users u
+  LEFT JOIN public.roles r ON r.id = u.role_id
+  WHERE COALESCE(u.is_active, true) = true
+    AND LOWER(u.username) = LOWER(verify_login.username)
+    AND (
+      (
+        COALESCE(to_jsonb(u)->>'password_hash', '') <> ''
+        AND crypt(verify_login.password, COALESCE(to_jsonb(u)->>'password_hash', '')) = COALESCE(to_jsonb(u)->>'password_hash', '')
+      )
+      OR COALESCE(to_jsonb(u)->>'password', '') = verify_login.password
+      OR COALESCE(to_jsonb(u)->>'pass', '') = verify_login.password
+      OR COALESCE(to_jsonb(u)->>'passwd', '') = verify_login.password
+      OR COALESCE(to_jsonb(u)->>'pwd', '') = verify_login.password
+      OR COALESCE(to_jsonb(u)->>'sifre', '') = verify_login.password
+    )
+    AND (
+      verify_login.firm_nr IS NULL OR verify_login.firm_nr = '' OR
+      COALESCE(u.firm_nr, '') = verify_login.firm_nr
+    )
+  LIMIT 1;
+$$;
+
+DROP FUNCTION IF EXISTS logic.verify_login(text,text,text);
+CREATE OR REPLACE FUNCTION logic.verify_login(
+  firm_nr text,
+  password text,
+  username text
+)
+RETURNS TABLE(
+  out_username text,
+  out_full_name text,
+  out_role text,
+  out_user_id uuid,
+  out_firm_nr text
+)
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+  SELECT * FROM public.verify_login(firm_nr, password, username);
+$$;
+
+GRANT USAGE ON SCHEMA logic TO anon;
+GRANT EXECUTE ON FUNCTION public.verify_login(text,text,text) TO anon;
+GRANT EXECUTE ON FUNCTION logic.verify_login(text,text,text) TO anon;
+EOSQL
 
 docker exec -i saas_postgres psql -U postgres -d merkez_db -v ON_ERROR_STOP=1 <<'EOSQL'
 CREATE TABLE IF NOT EXISTS tenant_registry (
