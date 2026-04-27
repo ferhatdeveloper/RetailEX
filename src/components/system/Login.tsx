@@ -98,7 +98,24 @@ export function Login({ onLogin }: LoginProps) {
 
   const { darkMode } = useTheme();
 
+  const isTenantResolvedForWeb = () => {
+    if (typeof window === 'undefined') return true;
+    try {
+      if (localStorage.getItem('exretail_firma_donem_configured') === 'true') return true;
+      const rawCfg = localStorage.getItem('retailex_web_config');
+      if (!rawCfg) return false;
+      const cfg = JSON.parse(rawCfg) as { merkez_tenant_code?: string; merkez_tenant_id?: string };
+      return Boolean(String(cfg.merkez_tenant_code || '').trim() || String(cfg.merkez_tenant_id || '').trim());
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
+    // Web production akışında tenant_registry uygulanmadan firma/kullanıcı sorgusu başlatma.
+    if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+      return;
+    }
     loadFirms();
     loadUsers();
 
@@ -191,6 +208,10 @@ export function Login({ onLogin }: LoginProps) {
 
   const loadFirms = async () => {
     try {
+      if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+        setFirms([]);
+        return;
+      }
       setLoadingFirms(true);
       const { DB_SETTINGS } = await import('../../services/postgres');
 
@@ -253,6 +274,10 @@ export function Login({ onLogin }: LoginProps) {
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const loadUsers = async () => {
     try {
+      if (!isTauri && isProduction && !isTenantResolvedForWeb()) {
+        setDbUsers([]);
+        return;
+      }
       const { postgres } = await import('../../services/postgres');
       // Önce public.users (Kullanıcı Yönetimi) — garson vb. tüm tanımlı kullanıcılar burada
       try {
@@ -727,10 +752,21 @@ export function Login({ onLogin }: LoginProps) {
             <div className="absolute top-4 right-4 z-20 flex gap-1">
               <button
                 type="button"
-                title="Tenant firma kodu"
+                title="Tenant bağlantısı"
                 onClick={() => {
-                  const fromStorage = localStorage.getItem('exretail_selected_firma_id');
-                  setTenantFirmIdDraft(fromStorage || selectedFirmNr || '');
+                  let fromStorage = localStorage.getItem('exretail_selected_tenant') || '';
+                  if (!fromStorage) {
+                    try {
+                      const rawCfg = localStorage.getItem('retailex_web_config');
+                      if (rawCfg) {
+                        const cfg = JSON.parse(rawCfg) as { merkez_tenant_code?: string; merkez_tenant_id?: string };
+                        fromStorage = String(cfg.merkez_tenant_code || cfg.merkez_tenant_id || '');
+                      }
+                    } catch {
+                      // ignore parse errors
+                    }
+                  }
+                  setTenantFirmIdDraft(fromStorage);
                   setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || '');
                   setShowTenantFirmIdModal(true);
                 }}
@@ -1074,7 +1110,7 @@ export function Login({ onLogin }: LoginProps) {
                     </div>
                     <div className="min-w-0">
                       <h2 className="text-lg font-black uppercase tracking-tight truncate">Kiracı / firma bağlantısı</h2>
-                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Merkez kayıt veya ERP firma no</p>
+                      <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">Merkez tenant kaydı</p>
                     </div>
                   </div>
                   <button
@@ -1115,7 +1151,7 @@ export function Login({ onLogin }: LoginProps) {
                   <code className="text-[10px] bg-slate-100 px-1 rounded">rest_base_url</code> ve bağlantı bilgileri uygulanır.
                 </p>
                 <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600">Sadece ERP firma no:</strong> Aşağıdaki &quot;Firma no kaydet&quot; yalnızca seçili firma numarasını (001) localStorage&apos;a yazar; veritabanı sunucusunu değiştirmez.
+                  Tenant uygulanmadan firma ve kullanıcı listeleri yüklenmez.
                 </p>
               </div>
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
@@ -1182,6 +1218,7 @@ export function Login({ onLogin }: LoginProps) {
                       );
                       setRemoteRestUrl(String(merged.remote_rest_url || ''));
                       setDbConnectionMode('online');
+                      localStorage.setItem('exretail_selected_tenant', row.code || row.id);
                       setShowTenantFirmIdModal(false);
                       toast.success(`Kiracı uygulandı: ${row.display_name} (${row.code})`);
                       void loadFirms();
@@ -1201,28 +1238,9 @@ export function Login({ onLogin }: LoginProps) {
                     type="button"
                     disabled={isMerkezTenantLoading}
                     onClick={() => setShowTenantFirmIdModal(false)}
-                    className="flex-1 py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
+                    className="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
                   >
                     İptal
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isMerkezTenantLoading}
-                    onClick={() => {
-                      const nr = normalizeTenantFirmNr(tenantFirmIdDraft);
-                      if (!nr) {
-                        toast.error('Geçerli bir firma numarası girin (örn. 001).');
-                        return;
-                      }
-                      localStorage.setItem('exretail_selected_firma_id', nr);
-                      setSelectedFirmNr(nr);
-                      setShowTenantFirmIdModal(false);
-                      toast.success('Firma numarası kaydedildi.');
-                      void loadFirms();
-                    }}
-                    className="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
-                  >
-                    Firma no kaydet
                   </button>
                 </div>
               </div>

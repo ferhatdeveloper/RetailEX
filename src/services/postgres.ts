@@ -44,6 +44,21 @@ export let ERP_SETTINGS = {
   selected_cash_registers: [] as string[]
 };
 
+function isTenantResolvedForWeb(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    if (window.localStorage.getItem('exretail_firma_donem_configured') === 'true') return true;
+    const raw = window.localStorage.getItem('retailex_web_config');
+    if (!raw) return false;
+    const cfg = JSON.parse(raw);
+    const code = String(cfg?.merkez_tenant_code ?? '').trim();
+    const id = String(cfg?.merkez_tenant_id ?? '').trim();
+    return Boolean(code || id);
+  } catch {
+    return false;
+  }
+}
+
 /** Kurulum / config.db varsayılan para (firma yokken ve başlangıç) */
 export let APP_DEFAULT_CURRENCY = 'IQD';
 
@@ -133,6 +148,15 @@ function applyWebLocalStorageConfig(config: any): void {
   const dPw = String(config.erp_period_nr ?? '').replace(/\D/g, '');
   if (dFw) ERP_SETTINGS.firmNr = dFw.length <= 3 ? dFw.padStart(3, '0') : dFw;
   if (dPw) ERP_SETTINGS.periodNr = dPw.length <= 2 ? dPw.padStart(2, '0') : dPw;
+
+  // Tenant_registry ile bağlanılmışsa web guard bayrağını kalıcılaştır.
+  if (typeof window !== 'undefined') {
+    const tenantCode = String(config.merkez_tenant_code ?? '').trim();
+    const tenantId = String(config.merkez_tenant_id ?? '').trim();
+    if (tenantCode || tenantId) {
+      window.localStorage.setItem('exretail_firma_donem_configured', 'true');
+    }
+  }
 
   applyDefaultCurrencyFromConfig(config);
 }
@@ -658,6 +682,11 @@ export class PostgresConnection {
   }
 
   async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string }): Promise<{ rows: T[]; rowCount: number }> {
+    // Production webte tenant_registry çözülmeden tablo/sorgu trafiğini başlatma.
+    if (!IS_TAURI && IS_PRODUCTION && !isTenantResolvedForWeb()) {
+      throw new Error('Kiracı bağlantısı yapılmadan sorgu çalıştırılamaz. Önce "Merkezden bağlan" ile tenant_registry kaydını uygulayın.');
+    }
+
     // rest_api modunda bile bu method çağrılabilir (legacy akışlar).
     // Şimdilik burada hard-stop yapmıyoruz; SQL tarafı erişilebilir değilse hata dönecektir.
 

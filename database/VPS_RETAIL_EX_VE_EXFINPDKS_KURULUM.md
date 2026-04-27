@@ -25,6 +25,12 @@ Bu dosya **RetailEX** (`retailex.app`), **HTTPS API alt alanı** (`api.retailex.
 curl -fsSL https://raw.githubusercontent.com/ferhatdeveloper/RetailEX/main/database/scripts/berqenas-one-liner-bootstrap.sh | bash
 ```
 
+Son tenant akışı düzeltmeleriyle aynı tek komut (Merkez API açık kalsın):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ferhatdeveloper/RetailEX/main/database/scripts/berqenas-one-liner-bootstrap.sh | env SKIP_MERKEZ_API=0 bash
+```
+
 Bu akış sırasıyla:
 
 1. Sistem paketleri, **RetailEX** reposunu `/opt/RetailEX` altına klonlar (private repo ise GitHub PAT sorar).
@@ -89,8 +95,12 @@ cd /opt/berqenas-cloud/projects/retailex   # veya /opt/RetailEX
 git fetch origin main && git reset --hard origin/main
 sudo env RETAILEX_GIT_URL="https://github.com/ferhatdeveloper/RetailEX.git" \
   RETAILEX_PUBLIC_DOMAIN="retailex.app" \
+  SKIP_MERKEZ_API=0 \
   bash database/scripts/berqenas-deploy-web.sh
 ```
+
+Tenant tabanlı login akışı için deploy sonrası tarayıcıda **Ctrl+F5** yapın.  
+Gerekirse eski istemci önbelleğini tamamen temizleyin; aksi halde “Firma no kaydet” gibi eski UI görülebilir.
 
 ### 5.2 GitHub Actions ile otomatik deploy
 
