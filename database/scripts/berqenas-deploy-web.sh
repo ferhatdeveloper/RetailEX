@@ -3,7 +3,7 @@
 # Ön koşul: saas_postgres çalışıyor olmalı (Docker ağı adı alınır).
 #
 # Ortam:
-#   RETAILEX_GIT_URL   — zorunlu (https://github.com/kullanici/RetailEX.git)
+#   RETAILEX_GIT_URL   — varsayılan: https://github.com/ferhatdeveloper/RetailEX.git
 #   RETAILEX_GIT_BRANCH — varsayılan: main
 #   INSTALL_DIR        — varsayılan: /opt/berqenas-cloud
 #   RETAILEX_WEB_PORT  — varsayılan 8080. Alan adı (Caddy) açıkken de aynı port hostta acilir: http://GENEL_IP:8080
@@ -28,11 +28,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-}"
-if [[ -z "$RETAILEX_GIT_URL" ]]; then
-  echo "Hata: RETAILEX_GIT_URL bos." >&2
-  exit 1
-fi
+RETAILEX_GIT_URL="${RETAILEX_GIT_URL:-https://github.com/ferhatdeveloper/RetailEX.git}"
 
 RETAILEX_GIT_BRANCH="${RETAILEX_GIT_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
