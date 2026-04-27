@@ -204,7 +204,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgrest-per-db.yml up -
 3. Güvenlik duvarı — tüm PostgREST portları:
 
 ```bash
-ufw allow 3002:3009/tcp
+ufw allow 3002:3012/tcp
 ufw reload
 ```
 
@@ -220,6 +220,9 @@ ufw reload
 | 3007      | `siti_pdks`     | `saas_postgrest_siti_pdks` |
 | 3008      | `pdks_demo`     | `saas_postgrest_pdks_demo` |
 | 3009      | `retailex_demo` | `saas_postgrest_retailex_demo` |
+| 3010      | `berzin_com`    | `saas_postgrest_berzin_com` |
+| 3011      | `sho_aksesuar`  | `saas_postgrest_sho_aksesuar` |
+| 3012      | `kupeli`        | `saas_postgrest_kupeli` |
 
 Uygulama tarafında örnek taban URL (public IP; alan adını kendi VPS’inizle değiştirin):
 
@@ -253,7 +256,7 @@ VPN açıksa aynı portlar üzerinden `172.20.0.10` yerine **sunucunun erişileb
 | pgAdmin         | ferhatdeveloper@gmail.com / Yq7xwQpt6c* |
 | pgAdmin URL     | http://172.20.0.20 (sadece VPN ile) |
 | DB’ler          | `merkez_db`, `dismarco_pdks`, `aqua_beauty`, `m10_pdks`, `bestcom_db`, `siti_pdks`, `pdks_demo`, `retailex_demo` |
-| PostgREST portları | 3002–3009 (kiracı DB başına bir port; ayrıntı: §2 PostgREST) |
+| PostgREST portları | 3002–3012 (kiracı DB başına bir port; ayrıntı: §2 PostgREST) |
 | RetailEX DB     | Kiracıya göre seçilen veritabanı adı (ör. `bestcom_db`) |
 
 ---

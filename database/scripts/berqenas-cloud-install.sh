@@ -169,7 +169,7 @@ if [[ "$ENABLE_VPN" == "1" ]]; then
   ufw allow 51820/udp
 fi
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  ufw allow 3002:3009/tcp
+  ufw allow 3002:3012/tcp
 fi
 if [[ "$EXPOSE_PUBLIC" == "1" ]]; then
   ufw allow "${PGADMIN_HOST_PORT}/tcp"
@@ -208,7 +208,7 @@ else
   [[ "$EXPOSE_PUBLIC" != "1" ]] && echo "pgAdmin dis erisim icin: EXPOSE_PUBLIC=1 veya SSH tuneli / manuel ports."
 fi
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  echo "PostgREST: 3002-3009 TCP — merkez + kiracı DB (detay: database/BERQENAS_CLOUD_DEPLOY.md)"
+  echo "PostgREST: 3002-3012 TCP — merkez + kiracı DB (detay: database/BERQENAS_CLOUD_DEPLOY.md)"
 fi
 if [[ -n "${RETAILEX_GIT_URL:-}" ]]; then
   if [[ ! -v RETAILEX_PUBLIC_DOMAIN ]]; then

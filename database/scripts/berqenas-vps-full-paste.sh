@@ -17,7 +17,7 @@
 #   ENABLE_VPN=0|1  RETAILEX_GIT_URL=https://github.com/kullanici/RetailEX.git
 #   EXPOSE_PUBLIC=1  — pgAdmin (+ varsayilan Postgres 5432) tum arayuzlerde; UFW acar
 #   PGADMIN_HOST_PORT=5050  EXPOSE_POSTGRES_PUBLIC=0  — sadece pgAdmin, Postgres disari kapali
-#   ENABLE_POSTGREST=1  POSTGREST_COMPOSE=...  — database/docker/docker-compose.postgrest-per-db.yml (3002-3009)
+#   ENABLE_POSTGREST=1  POSTGREST_COMPOSE=...  — database/docker/docker-compose.postgrest-per-db.yml (3002-3012)
 #
 # Sifirdan SaaS (web+PostgREST+pgAdmin+Postgres herkese acik, VPN kapali): database/scripts/berqenas-saas-from-zero.sh
 #
@@ -353,7 +353,7 @@ if [[ "$EXPOSE_PUBLIC" == "1" ]]; then
   fi
 fi
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  ufw allow 3002:3009/tcp
+  ufw allow 3002:3012/tcp
 fi
 ufw --force enable
 
@@ -387,7 +387,7 @@ else
 fi
 echo "DB: dismarco_pdks aqua_beauty m10_pdks bestcom_db siti_pdks pdks_demo retailex_demo merkez_db"
 if [[ "$ENABLE_POSTGREST" == "1" ]]; then
-  echo "PostgREST (HTTP): 3002 merkez_db | 3003 dismarco_pdks | 3004 aqua_beauty | 3005 m10_pdks | 3006 bestcom_db | 3007 siti_pdks | 3008 pdks_demo | 3009 retailex_demo"
+  echo "PostgREST (HTTP): 3002 merkez_db | 3003 dismarco_pdks | 3004 aqua_beauty | 3005 m10_pdks | 3006 bestcom_db | 3007 siti_pdks | 3008 pdks_demo | 3009 retailex_demo | 3010 berzin_com | 3011 sho_aksesuar | 3012 kupeli"
 fi
 if [[ -n "${RETAILEX_GIT_URL:-}" ]]; then
   if [[ ! -v RETAILEX_PUBLIC_DOMAIN ]]; then

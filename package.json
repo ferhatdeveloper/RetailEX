@@ -2,7 +2,7 @@
       "name": "retailex",
       "description": "RetailEX Next-Gen ERP OS",
       "type": "module",
-      "version": "0.1.69",
+      "version": "0.1.70",
       "private": true,
       "dependencies": {
             "@ant-design/icons": "^6.1.0",
@@ -137,6 +137,11 @@
             "postgrest": "postgrest config/postgrest.conf",
             "db:migrate": "node database/scripts/run-pending-migrations.mjs",
             "db:migrate:dry": "node database/scripts/run-pending-migrations.mjs --dry-run",
-            "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only"
+            "db:migrate:env": "node database/scripts/run-pending-migrations.mjs --env-only",
+            "db:firm": "node database/scripts/firm-quick.mjs",
+            "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",
+            "db:merkez:tenant-retail-full-setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/merkez-tenant-retail-full-setup.ps1",
+            "db:tenant-post-schema": "node scripts/tenant-databases-post-schema.mjs",
+            "db:tenant-ensure-app-users": "node scripts/tenant-databases-ensure-app-users.mjs"
       }
 }

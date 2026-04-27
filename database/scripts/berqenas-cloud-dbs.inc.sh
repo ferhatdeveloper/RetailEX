@@ -15,6 +15,9 @@ berqenas_default_dbs_array() {
     siti_pdks
     pdks_demo
     retailex_demo
+    berzin_com
+    sho_aksesuar
+    kupeli
   )
 }
 

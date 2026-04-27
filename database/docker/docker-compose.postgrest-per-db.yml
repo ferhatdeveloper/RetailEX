@@ -6,7 +6,7 @@
 #
 # Ön koşul: Her hedef DB'de 007_postgrest_anon_role.sql çalışmış olmalı (anon rolü).
 # Şifre: Ana compose ile aynı — .env içinde POSTGRES_PASSWORD veya varsayılan.
-# DB seti: merkez_db … siti_pdks, pdks_demo, retailex_demo → portlar 3002–3009.
+# DB seti: merkez_db … retailex_demo → 3002–3009; berzin_com, sho_aksesuar, kupeli → 3010–3012.
 
 x-postgrest-env: &postgrest-env
   PGRST_DB_ANON_ROLE: anon
@@ -125,5 +125,47 @@ services:
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/retailex_demo
     ports:
       - "0.0.0.0:3009:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_berzin_com:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_berzin_com
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/berzin_com
+    ports:
+      - "0.0.0.0:3010:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_sho_aksesuar:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_sho_aksesuar
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/sho_aksesuar
+    ports:
+      - "0.0.0.0:3011:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_kupeli:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kupeli
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/kupeli
+    ports:
+      - "0.0.0.0:3012:3000"
     networks:
       berqenas_net: {}

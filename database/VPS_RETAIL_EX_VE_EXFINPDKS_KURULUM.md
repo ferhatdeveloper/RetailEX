@@ -8,7 +8,7 @@ Bu dosya **RetailEX** (`retailex.app`), **HTTPS API alt alanı** (`api.retailex.
 
 | Bileşen | Açıklama |
 |--------|----------|
-| **Berqenas stack** | Docker: PostgreSQL, pgAdmin, PostgREST (kiracı DB başına portlar 3002–3009), UFW. |
+| **Berqenas stack** | Docker: PostgreSQL, pgAdmin, PostgREST (kiracı DB başına portlar 3002–3012), UFW. |
 | **RetailEX web** | `Dockerfile.frontend` + **Nginx** `/api/*` → **`retailex_bridge`** (Dockerfile.bridge, Hono `pg_query`). Konteynerler: `retailex_frontend`, `retailex_bridge`. TLS: **Caddy** (`retailex_caddy`). **https://retailex.app** + **http://SUNUCU_IP:8080**. |
 | **Merkez API (HTTPS)** | Caddy’de **`api.<RETAILEX_PUBLIC_DOMAIN>`** (ör. `api.retailex.app`): kökte JSON sağlık cevabı; **`/merkez/*`** → `saas_postgrest_merkez`, **`/aqua/*`** → `saas_postgrest_aqua_beauty`. Web imajı build sırasında **`VITE_MERKEZ_REST_URL=https://api.../merkez`** ile üretilir (Mixed Content önlenir). |
 | **merkez_db** | `tenant_registry` tablosu; PostgREST için **`anon`** rolüne yalnızca `tenant_registry` **SELECT** (`merkez_db_anon_minimal.sql`). |
@@ -192,7 +192,7 @@ docker logs --tail 80 retailex_caddy
 
 ## 9. PostgREST portları (doğrudan HTTP)
 
-Kiracı başına host portları (örnek): **3002** merkez_db … **3009** retailex_demo. Tablo: `BERQENAS_CLOUD_DEPLOY.md`. Tarayıcıdan üretimde **`https://api.../merkez`** tercih edilir (TLS + aynı site politikası).
+Kiracı başına host portları (örnek): **3002** merkez_db … **3012** kupeli. Tablo: `BERQENAS_CLOUD_DEPLOY.md`. Tarayıcıdan üretimde **`https://api.../merkez`** ve kiracı yolu **`https://api.../{code}`** (Caddy `handle_path`) tercih edilir.
 
 ---
 

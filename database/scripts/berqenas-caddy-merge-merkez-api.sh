@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Caddyfile'a api.<ana_domain> bloğu ekler/günceller:
-# kök JSON sağlık + /merkez, /aqua PostgREST path'leri.
+# kök JSON sağlık + kiracı başına /{code}/* → ilgili PostgREST (merkez, aqua, retail, pdks, …).
 # Idempotent: aynı domain için eski blokları temizleyip tek blok yazar.
 #
 # Ortam:
@@ -19,6 +19,15 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
 MERKEZ_API_PUBLIC_DOMAIN="${MERKEZ_API_PUBLIC_DOMAIN:-}"
 POSTGREST_UPSTREAM_MERKEZ="${POSTGREST_UPSTREAM_MERKEZ:-saas_postgrest_merkez:3000}"
 POSTGREST_UPSTREAM_AQUA="${POSTGREST_UPSTREAM_AQUA:-saas_postgrest_aqua_beauty:3000}"
+POSTGREST_UPSTREAM_DISMARCO="${POSTGREST_UPSTREAM_DISMARCO:-saas_postgrest_dismarco_pdks:3000}"
+POSTGREST_UPSTREAM_M10="${POSTGREST_UPSTREAM_M10:-saas_postgrest_m10_pdks:3000}"
+POSTGREST_UPSTREAM_BESTCOM="${POSTGREST_UPSTREAM_BESTCOM:-saas_postgrest_bestcom:3000}"
+POSTGREST_UPSTREAM_SITI="${POSTGREST_UPSTREAM_SITI:-saas_postgrest_siti_pdks:3000}"
+POSTGREST_UPSTREAM_PDKS_DEMO="${POSTGREST_UPSTREAM_PDKS_DEMO:-saas_postgrest_pdks_demo:3000}"
+POSTGREST_UPSTREAM_RETAILEX_DEMO="${POSTGREST_UPSTREAM_RETAILEX_DEMO:-saas_postgrest_retailex_demo:3000}"
+POSTGREST_UPSTREAM_BERZIN_COM="${POSTGREST_UPSTREAM_BERZIN_COM:-saas_postgrest_berzin_com:3000}"
+POSTGREST_UPSTREAM_SHO_AKSESUAR="${POSTGREST_UPSTREAM_SHO_AKSESUAR:-saas_postgrest_sho_aksesuar:3000}"
+POSTGREST_UPSTREAM_KUPELI="${POSTGREST_UPSTREAM_KUPELI:-saas_postgrest_kupeli:3000}"
 MERKEZ_API_ALLOWED_ORIGINS="${MERKEZ_API_ALLOWED_ORIGINS:-https://retailex.app,https://ilsa.berqenas.cloud}"
 
 if [[ -z "${MERKEZ_API_PUBLIC_DOMAIN}" ]]; then
@@ -64,6 +73,16 @@ IFS=',' read -r -a _allowed_origins <<<"${MERKEZ_API_ALLOWED_ORIGINS}"
 _allow_methods="GET,POST,PUT,PATCH,DELETE,OPTIONS"
 _allow_headers="Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
 
+emit_postgrest_handle_path() {
+  local _path="$1"
+  local _up="$2"
+  echo "    handle_path /${_path}/* {"
+  echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
+  echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
+  echo "        reverse_proxy ${_up}"
+  echo "    }"
+}
+
 {
   echo ""
   echo "${MERKEZ_API_PUBLIC_DOMAIN} {"
@@ -95,16 +114,17 @@ _allow_headers="Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-P
   echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
   echo '        respond "{\"ok\":true,\"service\":\"retailex-api\"}" 200'
   echo "    }"
-  echo "    handle_path /merkez/* {"
-  echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
-  echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
-  echo "        reverse_proxy ${POSTGREST_UPSTREAM_MERKEZ}"
-  echo "    }"
-  echo "    handle_path /aqua/* {"
-  echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
-  echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
-  echo "        reverse_proxy ${POSTGREST_UPSTREAM_AQUA}"
-  echo "    }"
+  emit_postgrest_handle_path "merkez" "${POSTGREST_UPSTREAM_MERKEZ}"
+  emit_postgrest_handle_path "aqua" "${POSTGREST_UPSTREAM_AQUA}"
+  emit_postgrest_handle_path "dismarco_pdks" "${POSTGREST_UPSTREAM_DISMARCO}"
+  emit_postgrest_handle_path "m10_pdks" "${POSTGREST_UPSTREAM_M10}"
+  emit_postgrest_handle_path "bestcom" "${POSTGREST_UPSTREAM_BESTCOM}"
+  emit_postgrest_handle_path "siti_pdks" "${POSTGREST_UPSTREAM_SITI}"
+  emit_postgrest_handle_path "pdks_demo" "${POSTGREST_UPSTREAM_PDKS_DEMO}"
+  emit_postgrest_handle_path "retailex_demo" "${POSTGREST_UPSTREAM_RETAILEX_DEMO}"
+  emit_postgrest_handle_path "berzin_com" "${POSTGREST_UPSTREAM_BERZIN_COM}"
+  emit_postgrest_handle_path "sho_aksesuar" "${POSTGREST_UPSTREAM_SHO_AKSESUAR}"
+  emit_postgrest_handle_path "kupeli" "${POSTGREST_UPSTREAM_KUPELI}"
   echo "    handle {"
   echo "        header Content-Type \"application/json; charset=utf-8\""
   echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
