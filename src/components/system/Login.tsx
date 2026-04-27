@@ -24,6 +24,7 @@ const IT_PASS = "30031993";
 import { supabase } from '../../utils/supabase/client';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+const isProduction = import.meta.env.PROD;
 
 /** firms.firm_nr ile aynı biçim (örn. 2 → 002) — tenant ön seçimi için */
 function normalizeTenantFirmNr(v: string | number | undefined | null): string {

@@ -56,6 +56,19 @@ function App() {
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
   const [elevationReason, setElevationReason] = useState('');
   const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
+  const hasWebTenantResolution = (config?: any) => {
+    try {
+      const cfg = config ?? (() => {
+        const raw = localStorage.getItem('retailex_web_config');
+        return raw ? JSON.parse(raw) : null;
+      })();
+      const tenantCode = String(cfg?.merkez_tenant_code ?? '').trim();
+      const tenantId = String(cfg?.merkez_tenant_id ?? '').trim();
+      return Boolean(tenantCode || tenantId || localStorage.getItem('exretail_selected_tenant'));
+    } catch {
+      return Boolean(localStorage.getItem('exretail_selected_tenant'));
+    }
+  };
 
   useEffect(() => {
     let raf = 0;
@@ -84,7 +97,11 @@ function App() {
         const pn = !dP ? '01' : (dP.length <= 2 ? dP.padStart(2, '0') : dP);
         if (fn) localStorage.setItem('exretail_selected_firma_id', fn);
         localStorage.setItem('exretail_selected_donem_id', pn);
-        localStorage.setItem('exretail_firma_donem_configured', 'true');
+        if (IS_TAURI || hasWebTenantResolution(config)) {
+          localStorage.setItem('exretail_firma_donem_configured', 'true');
+        } else {
+          localStorage.removeItem('exretail_firma_donem_configured');
+        }
         localStorage.setItem('retailex_web_config', JSON.stringify(mergeRustIntoStoredWebConfig(config)));
       } else {
         setIsConfigured(false);
@@ -144,7 +161,7 @@ function App() {
           // ── Web Flow ──────────────────────────────────────────────────────────
           await initializeFromSQLite();
           setIsPgReady(true);
-          setIsConfigured(true);
+          setIsConfigured(hasWebTenantResolution());
           setIsInitialized(true);
           if ((window as any).removeLoader) (window as any).removeLoader();
         }
