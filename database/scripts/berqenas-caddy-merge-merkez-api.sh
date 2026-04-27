@@ -73,10 +73,12 @@ IFS=',' read -r -a _allowed_origins <<<"${MERKEZ_API_ALLOWED_ORIGINS}"
 _allow_methods="GET,POST,PUT,PATCH,DELETE,OPTIONS"
 _allow_headers="Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
 
+# handle_path /x/* bazen /x ve /x/ kok isteklerini kacirir; PostgREST /firms vb. icin /x* + strip_prefix kullan.
 emit_postgrest_handle_path() {
   local _path="$1"
   local _up="$2"
-  echo "    handle_path /${_path}/* {"
+  echo "    handle /${_path}* {"
+  echo "        uri strip_prefix /${_path}"
   echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
   echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
   echo "        reverse_proxy ${_up}"
