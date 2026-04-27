@@ -70,6 +70,7 @@ sudo env RETAILEX_GIT_URL="https://github.com/ferhatdeveloper/RetailEX.git" \
 | `DEPLOY_EXFINPDKS` | `1` (`berqenas-vps-fresh-install-all.sh`); `berqenas-saas-from-zero` doğrudan çağrılırsa `0`. |
 | `SKIP_MERKEZ_API` | `1` değilse: `api.<RETAILEX_PUBLIC_DOMAIN>` Caddy + `VITE_MERKEZ_REST_URL` build. |
 | `MERKEZ_API_PUBLIC_DOMAIN` | Boşsa `api.${RETAILEX_PUBLIC_DOMAIN}`. |
+| `MERKEZ_API_ALLOWED_ORIGINS` | CORS izinli origin listesi (virgülle). Varsayılan: `https://retailex.app,https://ilsa.berqenas.cloud`. |
 | `VITE_MERKEZ_REST_URL` | Doluysa build’te doğrudan bu URL kullanılır (MERKEZ_API_PUBLIC_DOMAIN türetmesini geçersiz kılar). |
 | `RETAILEX_PUBLIC_DOMAIN` | `berqenas-saas-from-zero` ile genelde `retailex.app`. Boş string: sadece `:8080`, Caddy + API birleştirme yok. |
 | `INSTALL_DIR` | `/opt/berqenas-cloud` |
