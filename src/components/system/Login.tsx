@@ -1220,6 +1220,15 @@ export function Login({ onLogin }: LoginProps) {
                       setRemoteRestUrl(String(merged.remote_rest_url || ''));
                       setDbConnectionMode('online');
                       localStorage.setItem('exretail_selected_tenant', row.code || row.id);
+                      const preferredModule =
+                        row.module === 'clinic' ? 'beauty' :
+                        row.module === 'restaurant' ? 'restaurant' :
+                        row.module === 'retail' ? 'management' :
+                        row.module === 'pdks' || row.module === 'hrm' ? 'management' :
+                        '';
+                      if (preferredModule) {
+                        localStorage.setItem('retailex_active_module', preferredModule);
+                      }
                       setShowTenantFirmIdModal(false);
                       toast.success(`Kiracı uygulandı: ${row.display_name} (${row.code})`);
                       void loadFirms();

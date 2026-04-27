@@ -187,14 +187,14 @@ export function MainLayout({
       }
     };
 
+    const moduleByTenant = pickBySystemType();
+    if (moduleByTenant) return moduleByTenant;
+
     const rawSaved = localStorage.getItem('retailex_active_module');
     const savedModule = (rawSaved === 'backoffice' ? 'management' : rawSaved) as Module;
     if (savedModule && ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'].includes(savedModule)) {
       if (isMainModuleVisible(savedModule)) return savedModule;
     }
-
-    const moduleByTenant = pickBySystemType();
-    if (moduleByTenant) return moduleByTenant;
 
     // 0b. Garson / Waiter rolü — koşulsuz restoran
     const primaryRoleName = (currentUser?.roles?.[0]?.name || currentUser?.role || '').toLowerCase();
