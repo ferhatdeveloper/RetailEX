@@ -195,20 +195,39 @@ export function Login({ onLogin }: LoginProps) {
       const { DB_SETTINGS } = await import('../../services/postgres');
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('../../services/api/postgrestClient');
-        const rows = await postgrest.get(
-          '/firms',
-          { select: '*', order: 'firm_nr.asc' },
-          { schema: 'public' }
-        );
-        const safeRows: any[] = Array.isArray(rows) ? rows : [];
-        setFirms(safeRows);
-        if (safeRows.length > 0) {
-          const lastFirm = localStorage.getItem('exretail_selected_firma_id');
-          const next = (lastFirm && safeRows.find(f => f.firm_nr === lastFirm)) ? lastFirm : safeRows[0].firm_nr;
-          if (next) setSelectedFirmNr(next);
+        try {
+          const { postgrest } = await import('../../services/api/postgrestClient');
+          const rows = await postgrest.get(
+            '/firms',
+            { select: '*', order: 'firm_nr.asc' },
+            { schema: 'public' }
+          );
+          const safeRows: any[] = Array.isArray(rows) ? rows : [];
+          setFirms(safeRows);
+          if (safeRows.length > 0) {
+            const lastFirm = localStorage.getItem('exretail_selected_firma_id');
+            const next = (lastFirm && safeRows.find(f => f.firm_nr === lastFirm)) ? lastFirm : safeRows[0].firm_nr;
+            if (next) setSelectedFirmNr(next);
+          }
+          return;
+        } catch (restErr: any) {
+          console.warn('[Login] PostgREST /firms failed, fallback to SQL:', restErr?.message || restErr);
+          // Bazı tenant DB'lerinde public.firms yerine prefixli firm tabloları kullanılıyor.
+          // Bu durumda postgres.query SQL rewrite ile doğru tabloya yönlendirir.
+          const { postgres } = await import('../../services/postgres');
+          const result = await postgres.query(`SELECT * FROM firms ORDER BY firm_nr ASC`, []);
+          const rows = result.rows || [];
+          setFirms(rows as any[]);
+          if (rows.length > 0) {
+            const lastFirm = localStorage.getItem('exretail_selected_firma_id');
+            if (lastFirm && (rows as any[]).find((f: any) => f.firm_nr === lastFirm)) {
+              setSelectedFirmNr(lastFirm);
+            } else {
+              setSelectedFirmNr((rows as any[])[0].firm_nr);
+            }
+          }
+          return;
         }
-        return;
       }
 
       const { postgres } = await import('../../services/postgres');

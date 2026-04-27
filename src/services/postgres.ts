@@ -117,6 +117,18 @@ function applyWebLocalStorageConfig(config: any): void {
   if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
   if (config.pg_remote_pass != null && config.pg_remote_pass !== '') REMOTE_CONFIG.password = config.pg_remote_pass;
 
+  // Production web'de bridge, container içinden DB'ye bağlanır.
+  // 127.0.0.1/localhost bridge konteynerinin kendisini işaret ettiği için ECONNREFUSED üretir.
+  if (
+    IS_PRODUCTION &&
+    (REMOTE_CONFIG.host === '127.0.0.1' || REMOTE_CONFIG.host === 'localhost')
+  ) {
+    REMOTE_CONFIG.host = 'saas_postgres';
+    if (!REMOTE_CONFIG.database || REMOTE_CONFIG.database === 'retailex_local') {
+      REMOTE_CONFIG.database = 'retailex_demo';
+    }
+  }
+
   const dFw = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
   const dPw = String(config.erp_period_nr ?? '').replace(/\D/g, '');
   if (dFw) ERP_SETTINGS.firmNr = dFw.length <= 3 ? dFw.padStart(3, '0') : dFw;
