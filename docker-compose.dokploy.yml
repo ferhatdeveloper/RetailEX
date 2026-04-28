@@ -8,6 +8,21 @@ x-postgrest-env: &postgrest-env
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
 
 services:
+  api_gateway:
+    image: caddy:2.8-alpine
+    container_name: retailex_api_gateway
+    restart: always
+    depends_on:
+      - postgrest_merkez
+      - postgrest_aqua_beauty
+      - postgrest_berzin_com
+      - postgrest_sho_aksesuar
+      - postgrest_kupeli
+    volumes:
+      - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
+    networks:
+      - berqenas_net
+
   postgres:
     image: postgres:17
     container_name: saas_postgres

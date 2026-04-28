@@ -1,0 +1,57 @@
+:80 {
+    encode gzip
+
+    @preflight method OPTIONS
+    header @preflight Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    header @preflight Access-Control-Allow-Headers "Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
+    header @preflight Access-Control-Max-Age "86400"
+    header @preflight Access-Control-Allow-Origin "*"
+    handle @preflight {
+        respond 204
+    }
+
+    @health path / /health /status
+    handle @health {
+        header Content-Type "application/json; charset=utf-8"
+        respond "{\"ok\":true,\"service\":\"retailex-api-gateway\"}" 200
+    }
+
+    handle_path /merkez/* {
+        reverse_proxy saas_postgrest_merkez:3000
+    }
+    handle_path /aqua/* {
+        reverse_proxy saas_postgrest_aqua_beauty:3000
+    }
+    handle_path /dismarco_pdks/* {
+        reverse_proxy saas_postgrest_dismarco_pdks:3000
+    }
+    handle_path /m10_pdks/* {
+        reverse_proxy saas_postgrest_m10_pdks:3000
+    }
+    handle_path /bestcom/* {
+        reverse_proxy saas_postgrest_bestcom:3000
+    }
+    handle_path /siti_pdks/* {
+        reverse_proxy saas_postgrest_siti_pdks:3000
+    }
+    handle_path /pdks_demo/* {
+        reverse_proxy saas_postgrest_pdks_demo:3000
+    }
+    handle_path /retailex_demo/* {
+        reverse_proxy saas_postgrest_retailex_demo:3000
+    }
+    handle_path /berzin_com/* {
+        reverse_proxy saas_postgrest_berzin_com:3000
+    }
+    handle_path /sho_aksesuar/* {
+        reverse_proxy saas_postgrest_sho_aksesuar:3000
+    }
+    handle_path /kupeli/* {
+        reverse_proxy saas_postgrest_kupeli:3000
+    }
+
+    handle {
+        header Content-Type "application/json; charset=utf-8"
+        respond "{\"ok\":false,\"error\":\"not_found\"}" 404
+    }
+}
