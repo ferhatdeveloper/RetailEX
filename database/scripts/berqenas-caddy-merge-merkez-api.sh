@@ -89,6 +89,7 @@ emit_postgrest_handle_path() {
   echo ""
   echo "${MERKEZ_API_PUBLIC_DOMAIN} {"
   echo "    encode gzip"
+  echo "    route {"
   echo "    @preflight method OPTIONS"
   for _origin in "${_allowed_origins[@]}"; do
     _origin="$(echo "${_origin}" | xargs)"
@@ -132,6 +133,7 @@ emit_postgrest_handle_path() {
   echo "        header Access-Control-Allow-Methods \"${_allow_methods}\""
   echo "        header Access-Control-Allow-Headers \"${_allow_headers}\""
   echo '        respond "{\"ok\":false,\"error\":\"not_found\"}" 404'
+  echo "    }"
   echo "    }"
   echo "}"
 } >>"$CADDYFILE"
