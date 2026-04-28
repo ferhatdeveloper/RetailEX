@@ -1,0 +1,255 @@
+version: "3.9"
+
+x-postgrest-env: &postgrest-env
+  PGRST_DB_ANON_ROLE: anon
+  PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos"
+  PGRST_SERVER_HOST: "0.0.0.0"
+  PGRST_SERVER_PORT: "3000"
+  PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: saas_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: postgres
+    # Dokploy'da internal network yeterli; host port acmak isterseniz:
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - saas_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      berqenas_net:
+        aliases:
+          - postgres
+          - saas_postgres
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: saas_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@retailex.app}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-change_this_password}
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - saas_pgadmin_data:/var/lib/pgadmin
+    networks:
+      - berqenas_net
+
+  retailex_bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.bridge
+    image: retailex-bridge:latest
+    container_name: retailex_bridge
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+    networks:
+      - berqenas_net
+
+  retailex_frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_BRIDGE_URL: ""
+        VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
+    image: retailex-web:latest
+    container_name: retailex_frontend
+    restart: always
+    ports:
+      - "${RETAILEX_WEB_PORT:-8080}:80"
+    depends_on:
+      - retailex_bridge
+    networks:
+      - berqenas_net
+
+  postgrest_merkez:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_merkez
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/merkez_db
+    ports:
+      - "${POSTGREST_PORT_MERKEZ:-3002}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_dismarco_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_dismarco_pdks
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/dismarco_pdks
+    ports:
+      - "${POSTGREST_PORT_DISMARCO:-3003}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_aqua_beauty:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_aqua_beauty
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/aqua_beauty
+    ports:
+      - "${POSTGREST_PORT_AQUA:-3004}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_m10_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_m10_pdks
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/m10_pdks
+    ports:
+      - "${POSTGREST_PORT_M10:-3005}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_bestcom:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_bestcom
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/bestcom_db
+    ports:
+      - "${POSTGREST_PORT_BESTCOM:-3006}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_siti_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_siti_pdks
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/siti_pdks
+    ports:
+      - "${POSTGREST_PORT_SITI:-3007}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_pdks_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_pdks_demo
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/pdks_demo
+    ports:
+      - "${POSTGREST_PORT_PDKS_DEMO:-3008}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_retailex_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_retailex_demo
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/retailex_demo
+    ports:
+      - "${POSTGREST_PORT_RETAILEX_DEMO:-3009}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_berzin_com:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_berzin_com
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/berzin_com
+    ports:
+      - "${POSTGREST_PORT_BERZIN:-3010}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_sho_aksesuar:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_sho_aksesuar
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sho_aksesuar
+    ports:
+      - "${POSTGREST_PORT_SHO:-3011}:3000"
+    networks:
+      - berqenas_net
+
+  postgrest_kupeli:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kupeli
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kupeli
+    ports:
+      - "${POSTGREST_PORT_KUPELI:-3012}:3000"
+    networks:
+      - berqenas_net
+
+networks:
+  berqenas_net:
+    name: berqenas_net
+
+volumes:
+  saas_postgres_data:
+  saas_pgadmin_data:
