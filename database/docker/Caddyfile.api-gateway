@@ -17,37 +17,37 @@
     }
 
     handle_path /merkez/* {
-        reverse_proxy saas_postgrest_merkez:3000
+        reverse_proxy postgrest_merkez:3000
     }
     handle_path /aqua/* {
-        reverse_proxy saas_postgrest_aqua_beauty:3000
+        reverse_proxy postgrest_aqua_beauty:3000
     }
     handle_path /dismarco_pdks/* {
-        reverse_proxy saas_postgrest_dismarco_pdks:3000
+        reverse_proxy postgrest_dismarco_pdks:3000
     }
     handle_path /m10_pdks/* {
-        reverse_proxy saas_postgrest_m10_pdks:3000
+        reverse_proxy postgrest_m10_pdks:3000
     }
     handle_path /bestcom/* {
-        reverse_proxy saas_postgrest_bestcom:3000
+        reverse_proxy postgrest_bestcom:3000
     }
     handle_path /siti_pdks/* {
-        reverse_proxy saas_postgrest_siti_pdks:3000
+        reverse_proxy postgrest_siti_pdks:3000
     }
     handle_path /pdks_demo/* {
-        reverse_proxy saas_postgrest_pdks_demo:3000
+        reverse_proxy postgrest_pdks_demo:3000
     }
     handle_path /retailex_demo/* {
-        reverse_proxy saas_postgrest_retailex_demo:3000
+        reverse_proxy postgrest_retailex_demo:3000
     }
     handle_path /berzin_com/* {
-        reverse_proxy saas_postgrest_berzin_com:3000
+        reverse_proxy postgrest_berzin_com:3000
     }
     handle_path /sho_aksesuar/* {
-        reverse_proxy saas_postgrest_sho_aksesuar:3000
+        reverse_proxy postgrest_sho_aksesuar:3000
     }
     handle_path /kupeli/* {
-        reverse_proxy saas_postgrest_kupeli:3000
+        reverse_proxy postgrest_kupeli:3000
     }
 
     handle {
