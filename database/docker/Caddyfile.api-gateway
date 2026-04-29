@@ -17,37 +17,70 @@
     }
 
     handle_path /merkez/* {
-        reverse_proxy postgrest_merkez:3000
+        reverse_proxy postgrest_merkez:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /aqua/* {
-        reverse_proxy postgrest_aqua_beauty:3000
+        reverse_proxy postgrest_aqua_beauty:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /dismarco_pdks/* {
-        reverse_proxy postgrest_dismarco_pdks:3000
+        reverse_proxy postgrest_dismarco_pdks:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /m10_pdks/* {
-        reverse_proxy postgrest_m10_pdks:3000
+        reverse_proxy postgrest_m10_pdks:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /bestcom/* {
-        reverse_proxy postgrest_bestcom:3000
+        reverse_proxy postgrest_bestcom:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /siti_pdks/* {
-        reverse_proxy postgrest_siti_pdks:3000
+        reverse_proxy postgrest_siti_pdks:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /pdks_demo/* {
-        reverse_proxy postgrest_pdks_demo:3000
+        reverse_proxy postgrest_pdks_demo:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /retailex_demo/* {
-        reverse_proxy postgrest_retailex_demo:3000
+        reverse_proxy postgrest_retailex_demo:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /berzin_com/* {
-        reverse_proxy postgrest_berzin_com:3000
+        reverse_proxy postgrest_berzin_com:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /sho_aksesuar/* {
-        reverse_proxy postgrest_sho_aksesuar:3000
+        reverse_proxy postgrest_sho_aksesuar:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
     handle_path /kupeli/* {
-        reverse_proxy postgrest_kupeli:3000
+        reverse_proxy postgrest_kupeli:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
     }
 
     handle {
