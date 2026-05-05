@@ -60,3 +60,28 @@ export function getAgendaRangeLocal(anchor: Date, dayCount = 7): { start: string
     end.setDate(end.getDate() + Math.max(1, dayCount) - 1);
     return { start: formatLocalYmd(start), end: formatLocalYmd(end) };
 }
+
+/** Yerel `YYYY-MM-DD` + gün sayısı (DST güvenli `setDate` döngüsü). */
+export function addDaysToLocalYmd(ymd: string, days: number): string {
+    const [y, m, d] = ymd.split('-').map(Number);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return ymd;
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    return formatLocalYmd(dt);
+}
+
+/** İki uç dahil, artan sırada yerel takvim günleri. `startYmd > endYmd` ise boş dizi. */
+export function enumerateLocalYmdInclusive(startYmd: string, endYmd: string): string[] {
+    const [ys, ms, ds] = startYmd.split('-').map(Number);
+    const [ye, me, de] = endYmd.split('-').map(Number);
+    if (!Number.isFinite(ys) || !Number.isFinite(ms) || !Number.isFinite(ds)) return [];
+    if (!Number.isFinite(ye) || !Number.isFinite(me) || !Number.isFinite(de)) return [];
+    const a = new Date(ys, ms - 1, ds);
+    const b = new Date(ye, me - 1, de);
+    if (a > b) return [];
+    const out: string[] = [];
+    for (let cur = new Date(a); cur <= b; cur.setDate(cur.getDate() + 1)) {
+        out.push(formatLocalYmd(cur));
+    }
+    return out;
+}

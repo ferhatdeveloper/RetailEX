@@ -20,7 +20,9 @@ export type WSEventType =
   | 'USER_DISCONNECTED'
   | 'SCALE_DATA'
   | 'RECONNECTED'
-  | 'EXCHANGE_RATE_UPDATED';
+  | 'EXCHANGE_RATE_UPDATED'
+  /** Sunucu: { data: { scope: 'firms'|'periods'|... } } ile master veri yenileme */
+  | 'DATA_INVALIDATION';
 
 export interface WSMessage {
   type: WSEventType;
@@ -95,6 +97,14 @@ export class WebSocketService {
           try {
             const message: WSMessage = JSON.parse(event.data);
             this.broadcast(message.type, message.data);
+            void import('./retailexDataSync').then(({ emitInvalidate, mapWsEventTypeToScope }) => {
+              if (message.type === 'DATA_INVALIDATION' && message.data?.scope) {
+                emitInvalidate(String(message.data.scope) as import('./retailexDataSync').RealtimeInvalidateScope, 'ws');
+                return;
+              }
+              const mapped = mapWsEventTypeToScope(message.type);
+              if (mapped) emitInvalidate(mapped, 'ws');
+            });
           } catch (err) {
             logger.error('[WS] Message parse error:', err);
           }

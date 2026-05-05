@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../types/beauty';
+import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -68,7 +69,8 @@ export function BeautyPOS() {
     };
 
     const [tab,         setTab]         = useState<'services' | 'packages'>('services');
-    const [category,    setCategory]    = useState<string>('all');
+    const [svcFilterMain, setSvcFilterMain] = useState<string>('all');
+    const [svcFilterLeaf, setSvcFilterLeaf] = useState<string>('all');
     const [svcSearch,   setSvcSearch]   = useState('');
     const [categoryRailMode, setCategoryRailMode] = useState<BeautyCategoryRailMode>(readBeautyCategoryRailMode);
 
@@ -110,16 +112,36 @@ export function BeautyPOS() {
     // ── Filtered services ──────────────────────────────────────────────────
     const filteredSvcs = useMemo(() => {
         return services.filter(s => {
-            const matchCat  = category === 'all' || s.category === category;
+            const mainOk = svcFilterMain === 'all' || beautyServiceMainKey(s) === svcFilterMain;
+            const leafOk = svcFilterLeaf === 'all' || beautyServiceSubKey(s) === svcFilterLeaf;
             const matchName = s.name.toLowerCase().includes(svcSearch.toLowerCase());
-            return s.is_active && matchCat && matchName;
+            return s.is_active && mainOk && leafOk && matchName;
         });
-    }, [services, category, svcSearch]);
+    }, [services, svcFilterMain, svcFilterLeaf, svcSearch]);
 
-    const categories = useMemo(() => {
-        const cats = Array.from(new Set(services.map(s => s.category)));
-        return cats;
+    const serviceMainKeys = useMemo(() => {
+        const set = new Set<string>();
+        for (const s of services) {
+            if (s.is_active === false) continue;
+            set.add(beautyServiceMainKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
     }, [services]);
+
+    const serviceSubKeysForMain = useMemo(() => {
+        if (svcFilterMain === 'all') return [] as string[];
+        const set = new Set<string>();
+        for (const s of services) {
+            if (s.is_active === false) continue;
+            if (beautyServiceMainKey(s) !== svcFilterMain) continue;
+            set.add(beautyServiceSubKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [services, svcFilterMain]);
+
+    useEffect(() => {
+        if (svcFilterMain === 'all') setSvcFilterLeaf('all');
+    }, [svcFilterMain]);
 
     const filteredCusts = useMemo(() => {
         if (!custSearch) return [];
@@ -273,23 +295,56 @@ export function BeautyPOS() {
                     </div>
 
                     {tab === 'services' && !useCategorySidebar && (
-                        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                            {['all', ...categories].map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setCategory(cat)}
-                                    style={{
-                                        flexShrink: 0, padding: '8px 14px', borderRadius: 8,
-                                        border: category === cat ? 'none' : '1px solid #e5e7eb',
-                                        background: category === cat ? '#ede9fe' : '#f9fafb',
-                                        color: category === cat ? '#7c3aed' : '#6b7280',
-                                        fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
-                                        minHeight: 40, touchAction: 'manipulation',
-                                    }}
-                                >
-                                    {cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat)}
-                                </button>
-                            ))}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'wrap', scrollbarWidth: 'none' }}>
+                                {['all', ...serviceMainKeys].map(mk => {
+                                    const sel = svcFilterMain === mk;
+                                    return (
+                                        <button
+                                            key={mk}
+                                            type="button"
+                                            onClick={() => {
+                                                setSvcFilterMain(mk);
+                                                setSvcFilterLeaf('all');
+                                            }}
+                                            style={{
+                                                flexShrink: 0, padding: '8px 14px', borderRadius: 8,
+                                                border: sel ? 'none' : '1px solid #e5e7eb',
+                                                background: sel ? '#ede9fe' : '#f9fafb',
+                                                color: sel ? '#7c3aed' : '#6b7280',
+                                                fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                                minHeight: 40, touchAction: 'manipulation',
+                                            }}
+                                        >
+                                            {mk === 'all' ? tm('bAll') : (CATEGORY_TR[mk] ?? mk)}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {svcFilterMain !== 'all' && serviceSubKeysForMain.length > 1 && (
+                                <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'wrap', scrollbarWidth: 'none' }}>
+                                    {['all', ...serviceSubKeysForMain].map(lk => {
+                                        const sel = svcFilterLeaf === lk;
+                                        return (
+                                            <button
+                                                key={lk}
+                                                type="button"
+                                                onClick={() => setSvcFilterLeaf(lk)}
+                                                style={{
+                                                    flexShrink: 0, padding: '6px 12px', borderRadius: 8,
+                                                    border: sel ? 'none' : '1px solid #e5e7eb',
+                                                    background: sel ? '#ddd6fe' : '#fff',
+                                                    color: sel ? '#5b21b6' : '#64748b',
+                                                    fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
+                                                    minHeight: 36, touchAction: 'manipulation',
+                                                }}
+                                            >
+                                                {lk === 'all' ? tm('bAll') : (CATEGORY_TR[lk] ?? lk)}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -319,37 +374,86 @@ export function BeautyPOS() {
                             }}>
                                 {tm('bCategorySidebarHeading')}
                             </div>
-                            {['all', ...categories].map(cat => {
-                                const sel = category === cat;
-                                const label = cat === 'all' ? tm('bAll') : (CATEGORY_TR[cat] ?? cat);
-                                return (
-                                    <button
-                                        key={cat}
-                                        type="button"
-                                        onClick={() => setCategory(cat)}
-                                        style={{
-                                            width: '100%',
-                                            textAlign: 'left',
-                                            padding: '12px 14px',
-                                            borderRadius: 14,
-                                            border: sel ? '2px solid #7c3aed' : '2px solid transparent',
-                                            background: sel ? '#ede9fe' : '#fff',
-                                            color: sel ? '#5b21b6' : '#64748b',
-                                            fontSize: 13,
-                                            fontWeight: sel ? 800 : 600,
-                                            cursor: 'pointer',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.04em',
-                                            lineHeight: 1.25,
-                                            wordBreak: 'break-word',
-                                            touchAction: 'manipulation',
-                                            boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
-                                        }}
-                                    >
-                                        {label}
-                                    </button>
-                                );
-                            })}
+                            <>
+                                <div style={{
+                                    fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                    letterSpacing: '0.14em', padding: '4px 8px 2px',
+                                }}>
+                                    {tm('bServiceMainCategoryFilter')}
+                                </div>
+                                {['all', ...serviceMainKeys].map(mk => {
+                                    const sel = svcFilterMain === mk;
+                                    return (
+                                        <button
+                                            key={mk}
+                                            type="button"
+                                            onClick={() => {
+                                                setSvcFilterMain(mk);
+                                                setSvcFilterLeaf('all');
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                textAlign: 'left',
+                                                padding: '12px 14px',
+                                                borderRadius: 14,
+                                                border: sel ? '2px solid #7c3aed' : '2px solid transparent',
+                                                background: sel ? '#ede9fe' : '#fff',
+                                                color: sel ? '#5b21b6' : '#64748b',
+                                                fontSize: 13,
+                                                fontWeight: sel ? 800 : 600,
+                                                cursor: 'pointer',
+                                                textTransform: 'uppercase',
+                                                letterSpacing: '0.04em',
+                                                lineHeight: 1.25,
+                                                wordBreak: 'break-word',
+                                                touchAction: 'manipulation',
+                                                boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                            }}
+                                        >
+                                            {mk === 'all' ? tm('bAll') : (CATEGORY_TR[mk] ?? mk)}
+                                        </button>
+                                    );
+                                })}
+                                {svcFilterMain !== 'all' && serviceSubKeysForMain.length > 1 && (
+                                    <>
+                                        <div style={{
+                                            fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                            letterSpacing: '0.14em', padding: '10px 8px 2px',
+                                        }}>
+                                            {tm('bServiceSubCategoryFilter')}
+                                        </div>
+                                        {['all', ...serviceSubKeysForMain].map(lk => {
+                                            const sel = svcFilterLeaf === lk;
+                                            return (
+                                                <button
+                                                    key={lk}
+                                                    type="button"
+                                                    onClick={() => setSvcFilterLeaf(lk)}
+                                                    style={{
+                                                        width: '100%',
+                                                        textAlign: 'left',
+                                                        padding: '10px 14px',
+                                                        borderRadius: 14,
+                                                        border: sel ? '2px solid #8b5cf6' : '2px solid transparent',
+                                                        background: sel ? '#ddd6fe' : '#fff',
+                                                        color: sel ? '#5b21b6' : '#64748b',
+                                                        fontSize: 12,
+                                                        fontWeight: sel ? 800 : 600,
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.04em',
+                                                        lineHeight: 1.25,
+                                                        wordBreak: 'break-word',
+                                                        touchAction: 'manipulation',
+                                                    }}
+                                                >
+                                                    {lk === 'all' ? tm('bAll') : (CATEGORY_TR[lk] ?? lk)}
+                                                </button>
+                                            );
+                                        })}
+                                    </>
+                                )}
+                            </>
                         </aside>
                     )}
                 {/* Grid */}
@@ -368,7 +472,12 @@ export function BeautyPOS() {
                             onMouseLeave={e => { e.currentTarget.style.borderColor = '#e8e4f0'; e.currentTarget.style.boxShadow = 'none'; }}
                         >
                             <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.3 }}>{svc.name}</p>
-                            <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{CATEGORY_TR[svc.category] ?? svc.category} · {svc.duration_min}dk</p>
+                            <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                                {String(svc.parent_category ?? '').trim()
+                                    ? `${CATEGORY_TR[String(svc.parent_category)] ?? svc.parent_category} › ${CATEGORY_TR[svc.category] ?? svc.category}`
+                                    : (CATEGORY_TR[svc.category] ?? svc.category)}{' '}
+                                · {svc.duration_min}dk
+                            </p>
                             <p style={{ fontSize: 14, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                         </button>
                     ))}

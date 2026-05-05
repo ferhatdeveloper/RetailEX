@@ -45,7 +45,13 @@ interface ImportResult {
   total: number;
   success: number;
   failed: number;
-  errors: { row: number; message: string }[];
+  errors: { row: number; message: string; preview?: string; rowData?: Record<string, any> }[];
+}
+
+interface ImportRunOptions {
+  onLog?: (line: string) => void;
+  duplicateCodeMode?: 'update' | 'change-code';
+  duplicateBarcodeMode?: 'error' | 'change-barcode';
 }
 
 interface Notification {
@@ -401,6 +407,94 @@ function numFromExcel(val: any, fallback = 0): number {
 
 function strFromExcel(val: any): string {
   return String(val ?? '').trim();
+}
+
+function buildRowPreview(row: Record<string, any> | undefined, maxPairs = 4): string {
+  if (!row) return '';
+  const entries = Object.entries(row)
+    .map(([k, v]) => [String(k).trim(), strFromExcel(v)] as const)
+    .filter(([k, v]) => k.length > 0 && v.length > 0)
+    .slice(0, maxPairs);
+  return entries.map(([k, v]) => `${k}: ${v}`).join(' | ');
+}
+
+/**
+ * Excel "Genel" biçimindeki büyük sayılar barkodda bilimsel gösterime (örn. 8.69001E+12) düşebilir.
+ * Barkod alanını metin gibi ele alıp mümkünse düz hane dizisine çevirir.
+ */
+function normalizeScientificToPlainDigits(input: string): string {
+  const s = input.trim();
+  const m = s.match(/^([+-]?\d+(?:\.\d+)?)e([+-]?\d+)$/i);
+  if (!m) return s;
+
+  let mantissa = m[1];
+  const exponent = parseInt(m[2], 10);
+  const negative = mantissa.startsWith('-');
+  mantissa = mantissa.replace(/^[+-]/, '');
+
+  const [intPartRaw, decPartRaw = ''] = mantissa.split('.');
+  const digits = `${intPartRaw}${decPartRaw}`;
+  const decimalIndex = intPartRaw.length;
+  const newDecimalIndex = decimalIndex + exponent;
+
+  let plain: string;
+  if (newDecimalIndex <= 0) {
+    plain = `0.${'0'.repeat(Math.abs(newDecimalIndex))}${digits}`;
+  } else if (newDecimalIndex >= digits.length) {
+    plain = `${digits}${'0'.repeat(newDecimalIndex - digits.length)}`;
+  } else {
+    plain = `${digits.slice(0, newDecimalIndex)}.${digits.slice(newDecimalIndex)}`;
+  }
+
+  const cleaned = plain.replace(/^0+(?=\d)/, '').replace(/\.0+$/, '').replace(/\.$/, '');
+  if (!cleaned) return '0';
+  return negative ? `-${cleaned}` : cleaned;
+}
+
+function barcodeFromExcel(val: any): string {
+  if (val == null) return '';
+  if (typeof val === 'string') return normalizeScientificToPlainDigits(val).trim();
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    const asText = XLSX.SSF.format('0', val);
+    return normalizeScientificToPlainDigits(asText).trim();
+  }
+  return normalizeScientificToPlainDigits(String(val)).trim();
+}
+
+function barcodeSuffixForCode(barcode: string): string {
+  const cleaned = String(barcode || '').replace(/[^0-9A-Za-z]/g, '');
+  return cleaned ? cleaned.slice(-8) : 'EK';
+}
+
+async function buildUniqueProductCode(baseCode: string, barcode: string): Promise<string> {
+  const safeBase = strFromExcel(baseCode).slice(0, 90) || 'URUN';
+  const suffix = barcodeSuffixForCode(barcode);
+  let candidate = `${safeBase}-${suffix}`.slice(0, 100);
+  let n = 1;
+  while (await productAPI.getByCode(candidate)) {
+    const numbered = `${safeBase}-${suffix}-${n}`;
+    candidate = numbered.slice(0, 100);
+    n++;
+    if (n > 9999) {
+      throw new Error(`"${baseCode}" için benzersiz ek ürün kodu üretilemedi.`);
+    }
+  }
+  return candidate;
+}
+
+async function buildUniqueBarcode(baseBarcode: string): Promise<string> {
+  const cleaned = strFromExcel(baseBarcode).replace(/\s+/g, '');
+  const safeBase = (cleaned || `BR-${Date.now()}`).slice(0, 92);
+  let candidate = `${safeBase}-D`;
+  let n = 1;
+  while (await productAPI.getByBarcode(candidate)) {
+    candidate = `${safeBase}-D${n}`.slice(0, 100);
+    n++;
+    if (n > 9999) {
+      throw new Error(`"${baseBarcode}" için benzersiz barkod üretilemedi.`);
+    }
+  }
+  return candidate;
 }
 
 /** Excel hücresinden YYYY-MM-DD (veya dd.mm.yyyy, seri sayı) */
@@ -822,8 +916,12 @@ async function ensureCategoriesByNames(names: string[]): Promise<void> {
   }
 }
 
-async function importProducts(rows: any[]): Promise<ImportResult> {
+async function importProducts(rows: any[], options?: ImportRunOptions): Promise<ImportResult> {
+  const log = options?.onLog;
+  const duplicateCodeMode = options?.duplicateCodeMode ?? 'update';
+  const duplicateBarcodeMode = options?.duplicateBarcodeMode ?? 'error';
   const result: ImportResult = { total: rows.length, success: 0, failed: 0, errors: [] };
+  log?.(`[START] Ürün aktarımı başladı. Toplam satır: ${rows.length}`);
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowNum = i + 2; // Excel satırı (başlık = 1)
@@ -832,12 +930,13 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
     if (!code || !name) {
       result.failed++;
       result.errors.push({ row: rowNum, message: 'Ürün Kodu ve Ürün Adı zorunludur.' });
+      log?.(`[ROW ${rowNum}] SKIP - Zorunlu alan eksik (Kod/Ad).`);
       continue;
     }
     const payload = {
       code,
       name,
-      barcode: strFromExcel(row['Barkod']),
+      barcode: barcodeFromExcel(row['Barkod']),
       category: strFromExcel(row['Kategori']),
       group_code: strFromExcel(row['Grup Kodu']),
       brand: strFromExcel(row['Marka']),
@@ -859,9 +958,43 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
     try {
       const existing = await productAPI.getByCode(code);
       if (existing) {
+        const incomingBarcode = strFromExcel(payload.barcode);
+        const existingBarcode = strFromExcel((existing as any).barcode);
+        const hasDifferentBarcode =
+          incomingBarcode.length > 0 &&
+          existingBarcode.length > 0 &&
+          incomingBarcode !== existingBarcode;
+
+        if (hasDifferentBarcode && duplicateCodeMode === 'change-code') {
+          const uniqueCode = await buildUniqueProductCode(code, incomingBarcode);
+          await productAPI.create({ ...payload, code: uniqueCode } as any);
+          result.success++;
+          log?.(`[ROW ${rowNum}] CREATE - Kod çakıştı, barkod farklı. Yeni kod: ${uniqueCode} (kural: ürün kodunu değiştir)`);
+          continue;
+        } else if (hasDifferentBarcode && duplicateCodeMode === 'update') {
+          log?.(`[ROW ${rowNum}] UPDATE - Kod aynı, barkod farklı ama kural "güncelle" olduğu için mevcut ürün güncellenecek.`);
+        }
+
+        let updateBarcode = strFromExcel(payload.barcode);
+        if (updateBarcode) {
+          const barcodeOwner = await productAPI.getByBarcode(updateBarcode);
+          const barcodeBelongsAnother =
+            barcodeOwner &&
+            strFromExcel((barcodeOwner as any).id) !== strFromExcel((existing as any).id);
+          if (barcodeBelongsAnother) {
+            if (duplicateBarcodeMode === 'change-barcode') {
+              const uniqueBarcode = await buildUniqueBarcode(updateBarcode);
+              log?.(`[ROW ${rowNum}] FIX - Tekrarlı barkod (${updateBarcode}) değiştirildi: ${uniqueBarcode}`);
+              updateBarcode = uniqueBarcode;
+            } else {
+              throw new Error(`Barkod başka üründe var: ${updateBarcode}`);
+            }
+          }
+        }
+
         const upd: Record<string, any> = {
           name: payload.name,
-          barcode: payload.barcode,
+          barcode: updateBarcode,
           category: payload.category,
           group_code: payload.group_code,
           brand: payload.brand,
@@ -882,9 +1015,25 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
         }
         await productAPI.update(existing.id, upd as any);
         result.success++;
+        log?.(`[ROW ${rowNum}] UPDATE - ${code}`);
       } else {
-        await productAPI.create(payload as any);
+        let createPayload = { ...payload };
+        const incomingBarcode = strFromExcel(createPayload.barcode);
+        if (incomingBarcode) {
+          const barcodeOwner = await productAPI.getByBarcode(incomingBarcode);
+          if (barcodeOwner) {
+            if (duplicateBarcodeMode === 'change-barcode') {
+              const uniqueBarcode = await buildUniqueBarcode(incomingBarcode);
+              createPayload = { ...createPayload, barcode: uniqueBarcode };
+              log?.(`[ROW ${rowNum}] FIX - Tekrarlı barkod (${incomingBarcode}) değiştirildi: ${uniqueBarcode}`);
+            } else {
+              throw new Error(`Barkod başka üründe var: ${incomingBarcode}`);
+            }
+          }
+        }
+        await productAPI.create(createPayload as any);
         result.success++;
+        log?.(`[ROW ${rowNum}] CREATE - ${code}`);
       }
     } catch (err: any) {
       result.failed++;
@@ -895,8 +1044,10 @@ async function importProducts(rows: any[]): Promise<ImportResult> {
             ? String(err)
             : 'Kayıt oluşturulamadı.';
       result.errors.push({ row: rowNum, message: msg });
+      log?.(`[ROW ${rowNum}] ERROR - ${code || '-'} | ${msg}`);
     }
   }
+  log?.(`[END] Ürün aktarımı bitti. Başarılı: ${result.success}, Hatalı: ${result.failed}`);
   return result;
 }
 
@@ -965,7 +1116,7 @@ async function importVariants(rows: any[]): Promise<ImportResult> {
     try {
       await productVariantAPI.create(productId, {
         code: strFromExcel(row['Varyant Kodu']),
-        barcode: strFromExcel(row['Barkod']),
+        barcode: barcodeFromExcel(row['Barkod']),
         color: strFromExcel(row['Renk']),
         size: strFromExcel(row['Beden']),
         stock: numFromExcel(row['Stok']),
@@ -1213,7 +1364,7 @@ interface TabConfig {
   bgColor: string;
   borderColor: string;
   exportFn?: () => Promise<void>;
-  importFn?: (rows: any[]) => Promise<ImportResult>;
+  importFn?: (rows: any[], options?: ImportRunOptions) => Promise<ImportResult>;
   importNote?: string;
 }
 
@@ -1314,7 +1465,15 @@ export function ExcelModule() {
   const [activeTab, setActiveTab] = useState<EntityType>('products');
   const [notification, setNotification] = useState<Notification | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importLogs, setImportLogs] = useState<string[]>([]);
+  const [duplicateCodeMode, setDuplicateCodeMode] = useState<'update' | 'change-code'>('change-code');
+  const [duplicateBarcodeMode, setDuplicateBarcodeMode] = useState<'error' | 'change-barcode'>('change-barcode');
   const [isLoading, setIsLoading] = useState(false);
+  const [editErrorModal, setEditErrorModal] = useState<{
+    open: true;
+    row: number;
+    draft: Record<string, any>;
+  } | { open: false }>({ open: false });
   const [categoryPreviewModal, setCategoryPreviewModal] = useState<{
     open: true;
     newCategories: string[];
@@ -1329,6 +1488,15 @@ export function ExcelModule() {
     if (autoDismiss && n.type !== 'loading') {
       setTimeout(() => setNotification(null), 4000);
     }
+  }, []);
+
+  const appendImportLog = useCallback((line: string) => {
+    setImportLogs((prev) => {
+      const next = [...prev, `${new Date().toLocaleTimeString()} ${line}`];
+      // Terminal panelinin şişmesini önle
+      if (next.length > 500) return next.slice(next.length - 500);
+      return next;
+    });
   }, []);
 
   // Şablon indir
@@ -1364,9 +1532,18 @@ export function ExcelModule() {
   const runImportWithRows = useCallback(async (rows: any[]) => {
     if (!tab.importFn) return;
     setImportResult(null);
+    setImportLogs([]);
     showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} içe aktarılıyor...` }, false);
     try {
-      const result = await tab.importFn(rows);
+      const result = await tab.importFn(rows, {
+        onLog: appendImportLog,
+        duplicateCodeMode,
+        duplicateBarcodeMode,
+      });
+      result.errors = result.errors.map((err) => {
+        const rowData = rows[err.row - 2] as Record<string, any> | undefined;
+        return { ...err, preview: buildRowPreview(rowData), rowData };
+      });
       setImportResult(result);
       if (result.failed === 0) {
         showNotification({ type: 'success', message: `${result.success} kayıt başarıyla içe aktarıldı.` });
@@ -1385,7 +1562,7 @@ export function ExcelModule() {
     } finally {
       setIsLoading(false);
     }
-  }, [tab, showNotification, loadProducts, loadCustomers]);
+  }, [tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode]);
 
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1408,7 +1585,7 @@ export function ExcelModule() {
           setIsLoading(false);
           return;
         }
-        const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' }) as Record<string, any>[];
+        const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: false }) as Record<string, any>[];
         const rows = rawRows.map(r => normalizeRowKeys(r, tab.id));
 
         if (rows.length === 0) {
@@ -1464,6 +1641,80 @@ export function ExcelModule() {
 
   const handleCategoryPreviewCancel = useCallback(() => {
     setCategoryPreviewModal({ open: false });
+  }, []);
+
+  const handleOpenErrorEditor = useCallback((err: { row: number; rowData?: Record<string, any> }) => {
+    if (!err.rowData) return;
+    setEditErrorModal({ open: true, row: err.row, draft: { ...err.rowData } });
+  }, []);
+
+  const handleErrorFieldChange = useCallback((key: string, value: string) => {
+    setEditErrorModal((prev) => {
+      if (!prev.open) return prev;
+      return { ...prev, draft: { ...prev.draft, [key]: value } };
+    });
+  }, []);
+
+  const handleRetryEditedRow = useCallback(async () => {
+    if (!editErrorModal.open) return;
+    if (!tab.importFn) return;
+
+    const originalRow = editErrorModal.row;
+    const draft = { ...editErrorModal.draft };
+
+    setIsLoading(true);
+    setImportLogs([]);
+    showNotification({ type: 'loading', message: `Satır ${originalRow} tekrar içe aktarılıyor...` }, false);
+    try {
+      const retryResult = await tab.importFn([draft], {
+        onLog: appendImportLog,
+        duplicateCodeMode,
+        duplicateBarcodeMode,
+      });
+      const retryErrors = retryResult.errors.map((err) => ({
+        ...err,
+        row: originalRow,
+        rowData: draft,
+        preview: buildRowPreview(draft),
+      }));
+
+      setImportResult((prev) => {
+        if (!prev) {
+          return {
+            total: 1,
+            success: retryResult.success,
+            failed: retryResult.failed,
+            errors: retryErrors,
+          };
+        }
+
+        const withoutCurrent = prev.errors.filter((e) => e.row !== originalRow);
+        return {
+          total: prev.total,
+          success: prev.success + retryResult.success,
+          failed: Math.max(0, prev.failed - 1) + retryResult.failed,
+          errors: [...withoutCurrent, ...retryErrors],
+        };
+      });
+
+      if (retryResult.failed === 0) {
+        showNotification({ type: 'success', message: `Satır ${originalRow} başarıyla aktarıldı.` });
+        if (tab.id === 'products') loadProducts(true);
+        else if (tab.id === 'current-accounts') loadCustomers();
+      } else {
+        showNotification({ type: 'error', message: `Satır ${originalRow} için hata devam ediyor.` });
+      }
+
+      setEditErrorModal({ open: false });
+    } catch (err: any) {
+      showNotification({ type: 'error', message: 'Tekrar aktarım hatası: ' + (err?.message || 'Bilinmeyen hata') });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [editErrorModal, tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode]);
+
+  const handleCloseErrorEditor = useCallback(() => {
+    setEditErrorModal({ open: false });
   }, []);
 
   const Icon = tab.icon;
@@ -1533,43 +1784,94 @@ export function ExcelModule() {
 
           {/* Kategori önizleme modalı (ürün aktarımında sistemde olmayan kategoriler) */}
           {categoryPreviewModal.open && categoryPreviewModal.newCategories.length > 0 && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full max-h-[80vh] flex flex-col">
-                <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    Aktarım öncesi oluşturulacak kategoriler
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Aşağıdaki kategoriler sistemde bulunmuyor; aktarım sırasında oluşturulacak.
-                  </p>
+            <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50">
+              <div className="flex min-h-[100dvh] min-h-screen items-center justify-center p-3 py-6 sm:p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full max-h-[min(90vh,100dvh)] min-h-0 flex flex-col overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Aktarım öncesi oluşturulacak kategoriler
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Aşağıdaki kategoriler sistemde bulunmuyor; aktarım sırasında oluşturulacak.
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto p-5">
+                    <ul className="space-y-2">
+                      {categoryPreviewModal.newCategories.map((name, idx) => (
+                        <li key={idx} className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                          <Tag className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                          <span>{name}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleCategoryPreviewCancel}
+                      className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCategoryPreviewConfirm}
+                      disabled={isLoading}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Devam et ve aktar
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-5">
-                  <ul className="space-y-2">
-                    {categoryPreviewModal.newCategories.map((name, idx) => (
-                      <li key={idx} className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                        <Tag className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <span>{name}</span>
-                      </li>
+              </div>
+            </div>
+          )}
+
+          {/* Hatalı satır düzenleme modalı */}
+          {editErrorModal.open && (
+            <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-black/50">
+              <div className="flex min-h-[100dvh] min-h-screen items-center justify-center p-3 py-6 sm:p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 max-w-2xl w-full max-h-[min(90vh,100dvh)] min-h-0 flex flex-col overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Hatalı satırı düzelt (Satır {editErrorModal.row})
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Alanları güncelleyip yalnızca bu satırı tekrar içe aktarabilirsiniz.
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
+                    {Object.keys(editErrorModal.draft).map((key) => (
+                      <label key={key} className="block">
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{key}</span>
+                        <input
+                          type="text"
+                          value={strFromExcel(editErrorModal.draft[key])}
+                          onChange={(e) => handleErrorFieldChange(key, e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </label>
                     ))}
-                  </ul>
-                </div>
-                <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCategoryPreviewCancel}
-                    className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    İptal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCategoryPreviewConfirm}
-                    disabled={isLoading}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Devam et ve aktar
-                  </button>
+                  </div>
+                  <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleCloseErrorEditor}
+                      className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRetryEditedRow}
+                      disabled={isLoading}
+                      className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Düzelt ve tekrar aktar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1670,6 +1972,36 @@ export function ExcelModule() {
                     <span>{tab.importNote}</span>
                   </div>
                 )}
+                {tab.id === 'products' && (
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        Tekrar eden ürün kodu (kod aynı, barkod farklı)
+                      </label>
+                      <select
+                        value={duplicateCodeMode}
+                        onChange={(e) => setDuplicateCodeMode(e.target.value as 'update' | 'change-code')}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
+                      >
+                        <option value="change-code">Ürün kodunu değiştirip yeni ürün ekle</option>
+                        <option value="update">Mevcut ürünü güncelle</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        Tekrar eden barkod
+                      </label>
+                      <select
+                        value={duplicateBarcodeMode}
+                        onChange={(e) => setDuplicateBarcodeMode(e.target.value as 'error' | 'change-barcode')}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
+                      >
+                        <option value="change-barcode">Barkodu değiştirip ekle</option>
+                        <option value="error">Hata ver, aktarma</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
                 {!tab.importNote && (
                   <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -1696,6 +2028,23 @@ export function ExcelModule() {
               </div>
             </div>
           </div>
+
+          {/* Import Terminal Log */}
+          {(isLoading || importLogs.length > 0) && (
+            <div className="bg-black rounded-xl border border-gray-700 overflow-hidden">
+              <div className="px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-green-400">Import Terminal</h3>
+                <span className="text-[11px] text-gray-400">{importLogs.length} log</span>
+              </div>
+              <div className="max-h-64 overflow-y-auto p-3 font-mono text-[11px] leading-5 text-green-300 space-y-0.5">
+                {importLogs.length === 0 ? (
+                  <div className="text-gray-500">Log bekleniyor...</div>
+                ) : (
+                  importLogs.map((line, idx) => <div key={idx}>{line}</div>)
+                )}
+              </div>
+            </div>
+          )}
 
           {/* İçe Aktarım Sonuçları */}
           {importResult && (
@@ -1745,9 +2094,27 @@ export function ExcelModule() {
                     </h4>
                     <div className="max-h-48 overflow-y-auto space-y-1">
                       {importResult.errors.map((err, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-xs bg-red-50 dark:bg-red-900/10 rounded p-2">
-                          <span className="font-mono font-semibold text-red-500 flex-shrink-0">Satır {err.row}:</span>
-                          <span className="text-red-700 dark:text-red-300">{err.message}</span>
+                        <div key={idx} className="text-xs bg-red-50 dark:bg-red-900/10 rounded p-2">
+                          <div className="flex items-start gap-2">
+                            <span className="font-mono font-semibold text-red-500 flex-shrink-0">Satır {err.row}:</span>
+                            <span className="text-red-700 dark:text-red-300">{err.message}</span>
+                          </div>
+                          {err.preview && (
+                            <div className="mt-1 pl-14 text-red-600/90 dark:text-red-300/90 break-words">
+                              Önizleme: {err.preview}
+                            </div>
+                          )}
+                          {err.rowData && (
+                            <div className="mt-2 pl-14">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenErrorEditor(err)}
+                                className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                              >
+                                Bu satırı düzelt
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

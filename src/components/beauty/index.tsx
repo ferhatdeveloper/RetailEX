@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
     LayoutDashboard, Users, Calendar, Scissors, Package,
@@ -33,6 +34,7 @@ import { DentalChartScreen } from './specialty/DentalChartScreen';
 import { PhysioBodyScreen } from './specialty/PhysioBodyScreen';
 import { ObstetricsScreen } from './specialty/ObstetricsScreen';
 import { DietitianScreen } from './specialty/DietitianScreen';
+import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { FirmSelector } from '../system/FirmSelector';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
@@ -126,6 +128,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     title: tm('bShellMenuDefinitions'),
                     items: [
                         { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
+                        { id: 'product_sales', icon: Package, label: tm('bShellNavProductSales') },
                         { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
                         { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
                         { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
@@ -137,7 +140,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     items: [
                         { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
                         { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
-                        { id: 'expenses', icon: Banknote, label: 'Giderler' },
+                        { id: 'expenses', icon: Banknote, label: tm('bShellNavExpenses') },
                         { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
                         { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
                     ],
@@ -180,6 +183,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 title: tm('bShellMenuDefinitions'),
                 items: [
                     { id: 'services', icon: Scissors, label: tm('bShellNavServices') },
+                    { id: 'product_sales', icon: Package, label: tm('bShellNavProductSales') },
                     { id: 'service_recipes', icon: Layers, label: tm('bShellNavServiceRecipes') },
                     { id: 'packages', icon: Package, label: tm('bShellNavPackages') },
                     { id: 'devices', icon: Box, label: tm('bShellNavDevices') },
@@ -191,7 +195,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 items: [
                     { id: 'staff', icon: UserCog, label: tm('bShellNavStaff') },
                     { id: 'leads', icon: Megaphone, label: tm('bShellNavLeads') },
-                    { id: 'expenses', icon: Banknote, label: 'Giderler' },
+                    { id: 'expenses', icon: Banknote, label: tm('bShellNavExpenses') },
                     { id: 'reports', icon: BarChart3, label: tm('bShellNavReports') },
                     { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
                 ],
@@ -205,13 +209,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         clients: tm('bShellNavClients'),
         calendar: tm('bShellNavCalendar'),
         services: tm('bShellNavServices'),
+        product_sales: tm('bShellNavProductSales'),
         service_recipes: tm('bShellNavServiceRecipes'),
         packages: tm('bShellNavPackages'),
         devices: tm('bShellNavDevices'),
         surveys: tm('bSatisfactionSurveysTitle'),
         staff: tm('bShellNavStaff'),
         leads: tm('bShellNavLeads'),
-        expenses: 'Giderler',
+        expenses: tm('bShellNavExpenses'),
         reports: tm('bShellNavReports'),
         clinic_ops: tm('bShellNavClinicOps'),
         dental_chart: tm('bShellNavDental'),
@@ -615,6 +620,32 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     {activeTab === 'dietitian' && <DietitianScreen />}
                 </main>
             </div>
+
+            {activeTab === 'product_sales' && createPortal(
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 100000,
+                        background: '#f7f6fb',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '100dvh',
+                        width: '100vw',
+                        maxWidth: '100vw',
+                        overflow: 'hidden',
+                    }}
+                >
+                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                        <AppointmentPOS
+                            initialTab="products"
+                            salesMode="products_only"
+                            onBack={() => setActiveTab('dashboard')}
+                        />
+                    </div>
+                </div>,
+                document.body
+            )}
 
             {showLanguageModal && (
                 <LanguageSelectionModal

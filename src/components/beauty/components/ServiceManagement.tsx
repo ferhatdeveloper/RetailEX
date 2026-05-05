@@ -25,6 +25,7 @@ import { Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyService, ServiceCategory } from '../../../types/beauty';
+import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
@@ -62,6 +63,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const EMPTY_FORM: Partial<BeautyService> = {
     name: '',
     category: ServiceCategory.BEAUTY,
+    parent_category: undefined,
     duration_min: 60,
     price: 0,
     cost_price: 0,
@@ -70,6 +72,7 @@ const EMPTY_FORM: Partial<BeautyService> = {
     description: '',
     requires_device: false,
     default_sessions: 1,
+    follow_up_reminder_days: undefined,
     is_active: true,
 };
 
@@ -84,7 +87,8 @@ export function ServiceManagement() {
     const [bulkUpdateDuration, setBulkUpdateDuration] = useState(60);
     const [bulkUpdateSessions, setBulkUpdateSessions] = useState(1);
     const [bulkUpdateSaving, setBulkUpdateSaving] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [selectedMain, setSelectedMain] = useState<string>('all');
+    const [selectedSub, setSelectedSub] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautyService>>(EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
@@ -132,15 +136,38 @@ export function ServiceManagement() {
         });
     }, [backofficeCategories]);
 
+    const serviceMainKeys = useMemo(() => {
+        const set = new Set<string>();
+        for (const s of services) {
+            set.add(beautyServiceMainKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [services]);
+
+    const serviceSubKeysForMain = useMemo(() => {
+        if (selectedMain === 'all') return [] as string[];
+        const set = new Set<string>();
+        for (const s of services) {
+            if (beautyServiceMainKey(s) !== selectedMain) continue;
+            set.add(beautyServiceSubKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [services, selectedMain]);
+
     const filteredServices = useMemo(
         () =>
             services.filter(s => {
                 const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase());
-                const matchesCategory = selectedCategory === 'all' || s.category === selectedCategory;
-                return matchesSearch && matchesCategory;
+                const mainOk = selectedMain === 'all' || beautyServiceMainKey(s) === selectedMain;
+                const subOk = selectedSub === 'all' || beautyServiceSubKey(s) === selectedSub;
+                return matchesSearch && mainOk && subOk;
             }),
-        [services, searchTerm, selectedCategory],
+        [services, searchTerm, selectedMain, selectedSub],
     );
+
+    useEffect(() => {
+        if (selectedMain === 'all') setSelectedSub('all');
+    }, [selectedMain]);
 
     const openCreate = () => {
         setEditing({ ...EMPTY_FORM });
@@ -281,7 +308,9 @@ export function ServiceManagement() {
                             {s.name}
                         </Typography.Text>
                         <Typography.Text type="secondary" className="text-xs">
-                            {CATEGORY_LABELS[s.category] ?? s.category}
+                            {String(s.parent_category ?? '').trim()
+                                ? `${CATEGORY_LABELS[String(s.parent_category)] ?? s.parent_category} › ${CATEGORY_LABELS[s.category] ?? s.category}`
+                                : CATEGORY_LABELS[s.category] ?? s.category}
                         </Typography.Text>
                     </Space>
                 ),
@@ -308,6 +337,18 @@ export function ServiceManagement() {
                 render: (n: number | undefined) => (
                     <Typography.Text>{Math.max(1, Math.round(Number(n ?? 1)))}</Typography.Text>
                 ),
+            },
+            {
+                title: tm('bServiceFollowUpDaysShort'),
+                dataIndex: 'follow_up_reminder_days',
+                key: 'follow_up_reminder_days',
+                width: 120,
+                align: 'center',
+                render: (d: number | null | undefined) => {
+                    const n = Number(d);
+                    if (!Number.isFinite(n) || n <= 0) return <Typography.Text type="secondary">—</Typography.Text>;
+                    return <Typography.Text>{Math.round(n)}</Typography.Text>;
+                },
             },
             {
                 title: tm('price'),
@@ -414,25 +455,62 @@ export function ServiceManagement() {
                                 className="w-full"
                                 size="middle"
                             />
-                            <Space wrap size={[8, 8]}>
-                                <Button
-                                    type={selectedCategory === 'all' ? 'primary' : 'default'}
-                                    size="small"
-                                    onClick={() => setSelectedCategory('all')}
-                                >
-                                    {tm('all')}
-                                </Button>
-                                {categories.map(cat => (
+                            <div className="space-y-2">
+                                <Typography.Text type="secondary" className="text-xs font-semibold">
+                                    {tm('bServiceMainCategoryFilter')}
+                                </Typography.Text>
+                                <Space wrap size={[8, 8]}>
                                     <Button
-                                        key={cat.value}
-                                        type={selectedCategory === cat.value ? 'primary' : 'default'}
+                                        type={selectedMain === 'all' ? 'primary' : 'default'}
                                         size="small"
-                                        onClick={() => setSelectedCategory(cat.value)}
+                                        onClick={() => {
+                                            setSelectedMain('all');
+                                            setSelectedSub('all');
+                                        }}
                                     >
-                                        {cat.label}
+                                        {tm('all')}
                                     </Button>
-                                ))}
-                            </Space>
+                                    {serviceMainKeys.map(mk => (
+                                        <Button
+                                            key={mk}
+                                            type={selectedMain === mk ? 'primary' : 'default'}
+                                            size="small"
+                                            onClick={() => {
+                                                setSelectedMain(mk);
+                                                setSelectedSub('all');
+                                            }}
+                                        >
+                                            {CATEGORY_LABELS[mk] ?? mk}
+                                        </Button>
+                                    ))}
+                                </Space>
+                                {selectedMain !== 'all' && serviceSubKeysForMain.length > 1 && (
+                                    <>
+                                        <Typography.Text type="secondary" className="text-xs font-semibold block pt-1">
+                                            {tm('bServiceSubCategoryFilter')}
+                                        </Typography.Text>
+                                        <Space wrap size={[8, 8]}>
+                                            <Button
+                                                type={selectedSub === 'all' ? 'primary' : 'default'}
+                                                size="small"
+                                                onClick={() => setSelectedSub('all')}
+                                            >
+                                                {tm('all')}
+                                            </Button>
+                                            {serviceSubKeysForMain.map(sk => (
+                                                <Button
+                                                    key={sk}
+                                                    type={selectedSub === sk ? 'primary' : 'default'}
+                                                    size="small"
+                                                    onClick={() => setSelectedSub(sk)}
+                                                >
+                                                    {CATEGORY_LABELS[sk] ?? sk}
+                                                </Button>
+                                            ))}
+                                        </Space>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {selectedRowKeys.length > 0 && (
@@ -491,9 +569,11 @@ export function ServiceManagement() {
                                     <div className="py-12">
                                         <ScissorOutlined className="mb-2 text-3xl text-[#d9d9d9]" />
                                         <Typography.Text type="secondary" className="block">
-                                            {searchTerm || selectedCategory !== 'all' ? tm('bServiceNotFound') : tm('bNoServicesDefined')}
+                                            {searchTerm || selectedMain !== 'all' || selectedSub !== 'all'
+                                                ? tm('bServiceNotFound')
+                                                : tm('bNoServicesDefined')}
                                         </Typography.Text>
-                                        {!searchTerm && selectedCategory === 'all' && (
+                                        {!searchTerm && selectedMain === 'all' && selectedSub === 'all' && (
                                             <Button type="primary" className="mt-4" icon={<PlusOutlined />} onClick={openCreate}>
                                                 {tm('bNewServiceAdd')}
                                             </Button>
@@ -501,7 +581,7 @@ export function ServiceManagement() {
                                     </div>
                                 ),
                             }}
-                            scroll={{ x: 960 }}
+                            scroll={{ x: 1080 }}
                         />
                     </Card>
                 </div>
@@ -578,7 +658,30 @@ export function ServiceManagement() {
                                 />
                             </div>
                             <div className="sm:col-span-2">
-                                <RetailExFlatFieldLabel>{tm('category')}</RetailExFlatFieldLabel>
+                                <RetailExFlatFieldLabel>{tm('bServiceParentCategoryField')}</RetailExFlatFieldLabel>
+                                <Typography.Paragraph type="secondary" className="!mb-1 !text-xs">
+                                    {tm('bServiceParentCategoryHint')}
+                                </Typography.Paragraph>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    list="beauty-service-main-cat-suggestions"
+                                    value={String(editing.parent_category ?? '')}
+                                    onChange={e =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            parent_category: e.target.value.trim() ? e.target.value : undefined,
+                                        }))
+                                    }
+                                    placeholder="Candela"
+                                />
+                                <datalist id="beauty-service-main-cat-suggestions">
+                                    {serviceMainKeys.map(k => (
+                                        <option key={k} value={k} />
+                                    ))}
+                                </datalist>
+                            </div>
+                            <div className="sm:col-span-2">
+                                <RetailExFlatFieldLabel>{tm('bServiceSubCategoryFilter')}</RetailExFlatFieldLabel>
                                 <Select
                                     {...antSelectInFlatModal}
                                     className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
@@ -597,6 +700,34 @@ export function ServiceManagement() {
                                     max={99}
                                     value={editing.default_sessions ?? 1}
                                     onChange={v => setEditing(p => ({ ...p, default_sessions: Math.max(1, Number(v) || 1) }))}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bServiceFollowUpDaysShort')}</RetailExFlatFieldLabel>
+                                <Typography.Paragraph type="secondary" className="!mb-1 !text-xs">
+                                    {tm('bServiceFollowUpDaysHint')}
+                                </Typography.Paragraph>
+                                <InputNumber
+                                    className="w-full !rounded-2xl"
+                                    min={1}
+                                    max={3650}
+                                    placeholder="—"
+                                    value={
+                                        editing.follow_up_reminder_days != null &&
+                                        Number.isFinite(Number(editing.follow_up_reminder_days)) &&
+                                        Number(editing.follow_up_reminder_days) > 0
+                                            ? Math.round(Number(editing.follow_up_reminder_days))
+                                            : null
+                                    }
+                                    onChange={v =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            follow_up_reminder_days:
+                                                v == null || !Number.isFinite(Number(v)) || Number(v) <= 0
+                                                    ? undefined
+                                                    : Math.min(3650, Math.round(Number(v))),
+                                        }))
+                                    }
                                 />
                             </div>
                             <div>

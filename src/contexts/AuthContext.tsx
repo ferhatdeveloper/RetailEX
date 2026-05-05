@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { toast } from 'sonner';
+import type { Language } from '../locales/translations';
 import rbacService, { Role } from '../services/rbacService';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../services/postgres';
 import { logger } from '../services/loggingService';
@@ -45,6 +46,33 @@ interface SignupData {
 // ===== CONTEXT =====
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Güzellik hizmet hatırlatmaları (tamamlanan işlem + X gün); DB yoksa sessizce atlanır. */
+async function notifyBeautyFollowUpRemindersAfterSession(opts?: { playChime?: boolean }): Promise<void> {
+    try {
+        const { beautyService } = await import('../services/beautyService');
+        const { formatLocalYmd, addDaysToLocalYmd } = await import('../utils/dateLocal');
+        const { translate } = await import('../locales/module-translations');
+        const raw = (localStorage.getItem('retailos_language') || 'tr').trim();
+        const lang: Language = (['tr', 'en', 'ar', 'ku'] as const).includes(raw as Language)
+            ? (raw as Language)
+            : 'tr';
+        const today = formatLocalYmd(new Date());
+        const end = addDaysToLocalYmd(today, 14);
+        const rows = await beautyService.getFollowUpRemindersInRange(today, end);
+        if (!rows.length) return;
+        if (opts?.playChime) {
+            const { tryPlayBeautyFollowUpReminderChime } = await import('../utils/beautyAppointmentReminderChime');
+            await tryPlayBeautyFollowUpReminderChime();
+        }
+        toast.info(translate('bFollowUpLoginToast', lang).replace('{n}', String(rows.length)), {
+            description: translate('bFollowUpLoginToastDesc', lang),
+            duration: 12000,
+        });
+    } catch {
+        /* PostgreSQL kapalı veya şema uyumsuz */
+    }
+}
 
 export function useAuth() {
   const context = useContext(AuthContext);
@@ -130,6 +158,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (e) {
             console.warn('Could not restore firm/period context from session');
           }
+
+          window.setTimeout(() => {
+              void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
+          }, 2200);
         }
       }
     } catch (error) {
@@ -245,6 +277,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('exretail_session', JSON.stringify(sessionData));
 
         toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
+        window.setTimeout(() => {
+            void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
+        }, 900);
         return true;
       }
 
@@ -383,6 +418,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('exretail_session', JSON.stringify(sessionData));
 
         toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
+        window.setTimeout(() => {
+            void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
+        }, 900);
         return true;
       } else {
         // Double check for development/fallback if users table is empty or password mismatch

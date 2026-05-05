@@ -10,7 +10,7 @@ interface POSCancelReasonModalProps {
 export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModalProps) {
   const { t } = useLanguage();
   const [selectedReason, setSelectedReason] = useState('');
-  const [customReason, setCustomReason] = useState('');
+  const [cancelNote, setCancelNote] = useState('');
 
   const reasons = [
     t.customerChangedMind,
@@ -27,12 +27,12 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
       return;
     }
 
-    if (selectedReason === t.other && !customReason.trim()) {
+    if (!cancelNote.trim()) {
       alert(t.pleaseExplainCancelReason);
       return;
     }
 
-    const finalReason = selectedReason === t.other ? customReason : selectedReason;
+    const finalReason = `${selectedReason} - ${cancelNote.trim()}`;
     onConfirm(finalReason);
   };
 
@@ -54,7 +54,7 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [selectedReason, customReason]);
+  }, [selectedReason, cancelNote]);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
@@ -95,18 +95,16 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
             </button>
           ))}
 
-          {selectedReason === t.other && (
-            <div className="mt-3">
-              <label className="block text-sm text-gray-700 mb-2">{t.explainCancelReason}:</label>
-              <textarea
-                value={customReason}
-                onChange={(e) => setCustomReason(e.target.value)}
-                placeholder={t.cancelReasonPlaceholder}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-              />
-            </div>
-          )}
+          <div className="mt-3">
+            <label className="block text-sm text-gray-700 mb-2">{t.explainCancelReason}:</label>
+            <textarea
+              value={cancelNote}
+              onChange={(e) => setCancelNote(e.target.value)}
+              placeholder={t.cancelReasonPlaceholder}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            />
+          </div>
         </div>
 
         {/* Footer */}
@@ -119,7 +117,7 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
           </button>
           <button
             onClick={handleConfirm}
-            disabled={!selectedReason || (selectedReason === t.other && !customReason.trim())}
+            disabled={!selectedReason || !cancelNote.trim()}
             className="flex-1 px-4 py-2.5 text-sm border border-red-600 bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t.cancelReceipt}

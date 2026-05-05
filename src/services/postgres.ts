@@ -1,4 +1,5 @@
 import { IS_TAURI, safeInvoke, getBridgeUrl } from '../utils/env';
+import { fetchRetailexAware } from '../utils/retailexDevProxy';
 import { logger } from './loggingService';
 import { setGlobalCurrency } from '../utils/currency';
 
@@ -6,6 +7,36 @@ const IS_PRODUCTION = typeof window !== 'undefined' && window.location.hostname 
 
 export type ConnectionMode = 'online' | 'offline' | 'hybrid';
 export type ConnectionProvider = 'db' | 'rest_api';
+/** Hibrit modda SQL sorgularında denenecek PG sırası (bağlantı hatasında yedek uca geçiş). */
+export type HybridReadPreference = 'local_first' | 'remote_first';
+/** Planlanan senkron yönü (`sync()` ve ilerideki çoğaltma için). */
+export type HybridSyncDirection = 'local_to_remote' | 'remote_to_local' | 'bidirectional';
+
+/** `sync()` — kayıtlı ayar yerine giriş ekranı formundan tek seferlik deneme için. */
+export type PostgresSyncOptions = {
+  mode?: ConnectionMode;
+  hybridSyncDirection?: HybridSyncDirection;
+};
+
+export function normalizeHybridReadPreference(raw: unknown): HybridReadPreference {
+  return String(raw || '').trim() === 'remote_first' ? 'remote_first' : 'local_first';
+}
+
+export function normalizeHybridSyncDirection(raw: unknown): HybridSyncDirection {
+  const s = String(raw || '').trim();
+  if (s === 'remote_to_local') return 'remote_to_local';
+  if (s === 'bidirectional') return 'bidirectional';
+  return 'local_to_remote';
+}
+
+function isLikelyConnectivityFailure(err: unknown): boolean {
+  const msg = String((err as { message?: unknown })?.message ?? err ?? '').toLowerCase();
+  const code = String((err as { code?: unknown })?.code ?? '').toUpperCase();
+  if (/^(08|57P01)/.test(code)) return true;
+  return /connect|connection refused|econnrefused|etimedout|enetunreach|enotfound|timeout|could not|broken pipe|closed unexpectedly|no route|network|unreachable|refused|fetch failed/i.test(
+    msg
+  );
+}
 
 // Remote PostgreSQL (Global/Main Server)
 export let REMOTE_CONFIG = {
@@ -35,7 +66,45 @@ export let DB_SETTINGS = {
   // PostgREST base URL (örn: http://172.20.0.10:3002)
   remoteRestUrl: '' as string,
   lastSync: null as string | null,
+  hybridReadPreference: 'local_first' as HybridReadPreference,
+  hybridSyncDirection: 'local_to_remote' as HybridSyncDirection,
 };
+
+type PgEndpointConfig = typeof LOCAL_CONFIG;
+
+/** Online/Offline tek uç; hibritte okuma önceliğine göre iki uç (bağlantı hatasında yedek). */
+export function getDbSqlTargetChain(): PgEndpointConfig[] {
+  if (DB_SETTINGS.activeMode === 'online') return [REMOTE_CONFIG];
+  if (DB_SETTINGS.activeMode === 'offline') return [LOCAL_CONFIG];
+  if (DB_SETTINGS.hybridReadPreference === 'remote_first') {
+    return [REMOTE_CONFIG, LOCAL_CONFIG];
+  }
+  return [LOCAL_CONFIG, REMOTE_CONFIG];
+}
+
+async function executePgQueryRows(
+  resolvedSql: string,
+  normalizedParams: any[],
+  config: PgEndpointConfig
+): Promise<any[]> {
+  const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
+  const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+  if (IS_TAURI) {
+    const resultJson: string = await safeInvoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
+    return JSON.parse(resultJson);
+  }
+  const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams }),
+  });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error((errData as { error?: string }).error || 'Database query failed');
+  }
+  const data = await response.json();
+  return data.rows;
+}
 
 // ERP Settings (Logo integration)
 export let ERP_SETTINGS = {
@@ -90,13 +159,22 @@ function applyRemoteFromHostPortDbString(remoteDb: string): void {
 }
 
 /**
- * Web: `exretail_pg_config` ve/veya `retailex_web_config` nesnesini uygular (ikinci kaynak birincinin üzerine yazar).
+ * Web: `exretail_pg_config` ve/veya `retailex_web_config` nesnesini uygular.
+ * Birden fazla çağrıda son çağrı üstte kalır (tam kiracı + düz PG overlay sırası initializeFromSQLite’da).
  */
 function applyWebLocalStorageConfig(config: any): void {
   if (!config || typeof config !== 'object') return;
-  DB_SETTINGS.activeMode = 'online';
+  const dm = config.db_mode;
+  DB_SETTINGS.activeMode =
+    dm === 'online' || dm === 'offline' || dm === 'hybrid' ? (dm as ConnectionMode) : 'online';
   DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
   DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+  DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(
+    config.hybrid_read_preference ?? (config as { hybridReadPreference?: unknown }).hybridReadPreference
+  );
+  DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(
+    config.hybrid_sync_direction ?? (config as { hybridSyncDirection?: unknown }).hybridSyncDirection
+  );
 
   if (config.local_host) {
     LOCAL_CONFIG.host = config.local_host;
@@ -170,14 +248,22 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
     const pgFlat = localStorage.getItem('exretail_pg_config');
     const webFull = localStorage.getItem('retailex_web_config');
     try {
-      if (pgFlat) {
+      // Önce tam kiracı/merkez yapılandırması, sonra düz PG ayarları (bazı PC'lerde yalnızca yerel PG — connection_provider burada).
+      // Eski sıra (önce pgFlat) retailex_web_config ile exretail_pg_config çakışınca REST kiracısı yerel PG seçimini eziyordu.
+      if (webFull) {
+        applyWebLocalStorageConfig(JSON.parse(webFull));
+      } else if (pgFlat) {
         applyWebLocalStorageConfig(JSON.parse(pgFlat));
       } else {
         DB_SETTINGS.activeMode = 'online';
         DB_SETTINGS.connectionProvider = 'db';
         DB_SETTINGS.remoteRestUrl = '';
+        DB_SETTINGS.hybridReadPreference = 'local_first';
+        DB_SETTINGS.hybridSyncDirection = 'local_to_remote';
       }
-      if (webFull) applyWebLocalStorageConfig(JSON.parse(webFull));
+      if (webFull && pgFlat) {
+        applyWebLocalStorageConfig(JSON.parse(pgFlat));
+      }
       if (pgFlat || webFull) {
         console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
       } else {
@@ -197,6 +283,8 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
       DB_SETTINGS.systemType = config.system_type || 'retail';
       DB_SETTINGS.connectionProvider = (config.connection_provider === 'rest_api' ? 'rest_api' : 'db') as ConnectionProvider;
       DB_SETTINGS.remoteRestUrl = typeof config.remote_rest_url === 'string' ? config.remote_rest_url : '';
+      DB_SETTINGS.hybridReadPreference = normalizeHybridReadPreference(config.hybrid_read_preference);
+      DB_SETTINGS.hybridSyncDirection = normalizeHybridSyncDirection(config.hybrid_sync_direction);
 
       // Load ERP Settings — firma/dönem biçimi Logo/SQLite ile aynı (2 ↔ 002; cari tablo rex_{nr}_customers)
       const dF = String(config.erp_firm_nr ?? '').replace(/\D/g, '');
@@ -275,6 +363,8 @@ export async function updateConfigs(updates: {
       system_type: DB_SETTINGS.systemType,
       connection_provider: DB_SETTINGS.connectionProvider,
       remote_rest_url: DB_SETTINGS.remoteRestUrl,
+      hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
+      hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       erp_firm_nr: ERP_SETTINGS.firmNr,
       erp_period_nr: ERP_SETTINGS.periodNr,
       default_currency: getAppDefaultCurrency(),
@@ -291,6 +381,17 @@ export async function updateConfigs(updates: {
       remote_db: REMOTE_CONFIG.database
     };
     localStorage.setItem('exretail_pg_config', JSON.stringify(webConfig));
+    try {
+      const existing = localStorage.getItem('retailex_web_config');
+      if (existing) {
+        const prev = JSON.parse(existing) as Record<string, unknown>;
+        localStorage.setItem('retailex_web_config', JSON.stringify({ ...prev, ...webConfig }));
+      } else {
+        localStorage.setItem('retailex_web_config', JSON.stringify(webConfig));
+      }
+    } catch {
+      /* retailex_web_config birleştirilemedi; exretail_pg_config yeterli */
+    }
     console.log('🌐 Web Config Saved to localStorage');
     return;
   }
@@ -306,6 +407,8 @@ export async function updateConfigs(updates: {
       system_type: DB_SETTINGS.systemType,
       connection_provider: DB_SETTINGS.connectionProvider,
       remote_rest_url: DB_SETTINGS.remoteRestUrl,
+      hybrid_read_preference: DB_SETTINGS.hybridReadPreference,
+      hybrid_sync_direction: DB_SETTINGS.hybridSyncDirection,
       local_db: localDbStr,
       remote_db: remoteDbStr,
       pg_local_user: LOCAL_CONFIG.user,
@@ -505,10 +608,10 @@ function normalizeBaseUrl(input: string): string {
  */
 export async function testPostgrestUrl(baseUrl: string): Promise<PostgrestStatus> {
   const url = normalizeBaseUrl(baseUrl);
-  if (!url) return { connected: false, baseUrl, error: 'PostgREST URL boş' };
+  if (!url) return { connected: false, baseUrl: baseUrl, error: 'PostgREST URL boş' };
   try {
     // root açık değilse 404 da dönebilir; fetch'in hata vermemesi önemli.
-    const res = await fetch(`${url}/`, { method: 'GET', headers: { Accept: 'application/json' } });
+    const res = await fetchRetailexAware(`${url}/`, { method: 'GET', headers: { Accept: 'application/json' } });
     return { connected: true, baseUrl: url, httpStatus: res.status };
   } catch (e: any) {
     return { connected: false, baseUrl: url, error: e?.message || String(e) };
@@ -593,9 +696,27 @@ export class PostgresConnection {
       return this.status;
     }
 
-    const targetConfig = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
-    this.status = await testDbConfig(targetConfig);
-    console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to ${this.status.host}`);
+    if (DB_SETTINGS.activeMode === 'hybrid' && DB_SETTINGS.connectionProvider === 'db') {
+      const chain = getDbSqlTargetChain();
+      let lastSt: PostgresStatus | undefined;
+      for (const cfg of chain) {
+        lastSt = await testDbConfig(cfg);
+        if (lastSt.connected) {
+          this.status = { ...lastSt, mode: 'hybrid' };
+          console.log(
+            `🔌 Hybrid (${DB_SETTINGS.hybridReadPreference}) → ${lastSt.host}:${lastSt.port}/${lastSt.database}`
+          );
+          break;
+        }
+      }
+      if (lastSt && !lastSt.connected) {
+        this.status = { ...lastSt, mode: 'hybrid', connected: false };
+      }
+    } else {
+      const targetConfig = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
+      this.status = await testDbConfig(targetConfig);
+      console.log(`🔌 Connected in ${DB_SETTINGS.activeMode} mode to ${this.status.host}`);
+    }
 
     if (this.status.connected && DB_SETTINGS.connectionProvider === 'db') {
       try {
@@ -751,30 +872,31 @@ export class PostgresConnection {
 
     const startTime = Date.now();
     try {
-      const config = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
-      // Localhost stability: Use 127.0.0.1 instead of localhost for Windows
-      const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
-      const connStr = `postgresql://${config.user}:${config.password}@${effectiveHost}:${config.port}/${config.database}`;
+      const chain = getDbSqlTargetChain();
+      let lastError: unknown;
+      let rows: any[] | undefined;
 
-      let rows: any[];
-      if (IS_TAURI) {
-        const resultJson: string = await safeInvoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
-        rows = JSON.parse(resultJson);
-      } else {
-        // Web Environment: Use Bridge
-        const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams })
-        });
-
-        if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Database query failed');
+      for (let i = 0; i < chain.length; i++) {
+        const cfg = chain[i];
+        try {
+          rows = await executePgQueryRows(resolvedSql, normalizedParams, cfg);
+          lastError = undefined;
+          break;
+        } catch (err: unknown) {
+          lastError = err;
+          const canTryNext = i < chain.length - 1 && isLikelyConnectivityFailure(err);
+          if (canTryNext) {
+            console.warn(
+              `[Postgres] Hibrit yedek: ${cfg.host}:${cfg.port} başarısız (${String((err as Error)?.message || err)}), sıradaki uç deneniyor…`
+            );
+            continue;
+          }
+          throw err;
         }
+      }
 
-        const data = await response.json();
-        rows = data.rows;
+      if (rows === undefined) {
+        throw lastError instanceof Error ? lastError : new Error(String(lastError || 'Database query failed'));
       }
 
       const duration = Date.now() - startTime;
@@ -905,10 +1027,30 @@ export class PostgresConnection {
     return password === LOCAL_CONFIG.password;
   }
 
-  async sync(): Promise<{ success: boolean; totalSynced: number }> {
-    if (DB_SETTINGS.activeMode !== 'hybrid') return { success: false, totalSynced: 0 };
-    console.log('🔄 Hybrid Sync: Local -> Remote');
-    return { success: true, totalSynced: 12 }; // Mock
+  async sync(opts?: PostgresSyncOptions): Promise<{
+    success: boolean;
+    totalSynced: number;
+    direction?: HybridSyncDirection;
+    message?: string;
+  }> {
+    const mode = opts?.mode ?? DB_SETTINGS.activeMode;
+    const direction = opts?.hybridSyncDirection ?? DB_SETTINGS.hybridSyncDirection;
+    if (mode !== 'hybrid') {
+      return {
+        success: false,
+        totalSynced: 0,
+        message:
+          'Senkron yalnızca hibrit bağlantı modunda kullanılabilir. Modu «Hybrid» yapın veya ayarı kaydedin.',
+      };
+    }
+    const msg =
+      direction === 'local_to_remote'
+        ? 'Hedef: yerel → uzak (çift taraflı çoğaltma motoru henüz bağlı değil).'
+        : direction === 'remote_to_local'
+          ? 'Hedef: uzak → yerel (çift taraflı çoğaltma motoru henüz bağlı değil).'
+          : 'Hedef: çift yönlü (çoğaltma motoru henüz bağlı değil).';
+    console.log(`[Postgres] Hybrid sync — ${direction}:`, msg);
+    return { success: true, totalSynced: 0, direction, message: msg };
   }
 }
 

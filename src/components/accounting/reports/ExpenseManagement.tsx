@@ -21,6 +21,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface ExpenseLocal extends Expense {
   store_name?: string;
@@ -57,6 +58,7 @@ const CATEGORY_FALLBACK: ExpenseCategory = {
 };
 
 export function ExpenseManagement() {
+  const { tm } = useLanguage();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,7 +157,7 @@ export function ExpenseManagement() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (!confirm('Bu gideri silmek istediğinizden emin misiniz?')) return;
+    if (!confirm(tm('expenseDeleteConfirm'))) return;
 
     try {
       // TODO: API call
@@ -169,15 +171,15 @@ export function ExpenseManagement() {
   const handleSaveExpense = async () => {
     try {
       if (!formData.category.trim()) {
-        alert('Kategori zorunludur.');
+        alert(tm('expenseCategoryRequired'));
         return;
       }
       if (!formData.description.trim()) {
-        alert('Açıklama zorunludur.');
+        alert(tm('descriptionRequired'));
         return;
       }
       if (!formData.amount || Number.isNaN(parseFloat(formData.amount))) {
-        alert('Geçerli bir tutar giriniz.');
+        alert(tm('pleaseEnterValidAmount'));
         return;
       }
       const data = {
@@ -196,7 +198,7 @@ export function ExpenseManagement() {
       await loadExpenses();
     } catch (error) {
       console.error('Error saving expense:', error);
-      alert('Gider kaydedilirken bir hata oluştu.');
+      alert(tm('expenseSaveError'));
     }
   };
 
@@ -206,17 +208,21 @@ export function ExpenseManagement() {
     const trimmed = String(categoryValue || '').trim();
     if (!trimmed) return CATEGORY_FALLBACK;
     return (
-      EXPENSE_CATEGORIES.find(c => c.id === trimmed || normalizeCategory(c.name) === normalizeCategory(trimmed)) ||
+      EXPENSE_CATEGORIES.find(c =>
+        c.id === trimmed ||
+        normalizeCategory(c.name) === normalizeCategory(trimmed) ||
+        normalizeCategory(tm(`expenseCategory_${c.id}`)) === normalizeCategory(trimmed)
+      ) ||
       CATEGORY_FALLBACK
     );
   };
 
   const categoryLabel = (categoryValue: string) => {
     const trimmed = String(categoryValue || '').trim();
-    if (!trimmed) return CATEGORY_FALLBACK.name;
+    if (!trimmed) return tm('expenseCategoryCustom');
     const info = getCategoryInfo(trimmed);
     if (info.id === 'custom') return trimmed;
-    return info.name;
+    return tm(`expenseCategory_${info.id}`);
   };
 
   const categoryKey = (categoryValue: string) => {
@@ -230,12 +236,12 @@ export function ExpenseManagement() {
 
   const columns = [
     columnHelper.accessor('expense_date', {
-      header: 'TARİH',
+      header: tm('date').toUpperCase(),
       cell: info => new Date(info.getValue()).toLocaleDateString('tr-TR'),
       size: 100
     }),
     columnHelper.accessor('category', {
-      header: 'KATEGORİ',
+      header: tm('category').toUpperCase(),
       cell: info => {
         const cat = getCategoryInfo(info.getValue());
         return (
@@ -247,12 +253,12 @@ export function ExpenseManagement() {
       size: 150
     }),
     columnHelper.accessor('description', {
-      header: 'AÇIKLAMA',
+      header: tm('description').toUpperCase(),
       cell: info => info.getValue(),
       size: 250
     }),
     columnHelper.accessor('amount', {
-      header: 'TUTAR',
+      header: tm('amount').toUpperCase(),
       cell: info => (
         <span className="font-medium text-red-600">
           {formatCurrency(info.getValue())}
@@ -261,14 +267,14 @@ export function ExpenseManagement() {
       size: 120
     }),
     columnHelper.accessor('payment_method', {
-      header: 'ÖDEME',
+      header: tm('payment').toUpperCase(),
       cell: info => {
         const method = info.getValue();
         const methods: Record<string, string> = {
-          cash: 'Nakit',
-          bank_transfer: 'Havale',
-          credit_card: 'Kredi Kartı',
-          check: 'Çek',
+          cash: tm('cash'),
+          bank_transfer: tm('bankTransfer'),
+          credit_card: tm('creditCard'),
+          check: tm('check'),
         };
         return (
           <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
@@ -280,36 +286,36 @@ export function ExpenseManagement() {
     }),
     columnHelper.accessor(row => row.store_name, {
       id: 'store_name',
-      header: 'MAĞAZA',
+      header: tm('store').toUpperCase(),
       cell: info => info.getValue() || '-',
       size: 120
     }),
     columnHelper.accessor('cost_center_name', {
-      header: 'MASRAF MERKEZİ',
+      header: tm('costCenter').toUpperCase(),
       cell: info => info.getValue() || '-',
       size: 150
     }),
     columnHelper.accessor('document_number', {
-      header: 'BELGE NO',
+      header: tm('documentNo').toUpperCase(),
       cell: info => info.getValue() || '-',
       size: 120
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İŞLEMLER',
+      header: tm('actions').toUpperCase(),
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleEditExpense(row.original)}
             className="p-2 hover:bg-blue-50 rounded transition-colors"
-            title="Düzenle"
+            title={tm('edit')}
           >
             <Edit className="w-4 h-4 text-blue-600" />
           </button>
           <button
             onClick={() => handleDeleteExpense(row.original.id)}
             className="p-2 hover:bg-red-50 rounded transition-colors"
-            title="Sil"
+            title={tm('delete')}
           >
             <Trash2 className="w-4 h-4 text-red-600" />
           </button>
@@ -351,8 +357,8 @@ export function ExpenseManagement() {
               <Receipt className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Gider Yönetimi</h1>
-              <p className="text-sm text-gray-600">Tüm giderleri takip edin ve yönetin</p>
+              <h1 className="text-2xl font-bold text-gray-900">{tm('expenseManagement')}</h1>
+              <p className="text-sm text-gray-600">{tm('expenseManagementSubtitle')}</p>
             </div>
           </div>
           <button
@@ -360,7 +366,7 @@ export function ExpenseManagement() {
             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Yeni Gider
+            {tm('newExpense')}
           </button>
         </div>
 
@@ -370,7 +376,7 @@ export function ExpenseManagement() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Gider ara (açıklama, belge no)..."
+              placeholder={tm('expenseSearchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
@@ -382,7 +388,7 @@ export function ExpenseManagement() {
               }`}
           >
             <Filter className="w-5 h-5" />
-            Filtrele
+            {tm('filter')}
           </button>
         </div>
 
@@ -391,20 +397,20 @@ export function ExpenseManagement() {
           <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
             <div className="grid grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('category')}</label>
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                 >
-                  <option value="all">Tüm Kategoriler</option>
+                  <option value="all">{tm('allCategories')}</option>
                   {EXPENSE_CATEGORIES.map(cat => (
-                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    <option key={cat.id} value={cat.id}>{tm(`expenseCategory_${cat.id}`)}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Başlangıç Tarihi</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('startDate')}</label>
                 <input
                   type="date"
                   value={filterDateFrom}
@@ -413,7 +419,7 @@ export function ExpenseManagement() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bitiş Tarihi</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('endDate')}</label>
                 <input
                   type="date"
                   value={filterDateTo}
@@ -431,7 +437,7 @@ export function ExpenseManagement() {
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
                 >
                   <X className="w-4 h-4" />
-                  Temizle
+                  {tm('clear')}
                 </button>
               </div>
             </div>
@@ -444,7 +450,7 @@ export function ExpenseManagement() {
         <div className="bg-red-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-red-600 mb-1">Toplam Gider</p>
+              <p className="text-sm text-red-600 mb-1">{tm('totalExpense')}</p>
               <p className="text-2xl font-bold text-red-900">{formatCurrency(totalExpenses)}</p>
             </div>
             <Banknote className="w-8 h-8 text-red-600" />
@@ -453,7 +459,7 @@ export function ExpenseManagement() {
         <div className="bg-orange-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-orange-600 mb-1">Bu Ay</p>
+              <p className="text-sm text-orange-600 mb-1">{tm('thisMonth')}</p>
               <p className="text-2xl font-bold text-orange-900">{formatCurrency(thisMonthExpenses)}</p>
             </div>
             <Calendar className="w-8 h-8 text-orange-600" />
@@ -462,7 +468,7 @@ export function ExpenseManagement() {
         <div className="bg-purple-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-purple-600 mb-1">Gider Sayısı</p>
+              <p className="text-sm text-purple-600 mb-1">{tm('expenseCount')}</p>
               <p className="text-2xl font-bold text-purple-900">{expenses.length}</p>
             </div>
             <Receipt className="w-8 h-8 text-purple-600" />
@@ -471,7 +477,7 @@ export function ExpenseManagement() {
         <div className="bg-blue-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-blue-600 mb-1">Ortalama</p>
+              <p className="text-sm text-blue-600 mb-1">{tm('average')}</p>
               <p className="text-2xl font-bold text-blue-900">
                 {expenses.length > 0 ? formatCurrency(totalExpenses / expenses.length) : '-'}
               </p>
@@ -487,7 +493,7 @@ export function ExpenseManagement() {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-600">Giderler yükleniyor...</p>
+              <p className="text-gray-600">{tm('loadingExpenses')}</p>
             </div>
           </div>
         ) : (
@@ -509,7 +515,7 @@ export function ExpenseManagement() {
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold">
-                  {editingExpense ? 'Gider Düzenle' : 'Yeni Gider Ekle'}
+                  {editingExpense ? tm('editExpense') : tm('newExpense')}
                 </h2>
                 <button
                   onClick={() => setShowExpenseModal(false)}
@@ -523,24 +529,24 @@ export function ExpenseManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Kategori *
+                      {tm('category')} *
                     </label>
                     <input
                       list="expense-category-options"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      placeholder="Kategori yazın veya seçin"
+                      placeholder={tm('expenseCategoryPlaceholder')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                     />
                     <datalist id="expense-category-options">
                       {EXPENSE_CATEGORIES.map(cat => (
-                        <option key={cat.id} value={cat.name} />
+                        <option key={cat.id} value={tm(`expenseCategory_${cat.id}`)} />
                       ))}
                     </datalist>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Tarih *
+                      {tm('date')} *
                     </label>
                     <input
                       type="date"
@@ -553,13 +559,13 @@ export function ExpenseManagement() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Açıklama *
+                    {tm('description')} *
                   </label>
                   <input
                     type="text"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Gider açıklaması"
+                    placeholder={tm('expenseDescriptionPlaceholder')}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                   />
                 </div>
@@ -567,7 +573,7 @@ export function ExpenseManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Tutar (IQD) *
+                      {tm('amount')} (IQD) *
                     </label>
                     <input
                       type="number"
@@ -579,17 +585,17 @@ export function ExpenseManagement() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Ödeme Yöntemi *
+                      {tm('paymentMethod')} *
                     </label>
                     <select
                       value={formData.payment_method}
                       onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                     >
-                      <option value="cash">Nakit</option>
-                      <option value="bank_transfer">Havale/EFT</option>
-                      <option value="credit_card">Kredi Kartı</option>
-                      <option value="check">Çek</option>
+                      <option value="cash">{tm('cash')}</option>
+                      <option value="bank_transfer">{tm('bankTransferEft')}</option>
+                      <option value="credit_card">{tm('creditCard')}</option>
+                      <option value="check">{tm('check')}</option>
                     </select>
                   </div>
                 </div>
@@ -597,26 +603,26 @@ export function ExpenseManagement() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Belge No
+                      {tm('documentNo')}
                     </label>
                     <input
                       type="text"
                       value={formData.document_number}
                       onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
-                      placeholder="Fatura/Makbuz No"
+                      placeholder={tm('expenseDocumentNoPlaceholder')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Masraf Merkezi (Kasa)
+                      {tm('costCenterCashRegister')}
                     </label>
                     <select
                       value={formData.cash_register_id}
                       onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                     >
-                      {kasalar.length === 0 && <option value="">Kasa bulunamadı</option>}
+                      {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
                       {kasalar.map(kasa => (
                         <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
                       ))}
@@ -626,12 +632,12 @@ export function ExpenseManagement() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notlar
+                    {tm('notes')}
                   </label>
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Ek notlar"
+                    placeholder={tm('additionalNotes')}
                     rows={3}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
                   />
@@ -639,9 +645,9 @@ export function ExpenseManagement() {
 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                   <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-2">Belge Yükle (Fatura, Makbuz)</p>
+                  <p className="text-sm text-gray-600 mb-2">{tm('uploadDocumentInvoiceReceipt')}</p>
                   <button className="text-sm text-red-600 hover:text-red-700">
-                    Dosya Seç
+                    {tm('selectFile')}
                   </button>
                 </div>
               </div>
@@ -651,13 +657,13 @@ export function ExpenseManagement() {
                   onClick={() => setShowExpenseModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
                 <button
                   onClick={handleSaveExpense}
                   className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                 >
-                  {editingExpense ? 'Güncelle' : 'Kaydet'}
+                  {editingExpense ? tm('update') : tm('save')}
                 </button>
               </div>
             </div>

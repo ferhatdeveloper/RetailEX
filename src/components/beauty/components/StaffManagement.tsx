@@ -17,7 +17,7 @@ const SPECIALIST_COLORS = [
 
 const EMPTY_FORM: Partial<BeautySpecialist> = {
     name: '', phone: '', email: '', specialty: '',
-    color: '#9333ea', commission_rate: 0, is_active: true,
+    color: '#9333ea', commission_rate: 0, product_unit_commission: 0, is_active: true,
 };
 
 export function StaffManagement() {
@@ -199,6 +199,15 @@ export function StaffManagement() {
                                         <p className="text-2xl font-black tracking-tight leading-none" style={{ color: staff.color ?? '#9333ea' }}>%{staff.commission_rate}</p>
                                     </div>
                                 </div>
+                                <div className="flex items-center gap-3 p-4 rounded-3xl border bg-emerald-50 border-emerald-100">
+                                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-sm bg-emerald-100 text-emerald-700">
+                                        <Award size={20} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 text-emerald-700/80">URUN ADET PRIMI</p>
+                                        <p className="text-2xl font-black tracking-tight leading-none text-emerald-700">{Number(staff.product_unit_commission ?? 0).toLocaleString('tr-TR')}</p>
+                                    </div>
+                                </div>
                             </div>
 
                             {!staff.is_active && (
@@ -260,6 +269,21 @@ export function StaffManagement() {
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Prim (%)</label>
                                     <Input type="number" min={0} max={100} value={editing.commission_rate ?? 0} onChange={e => setEditing(p => ({ ...p, commission_rate: Number(e.target.value) }))} className="border-slate-200 rounded-xl focus:border-purple-400" />
                                 </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Urun Adet Primi</label>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={editing.product_unit_commission ?? 0}
+                                    onChange={e => setEditing(p => ({ ...p, product_unit_commission: Number(e.target.value) }))}
+                                    placeholder="Orn: 10000"
+                                    className="border-slate-200 rounded-xl focus:border-purple-400"
+                                />
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                    Urun satisinda personelin her sattigi adet icin sabit prim tutari.
+                                </p>
                             </div>
                             <div>
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 block">Renk</label>

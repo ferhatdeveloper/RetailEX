@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink } from 'lucide-react';
+import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
@@ -29,6 +29,7 @@ import { InvoiceWorkplaceModal } from './InvoiceWorkplaceModal';
 import { InvoiceWarehouseModal } from './InvoiceWarehouseModal';
 import { InvoiceSalespersonModal } from './InvoiceSalespersonModal';
 import { useCampaignStore } from '../../../store/useCampaignStore';
+import { BarcodeScanner as InventoryBarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 import { priceChangeVouchersAPI } from '../../../services/api/priceChangeVouchers';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
@@ -243,6 +244,23 @@ function transactionDateToIsoDateString(transactionDate: string): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** İşlem tarihi (dd.MM.yyyy veya parse edilebilir string) → Date; Kaydet butonu `isTransactionAllowed(transactionDate)` ile uyumlu */
+function parseTransactionDateInput(date: Date | string): Date {
+  if (date instanceof Date) return date;
+  if (typeof date !== 'string') return new Date();
+  const dateParts = date.trim().split('.');
+  if (dateParts.length === 3) {
+    const d = parseInt(dateParts[0], 10);
+    const m = parseInt(dateParts[1], 10);
+    const y = parseInt(dateParts[2], 10);
+    if (!Number.isNaN(d) && !Number.isNaN(m) && !Number.isNaN(y)) {
+      return new Date(y, m - 1, d);
+    }
+  }
+  const dt = new Date(date);
+  return Number.isNaN(dt.getTime()) ? new Date() : dt;
+}
+
 export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [], products: productsProp = [], onClose, editData }: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
 
@@ -274,7 +292,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     // Validate dates if they exist
     if (selectedPeriod.beg_date && selectedPeriod.end_date) {
       try {
-        const targetDate = typeof date === 'string' ? new Date(date) : date;
+        const targetDate = parseTransactionDateInput(date);
         const begDate = new Date(selectedPeriod.beg_date);
         const endDate = new Date(selectedPeriod.end_date);
 
@@ -351,6 +369,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [supplierId, setSupplierId] = useState(() => editData?.supplier_id || '');
   const [supplierTitle, setSupplierTitle] = useState(() => editData?.supplier_name || '');
   const [customerBarcode, setCustomerBarcode] = useState(''); // Cari Hesap Barkodu
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
 
   // Fatura türüne özel alanlar
   const [referenceInvoiceNo, setReferenceInvoiceNo] = useState(''); // İade için
@@ -977,9 +996,11 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     }
   };
 
-  const createEmptyInvoiceLine = (): InvoiceItem => ({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    type: 'Malzeme',
+  const createInvoiceLineId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  const createEmptyInvoiceLine = (type: InvoiceItem['type'] = 'Malzeme'): InvoiceItem => ({
+    id: createInvoiceLineId(),
+    type,
     code: '',
     description: '',
     description2: '',
@@ -1536,7 +1557,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
     // Yeni kalem oluştur
     const newItem: InvoiceItem = {
-      id: Date.now().toString(),
+      id: createInvoiceLineId(),
       type: 'Malzeme',
       code: productCode,
       description: productName,
@@ -1684,20 +1705,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     setProductSearch('');
 
     setTimeout(() => {
-      const newItem: InvoiceItem = {
-        id: Date.now().toString(),
-        type: 'Malzeme',
-        code: '',
-        description: '',
-        description2: '',
-        quantity: 0,
-        unit: 'Brüt',
-        unitPrice: 0,
-        discountPercent: 0,
-        discountAmount: 0,
-        amount: 0,
-        netAmount: 0
-      };
+      const newItem: InvoiceItem = createEmptyInvoiceLine('Malzeme');
       setItems(prev => [...prev, newItem]);
 
       setTimeout(() => {
@@ -1778,20 +1786,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     setTimeout(() => {
       setItems(prev => {
         if (rowIndex !== prev.length - 1) return prev;
-        const newItem: InvoiceItem = {
-          id: Date.now().toString(),
-          type: 'Hizmet',
-          code: '',
-          description: '',
-          description2: '',
-          quantity: 0,
-          unit: 'Brüt',
-          unitPrice: 0,
-          discountPercent: 0,
-          discountAmount: 0,
-          amount: 0,
-          netAmount: 0
-        };
+        const newItem: InvoiceItem = createEmptyInvoiceLine('Hizmet');
         return [...prev, newItem];
       });
       setTimeout(() => {
@@ -1884,6 +1879,17 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       flushCodeResolve(el?.value ?? '');
     }, 0);
   };
+
+  const handleCameraBarcodeScan = useCallback((barcode: string) => {
+    const code = (barcode || '').trim();
+    if (!code) return;
+
+    setCustomerBarcode(code);
+    const targetIndex = Math.max(0, currentRowIndex);
+    updateItem(targetIndex, 'code', code);
+    void resolveProductByCodeInput(targetIndex, code);
+    toast.success(`Barkod okundu: ${code}`);
+  }, [currentRowIndex, updateItem, resolveProductByCodeInput]);
 
   // EditData değiştiğinde items'ı güncelle
   useEffect(() => {
@@ -2753,6 +2759,18 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   cariTextColor={cariTextColor}
                 />
 
+                <div className="flex justify-end mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCameraScanner(true)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform"
+                    title="Kamera ile barkod okut"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Kamera ile Barkod
+                  </button>
+                </div>
+
 
 
                 {/* Items Grid */}
@@ -3568,6 +3586,17 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
               onAddItems={handleInvoiceAddFromHistory}
             />
           )}
+
+          <InventoryBarcodeScanner
+            darkMode={false}
+            isOpen={showCameraScanner}
+            title="Ürün Barkodu Tara"
+            onClose={() => setShowCameraScanner(false)}
+            onScan={(barcode) => {
+              handleCameraBarcodeScan(barcode);
+              setShowCameraScanner(false);
+            }}
+          />
         </div>
       </div>
     </>

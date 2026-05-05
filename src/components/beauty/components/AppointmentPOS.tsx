@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { AppointmentStatus } from '../../../types/beauty';
+import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -293,6 +294,8 @@ const QUICK_ADD_HEARD_FROM_STORAGE_KEY = 'beauty_quick_add_heard_from_options_v1
 const UNASSIGNED_RESOURCE = '__unassigned__';
 
 interface Props {
+    initialTab?: 'services' | 'packages' | 'products';
+    salesMode?: 'mixed' | 'products_only';
     prefillDate?: string;
     prefillTime?: string;
     /** Takvimde personel sütununa tıklanınca; atanmamış sütunu boş bırakmak için `__unassigned__` */
@@ -305,7 +308,17 @@ interface Props {
     onBack?: () => void;      // undefined = standalone POS mode
 }
 
-export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefillDeviceId, prefillServiceId, existingAppointment, onBack }: Props) {
+export function AppointmentPOS({
+    initialTab = 'services',
+    salesMode = 'mixed',
+    prefillDate,
+    prefillTime,
+    prefillStaffId,
+    prefillDeviceId,
+    prefillServiceId,
+    existingAppointment,
+    onBack,
+}: Props) {
     const {
         services, packages, specialists, customers, devices,
         loadServices, loadPackages, loadSpecialists, loadCustomers, loadDevices,
@@ -317,6 +330,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const { isAdmin } = usePermission();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
+    const isStandaloneProductSales = salesMode === 'products_only';
     const receiptFirmNr = useMemo(() => {
         const f = selectedFirm;
         if (!f) return undefined;
@@ -371,8 +385,12 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     }, [tm, isDentalMode]);
 
     // ── Left panel state ─────────────────────────────────────────────────
-    const [tab, setTab] = useState<'services' | 'packages' | 'products'>('services');
+    const [tab, setTab] = useState<'services' | 'packages' | 'products'>(isStandaloneProductSales ? 'products' : initialTab);
+    /** Ürün sekmesi için mağaza ürünü kategorisi */
     const [category, setCategory] = useState('all');
+    /** Hizmet sekmesi — ana / alt kategori (beauty_services.parent_category + category) */
+    const [svcFilterMain, setSvcFilterMain] = useState('all');
+    const [svcFilterLeaf, setSvcFilterLeaf] = useState('all');
     const [svcQ, setSvcQ] = useState('');
     const [categoryRailMode, setCategoryRailMode] = useState<BeautyCategoryRailMode>(readBeautyCategoryRailMode);
 
@@ -384,6 +402,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
 
     const showCategoryRailToggle = tab === 'services' || tab === 'products';
     const useCategorySidebar = showCategoryRailToggle && categoryRailMode === 'sidebar';
+    const isProductSalesMode = tab === 'products';
+    const modeAccent = isProductSalesMode ? '#0d9488' : '#7c3aed';
+    const modeAccentSoft = isProductSalesMode ? '#ccfbf1' : '#ede9fe';
+    const modeAccentText = isProductSalesMode ? '#115e59' : '#7c3aed';
 
     // ── Cart ─────────────────────────────────────────────────────────────
     const [cart, setCart] = useState<CartLine[]>([]);
@@ -587,7 +609,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     /** Sepet satırı silinirse personel modalını kapat */
     useEffect(() => {
         if (!staffLinePickerUid) return;
-        const ok = cart.some(l => l.uid === staffLinePickerUid && l.type === 'service');
+        const ok = cart.some(l => l.uid === staffLinePickerUid && (l.type === 'service' || l.type === 'product'));
         if (!ok) setStaffLinePickerUid(null);
     }, [cart, staffLinePickerUid]);
 
@@ -721,14 +743,37 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
 
     const filteredSvcs = useMemo(() => services.filter(s => {
         const activeOk = s.is_active !== false;
-        const catOk = category === 'all' || s.category === category;
+        const mainOk = svcFilterMain === 'all' || beautyServiceMainKey(s) === svcFilterMain;
+        const leafOk = svcFilterLeaf === 'all' || beautyServiceSubKey(s) === svcFilterLeaf;
         const q = svcQ.trim().toLowerCase();
         const name = (s.name ?? '').toLowerCase();
         const searchOk = !q || name.includes(q);
-        return activeOk && catOk && searchOk;
-    }), [services, category, svcQ]);
+        return activeOk && mainOk && leafOk && searchOk;
+    }), [services, svcFilterMain, svcFilterLeaf, svcQ]);
 
-    const categories = useMemo(() => Array.from(new Set(services.map(s => s.category))), [services]);
+    const serviceMainKeys = useMemo(() => {
+        const set = new Set<string>();
+        for (const s of services) {
+            if (s.is_active === false) continue;
+            set.add(beautyServiceMainKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [services]);
+
+    const serviceSubKeysForMain = useMemo(() => {
+        if (svcFilterMain === 'all') return [] as string[];
+        const set = new Set<string>();
+        for (const s of services) {
+            if (s.is_active === false) continue;
+            if (beautyServiceMainKey(s) !== svcFilterMain) continue;
+            set.add(beautyServiceSubKey(s));
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
+    }, [services, svcFilterMain]);
+
+    useEffect(() => {
+        if (svcFilterMain === 'all') setSvcFilterLeaf('all');
+    }, [svcFilterMain]);
 
     /** Stok / mağaza ürünleri (hizmet kartlarından ayrı) */
     const retailProducts = useMemo(() => products.filter(p => {
@@ -997,6 +1042,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     };
 
     const addRetailProduct = (p: Product) => {
+        const staffId = defaultSpecialistId?.trim() || undefined;
         setCart(c => {
             const ex = c.find(l => l.type === 'product' && l.item_id === p.id);
             if (ex) return c.map(l => l.uid === ex.uid ? { ...l, qty: l.qty + 1 } : l);
@@ -1008,12 +1054,79 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 unit_price: p.price,
                 qty: 1,
                 color: '#0d9488',
+                staff_id: staffId,
             }];
         });
     };
     const chgQty = (uid: string, d: number) => setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
+    const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
+    const assignStaffToLine = useCallback(async (line: CartLine, nextStaffIdRaw: string) => {
+        const nextStaffId = String(nextStaffIdRaw ?? '').trim();
+        const prevStaffId = String(line.staff_id ?? '').trim();
+        if (nextStaffId === prevStaffId) return;
+
+        setStaff(line.uid, nextStaffId);
+
+        if (!existingAppointment?.id || line.type !== 'service') return;
+
+        try {
+            const dayYmd =
+                beautyAppointmentDateKey(existingAppointment) ||
+                safeDateYmd(aptDate);
+            let pool: BeautyAppointment[] = [];
+            try {
+                pool = await beautyService.getAppointmentsInRange(dayYmd, dayYmd);
+            } catch {
+                pool = [];
+            }
+            const siblings = findBeautyAppointmentsSameQueueGroup(
+                existingAppointment,
+                pool.length > 0 ? pool : [existingAppointment],
+            );
+            const lineServiceId = String(line.item_id ?? '').trim();
+            const target =
+                siblings.find((a) =>
+                    String(a.service_id ?? '').trim() === lineServiceId &&
+                    String(a.staff_id ?? a.specialist_id ?? '').trim() === prevStaffId,
+                ) ??
+                siblings.find((a) => String(a.service_id ?? '').trim() === lineServiceId) ??
+                siblings.find((a) => a.id === existingAppointment.id) ??
+                siblings[0];
+            if (!target?.id) return;
+
+            await updateAppointment(target.id, {
+                staff_id: nextStaffId || null,
+                specialist_id: nextStaffId || null,
+            });
+
+            const selectedSpecialist =
+                activeSpecialists.find((s) => String(s.id) === nextStaffId) ??
+                specialists.find((s) => String(s.id) === nextStaffId);
+            const specialistRate = Math.max(0, Number(selectedSpecialist?.commission_rate ?? 0) || 0);
+            const serviceRate = line.type === 'service'
+                ? Math.max(
+                    0,
+                    Number(
+                        services.find((s) => String(s.id) === String(lineServiceId))?.commission_rate ?? 0,
+                    ) || 0,
+                )
+                : 0;
+            const nextRate = line.type === 'service' && serviceRate > 0 ? serviceRate : specialistRate;
+            await beautyService.reassignSaleItemsStaffForAppointment({
+                appointmentId: target.id,
+                itemId: lineServiceId || undefined,
+                previousStaffId: prevStaffId || undefined,
+                nextStaffId: nextStaffId || undefined,
+                nextCommissionRate: nextRate,
+            });
+        } catch (e: unknown) {
+            setStaff(line.uid, prevStaffId);
+            logger.crudError('AppointmentPOS', 'assignStaffToLine:persist', e);
+            toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
+        }
+    }, [existingAppointment, aptDate, updateAppointment, activeSpecialists, specialists, tm]);
     const saveCartLineUnitPrice = useCallback(async () => {
         if (!isAdmin()) {
             setCartLinePriceUid(null);
@@ -1103,7 +1216,11 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
     const pickDefaultSpecialist = (id: string) => {
         setDefaultSpecialistId(id);
         setCart(c =>
-            c.map(l => (l.type === 'service' && !l.staff_id?.trim() ? { ...l, staff_id: id } : l))
+            c.map((l) => {
+                const targetTypeOk = isStandaloneProductSales ? l.type === 'product' : l.type === 'service';
+                if (targetTypeOk && !l.staff_id?.trim()) return { ...l, staff_id: id };
+                return l;
+            })
         );
     };
     const clearDefaultSpecialist = () => setDefaultSpecialistId('');
@@ -1252,8 +1369,6 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             b.total !== c.total
         );
     }, [existingAppointment?.id, hydratedAppointmentId, suppressEditBaselineForCompletedVisit, editBaselineSnap, currentEditSnap]);
-
-    const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
 
     const buildDiagnostics = useCallback((): { label: string; ok: boolean }[] => {
         const deviceTrim = typeof aptDevice === 'string' ? aptDevice.trim() : '';
@@ -2105,7 +2220,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             const finalTotalSale = Number.isFinite(ftRaw) ? ftRaw : total;
             const headerDiscount = discAmt + extraDiscount;
 
-            if (existingAppointment?.id) {
+            if (!isStandaloneProductSales && existingAppointment?.id) {
                 const firstSvc = serviceLines[0];
                 const firstSvcTotal =
                     firstSvc
@@ -2147,7 +2262,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 } catch (syncErr) {
                     logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
                 }
-            } else if (canBookApt) {
+            } else if (!isStandaloneProductSales && canBookApt) {
                 // Direkt ödeme ile açılan işlemde randevu da kapalı (completed) oluşturulmalı.
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                 await ensureAppointmentSlotOk(planned);
@@ -2175,6 +2290,34 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
 
             const lineGrosses = cart.map((l) => l.unit_price * l.qty);
             const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
+            const resolveLineCommissionRate = (line: CartLine): number => {
+                const sid = String(line.staff_id ?? '').trim();
+                if (!sid) return 0;
+                const specialist = specialists.find((s) => String(s.id) === sid);
+                const specialistRate = Math.max(0, Number(specialist?.commission_rate ?? 0));
+                if (line.type === 'service') {
+                    const svc = services.find((s) => String(s.id) === String(line.item_id));
+                    const serviceRate = Math.max(0, Number((svc as any)?.commission_rate ?? 0));
+                    return Number.isFinite(serviceRate) && serviceRate > 0 ? serviceRate : specialistRate;
+                }
+                return specialistRate;
+            };
+            const resolveLineCommissionAmount = (line: CartLine, netTotal: number): number => {
+                const sid = String(line.staff_id ?? '').trim();
+                if (!sid) return 0;
+                const specialist = specialists.find((s) => String(s.id) === sid);
+                if (line.type === 'product') {
+                    const perUnit = Math.max(0, Number(specialist?.product_unit_commission ?? 0));
+                    if (!Number.isFinite(perUnit) || perUnit <= 0) return 0;
+                    const qty = Math.max(0, Number(line.qty ?? 0) || 0);
+                    const value = perUnit * qty;
+                    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+                }
+                const rate = resolveLineCommissionRate(line);
+                if (!Number.isFinite(rate) || rate <= 0) return 0;
+                const value = (Math.max(0, Number(netTotal) || 0) * rate) / 100;
+                return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+            };
             const saleItems = cart.map((line, idx) => ({
                 item_type: line.type,
                 item_id: line.item_id,
@@ -2184,7 +2327,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 discount: lineSplits[idx]?.discount ?? 0,
                 total: lineSplits[idx]?.total ?? line.unit_price * line.qty,
                 staff_id: line.staff_id ?? null,
-                commission_amount: 0,
+                commission_amount: resolveLineCommissionAmount(
+                    line,
+                    lineSplits[idx]?.total ?? line.unit_price * line.qty,
+                ),
             }));
 
             let separateLineInvoices = false;
@@ -2232,7 +2378,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 discount: disc,
                                 total: net,
                                 staff_id: line.staff_id ?? null,
-                                commission_amount: 0,
+                                commission_amount: resolveLineCommissionAmount(line, net),
                             },
                         ],
                         { skipErpAndLoyalty: true },
@@ -2389,6 +2535,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                    {!isStandaloneProductSales && (
+                    <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <Label>{tm('date')}</Label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
@@ -2530,6 +2678,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             </button>
                         </div>
                     )}
+                    </>
+                    )}
                 </div>
             </div>
 
@@ -2564,11 +2714,15 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     }} />
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 auto', minWidth: 0 }}>
-                                {([
-                                    { id: 'services' as const, label: tm('bPOSTabServices'), Icon: Scissors },
-                                    { id: 'packages' as const, label: tm('bPOSTabPackages'), Icon: Package },
-                                    { id: 'products' as const, label: tm('bPOSTabProducts'), Icon: ShoppingBag },
-                                ]).map(({ id, label, Icon }) => (
+                                {(
+                                    isStandaloneProductSales
+                                        ? [{ id: 'products' as const, label: tm('bPOSTabProducts'), Icon: ShoppingBag }]
+                                        : [
+                                            { id: 'services' as const, label: tm('bPOSTabServices'), Icon: Scissors },
+                                            { id: 'packages' as const, label: tm('bPOSTabPackages'), Icon: Package },
+                                            { id: 'products' as const, label: tm('bPOSTabProducts'), Icon: ShoppingBag },
+                                        ]
+                                ).map(({ id, label, Icon }) => (
                                     <button key={id} onClick={() => { setTab(id); setCategory('all'); setSvcQ(''); }} style={{
                                         display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8,
                                         border: tab === id ? 'none' : '1px solid #e5e7eb',
@@ -2581,7 +2735,77 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                         <Icon size={18} />{label}
                                     </button>
                                 ))}
-                                {tab === 'services' && activeSpecialists.length > 0 && (
+                                {isStandaloneProductSales && activeSpecialists.length > 0 && (
+                                    <div
+                                        title={tm('bProductSalesStaff')}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6,
+                                            flexShrink: 0,
+                                            paddingLeft: 10,
+                                            marginLeft: 2,
+                                            borderLeft: '1px solid #ccfbf1',
+                                            minWidth: 0,
+                                            maxWidth: '100%',
+                                            overflowX: 'auto',
+                                            scrollbarWidth: 'thin',
+                                            touchAction: 'manipulation',
+                                        }}
+                                    >
+                                        <UserRound size={16} color="#0d9488" style={{ flexShrink: 0, pointerEvents: 'none' }} />
+                                        <button
+                                            type="button"
+                                            title={tm('bDefaultSpecialistPlaceholder')}
+                                            onClick={() => clearDefaultSpecialist()}
+                                            style={{
+                                                ...UZMAN_CHIP_TOUCH,
+                                                minHeight: 44,
+                                                minWidth: 44,
+                                                width: 44,
+                                                padding: 0,
+                                                border: !defaultSpecialistId ? 'none' : '1px solid #d1d5db',
+                                                background: !defaultSpecialistId ? '#0d9488' : '#f3f4f6',
+                                                color: !defaultSpecialistId ? '#fff' : '#6b7280',
+                                                fontSize: 14,
+                                                lineHeight: 1,
+                                            }}
+                                        >
+                                            —
+                                        </button>
+                                        {activeSpecialists.map((s) => {
+                                            const sel = defaultSpecialistId === s.id;
+                                            return (
+                                                <button
+                                                    key={s.id}
+                                                    type="button"
+                                                    title={s.name}
+                                                    onClick={() => pickDefaultSpecialist(s.id)}
+                                                    style={{
+                                                        ...UZMAN_CHIP_TOUCH,
+                                                        minHeight: 44,
+                                                        minWidth: 86,
+                                                        maxWidth: 240,
+                                                        padding: '8px 12px',
+                                                        justifyContent: 'flex-start',
+                                                        textAlign: 'left',
+                                                        border: sel ? 'none' : '1px solid #d1d5db',
+                                                        background: sel ? '#0d9488' : '#f3f4f6',
+                                                        color: sel ? '#fff' : '#374151',
+                                                        fontSize: 12,
+                                                        fontWeight: sel ? 700 : 600,
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                    }}
+                                                >
+                                                    {s.name}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                {!isStandaloneProductSales && tab === 'services' && activeSpecialists.length > 0 && (
                                     <div
                                         title={`${tm('bDefaultSpecialist')}: ${tm('bDefaultSpecialistHint')}`}
                                         style={{
@@ -2651,7 +2875,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                         })}
                                     </div>
                                 )}
-                                {showCategoryRailToggle && (
+                                {!isStandaloneProductSales && showCategoryRailToggle && (
                                     <button
                                         type="button"
                                         onClick={() => setCategoryRailMode(m => (m === 'chips' ? 'sidebar' : 'chips'))}
@@ -2671,21 +2895,56 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             </div>
                         </div>
                         {tab === 'services' && !useCategorySidebar && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-                                <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flex: '1 1 120px', minWidth: 0, scrollbarWidth: 'none' }}>
-                                    {['all', ...categories].map(cat => (
-                                        <button key={cat} onClick={() => setCategory(cat)} style={{
-                                            flexShrink: 0, padding: '8px 14px', borderRadius: 8,
-                                            border: category === cat ? 'none' : '1px solid #e5e7eb',
-                                            background: category === cat ? '#ede9fe' : '#f9fafb',
-                                            color: category === cat ? '#7c3aed' : '#6b7280',
-                                            fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
-                                            minHeight: 40, touchAction: 'manipulation',
-                                        }}>
-                                            {cat === 'all' ? tm('bAll') : (posServiceCategoryLabels[cat] ?? cat)}
-                                        </button>
-                                    ))}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                                <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'wrap', flex: '1 1 120px', minWidth: 0, scrollbarWidth: 'none' }}>
+                                    {['all', ...serviceMainKeys].map(mk => {
+                                        const sel = svcFilterMain === mk;
+                                        return (
+                                            <button
+                                                key={mk}
+                                                type="button"
+                                                onClick={() => {
+                                                    setSvcFilterMain(mk);
+                                                    setSvcFilterLeaf('all');
+                                                }}
+                                                style={{
+                                                    flexShrink: 0, padding: '8px 14px', borderRadius: 8,
+                                                    border: sel ? 'none' : '1px solid #e5e7eb',
+                                                    background: sel ? '#ede9fe' : '#f9fafb',
+                                                    color: sel ? '#7c3aed' : '#6b7280',
+                                                    fontSize: 12, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.05em',
+                                                    minHeight: 40, touchAction: 'manipulation',
+                                                }}
+                                            >
+                                                {mk === 'all' ? tm('bAll') : (posServiceCategoryLabels[mk] ?? mk)}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                                {svcFilterMain !== 'all' && serviceSubKeysForMain.length > 1 && (
+                                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'wrap', scrollbarWidth: 'none' }}>
+                                        {['all', ...serviceSubKeysForMain].map(lk => {
+                                            const sel = svcFilterLeaf === lk;
+                                            return (
+                                                <button
+                                                    key={lk}
+                                                    type="button"
+                                                    onClick={() => setSvcFilterLeaf(lk)}
+                                                    style={{
+                                                        flexShrink: 0, padding: '6px 12px', borderRadius: 8,
+                                                        border: sel ? 'none' : '1px solid #e5e7eb',
+                                                        background: sel ? '#ddd6fe' : '#fff',
+                                                        color: sel ? '#5b21b6' : '#64748b',
+                                                        fontSize: 11, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em',
+                                                        minHeight: 36, touchAction: 'manipulation',
+                                                    }}
+                                                >
+                                                    {lk === 'all' ? tm('bAll') : (posServiceCategoryLabels[lk] ?? lk)}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         )}
                         {tab === 'products' && !useCategorySidebar && (
@@ -2732,40 +2991,120 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 }}>
                                     {tm('bCategorySidebarHeading')}
                                 </div>
-                                {(tab === 'services' ? ['all', ...categories] : ['all', ...productCategories]).map(cat => {
-                                    const sel = category === cat;
-                                    const isTeal = tab === 'products';
-                                    const label = cat === 'all' ? tm('bAll') : (tab === 'services' ? (posServiceCategoryLabels[cat] ?? cat) : cat);
-                                    return (
-                                        <button
-                                            key={cat}
-                                            type="button"
-                                            onClick={() => setCategory(cat)}
-                                            style={{
-                                                width: '100%',
-                                                textAlign: 'left',
-                                                padding: '12px 14px',
-                                                borderRadius: 14,
-                                                border: sel ? `2px solid ${isTeal ? '#0d9488' : '#7c3aed'}` : '2px solid transparent',
-                                                background: sel ? (isTeal ? '#ccfbf1' : '#ede9fe') : '#fff',
-                                                color: sel ? (isTeal ? '#0f766e' : '#5b21b6') : '#64748b',
-                                                fontSize: 13,
-                                                fontWeight: sel ? 800 : 600,
-                                                cursor: 'pointer',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '0.04em',
-                                                lineHeight: 1.25,
-                                                wordBreak: 'break-word',
-                                                touchAction: 'manipulation',
-                                                boxShadow: sel
-                                                    ? (isTeal ? '0 4px 14px rgba(13, 148, 136, 0.18)' : '0 4px 14px rgba(124, 58, 237, 0.12)')
-                                                    : '0 1px 2px rgba(15, 23, 42, 0.06)',
-                                            }}
-                                        >
-                                            {label}
-                                        </button>
-                                    );
-                                })}
+                                {tab === 'services' ? (
+                                    <>
+                                        <div style={{
+                                            fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                            letterSpacing: '0.14em', padding: '4px 8px 2px',
+                                        }}>
+                                            {tm('bServiceMainCategoryFilter')}
+                                        </div>
+                                        {['all', ...serviceMainKeys].map(mk => {
+                                            const sel = svcFilterMain === mk;
+                                            return (
+                                                <button
+                                                    key={mk}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSvcFilterMain(mk);
+                                                        setSvcFilterLeaf('all');
+                                                    }}
+                                                    style={{
+                                                        width: '100%',
+                                                        textAlign: 'left',
+                                                        padding: '12px 14px',
+                                                        borderRadius: 14,
+                                                        border: sel ? '2px solid #7c3aed' : '2px solid transparent',
+                                                        background: sel ? '#ede9fe' : '#fff',
+                                                        color: sel ? '#5b21b6' : '#64748b',
+                                                        fontSize: 13,
+                                                        fontWeight: sel ? 800 : 600,
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.04em',
+                                                        lineHeight: 1.25,
+                                                        wordBreak: 'break-word',
+                                                        touchAction: 'manipulation',
+                                                        boxShadow: sel ? '0 4px 14px rgba(124, 58, 237, 0.12)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                                    }}
+                                                >
+                                                    {mk === 'all' ? tm('bAll') : (posServiceCategoryLabels[mk] ?? mk)}
+                                                </button>
+                                            );
+                                        })}
+                                        {svcFilterMain !== 'all' && serviceSubKeysForMain.length > 1 && (
+                                            <>
+                                                <div style={{
+                                                    fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase',
+                                                    letterSpacing: '0.14em', padding: '10px 8px 2px',
+                                                }}>
+                                                    {tm('bServiceSubCategoryFilter')}
+                                                </div>
+                                                {['all', ...serviceSubKeysForMain].map(lk => {
+                                                    const sel = svcFilterLeaf === lk;
+                                                    return (
+                                                        <button
+                                                            key={lk}
+                                                            type="button"
+                                                            onClick={() => setSvcFilterLeaf(lk)}
+                                                            style={{
+                                                                width: '100%',
+                                                                textAlign: 'left',
+                                                                padding: '10px 14px',
+                                                                borderRadius: 14,
+                                                                border: sel ? '2px solid #8b5cf6' : '2px solid transparent',
+                                                                background: sel ? '#ddd6fe' : '#fff',
+                                                                color: sel ? '#5b21b6' : '#64748b',
+                                                                fontSize: 12,
+                                                                fontWeight: sel ? 800 : 600,
+                                                                cursor: 'pointer',
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.04em',
+                                                                lineHeight: 1.25,
+                                                                wordBreak: 'break-word',
+                                                                touchAction: 'manipulation',
+                                                            }}
+                                                        >
+                                                            {lk === 'all' ? tm('bAll') : (posServiceCategoryLabels[lk] ?? lk)}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+                                    </>
+                                ) : (
+                                    ['all', ...productCategories].map(cat => {
+                                        const sel = category === cat;
+                                        const label = cat === 'all' ? tm('bAll') : cat;
+                                        return (
+                                            <button
+                                                key={cat}
+                                                type="button"
+                                                onClick={() => setCategory(cat)}
+                                                style={{
+                                                    width: '100%',
+                                                    textAlign: 'left',
+                                                    padding: '12px 14px',
+                                                    borderRadius: 14,
+                                                    border: sel ? '2px solid #0d9488' : '2px solid transparent',
+                                                    background: sel ? '#ccfbf1' : '#fff',
+                                                    color: sel ? '#0f766e' : '#64748b',
+                                                    fontSize: 13,
+                                                    fontWeight: sel ? 800 : 600,
+                                                    cursor: 'pointer',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.04em',
+                                                    lineHeight: 1.25,
+                                                    wordBreak: 'break-word',
+                                                    touchAction: 'manipulation',
+                                                    boxShadow: sel ? '0 4px 14px rgba(13, 148, 136, 0.18)' : '0 1px 2px rgba(15, 23, 42, 0.06)',
+                                                }}
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })
+                                )}
                             </aside>
                         )}
                     {/* Grid */}
@@ -2782,7 +3121,10 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                             >
                                 <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{svc.name}</p>
                                 <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase' }}>
-                                    {posServiceCategoryLabels[svc.category] ?? svc.category} · {svc.duration_min}{tm('bDkSuffix')}
+                                    {String(svc.parent_category ?? '').trim()
+                                        ? `${posServiceCategoryLabels[String(svc.parent_category)] ?? svc.parent_category} › ${posServiceCategoryLabels[svc.category] ?? svc.category}`
+                                        : (posServiceCategoryLabels[svc.category] ?? svc.category)}{' '}
+                                    · {svc.duration_min}{tm('bDkSuffix')}
                                 </p>
                                 <p style={{ fontSize: 13, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                             </button>
@@ -3408,13 +3750,16 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                 <X size={16} />
                                             </button>
                                         </div>
-                                        {line.type === 'service' && (() => {
+                                        {(line.type === 'service' || line.type === 'product') && (() => {
                                             const sid = String(line.staff_id ?? '').trim();
                                             const staffLabel = sid
                                                 ? (activeSpecialists.find(s => String(s.id) === String(sid))?.name?.trim()
                                                     ?? specialists.find(s => String(s.id) === String(sid))?.name?.trim())
                                                 : undefined;
                                             const hasStaff = Boolean(staffLabel);
+                                            const missingStaffLabel = line.type === 'service'
+                                                ? tm('bLineStaffRequired')
+                                                : tm('bLineStaffOptionalCommission');
                                             return (
                                                 <div
                                                     style={{
@@ -3440,7 +3785,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                             {tm('bStaffName')}
                                                         </div>
                                                         <div
-                                                            title={hasStaff ? staffLabel : tm('bLineStaffRequired')}
+                                                            title={hasStaff ? staffLabel : missingStaffLabel}
                                                             style={{
                                                                 fontSize: 13,
                                                                 fontWeight: 700,
@@ -3451,7 +3796,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                                 lineHeight: 1.3,
                                                             }}
                                                         >
-                                                            {hasStaff ? staffLabel : tm('bLineStaffRequired')}
+                                                            {hasStaff ? staffLabel : missingStaffLabel}
                                                         </div>
                                                     </div>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
@@ -3466,13 +3811,13 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                                 width: 44,
                                                                 height: 44,
                                                                 borderRadius: 10,
-                                                                border: '1px solid #e9d5ff',
-                                                                background: '#faf5ff',
+                                                                border: `1px solid ${modeAccentSoft}`,
+                                                                background: isProductSalesMode ? '#f0fdfa' : '#faf5ff',
                                                                 cursor: 'pointer',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 justifyContent: 'center',
-                                                                color: '#7c3aed',
+                                                                color: modeAccent,
                                                                 touchAction: 'manipulation',
                                                                 WebkitTapHighlightColor: 'transparent',
                                                                 flexShrink: 0,
@@ -3481,7 +3826,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                         >
                                                             <Users size={18} />
                                                         </button>
-                                                        {isAdmin() ? (
+                                                        {line.type === 'service' && isAdmin() ? (
                                                         <button
                                                             type="button"
                                                             title={tm('bAppointmentEditPriceTitleBtn')}
@@ -3512,6 +3857,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                             <Banknote size={18} strokeWidth={2.25} />
                                                         </button>
                                                         ) : null}
+                                                        {line.type === 'service' && (
                                                         <button
                                                             type="button"
                                                             title={tm('bCartMonthlyPlanButton')}
@@ -3538,6 +3884,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                                         >
                                                             <CalendarDays size={18} strokeWidth={2.25} />
                                                         </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -3551,6 +3898,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                     {/* Bottom Fixed Section: Appointment Details + Totals + Actions */}
                     <div style={{ borderTop: '1px solid #e5e7eb', flexShrink: 0, background: '#fff' }}>
                         {/* Appointment details (collapsible) */}
+                        {!isStandaloneProductSales && (
                         <div style={{ borderBottom: '1px solid #f3f4f6' }}>
                             <button
                                 onClick={() => setAptOpen(o => !o)}
@@ -3651,6 +3999,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/* Totals + Checkout */}
                         <div style={{ padding: '12px 14px' }}>
@@ -3702,8 +4051,8 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     <span style={{ fontWeight: 600, color: '#047857' }}>{tm('bBeautyPaidNoNewSale')}</span>
                                 </div>
                             ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                                {!existingAppointment ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: isStandaloneProductSales ? '1fr' : '1fr 1fr', gap: 8 }}>
+                                {!isStandaloneProductSales && !existingAppointment ? (
                                     <button
                                         type="button"
                                         disabled={bookingBusy || !(canSave && canBookApt)}
@@ -3719,7 +4068,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     >
                                         <CalendarDays size={13} /> {bookingBusy ? tm('bLoading') : tm('bAppointmentCreate')}
                                     </button>
-                                ) : (
+                                ) : !isStandaloneProductSales ? (
                                     <button
                                         type="button"
                                         disabled={
@@ -3759,21 +4108,21 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                     >
                                         <RefreshCw size={13} /> {updateExistingBusy ? tm('bAppointmentUpdateSaving') : tm('bAppointmentUpdate')}
                                     </button>
-                                )}
+                                ) : null}
                                 <button
                                     type="button"
                                     disabled={bookingBusy}
                                     onClick={tryOpenPay}
                                     style={{
                                         height: 38, borderRadius: 5, border: 'none',
-                                        background: (canSave && !bookingBusy) ? '#7c3aed' : '#e5e7eb',
+                                        background: (canSave && !bookingBusy) ? modeAccent : '#e5e7eb',
                                         color: (canSave && !bookingBusy) ? '#fff' : '#9ca3af',
                                         fontSize: 11, fontWeight: 800, cursor: (canSave && !bookingBusy) ? 'pointer' : 'not-allowed',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                                         transition: 'background 0.1s',
                                     }}
-                                    onMouseEnter={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = '#6d28d9'; }}
-                                    onMouseLeave={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = '#7c3aed'; }}
+                                    onMouseEnter={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = isProductSalesMode ? '#0f766e' : '#6d28d9'; }}
+                                    onMouseLeave={e => { if (canSave && !bookingBusy) e.currentTarget.style.background = modeAccent; }}
                                 >
                                     <Receipt size={13} /> {existingAppointment ? tm('bPaymentCollectComplete') : tm('bPaymentCollect')}
                                 </button>
@@ -3788,7 +4137,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
             {/* ── Sepet satırı: personel liste modalı — body portal (layout üstünde görünsün) ── */}
             {staffLinePickerUid && (() => {
                 const pickLine = cart.find(l => l.uid === staffLinePickerUid);
-                if (!pickLine || pickLine.type !== 'service') return null;
+                if (!pickLine || (pickLine.type !== 'service' && pickLine.type !== 'product')) return null;
                 return createPortal(
                     <div
                         role="presentation"
@@ -3868,7 +4217,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setStaff(pickLine.uid, '');
+                                        void assignStaffToLine(pickLine, '');
                                         setStaffLinePickerUid(null);
                                     }}
                                     style={{
@@ -3893,7 +4242,7 @@ export function AppointmentPOS({ prefillDate, prefillTime, prefillStaffId, prefi
                                             key={s.id}
                                             type="button"
                                             onClick={() => {
-                                                setStaff(pickLine.uid, s.id);
+                                                void assignStaffToLine(pickLine, s.id);
                                                 setStaffLinePickerUid(null);
                                             }}
                                             style={{

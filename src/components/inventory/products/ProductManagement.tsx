@@ -67,6 +67,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [editingProductId, setEditingProductId] = useState<string | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; product: Product } | null>(null);
   const [showServicesOnly, setShowServicesOnly] = useState(false);
+  const [duplicateDetectBy, setDuplicateDetectBy] = useState<'none' | 'code' | 'barcode'>('none');
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkRateModal, setShowBulkRateModal] = useState(false);
   const [showBulkImageModal, setShowBulkImageModal] = useState(false);
@@ -167,18 +168,36 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     setShowViewer(true);
   };
 
+  const duplicateKeys = useMemo(() => {
+    if (duplicateDetectBy === 'none') return new Set<string>();
+    const counts = new Map<string, number>();
+    for (const p of displayProducts) {
+      const key = duplicateDetectBy === 'code'
+        ? String(p.code || '').trim()
+        : String(p.barcode || '').trim();
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([k]) => k));
+  }, [displayProducts, duplicateDetectBy]);
+
   const filteredProducts = useMemo(() => {
     return displayProducts.filter(product => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = searchQuery === '' ||
         (product.name?.toLowerCase() || '').includes(searchLower) ||
+        (product.code?.toLowerCase() || '').includes(searchLower) ||
         (product.barcode || '').includes(searchQuery) ||
         (product.category?.toLowerCase() || '').includes(searchLower);
       const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
       const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
-      return matchesSearch && matchesCategory && matchesService;
+      const duplicateKey = duplicateDetectBy === 'code'
+        ? String(product.code || '').trim()
+        : String(product.barcode || '').trim();
+      const matchesDuplicate = duplicateDetectBy === 'none' || duplicateKeys.has(duplicateKey);
+      return matchesSearch && matchesCategory && matchesService && matchesDuplicate;
     });
-  }, [displayProducts, searchQuery, categoryFilter]);
+  }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy, duplicateKeys]);
 
   /** Listede bulunan demo ürünler — sağ tık menüsünde "Demo ürünleri toplu sil" sadece bunlar varken gösterilir */
   const demoProductsInList = useMemo(() => {
@@ -362,15 +381,33 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       <div className="flex-1 overflow-auto p-3 bg-gray-50">
         {/* Search Box */}
         <div className="mb-3 bg-white p-3 border border-gray-200 rounded">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder={tm('productSearchPlaceholder')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="relative md:col-span-2">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder={tm('productSearchPlaceholder')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={duplicateDetectBy}
+                onChange={(e) => setDuplicateDetectBy(e.target.value as 'none' | 'code' | 'barcode')}
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="none">Tekrar Filtresi: Kapalı</option>
+                <option value="code">Tekrar Filtresi: Ürün Kodu</option>
+                <option value="barcode">Tekrar Filtresi: Barkod</option>
+              </select>
+              {duplicateDetectBy !== 'none' && (
+                <span className="text-[11px] px-2 py-1 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
+                  {duplicateKeys.size} tekrar anahtarı
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

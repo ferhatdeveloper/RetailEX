@@ -51,6 +51,8 @@
       "../database/init/**/*",
       "../database/migrations/**/*",
       "../database/sys/**/*",
+      "../config/postgrest.conf",
+      "resources/install-postgrest.ps1",
       "resources/pg-windows-expose-remote.ps1",
       "resources/bridge.cjs",
       "resources/package.json",
@@ -68,7 +70,7 @@
   },
   "productName": "retailex",
   "mainBinaryName": "retailex",
-  "version": "0.1.69",
+  "version": "0.1.71",
   "identifier": "com.retailex.app",
   "plugins": {
     "updater": {

@@ -25,6 +25,7 @@ import type { BeautyAppointment, BeautySale } from '../../types/beauty';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
+import { CommissionReport } from '../beauty/components/CommissionReport';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -111,6 +112,26 @@ function isRestaurantPaymentCardLike(m: string): boolean {
   return /KART|CARD|kredi|credit|gateway/i.test(String(m || ''));
 }
 
+/** Rapor yazdırma / Z başlığı için yerel tarih metni (YYYY-MM-DD takvim anahtarları). */
+function formatReportsDateRangeTr(fromKey: string, toKey: string): string {
+  if (fromKey === toKey) {
+    return new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+  const short: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+  const a = new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', short);
+  const b = new Date(`${toKey}T12:00:00`).toLocaleDateString('tr-TR', short);
+  return `${a} – ${b}`;
+}
+
+function reportHtmlTitleDateSegment(fromKey: string, toKey: string): string {
+  return fromKey === toKey ? fromKey : `${fromKey}_${toKey}`;
+}
+
 function restOrderPaymentMethod(o: any): string {
   const raw = o?.payment_method ?? o?.paymentMethod;
   if (raw == null || String(raw).trim() === '') return 'NAKİT';
@@ -156,6 +177,16 @@ function isSaleRowUuid(id: string): boolean {
 function isRemovedSaleStatus(status: unknown): boolean {
   const st = String(status ?? '').toLowerCase();
   return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+}
+
+function extractCancelReason(notes: unknown): string {
+  const text = String(notes ?? '').trim();
+  if (!text) return '';
+  const tagged = text.match(/\[CANCEL_REASON\]\s*(.+)$/im);
+  if (tagged?.[1]) return tagged[1].trim();
+  const labeled = text.match(/iptal nedeni\s*:\s*(.+)$/im);
+  if (labeled?.[1]) return labeled[1].trim();
+  return '';
 }
 
 function resolveDailyRowDeviceName(value: unknown): string {
@@ -390,6 +421,7 @@ type DailyUnifiedRow = {
   discount: number;
   paymentMethod: string;
   status?: string;
+  cancelReason?: string;
   erpSale?: Sale;
   restOrder?: any;
 };
@@ -415,7 +447,7 @@ type ReportTab =
   // Ödeme & İşlem
   'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
   // Güzellik özel
-  'beauty-service-report' | 'beauty-cancelled-report';
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-commission-report';
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
@@ -452,7 +484,7 @@ const RESTAURANT_ONLY_REPORT_KEYS = new Set<string>([
   'turnover-reports',
 ]);
 
-const BEAUTY_ONLY_REPORT_KEYS = new Set<string>(['beauty-service-report', 'beauty-cancelled-report']);
+const BEAUTY_ONLY_REPORT_KEYS = new Set<string>(['beauty-service-report', 'beauty-cancelled-report', 'beauty-commission-report']);
 
 function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
   return groups.map((group) => {
@@ -480,11 +512,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
     getReportingCurrency();
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
-  const [selectedDate, setSelectedDate] = useState(localTodayDateKey);
+  const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
+  const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
-  const reportConfirmResolverRef = useRef<((approved: boolean) => void) | null>(null);
+  const [reportConfirmReason, setReportConfirmReason] = useState('');
+  const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
   const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
@@ -578,7 +612,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   }, [selectedTab]);
 
   const reloadBeautyServiceReport = useCallback(() => {
-    if (businessType !== 'beauty' || (selectedTab !== 'beauty-service-report' && selectedTab !== 'beauty-cancelled-report') || !selectedFirm) return;
+    if (
+      businessType !== 'beauty' ||
+      (selectedTab !== 'beauty-service-report' &&
+        selectedTab !== 'beauty-cancelled-report' &&
+        selectedTab !== 'beauty-commission-report') ||
+      !selectedFirm
+    ) return;
     setLoadingBeautyServiceReport(true);
     Promise.allSettled([
       beautyService.getAppointmentsInRange(beautyServiceFrom, beautyServiceTo),
@@ -678,8 +718,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       return Promise.resolve();
     }
     setLoadingOrders(true);
-    const fromDate = selectedDate + 'T00:00:00Z';
-    const toDate = selectedDate + 'T23:59:59Z';
+    const fromDate = selectedDateFrom + 'T00:00:00Z';
+    const toDate = selectedDateTo + 'T23:59:59Z';
     return RestaurantService.getOrderHistory({
       fromDate,
       toDate,
@@ -696,7 +736,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       .finally(() => {
         setLoadingOrders(false);
       });
-  }, [businessType, selectedDate, selectedFirm]);
+  }, [businessType, selectedDateFrom, selectedDateTo, selectedFirm]);
 
   // Fetch Restaurant Orders (günlük rapor + iptal sonrası tazeleme)
   useEffect(() => {
@@ -708,7 +748,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     let cancelled = false;
     const loadCashExpenses = async () => {
       try {
-        const rows = await expenseAPI.getAll({ startDate: selectedDate, endDate: selectedDate });
+        const rows = await expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo });
         if (cancelled) return;
         const allRows = Array.isArray(rows) ? rows : [];
         const totalCash = allRows.reduce((sum, row) => {
@@ -730,7 +770,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     return () => {
       cancelled = true;
     };
-  }, [selectedDate, selectedTab]);
+  }, [selectedDateFrom, selectedDateTo, selectedTab]);
 
   // Restoran — Ürün Satış Adedi (ürün raporları sekmesi)
   useEffect(() => {
@@ -827,7 +867,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   }, [reloadBeautyServiceReport]);
 
   useEffect(() => {
-    if (businessType !== 'beauty' || (selectedTab !== 'beauty-service-report' && selectedTab !== 'beauty-cancelled-report')) return;
+    if (
+      businessType !== 'beauty' ||
+      (selectedTab !== 'beauty-service-report' &&
+        selectedTab !== 'beauty-cancelled-report' &&
+        selectedTab !== 'beauty-commission-report')
+    ) return;
     void loadBeautyServicesCatalog();
   }, [businessType, selectedTab, loadBeautyServicesCatalog]);
 
@@ -1102,7 +1147,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   // Daily sales
   const getDailySales = () => {
     if (!sales || !Array.isArray(sales)) return [];
-    return sales.filter(s => localCalendarDateKey(s.date) === selectedDate);
+    return sales.filter((s) => {
+      const k = localCalendarDateKey(s.date);
+      return k >= selectedDateFrom && k <= selectedDateTo;
+    });
   };
 
   const dailySales = getDailySales();
@@ -1116,9 +1164,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     if (businessType !== 'restaurant') return [] as any[];
     return restOrders.filter((o: any) => {
       const d = o.closed_at ?? o.closedAt ?? o.date;
-      return d && localCalendarDateKey(d) === selectedDate;
+      if (!d) return false;
+      const k = localCalendarDateKey(d);
+      return k >= selectedDateFrom && k <= selectedDateTo;
     });
-  }, [businessType, restOrders, selectedDate]);
+  }, [businessType, restOrders, selectedDateFrom, selectedDateTo]);
 
   let dailyTotal: number;
   let dailyCash: number;
@@ -1177,6 +1227,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         discount: Number(s.discount) || 0,
         paymentMethod: s.paymentMethod,
         status: String(s.status ?? 'completed'),
+        cancelReason: extractCancelReason(s.notes),
         erpSale: s,
       }));
     }
@@ -1197,6 +1248,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           discount: Number(s.discount) || 0,
           paymentMethod: s.paymentMethod,
           status: String(s.status ?? 'completed'),
+          cancelReason: extractCancelReason(s.notes),
           erpSale: s,
         }))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -1350,9 +1402,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   }, [dailyRowReceiptHtml, tm]);
 
   const confirmReportAction = useCallback((message: string) => {
-    return new Promise<boolean>((resolve) => {
+    return new Promise<{ approved: boolean; reason: string }>((resolve) => {
       reportConfirmResolverRef.current = resolve;
       setReportConfirmMessage(message);
+      setReportConfirmReason('');
       setReportConfirmOpen(true);
     });
   }, []);
@@ -1361,14 +1414,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     setReportConfirmOpen(false);
     const resolver = reportConfirmResolverRef.current;
     reportConfirmResolverRef.current = null;
-    if (resolver) resolver(approved);
-  }, []);
+    if (resolver) resolver({ approved, reason: reportConfirmReason.trim() });
+    setReportConfirmReason('');
+  }, [reportConfirmReason]);
 
   const handleDeleteDailyErpSale = useCallback(async () => {
     const inv = dailyRowReceiptModal?.erpSale;
     const id = inv?.id && isSaleRowUuid(String(inv.id)) ? String(inv.id).trim() : '';
     if (!id || !inv?.receiptNumber) return;
-    const approved = await confirmReportAction(
+    const { approved, reason } = await confirmReportAction(
       tm('reportConfirmDeleteErpSale').replace('{n}', String(inv.receiptNumber))
     );
     if (!approved) return;
@@ -1379,6 +1433,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         firmNr: (inv as any).firmNr,
         periodNr: (inv as any).periodNr,
         receiptNumber: inv.receiptNumber,
+        reason,
       });
       if (!ok) {
         console.error('[ReportsModule] refund returned false', { id, receipt: inv.receiptNumber });
@@ -1403,7 +1458,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     const id = o?.id != null ? String(o.id).trim() : '';
     const orderNo = dailyRowReceiptModal?.receiptNumber || id;
     if (!id) return;
-    const approved = await confirmReportAction(
+    const { approved } = await confirmReportAction(
       tm('reportConfirmCancelRestOrder').replace('{n}', String(orderNo))
     );
     if (!approved) {
@@ -1422,11 +1477,12 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   // Z Report — restoranda tutarlar Perakende Satışlar (ERP) ile aynı; o gün ERP fişi yoksa kapalı adisyonlar
   const generateZReport = () => {
-    const reportDay = selectedDate;
-    const allDaySales = sales.filter((s) => localCalendarDateKey(s.date) === reportDay);
+    const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
+    const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
+    const allDaySales = sales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const removedDaySales = allDaySales.filter((s) => isRemovedSaleStatus(s.status));
     const todaySales = sales.filter(
-      (s) => localCalendarDateKey(s.date) === reportDay && !isRemovedSaleStatus(s.status)
+      (s) => inReportPeriod(localCalendarDateKey(s.date)) && !isRemovedSaleStatus(s.status)
     );
     const removedAmount = removedDaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 
@@ -1441,8 +1497,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
         const totalDiscount = todaySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
         const amountBeforeDiscount = totalAmount + totalDiscount;
+        const sortedErp = [...todaySales].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
         return {
-          date: reportDay,
+          dateFrom: selectedDateFrom,
+          dateTo: selectedDateTo,
+          dateLabel,
           totalSales: todaySales.length,
           amountBeforeDiscount,
           totalAmount,
@@ -1451,8 +1512,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           cashAmount,
           cardAmount,
           totalDiscount,
-          firstSale: todaySales[0].receiptNumber,
-          lastSale: todaySales[todaySales.length - 1].receiptNumber,
+          firstSale: sortedErp.length > 0 ? sortedErp[0].receiptNumber : '-',
+          lastSale: sortedErp.length > 0 ? sortedErp[sortedErp.length - 1].receiptNumber : '-',
           canceledSales: removedDaySales.length,
           refundAmount: removedAmount,
         };
@@ -1469,9 +1530,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         0
       );
       const amountBeforeDiscount = totalAmount + totalDiscount;
-      const ro = restOrdersClosedOnSelectedDate;
+      const ro = [...restOrdersClosedOnSelectedDate].sort(
+        (a: any, b: any) =>
+          new Date(a.closed_at || a.closedAt || a.opened_at).getTime() -
+          new Date(b.closed_at || b.closedAt || b.opened_at).getTime()
+      );
       return {
-        date: reportDay,
+        dateFrom: selectedDateFrom,
+        dateTo: selectedDateTo,
+        dateLabel,
         totalSales: ro.length,
         amountBeforeDiscount,
         totalAmount,
@@ -1497,8 +1564,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     const totalDiscount = todaySales.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     const amountBeforeDiscount = totalAmount + totalDiscount;
 
+    const sortedRetail = [...todaySales].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
     return {
-      date: reportDay,
+      dateFrom: selectedDateFrom,
+      dateTo: selectedDateTo,
+      dateLabel,
       totalSales: todaySales.length,
       amountBeforeDiscount,
       totalAmount,
@@ -1507,8 +1579,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       cashAmount,
       cardAmount,
       totalDiscount,
-      firstSale: todaySales.length > 0 ? todaySales[0].receiptNumber : '-',
-      lastSale: todaySales.length > 0 ? todaySales[todaySales.length - 1].receiptNumber : '-',
+      firstSale: sortedRetail.length > 0 ? sortedRetail[0].receiptNumber : '-',
+      lastSale: sortedRetail.length > 0 ? sortedRetail[sortedRetail.length - 1].receiptNumber : '-',
       canceledSales: removedDaySales.length,
       refundAmount: removedAmount,
     };
@@ -1556,7 +1628,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }>();
 
     sales.forEach(sale => {
-      if (localCalendarDateKey(sale.date) !== selectedDate) return;
+      const sk = localCalendarDateKey(sale.date);
+      if (sk < selectedDateFrom || sk > selectedDateTo) return;
       sale.items.forEach(item => {
         const existing = productMap.get(item.productId);
         if (existing) {
@@ -1738,7 +1811,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }>();
 
     sales.forEach(sale => {
-      if (localCalendarDateKey(sale.date) !== selectedDate) return;
+      const sk = localCalendarDateKey(sale.date);
+      if (sk < selectedDateFrom || sk > selectedDateTo) return;
       sale.items.forEach(item => {
         const product = products.find(p => p.id === item.productId);
         if (product) {
@@ -1803,7 +1877,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
     const todayKey = localTodayDateKey();
     const openingCash =
-      selectedDate === todayKey ? readOpeningCashForReports(businessType) : 0;
+      selectedDateFrom === todayKey && selectedDateTo === todayKey
+        ? readOpeningCashForReports(businessType)
+        : 0;
     const expenses = cashExpensesForSelectedDate;
     const closingCash = openingCash + cashTotal - expenses;
 
@@ -2250,12 +2326,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const printDailySalesReport = (format: DailyReportPrintFormat) => {
     const lang = language as ModuleLanguage;
     const L = (key: string) => translateModule(key, lang);
-    const dateLabel = new Date(selectedDate + 'T12:00:00').toLocaleDateString('tr-TR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
+    const titleDates = reportHtmlTitleDateSegment(selectedDateFrom, selectedDateTo);
+    const restBlockDateParam =
+      selectedDateFrom === selectedDateTo ? selectedDateFrom : `${selectedDateFrom} – ${selectedDateTo}`;
 
     const removedRows = dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
 
@@ -2296,7 +2370,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         )
         .join('');
       restBlockA4 = `
-        <h3 style="margin-top:20px;font-size:14px">${escHtml(L('reportsPrintRestOrdersBlock').replace('{date}', selectedDate))}</h3>
+        <h3 style="margin-top:20px;font-size:14px">${escHtml(L('reportsPrintRestOrdersBlock').replace('{date}', restBlockDateParam))}</h3>
         <table class="t">
           <thead><tr><th>${escHtml(L('reportsPrintReceiptSlashNo'))}</th><th style="text-align:right">${escHtml(L('reportsPrintAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
           <tbody>${oRows}</tbody>
@@ -2340,7 +2414,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         .join('');
       restBlock80 = `
         <div class="divider"></div>
-        <div class="center bold">${escHtml(L('reportsPrintRestOrdersBlock80').replace('{date}', selectedDate))}</div>
+        <div class="center bold">${escHtml(L('reportsPrintRestOrdersBlock80').replace('{date}', restBlockDateParam))}</div>
         ${oBlocks}`;
     }
 
@@ -2366,7 +2440,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         : saleBlocks80;
 
     const htmlA4 = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${selectedDate}</title>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
 <style>
   @media print {
     @page { size: A4 portrait; margin: 12mm; }
@@ -2410,7 +2484,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 </body></html>`;
 
     const html80 = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${selectedDate}</title>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
 <style>
   /* 80 mm termal: ortada durmasın — önizleme ve yazdırmada sola yaslı tek sütun */
   html {
@@ -2532,7 +2606,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Z Raporu - ${zReport.date}</title>
+        <title>Z Raporu - ${escHtml(zReport.dateLabel)}</title>
         <style>
           html {
             width: 80mm;
@@ -2586,7 +2660,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         
         <div class="row">
           <span>Tarih:</span>
-          <span class="bold">${new Date(zReport.date).toLocaleDateString('tr-TR')}</span>
+          <span class="bold">${escHtml(zReport.dateLabel)}</span>
         </div>
         <div class="row">
           <span>Rapor Saati:</span>
@@ -3283,6 +3357,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           ? [
             { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
             { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
+            { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
           ]
           : []
       }
@@ -3292,6 +3367,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const menuItems = getMenuItems();
   const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
   const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
+  const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
   const defaultOpenKeys = businessType === 'beauty'
     ? ['grp-general', 'grp-sales', 'grp-business-specific']
     : ['grp-general', 'grp-sales'];
@@ -3365,17 +3441,34 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 {/* Date Selector */}
                 <div className="bg-white rounded-lg border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2">
-                        <Calendar className="w-5 h-5 text-gray-600" />
-                        <span>{tm('selectDate')}</span>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0" aria-hidden />
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <span className="font-medium whitespace-nowrap">{tm('reportsPlStartDate')}</span>
+                        <input
+                          type="date"
+                          value={selectedDateFrom}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSelectedDateFrom(v);
+                            if (v > selectedDateTo) setSelectedDateTo(v);
+                          }}
+                          className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                        />
                       </label>
-                      <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                      />
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <span className="font-medium whitespace-nowrap">{tm('reportsPlEndDate')}</span>
+                        <input
+                          type="date"
+                          value={selectedDateTo}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSelectedDateTo(v);
+                            if (v < selectedDateFrom) setSelectedDateFrom(v);
+                          }}
+                          className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                        />
+                      </label>
                     </div>
                     <Dropdown
                       menu={{
@@ -3544,7 +3637,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                                   : isRefunded
                                     ? 'bg-amber-100 text-amber-700'
                                     : 'bg-emerald-100 text-emerald-700';
-                                return <span className={`px-2 py-1 rounded text-xs font-semibold ${cls}`}>{label}</span>;
+                                const reasonText = row.cancelReason?.trim();
+                                return (
+                                  <div className="space-y-1">
+                                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${cls}`}>{label}</span>
+                                    {(isCancelled || isRefunded) && reasonText && (
+                                      <div
+                                        className="max-w-[240px] truncate text-[11px] text-slate-500"
+                                        title={reasonText}
+                                      >
+                                        {reasonText}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
                               })()}
                             </td>
                           </tr>
@@ -3570,9 +3676,21 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               onCancel={() => resolveReportConfirm(false)}
               okText="Evet"
               cancelText="Vazgeç"
+              okButtonProps={{ disabled: !reportConfirmReason.trim() }}
               destroyOnClose
             >
               <div className="whitespace-pre-line text-sm text-slate-700">{reportConfirmMessage}</div>
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  İptal nedeni (zorunlu)
+                </label>
+                <Input.TextArea
+                  value={reportConfirmReason}
+                  onChange={(e) => setReportConfirmReason(e.target.value)}
+                  placeholder="Lütfen iptal nedenini yazın..."
+                  autoSize={{ minRows: 3, maxRows: 5 }}
+                />
+              </div>
             </Modal>
 
             <Modal
@@ -3664,14 +3782,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="p-6 border-b flex items-center justify-between">
                     <div>
                       <h3 className="text-xl">{tm('reportsZReportDayEndTitle')}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {new Date(zReport.date).toLocaleDateString('tr-TR', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
+                      <p className="text-sm text-gray-600 mt-1">{zReport.dateLabel}</p>
                     </div>
                     <button
                       onClick={printZReport}
@@ -4034,7 +4145,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <div>
                           <p className="text-sm text-gray-600">{tm('openingCash')}</p>
                           <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} {reportCurrency}</p>
-                          {selectedDate !== localTodayDateKey() && (
+                          {(selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()) && (
                             <p className="text-xs text-amber-700 mt-1 max-w-[14rem] leading-snug">
                               Geçmiş gün seçili: açılış tutarı yalnızca bugün ve bu cihazdaki kasa açılışından okunur.
                             </p>
@@ -5444,6 +5555,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               </div>
             )}
 
+            {isBeautyCommissionReportTab && (
+              <CommissionReport />
+            )}
+
             {selectedTab === 'chat-ai' && (
               <ReportChatAI
                 sales={sales}
@@ -6290,11 +6405,28 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center gap-4 flex-1 flex-wrap">
                       <label className="flex items-center gap-2 text-xs text-slate-600">
-                        <span className="font-semibold shrink-0">{tm('bHistoryColDate')}</span>
+                        <span className="font-semibold shrink-0">{tm('reportsPlStartDate')}</span>
                         <input
                           type="date"
-                          value={selectedDate}
-                          onChange={(e) => setSelectedDate(e.target.value)}
+                          value={selectedDateFrom}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSelectedDateFrom(v);
+                            if (v > selectedDateTo) setSelectedDateTo(v);
+                          }}
+                          className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-600">
+                        <span className="font-semibold shrink-0">{tm('reportsPlEndDate')}</span>
+                        <input
+                          type="date"
+                          value={selectedDateTo}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSelectedDateTo(v);
+                            if (v < selectedDateFrom) setSelectedDateFrom(v);
+                          }}
                           className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
                         />
                       </label>

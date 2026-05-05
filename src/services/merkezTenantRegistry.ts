@@ -3,6 +3,8 @@
  * Uygulama henüz hedef kiracıya bağlı değilken merkez URL'sine doğrudan fetch yapılır.
  */
 
+import { fetchRetailexAware } from '../utils/retailexDevProxy';
+
 export type TenantRegistryRow = {
   id: string;
   code: string;
@@ -22,6 +24,68 @@ export type TenantRegistryRow = {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type ParsedTenantConnection =
+  | { kind: 'registry_code'; code: string }
+  | { kind: 'direct_postgrest'; url: string; pathSlug: string | null };
+
+/**
+ * Tek satır giriş: kiracı kodu / UUID veya doğrudan kiracı PostgREST tabanı (`https://.../aqua`).
+ * Merkez kayıt kökü (`.../merkez`) buraya yazılmamalı — ayrı "Gelişmiş" alanı kullanılır.
+ */
+export function parseTenantConnectionLine(raw: string): ParsedTenantConnection {
+  const t = (raw || '').trim();
+  if (!t) throw new Error('Kiracı bağlantısı boş olamaz.');
+
+  if (/^https?:\/\//i.test(t)) {
+    const sanitized = sanitizeMerkezRestUrlInput(t);
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(sanitized);
+    } catch {
+      throw new Error('Geçerli bir http(s) adresi girin.');
+    }
+    const pathParts = parsedUrl.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (pathParts.length === 0) {
+      throw new Error(
+        'Adreste kiracı yolu yok. Örnek: https://api.retailex.app/aqua — veya yalnızca kiracı kodunu girin.'
+      );
+    }
+    const last = pathParts[pathParts.length - 1]!;
+    if (last === 'merkez') {
+      throw new Error(
+        'Bu adres merkez kayıt servisidir. Kiracı için kiracı kodunu girin veya tam kiracı API adresini (örn. .../aqua) yazın; merkez tabanını aşağıdaki Gelişmiş alanından ayarlayın.'
+      );
+    }
+    const pathSlug =
+      last && (UUID_RE.test(last) || /^[a-zA-Z0-9_.-]+$/.test(last)) ? last : null;
+    const url = normalizeBaseUrl(parsedUrl.toString());
+    return { kind: 'direct_postgrest', url, pathSlug };
+  }
+
+  return { kind: 'registry_code', code: t };
+}
+
+/** Doğrudan PostgREST URL ile config parçası (tenant_registry sorgusu yok). */
+export function buildDirectPostgrestTenantPatch(input: {
+  url: string;
+  pathSlug: string | null;
+}): Record<string, unknown> {
+  const u = normalizeBaseUrl(input.url);
+  const slug = (input.pathSlug || '').trim();
+  const idFromSlug = slug && UUID_RE.test(slug) ? slug : '';
+  const codeFromSlug = slug && !idFromSlug ? slug : '';
+  return {
+    is_configured: true,
+    db_mode: 'online',
+    system_type: 'retail',
+    connection_provider: 'rest_api',
+    remote_rest_url: u,
+    merkez_tenant_code: codeFromSlug || undefined,
+    merkez_tenant_id: idFromSlug || undefined,
+    merkez_display_name: codeFromSlug || idFromSlug || u,
+  };
+}
 
 function normalizeBaseUrl(input: string): string {
   return (input || '').trim().replace(/\/+$/, '');
@@ -49,6 +113,28 @@ export function sanitizeMerkezRestUrlInput(input: string): string {
   return ensureUrlProtocol(s.trim());
 }
 
+/** SaaS’ta PostgREST çoğunlukla /merkez altında; sadece kök host yazıldıysa path eklenir (yerel :3002 kökü bozulmaz). */
+const MERKEZ_SUBPATH_DEFAULT_HOSTS = new Set(['api.retailex.app']);
+
+/**
+ * Modal / .env değerini tenant_registry isteği için son biçime getirir.
+ * Örn. `https://api.retailex.app` → `https://api.retailex.app/merkez` (Caddy / SaaS düzeni).
+ */
+export function finalizeMerkezRestBaseUrl(input: string): string {
+  const sanitized = sanitizeMerkezRestUrlInput(input);
+  if (!sanitized) return '';
+  try {
+    const u = new URL(sanitized);
+    const pathOnly = u.pathname.replace(/\/+$/, '') || '/';
+    if (MERKEZ_SUBPATH_DEFAULT_HOSTS.has(u.hostname) && pathOnly === '/') {
+      u.pathname = '/merkez';
+    }
+    return normalizeBaseUrl(u.toString());
+  } catch {
+    return normalizeBaseUrl(sanitized);
+  }
+}
+
 /**
  * Öncelik: VITE_MERKEZ_REST_URL → localStorage merkez_postgrest_base_url → localhost:3002
  * veya aynı hostname üzerinde :3002 (merkez varsayılan portu).
@@ -57,12 +143,12 @@ export function getMerkezRestBaseUrl(): string {
   const env = (import.meta as ImportMeta & { env?: Record<string, string> }).env
     ?.VITE_MERKEZ_REST_URL;
   if (env && String(env).trim()) {
-    return normalizeBaseUrl(sanitizeMerkezRestUrlInput(String(env)));
+    return finalizeMerkezRestBaseUrl(String(env));
   }
 
   if (typeof window !== 'undefined') {
     const stored = window.localStorage.getItem('merkez_postgrest_base_url');
-    if (stored?.trim()) return normalizeBaseUrl(sanitizeMerkezRestUrlInput(stored));
+    if (stored?.trim()) return finalizeMerkezRestBaseUrl(stored);
 
     const host = window.location.hostname;
     if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:3002';
@@ -89,7 +175,7 @@ function moduleToSystemType(module: string): 'retail' | 'market' | 'wms' | 'rest
 }
 
 export async function fetchTenantRegistryRow(tenantInput: string): Promise<TenantRegistryRow> {
-  const base = getMerkezRestBaseUrl();
+  const base = normalizeBaseUrl(getMerkezRestBaseUrl());
   const q = tenantInput.trim();
   if (!q) throw new Error('Kiracı kodu veya ID boş olamaz.');
   if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(base)) {
@@ -105,7 +191,7 @@ export async function fetchTenantRegistryRow(tenantInput: string): Promise<Tenan
   try {
     // Accept-Profile göndermeyin: tarayıcı preflight'ta PostgREST CORS listesinde olmayınca
     // (retailex.app → api.retailex.app) istek bloklanır. tenant_registry public şemada.
-    res = await fetch(url, {
+    res = await fetchRetailexAware(url, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -116,7 +202,7 @@ export async function fetchTenantRegistryRow(tenantInput: string): Promise<Tenan
     const hint =
       'Adres: ' +
       base +
-      ' — Ağ/CORS: farklı origin (ör. retailex.app → api.retailex.app) veya güvenlik duvarı. Merkez URL’yi https://api.../merkez yapın; .env ile VITE_MERKEZ_REST_URL tanımlanabilir.';
+      ' — Ağ/CORS: tarayıcıda localhost + Vite `__retailex-api` proxy; masaüstünde Tauri HTTP. Merkez URL https://api.../merkez; .env ile VITE_MERKEZ_REST_URL tanımlanabilir.';
     throw new Error(`Merkeze erişilemedi (${msg}). ${hint}`);
   }
 

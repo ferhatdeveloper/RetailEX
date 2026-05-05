@@ -34,6 +34,12 @@ pub struct AppConfig {
     pub connection_provider: String, // db | rest_api
     #[serde(default = "default_remote_rest_url")]
     pub remote_rest_url: String,
+    /// Hibrit + DB: SQL için önce hangi PG (local_first | remote_first)
+    #[serde(default = "default_hybrid_read_preference")]
+    pub hybrid_read_preference: String,
+    /// Hibrit senkron hedef yönü (yerleşik çoğaltma gelene kadar kayıt / UI)
+    #[serde(default = "default_hybrid_sync_direction")]
+    pub hybrid_sync_direction: String,
     pub terminal_name: String,
     pub store_id: String,
     pub erp_firm_nr: String,
@@ -109,6 +115,14 @@ fn default_menu_mode() -> i32 { 1 }
 fn default_update_source() -> String { "central".to_string() }
 fn default_connection_provider() -> String { "db".to_string() }
 fn default_remote_rest_url() -> String { "http://localhost:3002".to_string() }
+
+fn default_hybrid_read_preference() -> String {
+    "local_first".to_string()
+}
+
+fn default_hybrid_sync_direction() -> String {
+    "local_to_remote".to_string()
+}
 fn default_regulatory_region() -> String {
     "IQ".to_string()
 }
@@ -170,6 +184,8 @@ impl Default for AppConfig {
             remote_db: "91.205.41.130:5432/retailos_db".to_string(),
             connection_provider: default_connection_provider(),
             remote_rest_url: default_remote_rest_url(),
+            hybrid_read_preference: default_hybrid_read_preference(),
+            hybrid_sync_direction: default_hybrid_sync_direction(),
             terminal_name: "".to_string(),
             store_id: "001".to_string(),
             erp_firm_nr: "001".to_string(),

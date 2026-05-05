@@ -5,6 +5,7 @@
  */
 
 import { getPostgrestUrl, postgrestConfig } from '../../config/postgrest.config';
+import { fetchRetailexAware } from '../../utils/retailexDevProxy';
 
 export type PostgrestSchema = typeof postgrestConfig.schemas[number];
 
@@ -56,7 +57,7 @@ export async function postgrestGet<T = unknown>(
   options?: PostgrestClientOptions
 ): Promise<T> {
   const url = getPostgrestUrl(path) + (query ? toQueryString(query) : '');
-  const res = await fetch(url, {
+  const res = await fetchRetailexAware(url, {
     method: 'GET',
     headers: buildHeaders(options),
   });
@@ -78,7 +79,7 @@ export async function postgrestPost<T = unknown>(
   const url = getPostgrestUrl(path);
   const headers = buildHeaders(options);
   headers.Prefer = options?.prefer ?? 'return=representation';
-  const res = await fetch(url, {
+  const res = await fetchRetailexAware(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -103,7 +104,7 @@ export async function postgrestPatch<T = unknown>(
   const url = getPostgrestUrl(path);
   const headers = buildHeaders(options);
   headers.Prefer = options?.prefer ?? 'return=representation';
-  const res = await fetch(url, {
+  const res = await fetchRetailexAware(url, {
     method: 'PATCH',
     headers,
     body: JSON.stringify(body),
@@ -127,7 +128,7 @@ export async function postgrestDelete<T = unknown>(
   const url = getPostgrestUrl(path);
   const headers = buildHeaders(options);
   headers.Prefer = options?.prefer ?? 'return=minimal';
-  const res = await fetch(url, { method: 'DELETE', headers });
+  const res = await fetchRetailexAware(url, { method: 'DELETE', headers });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`PostgREST DELETE ${path}: ${res.status} ${res.statusText}${text ? ` — ${text}` : ''}`);

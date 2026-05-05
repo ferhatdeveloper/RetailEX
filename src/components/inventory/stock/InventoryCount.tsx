@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { postgres } from '../../../services/postgres';
 import { stockCountAPI } from '../../../services/stockCountAPI';
+import { BarcodeScanner } from './BarcodeScanner';
 
 interface CountedItem {
   barcode: string;
@@ -36,6 +37,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
   const [quantity, setQuantity] = useState(1);
   const [countedBy, setCountedBy] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showCameraScanner, setShowCameraScanner] = useState(false);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -427,6 +429,12 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
             >
               Manuel Giriş
             </button>
+            <button
+              onClick={() => setShowCameraScanner(true)}
+              className="w-full mt-3 px-4 py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700"
+            >
+              Kamera ile Lokasyon Tara
+            </button>
           </div>
         </div>
       </div>
@@ -484,6 +492,12 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
                 placeholder="Barkod..."
                 className="w-full px-4 py-3 border-2 border-purple-300 rounded-xl focus:outline-none focus:border-purple-500 text-center font-mono text-lg"
               />
+              <button
+                onClick={() => setShowCameraScanner(true)}
+                className="w-full mt-3 px-4 py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700"
+              >
+                Kamera ile Barkod Tara
+              </button>
             </div>
           </div>
         ) : (
@@ -761,6 +775,22 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
       </div>
 
       <div className="h-20"></div>
+
+      <BarcodeScanner
+        darkMode={false}
+        isOpen={showCameraScanner}
+        title={step === 'location-scan' ? 'Lokasyon Barkodu Tara' : 'Ürün Barkodu Tara'}
+        onClose={() => setShowCameraScanner(false)}
+        onScan={(barcode) => {
+          if (step === 'location-scan') {
+            handleLocationScan(barcode);
+          } else {
+            setScannedBarcode(barcode);
+            void handleItemScan(barcode);
+          }
+          setShowCameraScanner(false);
+        }}
+      />
     </div>
   );
 }

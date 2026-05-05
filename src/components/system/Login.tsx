@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save } from 'lucide-react';
+import { Lock, User, CheckCircle, Store, MoreHorizontal, Grid3x3, Languages, AlertCircle, Building2, Settings as Gear, Loader2, ArrowRight, Maximize2, ShieldCheck, Shield, X as CloseIcon, Activity, ChevronRight, Terminal, Trash2, Download, Search, RotateCcw, Database, Save, RefreshCw } from 'lucide-react';
 import { logger, LogEntry } from '../../services/loggingService';
 import type { User as UserType } from '../../core/types';
 import { APP_VERSION } from '../../core/version';
@@ -12,7 +12,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { readNeonProductLineFromStorage } from '../../utils/neonProductLine';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
-import type { ConnectionProvider, ConnectionMode } from '../../services/postgres';
+import type {
+  ConnectionProvider,
+  ConnectionMode,
+  HybridReadPreference,
+  HybridSyncDirection,
+} from '../../services/postgres';
 
 interface LoginProps {
   onLogin: (user: UserType) => void;
@@ -60,11 +65,22 @@ export function Login({ onLogin }: LoginProps) {
     user: 'postgres',
     password: ''
   });
+  /** Hibrit / online: uzak PostgreSQL (aynı LAN’da merkez PG IP’si) — REMOTE_CONFIG */
+  const [remoteDbConfig, setRemoteDbConfig] = useState({
+    host: '127.0.0.1',
+    port: 5432,
+    database: 'retailex_local',
+    user: 'postgres',
+    password: '',
+  });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
   /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya VPN) */
   const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
+  const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
+  const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
   const [isDbTestLoading, setIsDbTestLoading] = useState(false);
+  const [isHybridSyncLoading, setIsHybridSyncLoading] = useState(false);
   /** Veritabanı modalında test sonucu (toast’a ek; ekranda kalıcı) */
   const [dbTestFeedback, setDbTestFeedback] = useState<
     | null
@@ -81,7 +97,9 @@ export function Login({ onLogin }: LoginProps) {
   const navigate = useNavigate();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTenantFirmIdModal, setShowTenantFirmIdModal] = useState(false);
-  const [tenantFirmIdDraft, setTenantFirmIdDraft] = useState('');
+  /** Kiracı kodu / UUID veya tek satırda tam PostgREST URL (örn. https://api.../aqua) */
+  const [tenantConnectionDraft, setTenantConnectionDraft] = useState('');
+  /** Yalnızca kiracı kodu ile merkez tenant_registry sorgusu — merkez PostgREST tabanı geçersiz kılma */
   const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState('');
   const [isMerkezTenantLoading, setIsMerkezTenantLoading] = useState(false);
   const [rtlMode, setRtlMode] = useState(false);
@@ -168,7 +186,7 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     // Load DB Settings for the quick modal
-    import('../../services/postgres').then(({ LOCAL_CONFIG, DB_SETTINGS }) => {
+    import('../../services/postgres').then(({ LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS }) => {
       setDbConfig({
         host: LOCAL_CONFIG.host,
         port: LOCAL_CONFIG.port,
@@ -176,25 +194,43 @@ export function Login({ onLogin }: LoginProps) {
         user: LOCAL_CONFIG.user,
         password: LOCAL_CONFIG.password
       });
+      setRemoteDbConfig({
+        host: REMOTE_CONFIG.host,
+        port: REMOTE_CONFIG.port,
+        database: REMOTE_CONFIG.database,
+        user: REMOTE_CONFIG.user,
+        password: REMOTE_CONFIG.password,
+      });
       setConnectionProvider(DB_SETTINGS.connectionProvider);
       setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
       setDbConnectionMode(DB_SETTINGS.activeMode);
+      setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
+      setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
     });
   }, [isTauri]);
 
   // Modal açılınca güncel modu tekrar oku (Yönetim’den değişmiş olabilir)
   useEffect(() => {
     if (!showDbSettings) return;
-    import('../../services/postgres').then(({ LOCAL_CONFIG, DB_SETTINGS }) => {
+    import('../../services/postgres').then(({ LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS }) => {
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setConnectionProvider(DB_SETTINGS.connectionProvider);
       setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
+      setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
+      setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
       setDbConfig({
         host: LOCAL_CONFIG.host,
         port: LOCAL_CONFIG.port,
         database: LOCAL_CONFIG.database,
         user: LOCAL_CONFIG.user,
         password: LOCAL_CONFIG.password
+      });
+      setRemoteDbConfig({
+        host: REMOTE_CONFIG.host,
+        port: REMOTE_CONFIG.port,
+        database: REMOTE_CONFIG.database,
+        user: REMOTE_CONFIG.user,
+        password: REMOTE_CONFIG.password,
       });
       setDbTestFeedback(null);
     });
@@ -472,90 +508,218 @@ export function Login({ onLogin }: LoginProps) {
   // handleMigrateUsers removed - public.users is gone.
 
   /** Kaydetmeden önce: PostgREST URL veya bu modal formundaki PostgreSQL alanları (kayıtlı uzak/online ayrımı yok). */
+  const fmtPgTarget = (h: string, p: number, d: string) => `${h}:${p}/${d}`;
+
+  const handleTestPostgrestEndpoint = async () => {
+    const { testPostgrestUrl } = await import('../../services/postgres');
+    const url = (remoteRestUrl || '').trim() || '(boş URL)';
+    setDbTestFeedback({
+      phase: 'loading',
+      title: 'PostgREST deneniyor…',
+      target: url,
+    });
+    const pr = await testPostgrestUrl(remoteRestUrl);
+    if (pr.connected) {
+      const msg = `Erişilebilir (HTTP ${pr.httpStatus ?? '—'})`;
+      setDbTestFeedback({ phase: 'ok', title: msg, detail: pr.baseUrl, target: pr.baseUrl });
+      toast.success('PostgREST: ' + msg, { description: pr.baseUrl });
+    } else {
+      setDbTestFeedback({
+        phase: 'err',
+        title: pr.error || 'PostgREST yanıt vermiyor',
+        target: pr.baseUrl || url,
+      });
+      toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl });
+    }
+  };
+
+  const handleTestPostgresEndpointCfg = async (
+    cfg: { host: string; port: number; database: string; user: string; password: string },
+    titlePrefix: string
+  ) => {
+    const { testPostgresEndpoint } = await import('../../services/postgres');
+    const targetStr = fmtPgTarget(cfg.host, cfg.port, cfg.database);
+    setDbTestFeedback({
+      phase: 'loading',
+      title: `${titlePrefix} deneniyor…`,
+      target: targetStr,
+    });
+    const res = await testPostgresEndpoint(cfg);
+    if (res.connected) {
+      const ver = (res.version || '').slice(0, 200);
+      const onlineHint =
+        isTauri && dbConnectionMode === 'online'
+          ? ' Online modda oturum açıkken sorgular kayıtlı uzak sunucuya gidebilir; bu formu merkez adresiyle doldurup Kaydedin veya Hybrid/Offline kullanın.'
+          : '';
+      setDbTestFeedback({
+        phase: 'ok',
+        title: `${titlePrefix}: bağlantı başarılı`,
+        detail: ver ? `${ver}${onlineHint}` : onlineHint || undefined,
+        target: targetStr,
+      });
+      toast.success(`${titlePrefix}: bağlantı başarılı.`, { description: ver || targetStr });
+    } else {
+      setDbTestFeedback({
+        phase: 'err',
+        title: res.error || 'Bağlantı kurulamadı',
+        detail:
+          isTauri && dbConnectionMode === 'online'
+            ? 'Online modda giriş sonrası uygulama kayıtlı uzak sunucuyu kullanır; uzak PG alanını Yönetim → Veritabanı ile eşitleyin veya Hybrid kullanın.'
+            : undefined,
+        target: targetStr,
+      });
+      toast.error(res.error || 'Bağlantı kurulamadı', { description: targetStr });
+    }
+  };
+
   const handleTestDbConnection = async () => {
     setIsDbTestLoading(true);
-    const { testPostgresEndpoint, testPostgrestUrl } = await import('../../services/postgres');
-
-    const fmtTarget = (h: string, p: number, d: string) => `${h}:${p}/${d}`;
-
     try {
-      if (connectionProvider === 'rest_api') {
-        const url = (remoteRestUrl || '').trim() || '(boş URL)';
-        setDbTestFeedback({
-          phase: 'loading',
-          title: 'PostgREST deneniyor…',
-          target: url,
-        });
-        const pr = await testPostgrestUrl(remoteRestUrl);
-        if (pr.connected) {
-          const msg = `Erişilebilir (HTTP ${pr.httpStatus ?? '—'})`;
-          setDbTestFeedback({ phase: 'ok', title: msg, detail: pr.baseUrl, target: pr.baseUrl });
-          toast.success('PostgREST: ' + msg, { description: pr.baseUrl });
+      if (dbConnectionMode === 'hybrid') {
+        if (connectionProvider === 'rest_api') {
+          await handleTestPostgrestEndpoint();
         } else {
-          setDbTestFeedback({
-            phase: 'err',
-            title: pr.error || 'PostgREST yanıt vermiyor',
-            target: pr.baseUrl || url,
-          });
-          toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl });
+          await handleTestPostgresEndpointCfg(
+            {
+              host: dbConfig.host,
+              port: dbConfig.port,
+              database: dbConfig.database,
+              user: dbConfig.user,
+              password: dbConfig.password,
+            },
+            'Yerel PostgreSQL'
+          );
         }
         return;
       }
 
-      const cfg = {
-        host: dbConfig.host,
-        port: dbConfig.port,
-        database: dbConfig.database,
-        user: dbConfig.user,
-        password: dbConfig.password,
-      };
-
-      const targetStr = fmtTarget(cfg.host, cfg.port, cfg.database);
-      setDbTestFeedback({
-        phase: 'loading',
-        title: 'Formdaki sunucu bilgileri deneniyor…',
-        target: targetStr,
-      });
-
-      const res = await testPostgresEndpoint(cfg);
-      if (res.connected) {
-        const ver = (res.version || '').slice(0, 200);
-        const onlineHint =
-          isTauri && dbConnectionMode === 'online'
-            ? ' Online modda oturum açıkken sorgular hâlâ Yönetim → Veritabanı’ndaki kayıtlı uzak sunucuya gidebilir; aynı adresi orada da güncelleyin veya Hybrid/Offline kullanın.'
-            : '';
-        setDbTestFeedback({
-          phase: 'ok',
-          title: 'Bağlantı başarılı (form adresi)',
-          detail: ver ? `${ver}${onlineHint}` : onlineHint || undefined,
-          target: targetStr,
-        });
-        toast.success('PostgreSQL (form): bağlantı başarılı.', {
-          description: ver || targetStr,
-        });
-      } else {
-        setDbTestFeedback({
-          phase: 'err',
-          title: res.error || 'Bağlantı kurulamadı',
-          detail:
-            isTauri && dbConnectionMode === 'online'
-              ? 'Online modda giriş sonrası uygulama kayıtlı uzak sunucuyu kullanır; bu formu merkez adresiyle doldurup Kaydet veya Yönetim’de uzak satırı bu adresle eşitleyin.'
-              : undefined,
-          target: targetStr,
-        });
-        toast.error(res.error || 'Bağlantı kurulamadı', { description: targetStr });
+      if (connectionProvider === 'rest_api') {
+        await handleTestPostgrestEndpoint();
+        return;
       }
+
+      await handleTestPostgresEndpointCfg(
+        {
+          host: dbConfig.host,
+          port: dbConfig.port,
+          database: dbConfig.database,
+          user: dbConfig.user,
+          password: dbConfig.password,
+        },
+        'PostgreSQL'
+      );
     } catch (e: any) {
       const msg = e?.message || String(e);
       setDbTestFeedback({
         phase: 'err',
         title: 'Test hatası',
         detail: msg,
-        target: connectionProvider === 'rest_api' ? remoteRestUrl : fmtTarget(dbConfig.host, dbConfig.port, dbConfig.database),
+        target:
+          connectionProvider === 'rest_api'
+            ? remoteRestUrl
+            : fmtPgTarget(dbConfig.host, dbConfig.port, dbConfig.database),
       });
       toast.error('Test başarısız: ' + msg);
     } finally {
       setIsDbTestLoading(false);
+    }
+  };
+
+  const handleTestRemotePgConnection = async () => {
+    setIsDbTestLoading(true);
+    try {
+      await handleTestPostgresEndpointCfg(
+        {
+          host: remoteDbConfig.host,
+          port: remoteDbConfig.port,
+          database: remoteDbConfig.database,
+          user: remoteDbConfig.user,
+          password: remoteDbConfig.password,
+        },
+        'Uzak PostgreSQL (LAN)'
+      );
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      setDbTestFeedback({
+        phase: 'err',
+        title: 'Uzak PG test hatası',
+        detail: msg,
+        target: fmtPgTarget(remoteDbConfig.host, remoteDbConfig.port, remoteDbConfig.database),
+      });
+      toast.error('Uzak PG testi: ' + msg);
+    } finally {
+      setIsDbTestLoading(false);
+    }
+  };
+
+  const handleTestHybridLocalPg = async () => {
+    setIsDbTestLoading(true);
+    try {
+      await handleTestPostgresEndpointCfg(
+        {
+          host: dbConfig.host,
+          port: dbConfig.port,
+          database: dbConfig.database,
+          user: dbConfig.user,
+          password: dbConfig.password,
+        },
+        'Yerel PostgreSQL'
+      );
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      setDbTestFeedback({
+        phase: 'err',
+        title: 'Yerel PG test hatası',
+        detail: msg,
+        target: fmtPgTarget(dbConfig.host, dbConfig.port, dbConfig.database),
+      });
+      toast.error('Yerel PG testi: ' + msg);
+    } finally {
+      setIsDbTestLoading(false);
+    }
+  };
+
+  const handleTestHybridPostgrest = async () => {
+    setIsDbTestLoading(true);
+    try {
+      await handleTestPostgrestEndpoint();
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      setDbTestFeedback({
+        phase: 'err',
+        title: 'PostgREST test hatası',
+        detail: msg,
+        target: remoteRestUrl,
+      });
+      toast.error('PostgREST testi: ' + msg);
+    } finally {
+      setIsDbTestLoading(false);
+    }
+  };
+
+  const handleHybridSyncNow = async () => {
+    setIsHybridSyncLoading(true);
+    try {
+      const { postgres } = await import('../../services/postgres');
+      const r = await postgres.sync({
+        mode: dbConnectionMode,
+        hybridSyncDirection,
+      });
+      if (!r.success) {
+        toast.error(r.message || 'Senkron başlatılamadı.');
+        return;
+      }
+      const detail =
+        r.totalSynced != null && r.totalSynced > 0
+          ? `Eşlenen kayıt: ${r.totalSynced}`
+          : r.direction
+            ? `Yön: ${r.direction}`
+            : undefined;
+      toast.info(r.message || 'Senkron tamamlandı.', detail ? { description: detail } : undefined);
+    } catch (e: any) {
+      toast.error('Senkron hatası: ' + (e?.message || String(e)));
+    } finally {
+      setIsHybridSyncLoading(false);
     }
   };
 
@@ -571,10 +735,19 @@ export function Login({ onLogin }: LoginProps) {
           password: dbConfig.password,
           isConfigured: true
         },
+        remote: {
+          host: remoteDbConfig.host,
+          port: remoteDbConfig.port,
+          database: remoteDbConfig.database,
+          user: remoteDbConfig.user,
+          password: remoteDbConfig.password,
+        },
         settings: {
-          ...(isTauri ? { activeMode: dbConnectionMode } : {}),
+          activeMode: dbConnectionMode,
           connectionProvider,
-          remoteRestUrl
+          remoteRestUrl,
+          hybridReadPreference,
+          hybridSyncDirection,
         }
       });
       toast.success(connectionProvider === 'rest_api' ? 'PostgREST bağlantı ayarları güncellendi.' : 'Veritabanı bağlantı ayarları güncellendi.');
@@ -755,19 +928,30 @@ export function Login({ onLogin }: LoginProps) {
                 type="button"
                 title="Tenant bağlantısı"
                 onClick={() => {
-                  let fromStorage = localStorage.getItem('exretail_selected_tenant') || '';
-                  if (!fromStorage) {
-                    try {
-                      const rawCfg = localStorage.getItem('retailex_web_config');
-                      if (rawCfg) {
-                        const cfg = JSON.parse(rawCfg) as { merkez_tenant_code?: string; merkez_tenant_id?: string };
-                        fromStorage = String(cfg.merkez_tenant_code || cfg.merkez_tenant_id || '');
+                  let line = '';
+                  try {
+                    const rawCfg = localStorage.getItem('retailex_web_config');
+                    if (rawCfg) {
+                      const cfg = JSON.parse(rawCfg) as {
+                        remote_rest_url?: string;
+                        merkez_tenant_code?: string;
+                        merkez_tenant_id?: string;
+                        connection_provider?: string;
+                      };
+                      const url = String(cfg.remote_rest_url || '').trim();
+                      if (cfg.connection_provider === 'rest_api' && url) {
+                        line = url;
+                      } else {
+                        line =
+                          String(cfg.merkez_tenant_code || '').trim() ||
+                          String(cfg.merkez_tenant_id || '').trim();
                       }
-                    } catch {
-                      // ignore parse errors
                     }
+                  } catch {
+                    /* ignore */
                   }
-                  setTenantFirmIdDraft(fromStorage);
+                  if (!line) line = localStorage.getItem('exretail_selected_tenant') || '';
+                  setTenantConnectionDraft(line);
                   setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || '');
                   setShowTenantFirmIdModal(true);
                 }}
@@ -1126,33 +1310,39 @@ export function Login({ onLogin }: LoginProps) {
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Merkez kiracı kodu veya kayıt UUID
+                  Kiracı kodu · UUID veya PostgREST URL
                 </label>
                 <input
                   type="text"
                   autoComplete="off"
-                  value={tenantFirmIdDraft}
-                  onChange={(e) => setTenantFirmIdDraft(e.target.value)}
-                  placeholder="Örn. aqua_beauty veya tenant_registry.id"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium"
+                  value={tenantConnectionDraft}
+                  onChange={(e) => setTenantConnectionDraft(e.target.value)}
+                  placeholder="Örn. aqua_beauty — veya https://api.retailex.app/aqua"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-sm"
                 />
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 mt-4">
-                  Merkez PostgREST adresi (opsiyonel)
-                </label>
-                <input
-                  type="text"
-                  autoComplete="off"
-                  value={merkezBaseUrlDraft}
-                  onChange={(e) => setMerkezBaseUrlDraft(e.target.value)}
-                  placeholder="Örn: https://api.retailex.app/merkez (PostgREST tabanı; /merkez şart)"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-xs"
-                />
-                <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600">Merkezden bağlan:</strong> merkez_db PostgREST üzerinden tenant_registry okunur; hedef kiracının{' '}
-                  <code className="text-[10px] bg-slate-100 px-1 rounded">rest_base_url</code> ve bağlantı bilgileri uygulanır.
-                </p>
                 <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  Tenant uygulanmadan firma ve kullanıcı listeleri yüklenmez.
+                  <strong className="text-slate-600">Kod:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür.
+                  <strong className="text-slate-600"> URL:</strong> doğrudan bu PostgREST adresi kullanılır (Veritabanı ayarındaki REST URL ile aynı mantık).
+                </p>
+                <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                  <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wider text-slate-600 select-none">
+                    Gelişmiş — yalnız kiracı kodu: merkez PostgREST tabanı
+                  </summary>
+                  <p className="mt-2 text-[10px] text-slate-500 leading-relaxed">
+                    Varsayılan: ortam değişkeni veya son kayıt. Kod ile sorgu yaparken merkez adresini burada geçersiz kılın (örn.{' '}
+                    <code className="text-[10px]">https://api.retailex.app/merkez</code>).
+                  </p>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={merkezBaseUrlDraft}
+                    onChange={(e) => setMerkezBaseUrlDraft(e.target.value)}
+                    placeholder="https://api.retailex.app/merkez"
+                    className="mt-2 w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-xs bg-white"
+                  />
+                </details>
+                <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
+                  Kiracı uygulanmadan firma ve kullanıcı listeleri yüklenmez (üretim web).
                 </p>
               </div>
               <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
@@ -1160,29 +1350,33 @@ export function Login({ onLogin }: LoginProps) {
                   type="button"
                   disabled={isMerkezTenantLoading}
                   onClick={async () => {
-                    const raw = tenantFirmIdDraft.trim();
-                    if (!raw) {
-                      toast.error('Kiracı kodu veya UUID girin.');
+                    const line = tenantConnectionDraft.trim();
+                    if (!line) {
+                      toast.error('Kiracı kodu, UUID veya PostgREST URL girin.');
                       return;
                     }
-                    const merkezUrl = merkezBaseUrlDraft.trim();
-                    if (merkezUrl) {
-                      const { sanitizeMerkezRestUrlInput } = await import(
-                        '../../services/merkezTenantRegistry'
-                      );
-                      const clean = sanitizeMerkezRestUrlInput(merkezUrl).replace(/\/+$/, '');
-                      if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(clean)) {
-                        toast.error('HTTPS sayfada HTTP merkez adresi kullanılamaz. HTTPS URL girin.');
-                        return;
-                      }
-                      localStorage.setItem('merkez_postgrest_base_url', clean);
-                    }
-                    setIsMerkezTenantLoading(true);
+
+                    const merkezMod = await import('../../services/merkezTenantRegistry');
+                    const {
+                      finalizeMerkezRestBaseUrl,
+                      parseTenantConnectionLine,
+                      buildDirectPostgrestTenantPatch,
+                      fetchTenantRegistryRow,
+                      tenantRowToAppConfigPatch,
+                    } = merkezMod;
+
+                    let parsed;
                     try {
-                      const { fetchTenantRegistryRow, tenantRowToAppConfigPatch } = await import(
-                        '../../services/merkezTenantRegistry'
-                      );
-                      const row = await fetchTenantRegistryRow(raw);
+                      parsed = parseTenantConnectionLine(line);
+                    } catch (e: any) {
+                      toast.error(e?.message || String(e));
+                      return;
+                    }
+
+                    async function loadPrevAndPreserve(): Promise<{
+                      prev: Record<string, unknown>;
+                      preserve: string;
+                    }> {
                       let preserve = '';
                       let prev: Record<string, unknown> = {};
                       if (isTauri) {
@@ -1200,6 +1394,58 @@ export function Login({ onLogin }: LoginProps) {
                           }
                         }
                       }
+                      return { prev, preserve };
+                    }
+
+                    if (parsed.kind === 'direct_postgrest') {
+                      setIsMerkezTenantLoading(true);
+                      try {
+                        const patch = buildDirectPostgrestTenantPatch({
+                          url: parsed.url,
+                          pathSlug: parsed.pathSlug,
+                        });
+                        const { prev } = await loadPrevAndPreserve();
+                        const merged = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
+                        if (isTauri) {
+                          const { invoke } = await import('@tauri-apps/api/core');
+                          await invoke('save_app_config', { config: merged });
+                        } else {
+                          localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+                          localStorage.setItem('exretail_firma_donem_configured', 'true');
+                        }
+                        const { initializeFromSQLite } = await import('../../services/postgres');
+                        await initializeFromSQLite(isTauri ? merged : undefined);
+                        setConnectionProvider('rest_api');
+                        setRemoteRestUrl(String(merged.remote_rest_url || ''));
+                        setDbConnectionMode('online');
+                        const tag = parsed.pathSlug || String(merged.remote_rest_url || '');
+                        localStorage.setItem('exretail_selected_tenant', tag);
+                        setShowTenantFirmIdModal(false);
+                        toast.success(`PostgREST bağlandı: ${merged.remote_rest_url}`);
+                        void loadFirms();
+                        void loadUsers();
+                      } catch (e: any) {
+                        toast.error(e?.message || String(e));
+                      } finally {
+                        setIsMerkezTenantLoading(false);
+                      }
+                      return;
+                    }
+
+                    const merkezUrl = merkezBaseUrlDraft.trim();
+                    if (merkezUrl) {
+                      const clean = finalizeMerkezRestBaseUrl(merkezUrl);
+                      if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(clean)) {
+                        toast.error('HTTPS sayfada HTTP merkez adresi kullanılamaz. HTTPS URL girin.');
+                        return;
+                      }
+                      localStorage.setItem('merkez_postgrest_base_url', clean);
+                    }
+
+                    setIsMerkezTenantLoading(true);
+                    try {
+                      const row = await fetchTenantRegistryRow(parsed.code);
+                      const { prev, preserve } = await loadPrevAndPreserve();
                       const patch = tenantRowToAppConfigPatch(row, {
                         preserveDbPassword: preserve,
                         forTauri: isTauri,
@@ -1215,7 +1461,9 @@ export function Login({ onLogin }: LoginProps) {
                       const { initializeFromSQLite } = await import('../../services/postgres');
                       await initializeFromSQLite(isTauri ? merged : undefined);
                       setConnectionProvider(
-                        (merged.connection_provider as ConnectionProvider) || 'rest_api'
+                        (merged.connection_provider as ConnectionProvider) === 'rest_api'
+                          ? 'rest_api'
+                          : 'db'
                       );
                       setRemoteRestUrl(String(merged.remote_rest_url || ''));
                       setDbConnectionMode('online');
@@ -1241,7 +1489,7 @@ export function Login({ onLogin }: LoginProps) {
                   }}
                   className="w-full py-3.5 rounded-2xl bg-indigo-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-indigo-200/40 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
                 >
-                  {isMerkezTenantLoading ? 'Merkez sorgulanıyor…' : 'Merkezden bağlan'}
+                  {isMerkezTenantLoading ? 'Bağlanıyor…' : 'Bağlan'}
                 </button>
                 <div className="flex gap-4">
                   <button
@@ -1568,7 +1816,7 @@ export function Login({ onLogin }: LoginProps) {
             aria-modal="true"
             aria-label="Veritabanı bağlantı ayarları"
             onClick={() => {
-              if (!isDbTestLoading) setShowDbSettings(false);
+              if (!isDbTestLoading && !isHybridSyncLoading) setShowDbSettings(false);
             }}
           >
             <div className="flex min-h-[100dvh] w-full items-center justify-center p-4">
@@ -1588,7 +1836,7 @@ export function Login({ onLogin }: LoginProps) {
                 <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
-                    disabled={isDbTestLoading}
+                    disabled={isDbTestLoading || isHybridSyncLoading}
                     onClick={() => void handleTestDbConnection()}
                     className="rounded-lg px-2.5 py-2 text-[9px] font-black uppercase tracking-wide text-white/95 ring-1 ring-white/30 transition-colors hover:bg-white/15 disabled:opacity-50"
                   >
@@ -1633,6 +1881,61 @@ export function Login({ onLogin }: LoginProps) {
                           <strong>Yönetim → Veritabanı → uzak (Ana sunucu)</strong> satırına yazıp kaydedin veya modu <strong>Hybrid / Offline</strong> yapıp HOST’a merkez VPN IP’sini girin.
                         </div>
                       )}
+                      {dbConnectionMode === 'hybrid' && connectionProvider === 'db' && (
+                        <div className="space-y-3 pt-1">
+                          <div className="space-y-1">
+                            <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                              Hibrit — SQL önceliği
+                            </label>
+                            <select
+                              value={hybridReadPreference}
+                              onChange={(e) => setHybridReadPreference(e.target.value as HybridReadPreference)}
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                            >
+                              <option value="local_first">Önce yerel PG, bağlantı hatasında uzak</option>
+                              <option value="remote_first">Önce uzak PG, bağlantı hatasında yerel</option>
+                            </select>
+                            <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                              POS yoğun şubede genelde <strong>yerel önce</strong>; merkez kesintisinde yedek için <strong>uzak önce</strong> seçilebilir. İkinci uç yalnızca ağ/bağlantı hatalarında denenir (SQL hatasında yedeklenmez).
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <label className={`px-1 text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                              Hibrit — senkron yönü (plan)
+                            </label>
+                            <select
+                              value={hybridSyncDirection}
+                              onChange={(e) => setHybridSyncDirection(e.target.value as HybridSyncDirection)}
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                            >
+                              <option value="local_to_remote">Yerel → uzak</option>
+                              <option value="remote_to_local">Uzak → yerel</option>
+                              <option value="bidirectional">Çift yönlü</option>
+                            </select>
+                            <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+                              Şu an <strong>kayıt ve senkron motoru</strong> için yön tercihi; otomatik çoğaltma bağlandığında bu ayar kullanılacak. Şema migrasyonları hibritte varsayılan olarak <strong>yerel</strong> uca uygulanır.
+                            </p>
+                            <button
+                              type="button"
+                              disabled={isHybridSyncLoading || isDbTestLoading}
+                              onClick={() => void handleHybridSyncNow()}
+                              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-[10px] font-black uppercase tracking-wide transition-colors disabled:opacity-50 ${darkMode ? 'border-blue-500/60 bg-blue-950/50 text-blue-100 hover:bg-blue-900/50' : 'border-blue-400 bg-blue-50 text-blue-900 hover:bg-blue-100'}`}
+                            >
+                              {isHybridSyncLoading ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                                  Senkron çalışıyor…
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="h-4 w-4 shrink-0" />
+                                  Şimdi senkronize et
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1643,12 +1946,188 @@ export function Login({ onLogin }: LoginProps) {
                       onChange={(e) => setConnectionProvider(e.target.value as ConnectionProvider)}
                       className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
                     >
-                      <option value="db">DB Connection</option>
+                      <option value="db">PostgreSQL (doğrudan)</option>
                       <option value="rest_api">Rest API (PostgREST)</option>
                     </select>
                   </div>
 
-                  {connectionProvider === 'rest_api' ? (
+                  {dbConnectionMode === 'hybrid' ? (
+                    <div className="space-y-5">
+                      <div
+                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-emerald-800/70 bg-emerald-950/25' : 'border-emerald-300 bg-emerald-50/60'}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-emerald-200' : 'text-emerald-900'}`}>
+                            1. Yerel PostgreSQL
+                          </h3>
+                          <button
+                            type="button"
+                            disabled={isDbTestLoading || isHybridSyncLoading}
+                            onClick={() => void handleTestHybridLocalPg()}
+                            className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-emerald-900 text-emerald-100 hover:bg-emerald-800' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                          >
+                            Yerel PG test
+                          </button>
+                        </div>
+                        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Şube / bu makine: genelde <strong>127.0.0.1</strong> veya yerel PG sunucusu.
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2 space-y-1">
+                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST</label>
+                            <input
+                              type="text"
+                              value={dbConfig.host}
+                              onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
+                              placeholder="127.0.0.1"
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
+                            <input
+                              type="number"
+                              value={dbConfig.port}
+                              onChange={(e) => setDbConfig({ ...dbConfig, port: parseInt(e.target.value, 10) || 5432 })}
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                          <input
+                            type="text"
+                            value={dbConfig.database}
+                            onChange={(e) => setDbConfig({ ...dbConfig, database: e.target.value })}
+                            className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
+                            <input
+                              type="text"
+                              value={dbConfig.user}
+                              onChange={(e) => setDbConfig({ ...dbConfig, user: e.target.value })}
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
+                            <input
+                              type="password"
+                              value={dbConfig.password}
+                              onChange={(e) => setDbConfig({ ...dbConfig, password: e.target.value })}
+                              placeholder="••••••••"
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {connectionProvider === 'db' && (
+                        <div
+                          className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-sky-800/70 bg-sky-950/25' : 'border-sky-300 bg-sky-50/60'}`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-sky-200' : 'text-sky-900'}`}>
+                              2. Uzak PostgreSQL (aynı LAN / VPN)
+                            </h3>
+                            <button
+                              type="button"
+                              disabled={isDbTestLoading || isHybridSyncLoading}
+                              onClick={() => void handleTestRemotePgConnection()}
+                              className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-sky-900 text-sky-100 hover:bg-sky-800' : 'bg-sky-600 text-white hover:bg-sky-700'}`}
+                            >
+                              Uzak PG test
+                            </button>
+                          </div>
+                          <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                            Merkez veya ağdaki PostgreSQL sunucusunun <strong>IP adresi</strong> (örn. <strong>192.168.1.80</strong>) ve port <strong>5432</strong>. Hibrit SQL önceliği bu adresi de kullanır.
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-2 space-y-1">
+                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">HOST (LAN IP)</label>
+                              <input
+                                type="text"
+                                value={remoteDbConfig.host}
+                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, host: e.target.value })}
+                                placeholder="192.168.x.x veya merkez hostname"
+                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">PORT</label>
+                              <input
+                                type="number"
+                                value={remoteDbConfig.port}
+                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, port: parseInt(e.target.value, 10) || 5432 })}
+                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">VERİTABANI</label>
+                            <input
+                              type="text"
+                              value={remoteDbConfig.database}
+                              onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, database: e.target.value })}
+                              className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="px-1 text-[9px] font-black uppercase tracking-widest text-gray-500">KULLANICI</label>
+                              <input
+                                type="text"
+                                value={remoteDbConfig.user}
+                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, user: e.target.value })}
+                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">ŞİFRE</label>
+                              <input
+                                type="password"
+                                value={remoteDbConfig.password}
+                                onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, password: e.target.value })}
+                                placeholder="••••••••"
+                                className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div
+                        className={`space-y-3 rounded-xl border-2 p-4 ${darkMode ? 'border-violet-800/70 bg-violet-950/25' : 'border-violet-300 bg-violet-50/60'}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-violet-200' : 'text-violet-900'}`}>
+                            {connectionProvider === 'db' ? '3.' : '2.'} PostgREST (REST API)
+                          </h3>
+                          <button
+                            type="button"
+                            disabled={isDbTestLoading || isHybridSyncLoading}
+                            onClick={() => void handleTestHybridPostgrest()}
+                            className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-wide ${darkMode ? 'bg-violet-900 text-violet-100 hover:bg-violet-800' : 'bg-violet-600 text-white hover:bg-violet-700'}`}
+                          >
+                            PostgREST test
+                          </button>
+                        </div>
+                        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya tam kiracı yolu. Kaydedilir; <strong>Rest API</strong> modunda sorgular buradan gider.
+                        </p>
+                        <input
+                          type="text"
+                          value={remoteRestUrl}
+                          onChange={(e) => setRemoteRestUrl(e.target.value)}
+                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-violet-200' : 'border-gray-200 bg-white text-gray-900'}`}
+                          placeholder="http://LAN_IP:3002 veya https://api.../kiracı"
+                        />
+                      </div>
+                    </div>
+                  ) : connectionProvider === 'rest_api' ? (
                     <div className="space-y-2">
                       <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">PostgREST API URL</label>
                       <input
@@ -1656,10 +2135,10 @@ export function Login({ onLogin }: LoginProps) {
                         value={remoteRestUrl}
                         onChange={(e) => setRemoteRestUrl(e.target.value)}
                         className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                        placeholder="http://IP:3002"
+                        placeholder="https://api.retailex.app/aqua veya http://IP:3002"
                       />
                       <p className={`text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                        VPN olmadan IP üzerinden PostgREST erişimi için.
+                        Kiracıyı üstteki bina ikonundan da tek satırda (kod veya aynı URL) kaydedebilirsiniz; burada elle düzeltme yapıyorsanız aynı adresi kullanın.
                       </p>
                     </div>
                   ) : (
@@ -1759,7 +2238,7 @@ export function Login({ onLogin }: LoginProps) {
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    disabled={isDbTestLoading}
+                    disabled={isDbTestLoading || isHybridSyncLoading}
                     onClick={() => void handleTestDbConnection()}
                     className={`flex w-full items-center justify-center gap-2 rounded-lg border-2 py-3.5 text-[10px] font-black uppercase tracking-[0.12em] transition-all disabled:opacity-50 ${darkMode ? 'border-slate-500 bg-slate-800 text-white hover:bg-slate-700' : 'border-slate-400 bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
                   >
@@ -1768,8 +2247,9 @@ export function Login({ onLogin }: LoginProps) {
                   </button>
                   <button
                     type="button"
+                    disabled={isDbTestLoading || isHybridSyncLoading}
                     onClick={() => void handleSaveDbSettings()}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3.5 text-[10px] font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-blue-500"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3.5 text-[10px] font-black uppercase tracking-[0.15em] text-white transition-all hover:bg-blue-500 disabled:opacity-50"
                   >
                     AYARLARI KAYDET
                   </button>

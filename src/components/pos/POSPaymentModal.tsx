@@ -10,6 +10,7 @@ import { paymentGateway, type PaymentProvider } from '../../services/paymentGate
 import { formatCurrency, formatNumber } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { roundPosDiscountAmountUp } from '../../utils/discountRounding';
+import { POSCancelReasonModal } from './POSCancelReasonModal';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -124,6 +125,7 @@ export function POSPaymentModal({
   const [showQRCode, setShowQRCode] = useState(false);
   const [qrGatewayName, setQrGatewayName] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [showCancelReasonModal, setShowCancelReasonModal] = useState(false);
   
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
@@ -316,6 +318,16 @@ export function POSPaymentModal({
     }
   };
 
+  const handleRequestClose = () => {
+    if (isLoading || draftPrintLoading) return;
+    setShowCancelReasonModal(true);
+  };
+
+  const handleCancelConfirm = () => {
+    setShowCancelReasonModal(false);
+    onClose();
+  };
+
   const currencies = [
     { code: 'IQD' as const, symbol: 'IQD', label: 'دیار عێراقی', flag: '🇮🇶' },
     { code: 'USD' as const, symbol: '$', label: 'US Dollar', flag: '🇺🇸' }
@@ -379,7 +391,7 @@ export function POSPaymentModal({
                 {provider.name}
               </button>
             ))}
-            <button onClick={onClose} className="text-white hover:text-gray-200 p-1">
+            <button onClick={handleRequestClose} className="text-white hover:text-gray-200 p-1">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -943,7 +955,7 @@ export function POSPaymentModal({
         <div className={`p-4 border-t flex flex-col sm:flex-row gap-2 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleRequestClose}
             className={`flex-1 px-4 py-3 rounded transition-colors ${darkMode
               ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -1067,6 +1079,13 @@ export function POSPaymentModal({
             </div>
           </div>
         </div>
+      )}
+
+      {showCancelReasonModal && (
+        <POSCancelReasonModal
+          onClose={() => setShowCancelReasonModal(false)}
+          onConfirm={handleCancelConfirm}
+        />
       )}
     </div>
   );

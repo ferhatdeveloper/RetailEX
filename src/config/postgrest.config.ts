@@ -5,6 +5,7 @@
  */
 
 import { DB_SETTINGS } from '../services/postgres';
+import { rewriteRetailexAppUrlForViteDev } from '../utils/retailexDevProxy';
 
 const defaultPort = 3002;
 
@@ -31,7 +32,8 @@ export const postgrestConfig = {
 export function getPostgrestBaseUrl(): string {
   // Kullanıcı PostgREST kullanıyorsa override’i uygula.
   if (DB_SETTINGS.connectionProvider === 'rest_api' && DB_SETTINGS.remoteRestUrl) {
-    return normalizeBaseUrl(DB_SETTINGS.remoteRestUrl) || getBaseUrlFallback();
+    const u = normalizeBaseUrl(DB_SETTINGS.remoteRestUrl) || getBaseUrlFallback();
+    return rewriteRetailexAppUrlForViteDev(u);
   }
   return getBaseUrlFallback();
 }

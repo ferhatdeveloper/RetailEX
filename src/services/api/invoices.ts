@@ -910,7 +910,7 @@ export const invoicesAPI = {
    */
   async refund(
     id: string,
-    context?: { firmNr?: string | number | null; periodNr?: string | number | null; receiptNumber?: string | null }
+    context?: { firmNr?: string | number | null; periodNr?: string | number | null; receiptNumber?: string | null; reason?: string | null }
   ): Promise<boolean> {
     try {
       const firmNr = ERP_SETTINGS.firmNr;
@@ -929,6 +929,8 @@ export const invoicesAPI = {
       const salePeriodNr = normalizePeriodNrForRow(context?.periodNr ?? (invoice as any)?.donem_id ?? ERP_SETTINGS.periodNr);
       const saleReceiptNo =
         String(context?.receiptNumber ?? invoice?.invoice_no ?? '').trim();
+      const refundReason = String(context?.reason ?? '').trim();
+      const reasonNote = refundReason ? `[CANCEL_REASON] ${refundReason}` : '';
       const saleQueryOpts = { firmNr: saleFirmNr, periodNr: salePeriodNr };
       if (invoice) {
         const accountId = invoice.customer_id || invoice.supplier_id;
@@ -956,53 +958,60 @@ export const invoicesAPI = {
       const attempts: Array<{ sql: string; params: unknown[]; options?: { firmNr?: string; periodNr?: string } }> = [
         {
           sql: `UPDATE sales
-                SET status = 'refunded'
+                SET status = 'refunded',
+                    notes = CASE WHEN $3::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $3::text)) ELSE notes END
                 WHERE id::text = $1::text
                   AND lpad(trim(firm_nr::text), 3, '0') = lpad(trim($2::text), 3, '0')
                 RETURNING id`,
-          params: [saleId, String(saleFirmNr ?? '').trim()],
+          params: [saleId, String(saleFirmNr ?? '').trim(), reasonNote],
           options: saleQueryOpts,
         },
         {
           sql: `UPDATE sales
-                SET status = 'refunded'
+                SET status = 'refunded',
+                    notes = CASE WHEN $2::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $2::text)) ELSE notes END
                 WHERE id::text = $1::text
                 RETURNING id`,
-          params: [saleId],
+          params: [saleId, reasonNote],
           options: saleQueryOpts,
         },
         {
           sql: `UPDATE sales
-                SET status = 'refunded'
+                SET status = 'refunded',
+                    notes = CASE WHEN $2::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $2::text)) ELSE notes END
                 WHERE id::text = $1::text
                 RETURNING id`,
-          params: [saleId],
+          params: [saleId, reasonNote],
         },
         ...(saleReceiptNo
           ? [
               {
                 sql: `UPDATE sales
-                      SET status = 'refunded'
+                      SET status = 'refunded',
+                          notes = CASE WHEN $2::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $2::text)) ELSE notes END
                       WHERE fiche_no::text = $1::text
                       RETURNING id`,
-                params: [saleReceiptNo],
+                params: [saleReceiptNo, reasonNote],
                 options: saleQueryOpts,
               },
               {
                 sql: `UPDATE sales
-                      SET status = 'refunded'
+                      SET status = 'refunded',
+                          notes = CASE WHEN $2::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $2::text)) ELSE notes END
                       WHERE fiche_no::text = $1::text
                       RETURNING id`,
-                params: [saleReceiptNo],
+                params: [saleReceiptNo, reasonNote],
               },
             ]
           : []),
         {
           sql: `UPDATE sales
-                SET status = 'refunded', updated_at = NOW()
+                SET status = 'refunded',
+                    updated_at = NOW(),
+                    notes = CASE WHEN $2::text <> '' THEN trim(concat_ws(E'\n', COALESCE(NULLIF(notes, ''), ''), $2::text)) ELSE notes END
                 WHERE id::text = $1::text
                 RETURNING id`,
-          params: [saleId],
+          params: [saleId, reasonNote],
           options: saleQueryOpts,
         },
       ];
@@ -1103,6 +1112,27 @@ export const invoicesAPI = {
   }
 };
 
+/**
+ * Bazı kayıtlarda başlık `net_amount` indirim düşülmeden `total_net` (brüt) ile aynı kalıyor;
+ * anasayfa / raporlarda ciro şişiyor. Yalnızca tutarsızlık barizse bileşenlerden net tahsilatı kur.
+ */
+function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_category']): number {
+  const rawNet = parseFloat(dbInv.net_amount || 0);
+  if (category !== 'Satis') return rawNet;
+
+  const totalNet = parseFloat(dbInv.total_net || 0);
+  const totalDisc = parseFloat(dbInv.total_discount || 0);
+  const totalVat = parseFloat(dbInv.total_vat || 0);
+  if (!(totalDisc > 0.001) || !(totalNet > 0)) return rawNet;
+
+  const eps = 0.02;
+  if (rawNet + eps >= totalNet) {
+    const recomputed = Math.max(0, totalNet - totalDisc + totalVat);
+    if (recomputed + eps < rawNet) return recomputed;
+  }
+  return rawNet;
+}
+
 function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   let category: Invoice['invoice_category'] = 'Hizmet';
 
@@ -1118,6 +1148,8 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
   const partnerNameAlis = joinSup || dbInv.customer_name || '';
   const partnerNameSatis = joinCust || dbInv.customer_name || '';
 
+  const netAmount = normalizeSalesHeaderNetAmount(dbInv, category);
+
   return {
     id: dbInv.id || '',
     invoice_no: dbInv.fiche_no || dbInv.document_no,
@@ -1130,8 +1162,8 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     subtotal: parseFloat(dbInv.total_net || 0),
     tax: parseFloat(dbInv.total_vat || 0),
     discount: parseFloat(dbInv.total_discount || 0),
-    total_amount: parseFloat(dbInv.net_amount || 0),
-    total: parseFloat(dbInv.net_amount || 0),
+    total_amount: netAmount,
+    total: netAmount,
     status: dbInv.status,
     notes: dbInv.notes,
     invoice_category: category,

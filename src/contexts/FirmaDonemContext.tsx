@@ -10,7 +10,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { setGlobalCurrency } from '../utils/currency';
-import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../services/postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS, getAppDefaultCurrency } from '../services/postgres';
 import {
   clearFirmScopedCachesOnly,
   refreshFirmScopedStores,
@@ -25,6 +25,7 @@ function normalizeFirmNr(v: string | number | undefined | null): string {
   return d.length <= 3 ? d.padStart(3, '0') : d;
 }
 import { eTransformService } from '../services/eTransformService';
+import { subscribeInvalidate } from '../services/retailexDataSync';
 
 // Types matching ROS tables
 export interface Firm {
@@ -126,6 +127,12 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   /** Firma değişti mi (dönem değişiminde yalnızca satış yenilenir) */
   const lastRefreshFirmNrRef = useRef<string | undefined>(undefined);
+  /** Realtime / polling: güncel refreshFirms + fetchPeriods + seçili firma */
+  const firmaDonemSyncRef = useRef({
+    refreshFirms: async () => {},
+    fetchPeriods: async (_firmIdOrNr: string) => {},
+    selectedFirm: null as Firm | null,
+  });
 
   // --- Initial Load ---
   useEffect(() => {
@@ -217,7 +224,27 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       setLoading(true);
       console.log('[FirmaDonemContext] Fetching all firms...');
-      const { rows } = await postgres.query('SELECT * FROM firms ORDER BY firm_nr ASC');
+      let rows: any[] = [];
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        try {
+          const { postgrest } = await import('../services/api/postgrestClient');
+          const data = await postgrest.get(
+            '/firms',
+            { select: '*', order: 'firm_nr.asc' },
+            { schema: 'public' }
+          );
+          rows = Array.isArray(data) ? data : [];
+        } catch (restErr: any) {
+          console.warn('[FirmaDonemContext] PostgREST /firms failed, SQL fallback:', restErr?.message || restErr);
+          const result = await postgres.query('SELECT * FROM firms ORDER BY firm_nr ASC', []);
+          rows = result.rows || [];
+        }
+      } else {
+        const result = await postgres.query('SELECT * FROM firms ORDER BY firm_nr ASC', []);
+        rows = result.rows || [];
+      }
+
       console.log('[FirmaDonemContext] Raw firms rows:', rows);
 
       let mappedFirms = (rows || []).map((f: any) => ({
@@ -295,17 +322,57 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       console.log('[FirmaDonemContext] ========== FETCHING PERIODS ==========');
       console.log('[FirmaDonemContext] firmIdOrNr parameter:', firmIdOrNr);
 
-      // Try searching by UUID first, then by firm_nr
-      const query = `
-        SELECT * FROM periods 
-        WHERE firm_id = (
-          SELECT id FROM firms 
-          WHERE id::text = $1 OR firm_nr = $1
-        ) 
-        ORDER BY nr ASC
-      `;
+      let rows: any[] = [];
 
-      const { rows } = await postgres.query(query, [firmIdOrNr]);
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        try {
+          const { postgrest } = await import('../services/api/postgrestClient');
+          const UUID_RE =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+          let firmUuid = firmIdOrNr.trim();
+          if (!UUID_RE.test(firmUuid)) {
+            const fnr = normalizeFirmNr(firmIdOrNr) || firmIdOrNr;
+            const fr = await postgrest.get(
+              '/firms',
+              { select: 'id', firm_nr: `eq.${fnr}` },
+              { schema: 'public' }
+            );
+            const farr = Array.isArray(fr) ? fr : [];
+            firmUuid = farr[0]?.id ? String(farr[0].id) : '';
+          }
+          if (firmUuid) {
+            const pr = await postgrest.get(
+              '/periods',
+              { select: '*', order: 'nr.asc', firm_id: `eq.${firmUuid}` },
+              { schema: 'public' }
+            );
+            rows = Array.isArray(pr) ? pr : [];
+          }
+        } catch (restErr: any) {
+          console.warn('[FirmaDonemContext] PostgREST /periods failed, SQL fallback:', restErr?.message || restErr);
+          const query = `
+            SELECT * FROM periods 
+            WHERE firm_id = (
+              SELECT id FROM firms 
+              WHERE id::text = $1 OR firm_nr = $1
+            ) 
+            ORDER BY nr ASC
+          `;
+          const result = await postgres.query(query, [firmIdOrNr]);
+          rows = result.rows || [];
+        }
+      } else {
+        const query = `
+          SELECT * FROM periods 
+          WHERE firm_id = (
+            SELECT id FROM firms 
+            WHERE id::text = $1 OR firm_nr = $1
+          ) 
+          ORDER BY nr ASC
+        `;
+        const result = await postgres.query(query, [firmIdOrNr]);
+        rows = result.rows || [];
+      }
 
       console.log('[FirmaDonemContext] ========== PERIOD DEBUG ==========');
       console.log('[FirmaDonemContext] Raw periods from DB:', rows);
@@ -504,6 +571,33 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   const refreshFirms = async () => {
     await fetchFirms();
   };
+
+  useEffect(() => {
+    firmaDonemSyncRef.current = { refreshFirms, fetchPeriods, selectedFirm };
+  });
+
+  useEffect(() => {
+    const unsub = subscribeInvalidate((scope) => {
+      const r = firmaDonemSyncRef.current;
+      if (scope === 'all' || scope === 'firms') void r.refreshFirms();
+      if (scope === 'all' || scope === 'periods') {
+        const sf = r.selectedFirm;
+        if (sf) void r.fetchPeriods(String(sf.id ?? sf.logicalref ?? ''));
+      }
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (DB_SETTINGS.connectionProvider !== 'rest_api') return;
+    const id = window.setInterval(() => {
+      const r = firmaDonemSyncRef.current;
+      void r.refreshFirms();
+      const sf = r.selectedFirm;
+      if (sf) void r.fetchPeriods(String(sf.id ?? sf.logicalref ?? ''));
+    }, 45_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <FirmaDonemContext.Provider value={{

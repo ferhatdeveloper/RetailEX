@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [react()],
   publicDir: 'src/public',
   resolve: {
+    /** Aksi halde bazı paketler ikinci bir React kopyası çeker; useContext(Auth) undefined kalır. */
+    dedupe: ['react', 'react-dom'],
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
     alias: {
       'vaul@1.1.2': 'vaul',
@@ -121,6 +123,16 @@ export default defineConfig({
         target: 'http://127.0.0.1:3000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/__wa_bridge/, '') || '/',
+      },
+      /**
+       * api.retailex.app (merkez /merkez, kiracı /aqua, …): üretim CORS yalnızca retailex.app;
+       * localhost’ta tüm PostgREST çağrıları `rewriteRetailexAppUrlForViteDev` ile buraya yönlendirilir.
+       */
+      '/__retailex-api': {
+        target: 'https://api.retailex.app',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/__retailex-api/, ''),
       },
     }
   },

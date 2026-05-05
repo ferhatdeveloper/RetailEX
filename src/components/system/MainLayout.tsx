@@ -1057,6 +1057,104 @@ export function MainLayout({
         </div>
       )}
 
+      {/* Mobile touch-first module switcher */}
+      {isMobile && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
+        <div className="bg-white border-b border-gray-200 px-2 py-2">
+          <div className="grid grid-cols-3 gap-2">
+            {hasPermission('pos', 'READ') && isModuleVisible('pos') && (
+              <button
+                type="button"
+                onClick={() => setCurrentModule('pos')}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'pos'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                POS
+              </button>
+            )}
+            {hasPermission('management', 'READ') && isModuleVisible('management') && (
+              <button
+                type="button"
+                onClick={requestManagementAccess}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'management'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                Yönetim
+              </button>
+            )}
+            {hasPermission('wms', 'READ') && isModuleVisible('wms') && (
+              <button
+                type="button"
+                onClick={() => setCurrentModule('wms')}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'wms'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <Warehouse className="w-4 h-4" />
+                WMS
+              </button>
+            )}
+            {hasPermission('restaurant', 'READ') && isModuleVisible('restaurant') && (
+              <button
+                type="button"
+                onClick={() => setCurrentModule('restaurant')}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'restaurant'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <UtensilsCrossed className="w-4 h-4" />
+                Restoran
+              </button>
+            )}
+            {hasPermission('beauty', 'READ') && isModuleVisible('beauty') && (
+              <button
+                type="button"
+                onClick={() => setCurrentModule('beauty')}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'beauty'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <Sparkles className="w-4 h-4" />
+                Güzellik
+              </button>
+            )}
+            {isModuleVisible('mobile-pos') && (
+              <button
+                type="button"
+                onClick={() => setCurrentModule('mobile-pos')}
+                className={cn(
+                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
+                  currentModule === 'mobile-pos'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200'
+                )}
+              >
+                <Receipt className="w-4 h-4" />
+                Mobil POS
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 🎤 Sesli Asistan - Global */}
       <VoiceAssistantWeb hideFloatingButton={true} />
 

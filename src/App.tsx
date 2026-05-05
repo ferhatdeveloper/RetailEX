@@ -22,6 +22,7 @@ import { listen } from '@tauri-apps/api/event';
 import { IS_TAURI, safeInvoke } from './utils/env';
 import { mergeRustIntoStoredWebConfig } from './utils/retailexWebConfigMerge';
 import { APP_VERSION } from './core/version';
+import { initRetailexDataSync } from './services/retailexDataSync';
 
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
 import './services/websocketPatch';
@@ -81,6 +82,10 @@ function App() {
       window.removeEventListener('resize', handleResize);
       if (raf) cancelAnimationFrame(raf);
     };
+  }, []);
+
+  useEffect(() => {
+    initRetailexDataSync();
   }, []);
 
   // HTML loader yalnızca ana arayüz (Login/MainLayout/SetupWizard) gösterilmeden önce kaldırılır — arada siyah ekran olmasın

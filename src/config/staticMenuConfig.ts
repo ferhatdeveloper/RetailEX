@@ -224,7 +224,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: MoreVertical,
                 children: [
                     // { label: t.menu.accountingManagement, screen: 'accounting-mgmt', icon: Banknote, badge: t.menu.newBadge },
-                    // { label: t.menu.expenseManagement, screen: 'revenueexpense', icon: Receipt },
+                    { label: t.menu.expenseManagement, screen: 'revenueexpense', icon: Receipt },
                     // { label: t.menu.checkPromissory, screen: 'checkpromissory', icon: Receipt },
                     // { label: t.menu.collectionPayment, screen: 'collectionpayment', icon: CreditCard },
                     { label: t.menu.multiCurrency, screen: 'multicurrency', icon: Globe },

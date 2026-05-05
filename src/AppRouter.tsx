@@ -38,60 +38,64 @@ export function AppRouter() {
       {/* Dil bağlamı Auth/Routes üstünde olmalı; aksi halde bazı ağaç düzenlerinde MainLayout useLanguage hatası verebilir */}
       <LanguageProvider>
         <ThemeProvider>
-          <Toaster
-            richColors
-            position="bottom-right"
-            expand={true}
-            visibleToasts={5}
-            toastOptions={{
-              style: {
-                marginBottom: '8px',
-              },
-              className: 'toast-item',
-            }}
-          />
-          <Router>
-            <ConfigProvider theme={retailexAntdTheme}>
-              <AuthProvider>
-              <Routes>
-                {/* Public routes */}
-                <Route path="/login" element={<Login onLogin={() => { }} />} />
-                <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
-                <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+          {/*
+            AuthProvider tüm Router + Routes’u sarar (yalnızca Routes değil).
+            Aksi düzende veya çift React kopyasında usePermission → useAuth “provider yok” hatası görülebilir.
+          */}
+          <AuthProvider>
+            <Toaster
+              richColors
+              position="bottom-right"
+              expand={true}
+              visibleToasts={5}
+              toastOptions={{
+                style: {
+                  marginBottom: '8px',
+                },
+                className: 'toast-item',
+              }}
+            />
+            <Router>
+              <ConfigProvider theme={retailexAntdTheme}>
+                <Routes>
+                  {/* Public routes */}
+                  <Route path="/login" element={<Login onLogin={() => { }} />} />
+                  <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
+                  <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
 
-                {/* Protected routes */}
-                <Route
-                  path="/system/roles"
-                  element={
-                    <ProtectedRoute>
-                      <div className="h-screen w-full bg-slate-50"><RoleManagement /></div>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/system/roles/new"
-                  element={
-                    <ProtectedRoute>
-                      <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/system/roles/:id"
-                  element={
-                    <ProtectedRoute>
-                      <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/*"
-                  element={<App />}
-                />
-              </Routes>
-              </AuthProvider>
-            </ConfigProvider>
-          </Router>
+                  {/* Protected routes */}
+                  <Route
+                    path="/system/roles"
+                    element={
+                      <ProtectedRoute>
+                        <div className="h-screen w-full bg-slate-50"><RoleManagement /></div>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/system/roles/new"
+                    element={
+                      <ProtectedRoute>
+                        <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/system/roles/:id"
+                    element={
+                      <ProtectedRoute>
+                        <div className="h-screen w-full overflow-hidden bg-slate-50"><RoleForm /></div>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/*"
+                    element={<App />}
+                  />
+                </Routes>
+              </ConfigProvider>
+            </Router>
+          </AuthProvider>
         </ThemeProvider>
       </LanguageProvider>
     </QueryClientProvider>

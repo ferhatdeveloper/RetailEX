@@ -23,6 +23,9 @@
 19. **028_beauty_portal_allow_staff_slot_overlap.sql** – `beauty_portal_settings.allow_staff_slot_overlap`: aynı personele aynı saatte birden fazla randevu / işlem (iç POS slot kontrolü).
 20. **029_rex_customers_gender_customer_tier.sql** – `rex_*_customers`: `gender` (female/male/other), `customer_tier` (`normal` / `vip`).
 21. **031_rex_customers_heard_from.sql** – `rex_*_customers`: `heard_from` (müşteri edinim kaynağı / "Bizi nereden duydunuz?").
+22. **032_beauty_specialist_product_unit_commission.sql** – `beauty_specialists.product_unit_commission`: ürün satışında personel için adet başı sabit prim tutarı.
+23. **033_beauty_service_follow_up_reminder_days.sql** – `beauty_services.follow_up_reminder_days`: tamamlanan randevudan X gün sonra hatırlatma (Hizmet & tarih panosu + giriş toast).
+24. **034_beauty_service_parent_category.sql** – `beauty_services.parent_category`: ana kategori; `category` alt kategori (Hizmet tanımları + POS hiyerarşik filtre).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

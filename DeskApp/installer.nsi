@@ -89,6 +89,8 @@ Var LogoObjPass
 Var LogoObjPath
 Var UseLogoObj
 Var UseFixedVpnIp
+Var InstallPostgREST
+Var PostgREST_Obj
 Var WSUrl_Obj
 Var AMQPUrl_Obj
 Var RoleTerminal_Obj
@@ -202,6 +204,7 @@ Page custom PageReinstall PageLeaveReinstall
 
 ; Custom Pages
 Page custom PageRoleSelection PageLeaveRoleSelection
+Page custom PagePostgREST PageLeavePostgREST
 Page custom PageSettings PageLeaveSettings
 Page custom PageLogoObjects PageLeaveLogoObjects
 Function PageReinstall
@@ -527,6 +530,32 @@ Function PageLeaveRoleSelection
   ${EndIf}
 FunctionEnd
 
+Function PagePostgREST
+  Call SkipIfPassive
+  !insertmacro MUI_HEADER_TEXT "PostgREST (isteğe bağlı)" "REST API ile PostgreSQL erişimi; aynı LAN’daki diğer istemciler için isteğe bağlı."
+  nsDialogs::Create 1018
+  Pop $0
+  ${NSD_CreateLabel} 0 0 100% 52u "PostgREST, PostgreSQL’e HTTP (varsayılan port 3002) ile bağlanır. Kutuyu işaretlerseniz postgrest.exe bu kurulum klasörüne indirilir:$\r$\n$INSTDIR$\r$\n$\r$\nİşaretlemezseniz yalnızca RetailEX masaüstü uygulaması kurulur; PostgREST’i sonra elle de ekleyebilirsiniz."
+  Pop $0
+  ${NSD_CreateCheckBox} 0 58u 100% 14u "Bu bilgisayara PostgREST binary kur (GitHub’dan indir)"
+  Pop $PostgREST_Obj
+  ${If} $InstallPostgREST == 1
+    SendMessage $PostgREST_Obj ${BM_SETCHECK} ${BST_CHECKED} 0
+  ${EndIf}
+  ${NSD_CreateLabel} 0 78u 100% 28u "Not: postgresql.conf, güvenlik duvarı ve pg_hba ayarlarını unutmayın. Örnek yapılandırma: _up_\config\postgrest.conf"
+  Pop $0
+  nsDialogs::Show
+FunctionEnd
+
+Function PageLeavePostgREST
+  ${NSD_GetState} $PostgREST_Obj $0
+  ${If} $0 == ${BST_CHECKED}
+    StrCpy $InstallPostgREST 1
+  ${Else}
+    StrCpy $InstallPostgREST 0
+  ${EndIf}
+FunctionEnd
+
 ; 5. Choose install directoy page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_DIRECTORY
@@ -668,6 +697,7 @@ Function .onInit
   StrCpy $LogoObjPath "C:\LOGO\LObjects.dll"
   StrCpy $UseLogoObj 0
   StrCpy $UseFixedVpnIp 1
+  StrCpy $InstallPostgREST 0
 
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   IfErrors +2 0
@@ -700,6 +730,9 @@ Function .onInit
     Call RestorePreviousInstallLocation
   ${EndIf}
 
+  ${GetOptions} $CMDLINE "/POSTGREST" $R0
+  IfErrors +2 0
+    StrCpy $InstallPostgREST 1
 
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
@@ -725,6 +758,33 @@ Section EarlyChecks
   !endif
 
 SectionEnd
+
+Function InstallPostgRESTBinary
+  IfFileExists "$INSTDIR\postgrest.exe" pgrst_have_exe
+  !ifdef POSTGRESTBINARYSRCPATH
+    IfFileExists "${POSTGRESTBINARYSRCPATH}" 0 pgrst_no_bundled
+      DetailPrint "PostgREST yerel paketten kopyalanıyor..."
+      File "/oname=postgrest.exe" "${POSTGRESTBINARYSRCPATH}"
+      Goto pgrst_have_exe
+    pgrst_no_bundled:
+  !endif
+  IfFileExists "$EXEDIR\postgrest.exe" 0 +4
+    DetailPrint "postgrest.exe kurulum arşivi yanından kopyalanıyor..."
+    CopyFiles /SILENT "$EXEDIR\postgrest.exe" "$INSTDIR\postgrest.exe"
+    Goto pgrst_have_exe
+  DetailPrint "PostgREST GitHub üzerinden indiriliyor..."
+  ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\install-postgrest.ps1" -DestinationDir "$INSTDIR"' $0
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONEXCLAMATION "PostgREST kurulamadı (kod $0).$\r$\nİsterseniz https://github.com/PostgREST/postgrest/releases adresinden Windows x64 postgrest.exe indirip şu klasöre koyun:$\r$\n$INSTDIR$\r$\nVeya kurulum exe’si ile aynı klasöre postgrest.exe koyup kurulumu yeniden çalıştırın."
+    Goto pgrst_done
+  ${EndIf}
+  pgrst_have_exe:
+  CreateDirectory "$INSTDIR\_up_\config"
+  IfFileExists "$INSTDIR\_up_\config\postgrest.conf" pgrst_done
+  IfFileExists "D:\RetailEX\config\postgrest.conf" 0 pgrst_done
+    File "/oname=_up_\config\postgrest.conf" "D:\RetailEX\config\postgrest.conf"
+  pgrst_done:
+FunctionEnd
 
 Section WebView2
   ; Check if Webview2 is already installed and skip this section
@@ -896,14 +956,16 @@ Section Install
     File /a "/oname=install-services-setup.ps1" "D:\RetailEX\DeskApp\resources\install-services-setup.ps1"
     File /a "/oname=retailex-admin.ps1" "D:\RetailEX\DeskApp\resources\retailex-admin.ps1"
     File /a "/oname=retailex-admin.cmd" "D:\RetailEX\DeskApp\resources\retailex-admin.cmd"
+    File /a "/oname=install-postgrest.ps1" "D:\RetailEX\DeskApp\resources\install-postgrest.ps1"
     File /a "/oname=pg-windows-expose-remote.ps1" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.ps1"
     File /a "/oname=pg-windows-expose-remote.cmd" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.cmd"
     File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"
     CreateDirectory "$INSTDIR\RetailEXTools"
     File /a "/oname=RetailEXTools\RetailEX_Tools.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Tools.exe"
-    
-    
 
+  ${If} $InstallPostgREST == 1
+    Call InstallPostgRESTBinary
+  ${EndIf}
 
   ; Windows hizmetleri: bosluklu INSTDIR icin -Prefix yerine dosya (install-services-setup.ps1 okur)
   DetailPrint "Installing Background Services (UAC if needed)..."
@@ -965,6 +1027,9 @@ Section Install
   FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
   FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "6. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
+  ${If} $InstallPostgREST == 1
+    FileWrite $9 "7. PostgREST: '$INSTDIR\postgrest.exe' — örnek: postgrest.exe ile aynı klasörde _up_\config\postgrest.conf yolunu kullanın (port 3002, pg_bridge 3001).$\r$\n"
+  ${EndIf}
   FileWrite $9 "$\r$\nRetailEX Enterprise OS - Keyifli kullanımlar!$\r$\n"
   FileClose $9
 
@@ -1003,6 +1068,7 @@ Section Install
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "AMQPUrl" "$AMQPUrl"
   WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseFixedVpnIp" $UseFixedVpnIp
   WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "UseLogoObj" $UseLogoObj
+  WriteRegDWORD SHCTX "${MANUPRODUCTKEY}" "InstallPostgREST" $InstallPostgREST
 
   ; Create start menu shortcut (GUI)
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
@@ -1125,6 +1191,8 @@ Section Uninstall
     Delete "$INSTDIR\retailex_install_prefix.txt"
     Delete "$INSTDIR\retailex-admin.ps1"
     Delete "$INSTDIR\retailex-admin.cmd"
+    Delete "$INSTDIR\install-postgrest.ps1"
+    Delete "$INSTDIR\postgrest.exe"
     Delete "$INSTDIR\pg-windows-expose-remote.ps1"
     Delete "$INSTDIR\pg-windows-expose-remote.cmd"
     Delete "$INSTDIR\RetailEX_PostgreSQLRemote.exe"
@@ -1138,6 +1206,8 @@ Section Uninstall
   RMDir /REBOOTOK "$INSTDIR\_up_\database\migrations"
   RMDir /REBOOTOK "$INSTDIR\_up_\database\sys"
   RMDir /REBOOTOK "$INSTDIR\_up_\database"
+  Delete "$INSTDIR\_up_\config\postgrest.conf"
+  RMDir /REBOOTOK "$INSTDIR\_up_\config"
   RMDir /REBOOTOK "$INSTDIR\_up_"
   RMDir "$INSTDIR"
 
@@ -1205,6 +1275,11 @@ Function RestorePreviousInstallLocation
   ReadRegDWORD $R5 SHCTX "${MANUPRODUCTKEY}" "UseLogoObj"
   ${If} $R5 != ""
     StrCpy $UseLogoObj $R5
+  ${EndIf}
+
+  ReadRegDWORD $R6 SHCTX "${MANUPRODUCTKEY}" "InstallPostgREST"
+  ${If} $R6 != ""
+    StrCpy $InstallPostgREST $R6
   ${EndIf}
 FunctionEnd
 

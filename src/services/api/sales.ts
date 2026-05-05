@@ -366,7 +366,7 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     subtotal: invoice.subtotal,
     discount: invoice.discount,
     tax: invoice.tax,
-    total: invoice.total_amount,
+    total: Number(invoice.total_amount ?? invoice.total ?? 0),
     profit: invoice.gross_profit || 0, // Brüt Kar
     paymentMethod: (invoice as any).payment_method || 'cash',
     status: invoice.status,

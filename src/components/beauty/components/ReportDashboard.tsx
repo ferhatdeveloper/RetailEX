@@ -243,6 +243,52 @@ export function ReportDashboard() {
                     </div>
                 )}
             </div>
+
+            {/* Product Sales Commission */}
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
+                <div className="p-8 border-b border-gray-50 flex items-center justify-between">
+                    <h3 className="text-lg font-black text-gray-900 uppercase">{tm('bProductSalesCommissionTitle')}</h3>
+                    <ShoppingBag className="text-gray-300" size={24} />
+                </div>
+                {stats!.productStaffPerformance.length === 0 ? (
+                    <div className="py-12 text-center text-gray-300">
+                        <Users size={32} className="mx-auto mb-2" />
+                        <p className="text-xs font-bold">{tm('bNoProductStaffData')}</p>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-gray-50/50">
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffName')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesCount')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesRevenue')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesCommissionAmount')}</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffCommission')}</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {stats!.productStaffPerformance.map((staff, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-8 py-5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-sm uppercase">
+                                                    {staff.name.charAt(0)}
+                                                </div>
+                                                <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-8 py-5 font-bold text-gray-600 text-xs">{staff.transactions} {tm('bTransactions')}</td>
+                                        <td className="px-8 py-5 font-black text-gray-900 text-sm">{fmt(staff.revenue)}</td>
+                                        <td className="px-8 py-5 font-bold text-emerald-600 text-sm">{fmt(staff.commission)}</td>
+                                        <td className="px-8 py-5 font-bold text-gray-500 text-xs">%{staff.commission_rate}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

@@ -10,8 +10,27 @@ import { execFileSync } from "node:child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
+/** Imzasız build (WINDOWS_CODESIGN_DISABLE=1) veya acik atlama — aksi halde NotSigned = hata */
+function shouldSkipVerify() {
+  const d = (process.env.WINDOWS_CODESIGN_DISABLE || "").trim().toLowerCase();
+  if (d === "1" || d === "true" || d === "yes") return "WINDOWS_CODESIGN_DISABLE";
+  const s = (process.env.SKIP_VERIFY_INSTALLER_SIGNATURE || "").trim().toLowerCase();
+  if (s === "1" || s === "true" || s === "yes") return "SKIP_VERIFY_INSTALLER_SIGNATURE";
+  return "";
+}
+
 if (process.platform !== "win32") {
   console.log("[verify-installer-signature] Windows disi; atlandi.");
+  process.exit(0);
+}
+
+const skipReason = shouldSkipVerify();
+if (skipReason) {
+  console.warn(
+    "[verify-installer-signature] Atlandi (" +
+      skipReason +
+      "). NSIS kurulum dosyasi imzasi dogrulanmadi; dagitimda kod imzasi onerilir."
+  );
   process.exit(0);
 }
 

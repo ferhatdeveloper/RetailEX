@@ -85,6 +85,8 @@ export interface BeautySpecialist {
     specialty?: string;
     color?: string;
     commission_rate: number;
+    /** Urun satislarinda adet basi sabit prim tutari */
+    product_unit_commission?: number;
     avatar_url?: string;
     working_hours?: Record<string, { start: string; end: string }>;
     is_active: boolean;
@@ -94,6 +96,8 @@ export interface BeautyService {
     id: string;
     name: string;
     category: ServiceCategory | string;
+    /** Doluysa ana kategori; `category` bu durumda alt kategori (leaf) kodu olur. */
+    parent_category?: string | null;
     duration_min: number;
     price: number;
     cost_price?: number;
@@ -104,7 +108,23 @@ export interface BeautyService {
     expected_shots?: number;
     /** Çok seanslı tedaviler için tipik seans sayısı (1 = tek seans) */
     default_sessions?: number;
+    /**
+     * Tamamlanan randevudan kaç gün sonra tekrar hatırlatılacak (null veya ≤0 = kapalı).
+     * Yalnızca `beauty_services` kartında kalıcıdır.
+     */
+    follow_up_reminder_days?: number | null;
     is_active: boolean;
+}
+
+/** `follow_up_reminder_days` tanımlı hizmette son tamamlanan işlemden sonra gelen hatırlatma satırı */
+export interface BeautyFollowUpReminder {
+    due_date: string;
+    last_completed_date: string;
+    reminder_days: number;
+    service_id: string;
+    service_name: string;
+    customer_id: string;
+    customer_name: string;
 }
 
 export interface BeautyDevice {
