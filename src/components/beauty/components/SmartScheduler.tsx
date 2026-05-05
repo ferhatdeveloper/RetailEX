@@ -10,7 +10,9 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import {
     BeautyAppointment,
     AppointmentStatus,
+    type BeautyFollowUpReminder,
 } from '../../../types/beauty';
+import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import { WeekView, MonthView, AgendaView } from './WeekMonthViews';
@@ -22,7 +24,9 @@ import { AppointmentPOS } from './AppointmentPOS';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { safeInvoke, IS_BROWSER } from '../../../utils/env';
 import {
+    addDaysToLocalYmd,
     beautyAppointmentDateKey,
+    enumerateLocalYmdInclusive,
     formatLocalYmd,
     getWeekRangeLocal,
     getMonthRangeLocal,
@@ -49,9 +53,11 @@ import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
-
-type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list';
+import { ServiceCategoryDateBoard } from './ServiceCategoryDateBoard';
+import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
+type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
 type GroupMode = 'none' | 'staff' | 'device';
+const SERVICE_BOARD_MAX_DAYS = 90;
 const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as const;
 
 const LS_BEAUTY_SLOT = 'retailex.beauty.slotIntervalMin';
@@ -160,8 +166,49 @@ export function SmartScheduler() {
         specialists, services, customers, devices,
         loadSpecialists, loadServices, loadCustomers, loadDevices,
     } = useBeautyStore();
-    const { tm } = useLanguage();
+    const { tm, language } = useLanguage();
+    const scheduleDayHeaderLocale = useMemo(() => {
+        switch (language) {
+            case 'tr': return 'tr-TR';
+            case 'en': return 'en-GB';
+            case 'ar': return 'ar-SA';
+            case 'ku': return 'ku-Arab-IQ';
+            default: return 'tr-TR';
+        }
+    }, [language]);
     const { isAdmin } = usePermission();
+    const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
+    const isDentalMode = clinicSpec === 'dental';
+    const serviceCategoryLabels = useMemo((): Record<string, string> => {
+        const base: Record<string, string> = {
+            laser: tm('bCatLaser'),
+            hair_salon: tm('bCatHairSalon'),
+            beauty: tm('bCatBeauty'),
+            hair_transplant: tm('bCatOther'),
+            botox: tm('bCatBotox'),
+            filler: tm('bCatFiller'),
+            massage: tm('bCatMassage'),
+            skincare: tm('bCatSkincare'),
+            makeup: tm('bCatMakeup'),
+            nails: tm('bCatNails'),
+            spa: tm('bCatSpa'),
+            physical_therapy: tm('bClinicSpec_physiotherapy'),
+        };
+        if (!isDentalMode) return base;
+        return {
+            ...base,
+            diagnostic: tm('bCatDentalDiagnostic'),
+            endodontics: tm('bCatDentalEndo'),
+            periodontics: tm('bCatDentalPerio'),
+            surgery: tm('bCatDentalSurgery'),
+            prosthodontics: tm('bCatDentalProstho'),
+            orthodontics: tm('bCatDentalOrtho'),
+            pedodontics: tm('bCatDentalPedo'),
+            preventive: tm('bCatDentalPreventive'),
+            implant: tm('bCatDentalImplant'),
+            restorative: tm('bCatDentalRestorative'),
+        };
+    }, [tm, isDentalMode]);
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -174,6 +221,9 @@ export function SmartScheduler() {
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [view,        setView]        = useState<ViewType>('device');
+    const [serviceBoardRange, setServiceBoardRange] = useState(() => getAgendaRangeLocal(new Date(), 7));
+    const [svcRangeDraftStart, setSvcRangeDraftStart] = useState(() => getAgendaRangeLocal(new Date(), 7).start);
+    const [svcRangeDraftEnd, setSvcRangeDraftEnd] = useState(() => getAgendaRangeLocal(new Date(), 7).end);
     /** DevExpress WPF benzeri kaynak gruplaması (gün / hafta / iş haftası) */
     const [groupMode,   setGroupMode]   = useState<GroupMode>('none');
     const [searchTerm,  setSearchTerm]  = useState('');
@@ -325,6 +375,10 @@ export function SmartScheduler() {
     }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices]);
 
     useEffect(() => {
+        if (view === 'svcboard') {
+            void loadAppointmentsInRange(serviceBoardRange.start, serviceBoardRange.end);
+            return;
+        }
         if (view === 'week') {
             const { start, end } = getWeekRangeLocal(currentDate);
             void loadAppointmentsInRange(start, end);
@@ -341,7 +395,7 @@ export function SmartScheduler() {
             const day = formatLocalYmd(currentDate);
             void loadAppointmentsInRange(day, day);
         }
-    }, [currentDate, view, loadAppointmentsInRange]);
+    }, [currentDate, view, serviceBoardRange.start, serviceBoardRange.end, loadAppointmentsInRange]);
 
     useEffect(() => {
         if (!showNewPage) return;
@@ -352,16 +406,70 @@ export function SmartScheduler() {
         };
     }, [showNewPage]);
 
+    const serviceNameById = useMemo(() => {
+        const m = new Map<string, string>();
+        for (const s of services) {
+            const id = String(s.id ?? '').trim();
+            const name = String(s.name ?? '').trim();
+            if (!id || !name) continue;
+            m.set(id, name);
+        }
+        return m;
+    }, [services]);
+
+    const resolveServiceName = useCallback((apt: BeautyAppointment): string => {
+        const direct = String(apt.service_name ?? '').trim();
+        if (direct) return direct;
+        const id = String(apt.service_id ?? '').trim();
+        if (!id) return '—';
+        return serviceNameById.get(id) ?? '—';
+    }, [serviceNameById]);
+
     const visibleAppointments = useMemo(() => {
         const base = appointments.filter(beautyAptVisibleOnSchedule);
         const q = searchTerm.trim().toLowerCase();
         if (!q) return base;
         return base.filter(a =>
             (a.customer_name ?? '').toLowerCase().includes(q) ||
-            (a.service_name ?? '').toLowerCase().includes(q) ||
+            (() => {
+                const sn = String(a.service_name ?? '').trim();
+                if (sn) return sn.toLowerCase();
+                const sid = String(a.service_id ?? '').trim();
+                if (!sid) return '';
+                return String(serviceNameById.get(sid) ?? '').toLowerCase();
+            })().includes(q) ||
             (a.specialist_name ?? a.staff_name ?? '').toLowerCase().includes(q)
         );
-    }, [appointments, searchTerm]);
+    }, [appointments, searchTerm, serviceNameById]);
+
+    const serviceBoardDateKeys = useMemo(
+        () => enumerateLocalYmdInclusive(serviceBoardRange.start, serviceBoardRange.end),
+        [serviceBoardRange.start, serviceBoardRange.end],
+    );
+
+    const [followUpReminders, setFollowUpReminders] = useState<BeautyFollowUpReminder[]>([]);
+
+    useEffect(() => {
+        if (view !== 'svcboard') {
+            setFollowUpReminders([]);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const rows = await beautyService.getFollowUpRemindersInRange(
+                    serviceBoardRange.start,
+                    serviceBoardRange.end,
+                );
+                if (!cancelled) setFollowUpReminders(rows);
+            } catch {
+                if (!cancelled) setFollowUpReminders([]);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [view, serviceBoardRange.start, serviceBoardRange.end]);
 
     const applyBeautyResourceDrop = useCallback(
         async (
@@ -460,6 +568,18 @@ export function SmartScheduler() {
     };
 
     const handlePrevious = () => {
+        if (view === 'svcboard') {
+            const span = Math.max(
+                1,
+                enumerateLocalYmdInclusive(serviceBoardRange.start, serviceBoardRange.end).length,
+            );
+            const ns = addDaysToLocalYmd(serviceBoardRange.start, -span);
+            const ne = addDaysToLocalYmd(serviceBoardRange.end, -span);
+            setServiceBoardRange({ start: ns, end: ne });
+            setSvcRangeDraftStart(ns);
+            setSvcRangeDraftEnd(ne);
+            return;
+        }
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() - 1);
         else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() - 7);
@@ -469,6 +589,18 @@ export function SmartScheduler() {
         setCurrentDate(d);
     };
     const handleNext = () => {
+        if (view === 'svcboard') {
+            const span = Math.max(
+                1,
+                enumerateLocalYmdInclusive(serviceBoardRange.start, serviceBoardRange.end).length,
+            );
+            const ns = addDaysToLocalYmd(serviceBoardRange.start, span);
+            const ne = addDaysToLocalYmd(serviceBoardRange.end, span);
+            setServiceBoardRange({ start: ns, end: ne });
+            setSvcRangeDraftStart(ns);
+            setSvcRangeDraftEnd(ne);
+            return;
+        }
         const d = new Date(currentDate);
         if (view === 'day') d.setDate(d.getDate() + 1);
         else if (view === 'week' || view === 'workweek') d.setDate(d.getDate() + 7);
@@ -476,6 +608,28 @@ export function SmartScheduler() {
         else if (view === 'agenda') d.setDate(d.getDate() + 7);
         else d.setDate(d.getDate() + 1);
         setCurrentDate(d);
+    };
+
+    const applyServiceBoardRange = () => {
+        let a = svcRangeDraftStart.trim();
+        let b = svcRangeDraftEnd.trim();
+        const ymdOk = /^\d{4}-\d{2}-\d{2}$/;
+        if (!ymdOk.test(a) || !ymdOk.test(b)) return;
+        if (a > b) {
+            const t = a;
+            a = b;
+            b = t;
+            setSvcRangeDraftStart(a);
+            setSvcRangeDraftEnd(b);
+        }
+        const n = enumerateLocalYmdInclusive(a, b).length;
+        if (n > SERVICE_BOARD_MAX_DAYS) {
+            window.alert(tm('bServiceDateBoardRangeTooLong').replace('{n}', String(SERVICE_BOARD_MAX_DAYS)));
+            return;
+        }
+        setServiceBoardRange({ start: a, end: b });
+        setSvcRangeDraftStart(a);
+        setSvcRangeDraftEnd(b);
     };
 
     const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
@@ -662,6 +816,13 @@ export function SmartScheduler() {
     }, []);
 
     const toolbarDateLabel = useMemo(() => {
+        if (view === 'svcboard') {
+            const [ys, ms, ds] = serviceBoardRange.start.split('-').map(Number);
+            const [ye, me, de] = serviceBoardRange.end.split('-').map(Number);
+            const da = new Date(ys, ms - 1, ds);
+            const db = new Date(ye, me - 1, de);
+            return `${da.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – ${db.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+        }
         if (view === 'agenda') {
             const end = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
             end.setDate(end.getDate() + 6);
@@ -678,7 +839,7 @@ export function SmartScheduler() {
             return `${da.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – ${db.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
         }
         return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    }, [view, currentDate]);
+    }, [view, currentDate, serviceBoardRange.start, serviceBoardRange.end]);
 
     const saveAppointmentPriceFromCard = useCallback(async () => {
         if (!isAdmin()) return;
@@ -738,7 +899,7 @@ export function SmartScheduler() {
                         <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
                     )}
                 </div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{apt.service_name ?? '—'}</p>
+                <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#9ca3af', minWidth: 0, flex: 1 }}>
@@ -933,7 +1094,17 @@ export function SmartScheduler() {
                         <ChevronRight size={14} />
                     </button>
                     <button
-                        onClick={() => setCurrentDate(new Date())}
+                        onClick={() => {
+                            if (view === 'svcboard') {
+                                const r = getAgendaRangeLocal(new Date(), 7);
+                                setCurrentDate(new Date());
+                                setServiceBoardRange(r);
+                                setSvcRangeDraftStart(r.start);
+                                setSvcRangeDraftEnd(r.end);
+                                return;
+                            }
+                            setCurrentDate(new Date());
+                        }}
                         style={{ padding: '4px 10px', border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', fontSize: 11, fontWeight: 700, color: '#7c3aed', cursor: 'pointer' }}
                     >
                         {tm('bToday')}
@@ -941,7 +1112,7 @@ export function SmartScheduler() {
                 </div>
 
                 {/* View tabs */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2, maxWidth: 560 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2, maxWidth: 720 }}>
                     {([
                         { id: 'day',      label: tm('bDay') },
                         { id: 'workweek', label: tm('bWorkWeek') },
@@ -950,11 +1121,20 @@ export function SmartScheduler() {
                         { id: 'agenda',   label: tm('bAgendaView') },
                         { id: 'timeline', label: tm('bStaffView') },
                         { id: 'device',   label: tm('bDeviceView') },
+                        { id: 'svcboard', label: tm('bServiceDateBoardView') },
                         { id: 'list',     label: tm('bListView') },
                     ] as { id: ViewType; label: string }[]).map(({ id: v, label }) => (
                         <button
                             key={v}
-                            onClick={() => setView(v)}
+                            onClick={() => {
+                                if (v === 'svcboard') {
+                                    const r = getAgendaRangeLocal(currentDate, 7);
+                                    setServiceBoardRange(r);
+                                    setSvcRangeDraftStart(r.start);
+                                    setSvcRangeDraftEnd(r.end);
+                                }
+                                setView(v);
+                            }}
                             style={{
                                 padding: '5px 10px', borderRadius: 5, border: 'none',
                                 background: view === v ? '#fff' : 'transparent',
@@ -1066,6 +1246,54 @@ export function SmartScheduler() {
                     </button>
                 </div>
             </div>
+
+            {view === 'svcboard' && (
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                        padding: '8px 20px',
+                        borderBottom: '1px solid #e5e7eb',
+                        background: '#faf9fd',
+                        flexShrink: 0,
+                    }}
+                >
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#6b7280' }}>{tm('bDateRangeFrom')}</span>
+                    <input
+                        type="date"
+                        value={svcRangeDraftStart}
+                        onChange={e => setSvcRangeDraftStart(e.target.value)}
+                        style={{ height: 30, border: '1px solid #e5e7eb', borderRadius: 5, padding: '0 8px', fontSize: 12 }}
+                    />
+                    <span style={{ fontSize: 11, fontWeight: 800, color: '#6b7280' }}>{tm('bDateRangeTo')}</span>
+                    <input
+                        type="date"
+                        value={svcRangeDraftEnd}
+                        onChange={e => setSvcRangeDraftEnd(e.target.value)}
+                        style={{ height: 30, border: '1px solid #e5e7eb', borderRadius: 5, padding: '0 8px', fontSize: 12 }}
+                    />
+                    <button
+                        type="button"
+                        onClick={applyServiceBoardRange}
+                        style={{
+                            height: 30,
+                            padding: '0 14px',
+                            borderRadius: 6,
+                            border: 'none',
+                            background: '#7c3aed',
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {tm('bApplyDateRange')}
+                    </button>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>{tm('bServiceDateBoardScrollHint')}</span>
+                </div>
+            )}
 
             {/* ── Gruplama (WPF Scheduler Group by Resource) ───────── */}
             {showGroupBar && (
@@ -1566,6 +1794,34 @@ export function SmartScheduler() {
                             </div>
                         )}
 
+                        {view === 'svcboard' && (
+                            <ServiceCategoryDateBoard
+                                services={services}
+                                appointments={visibleAppointments}
+                                followUpReminders={followUpReminders}
+                                dateKeys={serviceBoardDateKeys}
+                                categoryLabels={serviceCategoryLabels}
+                                dayHeaderLocale={scheduleDayHeaderLocale}
+                                renderAppointment={renderAptCard}
+                                onAddClick={(dateYmd, serviceId) => {
+                                    const [y, mo, da] = dateYmd.split('-').map(Number);
+                                    if (Number.isFinite(y) && Number.isFinite(mo) && Number.isFinite(da)) {
+                                        setCurrentDate(new Date(y, mo - 1, da));
+                                    }
+                                    openNewApt(undefined, dateYmd, { serviceId });
+                                }}
+                                followUpBadgeLabel={tm('bFollowUpBadge')}
+                                followUpBookCtaLabel={tm('bFollowUpBookCta')}
+                                formatFollowUpLine={r =>
+                                    tm('bFollowUpContextLine')
+                                        .replace('{last}', r.last_completed_date)
+                                        .replace('{days}', String(r.reminder_days))}
+                                noServicesLabel={tm('bServiceBoardNoActiveServices')}
+                                noAppointmentsInSlotLabel={tm('bServiceBoardNoAptsForServiceDay')}
+                                appointmentsCountTemplate={tm('bDeviceColumnAppointmentCount')}
+                            />
+                        )}
+
                         {/* ── LIST VIEW ─────────────────────────────────── */}
                         {view === 'list' && (
                             <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
@@ -1606,7 +1862,7 @@ export function SmartScheduler() {
                                                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
                                                 <div>
                                                     <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
-                                                    <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{apt.service_name ?? '—'}</p>
+                                                    <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{resolveServiceName(apt)}</p>
                                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                                                         <button
                                                             type="button"
@@ -1683,7 +1939,7 @@ export function SmartScheduler() {
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f7f6fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div>
                                 <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{selectedApt.customer_name ?? '—'}</p>
-                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{selectedApt.service_name ?? '—'} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
+                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{resolveServiceName(selectedApt)} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
                             </div>
                             <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>
