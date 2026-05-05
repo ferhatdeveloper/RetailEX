@@ -5,8 +5,10 @@ import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download,
   Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
-  Phone,
+  Phone, Menu,
 } from 'lucide-react';
+import { useResponsive } from '../../hooks/useResponsive';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { PrinterSettings } from './PrinterSettings';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
@@ -25,6 +27,13 @@ type SystemView =
 
 export function SystemManagementModule() {
   const [currentView, setCurrentView] = useState<SystemView>('userManagement');
+  const { tm } = useLanguage();
+  const { isMobile } = useResponsive();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isMobile) setMobileMenuOpen(false);
+  }, [isMobile]);
 
   const menuItems = [
     { id: 'userManagement' as const, label: 'Kullanıcı Yönetimi', icon: Users, color: 'blue' },
@@ -40,9 +49,26 @@ export function SystemManagementModule() {
   ];
 
   return (
-    <div className="h-full flex bg-gray-50">
+    <div className="h-full flex flex-col md:flex-row bg-gray-50 relative min-h-0 min-w-0">
+      {isMobile && mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label={tm('close')}
+          className="fixed inset-0 z-40 bg-black/40 border-0 cursor-pointer"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sol menü */}
-      <div className="w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+      <div
+        className={
+          isMobile
+            ? `fixed inset-y-0 left-0 z-50 w-56 max-w-[85vw] border-r border-gray-200 bg-white overflow-y-auto shadow-xl transition-transform duration-200 ease-out ${
+                mobileMenuOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
+              }`
+            : 'w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto'
+        }
+      >
         <nav className="p-2 space-y-0.5">
           {menuItems.map((item) => {
             const Icon = item.icon;
@@ -50,7 +76,10 @@ export function SystemManagementModule() {
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id)}
+                onClick={() => {
+                  setCurrentView(item.id);
+                  if (isMobile) setMobileMenuOpen(false);
+                }}
                 className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
@@ -65,7 +94,21 @@ export function SystemManagementModule() {
         </nav>
       </div>
       {/* Content Area */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden md:overflow-auto">
+        {isMobile && (
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white shrink-0 md:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm hover:bg-gray-50"
+              aria-label={tm('mainMenu')}
+            >
+              <Menu className="h-5 w-5" aria-hidden />
+            </button>
+            <span className="text-sm font-semibold text-gray-800 truncate">{tm('systemManagement')}</span>
+          </div>
+        )}
+        <div className="flex-1 min-h-0 overflow-auto">
         {currentView === 'userManagement' && <UserManagementView />}
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
         {currentView === 'definitionsParameters' && <DefinitionsParametersView />}
@@ -80,6 +123,7 @@ export function SystemManagementModule() {
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
         {currentView === 'systemHealth' && <SystemHealthView />}
+        </div>
       </div>
     </div>
   );

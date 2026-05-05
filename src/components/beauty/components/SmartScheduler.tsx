@@ -55,6 +55,7 @@ import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
 type GroupMode = 'none' | 'staff' | 'device';
 const SERVICE_BOARD_MAX_DAYS = 90;
@@ -179,6 +180,7 @@ export function SmartScheduler() {
         }
     }, [language]);
     const { isAdmin } = usePermission();
+    const { isMobile } = useResponsive();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
     const serviceCategoryLabels = useMemo((): Record<string, string> => {
@@ -1065,14 +1067,48 @@ export function SmartScheduler() {
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f7f6fb', overflow: 'hidden' }}>
 
             {/* ── TOOLBAR ──────────────────────────────────────────── */}
-            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 16 }}>
+            <div
+                style={{
+                    background: '#fff',
+                    borderBottom: '1px solid #e5e7eb',
+                    padding: isMobile ? '8px 10px' : '10px 20px',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    justifyContent: isMobile ? 'flex-start' : 'space-between',
+                    flexShrink: 0,
+                    gap: isMobile ? 10 : 16,
+                }}
+            >
 
                 {/* Date nav */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        justifyContent: isMobile ? 'center' : undefined,
+                        width: isMobile ? '100%' : undefined,
+                        flexShrink: 0,
+                    }}
+                >
                     <button onClick={handlePrevious} style={{ width: 28, height: 28, border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280' }}>
                         <ChevronLeft size={14} />
                     </button>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', minWidth: 220, textAlign: 'center' }}>{toolbarDateLabel}</span>
+                    <span
+                        style={{
+                            fontSize: isMobile ? 12 : 13,
+                            fontWeight: 700,
+                            color: '#111827',
+                            minWidth: isMobile ? 0 : 220,
+                            flex: isMobile ? '1 1 auto' : undefined,
+                            textAlign: 'center',
+                            lineHeight: 1.25,
+                            wordBreak: 'break-word',
+                        }}
+                    >
+                        {toolbarDateLabel}
+                    </span>
                     <label
                         title={tm('bJumpToDate')}
                         aria-label={tm('bJumpToDate')}
@@ -1134,8 +1170,26 @@ export function SmartScheduler() {
                     </button>
                 </div>
 
-                {/* View tabs */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', background: '#f3f4f6', borderRadius: 7, padding: 3, gap: 2, maxWidth: 720 }}>
+                {/* View tabs — mobilde tek satır yatay kaydırma (dar sütunda dikey yığılmayı önler) */}
+                <div
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        flexWrap: isMobile ? 'nowrap' : 'wrap',
+                        justifyContent: isMobile ? 'flex-start' : 'center',
+                        alignItems: 'center',
+                        background: '#f3f4f6',
+                        borderRadius: 7,
+                        padding: 3,
+                        gap: 2,
+                        maxWidth: isMobile ? '100%' : 720,
+                        width: isMobile ? '100%' : undefined,
+                        overflowX: isMobile ? 'auto' : undefined,
+                        WebkitOverflowScrolling: isMobile ? 'touch' : undefined,
+                        flexShrink: 0,
+                        scrollbarWidth: isMobile ? 'thin' : undefined,
+                    }}
+                >
                     {([
                         { id: 'day',      label: tm('bDay') },
                         { id: 'workweek', label: tm('bWorkWeek') },
@@ -1165,13 +1219,24 @@ export function SmartScheduler() {
                                 fontSize: 11, fontWeight: 700, cursor: 'pointer',
                                 boxShadow: view === v ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                                 transition: 'all 0.1s',
+                                flexShrink: 0,
+                                whiteSpace: 'nowrap',
                             }}
                         >{label}</button>
                     ))}
                 </div>
 
                 {/* Right actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <div
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        flexWrap: 'wrap',
+                        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+                        width: isMobile ? '100%' : undefined,
+                    }}
+                >
                     {view === 'svcboard' && (
                         <>
                             <button
@@ -1293,12 +1358,24 @@ export function SmartScheduler() {
                     >
                         {tm('bBeautyQueueSeparateLineInvoices')}
                     </button>
-                    <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative', flex: isMobile ? '1 1 140px' : undefined, minWidth: isMobile ? 0 : undefined }}>
                         <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                         <input
                             value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                             placeholder={tm('bSearch')}
-                            style={{ height: 30, paddingLeft: 26, paddingRight: 10, border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, background: '#f9fafb', outline: 'none', width: 150 }}
+                            style={{
+                                height: 30,
+                                paddingLeft: 26,
+                                paddingRight: 10,
+                                border: '1px solid #e5e7eb',
+                                borderRadius: 5,
+                                fontSize: 12,
+                                background: '#f9fafb',
+                                outline: 'none',
+                                width: isMobile ? 'min(100%, 200px)' : 150,
+                                minWidth: isMobile ? 120 : undefined,
+                                flex: isMobile ? '1 1 120px' : undefined,
+                            }}
                         />
                     </div>
                     <button
@@ -1309,6 +1386,9 @@ export function SmartScheduler() {
                             background: '#7c3aed', color: '#fff',
                             border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
                             transition: 'background 0.1s',
+                            flex: isMobile ? '1 1 auto' : undefined,
+                            justifyContent: isMobile ? 'center' : undefined,
+                            minWidth: isMobile ? 0 : undefined,
                         }}
                         onMouseEnter={e => (e.currentTarget.style.background = '#6d28d9')}
                         onMouseLeave={e => (e.currentTarget.style.background = '#7c3aed')}
@@ -1325,7 +1405,7 @@ export function SmartScheduler() {
                         alignItems: 'center',
                         flexWrap: 'wrap',
                         gap: 10,
-                        padding: '8px 20px',
+                        padding: isMobile ? '8px 10px' : '8px 20px',
                         borderBottom: '1px solid #e5e7eb',
                         background: '#faf9fd',
                         flexShrink: 0,

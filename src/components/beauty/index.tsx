@@ -7,7 +7,7 @@ import {
     UserCog, BarChart3, Bell, Search,
     ChevronLeft, ChevronRight, Box, Megaphone,
     Sparkles, Settings2, Globe, ClipboardList, Layers, LayoutGrid,
-    Clock, LogOut, Smile, Activity, Baby, Apple, Banknote,
+    Clock, LogOut, Smile, Activity, Baby, Apple, Banknote, Menu, X,
 } from 'lucide-react';
 import { useBeautyStore } from './store/useBeautyStore';
 import { formatLocalYmd } from '../../utils/dateLocal';
@@ -30,6 +30,7 @@ import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyMan
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
 import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/ClinicErpSpecialtyContext';
 import { getLandingTabForSpecialty } from './clinicShellNavConfig';
+import { useResponsive } from '../../hooks/useResponsive';
 import { DentalChartScreen } from './specialty/DentalChartScreen';
 import { PhysioBodyScreen } from './specialty/PhysioBodyScreen';
 import { ObstetricsScreen } from './specialty/ObstetricsScreen';
@@ -94,6 +95,9 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [activeTab, setActiveTab] = useState('dashboard');
     const [beautyClientDetailId, setBeautyClientDetailId] = useState<string | null>(null);
     const [collapsed, setCollapsed] = useState(false);
+    const { isMobile } = useResponsive();
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const showNavText = !isMobile ? !collapsed : mobileNavOpen;
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
@@ -298,6 +302,10 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         return () => window.removeEventListener('callerid-open-context-action', onCtx);
     }, []);
 
+    useEffect(() => {
+        if (!isMobile) setMobileNavOpen(false);
+    }, [isMobile]);
+
     /** MainLayout modüle geçtikten sonra gecikmeli tetiklenir; detail = tıklanan randevu satırı */
     React.useEffect(() => {
         const openWizard = (ev: Event) => {
@@ -337,13 +345,25 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     }, []);
 
     return (
-        <div className="flex h-full overflow-hidden" style={{ background: '#f7f6fb', fontFamily: 'inherit' }}>
+        <div className="flex h-full overflow-hidden relative" style={{ background: '#f7f6fb', fontFamily: 'inherit' }}>
+
+            {isMobile && mobileNavOpen && (
+                <button
+                    type="button"
+                    aria-label={tm('close')}
+                    className="fixed inset-0 z-[55] bg-black/45 border-0 cursor-pointer"
+                    onClick={() => setMobileNavOpen(false)}
+                />
+            )}
 
             {/* ── SIDEBAR ─────────────────────────────────────────── */}
             <aside
-                className="flex flex-col shrink-0 transition-all duration-200"
+                className={`flex flex-col transition-all duration-200 ease-out ${
+                    isMobile ? 'fixed inset-y-0 left-0 z-[60] shadow-2xl' : 'shrink-0'
+                }`}
                 style={{
-                    width: collapsed ? COLLAPSED_W : SIDEBAR_W,
+                    width: isMobile ? SIDEBAR_W : collapsed ? COLLAPSED_W : SIDEBAR_W,
+                    transform: isMobile && !mobileNavOpen ? 'translateX(-100%)' : undefined,
                     background: '#12082a',
                     borderRight: '1px solid #1f0f3a',
                 }}
@@ -364,7 +384,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     >
                         {specialty === 'dental' ? <Smile size={14} color="#fff" /> : <Sparkles size={14} color="#fff" />}
                     </div>
-                    {!collapsed && (
+                    {showNavText && (
                         <div className="ml-2.5 min-w-0">
                             <p style={{ color: '#fff', fontWeight: 800, fontSize: 13, lineHeight: 1.2, letterSpacing: '-0.01em' }}>
                                 {specialty === 'dental' ? tm('bShellBrandTitleDental') : tm('bShellBrandTitle')}
@@ -375,13 +395,15 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         </div>
                     )}
                     <button
-                        onClick={() => setCollapsed(c => !c)}
+                        type="button"
+                        onClick={() => (isMobile ? setMobileNavOpen(false) : setCollapsed(c => !c))}
                         className="ml-auto shrink-0 flex items-center justify-center transition-colors"
                         style={{ width: 24, height: 24, borderRadius: 4, color: 'rgba(167,139,250,0.4)' }}
                         onMouseEnter={e => (e.currentTarget.style.color = 'rgba(196,181,253,0.8)')}
                         onMouseLeave={e => (e.currentTarget.style.color = 'rgba(167,139,250,0.4)')}
+                        aria-label={isMobile ? tm('close') : undefined}
                     >
-                        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                        {isMobile ? <X size={14} /> : collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
                     </button>
                 </div>
 
@@ -389,7 +411,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 <nav className="flex-1 overflow-y-auto py-3" style={{ scrollbarWidth: 'none' }}>
                     {MENU_GROUPS.map(group => (
                         <div key={group.title} style={{ marginBottom: 16 }}>
-                            {!collapsed && (
+                            {showNavText && (
                                 <p style={{
                                     color: 'rgba(167,139,250,0.35)', fontWeight: 800,
                                     fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
@@ -404,13 +426,16 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                 return (
                                     <button
                                         key={item.id}
-                                        onClick={() => setActiveTab(item.id)}
-                                        title={collapsed ? item.label : undefined}
+                                        onClick={() => {
+                                            setActiveTab(item.id);
+                                            if (isMobile) setMobileNavOpen(false);
+                                        }}
+                                        title={!showNavText ? item.label : undefined}
                                         style={{
                                             display: 'flex', alignItems: 'center',
-                                            width: '100%', padding: collapsed ? '7px 0' : '7px 12px',
+                                            width: '100%', padding: !showNavText ? '7px 0' : '7px 12px',
                                             marginBottom: 1,
-                                            justifyContent: collapsed ? 'center' : 'flex-start',
+                                            justifyContent: !showNavText ? 'center' : 'flex-start',
                                             gap: 9,
                                             background: active ? '#7c3aed' : 'transparent',
                                             borderLeft: active ? '2px solid #a78bfa' : '2px solid transparent',
@@ -433,7 +458,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                                         }}
                                     >
                                         <Icon size={15} style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }} />
-                                        {!collapsed && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>}
+                                        {showNavText && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>}
                                     </button>
                                 );
                             })}
@@ -445,13 +470,16 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     <div style={{ padding: '0 0 10px', flexShrink: 0 }}>
                         <button
                             type="button"
-                            onClick={() => onRequestManagementAccess()}
-                            title={collapsed ? t.management : undefined}
+                            onClick={() => {
+                                onRequestManagementAccess();
+                                if (isMobile) setMobileNavOpen(false);
+                            }}
+                            title={!showNavText ? t.management : undefined}
                             style={{
                                 display: 'flex', alignItems: 'center',
-                                width: '100%', padding: collapsed ? '7px 0' : '7px 12px',
+                                width: '100%', padding: !showNavText ? '7px 0' : '7px 12px',
                                 marginBottom: 1,
-                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                justifyContent: !showNavText ? 'center' : 'flex-start',
                                 gap: 9,
                                 background: 'transparent',
                                 borderLeft: '2px solid transparent',
@@ -470,7 +498,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             }}
                         >
                             <LayoutGrid size={15} style={{ flexShrink: 0, opacity: 0.7 }} />
-                            {!collapsed && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.management}</span>}
+                            {showNavText && <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.management}</span>}
                         </button>
                     </div>
                 )}
@@ -483,7 +511,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             color: '#fff', fontWeight: 800, fontSize: 12, flexShrink: 0,
                         }}>C</div>
-                        {!collapsed && (
+                        {showNavText && (
                             <>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <p style={{ color: '#fff', fontWeight: 700, fontSize: 12, lineHeight: 1.3 }}>{tm('bShellUserAdmin')}</p>
@@ -503,15 +531,26 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
 
                 {/* Header */}
                 <header
-                    className="flex items-center justify-between shrink-0"
+                    className="flex items-center justify-between shrink-0 gap-2"
                     style={{
                         height: 52, background: '#fff',
                         borderBottom: '1px solid #e5e7eb',
-                        padding: '0 20px',
+                        padding: isMobile ? '0 10px' : '0 20px',
                     }}
                 >
-                    <div className="flex items-center gap-3">
-                        <span style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                        {isMobile && (
+                            <button
+                                type="button"
+                                onClick={() => setMobileNavOpen(true)}
+                                className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm h-9 w-9"
+                                aria-label={tm('mainMenu')}
+                                title={tm('mainMenu')}
+                            >
+                                <Menu size={18} aria-hidden />
+                            </button>
+                        )}
+                        <span className="truncate" style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
                             {PAGE_TITLES[activeTab] ?? activeTab}
                         </span>
                         <span style={{

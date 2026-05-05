@@ -57,6 +57,8 @@ function App() {
   const [showElevationPrompt, setShowElevationPrompt] = useState(false);
   const [elevationReason, setElevationReason] = useState('');
   const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
+  /** Acil zamanlayıcı closure’da `isInitialized` hep eski kalır; yalnızca ref ile gerçek tamamlanmayı izleyin. */
+  const startupCompleteRef = useRef(false);
   const hasWebTenantResolution = (config?: any) => {
     try {
       const cfg = config ?? (() => {
@@ -93,6 +95,7 @@ function App() {
 
   // Unified Infrastructure & Config Check
   useEffect(() => {
+    startupCompleteRef.current = false;
     const applyConfig = (config: any) => {
       if (config?.is_configured === true) {
         setIsConfigured(true);
@@ -160,6 +163,7 @@ function App() {
             }
           }).catch(() => { });
 
+          startupCompleteRef.current = true;
           setIsInitialized(true);
           if ((window as any).removeLoader) (window as any).removeLoader();
         } else {
@@ -167,6 +171,7 @@ function App() {
           await initializeFromSQLite();
           setIsPgReady(true);
           setIsConfigured(hasWebTenantResolution());
+          startupCompleteRef.current = true;
           setIsInitialized(true);
           if ((window as any).removeLoader) (window as any).removeLoader();
         }
@@ -174,6 +179,7 @@ function App() {
         console.error('[Startup] Flow failed:', err);
         setIsPgReady(true);
         setIsConfigured(!!localStorage.getItem('exretail_firma_donem_configured'));
+        startupCompleteRef.current = true;
         setIsInitialized(true);
       }
     };
@@ -182,7 +188,7 @@ function App() {
 
     // Emergency fallback to prevent white screen if initialization hangs
     const emergencyTimer = setTimeout(() => {
-      if (!isInitialized) {
+      if (!startupCompleteRef.current) {
         console.warn('⚠️ Emergency initialization triggered - slow startup detected');
         
         // Recover from cache if possible
@@ -198,6 +204,7 @@ function App() {
         }
         
         setIsPgReady(true);
+        startupCompleteRef.current = true;
         setIsInitialized(true);
       }
       

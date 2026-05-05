@@ -29,6 +29,7 @@ import { CommissionReport } from '../beauty/components/CommissionReport';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
+import { useResponsive } from '../../hooks/useResponsive';
 import { buildReceipt80mmPrintHtml } from '../../utils/receipt80mmPrintHtml';
 import { getReceiptSettings } from '../../services/receiptSettingsService';
 import { retailexAntdThemeWithPrimary } from '../../theme/retailexAntdTheme';
@@ -60,6 +61,7 @@ import {
   BankOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
+  MenuOutlined,
   FilterOutlined,
   MailOutlined,
   FilePdfOutlined,
@@ -502,6 +504,7 @@ function filterReportMenuGroups(groups: { type?: string; children?: { key?: stri
 
 export function ReportsModule({ sales, products, initialBusinessType = 'retail' }: ReportsModuleProps) {
   const { language, t, tm: globalTm } = useLanguage();
+  const { isMobile } = useResponsive();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
   const { hasPermission } = usePermission();
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
@@ -528,6 +531,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [expiringDays, setExpiringDays] = useState<number>(30);
   const [loadingExpiring, setLoadingExpiring] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const prevIsMobileRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !prevIsMobileRef.current) {
+      setCollapsed(true);
+    }
+    prevIsMobileRef.current = isMobile;
+  }, [isMobile]);
   const [businessType, setBusinessType] = useState<BusinessType>(() =>
     resolveInitialReportsBusinessType(initialBusinessType)
   );
@@ -3374,13 +3384,16 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   return (
     <ConfigProvider theme={retailexAntdThemeWithPrimary(bizConfig.color)}>
-      <Layout className="h-full bg-slate-50 overflow-hidden">
+      <Layout className="h-full min-w-0 bg-slate-50 overflow-hidden">
         {/* Sol Sidebar */}
         <Sider
           collapsible
           collapsed={collapsed}
           onCollapse={(value) => setCollapsed(value)}
           width={280}
+          collapsedWidth={isMobile ? 0 : 80}
+          breakpoint="md"
+          trigger={isMobile ? null : undefined}
           theme="light"
           className="border-r border-slate-200 shadow-sm z-10"
           style={{ overflow: 'auto', height: '100%', position: 'relative' }}
@@ -3407,22 +3420,35 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           />
         </Sider>
 
-        <Layout className="h-full flex flex-col overflow-hidden bg-slate-50">
+        <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50">
           {/* Header */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm shrink-0 h-[72px]">
-            <div>
-              <h1 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
-              </h1>
-              <p className="text-xs text-slate-500 font-medium">{tm('checkDataAndPerformance')}</p>
+          <div className="bg-white border-b border-slate-200 px-3 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm shrink-0 sm:h-[72px] min-h-0">
+            <div className="flex items-start gap-2 min-w-0 w-full sm:w-auto">
+              {isMobile && (
+                <Button
+                  type="text"
+                  className="shrink-0 !px-2"
+                  icon={<MenuOutlined className="text-lg" />}
+                  onClick={() => setCollapsed((c) => !c)}
+                  aria-label={tm('mainMenu')}
+                  title={tm('mainMenu')}
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2 leading-tight">
+                  {menuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
+                </h1>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{tm('checkDataAndPerformance')}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-slate-600 whitespace-nowrap">
-                <span className="font-semibold">{tm('reportsBusinessLine')}</span>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
+              <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 min-w-0 flex-1 sm:flex-initial">
+                <span className="font-semibold shrink-0">{tm('reportsBusinessLine')}</span>
                 <Select<BusinessType>
                   value={businessType}
                   onChange={(v) => setBusinessType(v)}
-                  style={{ minWidth: 152 }}
+                  className="min-w-0 flex-1 sm:flex-initial"
+                  style={{ minWidth: isMobile ? 0 : 152 }}
                   options={[
                     { value: 'retail', label: tm('resTileRetail') },
                     { value: 'market', label: tm('reportsBizMarket') },
@@ -3434,7 +3460,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             </div>
           </div>
 
-          <Content className="flex-1 overflow-y-auto p-6" style={{ scrollbarWidth: 'thin' }}>
+          <Content className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0" style={{ scrollbarWidth: 'thin' }}>
 
             {selectedTab === 'daily' && (
               <div className="space-y-4">
@@ -3489,7 +3515,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
