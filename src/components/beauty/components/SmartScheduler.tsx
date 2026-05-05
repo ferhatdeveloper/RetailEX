@@ -53,7 +53,7 @@ import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
-import { ServiceCategoryDateBoard } from './ServiceCategoryDateBoard';
+import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
 type GroupMode = 'none' | 'staff' | 'device';
@@ -63,6 +63,8 @@ const SLOT_INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60] as
 const LS_BEAUTY_SLOT = 'retailex.beauty.slotIntervalMin';
 const LS_BEAUTY_QUEUE = 'retailex.beauty.queueMode';
 const LS_BEAUTY_SEP = 'retailex.beauty.separateLineInvoices';
+const LS_BEAUTY_SVC_ONLY_BOOKED = 'retailex.beauty.serviceBoardOnlyBooked';
+const LS_BEAUTY_MAIN_LAYOUT = 'retailex.beauty.serviceBoardMainLayout';
 
 function parseHhmmToMinutes(raw: string | undefined): number | null {
     const s = String(raw ?? '').trim();
@@ -243,6 +245,25 @@ export function SmartScheduler() {
     const [beautySeparateLineInvoices, setBeautySeparateLineInvoices] = useState(
         () => readBeautyToolbarPrefs()?.sep ?? true,
     );
+    /** Hizmet & tarih: yalnızca o günde randevusu veya hatırlatması olan hizmet satırları */
+    const [serviceBoardOnlyBooked, setServiceBoardOnlyBooked] = useState(() => {
+        if (typeof window === 'undefined' || !IS_BROWSER) return false;
+        try {
+            const v = window.localStorage.getItem(LS_BEAUTY_SVC_ONLY_BOOKED);
+            return v === '1' || v === 'true';
+        } catch {
+            return false;
+        }
+    });
+    /** Hizmet & tarih: ana kategori kutuları yan yana (row) veya alt alta (stack) */
+    const [serviceBoardMainLayout, setServiceBoardMainLayout] = useState<'stack' | 'row'>(() => {
+        if (typeof window === 'undefined' || !IS_BROWSER) return 'stack';
+        try {
+            return window.localStorage.getItem(LS_BEAUTY_MAIN_LAYOUT) === 'row' ? 'row' : 'stack';
+        } catch {
+            return 'stack';
+        }
+    });
     /** Takvim kartından işlem tutarı düzenleme */
     const [priceEditApt, setPriceEditApt] = useState<BeautyAppointment | null>(null);
     const [priceEditDraft, setPriceEditDraft] = useState('');
@@ -352,6 +373,8 @@ export function SmartScheduler() {
                 window.localStorage.setItem(LS_BEAUTY_SLOT, String(slotIntervalMin));
                 window.localStorage.setItem(LS_BEAUTY_QUEUE, beautyQueueMode ? 'true' : 'false');
                 window.localStorage.setItem(LS_BEAUTY_SEP, beautySeparateLineInvoices ? 'true' : 'false');
+                window.localStorage.setItem(LS_BEAUTY_SVC_ONLY_BOOKED, serviceBoardOnlyBooked ? 'true' : 'false');
+                window.localStorage.setItem(LS_BEAUTY_MAIN_LAYOUT, serviceBoardMainLayout);
             } catch {
                 // no-op
             }
@@ -372,7 +395,7 @@ export function SmartScheduler() {
                 // no-op
             }
         })();
-    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices]);
+    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices, serviceBoardOnlyBooked, serviceBoardMainLayout]);
 
     useEffect(() => {
         if (view === 'svcboard') {
@@ -1148,7 +1171,55 @@ export function SmartScheduler() {
                 </div>
 
                 {/* Right actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {view === 'svcboard' && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setServiceBoardOnlyBooked(v => !v)}
+                                title={tm('bServiceDateBoardOnlyBooked')}
+                                style={{
+                                    height: 30,
+                                    padding: '0 10px',
+                                    borderRadius: 6,
+                                    border: serviceBoardOnlyBooked ? '1px solid #6d28d9' : '1px solid #e5e7eb',
+                                    background: serviceBoardOnlyBooked ? '#ede9fe' : '#fff',
+                                    color: serviceBoardOnlyBooked ? '#5b21b6' : '#4b5563',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {tm('bServiceDateBoardOnlyBooked')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setServiceBoardMainLayout(m => (m === 'row' ? 'stack' : 'row'))}
+                                title={
+                                    serviceBoardMainLayout === 'row'
+                                        ? tm('bServiceDateBoardMainStack')
+                                        : tm('bServiceDateBoardMainRow')
+                                }
+                                style={{
+                                    height: 30,
+                                    padding: '0 10px',
+                                    borderRadius: 6,
+                                    border: serviceBoardMainLayout === 'row' ? '1px solid #6d28d9' : '1px solid #e5e7eb',
+                                    background: serviceBoardMainLayout === 'row' ? '#ede9fe' : '#fff',
+                                    color: serviceBoardMainLayout === 'row' ? '#5b21b6' : '#4b5563',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                {serviceBoardMainLayout === 'row'
+                                    ? tm('bServiceDateBoardMainStack')
+                                    : tm('bServiceDateBoardMainRow')}
+                            </button>
+                        </>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 5, padding: '0 8px', height: 30 }}>
                         <Clock size={12} color="#9ca3af" />
                         <select
@@ -1819,6 +1890,9 @@ export function SmartScheduler() {
                                 noServicesLabel={tm('bServiceBoardNoActiveServices')}
                                 noAppointmentsInSlotLabel={tm('bServiceBoardNoAptsForServiceDay')}
                                 appointmentsCountTemplate={tm('bDeviceColumnAppointmentCount')}
+                                showOnlyServicesWithBookings={serviceBoardOnlyBooked}
+                                emptyDayWhenFilteredLabel={tm('bServiceDateBoardDayEmptyFiltered')}
+                                mainCategoryLayout={serviceBoardMainLayout}
                             />
                         )}
 
