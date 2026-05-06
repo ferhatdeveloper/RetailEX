@@ -149,7 +149,11 @@ import { getStaticMenuSections } from '../../config/staticMenuConfig';
 const Z_INDEX = {
   HEADER: 60,
   MOBILE_OVERLAY: 70,
+  /** Drawer açıkken üstte; kapalıyken 0 — içerik üstte kalsın (hayalet tıklamaları önler) */
   SIDEBAR: 80,
+  SIDEBAR_MOBILE_CLOSED: 0,
+  MAIN_MOBILE: 10,
+  MOBILE_MENU_BTN: 90,
   MODAL: 100
 };
 
@@ -418,6 +422,7 @@ export function ManagementModule({
     const handleNavigateToScreen = (e: CustomEvent) => {
       const screen = e.detail as ExtendedScreen;
       setCurrentScreen(screen);
+      if (isMobile) effectiveSetSidebarOpen(false);
 
       // Update storage immediately to prevent remount race conditions
       try {
@@ -429,7 +434,7 @@ export function ManagementModule({
     };
     window.addEventListener('navigateToScreen', handleNavigateToScreen as EventListener);
     return () => window.removeEventListener('navigateToScreen', handleNavigateToScreen as EventListener);
-  }, [user]);
+  }, [user, isMobile, effectiveSetSidebarOpen]);
 
   // Convert API menu items to menuSections format (önce tanımlanmalı)
   const convertMenuItemsToSections = useCallback((items: any[]): any[] => {
@@ -595,9 +600,19 @@ export function ManagementModule({
   const handleSearchItemClick = useCallback((item: any) => {
     if (item?.id == null || item.id === '') return;
     setCurrentScreen(item.id);
+    if (isMobile) effectiveSetSidebarOpen(false);
     setMenuSearchQuery('');
     setSearchResults([]);
-  }, []);
+  }, [isMobile, effectiveSetSidebarOpen]);
+
+  /** Mobilde menüden ekran seçilince drawer kapanır; kapalı drawer z-index ile içeriğin altında kalmalıdır. */
+  const setScreenFromSidebar = useCallback(
+    (s: any) => {
+      setCurrentScreen(s);
+      if (isMobile) effectiveSetSidebarOpen(false);
+    },
+    [isMobile, effectiveSetSidebarOpen]
+  );
 
 
 
@@ -837,7 +852,7 @@ export function ManagementModule({
             products={products}
             customers={customers}
             sales={sales}
-            setCurrentScreen={(s: any) => setCurrentScreen(s)}
+            setCurrentScreen={setScreenFromSidebar}
             menuMode={hiddenModules.length > 5 ? 1 : 2}
           />;
         // Material Management - Products
@@ -1279,7 +1294,7 @@ export function ManagementModule({
             products={products}
             customers={customers}
             sales={sales}
-            setCurrentScreen={(s: any) => setCurrentScreen(s)}
+            setCurrentScreen={setScreenFromSidebar}
             menuMode={0}
           />;
       }
@@ -1314,24 +1329,32 @@ export function ManagementModule({
       {/* Mobile Overlay - Sidebar açıkken arka planı karart */}
       {isMobile && effectiveSidebarOpen && (
         <div
-          className="fixed inset-0 bg-transparent"
+          className="fixed inset-0 bg-black/30"
           style={{ zIndex: Z_INDEX.MOBILE_OVERLAY }}
           onClick={() => effectiveSetSidebarOpen(false)}
+          aria-hidden
         />
       )}
 
       {/* Sidebar Container */}
       <div
         className={isMobile
-          ? `fixed inset-y-0 left-0 w-80 transition-transform duration-300 ease-in-out ${effectiveSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none invisible opacity-0'}`
+          ? `fixed inset-y-0 left-0 w-80 max-w-[min(100vw,20rem)] transition-transform duration-300 ease-in-out ${effectiveSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none invisible opacity-0'}`
           : `transition-all duration-300 ease-in-out ${effectiveSidebarOpen ? 'w-64 md:w-80' : 'w-0 overflow-hidden'} flex-shrink-0 relative`}
-        style={isMobile ? { zIndex: Z_INDEX.SIDEBAR } : {}}
+        style={
+          isMobile
+            ? { zIndex: effectiveSidebarOpen ? Z_INDEX.SIDEBAR : Z_INDEX.SIDEBAR_MOBILE_CLOSED }
+            : {}
+        }
+        aria-hidden={isMobile ? !effectiveSidebarOpen : undefined}
       >
-        <div className={`h-full transition-opacity duration-300 ${!isMobile && !effectiveSidebarOpen ? 'opacity-0' : 'opacity-100'}`}>
+        <div
+          className={`h-full transition-opacity duration-300 ${!isMobile && !effectiveSidebarOpen ? 'opacity-0' : 'opacity-100'} ${isMobile && !effectiveSidebarOpen ? 'pointer-events-none' : ''}`}
+        >
           <ModernSidebar
             menuSections={menuSections}
             currentScreen={currentScreen}
-            setCurrentScreen={setCurrentScreen}
+            setCurrentScreen={setScreenFromSidebar}
             menuSearchQuery={menuSearchQuery}
             setMenuSearchQuery={setMenuSearchQuery}
             searchResults={searchResults}
@@ -1356,7 +1379,7 @@ export function ManagementModule({
           type="button"
           onClick={() => effectiveSetSidebarOpen(true)}
           className="fixed left-3 top-3 h-11 w-11 rounded-xl bg-blue-600 text-white shadow-lg flex items-center justify-center active:scale-[0.98]"
-          style={{ zIndex: Z_INDEX.SIDEBAR + 1 }}
+          style={{ zIndex: Z_INDEX.MOBILE_MENU_BTN }}
           aria-label="Menüyü aç"
           title="Menüyü aç"
         >
@@ -1365,7 +1388,9 @@ export function ManagementModule({
       )}
 
       {/* Main Content */}
-      <div className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'w-full' : ''}`}>
+      <div
+        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
+      >
         <Suspense fallback={
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
