@@ -7923,7 +7923,7 @@ dependencies = [
 
 [[package]]
 name = "retailex"
-version = "0.1.71"
+version = "0.1.72"
 dependencies = [
  "aes-gcm",
  "amq-protocol",
