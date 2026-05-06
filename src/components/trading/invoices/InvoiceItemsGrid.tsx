@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { History, Trash2, Percent, Calendar } from 'lucide-react';
+import { History, Trash2, Percent, Calendar, Barcode } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -121,79 +121,261 @@ export const InvoiceItemsGrid = React.memo(({
 
     if (isMobile) {
         return (
-            <div className="bg-white rounded border border-gray-200 overflow-hidden">
-                <div className="bg-gray-50 border-b border-gray-200 px-3 py-2">
+            <div className="bg-white rounded border border-gray-200 overflow-hidden flex flex-col min-h-0">
+                <div className="bg-gray-50 border-b border-gray-200 px-3 py-2 shrink-0">
                     <span className={`text-sm font-medium ${cariTextColor}`}>{tm('invoiceTypeLabel')} {invoiceType.name}</span>
                 </div>
-                <div className="p-2 space-y-1">
+                <div className="flex-1 overflow-y-auto overscroll-contain bg-gray-50/80 min-h-[100px] max-h-[min(58vh,520px)]">
                     {items.map((item, index) => (
                         <div
                             key={item.id}
-                            className={`rounded-md border p-1 space-y-1 ${currentRowIndex === index ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
+                            className={`grid grid-cols-[auto_1fr] gap-2 pl-2 pr-3 py-2 border-b border-gray-100/90 items-start ${
+                                currentRowIndex === index ? 'bg-blue-50/90' : 'bg-white'
+                            }`}
                             onClick={() => setCurrentRowIndex(index)}
                         >
-                            <div className="grid grid-cols-[1fr_4rem_4.5rem_auto] gap-1 items-center">
-                                <input
-                                    ref={el => { gridRefs.current[`code-${index}`] = el; }}
-                                    type="text"
-                                    value={getProductCode(item.code)}
-                                    onChange={(e) => handleProductSearchChange(e.target.value, index)}
-                                    onKeyDown={(e) => handleProductKeyDown(e, index)}
-                                    onFocus={() => {
-                                        setCurrentRowIndex(index);
-                                        onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
-                                    }}
-                                    className="w-full min-w-0 px-1.5 py-1 border border-gray-300 rounded text-xs leading-tight"
-                                    placeholder={tm('itemCode')}
-                                />
-                                <input
-                                    type="number"
-                                    value={item.quantity || ''}
-                                    onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                                    onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
-                                    placeholder={tm('itemQuantity')}
-                                />
-                                <input
-                                    type="number"
-                                    value={item.unitPrice || ''}
-                                    onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                    onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
-                                    placeholder={tm('itemPrice')}
-                                />
+                            <div
+                                className="flex flex-col items-center gap-1 pt-0.5 shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
                                 <button
+                                    type="button"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         removeItem(index);
                                     }}
-                                    className="p-1 text-red-500 hover:bg-red-50 rounded touch-manipulation"
-                                    type="button"
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg touch-manipulation"
+                                    aria-label={tm('delete')}
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
+                                {invoiceType.category === 'Alis' && item.code && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleShowProductHistory(getProductCode(item.code), item.description, item.code)
+                                        }
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg touch-manipulation"
+                                        title={tm('itemHistoryTooltip')}
+                                    >
+                                        <History className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
-                            <input
-                                type="text"
-                                value={item.description}
-                                onChange={(e) => updateItem(index, 'description', e.target.value)}
-                                onFocus={() => setCurrentRowIndex(index)}
-                                className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs leading-tight"
-                                placeholder={tm('itemDescription')}
-                            />
-                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1 items-center">
-                                <input
-                                    type="number"
-                                    value={item.discountPercent || ''}
-                                    onChange={(e) => updateItem(index, 'discountPercent', parseFloat(e.target.value) || 0)}
-                                    onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full min-w-0 px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
-                                    placeholder="% İsk."
-                                />
-                                <div className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-right shrink-0 min-w-[5.5rem]">
-                                    <div className="text-[9px] text-blue-600 leading-tight">{tm('itemNetTotal')}</div>
-                                    <div className="text-[11px] font-semibold text-blue-700 leading-tight tabular-nums">{formatNumber(item.netAmount, 2, true)}</div>
+                            <div className="min-w-0 flex flex-col gap-1.5">
+                                {isColumnVisible('type') && (
+                                    <select
+                                        value={item.type}
+                                        onChange={(e) => updateItem(index, 'type', e.target.value)}
+                                        onFocus={() => setCurrentRowIndex(index)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full max-w-[12rem] text-[11px] font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-800"
+                                    >
+                                        <option value="Malzeme">{tm('itemTypeMaterial')}</option>
+                                        <option value="Hizmet">{tm('itemTypeService')}</option>
+                                        <option value="İndirim">{tm('itemTypeDiscount')}</option>
+                                    </select>
+                                )}
+                                <div className="flex items-start justify-between gap-2 min-w-0">
+                                    <input
+                                        type="text"
+                                        value={item.description}
+                                        onChange={(e) => updateItem(index, 'description', e.target.value)}
+                                        onFocus={() => setCurrentRowIndex(index)}
+                                        onDoubleClick={() => {
+                                            setSelectedRowForProduct(index);
+                                            setShowProductCatalogModal(true);
+                                        }}
+                                        className="flex-1 min-w-0 border-0 bg-transparent font-semibold text-[13px] text-gray-900 leading-snug py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
+                                        placeholder={tm('itemDescription')}
+                                    />
+                                    <div className="shrink-0 text-right">
+                                        <div className="text-[9px] font-bold text-blue-600 uppercase tracking-wide leading-tight">
+                                            {tm('itemNetTotal')}
+                                        </div>
+                                        <div className="text-[12px] font-bold tabular-nums text-blue-700 leading-tight">
+                                            {formatNumber(item.netAmount, 2, true)}
+                                        </div>
+                                        {currency !== ledgerCurrency && item.netAmount > 0 && (
+                                            <div className="text-[10px] text-blue-500/90 font-medium tabular-nums leading-tight mt-0.5">
+                                                {formatNumber(item.netAmount * (currencyRate || 1), 2, true)} {ledgerCurrency}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+                                <div className="relative">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <Barcode className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden />
+                                        <input
+                                            ref={(el) => {
+                                                gridRefs.current[`code-${index}`] = el;
+                                            }}
+                                            type="text"
+                                            value={getProductCode(item.code)}
+                                            onChange={(e) => handleProductSearchChange(e.target.value, index)}
+                                            onKeyDown={(e) => handleProductKeyDown(e, index)}
+                                            onFocus={() => {
+                                                setCurrentRowIndex(index);
+                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
+                                            }}
+                                            className="min-w-0 flex-1 border-0 bg-transparent text-[11px] font-mono text-gray-600 tracking-tight py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
+                                            placeholder={tm('itemCode')}
+                                        />
+                                    </div>
+                                    {searchingRowIndex === index && filteredProducts.length > 0 && (
+                                        <div
+                                            ref={productDropdownRef}
+                                            className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-56 overflow-auto"
+                                        >
+                                            {filteredProducts.map((product) => (
+                                                <div
+                                                    key={product.code}
+                                                    onClick={() => selectProduct(product, index)}
+                                                    className="px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 text-gray-900 border-b border-gray-50 last:border-0"
+                                                >
+                                                    <div className="font-medium truncate">{product.code}</div>
+                                                    <div className="text-xs opacity-90 truncate">{product.name}</div>
+                                                    <div className="text-xs opacity-75 mt-0.5">
+                                                        {product.unit} • {formatNumber(product.price)} {ledgerCurrency}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {isColumnVisible('description2') && (
+                                    <input
+                                        type="text"
+                                        value={item.description2}
+                                        onChange={(e) => updateItem(index, 'description2', e.target.value)}
+                                        onFocus={() => setCurrentRowIndex(index)}
+                                        className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-800 bg-white"
+                                        placeholder={tm('itemDescription2')}
+                                    />
+                                )}
+                                <div className="grid grid-cols-3 gap-2">
+                                    {isColumnVisible('quantity') && (
+                                        <label className="flex flex-col gap-0.5 min-w-0">
+                                            <span className="text-[10px] font-medium text-gray-500">{tm('itemQuantity')}</span>
+                                            <input
+                                                type="number"
+                                                value={item.quantity || ''}
+                                                onChange={(e) =>
+                                                    updateItem(index, 'quantity', parseFloat(e.target.value) || 0)
+                                                }
+                                                onFocus={() => setCurrentRowIndex(index)}
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                            />
+                                        </label>
+                                    )}
+                                    {isColumnVisible('unitPrice') && (
+                                        <label className="flex flex-col gap-0.5 min-w-0">
+                                            <span className="text-[10px] font-medium text-gray-500">
+                                                {tm('itemPrice')}
+                                                {currency !== ledgerCurrency ? ` (${currency})` : ''}
+                                            </span>
+                                            <input
+                                                type="number"
+                                                value={item.unitPrice || ''}
+                                                onChange={(e) =>
+                                                    updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)
+                                                }
+                                                onFocus={() => setCurrentRowIndex(index)}
+                                                step="0.01"
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                            />
+                                        </label>
+                                    )}
+                                    {isColumnVisible('discountPercent') && (
+                                        <label className="flex flex-col gap-0.5 min-w-0">
+                                            <span className="text-[10px] font-medium text-gray-500">% {tm('discount')}</span>
+                                            <input
+                                                type="number"
+                                                value={item.discountPercent || ''}
+                                                onChange={(e) =>
+                                                    updateItem(index, 'discountPercent', parseFloat(e.target.value) || 0)
+                                                }
+                                                onFocus={() => setCurrentRowIndex(index)}
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                                placeholder="%"
+                                            />
+                                        </label>
+                                    )}
+                                </div>
+                                {isColumnVisible('unit') && (
+                                    <label className="flex flex-col gap-0.5 min-w-0">
+                                        <span className="text-[10px] font-medium text-gray-500">{tm('itemUnit')}</span>
+                                        <select
+                                            value={item.unit}
+                                            onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                                            onFocus={() => setCurrentRowIndex(index)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 bg-white"
+                                        >
+                                            {item.unitsetId ? (
+                                                unitSets
+                                                    .find((us) => us.id === item.unitsetId)
+                                                    ?.lines?.map((line: any) => (
+                                                        <option key={line.id || line.code} value={line.name}>
+                                                            {line.name}
+                                                        </option>
+                                                    ))
+                                            ) : unitSets.length > 0 ? (
+                                                Array.from(
+                                                    new Set(
+                                                        unitSets
+                                                            .flatMap((us: any) => us.lines || [])
+                                                            .map((l: any) => l.name)
+                                                            .filter(Boolean)
+                                                    )
+                                                )
+                                                    .sort()
+                                                    .map((name: any) => (
+                                                        <option key={name} value={name}>
+                                                            {name}
+                                                        </option>
+                                                    ))
+                                            ) : (
+                                                <>
+                                                    <option>Adet</option>
+                                                    <option>Kg</option>
+                                                    <option>Metre</option>
+                                                    <option>Litre</option>
+                                                    <option>Koli</option>
+                                                    <option>Set</option>
+                                                    <option>Kutu</option>
+                                                </>
+                                            )}
+                                        </select>
+                                    </label>
+                                )}
+                                {item.multiplier && item.multiplier !== 1 && item.quantity > 0 && isColumnVisible('quantity') && (
+                                    <div className="text-[10px] text-orange-600 text-right leading-tight" title={tm('multiplierLogicDesc')}>
+                                        →{' '}
+                                        {formatNumber(
+                                            item.baseQuantity ?? item.quantity * (item.multiplier || 1),
+                                            0,
+                                            false
+                                        )}{' '}
+                                        {tm('pieceUnitShort')}
+                                    </div>
+                                )}
+                                {invoiceType.category === 'Alis' && isColumnVisible('expiryDate') && (
+                                    <label className="flex flex-col gap-0.5 min-w-0">
+                                        <span className="text-[10px] font-medium text-gray-500 flex items-center gap-1">
+                                            <Calendar className="w-3 h-3 shrink-0" aria-hidden />
+                                            {tm('itemExpiryDate')}
+                                        </span>
+                                        <input
+                                            type="date"
+                                            value={item.expiryDate || ''}
+                                            onChange={(e) => updateItem(index, 'expiryDate', e.target.value)}
+                                            onFocus={() => setCurrentRowIndex(index)}
+                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs bg-white"
+                                        />
+                                    </label>
+                                )}
                             </div>
                         </div>
                     ))}
