@@ -2799,13 +2799,9 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!editData) return;
-                      setShowCameraScanner(true);
-                    }}
+                    onClick={() => setShowCameraScanner(true)}
                     className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform ${isMobile ? 'w-full justify-center' : ''}`}
                     title="Kamera ile barkod okut"
-                    disabled={!editData}
                   >
                     <Camera className="w-4 h-4" />
                     Kamera
@@ -3630,7 +3626,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
           <InventoryBarcodeScanner
             darkMode={false}
-            isOpen={Boolean(editData) && showCameraScanner}
+            isOpen={showCameraScanner}
             title="Ürün Barkodu Tara"
             onClose={() => setShowCameraScanner(false)}
             onScan={(barcode) => {
