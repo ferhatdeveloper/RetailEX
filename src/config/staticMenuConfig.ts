@@ -36,8 +36,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 ]
             },
             { label: t.menu.dataBroadcast, screen: 'databroadcast', icon: Radio },
-            { label: t.menu.integrations, screen: 'integrations', icon: Zap },
-            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
+            { label: t.menu.integrations, screen: 'integrations', icon: Zap }
         ]
     },
     {
@@ -308,8 +307,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
-            { label: t.menu.logAudit, screen: 'logaudit', icon: Clock },
-            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
+            { label: t.menu.logAudit, screen: 'logaudit', icon: Clock }
         ]
     }
 ];
