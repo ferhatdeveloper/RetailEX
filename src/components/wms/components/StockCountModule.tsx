@@ -97,7 +97,7 @@ function CreateSlipView({ darkMode, onBack, onCreated }: {
     const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
 
     return (
-        <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <div className={`h-full overflow-y-auto ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
@@ -988,7 +988,7 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
 
     return (
-        <div className={`min-h-screen ${bgClass}`}>
+        <div className={`h-full overflow-y-auto ${bgClass}`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
@@ -1218,7 +1218,7 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     };
 
     return (
-        <div className={`min-h-screen ${bgClass}`}>
+        <div className={`h-full overflow-y-auto ${bgClass}`}>
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">

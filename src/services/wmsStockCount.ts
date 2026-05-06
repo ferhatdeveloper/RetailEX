@@ -3,7 +3,7 @@
  * Manages inventory counting operations using wms.counting_slips and wms.counting_lines
  */
 
-import { PostgresConnection, ERP_SETTINGS } from './postgres';
+import { PostgresConnection, ERP_SETTINGS, DB_SETTINGS } from './postgres';
 
 export interface CountingSlip {
     id: string;
@@ -555,8 +555,48 @@ class WMSStockCountService {
      */
     async getStores(): Promise<{ id: string; name: string; code: string }[]> {
         const firmNr = ERP_SETTINGS.firmNr || '001';
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    '/stores',
+                    {
+                        select: 'id,name,code,firm_nr,type,is_active',
+                        is_active: 'eq.true',
+                        order: 'name.asc',
+                    },
+                    { schema: 'public' }
+                );
+                const all = Array.isArray(rows) ? rows : [];
+                const firmNorm = String(firmNr).padStart(3, '0');
+                const byFirm = all.filter((r: any) => {
+                    const fn = String(r?.firm_nr ?? '').trim();
+                    if (!fn) return false;
+                    return fn.padStart(3, '0') === firmNorm || String(parseInt(fn, 10)).padStart(3, '0') === firmNorm;
+                });
+                const source = byFirm.length > 0 ? byFirm : all;
+                const mapped = source
+                    .filter((r: any) => {
+                        const t = String(r?.type ?? '').toUpperCase();
+                        return !t || t === 'STORE' || t === 'BRANCH' || t === 'WAREHOUSE';
+                    })
+                    .map((r: any) => ({
+                        id: String(r.id),
+                        name: String(r.name ?? ''),
+                        code: String(r.code ?? ''),
+                    }));
+                return mapped;
+            } catch (err) {
+                console.warn('[WMSStockCount] getStores PostgREST fallback failed:', err);
+            }
+        }
         const { rows } = await this.conn.query<{ id: string; name: string; code: string }>(
-            `SELECT id, name, code FROM public.stores WHERE firm_nr = $1 AND is_active = true ORDER BY name`,
+            `SELECT id, name, code
+             FROM public.stores
+             WHERE is_active = true
+               AND (firm_nr::text = $1 OR lpad(trim(firm_nr::text), 3, '0') = lpad(trim($1::text), 3, '0'))
+               AND (type IS NULL OR type IN ('STORE','BRANCH','WAREHOUSE'))
+             ORDER BY name`,
             [firmNr]
         );
         if (rows.length > 0) return rows;
