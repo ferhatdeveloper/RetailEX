@@ -163,14 +163,8 @@ function syncRemoteConfigFromRestUrl(restUrl: unknown): void {
   if (!raw) return;
   try {
     const u = new URL(raw);
-    REMOTE_CONFIG.host = u.hostname || REMOTE_CONFIG.host;
-    if (u.port) {
-      REMOTE_CONFIG.port = Number(u.port) || REMOTE_CONFIG.port;
-    } else if (u.protocol === 'https:') {
-      REMOTE_CONFIG.port = 443;
-    } else if (u.protocol === 'http:') {
-      REMOTE_CONFIG.port = 80;
-    }
+    // Rest API URL'sindeki host/port (çoğunlukla 443) PostgreSQL soketi için geçerli değildir.
+    // Bu yüzden yalnızca tenant/database slug'ını eşitliyoruz; host/port kayıtlı PG ayarında kalır.
     const parts = u.pathname.split('/').filter(Boolean);
     const slug = parts.length ? parts[parts.length - 1] : '';
     if (slug && /^[a-zA-Z0-9_.-]+$/.test(slug)) {
