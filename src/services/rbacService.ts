@@ -104,6 +104,7 @@ export const SYSTEM_ROLES: Role[] = [
     permissions: [
       { module: 'dashboard', actions: ['READ'] },
       { module: 'products', actions: ['READ'] },
+      { module: 'materials-intake', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
       { module: 'customers', actions: ['READ', 'CREATE', 'UPDATE'] },
       { module: 'sales-invoices', actions: ['CREATE', 'READ'], conditions: { onlyOwnData: true } },
       { module: 'returns', actions: ['CREATE', 'READ'], conditions: { requireApproval: true } },
@@ -124,6 +125,7 @@ export const SYSTEM_ROLES: Role[] = [
     permissions: [
       { module: 'dashboard', actions: ['READ'] },
       { module: 'products', actions: ['READ', 'UPDATE'] },
+      { module: 'materials-intake', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'] },
       { module: 'stock', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE'] },
       { module: 'purchase', actions: ['READ'] },
       { module: 'purchase-invoices', actions: ['READ'] },
@@ -143,6 +145,7 @@ export const SYSTEM_ROLES: Role[] = [
     permissions: [
       { module: 'dashboard', actions: ['READ'] },
       { module: 'products', actions: ['READ'] },
+      { module: 'materials-intake', actions: ['READ', 'CREATE', 'UPDATE', 'EXECUTE'] },
       { module: 'customers', actions: ['CREATE', 'READ', 'UPDATE'] },
       { module: 'sales-orders', actions: ['CREATE', 'READ', 'UPDATE'] },
       { module: 'crm', actions: ['CREATE', 'READ', 'UPDATE'] },
@@ -163,6 +166,7 @@ export const SYSTEM_ROLES: Role[] = [
       { module: 'unlimitedDashboard', actions: ['READ'] },
       { module: 'profitDashboard', actions: ['READ'] },
       { module: 'products', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE'] },
+      { module: 'materials-intake', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE', 'EXECUTE'] },
       { module: 'stock', actions: ['READ', 'UPDATE', 'EXECUTE'] },
       { module: 'customers', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE'] },
       { module: 'suppliers', actions: ['READ'] },

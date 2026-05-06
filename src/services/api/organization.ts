@@ -2,7 +2,11 @@
  * Organization API - Direct PostgreSQL Implementation
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, DB_SETTINGS } from '../postgres';
+
+function isRestApi(): boolean {
+    return DB_SETTINGS.connectionProvider === 'rest_api';
+}
 
 export interface Firm {
     id: string;
@@ -50,6 +54,24 @@ export const organizationAPI = {
      */
     async getFirmByFirmNr(firmNr: string): Promise<Firm | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    '/firms',
+                    { select: '*', firm_nr: `eq.${firmNr}`, limit: 1 },
+                    { schema: 'public' }
+                );
+                if (!Array.isArray(rows) || !rows[0]) return null;
+                const r = rows[0];
+                return {
+                    ...r,
+                    id: r.id?.toString?.() ?? r.id,
+                    firma_adi: r.name,
+                    firma_kodu: r.firm_nr,
+                    supabase_firm_id: r.supabase_firm_id,
+                    regulatory_region: (String(r.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ') as 'TR' | 'IQ',
+                } as Firm & { firma_adi: string; firma_kodu: string };
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM firms WHERE firm_nr = $1 LIMIT 1`,
                 [firmNr]
@@ -75,6 +97,22 @@ export const organizationAPI = {
      */
     async getFirms(): Promise<Firm[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    '/firms',
+                    { select: '*', order: 'firm_nr.asc' },
+                    { schema: 'public' }
+                );
+                return (Array.isArray(rows) ? rows : []).map(r => ({
+                    ...r,
+                    id: r.id.toString(),
+                    firma_adi: r.name,
+                    firma_kodu: r.firm_nr,
+                    supabase_firm_id: r.supabase_firm_id,
+                    regulatory_region: (String(r.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ') as 'TR' | 'IQ',
+                }));
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM firms ORDER BY firm_nr ASC`
             );
@@ -101,6 +139,17 @@ export const organizationAPI = {
      */
     async getRegulatoryRegionForFirmNr(firmNr: string): Promise<'TR' | 'IQ' | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<{ regulatory_region?: string }[]>(
+                    '/firms',
+                    { select: 'regulatory_region', firm_nr: `eq.${firmNr}`, limit: 1 },
+                    { schema: 'public' }
+                );
+                if (!Array.isArray(rows) || !rows[0]) return null;
+                const v = String(rows[0].regulatory_region ?? 'IQ').toUpperCase();
+                return v === 'TR' ? 'TR' : 'IQ';
+            }
             const { rows } = await postgres.query(
                 `SELECT regulatory_region FROM firms WHERE firm_nr = $1 LIMIT 1`,
                 [firmNr]
@@ -130,7 +179,72 @@ export const organizationAPI = {
             const gibPass = firm.gib_integrator_password != null ? String(firm.gib_integrator_password) : '';
             const gibTest = firm.gib_use_test_environment !== false;
             let saved: any;
-            if (isUpdate) {
+            const firmNrVal = firm.firma_kodu || firm.firm_nr;
+            const nameVal = firm.firma_adi || firm.name;
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                if (isUpdate) {
+                    let gibPassOut = gibPass;
+                    if (!gibPassOut && firm.id) {
+                        try {
+                            const cur = await postgrest.get<{ gib_integrator_password?: string }[]>(
+                                '/firms',
+                                { select: 'gib_integrator_password', id: `eq.${firm.id}`, limit: 1 },
+                                { schema: 'public' }
+                            );
+                            if (Array.isArray(cur) && cur[0]?.gib_integrator_password != null) {
+                                gibPassOut = String(cur[0].gib_integrator_password);
+                            }
+                        } catch {
+                            /* */
+                        }
+                    }
+                    const upd = await postgrest.patch<any[]>(
+                        `/firms?id=eq.${encodeURIComponent(firm.id)}`,
+                        {
+                            name: nameVal,
+                            tax_nr: firm.tax_nr ?? '',
+                            tax_office: firm.tax_office ?? '',
+                            city: firm.city ?? '',
+                            ana_para_birimi: anaPara,
+                            raporlama_para_birimi: raporPara,
+                            regulatory_region: reg,
+                            gib_integration_mode: gibMode,
+                            gib_ubl_profile: gibUbl,
+                            gib_sender_alias: gibAlias || null,
+                            gib_integrator_base_url: gibUrl || null,
+                            gib_integrator_username: gibUser || null,
+                            gib_integrator_password: gibPassOut || null,
+                            gib_use_test_environment: gibTest,
+                        },
+                        { schema: 'public', prefer: 'return=representation' }
+                    );
+                    saved = Array.isArray(upd) ? upd[0] : upd;
+                } else {
+                    const ins = await postgrest.post<any[]>(
+                        '/firms',
+                        {
+                            firm_nr: firmNrVal,
+                            name: nameVal,
+                            tax_nr: firm.tax_nr ?? '',
+                            tax_office: firm.tax_office ?? '',
+                            city: firm.city ?? '',
+                            ana_para_birimi: anaPara,
+                            raporlama_para_birimi: raporPara,
+                            regulatory_region: reg,
+                            gib_integration_mode: gibMode,
+                            gib_ubl_profile: gibUbl,
+                            gib_sender_alias: gibAlias || null,
+                            gib_integrator_base_url: gibUrl || null,
+                            gib_integrator_username: gibUser || null,
+                            gib_integrator_password: gibPass || null,
+                            gib_use_test_environment: gibTest,
+                        },
+                        { schema: 'public', prefer: 'return=representation' }
+                    );
+                    saved = Array.isArray(ins) ? ins[0] : ins;
+                }
+            } else if (isUpdate) {
                 const { rows } = await postgres.query(
                     `UPDATE firms SET
                        name = $1, tax_nr = $2, tax_office = $3, city = $4,
@@ -141,7 +255,7 @@ export const organizationAPI = {
                        gib_use_test_environment = $15
                      WHERE id = $8::text::uuid RETURNING *`,
                     [
-                        firm.firma_adi || firm.name,
+                        nameVal,
                         firm.tax_nr ?? '',
                         firm.tax_office ?? '',
                         firm.city ?? '',
@@ -167,8 +281,8 @@ export const organizationAPI = {
                        gib_integrator_username, gib_integrator_password, gib_use_test_environment
                      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), $15) RETURNING *`,
                     [
-                        firm.firma_kodu || firm.firm_nr,
-                        firm.firma_adi || firm.name,
+                        firmNrVal,
+                        nameVal,
                         firm.tax_nr ?? '',
                         firm.tax_office ?? '',
                         firm.city ?? '',
@@ -189,12 +303,22 @@ export const organizationAPI = {
             const sid = firm.supabase_firm_id?.trim?.() || firm.supabase_firm_id;
             if (sid && saved?.id) {
                 try {
-                    await postgres.query(
-                        `UPDATE firms SET supabase_firm_id = $1 WHERE id = $2::text::uuid`,
-                        [sid, saved.id]
-                    );
-                    const { rows } = await postgres.query(`SELECT * FROM firms WHERE id = $1::text::uuid`, [saved.id]);
-                    if (rows[0]) saved = rows[0];
+                    if (isRestApi()) {
+                        const { postgrest } = await import('./postgrestClient');
+                        const re = await postgrest.patch<any[]>(
+                            `/firms?id=eq.${encodeURIComponent(saved.id)}`,
+                            { supabase_firm_id: sid },
+                            { schema: 'public', prefer: 'return=representation' }
+                        );
+                        if (Array.isArray(re) && re[0]) saved = re[0];
+                    } else {
+                        await postgres.query(
+                            `UPDATE firms SET supabase_firm_id = $1 WHERE id = $2::text::uuid`,
+                            [sid, saved.id]
+                        );
+                        const { rows } = await postgres.query(`SELECT * FROM firms WHERE id = $1::text::uuid`, [saved.id]);
+                        if (rows[0]) saved = rows[0];
+                    }
                 } catch {
                     /* firms.supabase_firm_id sütunu yoksa (eski kurulum) ana kayıt yine başarılı */
                 }
@@ -211,6 +335,11 @@ export const organizationAPI = {
      */
     async deleteFirm(id: string): Promise<boolean> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                await postgrest.delete(`/firms?id=eq.${encodeURIComponent(id)}`, { schema: 'public' });
+                return true;
+            }
             const { rowCount } = await postgres.query(`DELETE FROM firms WHERE id = $1::text::uuid`, [id]);
             return rowCount > 0;
         } catch (error) {
@@ -224,6 +353,25 @@ export const organizationAPI = {
      */
     async getStoresByFirmNr(firmNr: string): Promise<{ id: string; code: string; name: string; type?: string }[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    '/stores',
+                    {
+                        select: 'id,code,name,type',
+                        firm_nr: `eq.${firmNr}`,
+                        is_active: 'eq.true',
+                        order: 'name.asc',
+                    },
+                    { schema: 'public' }
+                );
+                return (Array.isArray(rows) ? rows : []).map((r: any) => ({
+                    id: r.id?.toString?.() ?? r.id,
+                    code: r.code || '',
+                    name: r.name || '',
+                    type: r.type
+                }));
+            }
             const { rows } = await postgres.query(
                 `SELECT id, code, name, type FROM public.stores WHERE firm_nr = $1 AND is_active = true ORDER BY name`,
                 [firmNr]
@@ -279,6 +427,22 @@ export const organizationAPI = {
      */
     async getPeriods(firmId: string): Promise<Period[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    '/periods',
+                    { select: '*', firm_id: `eq.${firmId}`, order: 'nr.desc' },
+                    { schema: 'public' }
+                );
+                return (Array.isArray(rows) ? rows : []).map(r => ({
+                    ...r,
+                    id: String(r.id),
+                    firma_id: r.firm_id ? String(r.firm_id) : r.firma_id,
+                    donem_adi: r.nr ? `${r.nr}. Dönem` : r.donem_adi || 'Dönem',
+                    baslangic_tarihi: r.beg_date,
+                    bitis_tarihi: r.end_date
+                }));
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM periods WHERE firm_id = $1::text::uuid ORDER BY nr DESC`,
                 [firmId]
@@ -305,11 +469,42 @@ export const organizationAPI = {
             const isUpdate = !!period.id;
             const nr = period.nr !== undefined ? period.nr : (parseInt(period.donem_adi) || 1);
             const isActive = period.durum ? period.durum === 'acik' : (period.is_active !== false);
+            const beg = period.baslangic_tarihi || period.beg_date;
+            const end = period.bitis_tarihi || period.end_date;
+
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                if (isUpdate) {
+                    const rows = await postgrest.patch<any[]>(
+                        `/periods?id=eq.${encodeURIComponent(period.id)}`,
+                        {
+                            nr: Number(nr),
+                            beg_date: beg,
+                            end_date: end,
+                            is_active: isActive,
+                        },
+                        { schema: 'public', prefer: 'return=representation' }
+                    );
+                    return Array.isArray(rows) ? rows[0] : (rows as Period);
+                }
+                const rows = await postgrest.post<any[]>(
+                    '/periods',
+                    {
+                        firm_id: period.firma_id,
+                        nr: Number(nr),
+                        beg_date: beg,
+                        end_date: end,
+                        is_active: isActive,
+                    },
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as Period);
+            }
 
             if (isUpdate) {
                 const { rows } = await postgres.query(
                     `UPDATE periods SET nr = $1::text::int4, beg_date = $2::text::date, end_date = $3::text::date, is_active = $4 WHERE id = $5::text::uuid RETURNING *`,
-                    [nr.toString(), period.baslangic_tarihi || period.beg_date, period.bitis_tarihi || period.end_date, isActive, period.id]
+                    [nr.toString(), beg, end, isActive, period.id]
                 );
                 return rows[0];
             } else {
@@ -327,6 +522,22 @@ export const organizationAPI = {
 
     async getSystemSettings(): Promise<SystemSettingsRow | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<SystemSettingsRow[]>(
+                    '/system_settings',
+                    { select: 'id,default_currency,primary_firm_nr,primary_period_nr', id: 'eq.1', limit: 1 },
+                    { schema: 'public' }
+                );
+                const r = Array.isArray(rows) ? rows[0] : undefined;
+                if (!r) return null;
+                return {
+                    id: 1,
+                    default_currency: String(r.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
+                    primary_firm_nr: r.primary_firm_nr != null ? String(r.primary_firm_nr) : null,
+                    primary_period_nr: r.primary_period_nr != null ? String(r.primary_period_nr) : null,
+                };
+            }
             const { rows } = await postgres.query(
                 `SELECT id, default_currency, primary_firm_nr, primary_period_nr FROM public.system_settings WHERE id = 1`,
                 []
@@ -358,6 +569,33 @@ export const organizationAPI = {
         const dc = String(data.default_currency || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD';
         const fn = data.primary_firm_nr?.trim() || null;
         const pn = data.primary_period_nr?.trim() || null;
+        if (isRestApi()) {
+            const { postgrest } = await import('./postgrestClient');
+            const existing = await postgrest.get<{ id?: number }[]>(
+                '/system_settings',
+                { select: 'id', id: 'eq.1', limit: 1 },
+                { schema: 'public' }
+            );
+            const body = {
+                default_currency: dc,
+                primary_firm_nr: fn,
+                primary_period_nr: pn,
+            };
+            if (Array.isArray(existing) && existing[0]) {
+                await postgrest.patch(
+                    '/system_settings?id=eq.1',
+                    body,
+                    { schema: 'public', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    '/system_settings',
+                    { id: 1, ...body },
+                    { schema: 'public', prefer: 'return=minimal' }
+                );
+            }
+            return;
+        }
         await postgres.query(
             `INSERT INTO public.system_settings (id, default_currency, primary_firm_nr, primary_period_nr)
              VALUES (1, $1, $2, $3)

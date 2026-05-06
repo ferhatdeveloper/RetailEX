@@ -229,6 +229,72 @@ class VisionService {
     isBarcode(text: string): boolean {
         return /^\d{8,14}$/.test(text.trim());
     }
+
+    /**
+     * Raf / ürün etiketi görseli — yalnızca ham OCR (Malzeme toplama vb.)
+     */
+    async ocrShelfLabelDataUrl(dataUrl: string): Promise<string> {
+        const { data: { text } } = await Tesseract.recognize(dataUrl, 'tur+eng', {
+            logger: () => { /* sessiz */ },
+        });
+        return String(text || '').trim();
+    }
+
+    /**
+     * OCR metninden barkod / fiyat / isim tahmini (heuristik; kullanıcı düzeltmeli)
+     */
+    parseRetailShelfLabel(raw: string): { barcode: string; salePrice: number; nameHint: string; variantHint: string } {
+        const text = String(raw || '').replace(/\r/g, '\n');
+        const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+        const flat = lines.join(' ');
+
+        let barcode = '';
+        const digitRuns = flat.match(/\d{8,14}/g) || [];
+        if (digitRuns.length > 0) {
+            barcode = digitRuns.sort((a, b) => b.length - a.length)[0] || '';
+        }
+
+        let salePrice = 0;
+        const pr = flat.match(/(\d{1,6})[.,](\d{2})\s*(?:tl|try|₺)?/i);
+        if (pr) {
+            salePrice = parseFloat(`${pr[1]}.${pr[2]}`) || 0;
+        }
+        if (!salePrice) {
+            const w = flat.match(/\b(\d{1,5})\s*(?:TL|TRY|₺)\b/i);
+            if (w) salePrice = parseFloat(w[1]) || 0;
+        }
+        if (!salePrice) {
+            const fi = flat.match(/(?:fiyat|satış|satis|price)[\s:]*(\d{1,6})[.,](\d{2})/i);
+            if (fi) salePrice = parseFloat(`${fi[1]}.${fi[2]}`) || 0;
+        }
+
+        let nameHint = '';
+        for (const line of lines) {
+            const noSpace = line.replace(/\s/g, '');
+            if (/^\d+([.,]\d+)?$/.test(noSpace)) continue;
+            if (/^\d{8,14}$/.test(noSpace)) continue;
+            if (line.length > nameHint.length && line.length >= 2) nameHint = line;
+        }
+        if (!nameHint && lines[0]) nameHint = lines[0];
+
+        let variantHint = '';
+        for (const line of lines) {
+            if (line === nameHint) continue;
+            if (line.length > 60) continue;
+            if (/^\d{8,14}$/.test(line.replace(/\s/g, ''))) continue;
+            if (line.length > 1 && line.length <= 40) {
+                variantHint = line;
+                break;
+            }
+        }
+
+        return {
+            barcode: barcode.slice(0, 32),
+            salePrice,
+            nameHint: nameHint.slice(0, 200),
+            variantHint: variantHint.slice(0, 120),
+        };
+    }
 }
 
 export const visionService = new VisionService();

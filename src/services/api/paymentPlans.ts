@@ -2,7 +2,9 @@
  * Payment Plans API - Direct PostgreSQL Implementation
  */
 
-import { postgres } from '../postgres';
+import { postgres, DB_SETTINGS } from '../postgres';
+
+const logicSchema = { schema: 'logic' as const };
 
 export interface PaymentPlanLine {
     id?: string;
@@ -32,6 +34,20 @@ export const paymentPlansAPI = {
      */
     async getAll(firmNr: string): Promise<PaymentPlan[]> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<any[]>(
+                    `/pay_plans`,
+                    {
+                        select: '*',
+                        firm_nr: `eq.${firmNr}`,
+                        is_active: 'eq.true',
+                        order: 'code.asc',
+                    },
+                    logicSchema
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM logic.pay_plans WHERE firm_nr = $1 AND is_active = true ORDER BY code ASC`,
                 [firmNr]
@@ -48,6 +64,25 @@ export const paymentPlansAPI = {
      */
     async getById(id: string): Promise<PaymentPlan | null> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const plans = await postgrest.get<any[]>(
+                    `/pay_plans`,
+                    { select: '*', id: `eq.${id}`, limit: 1 },
+                    logicSchema
+                );
+                const plan = Array.isArray(plans) ? plans[0] : null;
+                if (!plan) return null;
+                const lines = await postgrest
+                    .get<any[]>(
+                        `/pay_plan_lines`,
+                        { select: '*', plan_id: `eq.${id}`, order: 'line_no.asc' },
+                        logicSchema
+                    )
+                    .catch(() => [] as any[]);
+                plan.lines = Array.isArray(lines) ? lines : [];
+                return plan;
+            }
             const planResult = await postgres.query(
                 `SELECT * FROM logic.pay_plans WHERE id = $1`,
                 [id]
@@ -75,6 +110,56 @@ export const paymentPlansAPI = {
      */
     async create(plan: PaymentPlan): Promise<PaymentPlan | null> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const body: Record<string, unknown> = {
+                    firm_nr: plan.firm_nr,
+                    code: plan.code,
+                    name: plan.name,
+                    description: plan.description ?? null,
+                    is_active: plan.is_active !== false,
+                };
+                const rows = await postgrest.post<any[]>(`/pay_plans`, body, {
+                    ...logicSchema,
+                    prefer: 'return=representation',
+                });
+                const newPlan = Array.isArray(rows) ? rows[0] : rows;
+                if (!newPlan?.id) return null;
+                if (plan.lines && plan.lines.length > 0) {
+                    try {
+                        for (let i = 0; i < plan.lines.length; i++) {
+                            const line = plan.lines[i];
+                            await postgrest.post(
+                                `/pay_plan_lines`,
+                                {
+                                    plan_id: newPlan.id,
+                                    line_no: i + 1,
+                                    day_offset: line.day_offset,
+                                    percent: line.percent,
+                                    amount: line.amount ?? null,
+                                    payment_type: line.payment_type || 'cash',
+                                },
+                                { ...logicSchema, prefer: 'return=minimal' }
+                            );
+                        }
+                    } catch (lineErr) {
+                        await postgrest
+                            .delete(`/pay_plan_lines?plan_id=eq.${encodeURIComponent(String(newPlan.id))}`, {
+                                ...logicSchema,
+                                prefer: 'return=minimal',
+                            })
+                            .catch(() => { });
+                        await postgrest
+                            .delete(`/pay_plans?id=eq.${encodeURIComponent(String(newPlan.id))}`, {
+                                ...logicSchema,
+                                prefer: 'return=minimal',
+                            })
+                            .catch(() => { });
+                        throw lineErr;
+                    }
+                }
+                return await this.getById(newPlan.id);
+            }
             // Start transaction
             await postgres.query('BEGIN');
 
@@ -101,7 +186,13 @@ export const paymentPlansAPI = {
             await postgres.query('COMMIT');
             return await this.getById(newPlan.id);
         } catch (error) {
-            await postgres.query('ROLLBACK');
+            if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+                try {
+                    await postgres.query('ROLLBACK');
+                } catch {
+                    /* */
+                }
+            }
             console.error('[PaymentPlansAPI] create failed:', error);
             return null;
         }
@@ -112,6 +203,45 @@ export const paymentPlansAPI = {
      */
     async update(id: string, plan: Partial<PaymentPlan>): Promise<PaymentPlan | null> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const patchBody: Record<string, unknown> = {};
+                if (plan.code !== undefined) patchBody.code = plan.code;
+                if (plan.name !== undefined) patchBody.name = plan.name;
+                if (plan.description !== undefined) patchBody.description = plan.description;
+                if (plan.is_active !== undefined) patchBody.is_active = plan.is_active;
+                if (Object.keys(patchBody).length > 0) {
+                    await postgrest.patch(`/pay_plans?id=eq.${encodeURIComponent(id)}`, patchBody, {
+                        ...logicSchema,
+                        prefer: 'return=minimal',
+                    });
+                }
+                if (plan.lines) {
+                    await postgrest
+                        .delete(`/pay_plan_lines?plan_id=eq.${encodeURIComponent(id)}`, {
+                            ...logicSchema,
+                            prefer: 'return=minimal',
+                        })
+                        .catch(() => { });
+                    for (let i = 0; i < plan.lines.length; i++) {
+                        const line = plan.lines[i];
+                        await postgrest.post(
+                            `/pay_plan_lines`,
+                            {
+                                id: line.id || crypto.randomUUID(),
+                                plan_id: id,
+                                line_no: i + 1,
+                                day_offset: line.day_offset,
+                                percent: line.percent,
+                                amount: line.amount ?? null,
+                                payment_type: line.payment_type || 'cash',
+                            },
+                            { ...logicSchema, prefer: 'return=minimal' }
+                        );
+                    }
+                }
+                return await this.getById(id);
+            }
             await postgres.query('BEGIN');
 
             // Update header
@@ -165,7 +295,13 @@ export const paymentPlansAPI = {
             await postgres.query('COMMIT');
             return await this.getById(id);
         } catch (error) {
-            await postgres.query('ROLLBACK');
+            if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+                try {
+                    await postgres.query('ROLLBACK');
+                } catch {
+                    /* */
+                }
+            }
             console.error('[PaymentPlansAPI] update failed:', error);
             return null;
         }
@@ -176,6 +312,20 @@ export const paymentPlansAPI = {
      */
     async delete(id: string): Promise<boolean> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                await postgrest
+                    .delete(`/pay_plan_lines?plan_id=eq.${encodeURIComponent(id)}`, {
+                        ...logicSchema,
+                        prefer: 'return=minimal',
+                    })
+                    .catch(() => { });
+                await postgrest.delete(`/pay_plans?id=eq.${encodeURIComponent(id)}`, {
+                    ...logicSchema,
+                    prefer: 'return=minimal',
+                });
+                return true;
+            }
             await postgres.query(`DELETE FROM logic.pay_plans WHERE id = $1`, [id]);
             return true;
         } catch (error) {

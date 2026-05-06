@@ -2,7 +2,14 @@
  * Dashboard API - Direct PostgreSQL Implementation
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+
+function padFirmNr(): string {
+    return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+function padPeriodNr(): string {
+    return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
 
 export interface DashboardStats {
     totalRevenue: number;
@@ -45,41 +52,100 @@ export const dashboardAPI = {
             today.setHours(0, 0, 0, 0);
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
+            const t0 = today.toISOString();
+            const t1 = tomorrow.toISOString();
 
-            // 1. Sales stats (Revenue & Transactions)
-            const { rows: salesRows } = await postgres.query(
-                `SELECT 
-                    SUM(total) as revenue, 
-                    COUNT(*) as count 
+            let totalRevenue = 0;
+            let totalTransactions = 0;
+            let totalStores = 0;
+            let activeStores = 0;
+            let criticalAlerts = 0;
+
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const salesPath = `/rex_${fn}_${pn}_sales`;
+                const salesList = await postgrest
+                    .get<any[]>(
+                        salesPath,
+                        {
+                            select: 'net_amount,created_at',
+                            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                            created_at: `gte.${t0}`,
+                        },
+                        { schema: 'public' }
+                    )
+                    .catch(() => [] as any[]);
+                const slRaw = Array.isArray(salesList) ? salesList : [];
+                const t1ms = tomorrow.getTime();
+                const sl = slRaw.filter((r) => {
+                    const t = new Date(String(r?.created_at || '')).getTime();
+                    return !Number.isNaN(t) && t < t1ms;
+                });
+                totalTransactions = sl.length;
+                totalRevenue = sl.reduce((s, r) => s + parseFloat(String(r?.net_amount ?? 0)), 0);
+
+                const storeList = await postgrest
+                    .get<any[]>(`/stores`, { select: 'id,is_active' }, { schema: 'public' })
+                    .catch(() => [] as any[]);
+                const st = Array.isArray(storeList) ? storeList : [];
+                totalStores = st.length;
+                activeStores = st.filter((x) => x?.is_active !== false).length;
+
+                const prodPath = `/rex_${fn}_products`;
+                const products = await postgrest
+                    .get<any[]>(
+                        prodPath,
+                        {
+                            select: 'stock,min_stock',
+                            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                            is_active: 'eq.true',
+                            limit: 2000,
+                        },
+                        { schema: 'public' }
+                    )
+                    .catch(() => [] as any[]);
+                const pr = Array.isArray(products) ? products : [];
+                criticalAlerts = pr.filter(
+                    (p) =>
+                        p?.min_stock != null &&
+                        Number(p.stock) < Number(p.min_stock)
+                ).length;
+            } else {
+                const { rows: salesRows } = await postgres.query(
+                    `SELECT 
+                    COALESCE(SUM(COALESCE(net_amount, total_net, total_gross, 0)), 0)::numeric AS revenue, 
+                    COUNT(*)::int AS count 
                  FROM sales 
                  WHERE created_at >= $1 AND created_at < $2 AND firm_nr = $3`,
-                [today.toISOString(), tomorrow.toISOString(), ERP_SETTINGS.firmNr]
-            );
+                    [t0, t1, ERP_SETTINGS.firmNr]
+                );
 
-            const totalRevenue = parseFloat(salesRows[0]?.revenue || 0);
-            const totalTransactions = parseInt(salesRows[0]?.count || 0);
-            const avgBasket = totalTransactions > 0 ? Math.round(totalRevenue / totalTransactions) : 0;
+                totalRevenue = parseFloat(String(salesRows[0]?.revenue ?? 0));
+                totalTransactions = parseInt(String(salesRows[0]?.count ?? 0), 10);
 
-            // 2. Store stats
-            const { rows: storesRows } = await postgres.query(
-                `SELECT 
+                const { rows: storesRows } = await postgres.query(
+                    `SELECT 
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE is_active = true) as active
                  FROM stores`
-            );
+                );
 
-            const totalStores = parseInt(storesRows[0]?.total || 0);
-            const activeStores = parseInt(storesRows[0]?.active || 0);
+                totalStores = parseInt(storesRows[0]?.total || 0);
+                activeStores = parseInt(storesRows[0]?.active || 0);
 
-            // 3. Stock alerts
-            const { rows: alertRows } = await postgres.query(
-                `SELECT COUNT(*) as count 
+                const { rows: alertRows } = await postgres.query(
+                    `SELECT COUNT(*) as count 
                  FROM products 
                  WHERE min_stock IS NOT NULL AND stock < min_stock AND firm_nr = $1 AND is_active = true`,
-                [ERP_SETTINGS.firmNr]
-            );
+                    [ERP_SETTINGS.firmNr]
+                );
 
-            const criticalAlerts = parseInt(alertRows[0]?.count || 0);
+                criticalAlerts = parseInt(alertRows[0]?.count || 0);
+            }
+
+            const avgBasket = totalTransactions > 0 ? Math.round(totalRevenue / totalTransactions) : 0;
 
             return {
                 totalRevenue,
@@ -109,29 +175,64 @@ export const dashboardAPI = {
         try {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
+            const t0 = today.toISOString();
 
-            // Get all stores and their today's sales in one join if possible
-            // But since 'sales' is at a different granularity, a subquery or separate aggregation is safer
-            const { rows: stores } = await postgres.query(`SELECT * FROM stores ORDER BY name`);
+            let stores: any[] = [];
+            const salesMap = new Map<string, { revenue: number; count: number }>();
 
-            const { rows: salesAgg } = await postgres.query(
-                `SELECT 
-                    store_id, 
-                    SUM(total) as revenue, 
-                    COUNT(*) as count 
-                 FROM sales 
-                 WHERE created_at >= $1 AND firm_nr = $2
-                 GROUP BY store_id`,
-                [today.toISOString(), ERP_SETTINGS.firmNr]
-            );
-
-            const salesMap = new Map<string, { revenue: number, count: number }>();
-            salesAgg.forEach(s => {
-                if (s.store_id) salesMap.set(s.store_id, {
-                    revenue: parseFloat(s.revenue),
-                    count: parseInt(s.count)
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const salesPath = `/rex_${fn}_${pn}_sales`;
+                const fetchedStores = await postgrest
+                    .get<any[]>(`/stores`, { select: '*', order: 'name.asc' }, { schema: 'public' })
+                    .catch(() => [] as any[]);
+                stores = Array.isArray(fetchedStores) ? fetchedStores : [];
+                const salesList = await postgrest
+                    .get<any[]>(
+                        salesPath,
+                        {
+                            select: 'store_id,net_amount,created_at',
+                            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                            created_at: `gte.${t0}`,
+                        },
+                        { schema: 'public' }
+                    )
+                    .catch(() => [] as any[]);
+                (Array.isArray(salesList) ? salesList : []).forEach((s) => {
+                    const sid = s.store_id ? String(s.store_id) : '';
+                    if (!sid) return;
+                    const cur = salesMap.get(sid) || { revenue: 0, count: 0 };
+                    cur.revenue += parseFloat(String(s.net_amount ?? 0));
+                    cur.count += 1;
+                    salesMap.set(sid, cur);
                 });
-            });
+            } else {
+                const { rows } = await postgres.query(`SELECT * FROM stores ORDER BY name`);
+                stores = rows;
+
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const t1 = tomorrow.toISOString();
+                const { rows: salesAgg } = await postgres.query(
+                    `SELECT 
+                    store_id, 
+                    COALESCE(SUM(COALESCE(net_amount, total_net, total_gross, 0)), 0)::numeric AS revenue, 
+                    COUNT(*)::int AS count 
+                 FROM sales 
+                 WHERE created_at >= $1 AND created_at < $2 AND firm_nr = $3
+                 GROUP BY store_id`,
+                    [t0, t1, ERP_SETTINGS.firmNr]
+                );
+
+                salesAgg.forEach((s: any) => {
+                    if (s.store_id) salesMap.set(s.store_id, {
+                        revenue: parseFloat(s.revenue),
+                        count: parseInt(s.count)
+                    });
+                });
+            }
 
             return stores.map(store => {
                 const stats = salesMap.get(store.id) || { revenue: 0, count: 0 };
@@ -170,16 +271,56 @@ export const dashboardAPI = {
      */
     async getCriticalAlerts(limit: number = 10): Promise<DashboardAlert[]> {
         try {
-            const { rows: lowStock } = await postgres.query(
-                `SELECT p.name, p.stock, p.min_stock, s.name as store_name
+            let lowStock: any[] = [];
+
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const prodPath = `/rex_${fn}_products`;
+                const products = await postgrest
+                    .get<any[]>(
+                        prodPath,
+                        {
+                            select: 'id,name,stock,min_stock,store_id',
+                            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                            is_active: 'eq.true',
+                            limit: 500,
+                        },
+                        { schema: 'public' }
+                    )
+                    .catch(() => [] as any[]);
+                const pr = Array.isArray(products) ? products : [];
+                const candidates = pr
+                    .filter(
+                        (p) =>
+                            p?.min_stock != null &&
+                            Number(p.stock) < Number(p.min_stock)
+                    )
+                    .sort((a, b) => Number(a.stock) - Number(b.stock));
+                const storeNames = new Map<string, string>();
+                const stores = await postgrest
+                    .get<any[]>(`/stores`, { select: 'id,name' }, { schema: 'public' })
+                    .catch(() => [] as any[]);
+                (Array.isArray(stores) ? stores : []).forEach((s) => storeNames.set(String(s.id), String(s.name || '')));
+                lowStock = candidates.slice(0, limit).map((p) => ({
+                    name: p.name,
+                    stock: p.stock,
+                    min_stock: p.min_stock,
+                    store_name: p.store_id ? storeNames.get(String(p.store_id)) : null,
+                }));
+            } else {
+                const { rows } = await postgres.query(
+                    `SELECT p.name, p.stock, p.min_stock, s.name as store_name
                  FROM products p
                  LEFT JOIN stores s ON p.store_id = s.id
                  WHERE p.min_stock IS NOT NULL AND p.stock < p.min_stock 
                  AND p.firm_nr = $1 AND p.is_active = true
                  ORDER BY p.stock ASC
                  LIMIT $2`,
-                [ERP_SETTINGS.firmNr, limit]
-            );
+                    [ERP_SETTINGS.firmNr, limit]
+                );
+                lowStock = rows;
+            }
 
             return lowStock.map((p, idx) => ({
                 id: `alert-${idx}`,

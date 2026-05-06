@@ -5,6 +5,13 @@
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 
+function padKasaFirmNr(): string {
+  return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+function padKasaPeriodNr(): string {
+  return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
+
 // ===== TYPES =====
 
 export interface Kasa {
@@ -86,7 +93,7 @@ export async function fetchKasalar(params?: {
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       rows = await postgrest.get<any[]>(
-        `/rex_${ERP_SETTINGS.firmNr}_cash_registers`,
+        `/rex_${padKasaFirmNr()}_cash_registers`,
         {
           select: '*',
           is_active: `eq.${isActive ? 'true' : 'false'}`,
@@ -117,6 +124,17 @@ export async function fetchKasalar(params?: {
 export async function fetchKasa(id: string): Promise<Kasa> {
   try {
     const table = 'cash_registers';
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const rows = await postgrest.get<any[]>(
+        `/rex_${padKasaFirmNr()}_cash_registers`,
+        { select: '*', id: `eq.${id}`, limit: 1 },
+        { schema: 'public' }
+      );
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row) throw new Error('Kasa bulunamadı');
+      return mapDbKasaToKasa(row);
+    }
     const { rows } = await postgres.query(
       `SELECT * FROM ${table} WHERE id = $1`,
       [id]
@@ -136,6 +154,24 @@ export async function fetchKasa(id: string): Promise<Kasa> {
 export async function createKasa(kasa: Omit<Kasa, 'id'>): Promise<string> {
   try {
     const table = 'cash_registers';
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const body: Record<string, unknown> = {
+        firm_nr: ERP_SETTINGS.firmNr,
+        code: kasa.kasa_kodu || '',
+        name: kasa.kasa_adi || '',
+        currency_code: kasa.id_doviz_kodu || 'IQD',
+        balance: kasa.bakiye || 0,
+        is_active: true,
+      };
+      const rows = await postgrest.post<any[]>(
+        `/rex_${padKasaFirmNr()}_cash_registers`,
+        body,
+        { schema: 'public', prefer: 'return=representation' }
+      );
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      return String(row?.id || '');
+    }
     const { rows } = await postgres.query(
       `INSERT INTO ${table} (firm_nr, code, name, currency_code, balance, is_active)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -171,6 +207,21 @@ export async function updateKasa(id: string, kasa: Partial<Kasa>): Promise<Kasa>
     if (kasa.aktif !== undefined) { fields.push(`is_active = ${kasa.aktif}`); }
 
     values.push(id);
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const patchBody: Record<string, unknown> = {};
+      if (kasa.kasa_adi) patchBody.name = kasa.kasa_adi;
+      if (kasa.kasa_kodu) patchBody.code = kasa.kasa_kodu;
+      if (kasa.aktif !== undefined) patchBody.is_active = kasa.aktif;
+      if (Object.keys(patchBody).length === 0) return fetchKasa(id);
+      const rows = await postgrest.patch<any[]>(
+        `/rex_${padKasaFirmNr()}_cash_registers?id=eq.${encodeURIComponent(id)}`,
+        patchBody,
+        { schema: 'public', prefer: 'return=representation' }
+      );
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      return mapDbKasaToKasa(row);
+    }
     const { rows } = await postgres.query(
       `UPDATE ${table} SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${i} RETURNING *`,
       values
@@ -189,6 +240,15 @@ export async function updateKasa(id: string, kasa: Partial<Kasa>): Promise<Kasa>
 export async function deleteKasa(id: string): Promise<void> {
   try {
     const table = 'cash_registers';
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      await postgrest.patch(
+        `/rex_${padKasaFirmNr()}_cash_registers?id=eq.${encodeURIComponent(id)}`,
+        { is_active: false },
+        { schema: 'public', prefer: 'return=minimal' }
+      );
+      return;
+    }
     await postgres.query(`UPDATE ${table} SET is_active = false WHERE id = $1`, [id]);
   } catch (error: any) {
     console.error('[Kasa] Delete error:', error);
@@ -248,7 +308,7 @@ export async function fetchKasaIslemleri(params?: {
     let rows: any[] = [];
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      const tableName = `/rex_${ERP_SETTINGS.firmNr}_${ERP_SETTINGS.periodNr}_cash_lines`;
+      const tableName = `/rex_${padKasaFirmNr()}_${padKasaPeriodNr()}_cash_lines`;
       const query: Record<string, string> = {
         select: '*',
         order: 'date.desc',
@@ -283,6 +343,166 @@ export async function fetchKasaIslemleri(params?: {
   }
 }
 
+/** PostgREST: kasa hareketi + bakiyeler (atomik DEĞİL; `rest_api` için) */
+async function createKasaIslemiViaPostgrest(
+  islem: KasaIslemi,
+  sign: number,
+  ficheNo: string
+): Promise<KasaIslemi> {
+  const { postgrest } = await import('./postgrestClient');
+  const fn = padKasaFirmNr();
+  const pn = padKasaPeriodNr();
+  const linesPath = `/rex_${fn}_${pn}_cash_lines`;
+  const kasaPath = `/rex_${fn}_cash_registers`;
+  const bankLinesPath = `/rex_${fn}_${pn}_bank_lines`;
+  const bankRegPath = `/rex_${fn}_bank_registers`;
+
+  const lineBody: Record<string, unknown> = {
+    firm_nr: String(ERP_SETTINGS.firmNr),
+    period_nr: String(ERP_SETTINGS.periodNr || '01'),
+    register_id: islem.kasa_id || null,
+    fiche_no: ficheNo,
+    date: islem.islem_tarihi || new Date().toISOString(),
+    amount: islem.tutar || 0,
+    sign,
+    definition: islem.islem_aciklamasi || '',
+    transaction_type: islem.islem_tipi || '',
+    customer_id: islem.cari_hesap_id || null,
+    currency_code: islem.doviz_kodu || 'YEREL',
+    exchange_rate: 1,
+    f_amount: islem.dovizli_tutar || 0,
+    transfer_status: 0,
+    special_code: islem.ozel_kod || '',
+    target_register_id: islem.target_register_id || null,
+    bank_id: islem.bank_id || null,
+    bank_account_id: islem.bank_account_id || null,
+    expense_card_id: islem.expense_card_id || null,
+    tax_rate: islem.tax_rate || 0,
+    withholding_tax_rate: islem.withholding_tax_rate || 0,
+  };
+
+  const rows = await postgrest.post<any[]>(linesPath, lineBody, {
+    schema: 'public',
+    prefer: 'return=representation',
+  });
+  const mainRow = Array.isArray(rows) ? rows[0] : rows;
+
+  const bumpKasaBalance = async (registerId: string | undefined, delta: number) => {
+    if (!registerId || Number.isNaN(delta) || delta === 0) return;
+    const cur = await postgrest.get<any[]>(
+      kasaPath,
+      { select: 'balance', id: `eq.${registerId}`, limit: 1 },
+      { schema: 'public' }
+    );
+    const row = Array.isArray(cur) ? cur[0] : null;
+    if (!row) return;
+    const nb = Number(row.balance ?? 0) + delta;
+    await postgrest.patch(
+      `${kasaPath}?id=eq.${encodeURIComponent(String(registerId))}`,
+      { balance: nb },
+      { schema: 'public', prefer: 'return=minimal' }
+    );
+  };
+
+  await bumpKasaBalance(islem.kasa_id, Number(islem.tutar || 0) * sign);
+
+  if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
+    const delta = -Number(islem.tutar || 0);
+    const custPath = `/rex_${fn}_customers`;
+    const supPath = `/rex_${fn}_suppliers`;
+    const patchPartner = async (path: string, withFirm: boolean) => {
+      try {
+        const q: Record<string, string> = {
+          select: 'balance',
+          id: `eq.${islem.cari_hesap_id}`,
+          limit: '1',
+        };
+        if (withFirm) q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;
+        const rs = await postgrest.get<any[]>(path, q, { schema: 'public' });
+        const r = Array.isArray(rs) ? rs[0] : null;
+        if (!r) return;
+        const nb = Number(r.balance ?? 0) + delta;
+        const url = withFirm
+          ? `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`
+          : `${path}?id=eq.${encodeURIComponent(String(islem.cari_hesap_id))}`;
+        await postgrest.patch(url, { balance: nb }, { schema: 'public', prefer: 'return=minimal' });
+      } catch {
+        /* eşleşmeyen tablo */
+      }
+    };
+    await patchPartner(custPath, true);
+    await patchPartner(supPath, false);
+  }
+
+  if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
+    const counterBody: Record<string, unknown> = {
+      firm_nr: String(ERP_SETTINGS.firmNr),
+      period_nr: String(ERP_SETTINGS.periodNr || '01'),
+      register_id: islem.target_register_id,
+      fiche_no: `${ficheNo}-VRM`,
+      date: islem.islem_tarihi || new Date().toISOString(),
+      amount: islem.tutar || 0,
+      sign: 1,
+      definition: `${islem.islem_aciklamasi || ''} (Virman Alındı)`,
+      transaction_type: 'VIRMAN',
+      customer_id: null,
+      currency_code: islem.doviz_kodu || 'YEREL',
+      exchange_rate: 1,
+      f_amount: islem.dovizli_tutar || 0,
+      transfer_status: 0,
+      special_code: islem.ozel_kod || '',
+      target_register_id: islem.kasa_id,
+    };
+    await postgrest.post(linesPath, counterBody, { schema: 'public', prefer: 'return=minimal' });
+    await bumpKasaBalance(islem.target_register_id, Number(islem.tutar || 0));
+  } else if (islem.islem_tipi === 'VIRMAN') {
+    console.warn('[Kasa] VIRMAN logic SKIPPED. Target register ID missing or falsy:', islem.target_register_id);
+  }
+
+  if ((islem.islem_tipi === 'BANKA_YATIRILAN' || islem.islem_tipi === 'BANKADAN_CEKILEN') && islem.bank_id) {
+    let bankSign = 0;
+    let bankTransType = '';
+    if (islem.islem_tipi === 'BANKA_YATIRILAN') {
+      bankSign = 1;
+      bankTransType = 'BANKA_GIRIS';
+    } else {
+      bankSign = -1;
+      bankTransType = 'BANKA_CIKIS';
+    }
+    await postgrest.post(
+      bankLinesPath,
+      {
+        firm_nr: String(ERP_SETTINGS.firmNr),
+        period_nr: String(ERP_SETTINGS.periodNr || '01'),
+        register_id: islem.bank_id,
+        fiche_no: islem.islem_no || '',
+        date: islem.islem_tarihi || new Date().toISOString(),
+        amount: islem.tutar,
+        sign: bankSign,
+        definition: `${islem.islem_aciklamasi || ''} (Kasa Entegrasyon)`,
+        transaction_type: bankTransType,
+      },
+      { schema: 'public', prefer: 'return=minimal' }
+    );
+    const curB = await postgrest.get<any[]>(
+      bankRegPath,
+      { select: 'balance', id: `eq.${islem.bank_id}`, limit: 1 },
+      { schema: 'public' }
+    );
+    const br = Array.isArray(curB) ? curB[0] : null;
+    if (br) {
+      const nb = Number(br.balance ?? 0) + Number(islem.tutar) * bankSign;
+      await postgrest.patch(
+        `${bankRegPath}?id=eq.${encodeURIComponent(String(islem.bank_id))}`,
+        { balance: nb },
+        { schema: 'public', prefer: 'return=minimal' }
+      );
+    }
+  }
+
+  return mapDbIslemToIslem(mainRow);
+}
+
 /**
  * Yeni kasa işlemi oluştur
  */
@@ -291,11 +511,6 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
     const table = 'cash_lines';
     const kasaTable = 'cash_registers';
 
-    // Start transaction
-    await postgres.query('BEGIN');
-    console.log('[Kasa] Transaction STARTED. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
-
-    // Determine Sign based on Transaction Type
     let sign = 0;
     switch (islem.islem_tipi) {
       case 'CH_TAHSILAT':
@@ -318,12 +533,19 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
         sign = -1;
         break;
       default:
-        // Fallback for safety (though all types should be covered)
         sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') ? -1 : 1;
     }
 
-    // fiche_no UNIQUE constraint — boşsa benzersiz oluştur
     const ficheNo = islem.islem_no || `KL-${ERP_SETTINGS.firmNr}-${Date.now()}`;
+
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      console.log('[Kasa] PostgREST işlem. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
+      return await createKasaIslemiViaPostgrest(islem, sign, ficheNo);
+    }
+
+    // Start transaction
+    await postgres.query('BEGIN');
+    console.log('[Kasa] Transaction STARTED. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
 
     const { rows } = await postgres.query(
       `INSERT INTO ${table} (
@@ -507,7 +729,11 @@ export async function createKasaIslemi(islem: KasaIslemi): Promise<KasaIslemi> {
 
     return mapDbIslemToIslem(rows[0]);
   } catch (error: any) {
-    await postgres.query('ROLLBACK');
+    try {
+      await postgres.query('ROLLBACK');
+    } catch {
+      /* BEGIN yoksa veya zaten COMMIT */
+    }
     console.error('[Kasa] İşlem create error:', error);
     throw error;
   }

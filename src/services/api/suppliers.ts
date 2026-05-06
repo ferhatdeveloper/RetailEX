@@ -124,9 +124,35 @@ export const supplierAPI = {
    */
   async getById(id: string): Promise<Supplier | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      const custTable = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const custRows = await postgrest.get<any[]>(
+          `/${custTable}`,
+          {
+            select: '*',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        if (Array.isArray(custRows) && custRows[0]) {
+          return mapDatabaseSupplierToSupplier({ ...custRows[0], card_type: 'customer' });
+        }
+        const supRows = await postgrest.get<any[]>(
+          `/${suppTable}`,
+          { select: '*', id: `eq.${id}`, limit: 1 },
+          { schema: 'public' }
+        );
+        if (Array.isArray(supRows) && supRows[0]) {
+          return mapDatabaseSupplierToSupplier({ ...supRows[0], card_type: 'supplier' });
+        }
+        return null;
+      }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
+        `SELECT * FROM ${custTable} WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseSupplierToSupplier(rows[0]) : null;
@@ -141,9 +167,35 @@ export const supplierAPI = {
    */
   async getByCode(code: string): Promise<Supplier | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      const custTable = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const custRows = await postgrest.get<any[]>(
+          `/${custTable}`,
+          {
+            select: '*',
+            code: `eq.${code}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        if (Array.isArray(custRows) && custRows[0]) {
+          return mapDatabaseSupplierToSupplier({ ...custRows[0], card_type: 'customer' });
+        }
+        const supRows = await postgrest.get<any[]>(
+          `/${suppTable}`,
+          { select: '*', code: `eq.${code}`, limit: 1 },
+          { schema: 'public' }
+        );
+        if (Array.isArray(supRows) && supRows[0]) {
+          return mapDatabaseSupplierToSupplier({ ...supRows[0], card_type: 'supplier' });
+        }
+        return null;
+      }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE code = $1 AND firm_nr = $2`,
+        `SELECT * FROM ${custTable} WHERE code = $1 AND firm_nr = $2`,
         [code, ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseSupplierToSupplier(rows[0]) : null;
@@ -178,6 +230,29 @@ export const supplierAPI = {
       values.push(ERP_SETTINGS.firmNr);
 
       const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const body: Record<string, unknown> = {
+          code: account.code,
+          name: account.name,
+          phone: account.phone,
+          email: account.email,
+          address: account.address,
+          city: account.city,
+          tax_nr: account.tax_number,
+          tax_office: account.tax_office,
+          is_active: true,
+          firm_nr: ERP_SETTINGS.firmNr,
+        };
+        const rows = await postgrest.post<any[]>(
+          `/${tableName}`,
+          body,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return { ...mapDatabaseSupplierToSupplier(row), cardType: account.cardType };
+      }
 
       const { rows } = await postgres.query(
         `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
@@ -215,6 +290,28 @@ export const supplierAPI = {
 
       if (fields.length === 0) throw new Error('No fields to update');
 
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patchBody: Record<string, unknown> = {};
+        const skipKeys = new Set(['id', 'cardType', 'created_at', 'updated_at']);
+        Object.entries(account).forEach(([key, value]) => {
+          if (skipKeys.has(key) || value === undefined) return;
+          let col = key === 'tax_number' || key === 'taxNumber' ? 'tax_nr' : key;
+          if (key === 'tax_office' || key === 'taxOffice') col = 'tax_office';
+          patchBody[col] = value;
+        });
+        if (Object.keys(patchBody).length === 0) throw new Error('No fields to update');
+        const path = isSupplier
+          ? `/${tableName}?id=eq.${encodeURIComponent(id)}`
+          : `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
+        const rows = await postgrest.patch<any[]>(path, patchBody, {
+          schema: 'public',
+          prefer: 'return=representation',
+        });
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return { ...mapDatabaseSupplierToSupplier(row), cardType: account.cardType };
+      }
+
       values.push(id);
 
       let query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i}`;
@@ -243,6 +340,15 @@ export const supplierAPI = {
         ? `rex_${ERP_SETTINGS.firmNr}_suppliers`
         : `rex_${ERP_SETTINGS.firmNr}_customers`;
 
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const path = isSupplier
+          ? `/${tableName}?id=eq.${encodeURIComponent(id)}`
+          : `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`;
+        await postgrest.patch(path, { is_active: false }, { schema: 'public', prefer: 'return=minimal' });
+        return;
+      }
+
       let query = `UPDATE ${tableName} SET is_active = false WHERE id = $1`;
       const params = [id];
 
@@ -263,6 +369,68 @@ export const supplierAPI = {
    */
   async getAccountStatement(accountId: string, startDate?: string, endDate?: string): Promise<any[]> {
     try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const fn = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0');
+        const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+        const salesPath = `/rex_${fn}_${pn}_sales`;
+        const cashPath = `/rex_${fn}_${pn}_cash_lines`;
+
+        const salesQuery: Record<string, string> = {
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes',
+          customer_id: `eq.${accountId}`,
+          order: 'date.asc',
+        };
+        if (startDate && endDate) {
+          salesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+        } else if (startDate) {
+          salesQuery.date = `gte.${startDate}`;
+        } else if (endDate) {
+          salesQuery.date = `lte.${endDate}`;
+        }
+
+        const cashQuery: Record<string, string> = {
+          select: 'fiche_no,date,transaction_type,amount,currency_code,definition',
+          customer_id: `eq.${accountId}`,
+          transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+          order: 'date.asc',
+        };
+        if (startDate && endDate) {
+          cashQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+        } else if (startDate) {
+          cashQuery.date = `gte.${startDate}`;
+        } else if (endDate) {
+          cashQuery.date = `lte.${endDate}`;
+        }
+
+        const [saleRows, cashRows] = await Promise.all([
+          postgrest.get<any[]>(salesPath, salesQuery, { schema: 'public' }).catch(() => [] as any[]),
+          postgrest.get<any[]>(cashPath, cashQuery, { schema: 'public' }).catch(() => [] as any[]),
+        ]);
+
+        const fromSales = (Array.isArray(saleRows) ? saleRows : []).map((r) => ({
+          fiche_no: r.fiche_no,
+          date: r.date,
+          trcode: r.trcode,
+          fiche_type: r.fiche_type,
+          total_amount: r.net_amount,
+          currency: r.currency,
+          notes: r.notes,
+        }));
+        const fromCash = (Array.isArray(cashRows) ? cashRows : []).map((r) => ({
+          fiche_no: r.fiche_no,
+          date: r.date,
+          trcode: 0,
+          fiche_type: r.transaction_type,
+          total_amount: r.amount,
+          currency: r.currency_code,
+          notes: r.definition,
+        }));
+        return [...fromSales, ...fromCash].sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+      }
+
       // Ekstresi = faturalar (sales) + kasa işlemleri (cash_lines)
       // Both halves of the UNION share the same $1/$2/$3 parameters
       const values: any[] = [accountId];
@@ -302,6 +470,26 @@ export const supplierAPI = {
         : `rex_${ERP_SETTINGS.firmNr}_customers`;
 
       const prefix = isSupplier ? 'TED-' : 'MUS-';
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const likePat = `${prefix}*`;
+        const q: Record<string, string> = {
+          select: 'code',
+          code: `like.${likePat}`,
+          order: 'created_at.desc',
+          limit: 1,
+        };
+        if (!isSupplier) {
+          q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;
+        }
+        const rows = await postgrest.get<any[]>(`/${tableName}`, q, { schema: 'public' });
+        if (!Array.isArray(rows) || rows.length === 0) return `${prefix}001`;
+        const lastCode = rows[0].code;
+        const numPart = parseInt(String(lastCode).replace(prefix, ''), 10);
+        if (Number.isNaN(numPart)) return `${prefix}${Date.now().toString().slice(-4)}`;
+        return `${prefix}${(numPart + 1).toString().padStart(3, '0')}`;
+      }
 
       let query = `SELECT code FROM ${tableName} WHERE code LIKE $1`;
       const params = [`${prefix}%`];

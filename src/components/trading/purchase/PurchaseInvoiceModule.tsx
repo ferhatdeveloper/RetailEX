@@ -41,6 +41,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
   const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  /** Liste satırında kalemler yok; düzenlemede getById ile doldurulur (PostgREST dahil). */
+  const [editInvoiceFull, setEditInvoiceFull] = useState<Invoice | null>(null);
 
   // Invoice list state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -181,8 +183,20 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
   };
 
   const handleEditInvoice = (invoice: Invoice) => {
-    setEditingInvoiceId(invoice.id!);
-    setShowNewInvoice(true);
+    const id = String(invoice.id || '').trim();
+    if (!id) return;
+    void (async () => {
+      setEditingInvoiceId(id);
+      setEditInvoiceFull(null);
+      setShowNewInvoice(true);
+      try {
+        const full = await invoicesAPI.getById(id);
+        setEditInvoiceFull(full ?? invoice);
+      } catch (e) {
+        console.error('[PurchaseInvoiceModule] getById failed:', e);
+        setEditInvoiceFull(invoice);
+      }
+    })();
   };
 
   const columnHelper = createColumnHelper<Invoice>();
@@ -324,6 +338,7 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           <button
             onClick={() => {
               setEditingInvoiceId(null);
+              setEditInvoiceFull(null);
               setShowNewInvoice(true);
             }}
             className="px-4 py-2 bg-white text-teal-600 rounded hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm border border-teal-100 shadow-sm"
@@ -336,22 +351,27 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
       {/* Universal Invoice Form Integration */}
       {showNewInvoice && (
-        <div className="fixed inset-0 z-50 bg-white">
-          <UniversalInvoiceForm
-            invoiceType={{
-              code: 5,
-              name: tm('purchaseInvoice'),
-              category: 'Alis',
-              color: 'bg-teal-600'
-            }}
-            onClose={() => {
-              setShowNewInvoice(false);
-              setEditingInvoiceId(null);
-              loadInvoices(); // Refresh list after close
-            }}
-            editData={editingInvoiceId ? invoices.find(i => i.id === editingInvoiceId) : undefined}
-          />
-        </div>
+        <UniversalInvoiceForm
+          invoiceType={{
+            code: 5,
+            name: tm('purchaseInvoice'),
+            category: 'Alis',
+            color: 'bg-teal-600'
+          }}
+          onClose={() => {
+            setShowNewInvoice(false);
+            setEditingInvoiceId(null);
+            setEditInvoiceFull(null);
+            loadInvoices(); // Refresh list after close
+          }}
+          editData={
+            editingInvoiceId
+              ? editInvoiceFull?.id === editingInvoiceId
+                ? editInvoiceFull
+                : invoices.find((i) => i.id === editingInvoiceId) ?? undefined
+              : undefined
+          }
+        />
       )}
 
       {/* Table Area */}

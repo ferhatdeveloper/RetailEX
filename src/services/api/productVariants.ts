@@ -4,8 +4,20 @@
  * Extra data (barcode, price, cost, stock, is_active) is stored in attributes JSONB
  */
 
-import { postgres } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { ProductVariant } from '../../core/types';
+
+function padFirmNr(): string {
+  return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+function variantsPath(suffix = ''): string {
+  return `/rex_${padFirmNr()}_product_variants${suffix}`;
+}
+
+function isRestApi(): boolean {
+  return DB_SETTINGS.connectionProvider === 'rest_api';
+}
 
 export const productVariantAPI = {
   /**
@@ -13,6 +25,17 @@ export const productVariantAPI = {
    */
   async getByProductId(productId: string): Promise<ProductVariant[]> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          variantsPath(),
+          { select: '*', product_id: `eq.${productId}`, order: 'sku.asc' },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : [])
+          .map(mapDatabaseVariantToVariant)
+          .filter(v => v.is_active !== false);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM product_variants WHERE product_id = $1 ORDER BY sku ASC`,
         [productId]
@@ -31,6 +54,16 @@ export const productVariantAPI = {
    */
   async getById(id: string): Promise<ProductVariant | null> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          variantsPath(),
+          { select: '*', id: `eq.${id}`, limit: 1 },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : null;
+        return row ? mapDatabaseVariantToVariant(row) : null;
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM product_variants WHERE id = $1`,
         [id]
@@ -47,6 +80,24 @@ export const productVariantAPI = {
    */
   async getByBarcode(barcode: string): Promise<ProductVariant | null> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          variantsPath(),
+          {
+            select: '*',
+            'attributes->>barcode': `eq.${barcode}`,
+            limit: 5,
+          },
+          { schema: 'public' }
+        );
+        const list = Array.isArray(rows) ? rows : [];
+        const hit = list.find(r => {
+          const a = r.attributes || {};
+          return a.is_active !== false;
+        });
+        return hit ? mapDatabaseVariantToVariant(hit) : null;
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM product_variants WHERE attributes->>'barcode' = $1 AND (attributes->>'is_active')::boolean IS NOT FALSE`,
         [barcode]
@@ -75,6 +126,21 @@ export const productVariantAPI = {
         is_active: true,
       };
 
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.post<any[]>(
+          variantsPath(),
+          {
+            product_id: productId,
+            sku: variant.code || variantName,
+            attributes,
+          },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return mapDatabaseVariantToVariant(row);
+      }
+
       const { rows } = await postgres.query(
         `INSERT INTO product_variants (product_id, sku, attributes)
          VALUES ($1, $2, $3::jsonb) RETURNING *`,
@@ -83,7 +149,7 @@ export const productVariantAPI = {
       return mapDatabaseVariantToVariant(rows[0]);
     } catch (error: any) {
       console.error('[ProductVariantAPI] create failed:', error);
-      if (error.code === '23505') {
+      if (error.code === '23505' || String(error?.message || error).includes('409')) {
         throw new Error('Bu varyant SKU zaten kullanılıyor');
       }
       throw new Error('Varyant eklenemedi');
@@ -140,6 +206,18 @@ export const productVariantAPI = {
       }
 
       values.push(id);
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const body: Record<string, unknown> = { attributes };
+        if (updates.code !== undefined) body.sku = updates.code;
+        const rows = await postgrest.patch<any[]>(
+          `${variantsPath()}?id=eq.${encodeURIComponent(id)}`,
+          body,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return mapDatabaseVariantToVariant(row);
+      }
       const { rows } = await postgres.query(
         `UPDATE product_variants SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
         values
@@ -156,6 +234,21 @@ export const productVariantAPI = {
    */
   async delete(id: string): Promise<boolean> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const dbRow = await postgrest.get<any[]>(
+          variantsPath(),
+          { select: 'attributes', id: `eq.${id}`, limit: 1 },
+          { schema: 'public' }
+        );
+        const attrs = (Array.isArray(dbRow) && dbRow[0]?.attributes) || {};
+        await postgrest.patch(
+          `${variantsPath()}?id=eq.${encodeURIComponent(id)}`,
+          { attributes: { ...attrs, is_active: false } },
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+        return true;
+      }
       await postgres.query(
         `UPDATE product_variants SET attributes = attributes || '{"is_active": false}'::jsonb WHERE id = $1`,
         [id]
@@ -172,6 +265,14 @@ export const productVariantAPI = {
    */
   async deleteByProductId(productId: string): Promise<boolean> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        await postgrest.delete(
+          `${variantsPath()}?product_id=eq.${encodeURIComponent(productId)}`,
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+        return true;
+      }
       await postgres.query(`DELETE FROM product_variants WHERE product_id = $1`, [productId]);
       return true;
     } catch (error) {
@@ -185,6 +286,21 @@ export const productVariantAPI = {
    */
   async updateStock(id: string, quantity: number): Promise<boolean> {
     try {
+      if (isRestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const dbRow = await postgrest.get<any[]>(
+          variantsPath(),
+          { select: 'attributes', id: `eq.${id}`, limit: 1 },
+          { schema: 'public' }
+        );
+        const attrs = (Array.isArray(dbRow) && dbRow[0]?.attributes) || {};
+        await postgrest.patch(
+          `${variantsPath()}?id=eq.${encodeURIComponent(id)}`,
+          { attributes: { ...attrs, stock: quantity } },
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+        return true;
+      }
       await postgres.query(
         `UPDATE product_variants SET attributes = attributes || jsonb_build_object('stock', $1::numeric) WHERE id = $2`,
         [quantity, id]
@@ -209,6 +325,7 @@ function mapDatabaseVariantToVariant(dbVariant: any): ProductVariant & { is_acti
   const attributes = dbVariant.attributes || {};
   return {
     id: dbVariant.id,
+    productId: dbVariant.product_id,
     code: dbVariant.sku || '',
     barcode: attributes.barcode || '',
     size: attributes.size || '',

@@ -2,7 +2,15 @@
  * Master Data API - Direct PostgreSQL Implementation
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+
+function padFirmNr(): string {
+    return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+function isRestApi(): boolean {
+    return DB_SETTINGS.connectionProvider === 'rest_api';
+}
 
 // ============================================================================
 // TYPES
@@ -78,6 +86,15 @@ export function crossRateDocumentToLedgerFromLatest(
 export const currencyAPI = {
     async getAll(): Promise<Currency[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<Currency[]>(
+                    '/currencies',
+                    { select: '*', order: 'sort_order.asc,code.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM currencies ORDER BY sort_order ASC, code ASC`
             );
@@ -90,6 +107,15 @@ export const currencyAPI = {
 
     async getByCode(code: string): Promise<Currency | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<Currency[]>(
+                    '/currencies',
+                    { select: '*', code: `eq.${code}`, limit: 1 },
+                    { schema: 'public' }
+                );
+                return (Array.isArray(rows) ? rows[0] : null) || null;
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM currencies WHERE code = $1`,
                 [code]
@@ -103,6 +129,21 @@ export const currencyAPI = {
 
     async create(currency: Omit<Currency, 'id'>): Promise<Currency | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.post<Currency[]>(
+                    '/currencies',
+                    {
+                        code: currency.code,
+                        name: currency.name,
+                        symbol: currency.symbol,
+                        is_base_currency: currency.is_base_currency ?? false,
+                        is_active: currency.is_active ?? true,
+                    },
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as unknown as Currency);
+            }
             const { rows } = await postgres.query(
                 `INSERT INTO currencies (code, name, symbol, is_base_currency, is_active)
                  VALUES ($1, $2, $3, $4, $5)
@@ -118,6 +159,19 @@ export const currencyAPI = {
 
     async update(id: string, currency: Partial<Currency>): Promise<Currency | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const body: Record<string, unknown> = {};
+                if (currency.name !== undefined) body.name = currency.name;
+                if (currency.symbol !== undefined) body.symbol = currency.symbol;
+                if (currency.is_active !== undefined) body.is_active = currency.is_active;
+                const rows = await postgrest.patch<Currency[]>(
+                    `/currencies?id=eq.${encodeURIComponent(id)}`,
+                    body,
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as unknown as Currency);
+            }
             const { rows } = await postgres.query(
                 `UPDATE currencies 
                  SET name = COALESCE($1, name), 
@@ -137,6 +191,11 @@ export const currencyAPI = {
 
     async delete(id: string): Promise<boolean> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                await postgrest.delete(`/currencies?id=eq.${encodeURIComponent(id)}`, { schema: 'public' });
+                return true;
+            }
             await postgres.query(`DELETE FROM currencies WHERE id = $1`, [id]);
             return true;
         } catch (error) {
@@ -153,6 +212,15 @@ export const currencyAPI = {
 export const exchangeRateAPI = {
     async getAll(): Promise<ExchangeRate[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<ExchangeRate[]>(
+                    '/exchange_rates',
+                    { select: '*', order: 'date.desc,created_at.desc', limit: 100 },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM exchange_rates ORDER BY date DESC, created_at DESC LIMIT 100`
             );
@@ -165,6 +233,29 @@ export const exchangeRateAPI = {
 
     async getLatestRates(): Promise<ExchangeRate[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<ExchangeRate[]>(
+                    '/exchange_rates',
+                    {
+                        select: '*',
+                        is_active: 'eq.true',
+                        order: 'currency_code.asc,date.desc,created_at.desc',
+                        limit: 2000,
+                    },
+                    { schema: 'public' }
+                );
+                const list = Array.isArray(rows) ? rows : [];
+                const seen = new Set<string>();
+                const out: ExchangeRate[] = [];
+                for (const r of list) {
+                    const k = String(r.currency_code ?? '').trim().toUpperCase();
+                    if (seen.has(k)) continue;
+                    seen.add(k);
+                    out.push({ ...r, currency_code: k });
+                }
+                return out;
+            }
             const { rows } = await postgres.query(
                 `SELECT DISTINCT ON (UPPER(TRIM(currency_code::text))) *
                  FROM exchange_rates
@@ -188,6 +279,29 @@ export const exchangeRateAPI = {
     async getRateAsOfDate(currency_code: string, as_of_date: string): Promise<ExchangeRate | null> {
         if (!currency_code?.trim() || !as_of_date?.trim()) return null;
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const code = currency_code.trim().toUpperCase();
+                const d = as_of_date.trim().slice(0, 10);
+                const rows = await postgrest.get<ExchangeRate[]>(
+                    '/exchange_rates',
+                    {
+                        select: '*',
+                        is_active: 'eq.true',
+                        currency_code: `eq.${code}`,
+                        date: `lte.${d}`,
+                        order: 'date.desc,created_at.desc',
+                        limit: 1,
+                    },
+                    { schema: 'public' }
+                );
+                const row = (Array.isArray(rows) ? rows[0] : null) as ExchangeRate | undefined;
+                if (!row) return null;
+                return {
+                    ...row,
+                    currency_code: String(row.currency_code ?? '').trim().toUpperCase()
+                };
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM exchange_rates
                  WHERE is_active = true
@@ -218,6 +332,32 @@ export const exchangeRateAPI = {
     }): Promise<ExchangeRate[]> {
         try {
             const limit = Math.min(Math.max(filters.limit ?? 500, 1), 2000);
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const q: Record<string, string | number> = {
+                    select: '*',
+                    is_active: 'eq.true',
+                    order: 'date.desc,currency_code.asc,created_at.desc',
+                    limit,
+                };
+                if (filters.currency_code) {
+                    q.currency_code = `eq.${String(filters.currency_code).trim().toUpperCase()}`;
+                }
+                const df = filters.date_from ? String(filters.date_from).trim().slice(0, 10) : '';
+                const dt = filters.date_to ? String(filters.date_to).trim().slice(0, 10) : '';
+                if (df && dt) {
+                    q.and = `(date.gte.${df},date.lte.${dt})`;
+                } else if (df) {
+                    q.date = `gte.${df}`;
+                } else if (dt) {
+                    q.date = `lte.${dt}`;
+                }
+                const rows = await postgrest.get<ExchangeRate[]>('/exchange_rates', q, { schema: 'public' });
+                return (Array.isArray(rows) ? rows : []).map((r: ExchangeRate) => ({
+                    ...r,
+                    currency_code: String(r.currency_code ?? '').trim().toUpperCase()
+                }));
+            }
             const parts: string[] = ['is_active = true'];
             const params: unknown[] = [];
             let n = 1;
@@ -253,6 +393,47 @@ export const exchangeRateAPI = {
     async save(rate: Omit<ExchangeRate, 'id'>): Promise<ExchangeRate | null> {
         const code = String(rate.currency_code ?? '').trim().toUpperCase();
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const src = rate.source || 'manual';
+                const existing = await postgrest.get<ExchangeRate[]>(
+                    '/exchange_rates',
+                    {
+                        select: '*',
+                        currency_code: `eq.${code}`,
+                        date: `eq.${String(rate.date).trim().slice(0, 10)}`,
+                        source: `eq.${src}`,
+                        limit: 1,
+                    },
+                    { schema: 'public' }
+                );
+                const hit = Array.isArray(existing) ? existing[0] : null;
+                if (hit?.id) {
+                    const rows = await postgrest.patch<ExchangeRate[]>(
+                        `/exchange_rates?id=eq.${encodeURIComponent(hit.id)}`,
+                        { buy_rate: rate.buy_rate, sell_rate: rate.sell_rate },
+                        { schema: 'public', prefer: 'return=representation' }
+                    );
+                    const row = Array.isArray(rows) ? rows[0] : (rows as unknown as ExchangeRate);
+                    if (!row) return null;
+                    return { ...row, currency_code: String(row.currency_code ?? '').trim().toUpperCase() };
+                }
+                const rows = await postgrest.post<ExchangeRate[]>(
+                    '/exchange_rates',
+                    {
+                        currency_code: code,
+                        date: String(rate.date).trim().slice(0, 10),
+                        buy_rate: rate.buy_rate,
+                        sell_rate: rate.sell_rate,
+                        source: src,
+                        is_active: rate.is_active ?? true,
+                    },
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                const row = Array.isArray(rows) ? rows[0] : (rows as unknown as ExchangeRate);
+                if (!row) return null;
+                return { ...row, currency_code: String(row.currency_code ?? '').trim().toUpperCase() };
+            }
             const { rows } = await postgres.query(
                 `INSERT INTO exchange_rates (currency_code, date, buy_rate, sell_rate, source, is_active)
                  VALUES ($1, $2, $3, $4, $5, $6)
@@ -275,6 +456,18 @@ export const exchangeRateAPI = {
 
     async update(id: string, rate: Partial<ExchangeRate>): Promise<ExchangeRate | null> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const body: Record<string, unknown> = {};
+                if (rate.buy_rate !== undefined) body.buy_rate = rate.buy_rate;
+                if (rate.sell_rate !== undefined) body.sell_rate = rate.sell_rate;
+                const rows = await postgrest.patch<ExchangeRate[]>(
+                    `/exchange_rates?id=eq.${encodeURIComponent(id)}`,
+                    body,
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as unknown as ExchangeRate);
+            }
             const { rows } = await postgres.query(
                 `UPDATE exchange_rates 
                  SET buy_rate = COALESCE($1, buy_rate), 
@@ -293,6 +486,11 @@ export const exchangeRateAPI = {
 
     async delete(id: string): Promise<boolean> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                await postgrest.delete(`/exchange_rates?id=eq.${encodeURIComponent(id)}`, { schema: 'public' });
+                return true;
+            }
             await postgres.query(`DELETE FROM exchange_rates WHERE id = $1`, [id]);
             return true;
         } catch (error) {
@@ -380,6 +578,16 @@ export interface SpecialCode {
 export const categoryAPI = {
     async getAll(): Promise<Category[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<Category[]>(
+                    `/rex_${fn}_categories`,
+                    { select: '*', is_active: 'eq.true', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM categories WHERE is_active = true ORDER BY name ASC`
             );
@@ -392,6 +600,16 @@ export const categoryAPI = {
 
     async getMainCategories(): Promise<Category[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<Category[]>(
+                    `/rex_${fn}_categories`,
+                    { select: '*', is_active: 'eq.true', parent_id: 'is.null', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM categories WHERE parent_id IS NULL AND is_active = true ORDER BY name ASC`
             );
@@ -404,6 +622,21 @@ export const categoryAPI = {
 
     async getSubCategories(parentId: string): Promise<Category[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<Category[]>(
+                    `/rex_${fn}_categories`,
+                    {
+                        select: '*',
+                        is_active: 'eq.true',
+                        parent_id: `eq.${parentId}`,
+                        order: 'name.asc',
+                    },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM categories WHERE parent_id = $1 AND is_active = true ORDER BY name ASC`,
                 [parentId]
@@ -423,6 +656,16 @@ export const categoryAPI = {
 export const brandAPI = {
     async getAll(): Promise<Brand[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<Brand[]>(
+                    `/rex_${fn}_brands`,
+                    { select: '*', is_active: 'eq.true', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM brands WHERE is_active = true ORDER BY name ASC`
             );
@@ -441,6 +684,15 @@ export const brandAPI = {
 export const productGroupAPI = {
     async getAll(): Promise<ProductGroup[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const rows = await postgrest.get<ProductGroup[]>(
+                    '/product_groups',
+                    { select: '*', is_active: 'eq.true', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM product_groups WHERE is_active = true ORDER BY name ASC`
             );
@@ -459,6 +711,16 @@ export const productGroupAPI = {
 export const unitAPI = {
     async getAll(): Promise<Unit[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<Unit[]>(
+                    `/rex_${fn}_units`,
+                    { select: '*', is_active: 'eq.true', order: 'code.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM units WHERE is_active = true ORDER BY code ASC`
             );
@@ -477,6 +739,16 @@ export const unitAPI = {
 export const taxRateAPI = {
     async getAll(): Promise<TaxRate[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<TaxRate[]>(
+                    `/rex_${fn}_tax_rates`,
+                    { select: '*', is_active: 'eq.true', order: 'rate.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM tax_rates WHERE is_active = true ORDER BY rate ASC`
             );
@@ -495,6 +767,16 @@ export const taxRateAPI = {
 export const specialCodeAPI = {
     async getAll(): Promise<SpecialCode[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<SpecialCode[]>(
+                    `/rex_${fn}_special_codes`,
+                    { select: '*', is_active: 'eq.true', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM special_codes WHERE is_active = true ORDER BY name ASC`
             );
@@ -507,6 +789,21 @@ export const specialCodeAPI = {
 
     async getByCategory(type: string): Promise<SpecialCode[]> {
         try {
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.get<SpecialCode[]>(
+                    `/rex_${fn}_special_codes`,
+                    {
+                        select: '*',
+                        is_active: 'eq.true',
+                        module_type: `eq.${type}`,
+                        order: 'name.asc',
+                    },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const { rows } = await postgres.query(
                 `SELECT * FROM special_codes WHERE module_type = $1 AND is_active = true ORDER BY name ASC`,
                 [type]

@@ -105,6 +105,7 @@ import { VirmanModule } from '../accounting/reports/VirmanModule';
 import { PaymentPlansModule } from '../accounting/finance/PaymentPlansModule';
 import { BankPaymentPlansModule } from '../accounting/finance/BankPaymentPlansModule';
 import { MaterialMasterRecords, MasterRecordType } from '../inventory/products/MaterialMasterRecords';
+import { MaterialsIntakeModule } from '../management/MaterialsIntakeModule';
 import { CostCenterManagement } from '../accounting/finance/CostCenterManagement';
 import { MaterialExtractReport } from '../inventory/reports/MaterialExtractReport';
 import { MaterialAdvancedReports, ReportViewType } from '../inventory/products/MaterialAdvancedReports';
@@ -181,7 +182,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
   'MalzemeSiniflari' | 'Birimsetleri' | 'varyant' | 'ozelkodlar' | 'markatanim' | 'groupkodları' |
-  'malzemeler' | 'hareketler' | 'material-list' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
+  'malzemeler' | 'materials-intake' | 'hareketler' | 'material-list' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
   'suppliers_def' | 'warehousetransfer_def' | 'warehousetransfer_mv' | 'warehousetransfer_v' | 'storetransfer_mv' | 'storetransfer_v' | 'stockcount_store' | 'material-transfers' |
   'stockreports_bal' | 'stockreports_tr' | 'stockreports_list' | 'stockreports_sum' | 'stockreports_trans' |
   'report-material-extract' | 'report-material-value' | 'inventory' | 'cost' | 'report-in-out-totals' | 'report-warehouse-status' | 'report-transaction-breakdown' | 'report-slip-list' | 'report-min-max' |
@@ -843,6 +844,12 @@ export function ManagementModule({
         case 'malzemeler': // JSON ID
           return <ProductManagement products={products} setProducts={setProducts} />;
 
+        case 'materials-intake':
+          return (
+            <MaterialsIntakeModule
+              onOpenPurchaseInvoice={() => setCurrentScreen('purchase-invoice-standard')}
+            />
+          );
 
         // Material Management - Master Records
         case 'material-classes':

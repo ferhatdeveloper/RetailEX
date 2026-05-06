@@ -103,6 +103,8 @@ export interface Product {
 export interface ProductVariant {
   id: string;
   code: string;
+  /** DB `product_variants.product_id` — barkod çözümlemesi vb. */
+  productId?: string;
   size?: string;
   color?: string;
   stock: number;

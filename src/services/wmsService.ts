@@ -1,11 +1,52 @@
 /**
  * WMS Service - Central data service for Warehouse Management System
- * All queries use PostgresConnection (local PostgreSQL, no Supabase)
+ * `connectionProvider === 'db'` iken PostgresConnection; `rest_api` iken PostgREST.
  */
 
-import { PostgresConnection, ERP_SETTINGS } from './postgres';
+import { PostgresConnection, ERP_SETTINGS, DB_SETTINGS } from './postgres';
 
 const conn = () => PostgresConnection.getInstance();
+
+function isRestApi(): boolean {
+    return DB_SETTINGS.connectionProvider === 'rest_api';
+}
+
+function padFirmNr(): string {
+    return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+function firmNrParam(): string {
+    return String(ERP_SETTINGS.firmNr || '001').trim();
+}
+
+function productsPath(): string {
+    return `/rex_${padFirmNr()}_products`;
+}
+
+/** PostgREST HEAD + Prefer: count=exact → Content-Range sonundaki toplam */
+async function postgrestHeadTotal(path: string, schema: 'public' | 'wms', query: Record<string, string | undefined>): Promise<number> {
+    const { getPostgrestUrl } = await import('../config/postgrest.config');
+    const { fetchRetailexAware } = await import('../utils/retailexDevProxy');
+    const search = new URLSearchParams();
+    search.set('select', 'id');
+    Object.entries(query).forEach(([k, v]) => {
+        if (v !== undefined && v !== '') search.set(k, v);
+    });
+    const url = getPostgrestUrl(path) + `?${search.toString()}`;
+    const res = await fetchRetailexAware(url, {
+        method: 'HEAD',
+        headers: {
+            Accept: 'application/json',
+            'Accept-Profile': schema,
+            'Content-Profile': schema,
+            Prefer: 'count=exact',
+        },
+    });
+    if (!res.ok) return 0;
+    const cr = res.headers.get('Content-Range');
+    const m = cr?.match(/\/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : 0;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,8 +153,49 @@ export async function getDashboardStats(): Promise<WMSDashboardStats> {
         activeStores: 0, pendingTransfers: 0, todayReceiving: 0, stockAccuracy: 98.5,
     };
 
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const [totalProducts, activeCountingSlips, activeStores, pendingTransfers] = await Promise.all([
+                postgrestHeadTotal(productsPath(), 'public', {}),
+                postgrestHeadTotal('/counting_slips', 'wms', {
+                    firm_nr: `eq.${firmNr}`,
+                    status: 'not.in.(completed,cancelled)',
+                }),
+                postgrestHeadTotal('/stores', 'public', { is_active: 'eq.true' }),
+                postgrestHeadTotal('/transfers', 'wms', {
+                    firm_nr: `eq.${firmNr}`,
+                    status: 'not.in.(completed,cancelled)',
+                }),
+            ]);
+            let lowStockCount = 0;
+            try {
+                const rows = await postgrest.get<{ stock?: number; min_stock?: number }[]>(
+                    productsPath(),
+                    { select: 'stock,min_stock', min_stock: 'gt.0', limit: 5000 },
+                    { schema: 'public' }
+                );
+                const list = Array.isArray(rows) ? rows : [];
+                for (const r of list) {
+                    const st = Number(r.stock ?? 0);
+                    const mn = Number(r.min_stock ?? 0);
+                    if (mn > 0 && st <= mn) lowStockCount += 1;
+                }
+            } catch {
+                lowStockCount = 0;
+            }
+            return {
+                totalProducts,
+                lowStockCount,
+                activeCountingSlips,
+                activeStores,
+                pendingTransfers,
+                todayReceiving: 0,
+                stockAccuracy: 98.5,
+            };
+        }
+
         const results = await Promise.allSettled([
             // Products (auto-rewritten to rex_{firm}_products)
             c.query<{ cnt: string }>(`SELECT COUNT(*)::int AS cnt FROM products`),
@@ -149,6 +231,27 @@ export async function getDashboardStats(): Promise<WMSDashboardStats> {
 export async function searchProducts(query: string, limit = 50): Promise<WMSProduct[]> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const q = String(query || '').trim().slice(0, 120).replace(/[(),]/g, ' ');
+            if (!q) return [];
+            const pat = `*${q}*`;
+            const rows = await postgrest.get<any[]>(
+                productsPath(),
+                {
+                    select: 'id,code,name,barcode,stock,min_stock,unit,category_code,brand,price,cost',
+                    or: `(name.ilike.${pat},code.ilike.${pat},barcode.ilike.${pat})`,
+                    order: 'name.asc',
+                    limit,
+                },
+                { schema: 'public' }
+            );
+            const list = Array.isArray(rows) ? rows : [];
+            return list.map((r: any) => ({
+                ...r,
+                category: r.category_code,
+            })) as WMSProduct[];
+        }
         const { rows } = await c.query<WMSProduct>(
             `SELECT id, code, name, barcode, stock, min_stock, unit, category_code AS category, brand, price, cost
              FROM products
@@ -164,6 +267,19 @@ export async function searchProducts(query: string, limit = 50): Promise<WMSProd
 export async function getAllProducts(limit = 200): Promise<WMSProduct[]> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<any[]>(
+                productsPath(),
+                {
+                    select: 'id,code,name,barcode,stock,min_stock,unit,category_code,brand,price,cost',
+                    order: 'name.asc',
+                    limit,
+                },
+                { schema: 'public' }
+            );
+            return (Array.isArray(rows) ? rows : []).map((r: any) => ({ ...r, category: r.category_code })) as WMSProduct[];
+        }
         const { rows } = await c.query<WMSProduct>(
             `SELECT id, code, name, barcode, stock, min_stock, unit, category_code AS category, brand, price, cost
              FROM products ORDER BY name LIMIT $1`,
@@ -176,6 +292,23 @@ export async function getAllProducts(limit = 200): Promise<WMSProduct[]> {
 export async function getLowStockProducts(): Promise<WMSProduct[]> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<any[]>(
+                productsPath(),
+                {
+                    select: 'id,code,name,barcode,stock,min_stock,unit,category_code,brand,price,cost',
+                    min_stock: 'gt.0',
+                    limit: 500,
+                },
+                { schema: 'public' }
+            );
+            const list = (Array.isArray(rows) ? rows : [])
+                .filter((r: any) => Number(r.min_stock) > 0 && Number(r.stock) <= Number(r.min_stock))
+                .sort((a: any, b: any) => (Number(b.min_stock) - Number(b.stock)) - (Number(a.min_stock) - Number(a.stock)))
+                .slice(0, 100);
+            return list.map((r: any) => ({ ...r, category: r.category_code })) as WMSProduct[];
+        }
         const { rows } = await c.query<WMSProduct>(
             `SELECT id, code, name, barcode, stock, min_stock, unit, category_code AS category, brand, price, cost
              FROM products
@@ -190,6 +323,28 @@ export async function getLowStockProducts(): Promise<WMSProduct[]> {
 export async function getProductByBarcode(barcode: string): Promise<WMSProduct | null> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const b = String(barcode || '').trim();
+            if (!b) return null;
+            const sel = 'id,code,name,barcode,stock,min_stock,unit,category_code,brand,price,cost';
+            let rows = await postgrest.get<any[]>(
+                productsPath(),
+                { select: sel, barcode: `eq.${b}`, limit: 1 },
+                { schema: 'public' }
+            );
+            let r = Array.isArray(rows) ? rows[0] : null;
+            if (!r) {
+                rows = await postgrest.get<any[]>(
+                    productsPath(),
+                    { select: sel, code: `eq.${b}`, limit: 1 },
+                    { schema: 'public' }
+                );
+                r = Array.isArray(rows) ? rows[0] : null;
+            }
+            if (!r) return null;
+            return { ...r, category: r.category_code } as WMSProduct;
+        }
         const { rows } = await c.query<WMSProduct>(
             `SELECT id, code, name, barcode, stock, min_stock, unit, category_code AS category, brand, price, cost
              FROM products WHERE barcode = $1 OR code = $1 LIMIT 1`,
@@ -203,8 +358,22 @@ export async function getProductByBarcode(barcode: string): Promise<WMSProduct |
 
 export async function getActiveStores(): Promise<{ id: string; name: string; code: string }[]> {
     const c = conn();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<{ id: string; name: string; code: string }[]>(
+                '/stores',
+                { select: 'id,name,code', is_active: 'eq.true', order: 'name.asc' },
+                { schema: 'public' }
+            );
+            if (Array.isArray(rows) && rows.length > 0) return rows;
+            const all = await postgrest.get<{ id: string; name: string; code: string }[]>(
+                '/stores',
+                { select: 'id,name,code', order: 'name.asc', limit: 20 },
+                { schema: 'public' }
+            );
+            return Array.isArray(all) ? all : [];
+        }
         const { rows } = await c.query<{ id: string; name: string; code: string }>(
             `SELECT id, name, code FROM public.stores WHERE is_active = true ORDER BY name`
         );
@@ -219,6 +388,7 @@ export async function getActiveStores(): Promise<{ id: string; name: string; cod
 // ─── Receiving ────────────────────────────────────────────────────────────────
 
 export async function ensureReceivingSchema(): Promise<void> {
+    if (isRestApi()) return;
     const c = conn();
     const ddl = [
         `CREATE TABLE IF NOT EXISTS wms.receiving_slips (
@@ -261,9 +431,45 @@ export async function ensureReceivingSchema(): Promise<void> {
 
 export async function getReceivingSlips(status?: string): Promise<WMSReceivingSlip[]> {
     const c = conn();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     await ensureReceivingSchema();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const q: Record<string, string | number> = {
+                select: '*',
+                firm_nr: `eq.${firmNr}`,
+                order: 'created_at.desc',
+                limit: 100,
+            };
+            if (status && status !== 'all') q.status = `eq.${status}`;
+            const slips = await postgrest.get<any[]>('/receiving_slips', q, { schema: 'wms' });
+            const list = Array.isArray(slips) ? slips : [];
+            if (!list.length) return [];
+            const ids = list.map(s => s.id).filter(Boolean);
+            const inList = ids.map(id => encodeURIComponent(id)).join(',');
+            const lines = await postgrest.get<{ slip_id: string }[]>(
+                '/receiving_lines',
+                { select: 'id,slip_id', slip_id: `in.(${inList})` },
+                { schema: 'wms' }
+            );
+            const countBySlip = new Map<string, number>();
+            (Array.isArray(lines) ? lines : []).forEach((l: any) => {
+                countBySlip.set(l.slip_id, (countBySlip.get(l.slip_id) || 0) + 1);
+            });
+            const storeIds = [...new Set(list.map((s: any) => s.store_id).filter(Boolean))];
+            const storeMap = new Map<string, string>();
+            if (storeIds.length) {
+                const sil = storeIds.map(id => encodeURIComponent(id)).join(',');
+                const srows = await postgrest.get<any[]>('/stores', { select: 'id,name', id: `in.(${sil})` }, { schema: 'public' });
+                (Array.isArray(srows) ? srows : []).forEach((s: any) => storeMap.set(s.id, s.name));
+            }
+            return list.map((s: any) => ({
+                ...s,
+                store_name: s.store_id ? storeMap.get(s.store_id) : undefined,
+                item_count: countBySlip.get(s.id) || 0,
+            })) as WMSReceivingSlip[];
+        }
         let sql = `SELECT rs.*, s.name AS store_name, COUNT(rl.id)::int AS item_count
                    FROM wms.receiving_slips rs
                    LEFT JOIN public.stores s ON rs.store_id = s.id
@@ -285,8 +491,32 @@ export async function createReceivingSlip(data: {
 }): Promise<WMSReceivingSlip> {
     const c = conn();
     await ensureReceivingSchema();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     const year = new Date().getFullYear();
+    const yearStart = `${year}-01-01`;
+    if (isRestApi()) {
+        const cnt = await postgrestHeadTotal('/receiving_slips', 'wms', {
+            firm_nr: `eq.${firmNr}`,
+            created_at: `gte.${yearStart}`,
+        });
+        const seq = (cnt + 1).toString().padStart(4, '0');
+        const slip_no = `MAL-${year}-${seq}`;
+        const { postgrest } = await import('./api/postgrestClient');
+        const rows = await postgrest.post<WMSReceivingSlip[]>(
+            '/receiving_slips',
+            {
+                firm_nr: firmNr,
+                store_id: data.store_id,
+                slip_no,
+                supplier_name: data.supplier_name || null,
+                notes: data.notes || null,
+                status: 'draft',
+                created_by: data.created_by || null,
+            },
+            { schema: 'wms', prefer: 'return=representation' }
+        );
+        return (Array.isArray(rows) ? rows[0] : rows) as WMSReceivingSlip;
+    }
     const { rows: cnt } = await c.query<{ count: string }>(
         `SELECT COUNT(*)::int AS count FROM wms.receiving_slips WHERE firm_nr = $1 AND date_part('year', created_at) = $2`,
         [firmNr, year]
@@ -303,6 +533,28 @@ export async function createReceivingSlip(data: {
 
 export async function addReceivingLine(slipId: string, data: Omit<WMSReceivingLine, 'id' | 'slip_id'>): Promise<WMSReceivingLine> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        const rows = await postgrest.post<WMSReceivingLine[]>(
+            '/receiving_lines',
+            {
+                slip_id: slipId,
+                product_id: data.product_id || null,
+                product_name: data.product_name || null,
+                product_code: data.product_code || null,
+                barcode: data.barcode || null,
+                ordered_qty: data.ordered_qty || 0,
+                received_qty: data.received_qty || 0,
+                unit: data.unit || null,
+                lot_number: data.lot_number || null,
+                expiry_date: data.expiry_date || null,
+                location_code: data.location_code || null,
+                notes: data.notes || null,
+            },
+            { schema: 'wms', prefer: 'return=representation' }
+        );
+        return (Array.isArray(rows) ? rows[0] : rows) as WMSReceivingLine;
+    }
     const { rows } = await c.query<WMSReceivingLine>(
         `INSERT INTO wms.receiving_lines
             (slip_id, product_id, product_name, product_code, barcode, ordered_qty, received_qty, unit, lot_number, expiry_date, location_code, notes)
@@ -317,6 +569,15 @@ export async function addReceivingLine(slipId: string, data: Omit<WMSReceivingLi
 export async function getReceivingLines(slipId: string): Promise<WMSReceivingLine[]> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<WMSReceivingLine[]>(
+                '/receiving_lines',
+                { select: '*', slip_id: `eq.${slipId}`, order: 'created_at.asc' },
+                { schema: 'wms' }
+            );
+            return Array.isArray(rows) ? rows : [];
+        }
         const { rows } = await c.query<WMSReceivingLine>(
             `SELECT * FROM wms.receiving_lines WHERE slip_id = $1 ORDER BY created_at`,
             [slipId]
@@ -327,17 +588,32 @@ export async function getReceivingLines(slipId: string): Promise<WMSReceivingLin
 
 export async function updateReceivingSlipStatus(slipId: string, status: WMSReceivingSlip['status']): Promise<void> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        await postgrest.patch(
+            `/receiving_slips?id=eq.${encodeURIComponent(slipId)}`,
+            { status, updated_at: new Date().toISOString() },
+            { schema: 'wms', prefer: 'return=minimal' }
+        );
+        return;
+    }
     await c.query(`UPDATE wms.receiving_slips SET status = $2, updated_at = NOW() WHERE id = $1`, [slipId, status]);
 }
 
 export async function deleteReceivingLine(lineId: string): Promise<void> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        await postgrest.delete(`/receiving_lines?id=eq.${encodeURIComponent(lineId)}`, { schema: 'wms' });
+        return;
+    }
     await c.query(`DELETE FROM wms.receiving_lines WHERE id = $1`, [lineId]);
 }
 
 // ─── Dispatch (Issue) ─────────────────────────────────────────────────────────
 
 export async function ensureDispatchSchema(): Promise<void> {
+    if (isRestApi()) return;
     const c = conn();
     const ddl = [
         `CREATE TABLE IF NOT EXISTS wms.dispatch_slips (
@@ -379,9 +655,45 @@ export async function ensureDispatchSchema(): Promise<void> {
 
 export async function getDispatchSlips(status?: string): Promise<WMSDispatchSlip[]> {
     const c = conn();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     await ensureDispatchSchema();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const q: Record<string, string | number> = {
+                select: '*',
+                firm_nr: `eq.${firmNr}`,
+                order: 'created_at.desc',
+                limit: 100,
+            };
+            if (status && status !== 'all') q.status = `eq.${status}`;
+            const slips = await postgrest.get<any[]>('/dispatch_slips', q, { schema: 'wms' });
+            const list = Array.isArray(slips) ? slips : [];
+            if (!list.length) return [];
+            const ids = list.map(s => s.id).filter(Boolean);
+            const inList = ids.map(id => encodeURIComponent(id)).join(',');
+            const lines = await postgrest.get<{ slip_id: string }[]>(
+                '/dispatch_lines',
+                { select: 'id,slip_id', slip_id: `in.(${inList})` },
+                { schema: 'wms' }
+            );
+            const countBySlip = new Map<string, number>();
+            (Array.isArray(lines) ? lines : []).forEach((l: any) => {
+                countBySlip.set(l.slip_id, (countBySlip.get(l.slip_id) || 0) + 1);
+            });
+            const storeIds = [...new Set(list.map((s: any) => s.store_id).filter(Boolean))];
+            const storeMap = new Map<string, string>();
+            if (storeIds.length) {
+                const sil = storeIds.map(id => encodeURIComponent(id)).join(',');
+                const srows = await postgrest.get<any[]>('/stores', { select: 'id,name', id: `in.(${sil})` }, { schema: 'public' });
+                (Array.isArray(srows) ? srows : []).forEach((s: any) => storeMap.set(s.id, s.name));
+            }
+            return list.map((s: any) => ({
+                ...s,
+                store_name: s.store_id ? storeMap.get(s.store_id) : undefined,
+                item_count: countBySlip.get(s.id) || 0,
+            })) as WMSDispatchSlip[];
+        }
         let sql = `SELECT ds.*, s.name AS store_name, COUNT(dl.id)::int AS item_count
                    FROM wms.dispatch_slips ds
                    LEFT JOIN public.stores s ON ds.store_id = s.id
@@ -404,8 +716,33 @@ export async function createDispatchSlip(data: {
 }): Promise<WMSDispatchSlip> {
     const c = conn();
     await ensureDispatchSchema();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     const year = new Date().getFullYear();
+    const yearStart = `${year}-01-01`;
+    if (isRestApi()) {
+        const cnt = await postgrestHeadTotal('/dispatch_slips', 'wms', {
+            firm_nr: `eq.${firmNr}`,
+            created_at: `gte.${yearStart}`,
+        });
+        const seq = (cnt + 1).toString().padStart(4, '0');
+        const slip_no = `SEV-${year}-${seq}`;
+        const { postgrest } = await import('./api/postgrestClient');
+        const rows = await postgrest.post<WMSDispatchSlip[]>(
+            '/dispatch_slips',
+            {
+                firm_nr: firmNr,
+                store_id: data.store_id,
+                slip_no,
+                customer_name: data.customer_name || null,
+                priority: data.priority || 'normal',
+                notes: data.notes || null,
+                status: 'draft',
+                created_by: data.created_by || null,
+            },
+            { schema: 'wms', prefer: 'return=representation' }
+        );
+        return (Array.isArray(rows) ? rows[0] : rows) as WMSDispatchSlip;
+    }
     const { rows: cnt } = await c.query<{ count: string }>(
         `SELECT COUNT(*)::int AS count FROM wms.dispatch_slips WHERE firm_nr = $1 AND date_part('year', created_at) = $2`,
         [firmNr, year]
@@ -423,6 +760,26 @@ export async function createDispatchSlip(data: {
 
 export async function addDispatchLine(slipId: string, data: Omit<WMSDispatchLine, 'id' | 'slip_id'>): Promise<WMSDispatchLine> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        const rows = await postgrest.post<WMSDispatchLine[]>(
+            '/dispatch_lines',
+            {
+                slip_id: slipId,
+                product_id: data.product_id || null,
+                product_name: data.product_name || null,
+                product_code: data.product_code || null,
+                barcode: data.barcode || null,
+                ordered_qty: data.ordered_qty || 0,
+                picked_qty: data.picked_qty || 0,
+                unit: data.unit || null,
+                location_code: data.location_code || null,
+                notes: data.notes || null,
+            },
+            { schema: 'wms', prefer: 'return=representation' }
+        );
+        return (Array.isArray(rows) ? rows[0] : rows) as WMSDispatchLine;
+    }
     const { rows } = await c.query<WMSDispatchLine>(
         `INSERT INTO wms.dispatch_lines
             (slip_id, product_id, product_name, product_code, barcode, ordered_qty, picked_qty, unit, location_code, notes)
@@ -437,6 +794,15 @@ export async function addDispatchLine(slipId: string, data: Omit<WMSDispatchLine
 export async function getDispatchLines(slipId: string): Promise<WMSDispatchLine[]> {
     const c = conn();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<WMSDispatchLine[]>(
+                '/dispatch_lines',
+                { select: '*', slip_id: `eq.${slipId}`, order: 'created_at.asc' },
+                { schema: 'wms' }
+            );
+            return Array.isArray(rows) ? rows : [];
+        }
         const { rows } = await c.query<WMSDispatchLine>(
             `SELECT * FROM wms.dispatch_lines WHERE slip_id = $1 ORDER BY created_at`,
             [slipId]
@@ -447,11 +813,25 @@ export async function getDispatchLines(slipId: string): Promise<WMSDispatchLine[
 
 export async function updateDispatchSlipStatus(slipId: string, status: WMSDispatchSlip['status']): Promise<void> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        await postgrest.patch(
+            `/dispatch_slips?id=eq.${encodeURIComponent(slipId)}`,
+            { status, updated_at: new Date().toISOString() },
+            { schema: 'wms', prefer: 'return=minimal' }
+        );
+        return;
+    }
     await c.query(`UPDATE wms.dispatch_slips SET status = $2, updated_at = NOW() WHERE id = $1`, [slipId, status]);
 }
 
 export async function deleteDispatchLine(lineId: string): Promise<void> {
     const c = conn();
+    if (isRestApi()) {
+        const { postgrest } = await import('./api/postgrestClient');
+        await postgrest.delete(`/dispatch_lines?id=eq.${encodeURIComponent(lineId)}`, { schema: 'wms' });
+        return;
+    }
     await c.query(`DELETE FROM wms.dispatch_lines WHERE id = $1`, [lineId]);
 }
 
@@ -459,8 +839,45 @@ export async function deleteDispatchLine(lineId: string): Promise<void> {
 
 export async function getTransfers(status?: string): Promise<WMSTransfer[]> {
     const c = conn();
-    const firmNr = ERP_SETTINGS.firmNr || '001';
+    const firmNr = firmNrParam();
     try {
+        if (isRestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const q: Record<string, string | number> = {
+                select: '*',
+                firm_nr: `eq.${firmNr}`,
+                order: 'created_at.desc',
+                limit: 100,
+            };
+            if (status && status !== 'all') q.status = `eq.${status}`;
+            const transfers = await postgrest.get<any[]>('/transfers', q, { schema: 'wms' });
+            const list = Array.isArray(transfers) ? transfers : [];
+            if (!list.length) return [];
+            const ids = list.map(t => t.id).filter(Boolean);
+            const inList = ids.map(id => encodeURIComponent(id)).join(',');
+            const items = await postgrest.get<{ transfer_id: string }[]>(
+                '/transfer_items',
+                { select: 'id,transfer_id', transfer_id: `in.(${inList})` },
+                { schema: 'wms' }
+            );
+            const countBy = new Map<string, number>();
+            (Array.isArray(items) ? items : []).forEach((it: any) => {
+                countBy.set(it.transfer_id, (countBy.get(it.transfer_id) || 0) + 1);
+            });
+            const storeIds = [...new Set(list.flatMap((t: any) => [t.from_store_id, t.to_store_id]).filter(Boolean))];
+            const storeMap = new Map<string, string>();
+            if (storeIds.length) {
+                const sil = storeIds.map(id => encodeURIComponent(id)).join(',');
+                const srows = await postgrest.get<any[]>('/stores', { select: 'id,name', id: `in.(${sil})` }, { schema: 'public' });
+                (Array.isArray(srows) ? srows : []).forEach((s: any) => storeMap.set(s.id, s.name));
+            }
+            return list.map((t: any) => ({
+                ...t,
+                from_store_name: t.from_store_id ? storeMap.get(t.from_store_id) : undefined,
+                to_store_name: t.to_store_id ? storeMap.get(t.to_store_id) : undefined,
+                item_count: countBy.get(t.id) || 0,
+            })) as WMSTransfer[];
+        }
         let sql = `SELECT t.*,
                     sf.name AS from_store_name,
                     st2.name AS to_store_name,

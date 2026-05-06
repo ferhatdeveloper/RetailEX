@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import type { Sale, SaleItem } from '../core/types/models';
-import { postgres, ERP_SETTINGS } from './postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import {
@@ -667,6 +667,31 @@ export const beautyService = {
     async searchCustomers(term: string): Promise<BeautyCustomer[]> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const px = `rex_${fn}`;
+                const q = String(term || '').trim().slice(0, 120).replace(/[(),]/g, ' ');
+                if (!q) return [];
+                const pat = `*${q}*`;
+                const rows = await postgrest.get<BeautyCustomer[]>(
+                    `/${px}_customers`,
+                    {
+                        select:
+                            'id,code,name,phone,phone2,age,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes',
+                        is_active: 'eq.true',
+                        or: `(name.ilike.${pat},phone.ilike.${pat},phone2.ilike.${pat},email.ilike.${pat},code.ilike.${pat},notes.ilike.${pat},occupation.ilike.${pat},file_id.ilike.${pat})`,
+                        order: 'name.asc',
+                        limit: 50,
+                    },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] searchCustomers rest_api failed:', e);
+                return [];
+            }
+        }
         const { rows } = await postgres.query(
             `SELECT id, code, name, phone, phone2, age, file_id, occupation, gender, customer_tier, heard_from, email, address, city, points, total_spent, balance, is_active, notes
              FROM ${t}

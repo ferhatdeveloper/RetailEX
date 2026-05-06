@@ -45,6 +45,27 @@ export const customerAPI = {
     try {
       if (!query || query.length < 2) return [];
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const raw = query.trim();
+        const esc = (s: string) =>
+          s.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+        const pat = `*${esc(raw)}*`;
+        const or = `(name.ilike.${pat},phone.ilike.${pat},phone2.ilike.${pat},notes.ilike.${pat},occupation.ilike.${pat},file_id.ilike.${pat},code.ilike.${pat})`;
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            or,
+            order: 'name.asc',
+            limit: 20,
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer);
+      }
       const searchTerm = `%${query.toLowerCase()}%`;
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} 
@@ -76,6 +97,21 @@ export const customerAPI = {
   async getById(id: string): Promise<Customer | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const r = Array.isArray(rows) ? rows[0] : null;
+        return r ? mapDatabaseCustomerToCustomer(r) : null;
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -93,6 +129,57 @@ export const customerAPI = {
   async getByPhone(phone: string): Promise<Customer | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const esc = (s: string) =>
+          s.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+        const p = phone.trim();
+        if (p) {
+          const exactOr = `(phone.eq.${esc(p)},phone2.eq.${esc(p)})`;
+          const exactRows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+              is_active: 'eq.true',
+              or: exactOr,
+              limit: 1,
+            },
+            { schema: 'public' }
+          );
+          if (Array.isArray(exactRows) && exactRows[0]) {
+            return mapDatabaseCustomerToCustomer(exactRows[0]);
+          }
+        }
+
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 7) return null;
+        const tail10 = digits.length >= 10 ? digits.slice(-10) : digits;
+        const pat = `*${esc(tail10)}*`;
+        const orLike = `(phone.ilike.${pat},phone2.ilike.${pat})`;
+        const candidates = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            or: orLike,
+            limit: 50,
+            order: 'name.asc',
+          },
+          { schema: 'public' }
+        );
+        const list = Array.isArray(candidates) ? candidates : [];
+        const norm = (s: string) => String(s || '').replace(/\D/g, '');
+        for (const r of list) {
+          const np = norm(r.phone);
+          const n2 = norm(r.phone2 || '');
+          if (np === digits || n2 === digits) return mapDatabaseCustomerToCustomer(r);
+          if (np.length >= 10 && np.slice(-10) === tail10) return mapDatabaseCustomerToCustomer(r);
+          if (n2.length >= 10 && n2.slice(-10) === tail10) return mapDatabaseCustomerToCustomer(r);
+        }
+        return null;
+      }
       const { rows: exactRows } = await postgres.query(
         `SELECT * FROM ${tableName} 
          WHERE firm_nr = $2 AND is_active = true
@@ -148,6 +235,37 @@ export const customerAPI = {
           ? String(customer.file_id).trim()
           : null;
 
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const body: Record<string, unknown> = {
+          code: customer.code || '',
+          name: customer.name,
+          phone: customer.phone,
+          phone2: customer.phone2 || '',
+          email: customer.email || '',
+          address: customer.address || '',
+          notes: customer.notes || '',
+          age: ageSafe,
+          occupation: customer.occupation || '',
+          file_id: fileIdSafe,
+          gender: customer.gender || null,
+          customer_tier: customer.customer_tier === 'vip' ? 'vip' : 'normal',
+          heard_from: customer.heard_from || null,
+          points: customer.points || 0,
+          total_spent: customer.totalSpent || 0,
+          is_active: true,
+          firm_nr: ERP_SETTINGS.firmNr,
+        };
+        const rows = await postgrest.post<any[]>(
+          `/${tableName}`,
+          body,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        const newId = row?.id;
+        return newId ? { ...customer, id: newId } as Customer : null;
+      }
+
       const { rows } = await postgres.query(
         `INSERT INTO ${tableName} (
            code, name, phone, phone2, email, address, notes, age, occupation, file_id, gender, customer_tier, heard_from,
@@ -189,6 +307,25 @@ export const customerAPI = {
   async generateCode(): Promise<string> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: 'code',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            code: 'like.M*',
+            order: 'code.desc',
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        if (!Array.isArray(rows) || rows.length === 0) return 'M001';
+        const lastCode = rows[0].code;
+        const num = parseInt(String(lastCode).substring(1), 10);
+        if (Number.isNaN(num)) return 'M001';
+        return `M${(num + 1).toString().padStart(3, '0')}`;
+      }
       const { rows } = await postgres.query(
         `SELECT code FROM ${tableName} WHERE firm_nr = $1 AND code LIKE 'M%' ORDER BY code DESC LIMIT 1`,
         [ERP_SETTINGS.firmNr]
@@ -245,6 +382,25 @@ export const customerAPI = {
       if (fields.length === 0) return this.getById(id);
 
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patchBody: Record<string, unknown> = {};
+        Object.entries(updates).forEach(([key, value]) => {
+          if (key === 'id' || value === undefined) return;
+          const mapped = customerFieldMap[key];
+          if (mapped === null) return;
+          const col = mapped ?? key;
+          patchBody[col] = value;
+        });
+        if (Object.keys(patchBody).length === 0) return this.getById(id);
+        const rows = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          patchBody,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return row ? mapDatabaseCustomerToCustomer(row) : this.getById(id);
+      }
       values.push(id);
       values.push(ERP_SETTINGS.firmNr);
       const { rows } = await postgres.query(
@@ -265,6 +421,16 @@ export const customerAPI = {
   async delete(id: string): Promise<boolean> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { is_active: false },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return Boolean(row);
+      }
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET is_active = false WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -282,6 +448,29 @@ export const customerAPI = {
   async addPoints(id: string, pointsToAdd: number): Promise<boolean> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const cur = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: 'points',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(cur) ? cur[0] : null;
+        if (!row) return false;
+        const next = Number(row.points || 0) + Number(pointsToAdd);
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { points: next },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const u = Array.isArray(patched) ? patched[0] : patched;
+        return Boolean(u);
+      }
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET points = points + $1 WHERE id = $2 AND firm_nr = $3`,
         [pointsToAdd, id, ERP_SETTINGS.firmNr]
@@ -299,6 +488,29 @@ export const customerAPI = {
   async addBalance(id: string, amount: number): Promise<boolean> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const cur = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: 'balance',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(cur) ? cur[0] : null;
+        if (!row) return false;
+        const next = Number(row.balance ?? 0) + Number(amount);
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { balance: next },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const u = Array.isArray(patched) ? patched[0] : patched;
+        return Boolean(u);
+      }
       // We assume balance column exists after migration. 
       // If not, this might fail or we should catch it.
       // Ideally we check column existence or use a safe update if possible, but standard is strict schema.

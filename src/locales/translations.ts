@@ -70,6 +70,8 @@ export interface MenuTranslations {
   materialValue: string;
   materialWarehouseStatus: string;
   materials: string;
+  /** Yönetim — Malzeme Yönetimi: kamera / taslak / onay */
+  materialsIntake: string;
   menuManagement: string;
   minMaxStock: string;
   inventoryCountOps: string;
@@ -1885,6 +1887,7 @@ export const translations: any = {
       materialValue: 'Malzeme Değer',
       materialWarehouseStatus: 'Malzeme Ambar Durum',
       materials: 'Malzemeler',
+      materialsIntake: 'Malzemeler (kamera & onay)',
       menuManagement: 'Menü Yönetimi',
       supabaseDataTransfer: 'Supabase Veri Aktarımı',
       virtualPbxCallerId: 'Sanal santral (Caller ID)',
@@ -3339,6 +3342,7 @@ export const translations: any = {
       materialValue: 'Material Value',
       materialWarehouseStatus: 'Material Warehouse Status',
       materials: 'Materials',
+      materialsIntake: 'Materials (camera & approval)',
       inventoryCountOps: 'Inventory Counting Operations',
       mobileCount: 'Mobile Count / Create Slip',
       countDeficitSlips: 'Count Shortage Slips',
@@ -4674,6 +4678,7 @@ export const translations: any = {
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'حالة مخزن المواد',
       materials: 'المواد',
+      materialsIntake: 'المواد (الكاميرا والاعتماد)',
       bankDepositDesc: 'إيداع نقدي في البنك',
       bankTransferDesc: 'تحويل بين البنوك أو الخزائن',
       bankWithdrawalDesc: 'سحب نقدي من البنك',
@@ -6008,6 +6013,7 @@ export const translations: any = {
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'باری کۆگای ماددەکان',
       materials: 'ماددەکان',
+      materialsIntake: 'ماددەکان (کامێرا و پەسەندکردن)',
       bankDepositDesc: 'پاره دانان لە بانک',
       bankTransferDesc: 'گواستنەوە لە نێوان بانکەکان',
       bankWithdrawalDesc: 'پاره کێشانەوە لە بانک',

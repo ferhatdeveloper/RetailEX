@@ -46,6 +46,59 @@ function buildCashLinePgOpts(firmRaw?: string | null, periodRaw?: string | null)
   return { firmNr, periodNr };
 }
 
+/** `rest_api`: fiş no ile kasa satırlarını bul, kasa defteri bakiyesini düzelt, satırları sil */
+async function removeCashLinesByFicheNoPostgrest(
+  ficheNo: string,
+  opt: { firmNr: string; periodNr: string }
+): Promise<boolean> {
+  try {
+    const { postgrest } = await import('./postgrestClient');
+    const fn = String(opt.firmNr).trim().padStart(3, '0').slice(0, 10);
+    const pn = String(opt.periodNr).trim().padStart(2, '0').slice(0, 10);
+    const cashPath = `/rex_${fn}_${pn}_cash_lines`;
+    const regPath = `/rex_${fn}_cash_registers`;
+    const cashRows = await postgrest.get<any[]>(
+      cashPath,
+      { select: 'id,register_id,amount,sign', fiche_no: `eq.${ficheNo}` },
+      { schema: 'public' }
+    );
+    if (!Array.isArray(cashRows) || cashRows.length === 0) return false;
+
+    for (const line of cashRows) {
+      const regId = line.register_id;
+      const amt = parseFloat(String(line.amount ?? 0)) || 0;
+      const sgn = parseInt(String(line.sign ?? 1), 10) || 1;
+      const delta = amt * sgn;
+      if (regId && delta !== 0 && !Number.isNaN(delta)) {
+        try {
+          const cur = await postgrest.get<any[]>(
+            regPath,
+            { select: 'balance', id: `eq.${regId}`, limit: 1 },
+            { schema: 'public' }
+          );
+          const row = Array.isArray(cur) ? cur[0] : null;
+          const b = Number(row?.balance ?? 0);
+          await postgrest.patch(
+            `${regPath}?id=eq.${encodeURIComponent(String(regId))}`,
+            { balance: b - delta },
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+        } catch {
+          /* kasa defteri güncellenemezse yine de satır silinir */
+        }
+      }
+    }
+    await postgrest.delete(
+      `${cashPath}?fiche_no=eq.${encodeURIComponent(String(ficheNo))}`,
+      { schema: 'public', prefer: 'return=minimal' }
+    );
+    return true;
+  } catch (e) {
+    console.warn('[InvoicesAPI] removeCashLinesByFicheNoPostgrest:', e);
+    return false;
+  }
+}
+
 /** Fiş no ile kasa satırını bul (WHERE yalnızca fiche_no — tablo adı zaten firma+dönem ile ayrılmış), bakiyeyi geri al, satırı sil */
 async function removeCashRegisterLinesForSaleFiche(
   ficheNo: string,
@@ -63,6 +116,12 @@ async function removeCashRegisterLinesForSaleFiche(
     const key = `${opt.firmNr}|${opt.periodNr}`;
     if (seen.has(key)) continue;
     seen.add(key);
+
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const cleared = await removeCashLinesByFicheNoPostgrest(trimmed, opt);
+      if (cleared) return;
+      continue;
+    }
 
     const { rows: cashRows } = await postgres.query(
       `SELECT id, register_id, amount, sign FROM cash_lines WHERE fiche_no::text = $1::text`,
@@ -319,6 +378,49 @@ export function invoiceMatchesModuleCategory(
   const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
   const set = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
   return set ? set.includes(tc) : true;
+}
+
+/** sale_items satırını UniversalInvoiceForm / grid satır modeline çevirir (SQL ve PostgREST ortak) */
+export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
+  const codeRaw = item.item_code ?? item.product_id;
+  const code = codeRaw != null && codeRaw !== '' ? String(codeRaw) : '';
+  const hdrCur = String(inv.currency || 'IQD').trim().toUpperCase();
+  const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
+  const rate = Number(inv.currency_rate) > 0 ? Number(inv.currency_rate) : 1;
+  const uFCraw = item.unit_price_fc;
+  const uFC =
+    uFCraw != null && uFCraw !== '' && !Number.isNaN(parseFloat(String(uFCraw)))
+      ? parseFloat(String(uFCraw))
+      : NaN;
+  const uLoc = parseFloat(item.unit_price || 0);
+  const grossIQD = parseFloat(item.total_amount || 0);
+  const netIQD = parseFloat(item.net_amount || 0);
+  const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
+  const unitPrice = useFc ? uFC : uLoc;
+  const netAmount = useFc ? netIQD / rate : netIQD;
+  const total = useFc ? grossIQD / rate : grossIQD;
+  return {
+    id: item.id,
+    productId: item.product_id != null ? String(item.product_id) : code,
+    code,
+    description: item.item_name || '',
+    productName: item.item_name || '',
+    quantity: parseFloat(item.quantity),
+    unit: item.unit || 'Adet',
+    unitPrice,
+    price: unitPrice,
+    discount: parseFloat(item.discount_rate || 0),
+    tax: 0,
+    netAmount,
+    total,
+    unitCost: parseFloat(item.unit_cost || 0),
+    totalCost: parseFloat(item.total_cost || 0),
+    grossProfit: parseFloat(item.gross_profit || 0),
+    multiplier: parseFloat(item.unit_multiplier || 1),
+    baseQuantity: parseFloat(item.base_quantity ?? item.quantity),
+    unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
+    currency: item.currency || inv.currency || 'IQD',
+  };
 }
 
 export const invoicesAPI = {
@@ -848,6 +950,84 @@ export const invoicesAPI = {
       firmVariants.push(String(ERP_SETTINGS.firmNr || '001').padStart(3, '0'));
     }
 
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      try {
+        const { postgrest } = await import('./postgrestClient');
+        const sessionFirm = String(firmVariants[0] || ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+        const sessionPeriod = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+
+        const fetchHeader = async (fn: string, pn: string): Promise<any | null> => {
+          const path = `/rex_${fn}_${pn}_sales`;
+          const rows = await postgrest.get<any[]>(
+            path,
+            { select: '*', id: `eq.${cleanId}`, limit: 1 },
+            { schema: 'public' }
+          );
+          return Array.isArray(rows) && rows[0] ? rows[0] : null;
+        };
+
+        let header: any | null =
+          (await fetchHeader(sessionFirm, sessionPeriod)) ||
+          (firmVariants.length > 1 ? await fetchHeader(String(firmVariants[1]).padStart(3, '0'), sessionPeriod) : null);
+
+        if (!header) {
+          for (const fv of firmVariants.slice(2)) {
+            header = await fetchHeader(String(fv).padStart(3, '0'), sessionPeriod);
+            if (header) break;
+          }
+        }
+
+        if (!header) {
+          console.warn('[InvoicesAPI] getById PostgREST: sales başlığı bulunamadı', cleanId);
+          return null;
+        }
+
+        const fn = String(header.firm_nr ?? sessionFirm).padStart(3, '0');
+        const pn = String(header.period_nr ?? sessionPeriod).padStart(2, '0');
+        const itemsPath = `/rex_${fn}_${pn}_sale_items`;
+
+        const invoice = mapDatabaseInvoiceToInvoice(header);
+
+        let itemRows: any[] = [];
+        try {
+          const rows = await postgrest.get<any[]>(
+            itemsPath,
+            { select: '*', invoice_id: `eq.${cleanId}`, order: 'id.asc' },
+            { schema: 'public' }
+          );
+          itemRows = Array.isArray(rows) ? rows : [];
+        } catch (e) {
+          console.warn('[InvoicesAPI] getById PostgREST sale_items (invoice_id) failed:', e);
+        }
+
+        if (itemRows.length === 0) {
+          try {
+            const rows = await postgrest.get<any[]>(
+              itemsPath,
+              {
+                select: '*',
+                or: `(invoice_id.eq.${cleanId},sale_id.eq.${cleanId})`,
+                order: 'id.asc',
+              },
+              { schema: 'public' }
+            );
+            itemRows = Array.isArray(rows) ? rows : [];
+          } catch (e) {
+            console.warn('[InvoicesAPI] getById PostgREST sale_items (or invoice_id/sale_id) failed:', e);
+          }
+        }
+
+        invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
+        if (itemRows.length === 0) {
+          console.warn('[InvoicesAPI] getById PostgREST: sale_items boş', cleanId, { itemsPath });
+        }
+        return invoice;
+      } catch (error) {
+        console.error('[InvoicesAPI] getById PostgREST failed:', error);
+        return null;
+      }
+    }
+
     let rows: any[];
     try {
       /* join_* ile s.customer_name çakışması yok; tedarikçi adı her zaman join'den gelir */
@@ -905,49 +1085,6 @@ export const invoicesAPI = {
         header.period_nr != null && header.period_nr !== ''
           ? String(header.period_nr)
           : String(ERP_SETTINGS.periodNr || '01')
-    };
-
-    /** Düzenleme: fatura dövizi USD vb. ise gridde unit_price_fc + satır currency; tutarlar yerelden kura bölünür */
-    const mapSaleItemRow = (item: any, inv: Invoice) => {
-      const codeRaw = item.item_code ?? item.product_id;
-      const code = codeRaw != null && codeRaw !== '' ? String(codeRaw) : '';
-      const hdrCur = String(inv.currency || 'IQD').trim().toUpperCase();
-      const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
-      const rate = Number(inv.currency_rate) > 0 ? Number(inv.currency_rate) : 1;
-      const uFCraw = item.unit_price_fc;
-      const uFC =
-        uFCraw != null && uFCraw !== '' && !Number.isNaN(parseFloat(String(uFCraw)))
-          ? parseFloat(String(uFCraw))
-          : NaN;
-      const uLoc = parseFloat(item.unit_price || 0);
-      const grossIQD = parseFloat(item.total_amount || 0);
-      const netIQD = parseFloat(item.net_amount || 0);
-      const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
-      const unitPrice = useFc ? uFC : uLoc;
-      const netAmount = useFc ? netIQD / rate : netIQD;
-      const total = useFc ? grossIQD / rate : grossIQD;
-      return {
-        id: item.id,
-        productId: item.product_id != null ? String(item.product_id) : code,
-        code,
-        description: item.item_name || '',
-        productName: item.item_name || '',
-        quantity: parseFloat(item.quantity),
-        unit: item.unit || 'Adet',
-        unitPrice,
-        price: unitPrice,
-        discount: parseFloat(item.discount_rate || 0),
-        tax: 0,
-        netAmount,
-        total,
-        unitCost: parseFloat(item.unit_cost || 0),
-        totalCost: parseFloat(item.total_cost || 0),
-        grossProfit: parseFloat(item.gross_profit || 0),
-        multiplier: parseFloat(item.unit_multiplier || 1),
-        baseQuantity: parseFloat(item.base_quantity ?? item.quantity),
-        unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
-        currency: item.currency || inv.currency || 'IQD'
-      };
     };
 
     let itemRows: any[] = [];
@@ -1038,7 +1175,7 @@ export const invoicesAPI = {
       }
     }
 
-    invoice.items = itemRows.map((row) => mapSaleItemRow(row, invoice));
+    invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
 
     if (itemRows.length === 0) {
       console.warn('[InvoicesAPI] getById: no sale_items for invoice', cleanId, itemTableOpts);
@@ -1054,6 +1191,114 @@ export const invoicesAPI = {
     try {
       console.log('[InvoicesAPI] Updating invoice...', id);
       const firmNr = ERP_SETTINGS.firmNr;
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const cleanId = String(id || '').trim();
+        const existing = await this.getById(cleanId);
+        if (!existing) throw new Error('Fatura bulunamadı');
+        const fn = normalizeFirmNrForRow((existing as any).firma_id ?? ERP_SETTINGS.firmNr);
+        const pn = normalizePeriodNrForRow((existing as any).donem_id ?? ERP_SETTINGS.periodNr);
+        const salesTable = `/rex_${fn}_${pn}_sales`;
+        const itemsTable = `/rex_${fn}_${pn}_sale_items`;
+
+        const patchBody: Record<string, unknown> = {};
+        if (invoice.invoice_no) patchBody.fiche_no = invoice.invoice_no;
+        if (invoice.status) patchBody.status = invoice.status;
+        if (invoice.notes !== undefined) patchBody.notes = invoice.notes;
+        if (invoice.total_amount !== undefined) patchBody.net_amount = Number(invoice.total_amount);
+        if (invoice.customer_name !== undefined) patchBody.customer_name = invoice.customer_name;
+        const partnerIdRest = invoice.customer_id || invoice.supplier_id;
+        if (partnerIdRest !== undefined && isValidUuid(String(partnerIdRest))) {
+          patchBody.customer_id = String(partnerIdRest);
+        }
+        if (invoice.subtotal !== undefined) patchBody.total_net = Number(invoice.subtotal);
+        if (invoice.tax !== undefined) patchBody.total_vat = Number(invoice.tax);
+        if (invoice.discount !== undefined) patchBody.total_discount = Number(invoice.discount);
+        if (invoice.total_cost !== undefined) patchBody.total_cost = Number(invoice.total_cost);
+        if (invoice.gross_profit !== undefined) patchBody.gross_profit = Number(invoice.gross_profit);
+        if (invoice.currency !== undefined) patchBody.currency = invoice.currency;
+        if (invoice.currency_rate !== undefined) patchBody.currency_rate = Number(invoice.currency_rate);
+
+        if (Object.keys(patchBody).length > 0) {
+          await postgrest.patch(
+            `${salesTable}?id=eq.${encodeURIComponent(cleanId)}&firm_nr=eq.${encodeURIComponent(fn)}`,
+            patchBody,
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+        }
+
+        if (invoice.items && Array.isArray(invoice.items)) {
+          try {
+            await postgrest.delete(
+              `${itemsTable}?invoice_id=eq.${encodeURIComponent(cleanId)}`,
+              { schema: 'public', prefer: 'return=minimal' }
+            );
+          } catch {
+            /* satır yok veya filtre uyuşmadı */
+          }
+          try {
+            await postgrest.delete(
+              `${itemsTable}?sale_id=eq.${encodeURIComponent(cleanId)}`,
+              { schema: 'public', prefer: 'return=minimal' }
+            );
+          } catch {
+            /* sale_id kolonu yoksa */
+          }
+
+          for (const item of invoice.items) {
+            const productId = item.code || item.productId;
+            const unitMultiplier = Number((item as any).multiplier || 1);
+            const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+            const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
+            const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
+            const itemEnhanced: Record<string, unknown> = {
+              id: self.crypto.randomUUID(),
+              invoice_id: cleanId,
+              firm_nr: String(fn),
+              period_nr: String(pn),
+              item_code: String(productId || ''),
+              item_name: String(item.description || item.productName || ''),
+              quantity: Number(item.quantity || 0),
+              unit: String((item as any).unit || 'Adet'),
+              unit_price: Number(item.unitPrice || item.price || 0),
+              discount_rate: Number(item.discount || 0),
+              vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+              total_amount: Number(item.total || item.netAmount || 0),
+              net_amount: Number(item.netAmount || item.total || 0),
+              unit_cost: Number(item.unitCost || 0),
+              total_cost: Number(item.totalCost || 0),
+              gross_profit: Number(item.grossProfit || 0),
+              unit_multiplier: unitMultiplier,
+              base_quantity: baseQty,
+              unit_price_fc: unitPriceFC,
+              currency: itemCurrency,
+            };
+            const itemLegacy: Record<string, unknown> = {
+              id: self.crypto.randomUUID(),
+              invoice_id: cleanId,
+              firm_nr: String(fn),
+              period_nr: String(pn),
+              item_code: String(productId || ''),
+              item_name: String(item.description || item.productName || ''),
+              quantity: Number(item.quantity || 0),
+              unit: String((item as any).unit || 'Adet'),
+              unit_price: Number(item.unitPrice || item.price || 0),
+              discount_rate: Number(item.discount || 0),
+              vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+              total_amount: Number(item.total || item.netAmount || 0),
+              net_amount: Number(item.netAmount || item.total || 0),
+            };
+            try {
+              await postgrest.post<any>(itemsTable, itemEnhanced, { schema: 'public' });
+            } catch {
+              await postgrest.post<any>(itemsTable, itemLegacy, { schema: 'public' });
+            }
+          }
+        }
+
+        return await this.getById(cleanId);
+      }
 
       const fields: string[] = [];
       const values: any[] = [];
@@ -1140,6 +1385,115 @@ export const invoicesAPI = {
 
   async getProductHistory(productId: string): Promise<any[]> {
     try {
+      const pid = String(productId || '').trim();
+      if (!pid) return [];
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const fn = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
+        const pn = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
+        const itemsPath = `/rex_${fn}_${pn}_sale_items`;
+        const salesPath = `/rex_${fn}_${pn}_sales`;
+        const custTable = `rex_${fn}_customers`;
+        const suppTable = `rex_${fn}_suppliers`;
+        const chunkSize = 35;
+
+        const its = await postgrest
+          .get<any[]>(
+            itemsPath,
+            {
+              select: 'quantity,unit_price,total_amount,invoice_id,sale_id',
+              item_code: `eq.${pid}`,
+              limit: 500,
+            },
+            { schema: 'public' }
+          )
+          .catch(() => [] as any[]);
+        const list = Array.isArray(its) ? its : [];
+        const invIds = [
+          ...new Set(
+            list
+              .map((x) => String(x.invoice_id || x.sale_id || '').trim())
+              .filter((x) => x && isValidUuid(x))
+          ),
+        ];
+        if (invIds.length === 0) return [];
+
+        const headersById = new Map<
+          string,
+          { fiche_no?: string; date?: string; fiche_type?: string; customer_id?: string }
+        >();
+        for (let i = 0; i < invIds.length; i += chunkSize) {
+          const chunk = invIds.slice(i, i + chunkSize);
+          const inList = chunk.join(',');
+          const rows = await postgrest
+            .get<any[]>(
+              salesPath,
+              {
+                select: 'id,fiche_no,date,fiche_type,customer_id',
+                id: `in.(${inList})`,
+                limit: chunk.length,
+              },
+              { schema: 'public' }
+            )
+            .catch(() => [] as any[]);
+          (Array.isArray(rows) ? rows : []).forEach((r) => {
+            if (r?.id) headersById.set(String(r.id), r);
+          });
+        }
+
+        const partnerIds = [
+          ...new Set(
+            [...headersById.values()]
+              .map((h) => h.customer_id)
+              .filter((x): x is string => Boolean(x && isValidUuid(String(x))))
+          ),
+        ];
+        const namesById = new Map<string, string>();
+        for (let i = 0; i < partnerIds.length; i += chunkSize) {
+          const chunk = partnerIds.slice(i, i + chunkSize);
+          const inList = chunk.join(',');
+          const [crows, srows] = await Promise.all([
+            postgrest
+              .get<any[]>(
+                `/${custTable}`,
+                {
+                  select: 'id,name',
+                  id: `in.(${inList})`,
+                  firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                },
+                { schema: 'public' }
+              )
+              .catch(() => [] as any[]),
+            postgrest
+              .get<any[]>(`/${suppTable}`, { select: 'id,name', id: `in.(${inList})` }, { schema: 'public' })
+              .catch(() => [] as any[]),
+          ]);
+          (Array.isArray(crows) ? crows : []).forEach((r) => namesById.set(String(r.id), String(r.name || '')));
+          (Array.isArray(srows) ? srows : []).forEach((r) => namesById.set(String(r.id), String(r.name || '')));
+        }
+
+        const mapped = list
+          .map((it) => {
+            const invKey = String(it.invoice_id || it.sale_id || '').trim();
+            const hd = invKey ? headersById.get(invKey) : undefined;
+            if (!hd) return null;
+            const partner = hd.customer_id ? namesById.get(String(hd.customer_id)) : undefined;
+            return {
+              date: hd.date,
+              documentNo: hd.fiche_no,
+              supplier: partner || 'N/A',
+              quantity: it.quantity,
+              unitPrice: parseFloat(String(it.unit_price ?? 0)),
+              total: parseFloat(String(it.total_amount ?? 0)),
+              type: hd.fiche_type === 'purchase_invoice' ? 'purchase' : 'sales',
+            };
+          })
+          .filter((r): r is NonNullable<typeof r> => r != null);
+        mapped.sort((a, b) => new Date(String(b.date)).getTime() - new Date(String(a.date)).getTime());
+        return mapped;
+      }
+
       const { rows } = await postgres.query(
         `SELECT 
             it.quantity, it.unit_price, it.total_amount, s.fiche_no, s.date, s.fiche_type,
@@ -1150,7 +1504,7 @@ export const invoicesAPI = {
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
          WHERE it.item_code = $1 
          ORDER BY s.date DESC`,
-        [productId]
+        [pid]
       );
 
       return rows.map(r => ({
@@ -1206,19 +1560,89 @@ export const invoicesAPI = {
             (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
             && paymentMethodImpliesCustomerDebt(invoice.payment_method)
           ) {
-            await postgres.query(
-              `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
-              [amount, accountId, saleFirmNr],
-              saleQueryOpts
-            ).catch(() => { });
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+              await customerAPI.addBalance(accountId, -amount).catch(() => { });
+            } else {
+              await postgres.query(
+                `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+                [amount, accountId, saleFirmNr],
+                saleQueryOpts
+              ).catch(() => { });
+            }
           } else if (invoice.invoice_category === 'Alis') {
-            await postgres.query(
-              `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
-              [amount, accountId],
-              saleQueryOpts
-            ).catch(() => { });
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+              try {
+                const { postgrest } = await import('./postgrestClient');
+                const fnB = normalizeFirmNrForRow(saleFirmNr);
+                const supPath = `/rex_${fnB}_suppliers`;
+                const balRows = await postgrest.get<any[]>(
+                  supPath,
+                  { select: 'balance', id: `eq.${accountId}`, limit: 1 },
+                  { schema: 'public' }
+                );
+                const br = Array.isArray(balRows) ? balRows[0] : null;
+                if (br) {
+                  const nb = Number(br.balance ?? 0) - amount;
+                  await postgrest.patch(
+                    `${supPath}?id=eq.${encodeURIComponent(String(accountId))}`,
+                    { balance: nb },
+                    { schema: 'public', prefer: 'return=minimal' }
+                  );
+                }
+              } catch {
+                /* tedarikçi bakiyesi güncellenemezse iade yine denenir */
+              }
+            } else {
+              await postgres.query(
+                `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
+                [amount, accountId],
+                saleQueryOpts
+              ).catch(() => { });
+            }
           }
         }
+      }
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        try {
+          const { postgrest } = await import('./postgrestClient');
+          const fn = normalizeFirmNrForRow(saleFirmNr);
+          const pn = normalizePeriodNrForRow(salePeriodNr);
+          const salesBase = `/rex_${fn}_${pn}_sales`;
+          const mergeNotes = (prev: unknown) => {
+            const p = String(prev ?? '').trim();
+            if (!reasonNote) return p;
+            return p ? `${p}\n${reasonNote}` : reasonNote;
+          };
+          const tryPatchRefund = async (extra: Record<string, string>): Promise<boolean> => {
+            try {
+              const q: Record<string, string> = { select: 'id,notes', limit: '1', ...extra };
+              const rows = await postgrest.get<any[]>(salesBase, q, { schema: 'public' });
+              const row = Array.isArray(rows) ? rows[0] : null;
+              if (!row?.id) return false;
+              await postgrest.patch(
+                `${salesBase}?id=eq.${encodeURIComponent(String(row.id))}`,
+                { status: 'refunded', notes: mergeNotes(row.notes) },
+                { schema: 'public', prefer: 'return=minimal' }
+              );
+              return true;
+            } catch {
+              return false;
+            }
+          };
+
+          if (await tryPatchRefund({ id: `eq.${saleId}`, firm_nr: `eq.${String(saleFirmNr).trim()}` })) {
+            return true;
+          }
+          if (await tryPatchRefund({ id: `eq.${saleId}` })) return true;
+          if (saleReceiptNo) {
+            if (await tryPatchRefund({ fiche_no: `eq.${saleReceiptNo}` })) return true;
+          }
+          if (await tryPatchRefund({ id: `eq.${saleId}`, firm_nr: `eq.${fn}` })) return true;
+        } catch (e) {
+          console.warn('[InvoicesAPI] refund PostgREST:', e);
+        }
+        return false;
       }
 
       const attempts: Array<{ sql: string; params: unknown[]; options?: { firmNr?: string; periodNr?: string } }> = [
@@ -1320,23 +1744,53 @@ export const invoicesAPI = {
       let salePeriodNr: string | null = header ? String((header as any).donem_id ?? '').trim() || null : null;
 
       if (!header) {
-        try {
-          const { rows: hdrRows } = await postgres.query(
-            `SELECT fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr FROM sales WHERE id::text = $1::text LIMIT 1`,
-            [String(id).trim()]
-          );
-          const h = hdrRows?.[0];
-          if (h) {
-            if (!ficheNo && h.fiche_no) ficheNo = String(h.fiche_no).trim();
-            if (!notes && h.notes != null) notes = String(h.notes);
-            if (paymentMethod == null && h.payment_method != null) paymentMethod = String(h.payment_method);
-            if (!customerId && h.customer_id && isValidUuid(h.customer_id)) customerId = String(h.customer_id);
-            if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
-            if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
-            if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+          try {
+            const { postgrest } = await import('./postgrestClient');
+            const fnH = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
+            const pnH = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
+            const path = `/rex_${fnH}_${pnH}_sales`;
+            const rows = await postgrest.get<any[]>(
+              path,
+              {
+                select: 'fiche_no,notes,payment_method,customer_id,net_amount,firm_nr,period_nr',
+                id: `eq.${String(id).trim()}`,
+                limit: 1,
+              },
+              { schema: 'public' }
+            );
+            const h = Array.isArray(rows) ? rows[0] : null;
+            if (h) {
+              if (!ficheNo && h.fiche_no) ficheNo = String(h.fiche_no).trim();
+              if (!notes && h.notes != null) notes = String(h.notes);
+              if (paymentMethod == null && h.payment_method != null) paymentMethod = String(h.payment_method);
+              if (!customerId && h.customer_id && isValidUuid(h.customer_id)) customerId = String(h.customer_id);
+              if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
+              if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
+              if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+            }
+          } catch {
+            /* yedek başlık okunamazsa silme yine denenir */
           }
-        } catch {
-          /* yedek başlık okunamazsa yalnızca sales silinir */
+        } else {
+          try {
+            const { rows: hdrRows } = await postgres.query(
+              `SELECT fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr FROM sales WHERE id::text = $1::text LIMIT 1`,
+              [String(id).trim()]
+            );
+            const h = hdrRows?.[0];
+            if (h) {
+              if (!ficheNo && h.fiche_no) ficheNo = String(h.fiche_no).trim();
+              if (!notes && h.notes != null) notes = String(h.notes);
+              if (paymentMethod == null && h.payment_method != null) paymentMethod = String(h.payment_method);
+              if (!customerId && h.customer_id && isValidUuid(h.customer_id)) customerId = String(h.customer_id);
+              if (!totalAmt && h.net_amount != null) totalAmt = parseFloat(String(h.net_amount)) || 0;
+              if (h.firm_nr != null) saleFirmNr = String(h.firm_nr).trim();
+              if (h.period_nr != null) salePeriodNr = String(h.period_nr).trim();
+            }
+          } catch {
+            /* yedek başlık okunamazsa yalnızca sales silinir */
+          }
         }
       }
 
@@ -1357,8 +1811,50 @@ export const invoicesAPI = {
         }
       }
 
-      await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
-      await postgres.query(`DELETE FROM sales WHERE id::text::uuid = $1::text::uuid AND firm_nr::text = $2::text`, [id, firmNrStr]);
+      const sid = String(id).trim();
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        try {
+          const { postgrest } = await import('./postgrestClient');
+          const fnD = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
+          const pnD = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
+          const itemsPath = `/rex_${fnD}_${pnD}_sale_items`;
+          const salesPath = `/rex_${fnD}_${pnD}_sales`;
+          try {
+            await postgrest.delete(
+              `${itemsPath}?invoice_id=eq.${encodeURIComponent(sid)}`,
+              { schema: 'public', prefer: 'return=minimal' }
+            );
+          } catch {
+            /* yoksa */
+          }
+          try {
+            await postgrest.delete(
+              `${itemsPath}?sale_id=eq.${encodeURIComponent(sid)}`,
+              { schema: 'public', prefer: 'return=minimal' }
+            );
+          } catch {
+            /* sale_id kolonu yoksa */
+          }
+          try {
+            await postgrest.delete(
+              `${salesPath}?id=eq.${encodeURIComponent(sid)}&firm_nr=eq.${encodeURIComponent(String(fnD).trim())}`,
+              { schema: 'public', prefer: 'return=minimal' }
+            );
+          } catch {
+            await postgrest
+              .delete(`${salesPath}?id=eq.${encodeURIComponent(sid)}`, {
+                schema: 'public',
+                prefer: 'return=minimal',
+              })
+              .catch(() => { });
+          }
+        } catch (e) {
+          console.warn('[InvoicesAPI] delete PostgREST:', e);
+        }
+      } else {
+        await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
+        await postgres.query(`DELETE FROM sales WHERE id::text::uuid = $1::text::uuid AND firm_nr::text = $2::text`, [id, firmNrStr]);
+      }
 
       // 3) Restoran adisyonu (DB transaction dışında — farklı bağlantı / şema)
       if (restOrderId) {

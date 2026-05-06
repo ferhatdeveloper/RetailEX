@@ -3,7 +3,7 @@
  * Note: Uses rex_{firm}_campaigns table
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Campaign } from '../../core/types';
 
 export const campaignsAPI = {
@@ -13,6 +13,19 @@ export const campaignsAPI = {
   async getAll(): Promise<Campaign[]> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            order: 'priority.asc',
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCampaignToCampaign);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE firm_nr = $1 ORDER BY priority ASC`,
         [ERP_SETTINGS.firmNr]
@@ -31,6 +44,22 @@ export const campaignsAPI = {
     try {
       const now = new Date().toISOString();
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            start_date: `lte.${now}`,
+            end_date: `gte.${now}`,
+            order: 'priority.asc',
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCampaignToCampaign);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} 
          WHERE is_active = true AND start_date <= $1 AND end_date >= $1 AND firm_nr = $2
@@ -50,6 +79,21 @@ export const campaignsAPI = {
   async getById(id: string): Promise<Campaign | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const r = Array.isArray(rows) ? rows[0] : null;
+        return r ? mapDatabaseCampaignToCampaign(r) : null;
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -67,6 +111,32 @@ export const campaignsAPI = {
   async create(campaign: Omit<Campaign, 'id'>): Promise<Campaign | null> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const body: Record<string, unknown> = {
+          name: campaign.name,
+          description: campaign.description,
+          type: campaign.type,
+          discount_type: campaign.discountType,
+          discount_value: campaign.discountValue,
+          start_date: campaign.startDate,
+          end_date: campaign.endDate,
+          is_active: campaign.active !== undefined ? campaign.active : true,
+          min_purchase_amount: campaign.minPurchaseAmount || 0,
+          max_discount_amount: campaign.maxDiscountAmount ?? null,
+          applicable_categories: campaign.categoryId || null,
+          applicable_products: campaign.productIds || [],
+          priority: campaign.priority || 0,
+          firm_nr: ERP_SETTINGS.firmNr,
+        };
+        const rows = await postgrest.post<any[]>(
+          `/${tableName}`,
+          body,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return row ? mapDatabaseCampaignToCampaign(row) : null;
+      }
       const { rows } = await postgres.query(
         `INSERT INTO ${tableName} (
             name, description, type, discount_type, discount_value, 
@@ -133,6 +203,33 @@ export const campaignsAPI = {
       if (fields.length === 0) return this.getById(id);
 
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patchBody: Record<string, unknown> = {};
+        Object.entries(updates).forEach(([key, value]) => {
+          if (!mapping[key] || value === undefined) return;
+          const col = mapping[key];
+          if (key === 'productIds') {
+            if (Array.isArray(value)) patchBody[col] = value;
+            else if (typeof value === 'string') {
+              try {
+                patchBody[col] = JSON.parse(value);
+              } catch {
+                patchBody[col] = [];
+              }
+            } else patchBody[col] = value;
+          } else {
+            patchBody[col] = value;
+          }
+        });
+        const rows = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          patchBody,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return row ? mapDatabaseCampaignToCampaign(row) : this.getById(id);
+      }
       values.push(id);
       values.push(ERP_SETTINGS.firmNr);
       const { rows } = await postgres.query(
@@ -153,6 +250,14 @@ export const campaignsAPI = {
   async delete(id: string): Promise<boolean> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const deleted = await postgrest.delete<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        return Array.isArray(deleted) ? deleted.length > 0 : Boolean(deleted);
+      }
       const { rowCount } = await postgres.query(
         `DELETE FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -170,6 +275,16 @@ export const campaignsAPI = {
   async setActive(id: string, isActive: boolean): Promise<boolean> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { is_active: isActive },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        return Boolean(row);
+      }
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET is_active = $1 WHERE id = $2 AND firm_nr = $3`,
         [isActive, id, ERP_SETTINGS.firmNr]
@@ -187,6 +302,21 @@ export const campaignsAPI = {
   async getByType(type: string): Promise<Campaign[]> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_campaigns`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            type: `eq.${type}`,
+            is_active: 'eq.true',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            order: 'priority.asc',
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCampaignToCampaign);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE type = $1 AND is_active = true AND firm_nr = $2 ORDER BY priority ASC`,
         [type, ERP_SETTINGS.firmNr]

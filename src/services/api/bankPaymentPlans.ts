@@ -2,7 +2,11 @@
  * Bank Payment Plans API - Direct PostgreSQL Implementation
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+
+function padBankPayFirmNr(): string {
+    return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
 
 // ============================================================================
 // TYPES
@@ -39,6 +43,16 @@ export const bankPaymentPlansAPI = {
      */
     async getAll(): Promise<BankPaymentPlan[]> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padBankPayFirmNr();
+                const rows = await postgrest.get<any[]>(
+                    `/rex_${fn}_bank_pay_plans`,
+                    { select: '*', is_active: 'eq.true', order: 'code.asc' },
+                    { schema: 'public' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            }
             const table = this.getTableName();
             const { rows } = await postgres.query(
                 `SELECT * FROM ${table} WHERE is_active = true ORDER BY code ASC`
@@ -55,6 +69,28 @@ export const bankPaymentPlansAPI = {
      */
     async getById(id: string): Promise<BankPaymentPlan | null> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padBankPayFirmNr();
+                const plans = await postgrest.get<any[]>(
+                    `/rex_${fn}_bank_pay_plans`,
+                    { select: '*', id: `eq.${id}`, limit: 1 },
+                    { schema: 'public' }
+                );
+                const plan = Array.isArray(plans) ? plans[0] : null;
+                if (!plan) return null;
+                const lineRows = await postgrest
+                    .get<any[]>(
+                        `/rex_${fn}_bank_pay_plan_lines`,
+                        { select: '*', plan_id: `eq.${id}`, order: 'installment_count.asc' },
+                        { schema: 'public' }
+                    )
+                    .catch(() => [] as any[]);
+                return {
+                    ...plan,
+                    lines: Array.isArray(lineRows) ? lineRows : [],
+                };
+            }
             const table = this.getTableName();
             const linesTable = this.getLinesTableName();
 
@@ -90,6 +126,55 @@ export const bankPaymentPlansAPI = {
         const linesTable = this.getLinesTableName();
 
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padBankPayFirmNr();
+                const body: Record<string, unknown> = {
+                    id,
+                    code: plan.code,
+                    name: plan.name,
+                    bank_name: plan.bank_name,
+                    card_brand: plan.card_brand ?? null,
+                    is_active: plan.is_active ?? true,
+                };
+                await postgrest.post(`/rex_${fn}_bank_pay_plans`, body, {
+                    schema: 'public',
+                    prefer: 'return=minimal',
+                });
+                if (plan.lines && plan.lines.length > 0) {
+                    try {
+                        for (const line of plan.lines) {
+                            await postgrest.post(
+                                `/rex_${fn}_bank_pay_plan_lines`,
+                                {
+                                    id: crypto.randomUUID(),
+                                    plan_id: id,
+                                    installment_count: line.installment_count,
+                                    commission_rate: line.commission_rate,
+                                    delay_days: line.delay_days,
+                                    is_active: true,
+                                },
+                                { schema: 'public', prefer: 'return=minimal' }
+                            );
+                        }
+                    } catch (lineErr) {
+                        await postgrest
+                            .delete(`/rex_${fn}_bank_pay_plan_lines?plan_id=eq.${encodeURIComponent(id)}`, {
+                                schema: 'public',
+                                prefer: 'return=minimal',
+                            })
+                            .catch(() => { });
+                        await postgrest
+                            .delete(`/rex_${fn}_bank_pay_plans?id=eq.${encodeURIComponent(id)}`, {
+                                schema: 'public',
+                                prefer: 'return=minimal',
+                            })
+                            .catch(() => { });
+                        throw lineErr;
+                    }
+                }
+                return this.getById(id);
+            }
             // Start transaction
             await postgres.query('BEGIN');
 
@@ -115,7 +200,13 @@ export const bankPaymentPlansAPI = {
             await postgres.query('COMMIT');
             return this.getById(id);
         } catch (error) {
-            await postgres.query('ROLLBACK');
+            if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+                try {
+                    await postgres.query('ROLLBACK');
+                } catch {
+                    /* */
+                }
+            }
             console.error('[BankPaymentPlansAPI] create failed:', error);
             return null;
         }
@@ -129,6 +220,46 @@ export const bankPaymentPlansAPI = {
         const linesTable = this.getLinesTableName();
 
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padBankPayFirmNr();
+                const patchBody: Record<string, unknown> = {};
+                if (plan.code !== undefined) patchBody.code = plan.code;
+                if (plan.name !== undefined) patchBody.name = plan.name;
+                if (plan.bank_name !== undefined) patchBody.bank_name = plan.bank_name;
+                if (plan.card_brand !== undefined) patchBody.card_brand = plan.card_brand;
+                if (plan.is_active !== undefined) patchBody.is_active = plan.is_active;
+                if (Object.keys(patchBody).length > 0) {
+                    await postgrest.patch(
+                        `/rex_${fn}_bank_pay_plans?id=eq.${encodeURIComponent(id)}`,
+                        patchBody,
+                        { schema: 'public', prefer: 'return=minimal' }
+                    );
+                }
+                if (plan.lines) {
+                    await postgrest
+                        .delete(`/rex_${fn}_bank_pay_plan_lines?plan_id=eq.${encodeURIComponent(id)}`, {
+                            schema: 'public',
+                            prefer: 'return=minimal',
+                        })
+                        .catch(() => { });
+                    for (const line of plan.lines) {
+                        await postgrest.post(
+                            `/rex_${fn}_bank_pay_plan_lines`,
+                            {
+                                id: line.id || crypto.randomUUID(),
+                                plan_id: id,
+                                installment_count: line.installment_count,
+                                commission_rate: line.commission_rate,
+                                delay_days: line.delay_days,
+                                is_active: true,
+                            },
+                            { schema: 'public', prefer: 'return=minimal' }
+                        );
+                    }
+                }
+                return this.getById(id);
+            }
             await postgres.query('BEGIN');
 
             // Update header
@@ -155,7 +286,13 @@ export const bankPaymentPlansAPI = {
             await postgres.query('COMMIT');
             return this.getById(id);
         } catch (error) {
-            await postgres.query('ROLLBACK');
+            if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+                try {
+                    await postgres.query('ROLLBACK');
+                } catch {
+                    /* */
+                }
+            }
             console.error('[BankPaymentPlansAPI] update failed:', error);
             return null;
         }
@@ -167,6 +304,21 @@ export const bankPaymentPlansAPI = {
     async delete(id: string): Promise<boolean> {
         const table = this.getTableName();
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padBankPayFirmNr();
+                await postgrest
+                    .delete(`/rex_${fn}_bank_pay_plan_lines?plan_id=eq.${encodeURIComponent(id)}`, {
+                        schema: 'public',
+                        prefer: 'return=minimal',
+                    })
+                    .catch(() => { });
+                await postgrest.delete(`/rex_${fn}_bank_pay_plans?id=eq.${encodeURIComponent(id)}`, {
+                    schema: 'public',
+                    prefer: 'return=minimal',
+                });
+                return true;
+            }
             await postgres.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
             return true;
         } catch (error) {

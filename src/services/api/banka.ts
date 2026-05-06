@@ -3,7 +3,14 @@
  * Refactored to use logic.bank_registers and logic.bank_lines
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+
+function padFirmNr(): string {
+  return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+}
+function padPeriodNr(): string {
+  return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
 
 // ===== TYPES =====
 
@@ -45,9 +52,24 @@ export async function fetchBankalar(params?: {
 }): Promise<Banka[]> {
     try {
         const table = 'bank_registers';
+        const isActive = params?.aktif !== false;
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const rows = await postgrest.get<any[]>(
+                `/rex_${fn}_bank_registers`,
+                {
+                    select: '*',
+                    is_active: `eq.${isActive ? 'true' : 'false'}`,
+                    order: 'code.asc',
+                },
+                { schema: 'public' }
+            );
+            return (Array.isArray(rows) ? rows : []).map(mapDbBankaToBanka);
+        }
         const { rows } = await postgres.query(
             `SELECT * FROM ${table} WHERE is_active = $1 ORDER BY code ASC`,
-            [params?.aktif !== false]
+            [isActive]
         );
 
         return rows.map(mapDbBankaToBanka);
@@ -63,6 +85,18 @@ export async function fetchBankalar(params?: {
 export async function fetchBanka(id: string): Promise<Banka> {
     try {
         const table = 'bank_registers';
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const rows = await postgrest.get<any[]>(
+                `/rex_${fn}_bank_registers`,
+                { select: '*', id: `eq.${id}`, limit: 1 },
+                { schema: 'public' }
+            );
+            const row = Array.isArray(rows) ? rows[0] : null;
+            if (!row) throw new Error('Banka bulunamadı');
+            return mapDbBankaToBanka(row);
+        }
         const { rows } = await postgres.query(
             `SELECT * FROM ${table} WHERE id = $1`,
             [id]
@@ -82,6 +116,28 @@ export async function fetchBanka(id: string): Promise<Banka> {
 export async function createBanka(banka: Partial<Banka>): Promise<Banka> {
     try {
         const table = 'bank_registers';
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const body: Record<string, unknown> = {
+                firm_nr: ERP_SETTINGS.firmNr,
+                code: banka.banka_kodu || '',
+                bank_name: banka.banka_adi || '',
+                branch_name: banka.sube_adi || '',
+                account_no: banka.hesap_no || '',
+                iban: banka.iban || '',
+                currency_code: banka.id_doviz_kodu || 'IQD',
+                balance: banka.bakiye || 0,
+                is_active: true,
+            };
+            const rows = await postgrest.post<any[]>(
+                `/rex_${fn}_bank_registers`,
+                body,
+                { schema: 'public', prefer: 'return=representation' }
+            );
+            const row = Array.isArray(rows) ? rows[0] : rows;
+            return mapDbBankaToBanka(row);
+        }
         const { rows } = await postgres.query(
             `INSERT INTO ${table} (firm_nr, code, bank_name, branch_name, account_no, iban, currency_code, balance, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
@@ -123,6 +179,25 @@ export async function updateBanka(id: string, banka: Partial<Banka>): Promise<Ba
         if (banka.aktif !== undefined) { fields.push(`is_active = $${i++}`); values.push(banka.aktif); }
 
         values.push(id);
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const patchBody: Record<string, unknown> = {};
+            if (banka.banka_adi) patchBody.bank_name = banka.banka_adi;
+            if (banka.sube_adi !== undefined) patchBody.branch_name = banka.sube_adi;
+            if (banka.hesap_no !== undefined) patchBody.account_no = banka.hesap_no;
+            if (banka.iban !== undefined) patchBody.iban = banka.iban;
+            if (banka.banka_kodu) patchBody.code = banka.banka_kodu;
+            if (banka.aktif !== undefined) patchBody.is_active = banka.aktif;
+            if (Object.keys(patchBody).length === 0) return fetchBanka(id);
+            const rows = await postgrest.patch<any[]>(
+                `/rex_${fn}_bank_registers?id=eq.${encodeURIComponent(id)}`,
+                patchBody,
+                { schema: 'public', prefer: 'return=representation' }
+            );
+            const row = Array.isArray(rows) ? rows[0] : rows;
+            return mapDbBankaToBanka(row);
+        }
         const { rows } = await postgres.query(
             `UPDATE ${table} SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${i} RETURNING *`,
             values
@@ -141,6 +216,16 @@ export async function updateBanka(id: string, banka: Partial<Banka>): Promise<Ba
 export async function deleteBanka(id: string): Promise<void> {
     try {
         const table = 'bank_registers';
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            await postgrest.patch(
+                `/rex_${fn}_bank_registers?id=eq.${encodeURIComponent(id)}`,
+                { is_active: false },
+                { schema: 'public', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(`UPDATE ${table} SET is_active = false WHERE id = $1`, [id]);
     } catch (error: any) {
         console.error('[Banka] Delete error:', error);
@@ -177,6 +262,24 @@ export async function fetchBankaIslemleri(params?: {
             values.push(params.bitis_tarihi);
         }
 
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const pn = padPeriodNr();
+            const q: Record<string, string> = { select: '*', order: 'date.desc' };
+            if (params?.banka_id) q.register_id = `eq.${params.banka_id}`;
+            const rows = await postgrest.get<any[]>(`/rex_${fn}_${pn}_bank_lines`, q, { schema: 'public' });
+            const list = Array.isArray(rows) ? rows : [];
+            const d0 = (s: string) => String(s || '').slice(0, 10);
+            return list
+                .filter((r) => {
+                    const d = d0(String(r?.date || ''));
+                    if (params?.baslangic_tarihi && d < d0(params.baslangic_tarihi)) return false;
+                    if (params?.bitis_tarihi && d > d0(params.bitis_tarihi)) return false;
+                    return true;
+                })
+                .map(mapDbIslemToIslem);
+        }
         const { rows } = await postgres.query(sql + ` ORDER BY date DESC`, values);
         return rows.map(mapDbIslemToIslem);
     } catch (error: any) {
@@ -193,10 +296,47 @@ export async function createBankaIslemi(islem: BankaIslemi): Promise<BankaIslemi
         const table = 'bank_lines';
         const bankaTable = 'bank_registers';
 
+        const sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') || islem.islem_tipi === 'EFT' || islem.islem_tipi === 'HAVALE' ? -1 : 1;
+
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            const { postgrest } = await import('./postgrestClient');
+            const fn = padFirmNr();
+            const pn = padPeriodNr();
+            const linesPath = `/rex_${fn}_${pn}_bank_lines`;
+            const regPath = `/rex_${fn}_bank_registers`;
+            const body: Record<string, unknown> = {
+                firm_nr: String(ERP_SETTINGS.firmNr),
+                period_nr: String(ERP_SETTINGS.periodNr || '01'),
+                register_id: islem.banka_id,
+                fiche_no: islem.islem_no || `BNK-${ERP_SETTINGS.firmNr}-${Date.now()}`,
+                date: islem.islem_tarihi || new Date().toISOString(),
+                amount: islem.tutar,
+                sign,
+                definition: islem.islem_aciklamasi || '',
+                transaction_type: islem.islem_tipi,
+            };
+            const rows = await postgrest.post<any[]>(linesPath, body, {
+                schema: 'public',
+                prefer: 'return=representation',
+            });
+            const row = Array.isArray(rows) ? rows[0] : rows;
+            const cur = await postgrest.get<any[]>(
+                regPath,
+                { select: 'balance', id: `eq.${islem.banka_id}`, limit: 1 },
+                { schema: 'public' }
+            );
+            const br = Array.isArray(cur) ? cur[0] : null;
+            const nb = Number(br?.balance ?? 0) + Number(islem.tutar) * sign;
+            await postgrest.patch(
+                `${regPath}?id=eq.${encodeURIComponent(String(islem.banka_id))}`,
+                { balance: nb },
+                { schema: 'public', prefer: 'return=minimal' }
+            );
+            return mapDbIslemToIslem(row);
+        }
+
         // Start transaction
         await postgres.query('BEGIN');
-
-        const sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') || islem.islem_tipi === 'EFT' || islem.islem_tipi === 'HAVALE' ? -1 : 1;
 
         const { rows } = await postgres.query(
             `INSERT INTO ${table} (firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type)
@@ -224,7 +364,13 @@ export async function createBankaIslemi(islem: BankaIslemi): Promise<BankaIslemi
 
         return mapDbIslemToIslem(rows[0]);
     } catch (error: any) {
-        await postgres.query('ROLLBACK');
+        if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+            try {
+                await postgres.query('ROLLBACK');
+            } catch {
+                /* yoksa BEGIN yok */
+            }
+        }
         console.error('[Banka] İşlem create error:', error);
         throw error;
     }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -2641,15 +2642,19 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const cariBorderColor = getCariBorderColor();
   const cariTextColor = getCariTextColor();
 
-  return (
-    <>
-      <div className="fixed inset-0 z-50 flex flex-col bg-white">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[160] flex flex-col bg-white pointer-events-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="universal-invoice-form-title"
+    >
         {/* Header with Tabs */}
         <div className={`bg-gradient-to-r ${headerColors.gradient} flex-shrink-0`}>
           <div className="px-6 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText className="w-5 h-5 text-white" />
-              <h2 className="text-lg text-white">{invoiceType.name} - {invoiceNo}</h2>
+              <h2 id="universal-invoice-form-title" className="text-lg text-white">{invoiceType.name} - {invoiceNo}</h2>
               {!isTransactionAllowed(new Date()) && (
                 <div className="flex items-center gap-2 px-3 py-1 bg-red-500 rounded text-white text-xs">
                   <AlertCircle className="w-3 h-3" />
@@ -2658,13 +2663,14 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button className="text-white hover:bg-white/10 rounded p-1.5">
+              <button type="button" className="text-white hover:bg-white/10 rounded p-1.5">
                 <Minus className="w-4 h-4" />
               </button>
-              <button className="text-white hover:bg-white/10 rounded p-1.5">
+              <button type="button" className="text-white hover:bg-white/10 rounded p-1.5">
                 <Square className="w-4 h-4" />
               </button>
               <button
+                type="button"
                 onClick={onClose}
                 className="text-white hover:bg-white/10 rounded p-1.5"
               >
@@ -2676,6 +2682,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
           {/* Tabs */}
           <div className="flex border-t border-white/20">
             <button
+              type="button"
               onClick={() => setActiveTab('fatura')}
               className={`px-6 py-2 text-sm transition-colors ${activeTab === 'fatura'
                 ? 'bg-white text-gray-900'
@@ -2685,6 +2692,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
               {tm('invoice')}
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('detaylar')}
               className={`px-6 py-2 text-sm transition-colors ${activeTab === 'detaylar'
                 ? 'bg-white text-gray-900'
@@ -2694,6 +2702,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
               {tm('details')}
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('detaylarII')}
               className={`px-6 py-2 text-sm transition-colors ${activeTab === 'detaylarII'
                 ? 'bg-white text-gray-900'
@@ -2703,6 +2712,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
               {tm('detailsII')}
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab('ekliDosyalar')}
               className={`px-6 py-2 text-sm transition-colors ${activeTab === 'ekliDosyalar'
                 ? 'bg-white text-gray-900'
@@ -3626,8 +3636,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
             }}
           />
         </div>
-      </div>
-    </>
+    </div>,
+    document.body
   );
 }
 
