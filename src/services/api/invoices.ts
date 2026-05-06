@@ -134,6 +134,28 @@ export const TRCODES_BY_INVOICE_CATEGORY: Record<string, readonly number[]> = {
   Hizmet: [4, 9, 21, 24]
 };
 
+function defaultFicheTypeByCategory(invoiceCategory?: string): string | null {
+  switch (invoiceCategory) {
+    case 'Alis':
+      return 'purchase_invoice';
+    case 'Satis':
+      return 'sales_invoice';
+    case 'Iade':
+      return 'return_invoice';
+    case 'Irsaliye':
+      return 'waybill';
+    case 'Siparis':
+      return 'order';
+    case 'Teklif':
+      return 'quote';
+    case 'Hizmet':
+      // Hizmet satırları farklı trcode varyantlarıyla gelebiliyor; en yaygın başlık sales_invoice.
+      return 'sales_invoice';
+    default:
+      return null;
+  }
+}
+
 /** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
 export function invoiceMatchesModuleCategory(
   inv: { invoice_category?: string; invoice_type?: number; trcode?: number },
@@ -492,9 +514,18 @@ export const invoicesAPI = {
         paramIndex++;
       } else if (invoiceCategory) {
         const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[invoiceCategory] || [])];
+        const fallbackFicheType = defaultFicheTypeByCategory(invoiceCategory);
 
         if (trcodes.length > 0) {
-          sql += ` AND trcode::int IN (${trcodes.join(',')})`;
+          // Legacy/taşınmış bazı kayıtlarda trcode boş/0 kalabiliyor.
+          // Bu durumda doğru fiche_type ile yine listede görünmesini sağla.
+          sql += ` AND (trcode::int IN (${trcodes.join(',')})`;
+          if (fallbackFicheType) {
+            sql += ` OR fiche_type::text = $${paramIndex}::text`;
+            params.push(fallbackFicheType);
+            paramIndex++;
+          }
+          sql += `)`;
         } else {
           // Fallback to fiche_type if unknown category
           let ficheType = 'sales_invoice';

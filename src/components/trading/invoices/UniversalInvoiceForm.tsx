@@ -30,6 +30,7 @@ import { InvoiceWarehouseModal } from './InvoiceWarehouseModal';
 import { InvoiceSalespersonModal } from './InvoiceSalespersonModal';
 import { useCampaignStore } from '../../../store/useCampaignStore';
 import { BarcodeScanner as InventoryBarcodeScanner } from '../../inventory/stock/BarcodeScanner';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { priceChangeVouchersAPI } from '../../../services/api/priceChangeVouchers';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
@@ -370,6 +371,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [supplierTitle, setSupplierTitle] = useState(() => editData?.supplier_name || '');
   const [customerBarcode, setCustomerBarcode] = useState(''); // Cari Hesap Barkodu
   const [showCameraScanner, setShowCameraScanner] = useState(false);
+  const [quickBarcodeInput, setQuickBarcodeInput] = useState('');
+  const { isMobile } = useResponsive();
 
   // Fatura türüne özel alanlar
   const [referenceInvoiceNo, setReferenceInvoiceNo] = useState(''); // İade için
@@ -1891,6 +1894,13 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     toast.success(`Barkod okundu: ${code}`);
   }, [currentRowIndex, updateItem, resolveProductByCodeInput]);
 
+  const handleQuickBarcodeSubmit = useCallback(() => {
+    const code = (quickBarcodeInput || '').trim();
+    if (!code) return;
+    handleCameraBarcodeScan(code);
+    setQuickBarcodeInput('');
+  }, [quickBarcodeInput, handleCameraBarcodeScan]);
+
   // EditData değiştiğinde items'ı güncelle
   useEffect(() => {
     if (editData) {
@@ -2759,19 +2769,39 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   cariTextColor={cariTextColor}
                 />
 
-                <div className="flex justify-end mb-2">
+                <div className={`mb-3 flex items-center gap-2 ${isMobile ? 'flex-col' : 'justify-end'}`}>
+                  <input
+                    type="text"
+                    value={quickBarcodeInput}
+                    onChange={(e) => setQuickBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleQuickBarcodeSubmit();
+                      }
+                    }}
+                    placeholder="Barkod okut / yaz"
+                    className={`border border-gray-300 rounded-lg px-3 py-2 text-sm ${isMobile ? 'w-full' : 'w-64'}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickBarcodeSubmit}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700 text-white text-sm font-medium hover:bg-gray-800"
+                    title="Barkod ekle"
+                  >
+                    <Search className="w-4 h-4" />
+                    Ekle
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowCameraScanner(true)}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform"
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform ${isMobile ? 'w-full justify-center' : ''}`}
                     title="Kamera ile barkod okut"
                   >
                     <Camera className="w-4 h-4" />
-                    Kamera ile Barkod
+                    Kamera
                   </button>
                 </div>
-
-
 
                 {/* Items Grid */}
                 <div className="space-y-3">
@@ -2796,17 +2826,19 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                         </button>
                         <span className="text-xs text-gray-600">{tm('bulkPriceIncreaseDesc')}</span>
                       </div>
-                      <ColumnVisibilityMenu
-                        columns={itemColumns}
-                        onToggle={handleToggleColumn}
-                        onShowAll={handleShowAllColumns}
-                        onHideAll={handleHideAllColumns}
-                      />
+                      <div className="flex items-center gap-2">
+                        <ColumnVisibilityMenu
+                          columns={itemColumns}
+                          onToggle={handleToggleColumn}
+                          onShowAll={handleShowAllColumns}
+                          onHideAll={handleHideAllColumns}
+                        />
+                      </div>
                     </div>
                   )}
                   {/* Kolon Görünürlüğü Sadece Diğer Fatura Türleri İçin (Alış değilse buraya gelir) */}
                   {invoiceType.category !== 'Alis' && (
-                    <div className="flex justify-end">
+                    <div className="flex justify-end items-center gap-2">
                       <ColumnVisibilityMenu
                         columns={itemColumns}
                         onToggle={handleToggleColumn}

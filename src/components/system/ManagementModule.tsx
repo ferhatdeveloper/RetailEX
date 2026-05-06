@@ -1331,7 +1331,19 @@ export function ManagementModule({
         </div>
       </div>
 
-      {/* Mobile Menu Button - REMOVED: Managed by MainLayout Header */}
+      {/* Mobile Menu Button */}
+      {isMobile && !effectiveSidebarOpen && (
+        <button
+          type="button"
+          onClick={() => effectiveSetSidebarOpen(true)}
+          className="fixed left-3 top-3 h-11 w-11 rounded-xl bg-blue-600 text-white shadow-lg flex items-center justify-center active:scale-[0.98]"
+          style={{ zIndex: Z_INDEX.SIDEBAR + 1 }}
+          aria-label="Menüyü aç"
+          title="Menüyü aç"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Main Content */}
       <div className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'w-full' : ''}`}>

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { History, Trash2, Percent, Calendar } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 
 const formatNumber = (num: number | undefined, decimals: number = 2, thousandSeparator: boolean = true) => {
     if (num === undefined || num === null) return '0';
@@ -95,6 +96,7 @@ export const InvoiceItemsGrid = React.memo(({
     onCodeFieldFocus
 }: InvoiceItemsGridProps) => {
     const { language } = useLanguage();
+    const { isMobile } = useResponsive();
     const tm = (key: string) => moduleTranslations[key]?.[language] || key;
 
     const isColumnVisible = (columnId: string) => {
@@ -116,6 +118,86 @@ export const InvoiceItemsGrid = React.memo(({
             default: return 'text-gray-600';
         }
     }, [invoiceType.category, invoiceType.code]);
+
+    if (isMobile) {
+        return (
+            <div className="bg-white rounded border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 border-b border-gray-200 px-3 py-2">
+                    <span className={`text-sm font-medium ${cariTextColor}`}>{tm('invoiceTypeLabel')} {invoiceType.name}</span>
+                </div>
+                <div className="p-2 space-y-1.5 max-h-[60vh] overflow-auto">
+                    {items.map((item, index) => (
+                        <div
+                            key={item.id}
+                            className={`rounded-md border p-1.5 space-y-1.5 ${currentRowIndex === index ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
+                            onClick={() => setCurrentRowIndex(index)}
+                        >
+                            <div className="grid grid-cols-[1.3fr_0.8fr_0.9fr_auto] gap-1.5 items-center">
+                                <input
+                                    ref={el => { gridRefs.current[`code-${index}`] = el; }}
+                                    type="text"
+                                    value={getProductCode(item.code)}
+                                    onChange={(e) => handleProductSearchChange(e.target.value, index)}
+                                    onKeyDown={(e) => handleProductKeyDown(e, index)}
+                                    onFocus={() => {
+                                        setCurrentRowIndex(index);
+                                        onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
+                                    }}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
+                                    placeholder={tm('itemCode')}
+                                />
+                                <input
+                                    type="number"
+                                    value={item.quantity || ''}
+                                    onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                                    onFocus={() => setCurrentRowIndex(index)}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    placeholder={tm('itemQuantity')}
+                                />
+                                <input
+                                    type="number"
+                                    value={item.unitPrice || ''}
+                                    onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                    onFocus={() => setCurrentRowIndex(index)}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    placeholder={tm('itemPrice')}
+                                />
+                                <button
+                                    onClick={() => removeItem(index)}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                    type="button"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                value={item.description}
+                                onChange={(e) => updateItem(index, 'description', e.target.value)}
+                                onFocus={() => setCurrentRowIndex(index)}
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
+                                placeholder={tm('itemDescription')}
+                            />
+                            <div className="grid grid-cols-[0.8fr_1.2fr] gap-1.5 items-center">
+                                <input
+                                    type="number"
+                                    value={item.discountPercent || ''}
+                                    onChange={(e) => updateItem(index, 'discountPercent', parseFloat(e.target.value) || 0)}
+                                    onFocus={() => setCurrentRowIndex(index)}
+                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    placeholder="% İsk."
+                                />
+                                <div className="rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-right">
+                                    <div className="text-[10px] text-blue-600">{tm('itemNetTotal')}</div>
+                                    <div className="text-xs font-semibold text-blue-700">{formatNumber(item.netAmount, 2, true)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-white rounded border border-gray-200 overflow-hidden">
