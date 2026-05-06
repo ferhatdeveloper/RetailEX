@@ -497,16 +497,20 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             </div>
           ) : isMobile ? (
             <>
-              <div className="flex-1 overflow-y-auto overscroll-contain divide-y divide-gray-100">
+              <div className="flex-1 overflow-y-auto overscroll-contain bg-gray-50/80">
                 {mobilePagedProducts.length === 0 ? (
                   <div className="text-center py-12 text-gray-400 text-sm">{tm('noDataFound')}</div>
                 ) : (
                   mobilePagedProducts.map((p) => {
                     const selected = selectedProducts.some((s) => s.id === p.id);
+                    const low = (p.stock ?? 0) < 10;
+                    const code = (p.barcode || p.code || '—').trim();
                     return (
                       <div
                         key={p.id}
-                        className={`flex items-stretch gap-2 px-2 py-1.5 active:bg-gray-50 ${selected ? 'bg-blue-50/60' : ''}`}
+                        className={`grid grid-cols-[auto_1fr] gap-2 pl-2 pr-3 py-1.5 border-b border-gray-100/90 min-h-[52px] items-center active:bg-white/90 ${
+                          selected ? 'bg-blue-50/90' : 'bg-white'
+                        }`}
                         onTouchStart={(e) => {
                           const touch = e.touches[0];
                           if (touch) startLongPress(touch.clientX, touch.clientY, p);
@@ -519,13 +523,13 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                         onTouchCancel={clearLongPress}
                       >
                         <div
-                          className="flex items-center pt-0.5"
+                          className="flex items-center self-center"
                           onClick={(e) => e.stopPropagation()}
                           onTouchStart={(e) => e.stopPropagation()}
                         >
                           <input
                             type="checkbox"
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                            className="w-[18px] h-[18px] rounded border-gray-300 text-blue-600"
                             checked={selected}
                             onChange={(e) => {
                               e.stopPropagation();
@@ -534,23 +538,28 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                             aria-label="Seç"
                           />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm text-gray-900 truncate leading-tight">
-                            {p.name || '—'}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-gray-600 mt-0.5">
-                            <span className="font-mono truncate max-w-[9rem]">{p.barcode || p.code || '—'}</span>
-                            <span className="text-gray-400">·</span>
-                            <span
-                              className={
-                                (p.stock ?? 0) < 10 ? 'text-red-600 font-semibold' : 'text-gray-700'
-                              }
-                            >
-                              {tm('stock')}: {p.stock ?? 0}
+                        <div className="min-w-0 flex flex-col justify-center gap-0.5">
+                          <div className="flex items-start justify-between gap-2 min-w-0">
+                            <span className="font-semibold text-[13px] text-gray-900 leading-snug line-clamp-2">
+                              {p.name || '—'}
                             </span>
-                            <span className="text-gray-400">·</span>
-                            <span className="text-gray-800 font-medium tabular-nums">
+                            <span className="shrink-0 text-[12px] font-bold tabular-nums text-blue-700 leading-snug pt-0.5">
                               {formatCurrency(Number(p.price) || 0, 2, false)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 min-w-0 mt-0.5">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <Barcode className="w-3 h-3 shrink-0 text-gray-400" aria-hidden />
+                              <span className="text-[10px] font-mono text-gray-500 truncate tracking-tight">{code}</span>
+                            </div>
+                            <span
+                              className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${
+                                low
+                                  ? 'bg-red-50 text-red-700 ring-1 ring-red-200/80'
+                                  : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/70'
+                              }`}
+                            >
+                              {tm('stock')} {p.stock ?? 0}
                             </span>
                           </div>
                         </div>
