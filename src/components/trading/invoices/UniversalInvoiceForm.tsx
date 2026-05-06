@@ -2803,7 +2803,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                 <div className="space-y-3">
                   {/* Toplu Fiyat Artırımı - Sadece Alış Faturaları için */}
                   {invoiceType.category === 'Alis' && (
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="hidden md:flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <span className="text-sm text-gray-700 font-medium">{tm('bulkPriceIncrease')}:</span>
                         <input
@@ -2834,7 +2834,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   )}
                   {/* Kolon Görünürlüğü Sadece Diğer Fatura Türleri İçin (Alış değilse buraya gelir) */}
                   {invoiceType.category !== 'Alis' && (
-                    <div className="flex justify-end items-center gap-2">
+                    <div className="hidden md:flex justify-end items-center gap-2">
                       <ColumnVisibilityMenu
                         columns={itemColumns}
                         onToggle={handleToggleColumn}

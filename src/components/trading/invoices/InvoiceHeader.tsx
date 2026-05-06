@@ -133,9 +133,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             </button>
 
             {isFormExpanded ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     {/* Column 1 - Fatura Bilgileri */}
-                    <div className="space-y-3 min-w-0">
+                    <div className="space-y-3">
                         <div>
                             <label className="block mb-1 text-gray-700 text-xs">Fatura kod</label>
                             <input
@@ -202,7 +202,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
 
                     {/* Column 2 - Devam */}
-                    <div className="space-y-3 min-w-0">
+                    <div className="space-y-3">
                         <div>
                             <label className="block mb-1 text-gray-700 text-xs">Duzenleme T.</label>
                             <div className="flex gap-1">
@@ -277,7 +277,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
 
                     {/* Column 3 - Cari Hesap Bilgileri */}
-                    <div className="space-y-3 min-w-0">
+                    <div className="space-y-3">
                         <div>
                             <div className={`border-2 rounded p-2 mb-3 ${cariBorderColor}`}>
                                 <div className={`${cariTextColor} text-xs font-medium`}>
@@ -365,7 +365,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
 
                     {/* Column 4 - Cari Hesap Devam */}
-                    <div className="space-y-3 min-w-0">
+                    <div className="space-y-3">
                         <div>
                             <label className="block mb-1 text-gray-700 text-xs">Ödemeler</label>
                             <div className="flex gap-1">
@@ -444,8 +444,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 text-sm w-full">
-                    <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-sm w-full md:overflow-hidden">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0">
                         <div className="whitespace-nowrap flex gap-1"><span className="font-medium text-gray-700">Fatura No:</span> <span className="text-gray-500">{invoiceNo}</span></div>
                         <div className="whitespace-nowrap flex gap-1"><span className="font-medium text-gray-700">Tarih:</span> <span className="text-gray-500">{transactionDate}</span></div>
                         <div className="whitespace-nowrap flex items-center gap-1">
@@ -460,9 +460,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-1 min-w-0 lg:max-w-md">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0 w-full md:max-w-md">
                         <span className={`font-semibold shrink-0 ${cariTextColor}`}>{invoiceType.category === 'Alis' ? 'Tedarikçi' : 'Müşteri'}:</span>
-                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                        <div className="flex-1 min-w-0 flex flex-col gap-1 w-full sm:w-auto">
                             <div className="flex gap-1">
                                 <input
                                     type="text"
