@@ -50,6 +50,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 /** Güzellik hizmet hatırlatmaları (tamamlanan işlem + X gün); DB yoksa sessizce atlanır. */
 async function notifyBeautyFollowUpRemindersAfterSession(opts?: { playChime?: boolean }): Promise<void> {
     try {
+        if (DB_SETTINGS.connectionProvider === 'rest_api') return;
         const { beautyService } = await import('../services/beautyService');
         const { formatLocalYmd, addDaysToLocalYmd } = await import('../utils/dateLocal');
         const { translate } = await import('../locales/module-translations');

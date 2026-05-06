@@ -320,6 +320,32 @@ export function Login({ onLogin }: LoginProps) {
         setDbUsers([]);
         return;
       }
+      const { DB_SETTINGS } = await import('../../services/postgres');
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        try {
+          const { postgrest } = await import('../../services/api/postgrestClient');
+          const rows = await postgrest.get(
+            '/users',
+            {
+              select: 'username,full_name,role',
+              is_active: 'eq.true',
+              order: 'full_name.asc',
+            },
+            { schema: 'public' }
+          );
+          setDbUsers(
+            (Array.isArray(rows) ? rows : []).map((r: any) => ({
+              username: r.username,
+              fullName: r.full_name,
+              role: r.role,
+            }))
+          );
+        } catch {
+          // PostgREST tarafında users tablosu/rule erişimi yoksa login autocomplete'i sessizce boş bırak.
+          setDbUsers([]);
+        }
+        return;
+      }
       const { postgres } = await import('../../services/postgres');
       // Önce public.users (Kullanıcı Yönetimi) — garson vb. tüm tanımlı kullanıcılar burada
       try {

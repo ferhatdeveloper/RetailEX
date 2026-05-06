@@ -1,4 +1,4 @@
-import { postgres } from './postgres';
+import { postgres, DB_SETTINGS, ERP_SETTINGS } from './postgres';
 
 export interface UnitSetLine {
     id?: string;
@@ -24,6 +24,36 @@ class UnitSetAPI {
      */
     async getAll(): Promise<UnitSet[]> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./api/postgrestClient');
+                const unitsetsTable = `/rex_${ERP_SETTINGS.firmNr}_unitsets`;
+                const unitsetLinesTable = `/rex_${ERP_SETTINGS.firmNr}_unitsetl`;
+                const sets = await postgrest.get<any[]>(
+                    unitsetsTable,
+                    { select: '*', order: 'name.asc' },
+                    { schema: 'public' }
+                );
+
+                const setsWithLines = await Promise.all((Array.isArray(sets) ? sets : []).map(async (set: any) => {
+                    const dbLines = await postgrest.get<any[]>(
+                        unitsetLinesTable,
+                        {
+                            select: '*',
+                            unitset_id: `eq.${set.id}`,
+                            order: 'main_unit.desc,code.asc',
+                        },
+                        { schema: 'public' }
+                    );
+                    const lines = (Array.isArray(dbLines) ? dbLines : []).map((l: any) => ({
+                        ...l,
+                        conv_fact1: Number(l.multiplier1 || l.conv_fact1 || 1),
+                        conv_fact2: Number(l.multiplier2 || l.conv_fact2 || 1)
+                    }));
+                    return { ...set, lines };
+                }));
+
+                return setsWithLines;
+            }
             const { rows: sets } = await postgres.query('SELECT * FROM unitsets ORDER BY name ASC');
 
             const setsWithLines = await Promise.all(sets.map(async (set) => {

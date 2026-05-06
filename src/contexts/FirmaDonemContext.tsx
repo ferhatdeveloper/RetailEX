@@ -415,8 +415,11 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
           const session = JSON.parse(sessionStr);
           const allowedPeriods = session?.user?.allowed_periods;
           if (Array.isArray(allowedPeriods) && allowedPeriods.length > 0) {
-            const firmNrRow = await postgres.query('SELECT firm_nr FROM firms WHERE id::text = $1 OR firm_nr = $1 LIMIT 1', [firmIdOrNr]);
-            const effectiveFirmNr = firmNrRow?.rows?.[0]?.firm_nr || (typeof firmIdOrNr === 'string' && !firmIdOrNr.match(/^[0-9a-f-]{36}$/i) ? firmIdOrNr : null);
+            const effectiveFirmNr =
+              normalizeFirmNr(selectedFirm?.firm_nr) ||
+              (typeof firmIdOrNr === 'string' && !firmIdOrNr.match(/^[0-9a-f-]{36}$/i)
+                ? normalizeFirmNr(firmIdOrNr)
+                : null);
             if (effectiveFirmNr) {
               const allowedNrsForFirm = allowedPeriods.filter((x: any) => x.firm_nr === effectiveFirmNr).map((x: any) => x.period_nr);
               if (allowedNrsForFirm.length > 0) {
@@ -451,10 +454,28 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchBranches = async (firmNr: number) => {
     try {
-      const { rows } = await postgres.query(
-        'SELECT * FROM stores WHERE type = $1 AND firm_nr = $2 AND is_active = true ORDER BY code ASC',
-        ['BRANCH', firmNr.toString()]
-      );
+      let rows: any[] = [];
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('../services/api/postgrestClient');
+        const data = await postgrest.get(
+          '/stores',
+          {
+            select: '*',
+            type: 'eq.BRANCH',
+            firm_nr: `eq.${firmNr.toString().padStart(3, '0')}`,
+            is_active: 'eq.true',
+            order: 'code.asc',
+          },
+          { schema: 'public' }
+        );
+        rows = Array.isArray(data) ? data : [];
+      } else {
+        const result = await postgres.query(
+          'SELECT * FROM stores WHERE type = $1 AND firm_nr = $2 AND is_active = true ORDER BY code ASC',
+          ['BRANCH', firmNr.toString()]
+        );
+        rows = result.rows || [];
+      }
 
       const mapped = rows.map((r: any) => ({
         ...r,
@@ -472,10 +493,28 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchWarehouses = async (firmNr: number, branchId?: number) => {
     try {
-      const { rows } = await postgres.query(
-        'SELECT * FROM stores WHERE type = $1 AND firm_nr = $2 AND is_active = true ORDER BY code ASC',
-        ['WAREHOUSE', firmNr.toString()]
-      );
+      let rows: any[] = [];
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('../services/api/postgrestClient');
+        const data = await postgrest.get(
+          '/stores',
+          {
+            select: '*',
+            type: 'eq.WAREHOUSE',
+            firm_nr: `eq.${firmNr.toString().padStart(3, '0')}`,
+            is_active: 'eq.true',
+            order: 'code.asc',
+          },
+          { schema: 'public' }
+        );
+        rows = Array.isArray(data) ? data : [];
+      } else {
+        const result = await postgres.query(
+          'SELECT * FROM stores WHERE type = $1 AND firm_nr = $2 AND is_active = true ORDER BY code ASC',
+          ['WAREHOUSE', firmNr.toString()]
+        );
+        rows = result.rows || [];
+      }
 
       const mapped = rows.map((r: any) => ({
         ...r,
