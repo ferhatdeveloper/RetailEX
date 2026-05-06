@@ -3,7 +3,7 @@
  * Note: Uses rex_{firm}_customers table
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Customer } from '../../core/types';
 
 export const customerAPI = {
@@ -13,6 +13,20 @@ export const customerAPI = {
   async getAll(): Promise<Customer[]> {
     try {
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            order: 'name.asc',
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
         [ERP_SETTINGS.firmNr]

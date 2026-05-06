@@ -3,7 +3,7 @@
  * Note: Uses rex_{firm}_customers table (Logo ERP CLCARD equivalent)
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Supplier } from '../../core/types';
 export type { Supplier };
 
@@ -15,6 +15,41 @@ export const supplierAPI = {
     try {
       const custTable = `rex_${ERP_SETTINGS.firmNr}_customers`;
       const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const [customers, suppliers] = await Promise.all([
+          postgrest.get<any[]>(
+            `/${custTable}`,
+            {
+              select: '*',
+              firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+              is_active: 'eq.true',
+              order: 'name.asc',
+            },
+            { schema: 'public' }
+          ),
+          postgrest.get<any[]>(
+            `/${suppTable}`,
+            {
+              select: '*',
+              is_active: 'eq.true',
+              order: 'name.asc',
+            },
+            { schema: 'public' }
+          ),
+        ]);
+        const customerRows = (Array.isArray(customers) ? customers : []).map((r) => ({
+          ...r,
+          card_type: 'customer',
+        }));
+        const supplierRows = (Array.isArray(suppliers) ? suppliers : []).map((r) => ({
+          ...r,
+          card_type: 'supplier',
+        }));
+        return [...customerRows, ...supplierRows]
+          .map(mapDatabaseSupplierToSupplier)
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      }
 
       const sql = `
         WITH account_balances AS (

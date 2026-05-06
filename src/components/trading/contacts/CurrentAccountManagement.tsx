@@ -113,76 +113,6 @@ export function CurrentAccountManagement() {
     }
   }, [selectedFirma]);
 
-  // Mock data
-  const mockAccounts: CurrentAccount[] = [
-    {
-      id: '1',
-      firma_id: selectedFirma?.id || '',
-      kod: '120.001',
-      unvan: 'Ahmed Al-Maliki Ticaret',
-      tip: 'MUSTERI',
-      vergi_no: '1234567890',
-      vergi_dairesi: 'Baghdad Vergi Dairesi',
-      adres: 'Baghdad, Iraq',
-      telefon: '+964 750 123 4567',
-      email: 'ahmed@example.com',
-      kredi_limiti: 500000,
-      vade_suresi: 30,
-      odeme_sekli: 'CEK',
-      risk_grubu: 'A',
-      borc_bakiye: 250000,
-      alacak_bakiye: 100000,
-      bakiye: 150000, // Müşteri bize borçlu
-      aktif: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: '2',
-      firma_id: selectedFirma?.id || '',
-      kod: '320.001',
-      unvan: 'ABC Gıda Tedarik Ltd.',
-      tip: 'TEDARIKCI',
-      vergi_no: '9876543210',
-      vergi_dairesi: 'Erbil Vergi Dairesi',
-      adres: 'Erbil, Iraq',
-      telefon: '+964 770 987 6543',
-      email: 'info@abcgida.com',
-      kredi_limiti: 0,
-      vade_suresi: 60,
-      odeme_sekli: 'HAVALE',
-      risk_grubu: 'A',
-      borc_bakiye: 80000,
-      alacak_bakiye: 200000,
-      bakiye: -120000, // Biz tedarikçiye borçluyuz
-      aktif: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: '3',
-      firma_id: selectedFirma?.id || '',
-      kod: '120.002',
-      unvan: 'Mohammed Hassan Perakende',
-      tip: 'MUSTERI',
-      vergi_no: '5555555555',
-      vergi_dairesi: 'Basra Vergi Dairesi',
-      adres: 'Basra, Iraq',
-      telefon: '+964 771 555 5555',
-      email: 'mohammed@example.com',
-      kredi_limiti: 300000,
-      vade_suresi: 45,
-      odeme_sekli: 'SENET',
-      risk_grubu: 'B',
-      borc_bakiye: 180000,
-      alacak_bakiye: 50000,
-      bakiye: 130000,
-      aktif: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-
   const mockTransactions: AccountTransaction[] = [
     {
       id: '1',
@@ -229,7 +159,7 @@ export function CurrentAccountManagement() {
   ];
 
   // Filter accounts
-  const filteredAccounts = mockAccounts.filter(account => {
+  const filteredAccounts = accounts.filter(account => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch =
       (account.kod?.toLowerCase() || '').includes(searchLower) ||
@@ -243,11 +173,11 @@ export function CurrentAccountManagement() {
 
   // Calculate summaries
   const summary = {
-    toplamMusteri: mockAccounts.filter(a => a.tip === 'MUSTERI' || a.tip === 'HER_IKISI').length,
-    toplamTedarikci: mockAccounts.filter(a => a.tip === 'TEDARIKCI' || a.tip === 'HER_IKISI').length,
-    toplamAlacak: mockAccounts.reduce((sum, a) => a.bakiye > 0 ? sum + a.bakiye : sum, 0),
-    toplamBorc: mockAccounts.reduce((sum, a) => a.bakiye < 0 ? sum + Math.abs(a.bakiye) : sum, 0),
-    riskliHesaplar: mockAccounts.filter(a =>
+    toplamMusteri: accounts.filter(a => a.tip === 'MUSTERI' || a.tip === 'HER_IKISI').length,
+    toplamTedarikci: accounts.filter(a => a.tip === 'TEDARIKCI' || a.tip === 'HER_IKISI').length,
+    toplamAlacak: accounts.reduce((sum, a) => a.bakiye > 0 ? sum + a.bakiye : sum, 0),
+    toplamBorc: accounts.reduce((sum, a) => a.bakiye < 0 ? sum + Math.abs(a.bakiye) : sum, 0),
+    riskliHesaplar: accounts.filter(a =>
       a.bakiye > a.kredi_limiti * 0.9 && a.kredi_limiti > 0
     ).length
   };

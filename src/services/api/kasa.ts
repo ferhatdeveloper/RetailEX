@@ -3,7 +3,7 @@
  * Refactored to use logic.cash_registers and logic.cash_lines
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 
 // ===== TYPES =====
 
@@ -82,9 +82,24 @@ export async function fetchKasalar(params?: {
     // params?.aktif !== false means it defaults to true if not provided.
     const isActive = params?.aktif !== false;
 
-    const { rows } = await postgres.query(
-      `SELECT * FROM ${table} WHERE is_active = ${isActive} ORDER BY code ASC`
-    );
+    let rows: any[] = [];
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      rows = await postgrest.get<any[]>(
+        `/rex_${ERP_SETTINGS.firmNr}_cash_registers`,
+        {
+          select: '*',
+          is_active: `eq.${isActive ? 'true' : 'false'}`,
+          order: 'code.asc',
+        },
+        { schema: 'public' }
+      );
+    } else {
+      const result = await postgres.query(
+        `SELECT * FROM ${table} WHERE is_active = ${isActive} ORDER BY code ASC`
+      );
+      rows = result.rows || [];
+    }
 
     console.log(`[KasaService] Rows found: ${rows?.length || 0}`);
 
@@ -230,7 +245,26 @@ export async function fetchKasaIslemleri(params?: {
       values.push(params.bitis_tarihi);
     }
 
-    const { rows } = await postgres.query(sql + ` ORDER BY cl.date DESC`, values);
+    let rows: any[] = [];
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const tableName = `/rex_${ERP_SETTINGS.firmNr}_${ERP_SETTINGS.periodNr}_cash_lines`;
+      const query: Record<string, string> = {
+        select: '*',
+        order: 'date.desc',
+      };
+      if (params?.kasa_id) query.register_id = `eq.${params.kasa_id}`;
+      const fetched = await postgrest.get<any[]>(tableName, query, { schema: 'public' });
+      rows = (Array.isArray(fetched) ? fetched : []).filter((r: any) => {
+        const d = String(r?.date || '').slice(0, 10);
+        if (params?.baslangic_tarihi && d < String(params.baslangic_tarihi).slice(0, 10)) return false;
+        if (params?.bitis_tarihi && d > String(params.bitis_tarihi).slice(0, 10)) return false;
+        return true;
+      });
+    } else {
+      const result = await postgres.query(sql + ` ORDER BY cl.date DESC`, values);
+      rows = result.rows || [];
+    }
 
     // Assuming a logger exists, otherwise this line would cause an error.
     // If logger is not defined, it should be removed or replaced with console.log
