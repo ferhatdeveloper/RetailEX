@@ -182,7 +182,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
   'MalzemeSiniflari' | 'Birimsetleri' | 'varyant' | 'ozelkodlar' | 'markatanim' | 'groupkodları' |
-  'malzemeler' | 'materials-intake' | 'hareketler' | 'material-list' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
+  'malzemeler' | 'materials-intake' | 'smart-material-add' | 'hareketler' | 'material-list' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
   'suppliers_def' | 'warehousetransfer_def' | 'warehousetransfer_mv' | 'warehousetransfer_v' | 'storetransfer_mv' | 'storetransfer_v' | 'stockcount_store' | 'material-transfers' |
   'stockreports_bal' | 'stockreports_tr' | 'stockreports_list' | 'stockreports_sum' | 'stockreports_trans' |
   'report-material-extract' | 'report-material-value' | 'inventory' | 'cost' | 'report-in-out-totals' | 'report-warehouse-status' | 'report-transaction-breakdown' | 'report-slip-list' | 'report-min-max' |
@@ -847,6 +847,14 @@ export function ManagementModule({
         case 'materials-intake':
           return (
             <MaterialsIntakeModule
+              onOpenPurchaseInvoice={() => setCurrentScreen('purchase-invoice-standard')}
+            />
+          );
+
+        case 'smart-material-add':
+          return (
+            <MaterialsIntakeModule
+              variant="smart"
               onOpenPurchaseInvoice={() => setCurrentScreen('purchase-invoice-standard')}
             />
           );

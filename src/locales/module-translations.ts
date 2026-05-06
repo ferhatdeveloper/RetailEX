@@ -20,6 +20,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'على الهاتف يُطلب إذن الكاميرا. امسح الرمز، عدّل السطر، ثم اعتماد التصدير أو فاتورة الشراء.',
     ku: 'لە مۆبایل مۆڵەتی کامێرا داوا دەکرێت. بارکۆد بخوێنەوە، ڕیزەکە دەستکاری بکە، پاشان پەسەند بکە یان هەناردە بۆ ئێکسڵ.',
   },
+  mgmtMatIntakeSmartBanner: {
+    tr: 'Raf etiketi fotoğrafı çekin; satırda OCR (akıllı okuma) ile barkod, isim ve fiyat tahmini alın. Ardından düzenleyip onaya gönderebilirsiniz.',
+    en: 'Take a shelf-label photo; use OCR on the row to guess barcode, name and price. Edit if needed, then send for approval.',
+    ar: 'التقط صورة ملصف الرف؛ استخدم التعرف الضوئي في السطر لتقدير الباركود والاسم والسعر.',
+    ku: 'وێنەی نیشانەی ڕەف بگرە؛ لە ڕیزدا OCR بەکاربهێنە بۆ نزیککردنەوەی بارکۆد و ناو و نرخ.',
+  },
   mgmtMatIntakePhotoLabel: { tr: 'Etiket fotoğrafı (isteğe bağlı)', en: 'Label photo (optional)', ar: 'صورة التسمية (اختياري)', ku: 'وێنەی نیشانە (ئارەزوومەندانە)' },
   mgmtMatIntakeAddRow: { tr: 'Satır ekle', en: 'Add row', ar: 'إضافة سطر', ku: 'ڕیز زیاد بکە' },
   mgmtMatIntakeSendApproval: { tr: 'Onaya gönder', en: 'Send for approval', ar: 'إرسال للاعتماد', ku: 'ناردن بۆ پەسەندکردن' },

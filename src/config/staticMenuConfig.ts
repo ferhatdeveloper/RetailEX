@@ -100,7 +100,8 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.minMaxStock, screen: 'report-min-max', icon: BarChart3 }
                 ]
             },
-            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet }
+            { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet },
+            { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles }
         ]
     },
     {
@@ -367,6 +368,7 @@ export const staticMenuSections = getStaticMenuSections({
         dataBroadcast: 'Bilgi Gönder/Al',
         integrations: 'Entegrasyonlar',
         excelOperations: 'Excel İşlemleri',
+        smartMaterialAdd: 'Akıllı malzeme ekleme',
         salesInvoice: 'Toptan Satış Faturası',
         retailSales: 'Perakende Satış',
         wholesaleSales: 'Toptan Satış',

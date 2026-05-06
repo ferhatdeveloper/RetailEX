@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Camera,
   Plus,
@@ -99,6 +99,11 @@ export function MaterialsIntakeModule({
   } | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoTargetRowId, setPhotoTargetRowId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (variant !== 'smart') return;
+    toast.info(tm('mgmtMatIntakeSmartBanner'), { duration: 6000 });
+  }, [variant, tm]);
 
   const borderClass = darkMode ? 'border-gray-700' : 'border-gray-200';
   const cardBg = darkMode ? 'bg-gray-800' : 'bg-white';
@@ -330,6 +335,14 @@ export function MaterialsIntakeModule({
           <div>
             <h1 className={`text-lg font-bold ${textClass}`}>{tm('mgmtMatIntakeTitle')}</h1>
             <p className={`text-sm mt-1 ${mutedClass}`}>{tm('mgmtMatIntakeSubtitle')}</p>
+            {variant === 'smart' && (
+              <p
+                className={`text-sm mt-2 rounded-lg border px-3 py-2 ${darkMode ? 'border-amber-500/40 bg-amber-950/40 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-950'}`}
+              >
+                <Sparkles className="inline w-4 h-4 mr-1.5 align-text-bottom shrink-0" />
+                {tm('mgmtMatIntakeSmartBanner')}
+              </p>
+            )}
             {isMobile && (
               <p className={`text-xs mt-2 flex items-center gap-1.5 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
                 <Smartphone className="w-3.5 h-3.5 shrink-0" />

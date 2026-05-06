@@ -72,6 +72,8 @@ export interface MenuTranslations {
   materials: string;
   /** Yönetim — Malzeme Yönetimi: kamera / taslak / onay */
   materialsIntake: string;
+  /** Raf etiketi / OCR ile akıllı malzeme girişi */
+  smartMaterialAdd: string;
   menuManagement: string;
   minMaxStock: string;
   inventoryCountOps: string;
@@ -1888,6 +1890,7 @@ export const translations: any = {
       materialWarehouseStatus: 'Malzeme Ambar Durum',
       materials: 'Malzemeler',
       materialsIntake: 'Malzemeler (kamera & onay)',
+      smartMaterialAdd: 'Akıllı malzeme ekleme',
       menuManagement: 'Menü Yönetimi',
       supabaseDataTransfer: 'Supabase Veri Aktarımı',
       virtualPbxCallerId: 'Sanal santral (Caller ID)',
@@ -3343,6 +3346,7 @@ export const translations: any = {
       materialWarehouseStatus: 'Material Warehouse Status',
       materials: 'Materials',
       materialsIntake: 'Materials (camera & approval)',
+      smartMaterialAdd: 'Smart material entry',
       inventoryCountOps: 'Inventory Counting Operations',
       mobileCount: 'Mobile Count / Create Slip',
       countDeficitSlips: 'Count Shortage Slips',
@@ -4679,6 +4683,7 @@ export const translations: any = {
       materialWarehouseStatus: 'حالة مخزن المواد',
       materials: 'المواد',
       materialsIntake: 'المواد (الكاميرا والاعتماد)',
+      smartMaterialAdd: 'إضافة مواد ذكية',
       bankDepositDesc: 'إيداع نقدي في البنك',
       bankTransferDesc: 'تحويل بين البنوك أو الخزائن',
       bankWithdrawalDesc: 'سحب نقدي من البنك',
@@ -6014,6 +6019,7 @@ export const translations: any = {
       materialWarehouseStatus: 'باری کۆگای ماددەکان',
       materials: 'ماددەکان',
       materialsIntake: 'ماددەکان (کامێرا و پەسەندکردن)',
+      smartMaterialAdd: 'زیادکردنی ماددەی زیرەک',
       bankDepositDesc: 'پاره دانان لە بانک',
       bankTransferDesc: 'گواستنەوە لە نێوان بانکەکان',
       bankWithdrawalDesc: 'پاره کێشانەوە لە بانک',
