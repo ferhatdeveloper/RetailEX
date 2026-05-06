@@ -156,6 +156,147 @@ function defaultFicheTypeByCategory(invoiceCategory?: string): string | null {
   }
 }
 
+function shouldTryRestApiCreateFallback(error: unknown): boolean {
+  const msg = String((error as any)?.message || error || '').toLowerCase();
+  return (
+    msg.includes('connection terminated due to connection timeout') ||
+    msg.includes('database query failed') ||
+    msg.includes('timeout') ||
+    msg.includes('bad gateway')
+  );
+}
+
+async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
+  firmNr: string;
+  periodNr: string;
+  trcode: number;
+  ficheType: string;
+}): Promise<Invoice | null> {
+  const { postgrest } = await import('./postgrestClient');
+  const salesTable = `/rex_${String(opts.firmNr).padStart(3, '0')}_${String(opts.periodNr).padStart(2, '0')}_sales`;
+  const itemsTable = `/rex_${String(opts.firmNr).padStart(3, '0')}_${String(opts.periodNr).padStart(2, '0')}_sale_items`;
+  const invoiceId = self.crypto.randomUUID();
+
+  const customerId = isValidUuid(invoice.customer_id)
+    ? invoice.customer_id
+    : isValidUuid(invoice.supplier_id)
+      ? invoice.supplier_id
+      : null;
+
+  const enhancedPayload: Record<string, unknown> = {
+    id: invoiceId,
+    firm_nr: String(opts.firmNr),
+    period_nr: String(opts.periodNr),
+    fiche_no: String(invoice.invoice_no),
+    date: invoice.created_at || new Date().toISOString(),
+    fiche_type: opts.ficheType,
+    trcode: Number(opts.trcode),
+    customer_id: customerId,
+    customer_name: String(invoice.customer_name || invoice.supplier_name || ''),
+    total_net: Number(invoice.subtotal || 0),
+    total_vat: Number(invoice.tax || 0),
+    total_discount: Number(invoice.discount || 0),
+    net_amount: Number(invoice.total_amount || 0),
+    total_cost: Number(invoice.total_cost || 0),
+    gross_profit: Number(invoice.gross_profit || 0),
+    profit_margin: Number(invoice.profit_margin || 0),
+    currency: String(invoice.currency || 'IQD'),
+    currency_rate: Number(invoice.currency_rate || 1),
+    status: 'approved',
+    notes: String(invoice.notes || ''),
+    document_no: String(invoice.invoice_no || ''),
+    payment_method: String((invoice as any).payment_method || 'Nakit'),
+    cashier: String((invoice as any).cashier || ''),
+    store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
+  };
+
+  const legacyPayload: Record<string, unknown> = {
+    id: invoiceId,
+    firm_nr: String(opts.firmNr),
+    period_nr: String(opts.periodNr),
+    fiche_no: String(invoice.invoice_no),
+    date: invoice.created_at || new Date().toISOString(),
+    fiche_type: opts.ficheType,
+    trcode: Number(opts.trcode),
+    customer_id: customerId,
+    customer_name: String(invoice.customer_name || invoice.supplier_name || ''),
+    total_net: Number(invoice.subtotal || 0),
+    total_vat: Number(invoice.tax || 0),
+    total_discount: Number(invoice.discount || 0),
+    net_amount: Number(invoice.total_amount || 0),
+    total_cost: Number(invoice.total_cost || 0),
+    gross_profit: Number(invoice.gross_profit || 0),
+    profit_margin: Number(invoice.profit_margin || 0),
+    currency: String(invoice.currency || 'IQD'),
+    currency_rate: Number(invoice.currency_rate || 1),
+    status: 'approved',
+    notes: String(invoice.notes || ''),
+  };
+
+  try {
+    await postgrest.post<any>(salesTable, enhancedPayload, { schema: 'public' });
+  } catch {
+    await postgrest.post<any>(salesTable, legacyPayload, { schema: 'public' });
+  }
+
+  if (invoice.items?.length) {
+    for (const item of invoice.items) {
+      const unitMultiplier = Number((item as any).multiplier || 1);
+      const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+      const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
+      const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
+      const itemEnhanced = {
+        id: self.crypto.randomUUID(),
+        invoice_id: invoiceId,
+        firm_nr: String(opts.firmNr),
+        period_nr: String(opts.periodNr),
+        item_code: String(item.code || item.productId || ''),
+        item_name: String(item.description || item.productName || ''),
+        quantity: Number(item.quantity || 0),
+        unit: String((item as any).unit || 'Adet'),
+        unit_price: Number(item.unitPrice || item.price || 0),
+        discount_rate: Number(item.discount || 0),
+        vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+        total_amount: Number(item.total || item.netAmount || 0),
+        net_amount: Number(item.netAmount || item.total || 0),
+        unit_cost: Number(item.unitCost || 0),
+        total_cost: Number(item.totalCost || 0),
+        gross_profit: Number(item.grossProfit || 0),
+        unit_multiplier: unitMultiplier,
+        base_quantity: baseQty,
+        unit_price_fc: unitPriceFC,
+        currency: itemCurrency,
+      };
+      const itemLegacy = {
+        id: self.crypto.randomUUID(),
+        invoice_id: invoiceId,
+        firm_nr: String(opts.firmNr),
+        period_nr: String(opts.periodNr),
+        item_code: String(item.code || item.productId || ''),
+        item_name: String(item.description || item.productName || ''),
+        quantity: Number(item.quantity || 0),
+        unit: String((item as any).unit || 'Adet'),
+        unit_price: Number(item.unitPrice || item.price || 0),
+        discount_rate: Number(item.discount || 0),
+        vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+        total_amount: Number(item.total || item.netAmount || 0),
+        net_amount: Number(item.netAmount || item.total || 0),
+      };
+      try {
+        await postgrest.post<any>(itemsTable, itemEnhanced, { schema: 'public' });
+      } catch {
+        await postgrest.post<any>(itemsTable, itemLegacy, { schema: 'public' });
+      }
+    }
+  }
+
+  return {
+    ...invoice,
+    id: invoiceId,
+    created_at: new Date().toISOString(),
+  };
+}
+
 /** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
 export function invoiceMatchesModuleCategory(
   inv: { invoice_category?: string; invoice_type?: number; trcode?: number },
@@ -465,6 +606,30 @@ export const invoicesAPI = {
     } catch (error: any) {
       console.error('[InvoicesAPI] create failed:', error);
       console.error('[InvoicesAPI] Failed Invoice Data:', JSON.stringify(invoice, null, 2));
+      if (DB_SETTINGS.connectionProvider === 'rest_api' && shouldTryRestApiCreateFallback(error)) {
+        try {
+          const firmNr = normalizeFirmNrForRow((invoice as any).firma_id ?? ERP_SETTINGS.firmNr);
+          const periodNr = normalizePeriodNrForRow((invoice as any).donem_id ?? ERP_SETTINGS.periodNr);
+          let trcode = Number(invoice.invoice_type || 0);
+          let ficheType = 'sales_invoice';
+          if (trcode === 0) {
+            switch (invoice.invoice_category) {
+              case 'Alis': trcode = 1; ficheType = 'purchase_invoice'; break;
+              case 'Satis': trcode = 8; ficheType = 'sales_invoice'; break;
+              case 'Iade': trcode = 3; ficheType = 'return_invoice'; break;
+              case 'Irsaliye': trcode = 8; ficheType = 'waybill'; break;
+              case 'Siparis': trcode = 1; ficheType = 'order'; break;
+              case 'Hizmet': trcode = 9; ficheType = 'sales_invoice'; break;
+              default: trcode = 8; ficheType = 'sales_invoice';
+            }
+          }
+          console.warn('[InvoicesAPI] PostgreSQL timeout; trying PostgREST create fallback...');
+          const saved = await createInvoiceViaPostgrest(invoice, { firmNr, periodNr, trcode, ficheType });
+          if (saved?.id) return saved;
+        } catch (fallbackErr: any) {
+          console.error('[InvoicesAPI] PostgREST create fallback failed:', fallbackErr);
+        }
+      }
       throw new Error(error.message || 'Fatura kaydedilemedi');
     }
   },
