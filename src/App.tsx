@@ -370,7 +370,7 @@ function App() {
                 <p className="text-slate-400 text-sm">Yükleniyor...</p>
               </div>
             </div>
-          ) : (windowWidth >= 1024 && !isConfigured) ? (
+          ) : (IS_TAURI && windowWidth >= 1024 && !isConfigured) ? (
             <SetupWizard />
           ) : (
             <>
