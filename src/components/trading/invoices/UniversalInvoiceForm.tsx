@@ -2790,15 +2790,6 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   />
                   <button
                     type="button"
-                    onClick={handleQuickBarcodeSubmit}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700 text-white text-sm font-medium hover:bg-gray-800"
-                    title="Barkod ekle"
-                  >
-                    <Search className="w-4 h-4" />
-                    Ekle
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setShowCameraScanner(true)}
                     className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform ${isMobile ? 'w-full justify-center' : ''}`}
                     title="Kamera ile barkod okut"
