@@ -197,6 +197,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' |
+  'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
   'supabase-migration' |
@@ -284,6 +285,7 @@ export function ManagementModule({
     if (currentScreen === 'sales-stock-group') setCurrentScreen('salesreports');
     if (currentScreen === 'finance-reps-group') setCurrentScreen('mizan');
     if (currentScreen === 'advanced-reps-group') setCurrentScreen('advanced-reports');
+    if (currentScreen === 'inventory-count-ops') setCurrentScreen('mobile-inventory-count');
   }, [currentScreen]);
   const [rtlMode, setRtlMode] = useState(() => {
     return localStorage.getItem('retailos_rtl_mode') === 'true';
@@ -591,6 +593,7 @@ export function ManagementModule({
   };
 
   const handleSearchItemClick = useCallback((item: any) => {
+    if (item?.id == null || item.id === '') return;
     setCurrentScreen(item.id);
     setMenuSearchQuery('');
     setSearchResults([]);
@@ -842,6 +845,7 @@ export function ManagementModule({
         case 'materials': // Potential ID for "Malzemeler"
         case 'material-list':
         case 'malzemeler': // JSON ID
+        case 'material-definitions': // Menü/arama yanlış ebeveyn id ile gelirse malzeme listesi
           return <ProductManagement products={products} setProducts={setProducts} />;
 
         case 'materials-intake':

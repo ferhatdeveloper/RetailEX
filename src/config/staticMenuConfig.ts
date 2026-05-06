@@ -71,6 +71,7 @@ export const getStaticMenuSections = (t: Translations) => [
             },
             {
                 label: t.menu.inventoryCountOps,
+                screen: 'inventory-count-ops',
                 icon: Calculator,
                 children: [
                     { label: t.menu.mobileCount, screen: 'mobile-inventory-count', icon: Smartphone },

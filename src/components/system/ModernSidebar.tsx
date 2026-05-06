@@ -82,7 +82,10 @@ export function ModernSidebar({
     const isActive = currentScreen === item.id;
     const Icon = item.icon;
     const hasChildren = item.children && item.children.length > 0;
-    const isExpanded = expandedItems.includes(item.id);
+    const expandKey = hasChildren
+      ? (item.id != null && item.id !== '' ? String(item.id) : `group:${item.label}`)
+      : String(item.id ?? '');
+    const isExpanded = hasChildren ? expandedItems.includes(expandKey) : expandedItems.includes(item.id);
 
     // Tutarlı spacing ve font boyutları - Responsive
     const basePadding = level === 0
@@ -106,9 +109,9 @@ export function ModernSidebar({
     // Eğer children varsa, expandable item render et
     if (hasChildren) {
       return (
-        <div key={item.id}>
+        <div key={expandKey}>
           <button
-            onClick={() => toggleItem(item.id)}
+            onClick={() => toggleItem(expandKey)}
             className={`w-full flex items-center justify-between ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} active:scale-[0.98] ${darkMode
               ? level === 0
                 ? 'text-gray-200 hover:bg-gray-700 hover:text-white active:bg-gray-600'
@@ -140,9 +143,9 @@ export function ModernSidebar({
     // Leaf items (actual navigation items) - Badge gösterilmiyor
     return (
       <button
-        key={item.id}
+        key={item.id != null && item.id !== '' ? String(item.id) : `leaf:${item.label}`}
         onClick={() => {
-          setCurrentScreen(item.id);
+          if (item.id != null && item.id !== '') setCurrentScreen(item.id);
         }}
         className={`w-full flex items-center gap-2 sm:gap-3 ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} active:scale-[0.98] ${isActive
           ? darkMode
