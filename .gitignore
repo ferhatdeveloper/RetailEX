@@ -13,7 +13,8 @@ dist/
 .next/
 out/
 
-# Cursor / Claude yerel worktree (repoya eklenmez)
+# Cursor / Claude Code — yerel ayar ve worktree gitlink’leri (repoda tutulmaz)
+# Not: Bu yollar bir kez commitlendiyse `git rm -r --cached .claude/` ile indeksten çıkarılmalıdır.
 .claude/
 
 # Misc
