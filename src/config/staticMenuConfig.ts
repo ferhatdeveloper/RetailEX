@@ -9,7 +9,7 @@ import {
     Briefcase, GitBranch, Calendar, Award, Wallet, CreditCard, Database,
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
-    Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle, Camera,
+    Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
     Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
@@ -44,11 +44,6 @@ export const getStaticMenuSections = (t: Translations) => [
         title: t.menu.materialManagement,
         screen: 'products',
         items: [
-            {
-                label: t.menu.materialsIntake,
-                screen: 'materials-intake',
-                icon: Camera,
-            },
             {
                 label: t.menu.masterRecords,
                 screen: 'material-definitions',
