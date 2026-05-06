@@ -156,6 +156,16 @@ function defaultFicheTypeByCategory(invoiceCategory?: string): string | null {
   }
 }
 
+function deriveFicheTypeFromTrcode(trcode: number): string {
+  if ([1, 4, 5, 6, 13, 26, 41, 42].includes(trcode)) return 'purchase_invoice';
+  if ([7, 8, 9, 14, 29, 30, 31, 32].includes(trcode)) return 'sales_invoice';
+  if ([2, 3].includes(trcode)) return 'return_invoice';
+  if ([10, 11, 12, 13, 25].includes(trcode)) return 'waybill';
+  if ([20, 21].includes(trcode)) return 'order';
+  if ([30, 31].includes(trcode)) return 'quote';
+  return 'sales_invoice';
+}
+
 function shouldTryRestApiCreateFallback(error: unknown): boolean {
   const msg = String((error as any)?.message || error || '').toLowerCase();
   return (
@@ -611,7 +621,7 @@ export const invoicesAPI = {
           const firmNr = normalizeFirmNrForRow((invoice as any).firma_id ?? ERP_SETTINGS.firmNr);
           const periodNr = normalizePeriodNrForRow((invoice as any).donem_id ?? ERP_SETTINGS.periodNr);
           let trcode = Number(invoice.invoice_type || 0);
-          let ficheType = 'sales_invoice';
+          let ficheType = deriveFicheTypeFromTrcode(trcode);
           if (trcode === 0) {
             switch (invoice.invoice_category) {
               case 'Alis': trcode = 1; ficheType = 'purchase_invoice'; break;
