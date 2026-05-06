@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
 import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
@@ -14,6 +14,7 @@ import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
 import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
@@ -47,6 +48,9 @@ const getIcon = (iconName: string) => {
     default: return FileText;
   }
 };
+
+const LONG_PRESS_MS = 480;
+const LONG_PRESS_MOVE_PX = 14;
 
 interface Invoice {
   id?: string;
@@ -82,6 +86,7 @@ interface Invoice {
 
 export function InvoiceListModule({ customers = [], products = [], defaultInvoiceTypeFilter, defaultCategory, title, description }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
+  const { isMobile } = useResponsive();
   const { selectedFirm } = useFirmaDonem();
   const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
 
@@ -166,6 +171,10 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   const [pageSize, setPageSize] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  const [mobileActionInvoice, setMobileActionInvoice] = useState<Invoice | null>(null);
 
   // Debounce için
   const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(null);
@@ -299,6 +308,90 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   const handleViewDetail = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
     setShowDetailModal(true);
+  };
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressOriginRef.current = null;
+  }, []);
+
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
+
+  const startLongPress = useCallback(
+    (clientX: number, clientY: number, invoice: Invoice) => {
+      clearLongPress();
+      longPressOriginRef.current = { x: clientX, y: clientY };
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        longPressOriginRef.current = null;
+        setMobileActionInvoice(invoice);
+      }, LONG_PRESS_MS);
+    },
+    [clearLongPress]
+  );
+
+  const maybeCancelLongPressMove = useCallback(
+    (clientX: number, clientY: number) => {
+      const o = longPressOriginRef.current;
+      if (!o || !longPressTimerRef.current) return;
+      if (
+        Math.abs(clientX - o.x) > LONG_PRESS_MOVE_PX ||
+        Math.abs(clientY - o.y) > LONG_PRESS_MOVE_PX
+      ) {
+        clearLongPress();
+      }
+    },
+    [clearLongPress]
+  );
+
+  const formatInvoiceDateStr = (dateValue: string | undefined) => {
+    if (!dateValue) return '—';
+    try {
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return tm('invalidDate');
+      return date.toLocaleDateString(tm('localeCode'), {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch {
+      return '—';
+    }
+  };
+
+  const getInvoiceTypeMeta = (invoice: Invoice) => {
+    let invoiceTypeCode: number | undefined = invoice.invoice_type;
+    if (invoiceTypeCode === undefined || invoiceTypeCode === null) {
+      if (invoice.source === 'pos' || invoice.cashier) {
+        invoiceTypeCode = 1;
+      } else {
+        invoiceTypeCode = 0;
+      }
+    }
+    const invoiceType = INVOICE_TYPES.find(t => t.code === invoiceTypeCode);
+    if (invoiceType) {
+      return { label: invoiceType.name, Icon: getIcon(invoiceType.icon) };
+    }
+    if (invoice.invoice_category) {
+      const categoryType = INVOICE_TYPES.find(t => t.category === invoice.invoice_category);
+      if (categoryType) {
+        return { label: tm(categoryType.translationKey), Icon: getIcon(categoryType.icon) };
+      }
+    }
+    return { label: tm('salesInvoices'), Icon: FileText };
+  };
+
+  const statusBadgeClass = (status: string) => {
+    const colors: Record<string, string> = {
+      completed: 'bg-green-100 text-green-700',
+      pending: 'bg-yellow-100 text-yellow-700',
+      refunded: 'bg-red-100 text-red-700',
+      cancelled: 'bg-gray-100 text-gray-700'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-700';
   };
 
   const resolveInvoiceTypeForEdit = (inv: Invoice): InvoiceType => {
@@ -693,75 +786,330 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         </div>
       </div>
 
-      {/* Invoice Table */}
-      <div className="flex-1 overflow-auto p-6">
-        <DevExDataGrid
-          data={invoices}
-          columns={columns}
-          enableSorting={false} // Backend'de sıralama yapılıyor
-          enableFiltering={true}
-          enableColumnResizing
-          enablePagination={false} // Custom pagination kullanıyoruz
-          onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
-          onRowContextMenu={handleRowRightClick}
-        />
+      {/* Invoice Table — mobilde kart + uzun basma; masaüstünde grid */}
+      <div className={`flex-1 min-h-0 flex flex-col ${isMobile ? 'overflow-hidden p-2' : 'overflow-auto p-6'}`}>
+        {isMobile ? (
+          <>
+            <p className="text-[11px] text-gray-500 px-1 pb-2 shrink-0">{tm('invoiceMobileLongPressHint')}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 touch-pan-y">
+              {invoices.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">{tm('noDataFound')}</div>
+              ) : (
+                invoices.map((inv) => {
+                  const meta = getInvoiceTypeMeta(inv);
+                  const TypeIcon = meta.Icon;
+                  const totalVal = inv.total_amount ?? inv.total ?? 0;
+                  const rowKey = String(inv.id ?? inv.invoice_no);
+                  const st = inv.status || '';
+                  return (
+                    <div
+                      key={rowKey}
+                      className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm touch-manipulation select-none active:bg-gray-50/80"
+                      onPointerDown={(e) => {
+                        if (e.pointerType === 'mouse' && e.button !== 0) return;
+                        try {
+                          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                        } catch {
+                          /* ignore */
+                        }
+                        startLongPress(e.clientX, e.clientY, inv);
+                      }}
+                      onPointerMove={(e) => {
+                        maybeCancelLongPressMove(e.clientX, e.clientY);
+                      }}
+                      onPointerUp={(e) => {
+                        try {
+                          const el = e.currentTarget as HTMLElement;
+                          if (typeof el.hasPointerCapture === 'function' && el.hasPointerCapture(e.pointerId)) {
+                            el.releasePointerCapture(e.pointerId);
+                          }
+                        } catch {
+                          /* ignore */
+                        }
+                        clearLongPress();
+                      }}
+                      onPointerCancel={(e) => {
+                        try {
+                          const el = e.currentTarget as HTMLElement;
+                          if (typeof el.hasPointerCapture === 'function' && el.hasPointerCapture(e.pointerId)) {
+                            el.releasePointerCapture(e.pointerId);
+                          }
+                        } catch {
+                          /* ignore */
+                        }
+                        clearLongPress();
+                      }}
+                    >
+                      <div className="flex justify-between gap-2 items-start">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">{tm('invoiceNo')}</div>
+                          <div className="text-sm font-semibold text-blue-600 truncate">{inv.invoice_no}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-1 text-xs text-gray-700">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">{tm('customerSupplier')}</span>
+                          <span className="text-right font-medium truncate">{inv.customer_name || tm('noCustomer')}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">{tm('date')}</span>
+                          <span className="tabular-nums">{formatInvoiceDateStr(inv.invoice_date || inv.date)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <TypeIcon className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden />
+                          <span className="text-[11px] font-medium text-gray-800 truncate">{meta.label}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">{tm('total')}</span>
+                          <span className="font-semibold tabular-nums">
+                            {totalVal > 0 ? `${formatNumber(totalVal, 2, true)} ${tm('currencyCode')}` : `0 ${tm('currencyCode')}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2 items-center">
+                          <span className="text-gray-500 shrink-0">{tm('status')}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusBadgeClass(st)}`}>
+                            {tm(st) || st}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-gray-500 shrink-0">{tm('cashier')}</span>
+                          <span>{inv.cashier || '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="shrink-0 border-t border-gray-200 bg-white px-2 py-2 mt-1 rounded-b-lg">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="flex-1 py-2.5 text-xs font-semibold rounded-lg border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed bg-white"
+                >
+                  {tm('previous')}
+                </button>
+                <span className="text-[11px] text-gray-600 text-center px-1 flex-[1.4] leading-tight">
+                  {tm('page')} {currentPage} / {totalPages || 1}
+                  <span className="text-gray-400"> • </span>
+                  {totalCount} {tm('records')}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage >= (totalPages || 1)}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages || 1, p + 1))}
+                  className="flex-1 py-2.5 text-xs font-semibold rounded-lg border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed bg-white"
+                >
+                  {tm('next')}
+                </button>
+              </div>
+              <div className="mt-2 flex justify-center">
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="max-w-[200px] w-full px-2 py-1.5 border border-gray-200 rounded-lg text-[11px] bg-gray-50"
+                >
+                  <option value={25}>25 / sayfa</option>
+                  <option value={50}>50 / sayfa</option>
+                  <option value={100}>100 / sayfa</option>
+                  <option value={200}>200 / sayfa</option>
+                </select>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <DevExDataGrid
+              data={invoices}
+              columns={columns}
+              enableSorting={false}
+              enableFiltering={true}
+              enableColumnResizing
+              enablePagination={false}
+              onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
+              onRowContextMenu={handleRowRightClick}
+            />
 
-        {/* Custom Pagination */}
-        <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {tm('totalUppercase')} {totalCount} {tm('records')}
-            </span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value={25}>25 / sayfa</option>
-              <option value={50}>50 / sayfa</option>
-              <option value={100}>100 / sayfa</option>
-              <option value={200}>200 / sayfa</option>
-            </select>
-          </div>
+            <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-600">
+                  {tm('totalUppercase')} {totalCount} {tm('records')}
+                </span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={25}>25 / sayfa</option>
+                  <option value={50}>50 / sayfa</option>
+                  <option value={100}>100 / sayfa</option>
+                  <option value={200}>200 / sayfa</option>
+                </select>
+              </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              {tm('first')}
-            </button>
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              {tm('previous')}
-            </button>
-            <span className="px-4 py-1.5 text-sm text-gray-700">
-              {tm('page')} {currentPage} / {totalPages || 1}
-            </span>
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages || 1, p + 1))}
-              disabled={currentPage >= totalPages}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              {tm('next')}
-            </button>
-            <button
-              onClick={() => setCurrentPage(totalPages || 1)}
-              disabled={currentPage >= totalPages}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              {tm('last')}
-            </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  {tm('first')}
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  {tm('previous')}
+                </button>
+                <span className="px-4 py-1.5 text-sm text-gray-700">
+                  {tm('page')} {currentPage} / {totalPages || 1}
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages || 1, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  {tm('next')}
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages || 1)}
+                  disabled={currentPage >= totalPages}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  {tm('last')}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Mobil: uzun basma işlem sayfası */}
+      {mobileActionInvoice && (
+        <div
+          className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMobileActionInvoice(null)}
+        >
+          <div
+            className="w-full max-h-[88vh] rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl flex flex-col max-w-lg sm:max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{title || tm('invoices')}</p>
+                <h3 className="text-base font-bold text-gray-900 leading-tight break-words">{mobileActionInvoice.invoice_no}</h3>
+                <p className="text-xs text-gray-500 mt-1 truncate">{mobileActionInvoice.customer_name || tm('noCustomer')}</p>
+              </div>
+              <button
+                type="button"
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
+                aria-label={tm('close')}
+                onClick={() => setMobileActionInvoice(null)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 text-sm">
+              {[
+                [tm('invoiceNo'), mobileActionInvoice.invoice_no],
+                [tm('customerSupplier'), mobileActionInvoice.customer_name || tm('noCustomer')],
+                [tm('date'), formatInvoiceDateStr(mobileActionInvoice.invoice_date || mobileActionInvoice.date)],
+                [tm('invoiceType'), getInvoiceTypeMeta(mobileActionInvoice).label],
+                [
+                  tm('total'),
+                  (() => {
+                    const v = mobileActionInvoice.total_amount ?? mobileActionInvoice.total ?? 0;
+                    return v > 0 ? `${formatNumber(v, 2, true)} ${tm('currencyCode')}` : `0 ${tm('currencyCode')}`;
+                  })()
+                ],
+                [tm('status'), tm(mobileActionInvoice.status || '') || mobileActionInvoice.status || '—'],
+                [tm('cashier'), mobileActionInvoice.cashier || '—']
+              ].map(([label, val]) => (
+                <div key={String(label)} className="flex justify-between gap-3 border-b border-gray-50 pb-2 last:border-0">
+                  <span className="text-[10px] text-gray-500 font-semibold shrink-0">{label}</span>
+                  <span className="text-right text-gray-900 break-all">{val}</span>
+                </div>
+              ))}
+            </div>
+            <div className="shrink-0 border-t border-gray-100 p-3 space-y-2 bg-gray-50 rounded-b-2xl">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-blue-600 text-white"
+                  onClick={() => {
+                    const inv = mobileActionInvoice;
+                    setMobileActionInvoice(null);
+                    handleViewDetail(inv);
+                  }}
+                >
+                  {tm('viewDetails')}
+                </button>
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white"
+                  onClick={() => {
+                    const inv = mobileActionInvoice;
+                    setMobileActionInvoice(null);
+                    void handleEditInvoice(inv);
+                  }}
+                >
+                  {tm('edit')}
+                </button>
+                <button
+                  type="button"
+                  className={`py-2.5 px-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white ${showGibQueueAction ? '' : 'col-span-2'}`}
+                  onClick={() => {
+                    const inv = mobileActionInvoice;
+                    setMobileActionInvoice(null);
+                    void handlePrintInvoice(inv);
+                  }}
+                >
+                  {tm('print')}
+                </button>
+                {showGibQueueAction ? (
+                  <button
+                    type="button"
+                    className="py-2.5 px-2 text-xs font-semibold rounded-lg border border-amber-200 bg-amber-50 text-amber-900"
+                    onClick={async () => {
+                      const inv = mobileActionInvoice;
+                      setMobileActionInvoice(null);
+                      if (!inv?.id) return;
+                      const r = await enqueueSaleInvoice(inv.id);
+                      if (r.ok) toast.success(r.message);
+                      else toast.error(r.message);
+                    }}
+                  >
+                    GİB kuyruğu
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-red-600 text-white col-span-2"
+                  onClick={() => {
+                    const inv = mobileActionInvoice;
+                    if (!inv?.id) return;
+                    setMobileActionInvoice(null);
+                    void handleDeleteInvoice(inv.id, inv.invoice_no);
+                  }}
+                >
+                  {tm('deleteAction')}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (

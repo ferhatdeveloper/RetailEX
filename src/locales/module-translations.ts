@@ -2441,6 +2441,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   allStatuses: { tr: 'Tüm Durumlar', en: 'All Statuses', ar: 'كل الحالات', ku: 'هەموو دۆخەکان' },
   allInvoiceTypes: { tr: 'Tüm Fatura Türleri', en: 'All Invoice Types', ar: 'كل أنواع الفواتير', ku: 'هەموو جۆرەکانی وەسڵ' },
   searchPlaceholder: { tr: 'Fatura no, müşteri veya kasiyer ara...', en: 'Search invoice no, customer or cashier...', ar: 'بحث عن رقم الفاتورة أو العميل أو الصراف...', ku: 'گەڕان بۆ ژمارەی وەسڵ، کڕیار یان سندوقدار...' },
+  invoiceMobileLongPressHint: {
+    tr: 'Satıra basılı tutun: detay ve işlemler (görüntüle, düzenle, yazdır…).',
+    en: 'Press and hold a row: details and actions (view, edit, print…).',
+    ar: 'اضغط مع الاستمرار على الصف: التفاصيل والإجراءات (عرض، تعديل، طباعة…).',
+    ku: 'ڕیزەکە داگر بکە: وردەکاری و کردارەکان (بینین، دەستکاری، چاپ…).'
+  },
 
   // Generic Terms
   invoiceType: { tr: 'Fatura Türü', en: 'Invoice Type', ar: 'نوع الفاتورة', ku: 'جۆری وەسڵ' },
