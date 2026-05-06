@@ -1901,6 +1901,11 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     setQuickBarcodeInput('');
   }, [quickBarcodeInput, handleCameraBarcodeScan]);
 
+  useEffect(() => {
+    // Form ilk açılışında kamera modalı kapalı başlasın.
+    setShowCameraScanner(false);
+  }, [editData?.id, invoiceType.code]);
+
   // EditData değiştiğinde items'ı güncelle
   useEffect(() => {
     if (editData) {
@@ -2794,9 +2799,13 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowCameraScanner(true)}
+                    onClick={() => {
+                      if (!editData) return;
+                      setShowCameraScanner(true);
+                    }}
                     className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform ${isMobile ? 'w-full justify-center' : ''}`}
                     title="Kamera ile barkod okut"
+                    disabled={!editData}
                   >
                     <Camera className="w-4 h-4" />
                     Kamera
@@ -3621,7 +3630,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
           <InventoryBarcodeScanner
             darkMode={false}
-            isOpen={showCameraScanner}
+            isOpen={Boolean(editData) && showCameraScanner}
             title="Ürün Barkodu Tara"
             onClose={() => setShowCameraScanner(false)}
             onScan={(barcode) => {

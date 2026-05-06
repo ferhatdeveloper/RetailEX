@@ -1,7 +1,7 @@
 ﻿// Barcode & QR Code Scanner Component - Mobile Optimized
 
 import { useState, useRef, useEffect } from 'react';
-import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import { 
   Camera, 
   X, 
@@ -20,7 +20,10 @@ export interface BarcodeScanResult {
 }
 
 interface BarcodeScannerProps {
-  onScan: (result: BarcodeScanResult) => void;
+  isOpen?: boolean;
+  title?: string;
+  darkMode?: boolean;
+  onScan: (code: string) => void;
   onClose: () => void;
   continuous?: boolean;
   vibrate?: boolean;
@@ -28,6 +31,9 @@ interface BarcodeScannerProps {
 }
 
 export function BarcodeScanner({
+  isOpen = true,
+  title = 'Barkod/QR Kod Tara',
+  darkMode = false,
   onScan,
   onClose,
   continuous = false,
@@ -44,13 +50,20 @@ export function BarcodeScanner({
   const scannerDivRef = useRef<HTMLDivElement>(null);
   const isProcessingRef = useRef(false); // Prevent multiple scans
 
-  // Initialize scanner
+  // Initialize scanner only while modal is open
   useEffect(() => {
-    initScanner();
+    if (!isOpen) {
+      return;
+    }
+    void initScanner();
     return () => {
-      stopScanner();
+      void stopScanner();
     };
-  }, [cameraFacing]);
+  }, [cameraFacing, isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
 
   const initScanner = async () => {
     try {
@@ -99,27 +112,39 @@ export function BarcodeScanner({
         cameraId = frontCamera.id;
       }
 
-      // Start scanning
-      await html5QrCode.start(
-        cameraId,
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
-        },
-        (decodedText, decodedResult) => {
-          // Success callback
-          handleScanSuccess({
-            code: decodedText,
-            type: decodedResult.result.format?.formatName?.toLowerCase().includes('qr') ? 'qrcode' : 'barcode',
-            rawData: decodedText
-          });
-        },
-        (errorMessage) => {
-          // Error callback (called frequently, ignore most errors)
-          // Only log critical errors
-        }
-      );
+      const scannerConfig = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0,
+      };
+      const onDecoded = (decodedText: string, decodedResult: any) => {
+        handleScanSuccess({
+          code: decodedText,
+          type: decodedResult.result.format?.formatName?.toLowerCase().includes('qr') ? 'qrcode' : 'barcode',
+          rawData: decodedText
+        });
+      };
+      const onScanError = () => {
+        // Error callback (called frequently, ignore most errors)
+      };
+
+      // Default behavior: prefer back camera. If not available, fallback to chosen cameraId.
+      // Some devices ignore labels; facingMode gives a more reliable hint.
+      try {
+        await html5QrCode.start(
+          { facingMode: cameraFacing === 'environment' ? 'environment' : 'user' },
+          scannerConfig,
+          onDecoded,
+          onScanError
+        );
+      } catch {
+        await html5QrCode.start(
+          cameraId,
+          scannerConfig,
+          onDecoded,
+          onScanError
+        );
+      }
 
       setHasPermission(true);
       setIsScanning(true);
@@ -176,7 +201,7 @@ export function BarcodeScanner({
     }
 
     // Callback
-    onScan(result);
+    onScan(result.code);
 
     // Close if not continuous
     if (!continuous) {
@@ -225,7 +250,7 @@ export function BarcodeScanner({
             <AlertCircle className="h-8 w-8 text-red-600" />
             <h3 className="text-xl font-semibold">Kamera İzni Gerekli</h3>
           </div>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4`}>{error}</p>
           <div className="flex gap-3">
             <button
               onClick={initScanner}
@@ -249,7 +274,7 @@ export function BarcodeScanner({
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       {/* Header */}
       <div className="bg-black/80 backdrop-blur-sm p-4 flex items-center justify-between">
-        <h2 className="text-white font-semibold">Barkod/QR Kod Tara</h2>
+        <h2 className="text-white font-semibold">{title}</h2>
         <button
           onClick={() => {
             stopScanner();
@@ -381,8 +406,13 @@ export function BarcodeScannerButton({
 
       {showScanner && (
         <BarcodeScanner
-          onScan={(result) => {
-            onScan(result);
+          isOpen={showScanner}
+          onScan={(code) => {
+            onScan({
+              code,
+              type: 'barcode',
+              rawData: code
+            });
             setShowScanner(false);
           }}
           onClose={() => setShowScanner(false)}

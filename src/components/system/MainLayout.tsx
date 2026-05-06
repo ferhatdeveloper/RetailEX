@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMem
 import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2 } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -292,6 +292,55 @@ export function MainLayout({
   const [managementPassword, setManagementPassword] = useState('');
   const [managementPasswordError, setManagementPasswordError] = useState('');
   const [managementPasswordLoading, setManagementPasswordLoading] = useState(false);
+
+  const topModuleButtons = useMemo(() => {
+    const moduleMeta: Record<Module, { title: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; onClick: () => void }> = {
+      pos: {
+        title: t.sales,
+        icon: ShoppingCart,
+        onClick: () => setCurrentModule('pos'),
+      },
+      management: {
+        title: t.management,
+        icon: LayoutGrid,
+        onClick: requestManagementAccess,
+      },
+      wms: {
+        title: 'WMS',
+        icon: Warehouse,
+        onClick: () => setCurrentModule('wms'),
+      },
+      'mobile-pos': {
+        title: t.mobilePOS,
+        icon: Smartphone,
+        onClick: () => setCurrentModule('mobile-pos'),
+      },
+      restaurant: {
+        title: (t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran',
+        icon: UtensilsCrossed,
+        onClick: () => setCurrentModule('restaurant'),
+      },
+      beauty: {
+        title: tm('bModuleBeautyTooltip'),
+        icon: Sparkles,
+        onClick: () => setCurrentModule('beauty'),
+      },
+    };
+
+    const ordered = getShellModuleFallbackOrder() as Module[];
+    const permissionMap: Record<Module, boolean> = {
+      pos: hasPermission('pos', 'READ'),
+      management: hasPermission('management', 'READ'),
+      wms: hasPermission('wms', 'READ'),
+      'mobile-pos': hasPermission('pos', 'READ'),
+      restaurant: hasPermission('restaurant', 'READ'),
+      beauty: hasPermission('beauty', 'READ'),
+    };
+
+    return ordered
+      .filter((m) => moduleMeta[m] && isModuleVisible(m) && permissionMap[m])
+      .map((m) => ({ id: m, ...moduleMeta[m] }));
+  }, [t, tm, hasPermission, isModuleVisible, requestManagementAccess]);
 
   const verifyManagementPassword = async (pwd: string): Promise<boolean> => {
     if (!pwd) return false;
@@ -864,95 +913,27 @@ export function MainLayout({
             {/* Center — yalnızca modül sekmeleri */}
             <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 flex-1 min-w-0">
               <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 flex-shrink-0">
-                {hasPermission('pos', 'READ') && isModuleVisible('pos') && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentModule('pos')}
-                    title={t.sales}
-                    aria-label={t.sales}
-                    className={cn(
-                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                      'w-9 h-9 sm:w-10 sm:h-10',
-                      currentModule === 'pos'
-                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                    )}
-                  >
-                    <ShoppingCart className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                  </button>
-                )}
-
-                {hasPermission('management', 'READ') && isModuleVisible('management') && (
-                  <button
-                    type="button"
-                    onClick={requestManagementAccess}
-                    title={t.management}
-                    aria-label={t.management}
-                    className={cn(
-                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                      'w-9 h-9 sm:w-10 sm:h-10',
-                      currentModule === 'management'
-                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                    )}
-                  >
-                    <LayoutGrid className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                  </button>
-                )}
-
-                {hasPermission('wms', 'READ') && isModuleVisible('wms') && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentModule('wms')}
-                    title="WMS"
-                    aria-label="WMS"
-                    className={cn(
-                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                      'w-9 h-9 sm:w-10 sm:h-10',
-                      currentModule === 'wms'
-                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                    )}
-                  >
-                    <Warehouse className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                  </button>
-                )}
-
-                {hasPermission('restaurant', 'READ') && isModuleVisible('restaurant') && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentModule('restaurant')}
-                    title={(t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran'}
-                    aria-label={(t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran'}
-                    className={cn(
-                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                      'w-9 h-9 sm:w-10 sm:h-10',
-                      currentModule === 'restaurant'
-                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                    )}
-                  >
-                    <UtensilsCrossed className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                  </button>
-                )}
-
-                {hasPermission('beauty', 'READ') && isModuleVisible('beauty') && (
-                  <button
-                    type="button"
-                    onClick={() => setCurrentModule('beauty')}
-                    title={tm('bModuleBeautyTooltip')}
-                    aria-label={tm('bModuleBeautyTooltip')}
-                    className={cn(
-                      'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                      'w-9 h-9 sm:w-10 sm:h-10',
-                      currentModule === 'beauty'
-                        ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                        : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                    )}
-                  >
-                    <Sparkles className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                  </button>
-                )}
+                {topModuleButtons.map((btn) => {
+                  const Icon = btn.icon;
+                  return (
+                    <button
+                      key={btn.id}
+                      type="button"
+                      onClick={btn.onClick}
+                      title={btn.title}
+                      aria-label={btn.title}
+                      className={cn(
+                        'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                        'w-9 h-9 sm:w-10 sm:h-10',
+                        currentModule === btn.id
+                          ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                          : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                      )}
+                    >
+                      <Icon className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1053,104 +1034,6 @@ export function MainLayout({
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Mobile touch-first module switcher */}
-      {isMobile && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
-        <div className="bg-white border-b border-gray-200 px-2 py-2">
-          <div className="grid grid-cols-3 gap-2">
-            {hasPermission('pos', 'READ') && isModuleVisible('pos') && (
-              <button
-                type="button"
-                onClick={() => setCurrentModule('pos')}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'pos'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <ShoppingCart className="w-4 h-4" />
-                POS
-              </button>
-            )}
-            {hasPermission('management', 'READ') && isModuleVisible('management') && (
-              <button
-                type="button"
-                onClick={requestManagementAccess}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'management'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <LayoutGrid className="w-4 h-4" />
-                Yönetim
-              </button>
-            )}
-            {hasPermission('wms', 'READ') && isModuleVisible('wms') && (
-              <button
-                type="button"
-                onClick={() => setCurrentModule('wms')}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'wms'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <Warehouse className="w-4 h-4" />
-                WMS
-              </button>
-            )}
-            {hasPermission('restaurant', 'READ') && isModuleVisible('restaurant') && (
-              <button
-                type="button"
-                onClick={() => setCurrentModule('restaurant')}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'restaurant'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <UtensilsCrossed className="w-4 h-4" />
-                Restoran
-              </button>
-            )}
-            {hasPermission('beauty', 'READ') && isModuleVisible('beauty') && (
-              <button
-                type="button"
-                onClick={() => setCurrentModule('beauty')}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'beauty'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <Sparkles className="w-4 h-4" />
-                Güzellik
-              </button>
-            )}
-            {isModuleVisible('mobile-pos') && (
-              <button
-                type="button"
-                onClick={() => setCurrentModule('mobile-pos')}
-                className={cn(
-                  'min-h-[52px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-colors active:scale-[0.99]',
-                  currentModule === 'mobile-pos'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200'
-                )}
-              >
-                <Receipt className="w-4 h-4" />
-                Mobil POS
-              </button>
-            )}
           </div>
         </div>
       )}

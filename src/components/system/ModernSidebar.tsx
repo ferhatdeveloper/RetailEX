@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   LayoutGrid, ChevronDown, ChevronRight, Package, FileText, Layers,
   ShoppingCart, TrendingUp, Wallet, Users, Settings, Tag, Scale,
@@ -184,7 +184,7 @@ export function ModernSidebar({
   }, [menuSearchQuery, setMenuSearchQuery]);
 
   return (
-    <div className={`h-full overflow-y-auto ${darkMode ? 'bg-gray-900' : 'bg-white'} border-r ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+    <div className={`h-full overflow-y-auto overscroll-contain touch-pan-y ${darkMode ? 'bg-gray-900' : 'bg-white'} border-r ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
       {/* Search Box - Enhanced */}
       <div className={`p-3 sm:p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gradient-to-br from-blue-50/50 to-white'}`}>
         <div className="relative">
