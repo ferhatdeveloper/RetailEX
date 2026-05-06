@@ -2,7 +2,7 @@
  * Invoices API - Direct PostgreSQL Implementation
  */
 
-import { postgres, ERP_SETTINGS } from '../postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
 export type { Invoice };
@@ -498,6 +498,66 @@ export const invoicesAPI = {
     try {
       const firmNr = ERP_SETTINGS.firmNr;
       const periodNr = ERP_SETTINGS.periodNr;
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const tableName = `/rex_${String(firmNr).padStart(3, '0')}_${String(periodNr).padStart(2, '0')}_sales`;
+
+        const baseFilters: Record<string, string | number> = {
+          select: '*',
+          order: 'date.desc',
+        };
+
+        if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
+          baseFilters.trcode = `eq.${String(invoiceType)}`;
+        } else if (invoiceCategory) {
+          const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[invoiceCategory] || [])];
+          const fallbackFicheType = defaultFicheTypeByCategory(invoiceCategory);
+          if (trcodes.length > 0 && fallbackFicheType) {
+            baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.eq.${fallbackFicheType})`;
+          } else if (trcodes.length > 0) {
+            baseFilters.trcode = `in.(${trcodes.join(',')})`;
+          } else if (fallbackFicheType) {
+            baseFilters.fiche_type = `eq.${fallbackFicheType}`;
+          }
+        }
+
+        if (search) {
+          const s = String(search).replace(/,/g, '\\,');
+          const orValue = `(fiche_no.ilike.*${s}*,notes.ilike.*${s}*,document_no.ilike.*${s}*)`;
+          const prevOr = typeof baseFilters.or === 'string' ? baseFilters.or : '';
+          baseFilters.or = prevOr ? `${prevOr},${orValue.slice(1, -1)}` : orValue;
+        }
+        if (status) baseFilters.status = `eq.${status}`;
+        if (customerId) baseFilters.customer_id = `eq.${customerId}`;
+
+        // PostgREST tek parametrede iki ayrı date filtresini desteklemediği için tarih aralığını istemci tarafında kesinleştiriyoruz.
+        const fullRows = await postgrest.get<any[]>(
+          tableName,
+          baseFilters,
+          { schema: 'public' }
+        );
+
+        const filteredRows = (Array.isArray(fullRows) ? fullRows : []).filter((r: any) => {
+          const d = String(r?.date || '').substring(0, 10);
+          if (startDate && d < String(startDate).substring(0, 10)) return false;
+          if (endDate && d > String(endDate).substring(0, 10)) return false;
+          return true;
+        });
+
+        const total = filteredRows.length;
+        const start = Math.max(0, (page - 1) * pageSize);
+        const end = start + pageSize;
+        const invoices = filteredRows.slice(start, end).map(mapDatabaseInvoiceToInvoice);
+
+        return {
+          data: invoices,
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize)
+        };
+      }
 
       let sql = `SELECT * FROM sales WHERE 1=1`;
       const params: any[] = [];
