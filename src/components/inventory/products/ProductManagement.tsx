@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -13,6 +13,7 @@ import { formatCurrency } from '../../../utils/currency';
 import { toast } from 'sonner';
 import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -23,8 +24,13 @@ interface ProductManagementProps {
   setProducts: (products: Product[]) => void;
 }
 
+const MOBILE_PAGE_SIZE = 40;
+const LONG_PRESS_MS = 480;
+const LONG_PRESS_MOVE_PX = 14;
+
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
+  const { isMobile } = useResponsive();
   const addProduct = useProductStore((state) => state.addProduct);
   const updateProduct = useProductStore((state) => state.updateProduct);
   const deleteProduct = useProductStore((state) => state.deleteProduct);
@@ -73,6 +79,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [showBulkImageModal, setShowBulkImageModal] = useState(false);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
+  const [mobilePage, setMobilePage] = useState(0);
+  const [mobileActionProduct, setMobileActionProduct] = useState<Product | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   // Design Center Integration
   const [showViewer, setShowViewer] = useState(false);
@@ -181,6 +191,10 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([k]) => k));
   }, [displayProducts, duplicateDetectBy]);
 
+  useEffect(() => {
+    setMobilePage(0);
+  }, [searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy]);
+
   const filteredProducts = useMemo(() => {
     return displayProducts.filter(product => {
       const searchLower = searchQuery.toLowerCase();
@@ -198,6 +212,59 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       return matchesSearch && matchesCategory && matchesService && matchesDuplicate;
     });
   }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy, duplicateKeys]);
+
+  const mobilePageCount = Math.max(1, Math.ceil(filteredProducts.length / MOBILE_PAGE_SIZE));
+  const mobilePagedProducts = useMemo(() => {
+    const start = mobilePage * MOBILE_PAGE_SIZE;
+    return filteredProducts.slice(start, start + MOBILE_PAGE_SIZE);
+  }, [filteredProducts, mobilePage]);
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressOriginRef.current = null;
+  }, []);
+
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
+
+  const startLongPress = useCallback(
+    (clientX: number, clientY: number, product: Product) => {
+      clearLongPress();
+      longPressOriginRef.current = { x: clientX, y: clientY };
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        longPressOriginRef.current = null;
+        setMobileActionProduct(product);
+      }, LONG_PRESS_MS);
+    },
+    [clearLongPress]
+  );
+
+  const maybeCancelLongPressMove = useCallback(
+    (clientX: number, clientY: number) => {
+      const o = longPressOriginRef.current;
+      if (!o || !longPressTimerRef.current) return;
+      if (
+        Math.abs(clientX - o.x) > LONG_PRESS_MOVE_PX ||
+        Math.abs(clientY - o.y) > LONG_PRESS_MOVE_PX
+      ) {
+        clearLongPress();
+      }
+    },
+    [clearLongPress]
+  );
+
+  const toggleProductSelected = useCallback((product: Product, selected: boolean) => {
+    setSelectedProducts((prev) => {
+      if (selected) {
+        if (prev.some((p) => p.id === product.id)) return prev;
+        return [...prev, product];
+      }
+      return prev.filter((p) => p.id !== product.id);
+    });
+  }, []);
 
   /** Listede bulunan demo ürünler — sağ tık menüsünde "Demo ürünleri toplu sil" sadece bunlar varken gösterilir */
   const demoProductsInList = useMemo(() => {
@@ -378,9 +445,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto p-3 bg-gray-50">
+      <div
+        className={`flex-1 flex flex-col min-h-0 p-3 bg-gray-50 ${isMobile ? 'overflow-hidden' : 'overflow-auto'}`}
+      >
         {/* Search Box */}
-        <div className="mb-3 bg-white p-3 border border-gray-200 rounded">
+        <div className="mb-3 bg-white p-3 border border-gray-200 rounded shrink-0">
+          {isMobile && (
+            <p className="text-[11px] text-gray-500 mb-2">
+              Satıra basılı tutun: detay ve işlemler (düzenle, sil, etiket…).
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -411,7 +485,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200">
+        <div
+          className={`bg-white border border-gray-200 min-h-0 ${isMobile ? 'flex-1 flex flex-col overflow-hidden' : ''}`}
+        >
           {isLoading ? (
             <div className="flex items-center justify-center h-96">
               <div className="text-center">
@@ -419,6 +495,92 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 <p className="text-gray-600 text-sm">Veriler yükleniyor...</p>
               </div>
             </div>
+          ) : isMobile ? (
+            <>
+              <div className="flex-1 overflow-y-auto overscroll-contain divide-y divide-gray-100">
+                {mobilePagedProducts.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400 text-sm">{tm('noDataFound')}</div>
+                ) : (
+                  mobilePagedProducts.map((p) => {
+                    const selected = selectedProducts.some((s) => s.id === p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className={`flex items-stretch gap-2 px-2 py-1.5 active:bg-gray-50 ${selected ? 'bg-blue-50/60' : ''}`}
+                        onTouchStart={(e) => {
+                          const touch = e.touches[0];
+                          if (touch) startLongPress(touch.clientX, touch.clientY, p);
+                        }}
+                        onTouchMove={(e) => {
+                          const touch = e.touches[0];
+                          if (touch) maybeCancelLongPressMove(touch.clientX, touch.clientY);
+                        }}
+                        onTouchEnd={clearLongPress}
+                        onTouchCancel={clearLongPress}
+                      >
+                        <div
+                          className="flex items-center pt-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                          onTouchStart={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                            checked={selected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleProductSelected(p, e.target.checked);
+                            }}
+                            aria-label="Seç"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm text-gray-900 truncate leading-tight">
+                            {p.name || '—'}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-gray-600 mt-0.5">
+                            <span className="font-mono truncate max-w-[9rem]">{p.barcode || p.code || '—'}</span>
+                            <span className="text-gray-400">·</span>
+                            <span
+                              className={
+                                (p.stock ?? 0) < 10 ? 'text-red-600 font-semibold' : 'text-gray-700'
+                              }
+                            >
+                              {tm('stock')}: {p.stock ?? 0}
+                            </span>
+                            <span className="text-gray-400">·</span>
+                            <span className="text-gray-800 font-medium tabular-nums">
+                              {formatCurrency(Number(p.price) || 0, 2, false)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="shrink-0 border-t border-gray-200 px-2 py-2 flex items-center gap-2 bg-gray-50">
+                <button
+                  type="button"
+                  disabled={mobilePage <= 0}
+                  onClick={() => setMobilePage((x) => Math.max(0, x - 1))}
+                  className="flex-1 py-2 text-xs font-medium rounded border border-gray-300 disabled:opacity-40"
+                >
+                  {tm('previous')}
+                </button>
+                <span className="text-[11px] text-gray-600 whitespace-nowrap px-1">
+                  {mobilePage + 1}/{mobilePageCount}
+                </span>
+                <button
+                  type="button"
+                  disabled={mobilePage >= mobilePageCount - 1}
+                  onClick={() => setMobilePage((x) => Math.min(mobilePageCount - 1, x + 1))}
+                  className="flex-1 py-2 text-xs font-medium rounded border border-gray-300 disabled:opacity-40"
+                >
+                  {tm('next')}
+                </button>
+              </div>
+            </>
           ) : (
             <DevExDataGrid
               data={filteredProducts}
@@ -435,6 +597,159 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
           )}
         </div>
       </div>
+
+      {/* Mobil: basılı tut ile işlem + detay */}
+      {mobileActionProduct && (
+        <div
+          className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMobileActionProduct(null)}
+        >
+          <div
+            className="w-full max-h-[88vh] rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl flex flex-col max-w-lg sm:max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{tm('productManagement')}</p>
+                <h3 className="text-base font-bold text-gray-900 leading-tight break-words">
+                  {mobileActionProduct.name}
+                </h3>
+                <p className="text-xs text-gray-500 font-mono mt-1 truncate">
+                  {mobileActionProduct.barcode || mobileActionProduct.code || '—'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
+                aria-label={t.close}
+                onClick={() => setMobileActionProduct(null)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 text-sm">
+              {[
+                [tm('barcode').toUpperCase(), mobileActionProduct.barcode || '—'],
+                [tm('productName').toUpperCase(), mobileActionProduct.name || '—'],
+                [tm('category').toUpperCase(), mobileActionProduct.category || '—'],
+                [tm('cost').toUpperCase(), mobileActionProduct.cost != null && mobileActionProduct.cost !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'],
+                [tm('unitPrice').toUpperCase(), formatCurrency(Number(mobileActionProduct.price) || 0, 2, false)],
+                ['FİYAT (USD)', (mobileActionProduct as any).salePriceUSD != null && (mobileActionProduct as any).salePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).salePriceUSD), 'USD', 2) : '—'],
+                ['ALIŞ (USD)', (mobileActionProduct as any).purchasePriceUSD != null && (mobileActionProduct as any).purchasePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).purchasePriceUSD), 'USD', 2) : '—'],
+                [tm('tax').toUpperCase(), `%${mobileActionProduct.taxRate ?? 0}`],
+                [tm('salesTotal').toUpperCase(), String(mobileActionProduct.totalSales ?? 0)],
+                [tm('purchaseTotal').toUpperCase(), String(mobileActionProduct.totalPurchased ?? 0)],
+                [tm('stock').toUpperCase(), String(mobileActionProduct.stock ?? 0)],
+                [tm('unit').toUpperCase(), mobileActionProduct.unit || '—'],
+              ].map(([label, val]) => (
+                <div key={String(label)} className="flex justify-between gap-3 border-b border-gray-50 pb-2 last:border-0">
+                  <span className="text-[10px] text-gray-500 font-semibold shrink-0">{label}</span>
+                  <span className="text-right text-gray-900 break-all">{val}</span>
+                </div>
+              ))}
+            </div>
+            <div className="shrink-0 border-t border-gray-100 p-3 space-y-2 bg-gray-50 rounded-b-2xl">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-blue-600 text-white"
+                  onClick={() => {
+                    const prod = mobileActionProduct;
+                    setMobileActionProduct(null);
+                    setActiveHubProduct(prod);
+                    setShowProductHub(true);
+                  }}
+                >
+                  {t.actionCenter}
+                </button>
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white"
+                  onClick={() => {
+                    const id = mobileActionProduct.id;
+                    setMobileActionProduct(null);
+                    openProductForm(id);
+                  }}
+                >
+                  {t.edit}
+                </button>
+                <button
+                  type="button"
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg border border-gray-300 bg-white col-span-2"
+                  onClick={() => {
+                    const prod = mobileActionProduct;
+                    setMobileActionProduct(null);
+                    setActiveHubProduct(prod);
+                    setHubInitialTab('movements');
+                    setShowProductHub(true);
+                  }}
+                >
+                  {t.historyMovements || t.movements}
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  className="py-2 text-[10px] font-medium rounded border bg-white"
+                  onClick={() => {
+                    const prod = mobileActionProduct;
+                    setMobileActionProduct(null);
+                    setActiveHubProduct(prod);
+                    printLabel(prod, { w: 40, h: 20 });
+                  }}
+                >
+                  40×20
+                </button>
+                <button
+                  type="button"
+                  className="py-2 text-[10px] font-medium rounded border bg-white"
+                  onClick={() => {
+                    const prod = mobileActionProduct;
+                    setMobileActionProduct(null);
+                    setActiveHubProduct(prod);
+                    printLabel(prod, { w: 50, h: 30 });
+                  }}
+                >
+                  50×30
+                </button>
+                <button
+                  type="button"
+                  className="py-2 text-[10px] font-medium rounded border bg-white"
+                  onClick={() => {
+                    const prod = mobileActionProduct;
+                    setMobileActionProduct(null);
+                    setActiveHubProduct(prod);
+                    printLabel(prod, { w: 60, h: 40 });
+                  }}
+                >
+                  60×40
+                </button>
+              </div>
+              <button
+                type="button"
+                className="w-full py-2.5 text-xs font-semibold rounded-lg bg-red-600 text-white"
+                onClick={async () => {
+                  const product = mobileActionProduct;
+                  const message = t.confirmItemDelete
+                    ? t.confirmItemDelete.replace('{item}', product.name)
+                    : `${product.name} silinsin mi?`;
+                  if (!window.confirm(message)) return;
+                  setMobileActionProduct(null);
+                  try {
+                    await executeDeleteWithProtection([product]);
+                  } catch (err: any) {
+                    toast.error(err?.message || 'Ürün silinemedi.');
+                  }
+                }}
+              >
+                {t.deleteAction}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Product Form */}
       {showProductForm && (
