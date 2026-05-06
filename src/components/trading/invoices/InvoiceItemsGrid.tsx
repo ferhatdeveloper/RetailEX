@@ -125,14 +125,14 @@ export const InvoiceItemsGrid = React.memo(({
                 <div className="bg-gray-50 border-b border-gray-200 px-3 py-2">
                     <span className={`text-sm font-medium ${cariTextColor}`}>{tm('invoiceTypeLabel')} {invoiceType.name}</span>
                 </div>
-                <div className="p-2 space-y-1.5 max-h-[60vh] overflow-auto">
+                <div className="p-2 space-y-1">
                     {items.map((item, index) => (
                         <div
                             key={item.id}
-                            className={`rounded-md border p-1.5 space-y-1.5 ${currentRowIndex === index ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
+                            className={`rounded-md border p-1 space-y-1 ${currentRowIndex === index ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
                             onClick={() => setCurrentRowIndex(index)}
                         >
-                            <div className="grid grid-cols-[1.3fr_0.8fr_0.9fr_auto] gap-1.5 items-center">
+                            <div className="grid grid-cols-[1fr_4rem_4.5rem_auto] gap-1 items-center">
                                 <input
                                     ref={el => { gridRefs.current[`code-${index}`] = el; }}
                                     type="text"
@@ -143,7 +143,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         setCurrentRowIndex(index);
                                         onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
                                     }}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
+                                    className="w-full min-w-0 px-1.5 py-1 border border-gray-300 rounded text-xs leading-tight"
                                     placeholder={tm('itemCode')}
                                 />
                                 <input
@@ -151,7 +151,7 @@ export const InvoiceItemsGrid = React.memo(({
                                     value={item.quantity || ''}
                                     onChange={(e) => updateItem(index, 'quantity', parseFloat(e.target.value) || 0)}
                                     onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
                                     placeholder={tm('itemQuantity')}
                                 />
                                 <input
@@ -159,12 +159,15 @@ export const InvoiceItemsGrid = React.memo(({
                                     value={item.unitPrice || ''}
                                     onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
                                     onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
                                     placeholder={tm('itemPrice')}
                                 />
                                 <button
-                                    onClick={() => removeItem(index)}
-                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeItem(index);
+                                    }}
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded touch-manipulation"
                                     type="button"
                                 >
                                     <Trash2 className="w-4 h-4" />
@@ -175,21 +178,21 @@ export const InvoiceItemsGrid = React.memo(({
                                 value={item.description}
                                 onChange={(e) => updateItem(index, 'description', e.target.value)}
                                 onFocus={() => setCurrentRowIndex(index)}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs"
+                                className="w-full px-1.5 py-1 border border-gray-300 rounded text-xs leading-tight"
                                 placeholder={tm('itemDescription')}
                             />
-                            <div className="grid grid-cols-[0.8fr_1.2fr] gap-1.5 items-center">
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-1 items-center">
                                 <input
                                     type="number"
                                     value={item.discountPercent || ''}
                                     onChange={(e) => updateItem(index, 'discountPercent', parseFloat(e.target.value) || 0)}
                                     onFocus={() => setCurrentRowIndex(index)}
-                                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs text-right"
+                                    className="w-full min-w-0 px-1.5 py-1 border border-gray-300 rounded text-xs text-right leading-tight"
                                     placeholder="% İsk."
                                 />
-                                <div className="rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-right">
-                                    <div className="text-[10px] text-blue-600">{tm('itemNetTotal')}</div>
-                                    <div className="text-xs font-semibold text-blue-700">{formatNumber(item.netAmount, 2, true)}</div>
+                                <div className="rounded border border-blue-200 bg-blue-50 px-1.5 py-1 text-right shrink-0 min-w-[5.5rem]">
+                                    <div className="text-[9px] text-blue-600 leading-tight">{tm('itemNetTotal')}</div>
+                                    <div className="text-[11px] font-semibold text-blue-700 leading-tight tabular-nums">{formatNumber(item.netAmount, 2, true)}</div>
                                 </div>
                             </div>
                         </div>

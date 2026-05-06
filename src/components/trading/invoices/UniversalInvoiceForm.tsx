@@ -2725,8 +2725,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 overflow-auto bg-gray-50">
-          <div className="p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-gray-50 overscroll-y-contain">
+          <div className="p-3 sm:p-6">
             {/* Top Form */}
             {activeTab === 'fatura' && (
               <>
@@ -2784,29 +2784,39 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                   cariTextColor={cariTextColor}
                 />
 
-                <div className={`mb-3 flex items-center gap-2 ${isMobile ? 'flex-col' : 'justify-end'}`}>
-                  <input
-                    type="text"
-                    value={quickBarcodeInput}
-                    onChange={(e) => setQuickBarcodeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleQuickBarcodeSubmit();
-                      }
-                    }}
-                    placeholder="Barkod okut / yaz"
-                    className={`border border-gray-300 rounded-lg px-3 py-2 text-sm ${isMobile ? 'w-full' : 'w-64'}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCameraScanner(true)}
-                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform ${isMobile ? 'w-full justify-center' : ''}`}
-                    title="Kamera ile barkod okut"
-                  >
-                    <Camera className="w-4 h-4" />
-                    Kamera
-                  </button>
+                <div
+                  className={
+                    isMobile
+                      ? 'relative z-20 mb-3 w-full grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center'
+                      : 'mb-3 flex w-full justify-end'
+                  }
+                >
+                  <div className={isMobile ? 'contents' : 'flex items-center gap-2'}>
+                    <input
+                      type="text"
+                      value={quickBarcodeInput}
+                      onChange={(e) => setQuickBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickBarcodeSubmit();
+                        }
+                      }}
+                      placeholder="Barkod okut / yaz"
+                      autoComplete="off"
+                      inputMode="text"
+                      className={`min-w-0 touch-manipulation border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[44px] ${isMobile ? 'w-full' : 'w-64'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCameraScanner(true)}
+                      className={`inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform min-h-[44px] ${isMobile ? 'min-w-[44px]' : ''}`}
+                      title="Kamera ile barkod okut"
+                    >
+                      <Camera className="w-4 h-4 shrink-0" />
+                      <span className="whitespace-nowrap">Kamera</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Items Grid */}
