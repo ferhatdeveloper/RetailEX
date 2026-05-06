@@ -184,103 +184,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const trimmedUsername = username.trim();
         const trimmedPassword = password.trim();
 
-        const rpcRes: any = await postgrest.post('/rpc/verify_login', {
-          username: trimmedUsername,
-          password: trimmedPassword,
-          // Login öncesi firma seçimi olmayabilir; fonksiyon firm_nr '' iken kısıtlamayı gevşetir.
-          firm_nr: ''
-        }, {
-          schema: 'logic'
-        });
+        try {
+          const rpcRes: any = await postgrest.post('/rpc/verify_login', {
+            username: trimmedUsername,
+            password: trimmedPassword,
+            // Login öncesi firma seçimi olmayabilir; fonksiyon firm_nr '' iken kısıtlamayı gevşetir.
+            firm_nr: ''
+          }, {
+            schema: 'logic'
+          });
 
-        const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
-        if (!row) {
-          toast.error('Kullanıcı adı veya şifre hatalı');
-          return false;
+          const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
+          if (row) {
+            // Parse and resolve permissions robustly
+            let rawPerms = row.role_permissions;
+            if (typeof rawPerms === 'string') {
+              try { rawPerms = JSON.parse(rawPerms); } catch (e) { rawPerms = []; }
+            }
+            if (!Array.isArray(rawPerms)) rawPerms = [];
+            const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
+
+            const roleName = (row.role_name || '').toLowerCase();
+            const isGarson = roleName === 'garson' || roleName === 'waiter';
+            const landingRouteRaw = row.role_landing_route && String(row.role_landing_route).trim()
+              ? String(row.role_landing_route).trim()
+              : null;
+            const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
+
+            const resolvedRole: Role = {
+              id: row.role_id || 'dynamic',
+              name: row.role_name || row.role_name || 'User',
+              description: '',
+              permissions: dynamicPermissions,
+              isSystemRole: false,
+              isActive: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              landingRoute: landingRoute || undefined
+            };
+
+            const allowedFirmNrs = row.allowed_firm_nrs != null
+              ? (typeof row.allowed_firm_nrs === 'string' ? JSON.parse(row.allowed_firm_nrs || '[]') : row.allowed_firm_nrs)
+              : [];
+            const allowedPeriods = row.allowed_periods != null
+              ? (typeof row.allowed_periods === 'string' ? JSON.parse(row.allowed_periods || '[]') : row.allowed_periods)
+              : [];
+
+            const userWithRoles: User = {
+              id: row.id,
+              username: row.username,
+              email: row.email || `${row.username}@retailex.local`,
+              full_name: row.full_name,
+              role_ids: [row.role_id || row.role_name],
+              roles: [resolvedRole],
+              firm_nr: row.firm_nr,
+              period_nr: latestSettings.periodNr,
+              store_id: row.store_id,
+              created_at: row.created_at,
+              allowed_firm_nrs: allowedFirmNrs,
+              allowed_periods: allowedPeriods
+            };
+
+            setUser(userWithRoles);
+            useAuthStore.getState().login(userWithRoles as any);
+
+            if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(String(landingRoute))) {
+              localStorage.setItem('retailex_active_module', landingRoute as string);
+            }
+
+            // Save User Meta
+            const userMeta = {
+              firmNr: userWithRoles.firm_nr,
+              periodNr: latestSettings.periodNr
+            };
+            localStorage.setItem('exretail_user_meta', JSON.stringify({
+              firm_nr: userMeta.firmNr,
+              period_nr: userMeta.periodNr
+            }));
+
+            // Sync ERP settings with global state
+            const { updateConfigs } = await import('../services/postgres');
+            await updateConfigs({ erp: userMeta });
+
+            // Save session
+            const sessionData = {
+              token: 'local-session-auth',
+              user: userWithRoles
+            };
+            localStorage.setItem('exretail_session', JSON.stringify(sessionData));
+
+            toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
+            window.setTimeout(() => {
+                void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
+            }, 900);
+            return true;
+          }
+          logger.warn('Auth', 'PostgREST verify_login empty response, SQL fallback deneniyor');
+        } catch (rpcErr: any) {
+          logger.warn('Auth', 'PostgREST verify_login başarısız, SQL fallback deneniyor', { error: rpcErr?.message || String(rpcErr) });
         }
-
-        // Parse and resolve permissions robustly
-        let rawPerms = row.role_permissions;
-        if (typeof rawPerms === 'string') {
-          try { rawPerms = JSON.parse(rawPerms); } catch (e) { rawPerms = []; }
-        }
-        if (!Array.isArray(rawPerms)) rawPerms = [];
-        const dynamicPermissions = rbacService.resolveDynamicPermissions(rawPerms);
-
-        const roleName = (row.role_name || '').toLowerCase();
-        const isGarson = roleName === 'garson' || roleName === 'waiter';
-        const landingRouteRaw = row.role_landing_route && String(row.role_landing_route).trim()
-          ? String(row.role_landing_route).trim()
-          : null;
-        const landingRoute = landingRouteRaw || (isGarson ? 'restaurant' : null);
-
-        const resolvedRole: Role = {
-          id: row.role_id || 'dynamic',
-          name: row.role_name || row.role_name || 'User',
-          description: '',
-          permissions: dynamicPermissions,
-          isSystemRole: false,
-          isActive: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          landingRoute: landingRoute || undefined
-        };
-
-        const allowedFirmNrs = row.allowed_firm_nrs != null
-          ? (typeof row.allowed_firm_nrs === 'string' ? JSON.parse(row.allowed_firm_nrs || '[]') : row.allowed_firm_nrs)
-          : [];
-        const allowedPeriods = row.allowed_periods != null
-          ? (typeof row.allowed_periods === 'string' ? JSON.parse(row.allowed_periods || '[]') : row.allowed_periods)
-          : [];
-
-        const userWithRoles: User = {
-          id: row.id,
-          username: row.username,
-          email: row.email || `${row.username}@retailex.local`,
-          full_name: row.full_name,
-          role_ids: [row.role_id || row.role_name],
-          roles: [resolvedRole],
-          firm_nr: row.firm_nr,
-          period_nr: latestSettings.periodNr,
-          store_id: row.store_id,
-          created_at: row.created_at,
-          allowed_firm_nrs: allowedFirmNrs,
-          allowed_periods: allowedPeriods
-        };
-
-        setUser(userWithRoles);
-        useAuthStore.getState().login(userWithRoles as any);
-
-        if (landingRoute && ['restaurant', 'pos', 'management', 'wms', 'beauty'].includes(String(landingRoute))) {
-          localStorage.setItem('retailex_active_module', landingRoute as string);
-        }
-
-        // Save User Meta
-        const userMeta = {
-          firmNr: userWithRoles.firm_nr,
-          periodNr: latestSettings.periodNr
-        };
-        localStorage.setItem('exretail_user_meta', JSON.stringify({
-          firm_nr: userMeta.firmNr,
-          period_nr: userMeta.periodNr
-        }));
-
-        // Sync ERP settings with global state
-        const { updateConfigs } = await import('../services/postgres');
-        await updateConfigs({ erp: userMeta });
-
-        // Save session
-        const sessionData = {
-          token: 'local-session-auth',
-          user: userWithRoles
-        };
-        localStorage.setItem('exretail_session', JSON.stringify(sessionData));
-
-        toast.success(`Hoş geldiniz, ${userWithRoles.full_name}!`);
-        window.setTimeout(() => {
-            void notifyBeautyFollowUpRemindersAfterSession({ playChime: true });
-        }, 900);
-        return true;
       }
 
       // 1. Query user from auth.users joined with roles

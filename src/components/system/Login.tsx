@@ -804,19 +804,26 @@ export function Login({ onLogin }: LoginProps) {
     try {
       const { DB_SETTINGS } = await import('../../services/postgres');
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('../../services/api/postgrestClient');
-        const rpcRes: any = await postgrest.post(
-          '/rpc/verify_login',
-          {
-            username: trimmedUsername,
-            password: trimmedPassword,
-            // Credentials aşamasında firmayı henüz bilmiyoruz: tüm firmalarda kabul et.
-            firm_nr: ''
-          },
-          { schema: 'logic' }
-        );
-        const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
-        return !!row;
+        try {
+          const { postgrest } = await import('../../services/api/postgrestClient');
+          const rpcRes: any = await postgrest.post(
+            '/rpc/verify_login',
+            {
+              username: trimmedUsername,
+              password: trimmedPassword,
+              // Credentials aşamasında firmayı henüz bilmiyoruz: tüm firmalarda kabul et.
+              firm_nr: ''
+            },
+            { schema: 'logic' }
+          );
+          const row = Array.isArray(rpcRes) ? rpcRes[0] : (rpcRes?.[0] ?? rpcRes);
+          if (row) return true;
+          // RPC boş döndüyse legacy SQL doğrulamasına düş.
+          console.warn('Login verify: PostgREST verify_login returned no row, trying SQL fallback');
+        } catch (rpcErr) {
+          // verify_login RPC migration'ı uygulanmamış veya izin eksik olabilir.
+          console.warn('Login verify: PostgREST verify_login failed, trying SQL fallback', rpcErr);
+        }
       }
 
       const { postgres } = await import('../../services/postgres');
