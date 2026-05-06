@@ -30,6 +30,7 @@ import { supabase } from '../../utils/supabase/client';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 const isProduction = import.meta.env.PROD;
+const DEFAULT_MERKEZ_REST_URL = 'https://api.retailex.app/merkez';
 
 /** firms.firm_nr ile aynı biçim (örn. 2 → 002) — tenant ön seçimi için */
 function normalizeTenantFirmNr(v: string | number | undefined | null): string {
@@ -100,7 +101,11 @@ export function Login({ onLogin }: LoginProps) {
   /** Kiracı kodu / UUID veya tek satırda tam PostgREST URL (örn. https://api.../aqua) */
   const [tenantConnectionDraft, setTenantConnectionDraft] = useState('');
   /** Yalnızca kiracı kodu ile merkez tenant_registry sorgusu — merkez PostgREST tabanı geçersiz kılma */
-  const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState('');
+  const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState<string>(
+    () => (typeof window !== 'undefined'
+      ? (localStorage.getItem('merkez_postgrest_base_url') || DEFAULT_MERKEZ_REST_URL)
+      : DEFAULT_MERKEZ_REST_URL)
+  );
   const [isMerkezTenantLoading, setIsMerkezTenantLoading] = useState(false);
   const [rtlMode, setRtlMode] = useState(false);
   const [activeOrgTab, setActiveOrgTab] = useState<'firm' | 'database'>('firm');
@@ -962,7 +967,7 @@ export function Login({ onLogin }: LoginProps) {
                   }
                   if (!line) line = localStorage.getItem('exretail_selected_tenant') || '';
                   setTenantConnectionDraft(line);
-                  setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || '');
+                  setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || DEFAULT_MERKEZ_REST_URL);
                   setShowTenantFirmIdModal(true);
                 }}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
