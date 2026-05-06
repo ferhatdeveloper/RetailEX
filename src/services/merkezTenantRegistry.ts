@@ -75,12 +75,28 @@ export function buildDirectPostgrestTenantPatch(input: {
   const slug = (input.pathSlug || '').trim();
   const idFromSlug = slug && UUID_RE.test(slug) ? slug : '';
   const codeFromSlug = slug && !idFromSlug ? slug : '';
+  let parsedHost = '';
+  let parsedPort = 5432;
+  try {
+    const parsed = new URL(u);
+    parsedHost = parsed.hostname;
+    if (parsed.port) parsedPort = Number(parsed.port) || 5432;
+    else if (parsed.protocol === 'https:') parsedPort = 443;
+    else if (parsed.protocol === 'http:') parsedPort = 80;
+  } catch {
+    /* ignore */
+  }
   return {
     is_configured: true,
     db_mode: 'online',
     system_type: 'retail',
     connection_provider: 'rest_api',
     remote_rest_url: u,
+    // Direct URL akışında da legacy SQL çağrıları eski tenant DB'sine sapmasın diye
+    // uzak DB kimliğini URL slug'ından türetip açıkça üzerine yaz.
+    remote_host: parsedHost || undefined,
+    remote_port: parsedPort,
+    remote_db: codeFromSlug || undefined,
     merkez_tenant_code: codeFromSlug || undefined,
     merkez_tenant_id: idFromSlug || undefined,
     merkez_display_name: codeFromSlug || idFromSlug || u,

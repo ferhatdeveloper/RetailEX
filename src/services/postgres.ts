@@ -248,21 +248,19 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
     const pgFlat = localStorage.getItem('exretail_pg_config');
     const webFull = localStorage.getItem('retailex_web_config');
     try {
-      // Önce tam kiracı/merkez yapılandırması, sonra düz PG ayarları (bazı PC'lerde yalnızca yerel PG — connection_provider burada).
-      // Eski sıra (önce pgFlat) retailex_web_config ile exretail_pg_config çakışınca REST kiracısı yerel PG seçimini eziyordu.
-      if (webFull) {
-        applyWebLocalStorageConfig(JSON.parse(webFull));
-      } else if (pgFlat) {
-        applyWebLocalStorageConfig(JSON.parse(pgFlat));
+      // Web'de tek kaynak gibi davran: iki cache birlikte varsa önce flat, üstüne full.
+      // Böylece tenant/connection_provider/remote_rest_url gibi kritik alanlarda retailex_web_config öncelikli kalır.
+      if (webFull || pgFlat) {
+        const flatObj = pgFlat ? JSON.parse(pgFlat) : {};
+        const fullObj = webFull ? JSON.parse(webFull) : {};
+        const merged = { ...flatObj, ...fullObj };
+        applyWebLocalStorageConfig(merged);
       } else {
         DB_SETTINGS.activeMode = 'online';
         DB_SETTINGS.connectionProvider = 'db';
         DB_SETTINGS.remoteRestUrl = '';
         DB_SETTINGS.hybridReadPreference = 'local_first';
         DB_SETTINGS.hybridSyncDirection = 'local_to_remote';
-      }
-      if (webFull && pgFlat) {
-        applyWebLocalStorageConfig(JSON.parse(pgFlat));
       }
       if (pgFlat || webFull) {
         console.log('🌐 Web Config Loaded (exretail_pg_config + retailex_web_config)');
