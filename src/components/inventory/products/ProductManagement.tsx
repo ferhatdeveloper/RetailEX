@@ -508,24 +508,48 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     return (
                       <div
                         key={p.id}
-                        className={`grid grid-cols-[auto_1fr] gap-2 pl-2 pr-3 py-1.5 border-b border-gray-100/90 min-h-[52px] items-center active:bg-white/90 ${
+                        className={`grid grid-cols-[auto_1fr] gap-2 pl-2 pr-3 py-1.5 border-b border-gray-100/90 min-h-[52px] items-center active:bg-white/90 touch-manipulation select-none ${
                           selected ? 'bg-blue-50/90' : 'bg-white'
                         }`}
-                        onTouchStart={(e) => {
-                          const touch = e.touches[0];
-                          if (touch) startLongPress(touch.clientX, touch.clientY, p);
+                        onPointerDown={(e) => {
+                          if (e.pointerType === 'mouse' && e.button !== 0) return;
+                          try {
+                            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                          } catch {
+                            /* ignore */
+                          }
+                          startLongPress(e.clientX, e.clientY, p);
                         }}
-                        onTouchMove={(e) => {
-                          const touch = e.touches[0];
-                          if (touch) maybeCancelLongPressMove(touch.clientX, touch.clientY);
+                        onPointerMove={(e) => {
+                          maybeCancelLongPressMove(e.clientX, e.clientY);
                         }}
-                        onTouchEnd={clearLongPress}
-                        onTouchCancel={clearLongPress}
+                        onPointerUp={(e) => {
+                          try {
+                            const el = e.currentTarget as HTMLElement;
+                            if (typeof el.hasPointerCapture === 'function' && el.hasPointerCapture(e.pointerId)) {
+                              el.releasePointerCapture(e.pointerId);
+                            }
+                          } catch {
+                            /* ignore */
+                          }
+                          clearLongPress();
+                        }}
+                        onPointerCancel={(e) => {
+                          try {
+                            const el = e.currentTarget as HTMLElement;
+                            if (typeof el.hasPointerCapture === 'function' && el.hasPointerCapture(e.pointerId)) {
+                              el.releasePointerCapture(e.pointerId);
+                            }
+                          } catch {
+                            /* ignore */
+                          }
+                          clearLongPress();
+                        }}
                       >
                         <div
                           className="flex items-center self-center"
                           onClick={(e) => e.stopPropagation()}
-                          onTouchStart={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
                         >
                           <input
                             type="checkbox"

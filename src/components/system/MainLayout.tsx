@@ -37,7 +37,6 @@ const WarehouseManagement = lazy(() => import('../wms')) as any;
 // Lazy load Restaurant & Beauty
 const RestaurantMain = lazy(() => import('../restaurant/index'));
 const BeautyMain = lazy(() => import('../beauty/index'));
-import { AppFooter } from '../shared/AppFooter';
 import { FirmSelector } from './FirmSelector';
 import { cn } from '../ui/utils';
 import {
@@ -1217,7 +1216,7 @@ export function MainLayout({
         </div>
       ), document.body)}
 
-      {/* Module Content — min-h-0: iç flex/grid yüksekliği footer üstünde doğru iletilir */}
+      {/* Module Content — min-h-0: iç flex/grid yüksekliği doğru iletilir */}
       <div className="flex-1 min-h-0 overflow-hidden">
         {currentModule === 'pos' ? (
           // POS ekranında sadece MarketPOS göster (mobil otomatik geçiş yok)
@@ -1313,8 +1312,6 @@ export function MainLayout({
           />
         )}
       </div>
-
-      {!incomingCall && <AppFooter />}
 
       {/* Date Modal */}
       {showDateModal && (
