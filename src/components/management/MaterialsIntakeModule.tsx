@@ -81,8 +81,11 @@ async function lookupStockFields(barcode: string): Promise<{ name: string; varia
 
 export function MaterialsIntakeModule({
   onOpenPurchaseInvoice,
+  variant = 'default',
 }: {
   onOpenPurchaseInvoice?: () => void;
+  /** Akıllı menü: raf etiketi / OCR vurgusu */
+  variant?: 'default' | 'smart';
 }) {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
