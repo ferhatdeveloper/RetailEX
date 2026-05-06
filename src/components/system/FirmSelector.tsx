@@ -17,9 +17,11 @@ export type FirmSelectorTriggerVariant = 'topbar' | 'clinic';
 interface FirmSelectorProps {
     /** clinic: açık arka planlı üst çubuk (Güzellik kabuğu); topbar: mavi ERP çubuğu */
     triggerVariant?: FirmSelectorTriggerVariant;
+    /** Mobil üst çubuk: daha dar tetikleyici */
+    compactMobile?: boolean;
 }
 
-export function FirmSelector({ triggerVariant = 'topbar' }: FirmSelectorProps) {
+export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false }: FirmSelectorProps) {
     const [isOpen, setIsOpen] = useState(false);
     const {
         selectedFirm,
@@ -40,12 +42,20 @@ export function FirmSelector({ triggerVariant = 'topbar' }: FirmSelectorProps) {
                     'flex items-center gap-2 rounded transition-colors shrink-0',
                     triggerVariant === 'topbar' &&
                         'text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-2',
+                    triggerVariant === 'topbar' &&
+                        compactMobile &&
+                        'h-9 px-2 gap-1 text-[11px] max-w-[min(46vw,12.5rem)] min-w-0',
                     triggerVariant === 'clinic' &&
                         'text-xs h-8 px-2 sm:px-2.5 border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 text-slate-700 font-semibold shadow-sm'
                 )}
                 onClick={() => setIsOpen(true)}
             >
-                <Building2 className={cn('h-4 w-4', triggerVariant === 'clinic' && 'text-violet-700')} />
+                <Building2
+                    className={cn(
+                        compactMobile && triggerVariant === 'topbar' ? 'h-3.5 w-3.5 shrink-0' : 'h-4 w-4',
+                        triggerVariant === 'clinic' && 'text-violet-700'
+                    )}
+                />
                 <span className="hidden md:inline max-w-[140px] truncate">
                     {selectedFirm?.name || selectedFirm?.firm_nr || 'Firma Seç'}
                 </span>
@@ -57,7 +67,7 @@ export function FirmSelector({ triggerVariant = 'topbar' }: FirmSelectorProps) {
                 <span className="hidden sm:inline whitespace-nowrap">
                     {selectedPeriod?.nr ? `Dönem ${selectedPeriod.nr}` : 'Dönem Seç'}
                 </span>
-                <ChevronDown className="h-3 w-3 opacity-50" />
+                <ChevronDown className={cn('opacity-50 shrink-0', compactMobile && triggerVariant === 'topbar' ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
             </Button>
 
             <Dialog open={isOpen} onOpenChange={setIsOpen}>

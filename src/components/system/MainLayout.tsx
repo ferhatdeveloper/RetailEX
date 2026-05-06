@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMem
 import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -72,12 +72,33 @@ function ModuleLazySplash({
 }
 
 /** Üst çubukta saat/tarih — interval yalnızca bu düğümü yeniler, tüm MainLayout + POS'u değil */
-function MainLayoutClockButton({ onOpenModal }: { onOpenModal: () => void }) {
+function MainLayoutClockButton({
+  onOpenModal,
+  compact,
+}: {
+  onOpenModal: () => void;
+  /** Mobil: yalnızca saat */
+  compact?: boolean;
+}) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenModal}
+        className="flex items-center justify-center gap-1 text-[11px] bg-white/12 hover:bg-white/20 px-2 py-1.5 rounded-xl border border-white/15 transition-colors shrink-0 whitespace-nowrap font-semibold shadow-inner touch-manipulation min-h-[36px] min-w-[3.25rem]"
+      >
+        <Clock className="w-3.5 h-3.5 shrink-0 opacity-90" />
+        <span className="tabular-nums">
+          {now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -282,9 +303,22 @@ export function MainLayout({
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
   const [datePassword, setDatePassword] = useState('');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showFirmaInfoModal, setShowFirmaInfoModal] = useState(false);
+  const [mobileTopBarMoreOpen, setMobileTopBarMoreOpen] = useState(false);
+  const mobileTopBarMoreRef = useRef<HTMLDivElement>(null);
   const { isMobile, isTablet, isSmallMobile } = useResponsive();
+  /** Mobil + tablet: üst çubuk iki satırlı kompakt düzen */
+  const compactShellTopBar = isMobile || isTablet;
+
+  useEffect(() => {
+    if (!mobileTopBarMoreOpen) return;
+    const close = (ev: PointerEvent) => {
+      const root = mobileTopBarMoreRef.current;
+      if (root && !root.contains(ev.target as Node)) setMobileTopBarMoreOpen(false);
+    };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [mobileTopBarMoreOpen]);
 
   // Management password modal state
   const [showManagementPasswordModal, setShowManagementPasswordModal] = useState(false);
@@ -893,147 +927,315 @@ export function MainLayout({
       } as React.CSSProperties}
     >
       {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
-      {!(isMobile && currentModule === 'pos') && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
+      {!(compactShellTopBar && currentModule === 'pos') && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
         <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
-            {/* Left — Logo (büyük kutu + başlık) */}
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 flex items-center justify-center p-1.5 sm:p-2 border border-white/25 overflow-hidden shadow-lg shadow-blue-900/20 ring-1 ring-white/10">
-                <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain drop-shadow-sm" />
-              </div>
-              <div className={isSmallMobile ? 'hidden sm:block min-w-0' : 'min-w-0'}>
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">RetailEx</h1>
-                <p className="text-[9px] sm:text-[10px] text-blue-100/95 font-semibold uppercase tracking-[0.12em] mt-0.5 hidden sm:block">
-                  AKILLI AI-NATIVE ERP
-                </p>
-              </div>
-            </div>
-
-            {/* Center — yalnızca modül sekmeleri */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 flex-1 min-w-0">
-              <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 flex-shrink-0">
-                {topModuleButtons.map((btn) => {
-                  const Icon = btn.icon;
-                  return (
-                    <button
-                      key={btn.id}
-                      type="button"
-                      onClick={btn.onClick}
-                      title={btn.title}
-                      aria-label={btn.title}
-                      className={cn(
-                        'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
-                        'w-9 h-9 sm:w-10 sm:h-10',
-                        currentModule === btn.id
-                          ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
-                          : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
-                      )}
-                    >
-                      <Icon className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Right — firma, saat, sonra diğer ikonlar */}
-            <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
-              <FirmSelector />
-
-              <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
-
-              {/* POS Quick Actions (only in POS mode) */}
-              {currentModule === 'pos' && (
-                <>
-                  {/* Customer */}
+          {compactShellTopBar ? (
+            <div className="flex flex-col">
+              {/* Mobil / tablet: logo + modül ikonları; çok dar ekranda daha sıkı */}
+              <div
+                className={cn(
+                  'flex items-center px-2 py-1',
+                  isSmallMobile ? 'min-h-[40px] gap-1' : 'min-h-[44px] gap-2'
+                )}
+              >
+                {currentModule === 'management' && (
                   <button
-                    onClick={() => setShowCustomerModal(true)}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-colors min-h-[44px] active:scale-95 ${selectedCustomer
-                      ? 'bg-white text-blue-700 shadow-md'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                      }`}
-                    title={t.selectCustomer}
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('retailex-open-management-sidebar'))}
+                    className={cn(
+                      'shrink-0 flex items-center justify-center rounded-xl bg-white/15 border border-white/25 text-white shadow-inner active:scale-[0.98] touch-manipulation',
+                      isSmallMobile ? 'h-9 w-9' : 'h-10 w-10'
+                    )}
+                    aria-label="Menüyü aç"
+                    title="Menüyü aç"
                   >
-                    <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="hidden sm:inline truncate max-w-[100px]">{selectedCustomer ? selectedCustomer.name : t.customer}</span>
+                    <Menu className={isSmallMobile ? 'w-4 h-4' : 'w-5 h-5'} />
                   </button>
+                )}
+                <div
+                  className={cn(
+                    'flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/25 bg-white/15 p-1 ring-1 ring-white/10 shadow-md shadow-blue-900/20',
+                    isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                  )}
+                >
+                  <img src="/logo.png" alt="RetailEx" className="h-full w-full object-contain drop-shadow-sm" />
+                </div>
+                <h1
+                  className={cn(
+                    'shrink-0 truncate font-black tracking-tight text-white',
+                    isSmallMobile ? 'sr-only' : 'max-w-[5.5rem] text-sm'
+                  )}
+                >
+                  RetailEx
+                </h1>
+                <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className={cn('flex items-center justify-end py-0.5', isSmallMobile ? 'gap-0.5' : 'gap-1')}>
+                    {topModuleButtons.map((btn) => {
+                      const Icon = btn.icon;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={btn.onClick}
+                          title={btn.title}
+                          aria-label={btn.title}
+                          className={cn(
+                            'group flex shrink-0 items-center justify-center rounded-xl transition-all active:scale-[0.98] touch-manipulation',
+                            isSmallMobile ? 'h-8 w-8' : 'h-9 w-9',
+                            currentModule === btn.id
+                              ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                              : 'bg-white/10 text-white hover:bg-white/20 hover:ring-1 hover:ring-white/25'
+                          )}
+                        >
+                          <Icon
+                            className={cn(
+                              'shrink-0 opacity-95 transition-transform group-hover:scale-105',
+                              isSmallMobile ? 'h-4 w-4' : 'h-[18px] w-[18px]'
+                            )}
+                            strokeWidth={2}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+              {/* Firma/dönem + saat + kullanıcı + diğerleri */}
+              <div
+                className={cn(
+                  'flex items-center border-t border-white/10 px-2 py-1',
+                  isSmallMobile ? 'min-h-[40px] gap-1' : 'min-h-[42px] gap-1.5'
+                )}
+              >
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <FirmSelector compactMobile />
+                </div>
+                <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentModule === 'pos') setShowStaffModal(true);
+                  }}
+                  className={cn(
+                    'flex shrink-0 items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 touch-manipulation',
+                    isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                  )}
+                  title={currentModule === 'pos' ? t.changeCashier : currentUser.fullName || t.systemAdministrator}
+                >
+                  <User className={isSmallMobile ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+                </button>
+                <div className="relative shrink-0" ref={mobileTopBarMoreRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMobileTopBarMoreOpen((o) => !o);
+                    }}
+                    className={cn(
+                      'flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 touch-manipulation',
+                      isSmallMobile ? 'h-8 w-8' : 'h-9 w-9'
+                    )}
+                    aria-expanded={mobileTopBarMoreOpen}
+                    aria-haspopup="menu"
+                    title={t.languageSelectionTitle}
+                  >
+                    <MoreVertical className={isSmallMobile ? 'h-4 w-4' : 'h-5 w-5'} />
+                  </button>
+                  {mobileTopBarMoreOpen && (
+                    <div
+                      className="absolute right-0 top-[calc(100%+4px)] z-[20050] min-w-[11rem] overflow-hidden rounded-xl border border-white/20 bg-blue-700 py-1 text-sm shadow-2xl ring-1 ring-black/10"
+                      role="menu"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-white hover:bg-white/15 touch-manipulation"
+                        onClick={() => {
+                          setMobileTopBarMoreOpen(false);
+                          setShowLanguageModal(true);
+                        }}
+                      >
+                        <Languages className="h-4 w-4 shrink-0" />
+                        {t.languageSelectionTitle}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-white hover:bg-white/15 touch-manipulation"
+                        onClick={() => {
+                          setMobileTopBarMoreOpen(false);
+                          onLogout();
+                        }}
+                      >
+                        <LogOut className="h-4 w-4 shrink-0" />
+                        {t.logout}
+                      </button>
+                      <div className="flex items-center gap-2 border-t border-white/10 px-3 py-2 text-xs text-blue-100">
+                        <WsConnectionStatusDot />
+                        <span className="leading-tight">WebSocket</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 border-t border-white/10 px-3 py-2.5 text-left text-white hover:bg-white/15 touch-manipulation"
+                        onClick={() => {
+                          setMobileTopBarMoreOpen(false);
+                          if (typeof window !== 'undefined' && (window as any).electron) {
+                            (window as any).electron.close();
+                          } else if (typeof window !== 'undefined') {
+                            window.close();
+                          }
+                        }}
+                      >
+                        <X className="h-4 w-4 shrink-0" />
+                        {t.close}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
+              {/* Left — Logo (büyük kutu + başlık) */}
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 flex items-center justify-center p-1.5 sm:p-2 border border-white/25 overflow-hidden shadow-lg shadow-blue-900/20 ring-1 ring-white/10">
+                  <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain drop-shadow-sm" />
+                </div>
+                <div className={isSmallMobile ? 'hidden sm:block min-w-0' : 'min-w-0'}>
+                  <h1 className="text-base sm:text-lg font-black tracking-tight text-white leading-tight">RetailEx</h1>
+                  <p className="text-[9px] sm:text-[10px] text-blue-100/95 font-semibold uppercase tracking-[0.12em] mt-0.5 hidden sm:block">
+                    AKILLI AI-NATIVE ERP
+                  </p>
+                </div>
+              </div>
 
-                  {/* Son Fiş Butonu */}
+              {/* Center — yalnızca modül sekmeleri */}
+              <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-center gap-1 sm:gap-1.5 flex-shrink-0">
+                  {topModuleButtons.map((btn) => {
+                    const Icon = btn.icon;
+                    return (
+                      <button
+                        key={btn.id}
+                        type="button"
+                        onClick={btn.onClick}
+                        title={btn.title}
+                        aria-label={btn.title}
+                        className={cn(
+                          'group flex items-center justify-center rounded-xl transition-all active:scale-[0.98]',
+                          'w-9 h-9 sm:w-10 sm:h-10',
+                          currentModule === btn.id
+                            ? 'bg-white text-blue-700 shadow-md shadow-blue-900/20 ring-1 ring-white/50'
+                            : 'bg-white/10 hover:bg-white/20 text-white hover:ring-1 hover:ring-white/25'
+                        )}
+                      >
+                        <Icon className="w-5 h-5 sm:w-5 sm:h-5 shrink-0 opacity-95 group-hover:scale-105 transition-transform" strokeWidth={2} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right — firma, saat, sonra diğer ikonlar */}
+              <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap shrink-0">
+                <FirmSelector />
+
+                <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
+
+                {/* POS Quick Actions (only in POS mode) */}
+                {currentModule === 'pos' && (
+                  <>
+                    {/* Customer */}
+                    <button
+                      onClick={() => setShowCustomerModal(true)}
+                      className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-colors min-h-[44px] active:scale-95 ${selectedCustomer
+                        ? 'bg-white text-blue-700 shadow-md'
+                        : 'bg-white/10 hover:bg-white/20 text-white'
+                        }`}
+                      title={t.selectCustomer}
+                    >
+                      <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline truncate max-w-[100px]">{selectedCustomer ? selectedCustomer.name : t.customer}</span>
+                    </button>
+
+                    {/* Son Fiş Butonu */}
+                    <button
+                      onClick={() => {
+                        // Trigger last receipt modal from MarketPOS
+                        const event = new CustomEvent('openLastReceipt');
+                        window.dispatchEvent(event);
+                      }}
+                      disabled={sales.length === 0}
+                      className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-colors min-h-[44px] active:scale-95 ${sales.length > 0
+                        ? 'bg-white/10 hover:bg-white/20 text-white'
+                        : 'bg-white/5 opacity-50 cursor-not-allowed'
+                        }`}
+                      title={t.lastReceiptButton}
+                    >
+                      <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline">{t.lastReceipt}</span>
+                    </button>
+                  </>
+                )}
+
+                {/* User / Kasiyer */}
+                <button
+                  onClick={() => currentModule === 'pos' ? setShowStaffModal(true) : null}
+                  className="flex items-center gap-1.5 bg-white/10 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded hover:bg-white/20 transition-colors min-h-[44px] active:scale-95"
+                  title={currentModule === 'pos' ? t.changeCashier : ''}
+                >
+                  <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white/20 rounded flex items-center justify-center flex-shrink-0">
+                    <User className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  </div>
+                  <div className="text-left hidden sm:block">
+                    <p className="text-xs leading-none truncate max-w-[120px]">{currentModule === 'pos' ? currentStaff : (currentUser.fullName || t.systemAdministrator)}</p>
+                    <p className="text-[7px] sm:text-[8px] text-blue-100 mt-0.5 truncate">{currentUser.role || t.administrator}</p>
+                  </div>
+                </button>
+
+                {/* Language Selector */}
+                <button
+                  onClick={() => setShowLanguageModal(true)}
+                  className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
+                  title={t.languageSelectionTitle}
+                >
+                  <Languages className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                </button>
+
+                {/* Logout */}
+                <button
+                  onClick={onLogout}
+                  className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
+                  title="Çıkış Yap"
+                >
+                  <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
+                </button>
+
+                {/* Server Status Indicator */}
+                <WsConnectionStatusDot />
+
+                {/* Close Button */}
+                {!isSmallMobile && (
                   <button
                     onClick={() => {
-                      // Trigger last receipt modal from MarketPOS
-                      const event = new CustomEvent('openLastReceipt');
-                      window.dispatchEvent(event);
+                      // Electron için pencereyi kapat
+                      if (typeof window !== 'undefined' && (window as any).electron) {
+                        (window as any).electron.close();
+                      } else if (typeof window !== 'undefined') {
+                        // Tarayıcı için window.close()
+                        window.close();
+                      }
                     }}
-                    disabled={sales.length === 0}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded text-xs sm:text-sm transition-colors min-h-[44px] active:scale-95 ${sales.length > 0
-                      ? 'bg-white/10 hover:bg-white/20 text-white'
-                      : 'bg-white/5 opacity-50 cursor-not-allowed'
-                      }`}
-                    title={t.lastReceiptButton}
+                    className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
+                    title="Kapat"
                   >
-                    <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="hidden sm:inline">{t.lastReceipt}</span>
+                    <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                   </button>
-                </>
-              )}
-
-              {/* User / Kasiyer */}
-              <button
-                onClick={() => currentModule === 'pos' ? setShowStaffModal(true) : null}
-                className="flex items-center gap-1.5 bg-white/10 px-2 sm:px-2.5 py-1.5 sm:py-2 rounded hover:bg-white/20 transition-colors min-h-[44px] active:scale-95"
-                title={currentModule === 'pos' ? t.changeCashier : ''}
-              >
-                <div className="w-4 h-4 sm:w-5 sm:h-5 bg-white/20 rounded flex items-center justify-center flex-shrink-0">
-                  <User className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                </div>
-                <div className="text-left hidden sm:block">
-                  <p className="text-xs leading-none truncate max-w-[120px]">{currentModule === 'pos' ? currentStaff : (currentUser.fullName || t.systemAdministrator)}</p>
-                  <p className="text-[7px] sm:text-[8px] text-blue-100 mt-0.5 truncate">{currentUser.role || t.administrator}</p>
-                </div>
-              </button>
-
-              {/* Language Selector */}
-              <button
-                onClick={() => setShowLanguageModal(true)}
-                className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
-                title={t.languageSelectionTitle}
-              >
-                <Languages className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-              </button>
-
-              {/* Logout */}
-              <button
-                onClick={onLogout}
-                className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
-                title="Çıkış Yap"
-              >
-                <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-              </button>
-
-              {/* Server Status Indicator */}
-              <WsConnectionStatusDot />
-
-              {/* Close Button */}
-              {!isSmallMobile && (
-                <button
-                  onClick={() => {
-                    // Electron için pencereyi kapat
-                    if (typeof window !== 'undefined' && (window as any).electron) {
-                      (window as any).electron.close();
-                    } else if (typeof window !== 'undefined') {
-                      // Tarayıcı için window.close()
-                      window.close();
-                    }
-                  }}
-                  className="p-2 sm:p-2.5 hover:bg-white/10 rounded transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center active:scale-95"
-                  title="Kapat"
-                >
-                  <X className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
-                </button>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

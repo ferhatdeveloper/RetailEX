@@ -230,6 +230,12 @@ export function ManagementModule({
   const effectiveSidebarOpen = sidebarOpen !== undefined ? sidebarOpen : _sidebarOpen;
   const effectiveSetSidebarOpen = setSidebarOpen ?? _setSidebarOpen;
 
+  useEffect(() => {
+    const openSidebar = () => effectiveSetSidebarOpen(true);
+    window.addEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
+    return () => window.removeEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
+  }, [effectiveSetSidebarOpen]);
+
   // Rol bazlı varsayılan ekran belirleme
   const getDefaultScreenForRole = (roles: string[] = []): ExtendedScreen => {
     if (roles.includes('warehouse_manager') || roles.includes('warehouse_staff') || roles.includes('depo')) return 'stock';
@@ -1373,21 +1379,7 @@ export function ManagementModule({
         </div>
       </div>
 
-      {/* Mobile Menu Button */}
-      {isMobile && !effectiveSidebarOpen && (
-        <button
-          type="button"
-          onClick={() => effectiveSetSidebarOpen(true)}
-          className="fixed left-3 top-3 h-11 w-11 rounded-xl bg-blue-600 text-white shadow-lg flex items-center justify-center active:scale-[0.98]"
-          style={{ zIndex: Z_INDEX.MOBILE_MENU_BTN }}
-          aria-label="Menüyü aç"
-          title="Menüyü aç"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-      )}
-
-      {/* Main Content */}
+      {/* Main Content — mobil menü ana üst çubuktaki hamburger ile açılır */}
       <div
         className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
       >
