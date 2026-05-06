@@ -293,55 +293,6 @@ export function MainLayout({
   const [managementPasswordError, setManagementPasswordError] = useState('');
   const [managementPasswordLoading, setManagementPasswordLoading] = useState(false);
 
-  const topModuleButtons = useMemo(() => {
-    const moduleMeta: Record<Module, { title: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; onClick: () => void }> = {
-      pos: {
-        title: t.sales,
-        icon: ShoppingCart,
-        onClick: () => setCurrentModule('pos'),
-      },
-      management: {
-        title: t.management,
-        icon: LayoutGrid,
-        onClick: requestManagementAccess,
-      },
-      wms: {
-        title: 'WMS',
-        icon: Warehouse,
-        onClick: () => setCurrentModule('wms'),
-      },
-      'mobile-pos': {
-        title: t.mobilePOS,
-        icon: Smartphone,
-        onClick: () => setCurrentModule('mobile-pos'),
-      },
-      restaurant: {
-        title: (t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran',
-        icon: UtensilsCrossed,
-        onClick: () => setCurrentModule('restaurant'),
-      },
-      beauty: {
-        title: tm('bModuleBeautyTooltip'),
-        icon: Sparkles,
-        onClick: () => setCurrentModule('beauty'),
-      },
-    };
-
-    const ordered = getShellModuleFallbackOrder() as Module[];
-    const permissionMap: Record<Module, boolean> = {
-      pos: hasPermission('pos', 'READ'),
-      management: hasPermission('management', 'READ'),
-      wms: hasPermission('wms', 'READ'),
-      'mobile-pos': hasPermission('pos', 'READ'),
-      restaurant: hasPermission('restaurant', 'READ'),
-      beauty: hasPermission('beauty', 'READ'),
-    };
-
-    return ordered
-      .filter((m) => moduleMeta[m] && isModuleVisible(m) && permissionMap[m])
-      .map((m) => ({ id: m, ...moduleMeta[m] }));
-  }, [t, tm, hasPermission, isModuleVisible, requestManagementAccess]);
-
   const verifyManagementPassword = async (pwd: string): Promise<boolean> => {
     if (!pwd) return false;
     if (currentUser.role === 'admin' || currentUser.role === 'manager') return true;
@@ -821,6 +772,55 @@ export function MainLayout({
       setShowManagementPasswordModal(true);
     }
   }, [currentUser.role]);
+
+  const topModuleButtons = useMemo(() => {
+    const moduleMeta: Record<Module, { title: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; onClick: () => void }> = {
+      pos: {
+        title: t.sales,
+        icon: ShoppingCart,
+        onClick: () => setCurrentModule('pos'),
+      },
+      management: {
+        title: t.management,
+        icon: LayoutGrid,
+        onClick: requestManagementAccess,
+      },
+      wms: {
+        title: 'WMS',
+        icon: Warehouse,
+        onClick: () => setCurrentModule('wms'),
+      },
+      'mobile-pos': {
+        title: t.mobilePOS,
+        icon: Smartphone,
+        onClick: () => setCurrentModule('mobile-pos'),
+      },
+      restaurant: {
+        title: (t as { menu?: { restaurant?: string } }).menu?.restaurant ?? 'Restoran',
+        icon: UtensilsCrossed,
+        onClick: () => setCurrentModule('restaurant'),
+      },
+      beauty: {
+        title: tm('bModuleBeautyTooltip'),
+        icon: Sparkles,
+        onClick: () => setCurrentModule('beauty'),
+      },
+    };
+
+    const ordered = getShellModuleFallbackOrder() as Module[];
+    const permissionMap: Record<Module, boolean> = {
+      pos: hasPermission('pos', 'READ'),
+      management: hasPermission('management', 'READ'),
+      wms: hasPermission('wms', 'READ'),
+      'mobile-pos': hasPermission('pos', 'READ'),
+      restaurant: hasPermission('restaurant', 'READ'),
+      beauty: hasPermission('beauty', 'READ'),
+    };
+
+    return ordered
+      .filter((m) => moduleMeta[m] && isModuleVisible(m) && permissionMap[m])
+      .map((m) => ({ id: m, ...moduleMeta[m] }));
+  }, [t, tm, hasPermission, isModuleVisible, requestManagementAccess]);
 
   // Keyboard shortcut for Management Panel (Ctrl+Shift+M)
   useEffect(() => {
