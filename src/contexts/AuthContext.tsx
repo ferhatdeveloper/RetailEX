@@ -283,6 +283,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (rpcErr: any) {
           logger.warn('Auth', 'PostgREST verify_login başarısız, SQL fallback deneniyor', { error: rpcErr?.message || String(rpcErr) });
         }
+        // RPC fallback sırasında SQL hedefi eski tenant'ta kalmasın.
+        const { alignRemoteConfigWithRestUrl } = await import('../services/postgres');
+        alignRemoteConfigWithRestUrl();
       }
 
       // 1. Query user from auth.users joined with roles

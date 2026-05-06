@@ -158,6 +158,34 @@ function applyRemoteFromHostPortDbString(remoteDb: string): void {
   if (dbPart) REMOTE_CONFIG.database = dbPart;
 }
 
+function syncRemoteConfigFromRestUrl(restUrl: unknown): void {
+  const raw = String(restUrl ?? '').trim();
+  if (!raw) return;
+  try {
+    const u = new URL(raw);
+    REMOTE_CONFIG.host = u.hostname || REMOTE_CONFIG.host;
+    if (u.port) {
+      REMOTE_CONFIG.port = Number(u.port) || REMOTE_CONFIG.port;
+    } else if (u.protocol === 'https:') {
+      REMOTE_CONFIG.port = 443;
+    } else if (u.protocol === 'http:') {
+      REMOTE_CONFIG.port = 80;
+    }
+    const parts = u.pathname.split('/').filter(Boolean);
+    const slug = parts.length ? parts[parts.length - 1] : '';
+    if (slug && /^[a-zA-Z0-9_.-]+$/.test(slug)) {
+      REMOTE_CONFIG.database = slug;
+    }
+  } catch {
+    /* ignore invalid URL */
+  }
+}
+
+export function alignRemoteConfigWithRestUrl(): void {
+  if (DB_SETTINGS.connectionProvider !== 'rest_api') return;
+  syncRemoteConfigFromRestUrl(DB_SETTINGS.remoteRestUrl);
+}
+
 /**
  * Web: `exretail_pg_config` ve/veya `retailex_web_config` nesnesini uygular.
  * Birden fazla çağrıda son çağrı üstte kalır (tam kiracı + düz PG overlay sırası initializeFromSQLite’da).
@@ -209,6 +237,9 @@ function applyWebLocalStorageConfig(config: any): void {
   }
   if (config.pg_remote_user) REMOTE_CONFIG.user = config.pg_remote_user;
   if (config.pg_remote_pass != null && config.pg_remote_pass !== '') REMOTE_CONFIG.password = config.pg_remote_pass;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    syncRemoteConfigFromRestUrl(DB_SETTINGS.remoteRestUrl);
+  }
 
   // Production web'de bridge, container içinden DB'ye bağlanır.
   // 127.0.0.1/localhost bridge konteynerinin kendisini işaret ettiği için ECONNREFUSED üretir.
@@ -353,6 +384,7 @@ export async function updateConfigs(updates: {
   if (updates.remote) REMOTE_CONFIG = { ...REMOTE_CONFIG, ...updates.remote };
   if (updates.settings) DB_SETTINGS = { ...DB_SETTINGS, ...updates.settings };
   if (updates.erp) ERP_SETTINGS = { ...ERP_SETTINGS, ...updates.erp };
+  alignRemoteConfigWithRestUrl();
 
   if (!IS_TAURI) {
     // Web: Sync to localStorage

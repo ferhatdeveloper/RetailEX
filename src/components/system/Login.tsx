@@ -824,6 +824,9 @@ export function Login({ onLogin }: LoginProps) {
           // verify_login RPC migration'ı uygulanmamış veya izin eksik olabilir.
           console.warn('Login verify: PostgREST verify_login failed, trying SQL fallback', rpcErr);
         }
+        // SQL fallback'e düşmeden önce hedef DB'yi güncel PostgREST URL ile hizala.
+        const { alignRemoteConfigWithRestUrl } = await import('../../services/postgres');
+        alignRemoteConfigWithRestUrl();
       }
 
       const { postgres } = await import('../../services/postgres');
