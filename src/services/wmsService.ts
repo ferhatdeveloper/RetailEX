@@ -23,7 +23,13 @@ function productsPath(): string {
     return `/rex_${padFirmNr()}_products`;
 }
 
-/** PostgREST HEAD + Prefer: count=exact → Content-Range sonundaki toplam */
+function parseContentRangeTotal(cr: string | null): number | null {
+    if (!cr) return null;
+    const m = cr.match(/\/(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+/** PostgREST: önce HEAD + count=exact; Content-Range yoksa GET + Range (bazı proxy’ler HEAD sayımını düşürür). */
 async function postgrestHeadTotal(path: string, schema: 'public' | 'wms', query: Record<string, string | undefined>): Promise<number> {
     const { getPostgrestUrl } = await import('../config/postgrest.config');
     const { fetchRetailexAware } = await import('../utils/retailexDevProxy');
@@ -33,19 +39,41 @@ async function postgrestHeadTotal(path: string, schema: 'public' | 'wms', query:
         if (v !== undefined && v !== '') search.set(k, v);
     });
     const url = getPostgrestUrl(path) + `?${search.toString()}`;
+    const headHeaders: Record<string, string> = {
+        Accept: 'application/json',
+        'Accept-Profile': schema,
+        'Content-Profile': schema,
+        Prefer: 'count=exact',
+    };
     const res = await fetchRetailexAware(url, {
         method: 'HEAD',
-        headers: {
-            Accept: 'application/json',
-            'Accept-Profile': schema,
-            'Content-Profile': schema,
-            Prefer: 'count=exact',
-        },
+        headers: headHeaders,
     });
     if (!res.ok) return 0;
-    const cr = res.headers.get('Content-Range');
-    const m = cr?.match(/\/(\d+)\s*$/);
-    return m ? parseInt(m[1], 10) : 0;
+    const headParsed = parseContentRangeTotal(res.headers.get('Content-Range'));
+    if (headParsed !== null) return headParsed;
+
+    const getRes = await fetchRetailexAware(url, {
+        method: 'GET',
+        headers: {
+            ...headHeaders,
+            Range: '0-0',
+        },
+    });
+    if (!getRes.ok) return 0;
+    const getParsed = parseContentRangeTotal(getRes.headers.get('Content-Range'));
+    return getParsed ?? 0;
+}
+
+/** PostgREST `or=(...ilike...)` içinde güvenli parça (özel operatör karakterleri atılır). */
+function wmsSearchIlikeFragment(raw: string): string {
+    return String(raw || '')
+        .trim()
+        .slice(0, 80)
+        .replace(/[(),*|&:]/g, ' ')
+        .replace(/\*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -173,7 +201,12 @@ export async function getDashboardStats(): Promise<WMSDashboardStats> {
             try {
                 const rows = await postgrest.get<{ stock?: number; min_stock?: number }[]>(
                     productsPath(),
-                    { select: 'stock,min_stock', min_stock: 'gt.0', limit: 5000 },
+                    {
+                        select: 'stock,min_stock',
+                        firm_nr: `eq.${String(ERP_SETTINGS.firmNr || '').trim()}`,
+                        min_stock: 'gt.0',
+                        limit: 5000,
+                    },
                     { schema: 'public' }
                 );
                 const list = Array.isArray(rows) ? rows : [];
@@ -233,7 +266,7 @@ export async function searchProducts(query: string, limit = 50): Promise<WMSProd
     try {
         if (isRestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
-            const q = String(query || '').trim().slice(0, 120).replace(/[(),]/g, ' ');
+            const q = wmsSearchIlikeFragment(query);
             if (!q) return [];
             const pat = `*${q}*`;
             const rows = await postgrest.get<any[]>(
