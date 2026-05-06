@@ -17,25 +17,32 @@ export const supplierAPI = {
       const suppTable = `rex_${ERP_SETTINGS.firmNr}_suppliers`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
+        const safeGet = async (path: string, query: Record<string, string>) => {
+          try {
+            const rows = await postgrest.get<any[]>(path, query, { schema: 'public' });
+            return Array.isArray(rows) ? rows : [];
+          } catch (err) {
+            console.warn('[SupplierAPI] PostgREST getAll fallback:', path, err);
+            return [] as any[];
+          }
+        };
         const [customers, suppliers] = await Promise.all([
-          postgrest.get<any[]>(
+          safeGet(
             `/${custTable}`,
             {
               select: '*',
               firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
               is_active: 'eq.true',
               order: 'name.asc',
-            },
-            { schema: 'public' }
+            }
           ),
-          postgrest.get<any[]>(
+          safeGet(
             `/${suppTable}`,
             {
               select: '*',
               is_active: 'eq.true',
               order: 'name.asc',
-            },
-            { schema: 'public' }
+            }
           ),
         ]);
         const customerRows = (Array.isArray(customers) ? customers : []).map((r) => ({
