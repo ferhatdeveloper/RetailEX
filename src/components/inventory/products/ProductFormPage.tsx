@@ -1642,21 +1642,21 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   ];
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="@container h-full flex min-w-0 flex-col bg-gray-50">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-300 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
-        <div className="flex items-center gap-2 max-lg:flex-wrap max-lg:min-w-0">
+      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-300 @max-[960px]:flex-col @max-[960px]:items-stretch @max-[960px]:gap-2">
+        <div className="flex items-center gap-2 @max-[960px]:flex-wrap @max-[960px]:min-w-0">
           <Package className="w-4 h-4 text-blue-600" />
           <span className="text-sm text-gray-900">
             {productId ? tm('editMaterialCard') : tm('newMaterialCard')}
           </span>
           {formData.code && (
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs max-lg:truncate max-lg:max-w-full">
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs @max-[960px]:truncate @max-[960px]:max-w-full">
               {formData.code}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 max-lg:self-end">
+        <div className="flex items-center gap-2 @max-[960px]:self-end">
           <button
             onClick={handleSave}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
@@ -1684,7 +1684,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex max-lg:shrink-0 items-center gap-1.5 px-3 py-2 text-xs border-r border-gray-300 transition-colors whitespace-nowrap ${activeTab === tab.id
+                className={`flex @max-[960px]:shrink-0 items-center gap-1.5 px-3 py-2 text-xs border-r border-gray-300 transition-colors whitespace-nowrap ${activeTab === tab.id
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
@@ -1698,8 +1698,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-3 max-lg:p-2">
-        <div className="max-w-6xl mx-auto max-lg:w-full max-lg:min-w-0">
+      <div className="flex-1 overflow-auto p-3 @max-[960px]:p-2">
+        <div className="mx-auto w-full max-w-6xl @max-[960px]:min-w-0">
 
           {/* GENEL SEKME - DETAYLI */}
           {activeTab === 'genel' && (
@@ -1709,11 +1709,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('basicInformation')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('cardType')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <select
                       value={formData.materialType || 'commercial_goods'}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('materialType', e.target.value)}
@@ -1728,10 +1728,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <option value="consumable">{tm('consumable')}</option>
                     </select>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('materialCode')} *</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <div className="flex items-center gap-1">
                       <input
                         type="text"
@@ -1760,13 +1760,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
 
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">
                       {tm('description')} (Türkçe) *
                       {isTranslating && <span className="ml-2 text-blue-600">🔄 {tm('translating')}...</span>}
                     </label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.description_tr || ''}
@@ -1777,10 +1777,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('description')} (English)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.description_en || ''}
@@ -1790,10 +1790,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('description')} (Arabic)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.description_ar || ''}
@@ -1804,10 +1804,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('description')} (Kurdish)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.description_ku || ''}
@@ -1817,7 +1817,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50"
                     />
                   </div>
-                  <div className="col-span-6 max-lg:hidden" aria-hidden />
+                  <div className="hidden @min-[961px]:block @min-[961px]:col-span-6" aria-hidden />
                 </div>
               </div>
 
@@ -1826,11 +1826,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('categoryAndClassification')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('category')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.category || ''}
@@ -1845,10 +1845,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <MoreVertical className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('categoryCode')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.categoryCode || ''}
@@ -1857,10 +1857,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('groupCode')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.groupCode || ''}
@@ -1875,10 +1875,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <MoreVertical className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('subGroupCode')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.subGroupCode || ''}
@@ -1901,11 +1901,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('brandAndManufacturerInfo')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('brand')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.brand || ''}
@@ -1920,10 +1920,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <MoreVertical className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('model')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.model || ''}
@@ -1939,10 +1939,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </button>
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('manufacturer')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.manufacturer || ''}
@@ -1950,10 +1950,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('supplier')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                     <input
                       type="text"
                       value={formData.supplier || ''}
@@ -1970,10 +1970,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </button>
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('origin')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.origin || ''}
@@ -1990,13 +1990,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('specialCodes')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
                   {[1, 2, 3, 4, 5, 6].map((num: number) => (
                     <div key={`special-code-${num}`} className="contents">
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                      <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                         <label className="text-xs text-gray-700">{tm('specialCode')} {num}</label>
                       </div>
-                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 flex gap-1">
+                      <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 flex gap-1">
                         <input
                           type="text"
                           value={String(formData[`specialCode${num}` as keyof typeof formData] || '')}
@@ -2015,10 +2015,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   ))}
                   {productId && (
                     <div className="contents">
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                      <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                         <label className="text-xs text-blue-600 font-bold">{tm('systemUUID')}</label>
                       </div>
-                      <div className="col-span-9 max-lg:col-span-1 bg-white px-2 py-1.5 flex items-center gap-1">
+                      <div className="col-span-1 @min-[961px]:col-span-9 bg-white px-2 py-1.5 flex items-center gap-1">
                         <input
                           type="text"
                           value={formData.id || ''}
@@ -2046,7 +2046,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('status')}</span>
                 </div>
-                <div className="p-3 grid grid-cols-5 gap-3 max-lg:grid-cols-2 max-lg:gap-y-2.5">
+                <div className="p-3 grid grid-cols-2 gap-3 @min-[961px]:grid-cols-5">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -2105,12 +2105,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('basicPricing')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
                   {/* Row 1: Para Birimi & TAX Tipi */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('currency')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <select
                       value={formData.currency || 'IQD'}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('currency', e.target.value)}
@@ -2122,10 +2122,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <option value="GBP">GBP - {tm('britishPound')}</option>
                     </select>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('taxType')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <select
                       value={formData.taxType || 'TAX'}
                       onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('taxType', e.target.value)}
@@ -2139,10 +2139,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
 
                   {/* Row 2: Alış Fiyatı & TAX % */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 font-bold">{tm('purchasePrice')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 relative">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5 relative">
                     <input
                       type="number"
                       step="0.01"
@@ -2157,10 +2157,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       </span>
                     )}
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 italic">TAX %</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       value={formData.taxRate || 0}
@@ -2170,10 +2170,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
 
                   {/* Row 3: Satış Fiyatı & Tevkifat % */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700 font-bold">{tm('salePrice')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-green-50 px-2 py-1.5 relative">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-green-50 px-2 py-1.5 relative">
                     <input
                       type="number"
                       step="0.01"
@@ -2188,10 +2188,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       </span>
                     )}
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('withholdingTax')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2202,10 +2202,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
 
                   {/* Row 4: Kâr Marjı */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-50 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-50 px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.purchasePrice > 0
@@ -2215,7 +2215,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-gray-100 text-gray-600 font-medium"
                     />
                   </div>
-                  <div className="col-span-6 max-lg:col-span-1 bg-gray-50 flex items-center px-4">
+                  <div className="col-span-1 @min-[961px]:col-span-6 bg-gray-50 flex items-center px-4">
                     <span className="text-[10px] text-gray-400 italic">{tm('profitMarginNote')}</span>
                   </div>
                 </div>
@@ -2226,8 +2226,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('foreignCurrencyPrices')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                   <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                   <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
                     <label className="text-xs text-gray-700">{tm('purchasePrice')} (USD)</label>
                     <button
                       onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
@@ -2237,7 +2237,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <Check className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2246,7 +2246,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50' : ''}`}
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
                     <label className="text-xs text-gray-700">{tm('salePrice')} (USD)</label>
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] text-gray-400">Rate: {usdExchangeRate}</span>
@@ -2259,7 +2259,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       </button>
                     </div>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2270,10 +2270,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
 
                   {/* Row 2: Özel Kur */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
                     <label className="text-xs text-gray-700">{tm('customExchangeRate')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2283,14 +2283,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-6 max-lg:col-span-1 bg-gray-50 px-2 py-1.5 flex items-center">
+                  <div className="col-span-1 @min-[961px]:col-span-6 bg-gray-50 px-2 py-1.5 flex items-center">
                     <span className="text-[10px] text-gray-400 italic">Boş veya 0 ise sistem kuru ({usdExchangeRate}) baz alınır. MarketPOS ve Faturalarda dinamik hesaplanır.</span>
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('purchasePrice')} (EUR)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2299,10 +2299,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('salePrice')} (EUR)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2319,13 +2319,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('priceList')}s</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
                   {[1, 2, 3, 4, 5, 6].map((num: number) => (
                     <div key={`price-list-${num}`} className="contents">
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                      <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                         <label className="text-xs text-gray-700">{tm('priceList')} {num}</label>
                       </div>
-                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                      <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                         <input
                           type="number"
                           step="0.01"
@@ -2344,11 +2344,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('discountRates')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('discount')} 1 %</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2357,10 +2357,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('discount')} 2 %</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2370,10 +2370,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('discount')} 3 %</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2382,7 +2382,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-6 max-lg:hidden" aria-hidden />
+                  <div className="hidden @min-[961px]:block @min-[961px]:col-span-6" aria-hidden />
                 </div>
               </div>
             </div>
@@ -2395,11 +2395,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('stockInformation')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('currentStock')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       value={formData.stock || 0}
@@ -2407,10 +2407,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('minStock')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       value={formData.minStock || 0}
@@ -2419,10 +2419,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('maxStock')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       value={formData.maxStock || 0}
@@ -2430,10 +2430,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('criticalStock')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       value={formData.criticalStock || 0}
@@ -2442,10 +2442,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('warehouseCode')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.warehouseCode || ''}
@@ -2453,10 +2453,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('shelfLocation')}</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="text"
                       value={formData.shelfLocation || ''}
@@ -2473,7 +2473,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('serialLotTracking')}</span>
                 </div>
-                <div className="p-3 grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+                <div className="p-3 grid grid-cols-1 gap-3 @min-[961px]:grid-cols-3">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -2509,11 +2509,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-1.5 bg-gray-100 border-b border-gray-300">
                   <span className="text-xs text-gray-700">{tm('physicalProperties')}</span>
                 </div>
-                <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                <div className="grid grid-cols-1 gap-px bg-gray-300 @min-[961px]:grid-cols-12">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('width')} (cm)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2522,10 +2522,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('height')} (cm)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2535,10 +2535,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('depth')} (cm)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2547,10 +2547,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('volume')} (cm³)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2560,10 +2560,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('weight')} (kg)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2572,10 +2572,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-gray-100 px-2 py-1.5">
                     <label className="text-xs text-gray-700">{tm('netWeight')} (kg)</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className="col-span-1 @min-[961px]:col-span-3 bg-white px-2 py-1.5">
                     <input
                       type="number"
                       step="0.01"
@@ -2594,9 +2594,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
             <div className="space-y-4">
               {/* Birleştirilmiş Birim ve Barkod Listesi */}
               <div className="bg-white border border-gray-300">
-                <div className="px-3 py-1 bg-gray-100 border-b border-gray-300 flex items-center justify-between max-lg:flex-col max-lg:items-stretch max-lg:gap-2 max-lg:py-1.5">
+                <div className="px-3 py-1 bg-gray-100 border-b border-gray-300 flex items-center justify-between @max-[960px]:flex-col @max-[960px]:items-stretch @max-[960px]:gap-2 @max-[960px]:py-1.5">
                   <span className="text-[11px] text-gray-700 font-bold">{tm('unitsAndBarcodeList')}</span>
-                  <div className="flex flex-wrap gap-2 max-lg:justify-end">
+                  <div className="flex flex-wrap gap-2 @max-[960px]:justify-end">
                     {/* Hazır Paket */}
                     <div className="relative">
                       <button
@@ -2897,7 +2897,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           {activeTab === 'varyant' && (
             <div className="space-y-3">
               {/* Kaydet Uyarısı */}
-              <div className="bg-amber-50 border border-amber-300 px-3 py-2 flex items-center justify-between max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+              <div className="bg-amber-50 border border-amber-300 px-3 py-2 flex items-center justify-between @max-[960px]:flex-col @max-[960px]:items-stretch @max-[960px]:gap-2">
                 <div className="flex items-center gap-2">
                   <Save className="w-4 h-4 text-amber-600" />
                   <span className="text-xs text-amber-800 font-medium">
@@ -2906,7 +2906,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 </div>
                 <button
                   onClick={() => handleSave()}
-                  className="flex items-center gap-1 px-4 py-1.5 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 transition-colors shadow max-lg:self-end"
+                  className="flex items-center gap-1 px-4 py-1.5 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 transition-colors shadow @max-[960px]:self-end"
                 >
                   <Save className="w-3.5 h-3.5" />
                   Kaydet (Varyantlarla)
@@ -2928,9 +2928,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               {hasVariants && (
                 <div>
                   <div className="bg-white border border-gray-300">
-                    <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 flex items-center justify-between max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+                    <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 flex items-center justify-between @max-[960px]:flex-col @max-[960px]:items-stretch @max-[960px]:gap-2">
                       <span className="text-xs text-gray-700">{tm('attributeDefinitions')}</span>
-                      <div className="flex flex-wrap items-center gap-2 max-lg:justify-end">
+                      <div className="flex flex-wrap items-center gap-2 @max-[960px]:justify-end">
                         <div className="relative">
                           <button
                             onClick={() => setShowPresetMenu(!showPresetMenu)}
@@ -3334,8 +3334,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <span className="text-xs text-gray-700 font-bold">{tm('accountingCodes')}</span>
                 </div>
                 <div className="p-3 grid grid-cols-1 gap-2">
-                  <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                    <div className="col-span-9 bg-white px-2 py-1.5 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 bg-white px-2 py-1.5 @min-[961px]:col-span-9 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.accountCode || ''}
@@ -3344,12 +3344,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         placeholder="150.01.001"
                       />
                     </div>
-                    <div className="col-span-3 bg-gray-100 px-2 py-1.5 text-right border-l border-white max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:border-l-0">
+                    <div className="col-span-1 order-1 bg-gray-100 px-2 py-1.5 text-left @min-[961px]:col-span-3 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:border-l @min-[961px]:border-white">
                       <label className="text-xs text-gray-700">{tm('accountingAccountCode')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                    <div className="col-span-9 bg-white px-2 py-1.5 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 bg-white px-2 py-1.5 @min-[961px]:col-span-9 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.costCenterCode || ''}
@@ -3357,12 +3357,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="col-span-3 bg-gray-100 px-2 py-1.5 text-right border-l border-white max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:border-l-0">
+                    <div className="col-span-1 order-1 bg-gray-100 px-2 py-1.5 text-left @min-[961px]:col-span-3 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:border-l @min-[961px]:border-white">
                       <label className="text-xs text-gray-700">{tm('costCenterCode')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                    <div className="col-span-9 bg-white px-2 py-1.5 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 bg-white px-2 py-1.5 @min-[961px]:col-span-9 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.expenseItemCode || ''}
@@ -3370,12 +3370,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="col-span-3 bg-gray-100 px-2 py-1.5 text-right border-l border-white max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:border-l-0">
+                    <div className="col-span-1 order-1 bg-gray-100 px-2 py-1.5 text-left @min-[961px]:col-span-3 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:border-l @min-[961px]:border-white">
                       <label className="text-xs text-gray-700">{tm('expenseItemCode')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                    <div className="col-span-9 bg-white px-2 py-1.5 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 bg-white px-2 py-1.5 @min-[961px]:col-span-9 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.revenueAccountCode || ''}
@@ -3384,7 +3384,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         placeholder="600.01.001"
                       />
                     </div>
-                    <div className="col-span-3 bg-gray-100 px-2 py-1.5 text-right border-l border-white max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:border-l-0">
+                    <div className="col-span-1 order-1 bg-gray-100 px-2 py-1.5 text-left @min-[961px]:col-span-3 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:border-l @min-[961px]:border-white">
                       <label className="text-xs text-gray-700">{tm('revenueAccountCode')}</label>
                     </div>
                   </div>
@@ -3401,10 +3401,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
                   <span className="text-xs text-gray-700 font-bold">{tm('warrantyAndLifeInfo')}</span>
                 </div>
-                <div className="p-3 grid grid-cols-2 gap-4 max-lg:grid-cols-1">
+                <div className="p-3 grid grid-cols-1 gap-4 @min-[961px]:grid-cols-2">
                   <div>
-                    <div className="grid grid-cols-12 items-center mb-2 max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
+                    <div className="grid grid-cols-1 items-center mb-2 @min-[961px]:grid-cols-12">
+                      <div className="col-span-1 order-2 @min-[961px]:col-span-8 @min-[961px]:order-none">
                         <input
                           type="text"
                           value={formData.warrantyType || ''}
@@ -3413,14 +3413,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                           placeholder={tm('distributorImporter')}
                         />
                       </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
+                      <div className="col-span-1 order-1 pl-0 text-left @min-[961px]:col-span-4 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:pl-2">
                         <label className="text-xs text-gray-700">{tm('warrantyType')}</label>
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 max-lg:grid-cols-1">
-                    <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-2">
+                    <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                      <div className="col-span-1 order-2 @min-[961px]:col-span-8 @min-[961px]:order-none">
                         <input
                           type="number"
                           value={formData.warrantyPeriod || 0}
@@ -3428,12 +3428,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                           className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
+                      <div className="col-span-1 order-1 pl-0 text-left @min-[961px]:col-span-4 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:pl-2">
                         <label className="text-xs text-gray-700">{tm('warrantyPeriod')} ({tm('months')})</label>
                       </div>
                     </div>
-                    <div className="grid grid-cols-12 items-center max-lg:grid-cols-1">
-                      <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
+                    <div className="grid grid-cols-1 items-center @min-[961px]:grid-cols-12">
+                      <div className="col-span-1 order-2 @min-[961px]:col-span-8 @min-[961px]:order-none">
                         <input
                           type="number"
                           value={formData.shelfLife || 0}
@@ -3441,7 +3441,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                           className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </div>
-                      <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
+                      <div className="col-span-1 order-1 pl-0 text-left @min-[961px]:col-span-4 @min-[961px]:order-none @min-[961px]:text-right @min-[961px]:pl-2">
                         <label className="text-xs text-gray-700">{tm('shelfLife')} ({tm('days')})</label>
                       </div>
                     </div>
@@ -3455,8 +3455,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <span className="text-xs text-gray-700 font-bold">{tm('descriptions')}</span>
                 </div>
                 <div className="p-3 space-y-2">
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <textarea
                         value={formData.description || ''}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('description', e.target.value)}
@@ -3464,12 +3464,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('definitionDescription')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <textarea
                         value={formData.technicalSpecs || ''}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('technicalSpecs', e.target.value)}
@@ -3477,12 +3477,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('technicalSpecs')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <textarea
                         value={formData.usageInfo || ''}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('usageInfo', e.target.value)}
@@ -3490,12 +3490,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('usageInfo')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <textarea
                         value={formData.notes || ''}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('notes', e.target.value)}
@@ -3503,7 +3503,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('notes')}</label>
                     </div>
                   </div>
@@ -3516,8 +3516,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <span className="text-xs text-gray-700 font-bold">{tm('ecommerceSeo')}</span>
                 </div>
                 <div className="p-3 space-y-2">
-                  <div className="grid grid-cols-12 gap-2 items-center max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.seoTitle || ''}
@@ -3525,12 +3525,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('seoTitle')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <textarea
                         value={formData.seoDescription || ''}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleInputChange('seoDescription', e.target.value)}
@@ -3538,12 +3538,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('seoDescription')}</label>
                     </div>
                   </div>
-                  <div className="grid grid-cols-12 gap-2 items-center max-lg:grid-cols-1">
-                    <div className="col-span-10 max-lg:col-span-1 max-lg:order-2">
+                  <div className="grid grid-cols-1 gap-2 items-center @min-[961px]:grid-cols-12">
+                    <div className="col-span-1 order-2 @min-[961px]:col-span-10 @min-[961px]:order-none">
                       <input
                         type="text"
                         value={formData.metaKeywords || ''}
@@ -3552,7 +3552,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         placeholder={tm('commaSeparated')}
                       />
                     </div>
-                    <div className="col-span-2 text-right max-lg:col-span-1 max-lg:order-1 max-lg:text-left">
+                    <div className="col-span-1 order-1 text-left @min-[961px]:col-span-2 @min-[961px]:order-none @min-[961px]:text-right">
                       <label className="text-xs text-gray-700">{tm('metaKeywords')}</label>
                     </div>
                   </div>
@@ -3608,7 +3608,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </label>
                   )}
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 max-lg:grid-cols-1">
+                <div className="mt-3 grid grid-cols-1 gap-2 @min-[961px]:grid-cols-2">
                   <div>
                     <label className="text-xs text-gray-600 block mb-1">Genişlik (px)</label>
                     <input

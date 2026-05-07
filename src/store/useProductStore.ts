@@ -147,10 +147,15 @@ export const useProductStore = create<ProductState>()(
     }),
     {
       name: 'retailos-products-storage',
-      partialize: (state) => ({
-        products: state.products,
-        lastSync: state.lastSync
-      })
+      /** Büyük ürün listesini localStorage'a yazma — tarayıcı kotası (QuotaExceededError) ve yavaşlık. */
+      version: 2,
+      partialize: (state) => ({ lastSync: state.lastSync }),
+      migrate: (persisted: unknown) => {
+        if (persisted && typeof persisted === 'object' && 'lastSync' in (persisted as object)) {
+          return { lastSync: (persisted as { lastSync?: number | null }).lastSync ?? null };
+        }
+        return { lastSync: null as number | null };
+      },
     }
   )
 );

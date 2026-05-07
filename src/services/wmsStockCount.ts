@@ -4,6 +4,8 @@
  */
 
 import { PostgresConnection, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+import { IS_TAURI } from '../utils/env';
+import * as wscRest from './wmsStockCountPostgrest';
 
 export interface CountingSlip {
     id: string;
@@ -63,6 +65,11 @@ class WMSStockCountService {
     private conn = PostgresConnection.getInstance();
     private schemaReady = false;
 
+    /** Web + PostgREST kiracı modunda sayım fişi SQL’i pg_bridge yerine REST üzerinden. */
+    private usePostgrestWms(): boolean {
+        return DB_SETTINGS.connectionProvider === 'rest_api';
+    }
+
     /**
      * Auto-migrate: Add missing columns to existing wms tables without dropping data.
      * Uses individual ALTER TABLE ... ADD COLUMN IF NOT EXISTS statements (extended query protocol safe).
@@ -71,6 +78,12 @@ class WMSStockCountService {
      */
     async ensureSchema(): Promise<void> {
         if (this.schemaReady) return;
+
+        // Tarayıcıda DDL pg_bridge üzerinden çok yavaş / zaman aşımına düşer; kolonlar migration ile gelmeli.
+        if (typeof window !== 'undefined' && !IS_TAURI) {
+            this.schemaReady = true;
+            return;
+        }
 
         const alterations = [
             // counting_slips enhancements
@@ -112,6 +125,9 @@ class WMSStockCountService {
      * Generate next fiche number for a firm
      */
     async generateFicheNo(): Promise<string> {
+        if (this.usePostgrestWms()) {
+            return wscRest.restGenerateFicheNo();
+        }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         const year = new Date().getFullYear();
         const { rows } = await this.conn.query<{ count: string }>(
@@ -127,6 +143,9 @@ class WMSStockCountService {
      */
     async getSlips(status?: string): Promise<CountingSlip[]> {
         await this.ensureSchema();
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetSlips(status) as CountingSlip[];
+        }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         let sql = `
             SELECT
@@ -156,6 +175,9 @@ class WMSStockCountService {
      */
     async getSlipWithLines(slipId: string): Promise<{ slip: CountingSlip; lines: CountingLine[] }> {
         await this.ensureSchema();
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetSlipWithLines(slipId) as { slip: CountingSlip; lines: CountingLine[] };
+        }
 
         const { rows: slipRows } = await this.conn.query<CountingSlip>(
             `SELECT cs.*, s.name AS store_name
@@ -187,6 +209,9 @@ class WMSStockCountService {
         created_by?: string;
     }): Promise<CountingSlip> {
         await this.ensureSchema();
+        if (this.usePostgrestWms()) {
+            return wscRest.restCreateSlip(data) as CountingSlip;
+        }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         const ficheNo = await this.generateFicheNo();
 
@@ -205,6 +230,10 @@ class WMSStockCountService {
      * Update slip status
      */
     async updateSlipStatus(slipId: string, status: CountingSlip['status']): Promise<void> {
+        if (this.usePostgrestWms()) {
+            await wscRest.restUpdateSlipStatus(slipId, status);
+            return;
+        }
         // Simple status-only update — extra timestamp columns added by ensureSchema
         await this.conn.query(
             `UPDATE wms.counting_slips SET status = $2 WHERE id = $1`,
@@ -220,6 +249,15 @@ class WMSStockCountService {
      */
     async lookupProductByBarcode(barcode: string): Promise<ProductLookup | null> {
         console.log('[lookupProductByBarcode] searching for barcode:', barcode);
+        if (this.usePostgrestWms()) {
+            try {
+                const r = await wscRest.restLookupProductByBarcode(barcode);
+                return r as ProductLookup | null;
+            } catch (err) {
+                console.warn('[lookupProductByBarcode] PostgREST failed:', err);
+                return null;
+            }
+        }
 
         // ── Step 1: Direct products match (barcode or code) ──────────────────
         try {
@@ -322,6 +360,9 @@ class WMSStockCountService {
     async getLinesPrices(productIds: string[]): Promise<Record<string, { purchase: number; sale: number }>> {
         const ids = productIds.filter(Boolean);
         if (!ids.length) return {};
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetLinesPrices(ids);
+        }
         const priceCols = [
             `COALESCE(price_list_1, 0)::float as sale`,
             `COALESCE(price, 0)::float as sale`,
@@ -352,6 +393,9 @@ class WMSStockCountService {
         purchase_price?: number;
         sale_price?: number;
     }): Promise<string | null> {
+        if (this.usePostgrestWms()) {
+            return wscRest.restCreateProductFromBarcode(data);
+        }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         // Try inserting with progressively fewer columns
         const attempts = [
@@ -372,6 +416,10 @@ class WMSStockCountService {
      * Link a counting line to a newly created product
      */
     async updateLineProduct(lineId: string, productId: string, productName: string): Promise<void> {
+        if (this.usePostgrestWms()) {
+            await wscRest.restUpdateLineProduct(lineId, productId, productName);
+            return;
+        }
         await this.conn.query(
             `UPDATE wms.counting_lines SET product_id = $2, product_name = $3 WHERE id = $1`,
             [lineId, productId, productName]
@@ -383,6 +431,9 @@ class WMSStockCountService {
      */
     async getLineByBarcode(slipId: string, barcode: string): Promise<CountingLine | null> {
         await this.ensureSchema();
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetLineByBarcode(slipId, barcode) as Promise<CountingLine | null>;
+        }
         const { rows } = await this.conn.query<CountingLine>(
             `SELECT * FROM wms.counting_lines WHERE slip_id = $1 AND barcode = $2 LIMIT 1`,
             [slipId, barcode]
@@ -411,6 +462,9 @@ class WMSStockCountService {
      * Get current stock for a product
      */
     async getProductStock(productId: string): Promise<number> {
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetProductStock(productId);
+        }
         try {
             const { rows } = await this.conn.query<{ stock: number }>(
                 `SELECT COALESCE(stock, 0) as stock FROM products WHERE id = $1`,
@@ -439,6 +493,9 @@ class WMSStockCountService {
         base_counted_qty?: number;
     }): Promise<CountingLine> {
         await this.ensureSchema();
+        if (this.usePostgrestWms()) {
+            return wscRest.restUpsertLine(slipId, data) as Promise<CountingLine>;
+        }
         console.log('[upsertLine] slipId=', slipId, 'barcode=', data.barcode);
         // Check if line already exists for this barcode in this slip
         const { rows: existing } = await this.conn.query<CountingLine>(
@@ -497,6 +554,10 @@ class WMSStockCountService {
      * Delete a counting line
      */
     async deleteLine(lineId: string): Promise<void> {
+        if (this.usePostgrestWms()) {
+            await wscRest.restDeleteLine(lineId);
+            return;
+        }
         await this.conn.query(`DELETE FROM wms.counting_lines WHERE id = $1`, [lineId]);
     }
 
@@ -515,6 +576,9 @@ class WMSStockCountService {
         surplus_purchase_value: number;
         net_profit_impact: number;
     }> {
+        if (this.usePostgrestWms()) {
+            return wscRest.restGetVarianceSummary(slipId);
+        }
         // Note: products JOIN is avoided to prevent "column does not exist" errors on
         // price / price_list_1 columns that differ between firm schemas.
         const { rows } = await this.conn.query<any>(
@@ -611,6 +675,10 @@ class WMSStockCountService {
      * Cancel a counting slip
      */
     async cancelSlip(slipId: string): Promise<void> {
+        if (this.usePostgrestWms()) {
+            await wscRest.restCancelSlip(slipId);
+            return;
+        }
         await this.conn.query(
             `UPDATE wms.counting_slips SET status = 'cancelled' WHERE id = $1`,
             [slipId]
@@ -621,6 +689,10 @@ class WMSStockCountService {
      * Complete reconciliation - mark as completed (status only, no stock movement)
      */
     async completeReconciliation(slipId: string): Promise<void> {
+        if (this.usePostgrestWms()) {
+            await wscRest.restCompleteReconciliation(slipId);
+            return;
+        }
         await this.conn.query(
             `UPDATE wms.counting_slips
              SET status = 'completed', completed_at = NOW()
@@ -641,6 +713,9 @@ class WMSStockCountService {
         surplus: number;
         shortage: number;
     }> {
+        if (this.usePostgrestWms()) {
+            return wscRest.restApplyStockCount(slipId);
+        }
         // 1. Get slip header
         const { rows: slipRows } = await this.conn.query<any>(
             `SELECT * FROM wms.counting_slips WHERE id = $1`,

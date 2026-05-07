@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { wmsStockCount, CountingSlip, CountingLine } from '../../../services/wmsStockCount';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { IS_TAURI } from '../../../utils/env';
 import { BarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 
 interface StockCountModuleProps {
@@ -87,7 +88,14 @@ function CreateSlipView({ darkMode, onBack, onCreated }: {
         } catch (err: any) {
             console.error('Create slip error:', err);
             const msg = err?.message || String(err);
-            alert(`Sayım fişi oluşturulamadı.\n\n${msg}\n\nUygulama Tauri modunda çalışıyor mu?`);
+            const hint = /timeout|ECONNREFUSED|Network|fetch failed/i.test(msg)
+                ? IS_TAURI
+                    ? 'PostgreSQL bağlantısı zaman aşımına uğradı veya kesildi. Yerel/uzak PG adresini, firewall ve sunucu yükünü kontrol edin.'
+                    : 'Sayım fişi sunucuda doğrudan SQL (pg_bridge) ile oluşturulur; PostgREST ile değil. Köprünün veritabanına erişebildiğini ve zaman aşımı sürelerini kontrol edin.'
+                : IS_TAURI
+                    ? 'Firma şemasında wms.counting_slips tablosu ve mağaza (store) kaydı olduğundan emin olun.'
+                    : 'Firma şemasında wms.counting_slips ve mağaza kayıtları tanımlı olmalı. Hata ayrıntısı konsolda.';
+            alert(`Sayım fişi oluşturulamadı.\n\n${msg}\n\n${hint}`);
         } finally {
             setLoading(false);
         }

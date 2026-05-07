@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Package, TrendingDown, AlertTriangle, ArrowLeftRight, FileText, Download, Upload, Printer } from 'lucide-react';
+import { Package, TrendingDown, AlertTriangle, ArrowLeftRight, Download, Upload, Printer } from 'lucide-react';
 import type { Product } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
 import { WarehouseTransferModule } from '../warehouse/WarehouseTransferModule';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { WavePickingModule } from '../../wms/WavePickingModule';
+import { StockCountModule as WmsStockCountModule } from '../../wms/components/StockCountModule';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface StockModuleProps {
   products: Product[];
@@ -14,6 +16,7 @@ interface StockModuleProps {
 
 export function StockModule({ products, setProducts }: StockModuleProps) {
   const { tm } = useLanguage();
+  const { darkMode } = useTheme();
   const dateLocale = tm('localeCode');
   const [selectedTab, setSelectedTab] = useState<'overview' | 'movements' | 'count' | 'transfer' | 'picking'>('overview');
   const [showStockUpdateModal, setShowStockUpdateModal] = useState(false);
@@ -458,18 +461,11 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
         )}
 
         {selectedTab === 'count' && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-xl">{tm('invCountTabTitle')}</h3>
-              <p className="text-sm text-gray-600 mt-1">{tm('invCountTabSubtitle')}</p>
-            </div>
-            <div className="p-6">
-              <div className="text-center py-12">
-                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600">{tm('invCountComingSoon')}</p>
-                <p className="text-sm text-gray-500 mt-2">{tm('invCountInDev')}</p>
-              </div>
-            </div>
+          <div className="h-[min(85vh,920px)] min-h-[520px] rounded-xl border border-gray-200 shadow-inner overflow-hidden bg-gray-50 dark:bg-gray-900">
+            <WmsStockCountModule
+              darkMode={darkMode}
+              onBack={() => setSelectedTab('overview')}
+            />
           </div>
         )}
 

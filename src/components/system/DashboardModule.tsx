@@ -12,8 +12,11 @@ import type { Product, Customer, Sale } from '../../core/types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import { invoke } from '@tauri-apps/api/core';
+import { IS_TAURI } from '../../utils/env';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { logger } from '../../services/loggingService';
+
+const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
 
 interface DashboardShortcut {
   id?: number;
@@ -105,11 +108,46 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     return baseActions;
   }, [menuMode]);
 
-  // Load shortcuts from database with localStorage migration
+  // Load shortcuts: Tauri → SQLite komutları; web → localStorage
   useEffect(() => {
+    const defaultIds = () =>
+      ['newsale', 'addproduct', 'addcustomer', 'invoices', 'reports', 'stock'].filter(id =>
+        allAvailableActions.some(a => a.id === id)
+      );
+
     const loadShortcuts = async () => {
       try {
         setIsLoading(true);
+
+        if (!IS_TAURI) {
+          const raw = localStorage.getItem(DASHBOARD_SHORTCUTS_LS);
+          if (raw) {
+            try {
+              const ids = JSON.parse(raw) as string[];
+              const valid = ids.filter((id: string) => allAvailableActions.some((a: any) => a.id === id));
+              if (valid.length) {
+                setSelectedActions(valid);
+                return;
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          const saved = localStorage.getItem('retailos_quick_actions');
+          if (saved) {
+            const oldShortcuts = JSON.parse(saved) as string[];
+            const validOldShortcuts = oldShortcuts.filter((id: string) =>
+              allAvailableActions.some((a: any) => a.id === id)
+            );
+            localStorage.setItem(DASHBOARD_SHORTCUTS_LS, JSON.stringify(validOldShortcuts));
+            localStorage.removeItem('retailos_quick_actions');
+            setSelectedActions(validOldShortcuts.length ? validOldShortcuts : defaultIds());
+            return;
+          }
+          setSelectedActions(defaultIds());
+          return;
+        }
+
         const shortcuts = await invoke<DashboardShortcut[]>('get_dashboard_shortcuts', {
           userId: 'default'
         });
@@ -144,9 +182,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             setSelectedActions(validOldShortcuts);
           } else {
             // Set defaults
-            const defaults = ['newsale', 'addproduct', 'addcustomer', 'invoices', 'reports', 'stock'].filter(id =>
-              allAvailableActions.some(a => a.id === id)
-            );
+            const defaults = defaultIds();
             const defaultShortcuts: DashboardShortcut[] = defaults.map((id, index) => {
               const action = allAvailableActions.find(a => a.id === id);
               if (!action) return null;
@@ -205,6 +241,12 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           sort_order: index
         };
       }).filter(s => s !== null) as DashboardShortcut[];
+
+      if (!IS_TAURI) {
+        localStorage.setItem(DASHBOARD_SHORTCUTS_LS, JSON.stringify(selectedActions));
+        setShowCustomizeModal(false);
+        return;
+      }
 
       await invoke('save_dashboard_shortcuts', {
         userId: 'default',

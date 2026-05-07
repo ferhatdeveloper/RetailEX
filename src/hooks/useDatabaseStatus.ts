@@ -21,7 +21,22 @@ export function useDatabaseStatus(checkInterval: number = 30000) {
     if (backendUnavailable && Math.random() > 0.1) return; // Only check 10% of the time if it failed once
 
     try {
-      // Backend API üzerinden GERÇEK PostgreSQL kontrolü
+      // Üretim web (retailex.app vb.): localhost:8000 yok; gereksiz hata ve konsol gürültüsünü kes.
+      if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h !== 'localhost' && h !== '127.0.0.1') {
+          setBackendUnavailable(false);
+          setDbStatus({
+            status: 'connected',
+            message: 'Web — veritabanı tenant / köprü yapılandırması ile',
+            host: h,
+            database: '',
+          });
+          return;
+        }
+      }
+
+      // Yerel geliştirme: Backend API üzerinden PostgreSQL kontrolü
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000); // Shorter timeout
 
