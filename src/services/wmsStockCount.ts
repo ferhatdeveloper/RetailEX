@@ -357,7 +357,7 @@ class WMSStockCountService {
      * Fetch purchase + sale prices for a list of product IDs.
      * Tries multiple column name conventions (price_list_1, price).
      */
-    async getLinesPrices(productIds: string[]): Promise<Record<string, { purchase: number; sale: number }>> {
+    async getLinesPrices(productIds: string[]): Promise<Record<string, { purchase: number; sale: number; code?: string }>> {
         const ids = productIds.filter(Boolean);
         if (!ids.length) return {};
         if (this.usePostgrestWms()) {
@@ -371,11 +371,20 @@ class WMSStockCountService {
         for (const saleCol of priceCols) {
             try {
                 const { rows } = await this.conn.query<any>(
-                    `SELECT id::text, ${saleCol}, COALESCE(purchase_price, 0)::float as purchase
+                    `SELECT id::text, NULLIF(TRIM(code::text), '') AS code, ${saleCol}, COALESCE(purchase_price, 0)::float as purchase
                      FROM products WHERE id::text = ANY($1)`,
                     [ids]
                 );
-                return Object.fromEntries(rows.map((r: any) => [r.id, { purchase: r.purchase || 0, sale: r.sale || 0 }]));
+                return Object.fromEntries(
+                    rows.map((r: any) => [
+                        r.id,
+                        {
+                            purchase: r.purchase || 0,
+                            sale: r.sale || 0,
+                            ...(r.code ? { code: String(r.code) } : {}),
+                        },
+                    ])
+                );
             } catch { continue; }
         }
         return {};

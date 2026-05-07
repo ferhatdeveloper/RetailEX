@@ -426,8 +426,9 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
 export const invoicesAPI = {
   /**
    * Create new invoice
+   * @param createOptions.skipProductStockUpdate — true ise satır kaydı yapılır ama ürün stoku güncellenmez (ör. sayım sonrası yalnızca belge/maliyet kaydı).
    */
-  async create(invoice: Invoice): Promise<Invoice | null> {
+  async create(invoice: Invoice, createOptions?: { skipProductStockUpdate?: boolean }): Promise<Invoice | null> {
     try {
       console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
 
@@ -621,7 +622,7 @@ export const invoicesAPI = {
               else stockModifier = baseQty;
             }
 
-            if (stockModifier !== 0) {
+            if (stockModifier !== 0 && !createOptions?.skipProductStockUpdate) {
               const pid = String(productId).trim();
               // firm_nr: DB'de "1" / "001" karışıklığı; code: ana kod, barkod tablosu ve UUID
               const stkRes = await postgres.query<{ id: string; code: string; stock: string }>(

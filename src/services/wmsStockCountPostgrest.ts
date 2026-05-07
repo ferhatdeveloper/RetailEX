@@ -353,7 +353,7 @@ export async function restGetProductStock(productId: string): Promise<number> {
 
 export async function restGetLinesPrices(
     productIds: string[]
-): Promise<Record<string, { purchase: number; sale: number }>> {
+): Promise<Record<string, { purchase: number; sale: number; code?: string }>> {
     const ids = productIds.filter(Boolean);
     if (!ids.length) return {};
     const table = productsTable();
@@ -361,15 +361,16 @@ export async function restGetLinesPrices(
     try {
         const rows = await postgrest.get<any[]>(
             `/${table}`,
-            { id: `in.(${inList})`, select: 'id,price_list_1,price,purchase_price' },
+            { id: `in.(${inList})`, select: 'id,code,price_list_1,price,purchase_price' },
             PUB
         );
-        const out: Record<string, { purchase: number; sale: number }> = {};
+        const out: Record<string, { purchase: number; sale: number; code?: string }> = {};
         for (const r of Array.isArray(rows) ? rows : []) {
             const id = String(r.id);
             const sale = Number(r.price_list_1 ?? r.price ?? 0) || 0;
             const purchase = Number(r.purchase_price ?? 0) || 0;
-            out[id] = { purchase, sale };
+            const code = r.code != null && String(r.code).trim() ? String(r.code).trim() : undefined;
+            out[id] = { purchase, sale, ...(code ? { code } : {}) };
         }
         return out;
     } catch {

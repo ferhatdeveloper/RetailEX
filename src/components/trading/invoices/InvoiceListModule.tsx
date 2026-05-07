@@ -18,6 +18,7 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
 import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
+import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
 
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
@@ -247,6 +248,27 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
   useEffect(() => {
     setSelectedCategory(defaultCategory || 'all');
+  }, [defaultCategory]);
+
+  /** Sayım mutabakatından gelen alış faturası taslağı (sessionStorage). */
+  useEffect(() => {
+    if (defaultCategory !== 'Alis') return;
+    try {
+      const raw = sessionStorage.getItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
+      if (!raw) return;
+      const payload = JSON.parse(raw) as { editData?: Record<string, unknown> };
+      sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
+      if (!payload?.editData) return;
+      const purchaseType = INVOICE_TYPES.find(t => t.code === 1);
+      if (!purchaseType) return;
+      setShowInvoiceTypeModal(false);
+      setEditInvoiceData(payload.editData as Invoice);
+      setNewFormCounter(c => c + 1);
+      setSelectedInvoiceType(purchaseType);
+    } catch {
+      sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca Alis ekranına girişte bir kez
   }, [defaultCategory]);
 
   const loadInvoices = async () => {

@@ -3726,6 +3726,15 @@ export const wmsModuleTranslations = {
   countTypeCycleDesc: { tr: 'Belirli ürün gruplarının periyodik sayımı', en: 'Periodic count of specific product groups', ar: 'جرد دوري لمجموعات منتجات محددة', ku: 'ژماردنی کاتی بۆ گروپە دیاریکراوەکانی بەرهەم' },
   countTypeLocationDesc: { tr: 'Sadece belirli bir raf veya alandaki sayım', en: 'Count in only a specific shelf or area', ar: 'الجرد في رف أو منطقة محددة فقط', ku: 'ژماردن تەنها لە ڕەفەیەکی دیاریکراو یان ناوچەیەکدا' },
   customExchangeRate: { tr: 'Özel Kur', en: 'Custom Rate', ar: 'سعر صرف خاص', ku: 'تێکڕای ئاڵوگۆڕی تایبەت' },
+  countPurchaseFromSurplusBtn: { tr: 'Fazla için alış faturası', en: 'Purchase invoice (surplus)', ar: 'فاتورة شراء (الفائض)', ku: 'وەسڵی کڕین (زێدە)' },
+  countPurchaseFromSurplusHint: { tr: 'Stok sayımda güncellendi; bu belge stoku tekrar artırmaz.', en: 'Stock was adjusted by the count; this document does not add stock again.', ar: 'تم تعديل المخزون بالجرد؛ لا يعيد هذا المستند إضافة المخزون.', ku: 'کۆگا لە ژماردنەوە نوێکراوەتەوە؛ ئەم بەڵگەنامەیە کۆگا دووبارە زیاد ناکات.' },
+  countPurchaseFromSurplusNoLines: { tr: 'Fazla miktar satırı olmadığı için alış faturası oluşturulamadı.', en: 'No surplus lines; purchase invoice was not created.', ar: 'لا توجد بنود فائض؛ لم تُنشأ فاتورة الشراء.', ku: 'هیچ ڕیزی زێدە نییە؛ وەسڵی کڕین دروست نەکرا.' },
+  countPurchaseFromSurplusNeedFirm: { tr: 'Önce firma ve dönem seçin.', en: 'Select firm and period first.', ar: 'اختر الشركة والفترة أولاً.', ku: 'سەرەتا کۆمپانیا و ماوە هەڵبژێرە.' },
+  countPurchaseFromSurplusSuccess: { tr: 'Alış faturası oluşturuldu', en: 'Purchase invoice created', ar: 'تم إنشاء فاتورة الشراء', ku: 'وەسڵی کڕین دروستکرا' },
+  countPurchaseFromSurplusError: { tr: 'Alış faturası oluşturulamadı', en: 'Could not create purchase invoice', ar: 'تعذر إنشاء فاتورة الشراء', ku: 'نەتوانرا وەسڵی کڕین دروست بکرێت' },
+  countDoneBackToList: { tr: 'Listeye dön', en: 'Back to list', ar: 'العودة إلى القائمة', ku: 'گەڕانەوە بۆ لیست' },
+  countSessionCompletedBadge: { tr: 'Sayım tamamlandı', en: 'Count completed', ar: 'اكتمل الجرد', ku: 'ژماردن تەواو بوو' },
+  countPurchaseSupplierName: { tr: 'Sayım farkı', en: 'Stock count variance', ar: 'فرق الجرد', ku: 'جیاوازی ژماردن' },
 };
 Object.assign(moduleTranslations, supplierTranslations);
 

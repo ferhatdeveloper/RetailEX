@@ -9,10 +9,16 @@ import {
     ArrowLeft, Plus, Scan, Package,
     Minus, ClipboardList, MapPin, User, RefreshCw,
     Warehouse, Calendar, Loader2, Trash2, Eye,
-    CheckCircle2, XCircle, FileText, Camera, BarChart3, AlertTriangle
+    CheckCircle2, XCircle, FileText, Camera, BarChart3, AlertTriangle, ShoppingCart
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { wmsStockCount, CountingSlip, CountingLine } from '../../../services/wmsStockCount';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import {
+    PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
+    buildPurchaseEditDataFromCountSlip,
+} from '../../../utils/countSlipPurchaseDraft';
 import { IS_TAURI } from '../../../utils/env';
 import { BarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 
@@ -944,11 +950,19 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     onComplete: () => void;
 }) {
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
+    const [currentSlip, setCurrentSlip] = useState(slip);
     const [lines, setLines] = useState<CountingLine[]>([]);
     const [summary, setSummary] = useState({ total_items: 0, items_with_variance: 0, total_variance: 0, accuracy_rate: 100 });
     const [loading, setLoading] = useState(true);
     const [completing, setCompleting] = useState(false);
+    const [purchaseNavigating, setPurchaseNavigating] = useState(false);
+    const [postApply, setPostApply] = useState<null | { processed: number; surplus: number; shortage: number }>(null);
     const [filter, setFilter] = useState<'all' | 'variance' | 'ok'>('all');
+
+    useEffect(() => {
+        setCurrentSlip(slip);
+    }, [slip.id]);
 
     useEffect(() => {
         loadData();
@@ -957,31 +971,66 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [{ lines: l }, s] = await Promise.all([
+            const [{ slip: s, lines: l }, sum] = await Promise.all([
                 wmsStockCount.getSlipWithLines(slip.id),
                 wmsStockCount.getVarianceSummary(slip.id),
             ]);
+            if (s) setCurrentSlip(s);
             setLines(l);
-            setSummary(s);
+            setSummary(sum);
         } finally {
             setLoading(false);
         }
     };
 
     const handleComplete = async () => {
+        if (currentSlip.status === 'completed') return;
         if (!confirm(tm('confirmCompleteCount'))) return;
         setCompleting(true);
         try {
             const result = await wmsStockCount.applyStockCount(slip.id);
-            const parts: string[] = [`${result.processed} ürün işlendi`];
-            if (result.surplus > 0) parts.push(`${result.surplus} fazla`);
-            if (result.shortage > 0) parts.push(`${result.shortage} eksik`);
-            alert(`Sayım tamamlandı. ${parts.join(', ')}.`);
-            onComplete();
+            setPostApply({
+                processed: result.processed,
+                surplus: result.surplus ?? 0,
+                shortage: result.shortage ?? 0,
+            });
+            await loadData();
         } catch (err: any) {
             alert(`Sayım işleme hatası: ${err?.message || String(err)}`);
         } finally {
             setCompleting(false);
+        }
+    };
+
+    const handleOpenPurchaseDraft = async () => {
+        if (!selectedFirm) {
+            toast.error(tm('countPurchaseFromSurplusNeedFirm'));
+            return;
+        }
+        setPurchaseNavigating(true);
+        try {
+            const { slip: s, lines: freshLines } = await wmsStockCount.getSlipWithLines(slip.id);
+            const slipRef = s || slip;
+            const ids = freshLines.map(l => l.product_id).filter(Boolean) as string[];
+            const prices = await wmsStockCount.getLinesPrices(ids);
+            const draft = buildPurchaseEditDataFromCountSlip(slipRef, freshLines, prices);
+            if (!draft) {
+                toast.error(tm('countPurchaseFromSurplusNoLines'));
+                return;
+            }
+            draft.supplier_name = `${tm('countPurchaseSupplierName')} (${slipRef.fiche_no})`;
+            draft.customer_name = draft.supplier_name;
+            sessionStorage.setItem(
+                PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
+                JSON.stringify({ editData: draft })
+            );
+            window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'purchase-invoice-standard' }));
+            toast.success(tm('countPurchaseFromSurplusSuccess'));
+            onComplete();
+        } catch (err: any) {
+            toast.error(`${tm('countPurchaseFromSurplusError')}: ${err?.message || String(err)}`);
+        } finally {
+            setPurchaseNavigating(false);
         }
     };
 
@@ -1005,11 +1054,11 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                     </button>
                     <div className="flex-1">
                         <h1 className="text-lg font-bold">{tm('countReconciliation')}</h1>
-                        <p className="text-xs text-purple-100">{slip.fiche_no}</p>
+                        <p className="text-xs text-purple-100">{currentSlip.fiche_no}</p>
                     </div>
                     <button
                         onClick={handleComplete}
-                        disabled={completing || loading}
+                        disabled={completing || loading || currentSlip.status === 'completed'}
                         className="bg-green-500 hover:bg-green-400 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1.5 disabled:opacity-70"
                     >
                         {completing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -1019,6 +1068,49 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
             </div>
 
             <div className="p-4 space-y-4">
+                {postApply && (
+                    <div
+                        className={`rounded-xl border p-4 space-y-3 ${darkMode ? 'bg-gray-800 border-green-700/50' : 'bg-green-50 border-green-200'}`}
+                    >
+                        <div className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-800'}`}>
+                            {tm('countSessionCompletedBadge')}
+                            <span className="font-normal opacity-90">
+                                {' '}
+                                — {postApply.processed}
+                                {postApply.surplus > 0 ? ` / +${postApply.surplus}` : ''}
+                                {postApply.shortage > 0 ? ` / −${postApply.shortage}` : ''}
+                            </span>
+                        </div>
+                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                            {tm('countPurchaseFromSurplusHint')}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={handleOpenPurchaseDraft}
+                                disabled={purchaseNavigating || loading}
+                                className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
+                            >
+                                {purchaseNavigating ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <ShoppingCart className="h-4 w-4" />
+                                )}
+                                {tm('countPurchaseFromSurplusBtn')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setPostApply(null);
+                                    onComplete();
+                                }}
+                                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 text-gray-800 hover:bg-gray-100'}`}
+                            >
+                                {tm('countDoneBackToList')}
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {loading ? (
                     <div className="flex items-center justify-center py-16">
                         <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
