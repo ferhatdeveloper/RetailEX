@@ -346,6 +346,22 @@ export const productAPI = {
         ),
       };
 
+      // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const row: Record<string, unknown> = { ...productData };
+        if (!row.barcode || String(row.barcode).trim() === '') {
+          row.barcode = `B${Date.now()}`.slice(0, 100);
+        }
+        const created = await postgrest.post<unknown>(
+          `/${tableName}`,
+          row,
+          { schema: 'public', prefer: 'return=representation' },
+        );
+        const first = Array.isArray(created) ? (created as any[])[0] : (created as any);
+        return first ? mapDatabaseProductToProduct(first) : null;
+      }
+
       const columns = Object.keys(productData);
       const values = Object.values(productData);
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');

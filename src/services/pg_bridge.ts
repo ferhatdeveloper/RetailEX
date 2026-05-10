@@ -67,7 +67,9 @@ function getPool(connStr: string): Pool {
             connectionString: connStr,
             max: 20,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 15000, // Increased to 15s for remote connections
+            // Uzak PG / uyku modu / yavaş ağ: köprü ile DB arasında zaman aşımını azaltmak için
+            connectionTimeoutMillis: 30000,
+            keepAlive: true,
         });
         
         pool.on('error', (err) => {

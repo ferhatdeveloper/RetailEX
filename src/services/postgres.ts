@@ -33,10 +33,18 @@ function isLikelyConnectivityFailure(err: unknown): boolean {
   const msg = String((err as { message?: unknown })?.message ?? err ?? '').toLowerCase();
   const code = String((err as { code?: unknown })?.code ?? '').toUpperCase();
   if (/^(08|57P01)/.test(code)) return true;
-  return /connect|connection refused|econnrefused|etimedout|enetunreach|enotfound|timeout|could not|broken pipe|closed unexpectedly|no route|network|unreachable|refused|fetch failed/i.test(
+  return /connect|connection refused|econnrefused|etimedout|enetunreach|enotfound|timeout|connection terminated|could not|broken pipe|closed unexpectedly|no route|network|unreachable|refused|fetch failed/i.test(
     msg
   );
 }
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Tarayıcı → köprü: ağ / PG soğuk başlangıç / havuz yenilemesi için sınırlı yeniden deneme */
+const PG_WEB_QUERY_MAX_ATTEMPTS = 3;
+const PG_WEB_QUERY_RETRY_BASE_MS = 500;
 
 // Remote PostgreSQL (Global/Main Server)
 export let REMOTE_CONFIG = {
@@ -93,17 +101,36 @@ async function executePgQueryRows(
     const resultJson: string = await safeInvoke('pg_query', { connStr, sql: resolvedSql, params: normalizedParams });
     return JSON.parse(resultJson);
   }
-  const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams }),
-  });
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error((errData as { error?: string }).error || 'Database query failed');
+
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= PG_WEB_QUERY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(`${getBridgeUrl()}/api/pg_query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connStr, sql: resolvedSql, params: normalizedParams }),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error((errData as { error?: string }).error || 'Database query failed');
+      }
+      const data = await response.json();
+      return data.rows;
+    } catch (err) {
+      lastError = err;
+      const canRetry = attempt < PG_WEB_QUERY_MAX_ATTEMPTS && isLikelyConnectivityFailure(err);
+      if (canRetry) {
+        const wait = PG_WEB_QUERY_RETRY_BASE_MS * attempt;
+        console.warn(
+          `[Postgres] pg_query denemesi ${attempt}/${PG_WEB_QUERY_MAX_ATTEMPTS} başarısız (${String((err as Error)?.message || err)}), ${wait}ms sonra tekrar…`,
+        );
+        await sleepMs(wait);
+        continue;
+      }
+      throw err;
+    }
   }
-  const data = await response.json();
-  return data.rows;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Database query failed'));
 }
 
 // ERP Settings (Logo integration)
