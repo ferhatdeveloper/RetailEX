@@ -309,6 +309,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue(),
       size: 140
     }),
+    columnHelper.accessor('specialCode2', {
+      header: `${tm('specialCode')} 2`.toUpperCase(),
+      cell: (info) => {
+        const v = info.getValue();
+        return v != null && String(v).trim() !== '' ? String(v) : '—';
+      },
+      size: 110
+    }),
     columnHelper.accessor('cost', {
       header: tm('cost').toUpperCase(),
       cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
@@ -572,6 +580,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                               {formatCurrency(Number(p.price) || 0, 2, false)}
                             </span>
                           </div>
+                          {p.specialCode2 != null && String(p.specialCode2).trim() !== '' && (
+                            <div className="text-[9px] text-gray-500 truncate">
+                              <span className="font-semibold text-gray-600">{tm('specialCode')} 2:</span>{' '}
+                              <span className="font-mono">{String(p.specialCode2).trim()}</span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between gap-2 min-w-0 mt-0.5">
                             <div className="flex items-center gap-1 min-w-0">
                               <Barcode className="w-3 h-3 shrink-0 text-gray-400" aria-hidden />

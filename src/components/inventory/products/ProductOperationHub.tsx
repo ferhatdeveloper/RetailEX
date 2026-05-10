@@ -24,7 +24,7 @@ interface ProductOperationHubProps {
 export type HubTab = 'overview' | 'edit' | 'movements' | 'inventory' | 'labels' | 'history';
 
 export function ProductOperationHub({ product, onClose, onSave, initialTab = 'overview', darkMode = false }: ProductOperationHubProps) {
-    const { t } = useLanguage();
+    const { t, tm } = useLanguage();
     const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
     const [movements, setMovements] = useState<any[]>([]);
     const [loadingMovements, setLoadingMovements] = useState(false);
@@ -173,6 +173,14 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                         <div>
                                             <span className="text-[10px] text-gray-400 block uppercase font-bold">Birim</span>
                                             <span className="text-sm font-medium">{product.unit || 'ADET'}</span>
+                                        </div>
+                                        <div className="col-span-2 pt-2 mt-1 border-t border-gray-100">
+                                            <span className="text-[10px] text-gray-400 block uppercase font-bold">
+                                                {tm('specialCode')} 2
+                                            </span>
+                                            <span className={`text-sm font-mono font-medium ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                                                {product.specialCode2?.trim() || '—'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
