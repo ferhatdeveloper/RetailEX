@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { FULLSCREEN_BODY_PORTAL_Z } from '../../shared/FullscreenBodyPortal';
 import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -2644,7 +2645,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[160] flex flex-col bg-white pointer-events-auto"
+      className="fixed inset-0 flex flex-col bg-white pointer-events-auto"
+      style={{ zIndex: FULLSCREEN_BODY_PORTAL_Z }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="universal-invoice-form-title"

@@ -349,7 +349,10 @@ export const productAPI = {
       // PostgREST: yalnızca GET değil; INSERT de aynı uç üzerinden (pg_bridge / SQL yok)
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const row: Record<string, unknown> = { ...productData };
+        // PGRST204: şema önbelleğinde kolon yoksa gövde reddedilir (migration 035 / şema reload öncesi).
+        const { follow_up_reminder_days: _skipFollowUpForPostgrest, ...row } = productData as typeof productData & {
+          follow_up_reminder_days?: unknown;
+        };
         if (!row.barcode || String(row.barcode).trim() === '') {
           row.barcode = `B${Date.now()}`.slice(0, 100);
         }

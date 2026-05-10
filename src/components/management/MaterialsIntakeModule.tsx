@@ -24,6 +24,7 @@ import { productAPI } from '../../services/api/products';
 import { productVariantAPI } from '../../services/api/productVariants';
 import type { Product } from '../../core/types';
 import { visionService } from '../../services/visionService';
+import { FullscreenBodyPortal } from '../shared/FullscreenBodyPortal';
 
 type RowStatus = 'draft' | 'pending' | 'approved';
 
@@ -567,10 +568,10 @@ export function MaterialsIntakeModule({
       />
 
       {ocrModal ? (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/65 p-3"
+        <FullscreenBodyPortal
+          className="flex items-center justify-center bg-black/65 p-3"
           role="dialog"
-          aria-modal="true"
+          aria-modal
           aria-labelledby="ocr-modal-title"
         >
           <div
@@ -649,7 +650,7 @@ export function MaterialsIntakeModule({
               </>
             )}
           </div>
-        </div>
+        </FullscreenBodyPortal>
       ) : null}
 
       {scannerOpen && (

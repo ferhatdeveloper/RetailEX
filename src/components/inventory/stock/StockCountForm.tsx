@@ -4,6 +4,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { stockCountAPI, StockCount, StockCountItem } from '../../../services/stockCountAPI';
 import { postgres, ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
 interface StockCountFormProps {
     onClose: () => void;
@@ -128,7 +129,7 @@ export function StockCountForm({ onClose, onSave }: StockCountFormProps) {
     }, [searchQuery, products]);
 
     return (
-        <div className="fixed inset-0 z-[10000] bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <FullscreenBodyPortal className="bg-white flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
             {/* Header */}
             <div className="bg-pink-600 text-white px-6 py-4 flex items-center justify-between shadow-lg">
                 <div className="flex items-center gap-4">
@@ -332,7 +333,7 @@ export function StockCountForm({ onClose, onSave }: StockCountFormProps) {
                     </div>
                 </div>
             </div>
-        </div>
+        </FullscreenBodyPortal>
     );
 }
 

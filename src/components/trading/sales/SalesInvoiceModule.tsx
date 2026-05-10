@@ -1,4 +1,5 @@
 ﻿import { useState, useRef, useEffect } from 'react';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { FileText, FileCheck, Plus, Search, Printer, Send, Eye, Edit, Trash2, X, Save, Calendar, User, MoreVertical, AlertCircle, CheckCircle2, Barcode } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -780,7 +781,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
 
   if (showNewInvoice) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      <FullscreenBodyPortal className="flex flex-col bg-white">
         {/* Header with Tabs */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 flex-shrink-0">
           <div className="px-6 py-3 flex items-center justify-between">
@@ -1404,7 +1405,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
             </div>
           </div>
         )}
-      </div>
+      </FullscreenBodyPortal>
     );
   }
 

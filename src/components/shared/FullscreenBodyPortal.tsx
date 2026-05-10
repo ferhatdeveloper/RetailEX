@@ -1,0 +1,33 @@
+import { createPortal } from 'react-dom';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import { cn } from '../ui/utils';
+
+/**
+ * Yönetim modülü mobil ana alan `z-[10]`; MainLayout üst çubuk `z-[100]`.
+ * `fixed` tam ekran içerik bu bağlamda üst çubuğun altında kalır; `document.body` portalı ile üstte çizilir.
+ */
+export const FULLSCREEN_BODY_PORTAL_Z = 25200;
+
+export type FullscreenBodyPortalProps = {
+  children: ReactNode;
+  /** `fixed inset-0` dışındaki sınıflar (flex, bg, padding, …) */
+  className?: string;
+  style?: CSSProperties;
+  zIndex?: number;
+} & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className' | 'style'>;
+
+export function FullscreenBodyPortal({
+  children,
+  className,
+  style,
+  zIndex = FULLSCREEN_BODY_PORTAL_Z,
+  ...rest
+}: FullscreenBodyPortalProps) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className={cn('fixed inset-0', className)} style={{ zIndex, ...style }} {...rest}>
+      {children}
+    </div>,
+    document.body,
+  );
+}

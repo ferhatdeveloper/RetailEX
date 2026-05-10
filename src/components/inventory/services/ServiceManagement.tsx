@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { serviceAPI, type Service } from '../../../services/serviceAPI';
 import { ServiceFormPage } from './ServiceFormPage';
 import { ContextMenu } from '../../shared/ContextMenu';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
 import { Briefcase, Edit, Trash2, RefreshCw, Plus, Search, Layers, Banknote } from 'lucide-react';
@@ -203,17 +204,17 @@ export function ServiceManagement() {
         </div>
       </div>
 
-      {/* Overlays */}
-       {showForm && (
-        <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm">
-           <div className="w-full h-full bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
-              <ServiceFormPage
-                serviceId={editingServiceId}
-                onSave={() => loadServices(true)}
-                onClose={() => setShowForm(false)}
-              />
-           </div>
-        </div>
+      {/* Overlays — body portal (üst çubuk altında kalmaması için) */}
+      {showForm && (
+        <FullscreenBodyPortal className="bg-black/40 backdrop-blur-sm">
+          <div className="w-full h-full bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            <ServiceFormPage
+              serviceId={editingServiceId}
+              onSave={() => loadServices(true)}
+              onClose={() => setShowForm(false)}
+            />
+          </div>
+        </FullscreenBodyPortal>
       )}
 
       {contextMenu && (

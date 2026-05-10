@@ -11,6 +11,7 @@ import { supplierAPI, Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
 import { ProductSearchModal } from './ProductSearchModal';
 import { SupplierHistoryModal } from '../contacts/SupplierHistoryModal';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
 interface PurchaseRequestCreatePageProps {
     products: Product[];
@@ -240,7 +241,7 @@ export function PurchaseRequestCreatePage({
     };
 
     return (
-        <div className="fixed inset-0 z-[10000] flex flex-col bg-gray-100 font-sans">
+        <FullscreenBodyPortal className="flex flex-col bg-gray-100 font-sans">
             {/* 1. Top Header Bar - Universal Style */}
             <div className="bg-blue-600 text-white flex-shrink-0 shadow-md h-12">
                 <div className="h-full px-4 flex items-center justify-between">
@@ -697,7 +698,7 @@ export function PurchaseRequestCreatePage({
             {/* Product Search Modal */}
             {
                 showProductSearchModal && (
-                    <div className="fixed inset-0 z-[10001] bg-black/40 flex items-center justify-center p-4 backdrop-blur-md">
+                    <FullscreenBodyPortal className="bg-black/40 flex items-center justify-center p-4 backdrop-blur-md">
                         <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl h-[500px] flex flex-col">
                             <div className="p-3 border-b flex items-center justify-between bg-gray-50 rounded-t-lg">
                                 <h3 className="font-semibold text-gray-800">Ürün Seçimi</h3>
@@ -748,7 +749,7 @@ export function PurchaseRequestCreatePage({
                                 </div>
                             </div>
                         </div>
-                    </div>
+                    </FullscreenBodyPortal>
                 )
             }
 
@@ -778,7 +779,7 @@ export function PurchaseRequestCreatePage({
                     setItems([...items, ...newItems]);
                 }}
             />
-        </div>
+        </FullscreenBodyPortal>
     );
 }
 

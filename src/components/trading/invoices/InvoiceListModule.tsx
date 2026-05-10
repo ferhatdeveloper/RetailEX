@@ -19,6 +19,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
 import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
@@ -986,12 +987,12 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         )}
       </div>
 
-      {/* Mobil: uzun basma işlem sayfası */}
+      {/* Mobil: uzun basma işlem sayfası — body portal (üst çubuk altında kalmaması için) */}
       {mobileActionInvoice && (
-        <div
-          className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+        <FullscreenBodyPortal
+          className="flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
           role="dialog"
-          aria-modal="true"
+          aria-modal
           onClick={() => setMobileActionInvoice(null)}
         >
           <div
@@ -1101,7 +1102,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               </div>
             </div>
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
 
       {/* Context Menu */}
@@ -1181,7 +1182,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
       {/* Detail Modal */}
       {showDetailModal && selectedInvoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <FullscreenBodyPortal className="bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between">
@@ -1372,12 +1373,12 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               </button>
             </div>
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
 
       {/* Fatura Türü Seçim Modalı */}
       {showInvoiceTypeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <FullscreenBodyPortal className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-6xl max-h-[95vh] flex flex-col shadow-2xl bg-white rounded-xl overflow-hidden">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
@@ -1518,12 +1519,12 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               </div>
             </div>
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
 
       {/* Custom Report Designer Overlay */}
       {showDesigner && (
-        <div className="fixed inset-0 z-[12000] bg-white">
+        <FullscreenBodyPortal className="bg-white">
           <div className="h-full flex flex-col">
             <div className="p-2 border-b flex justify-end bg-gray-50">
               <button onClick={() => setShowDesigner(false)} className="px-3 py-1 bg-red-500 text-white rounded text-xs font-bold">{tm('close').toUpperCase()}</button>
@@ -1532,7 +1533,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               <ReportDesignerModule />
             </div>
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
 
       {/* Custom Report Viewer Overlay */}
