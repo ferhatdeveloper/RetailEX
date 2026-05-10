@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X } from 'lucide-react';
@@ -193,11 +194,17 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
   }
 }`;
 
-    return (
-        <div className="report-viewer-shell fixed inset-0 z-[30000] bg-gray-900/40 backdrop-blur-sm flex flex-col items-center">
+    /** body’ye portal: üst layout overflow/stacking ve düşük z-index araç çubuğunu kesmesin; RetailExFlatModal ile aynı lig. */
+    const overlayZ = 2147483646;
+
+    const node = (
+        <div
+            className="report-viewer-shell fixed inset-0 flex flex-col w-full min-h-0 bg-gray-900/40 backdrop-blur-sm"
+            style={{ zIndex: overlayZ, isolation: 'isolate' }}
+        >
             <style>{printCss}</style>
             {/* Araç çubuğu — yazdırmada gizli */}
-            <div className="report-viewer-chrome w-full h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm shrink-0">
+            <div className="report-viewer-chrome w-full h-14 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 shadow-sm">
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col">
                         <h2 className="text-sm font-bold text-gray-900">{template.name}</h2>
@@ -230,7 +237,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
             </div>
 
             {/* Önizleme — yazdırmada yalnızca kağıt */}
-            <div className="report-viewer-stage flex-1 w-full min-h-0 overflow-auto p-12 print:p-0 flex justify-center print:justify-start">
+            <div className="report-viewer-stage flex-1 w-full min-h-0 min-w-0 overflow-auto p-6 sm:p-12 print:p-0 flex justify-center print:justify-start">
                 <div
                     ref={paperRef}
                     className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
@@ -310,4 +317,9 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
             </div>
         </div>
     );
+
+    if (typeof document === 'undefined') {
+        return null;
+    }
+    return createPortal(node, document.body);
 }
