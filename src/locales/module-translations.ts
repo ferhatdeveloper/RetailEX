@@ -2608,6 +2608,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   codeAndNameRequired: { tr: 'Kod ve ad zorunludur', en: 'Code and name are required', ar: 'الرمز والاسم مطلوبان', ku: 'کۆد و ناو پێویستن' },
   atLeastOneUnit: { tr: 'En az bir birim gereklidir', en: 'At least one unit is required', ar: 'مطلوب وحدة واحدة على الأقل', ku: 'لانیکەم یەک یەکە پێویستە' },
   mainUnitRequired: { tr: 'Ana birim seçilmeli', en: 'Main unit must be selected', ar: 'يجب تحديد الوحدة الرئيسية', ku: 'یەکەی سەرەکی دیاری بکە' },
+  unitLineCodeRequired: { tr: 'Her satırda birim kodu zorunludur', en: 'Each row must have a unit code', ar: 'رمز الوحدة مطلوب في كل سطر', ku: 'کۆدی یەکە لە هەر هێڵێکدا پێویستە' },
+  unitLineCodeDuplicate: { tr: 'Aynı birim setinde birim kodları tekrar edemez', en: 'Unit codes must be unique within a set', ar: 'لا يمكن تكرار رموز الوحدات ضمن المجموعة', ku: 'کۆدی یەکەکان لە ناو هەمان سێتدا دووبارە نابن' },
   unitSetUpdated: { tr: 'Birim seti güncellendi', en: 'Unit set updated', ar: 'تم تحديث مجموعة الوحدات', ku: 'سێتی یەکە نوێ کرایەوە' },
   unitSetCreated: { tr: 'Birim seti oluşturuldu', en: 'Unit set created', ar: 'تم إنشاء مجموعة الوحدات', ku: 'سێتی یەکە دروست کرا' },
   confirmDeleteUnitSet: { tr: 'Bu birim setini silmek istediğinizden emin misiniz?', en: 'Are you sure you want to delete this unit set?', ar: 'هل أنت متأكد من حذف مجموعة الوحدات هذه؟', ku: 'دڵنیای لە سڕینەوەی ئەم سێتی یەکەیە؟' },

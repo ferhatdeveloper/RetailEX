@@ -1041,45 +1041,61 @@ export const beautyService = {
 
     async updateService(id: string, data: Partial<BeautyService>): Promise<void> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
-        const updateBeautyRes = await postgres.query(
-            `UPDATE ${t}
-             SET name=$2, category=$3, parent_category=$4, duration_min=$5, price=$6, cost_price=$7, color=$8,
-                 commission_rate=$9, description=$10, requires_device=$11, expected_shots=$12,
-                 default_sessions=$13, follow_up_reminder_days=$14, updated_at=NOW()
-             WHERE id=$1`,
+        const active = data.is_active !== false;
+        // Yalnızca UPDATE: kayıt sadece public.rex_*_services içindeyse (ERP hizmet kartı) güzellik
+        // tablosunda satır olmaz; follow_up_reminder_days vb. alanlar hiç yazılmazdı. UPSERT ile aynı
+        // id üzerinden beauty_services satırı oluşturulur / güncellenir; liste getServices() önce bu
+        // tabloyu okuduğu için hatırlatma günü ekranda kalır.
+        await postgres.query(
+            `INSERT INTO ${t}
+                (id, name, category, parent_category, duration_min, price, cost_price, color, commission_rate,
+                 description, requires_device, expected_shots, default_sessions, follow_up_reminder_days, is_active, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW())
+             ON CONFLICT (id) DO UPDATE SET
+                 name = EXCLUDED.name,
+                 category = EXCLUDED.category,
+                 parent_category = EXCLUDED.parent_category,
+                 duration_min = EXCLUDED.duration_min,
+                 price = EXCLUDED.price,
+                 cost_price = EXCLUDED.cost_price,
+                 color = EXCLUDED.color,
+                 commission_rate = EXCLUDED.commission_rate,
+                 description = EXCLUDED.description,
+                 requires_device = EXCLUDED.requires_device,
+                 expected_shots = EXCLUDED.expected_shots,
+                 default_sessions = EXCLUDED.default_sessions,
+                 follow_up_reminder_days = EXCLUDED.follow_up_reminder_days,
+                 is_active = EXCLUDED.is_active,
+                 updated_at = NOW()`,
             [id, data.name, data.category ?? 'beauty', normalizeParentCategory(data.parent_category),
              data.duration_min ?? 30,
              data.price ?? 0, data.cost_price ?? 0, data.color ?? '#9333ea',
              data.commission_rate ?? 0, data.description ?? null,
              data.requires_device ?? false, data.expected_shots ?? 0,
              Math.max(1, Math.round(Number(data.default_sessions ?? 1))),
-             normalizeFollowUpReminderDays(data.follow_up_reminder_days)]
+             normalizeFollowUpReminderDays(data.follow_up_reminder_days),
+             active]
         );
 
-        // Hizmet kaydı sadece ERP hizmet kartı tablosunda (rex_*_services) olabilir.
-        // Bu durumda beauty_services UPDATE'i 0 satır etkiler; fiyat güncellemesi kaybolmaması için
-        // eşleşen ERP kartını da güncelle.
+        // ERP hizmet kartı (rex_*_services) ile aynı id varsa ad / fiyat / kategori senkron kalsın.
         const svcTbl = postgres.getCardTableName('services');
         const firmRaw = String(ERP_SETTINGS.firmNr ?? '001').trim();
         const firmPadded = firmRaw.padStart(3, '0').slice(0, 10);
         const firmCandidates = firmPadded === firmRaw ? [firmPadded] : [firmPadded, firmRaw];
-
-        if ((updateBeautyRes.rowCount ?? 0) === 0) {
-            const firmInSqlFallback = firmCandidates.map((_, i) => `$${i + 6}`).join(', ');
-            await postgres.query(
-                `UPDATE ${svcTbl}
-                 SET name=$2,
-                     category=$3,
-                     unit_price=$4,
-                     purchase_price=$5,
-                     updated_at=NOW()
-                 WHERE id=$1
-                   AND firm_nr IN (${firmInSqlFallback})`,
-                [id, data.name, data.category ?? 'beauty',
-                 data.price ?? 0, data.cost_price ?? 0,
-                 ...firmCandidates]
-            );
-        }
+        const firmInSqlFallback = firmCandidates.map((_, i) => `$${i + 6}`).join(', ');
+        await postgres.query(
+            `UPDATE ${svcTbl}
+             SET name=$2,
+                 category=$3,
+                 unit_price=$4,
+                 purchase_price=$5,
+                 updated_at=NOW()
+             WHERE id=$1
+               AND firm_nr IN (${firmInSqlFallback})`,
+            [id, data.name, data.category ?? 'beauty',
+             data.price ?? 0, data.cost_price ?? 0,
+             ...firmCandidates]
+        );
     },
 
     async deleteService(id: string): Promise<void> {

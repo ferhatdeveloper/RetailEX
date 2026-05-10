@@ -167,7 +167,7 @@ export default function UnitSetsPage() {
             // Only one main unit allowed
             newLines.forEach((l, i) => l.main_unit = i === index);
         } else if (field === 'code') {
-            const upperValue = value.toUpperCase();
+            const upperValue = String(value ?? '').toUpperCase();
             newLines[index].code = upperValue;
 
             // Eğer seçilen kod ortak birimlerde varsa ismini otomatik doldur
@@ -200,15 +200,31 @@ export default function UnitSetsPage() {
             return;
         }
 
+        const normalizedLines = lines.map((l) => ({
+            ...l,
+            code: String(l.code ?? '').trim().toUpperCase(),
+            name: String(l.name ?? '').trim(),
+        }));
+        const itemCodes = normalizedLines.map((l) => l.code);
+        if (itemCodes.some((c) => !c)) {
+            toast.error(tm('unitLineCodeRequired'));
+            return;
+        }
+        if (new Set(itemCodes).size !== itemCodes.length) {
+            toast.error(tm('unitLineCodeDuplicate'));
+            return;
+        }
+
         try {
-            await unitSetAPI.save({ ...formData, id: editingItem?.id }, lines);
+            await unitSetAPI.save({ ...formData, id: editingItem?.id }, normalizedLines);
             setShowModal(false);
             resetForm();
             loadItems();
             toast.success(tm(editingItem ? 'unitSetUpdated' : 'unitSetCreated'));
         } catch (error: any) {
             console.error('Error saving unit set:', error);
-            toast.error(tm('saveError'));
+            const msg = error?.message || error?.details || String(error);
+            toast.error(typeof msg === 'string' && msg.trim() ? msg : tm('saveError'));
         }
     };
 

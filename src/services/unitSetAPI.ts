@@ -1,5 +1,10 @@
 import { postgres, DB_SETTINGS, ERP_SETTINGS } from './postgres';
 
+/** SQL yeniden yazımı ile aynı firma tablo eki (`rex_001_…`) */
+function rexFirmPadded(): string {
+    return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0');
+}
+
 export interface UnitSetLine {
     id?: string;
     unitset_id?: string;
@@ -26,8 +31,9 @@ class UnitSetAPI {
         try {
             if (DB_SETTINGS.connectionProvider === 'rest_api') {
                 const { postgrest } = await import('./api/postgrestClient');
-                const unitsetsTable = `/rex_${ERP_SETTINGS.firmNr}_unitsets`;
-                const unitsetLinesTable = `/rex_${ERP_SETTINGS.firmNr}_unitsetl`;
+                const firm = rexFirmPadded();
+                const unitsetsTable = `/rex_${firm}_unitsets`;
+                const unitsetLinesTable = `/rex_${firm}_unitsetl`;
                 const sets = await postgrest.get<any[]>(
                     unitsetsTable,
                     { select: '*', order: 'name.asc' },
@@ -86,11 +92,62 @@ class UnitSetAPI {
             let setId = set.id;
             let savedSet: UnitSet;
 
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./api/postgrestClient');
+                const firm = rexFirmPadded();
+                const unitsetsTable = `/rex_${firm}_unitsets`;
+                const unitsetLinesTable = `/rex_${firm}_unitsetl`;
+                const pgOpts = { schema: 'public' as const };
+                const active = set.is_active ?? true;
+
+                if (setId) {
+                    const patched = await postgrest.patch<unknown>(
+                        `${unitsetsTable}?id=eq.${encodeURIComponent(setId)}`,
+                        { code: set.code, name: set.name, is_active: active },
+                        pgOpts
+                    );
+                    const rows = Array.isArray(patched) ? patched : patched ? [patched] : [];
+                    savedSet = rows[0] as UnitSet;
+                } else {
+                    const posted = await postgrest.post<unknown>(
+                        unitsetsTable,
+                        { code: set.code, name: set.name, is_active: active },
+                        pgOpts
+                    );
+                    const rows = Array.isArray(posted) ? posted : posted ? [posted] : [];
+                    savedSet = rows[0] as UnitSet;
+                    setId = savedSet?.id;
+                }
+
+                if (!setId || !savedSet) {
+                    throw new Error('Birim seti üst kaydı kaydedilemedi (PostgREST).');
+                }
+
+                await postgrest.delete(`${unitsetLinesTable}?unitset_id=eq.${encodeURIComponent(setId)}`, pgOpts);
+
+                if (lines.length > 0) {
+                    const bulk = lines.map((line) => ({
+                        unitset_id: setId,
+                        item_code: line.code,
+                        code: line.code,
+                        name: line.name,
+                        main_unit: !!line.main_unit,
+                        multiplier1: line.conv_fact1,
+                        multiplier2: line.conv_fact2,
+                        conv_fact1: line.conv_fact1,
+                        conv_fact2: line.conv_fact2,
+                    }));
+                    await postgrest.post(unitsetLinesTable, bulk, { ...pgOpts, prefer: 'return=minimal' });
+                }
+
+                return { ...savedSet, lines };
+            }
+
             if (setId) {
                 // Update master
                 const { rows } = await postgres.query(
                     'UPDATE unitsets SET code = $1, name = $2, is_active = $3 WHERE id = $4 RETURNING *',
-                    [set.code, set.name, set.is_active, setId]
+                    [set.code, set.name, set.is_active ?? true, setId]
                 );
                 savedSet = rows[0];
             } else {
@@ -125,6 +182,16 @@ class UnitSetAPI {
      */
     async delete(id: string): Promise<void> {
         try {
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+                const { postgrest } = await import('./api/postgrestClient');
+                const firm = rexFirmPadded();
+                const unitsetsTable = `/rex_${firm}_unitsets`;
+                const unitsetLinesTable = `/rex_${firm}_unitsetl`;
+                const pgOpts = { schema: 'public' as const };
+                await postgrest.delete(`${unitsetLinesTable}?unitset_id=eq.${encodeURIComponent(id)}`, pgOpts);
+                await postgrest.delete(`${unitsetsTable}?id=eq.${encodeURIComponent(id)}`, pgOpts);
+                return;
+            }
             // unitsetl records should be deleted via foreign key CASCADE if configured, 
             // but we'll do it manually just in case
             await postgres.query('DELETE FROM unitsetl WHERE unitset_id = $1', [id]);
