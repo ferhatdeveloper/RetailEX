@@ -194,7 +194,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
 }`;
 
     return (
-        <div className="report-viewer-shell fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex flex-col items-center">
+        <div className="report-viewer-shell fixed inset-0 z-[30000] bg-gray-900/40 backdrop-blur-sm flex flex-col items-center">
             <style>{printCss}</style>
             {/* Araç çubuğu — yazdırmada gizli */}
             <div className="report-viewer-chrome w-full h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm shrink-0">

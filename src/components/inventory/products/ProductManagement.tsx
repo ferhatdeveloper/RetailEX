@@ -144,6 +144,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   };
 
   const printLabel = (product: Product, size: { w: number, h: number }) => {
+    setActiveHubProduct(product);
     const template: ReportTemplate = {
       name: `${size.w}x${size.h}mm Ürün Etiketi`,
       category: 'etiket',
@@ -813,17 +814,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         />
       )}
 
-      {/* Report Viewer for Labels */}
+      {/* Etiket önizleme — tam ekran; araç çubuğu (Yazdır / PDF) kesilmesin diye ekstra kart sarmalayıcı yok */}
       {showViewer && selectedTemplate && activeHubProduct && (
-        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-8">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
-            <ReportViewerModule
-              template={selectedTemplate}
-              data={{ product: activeHubProduct }}
-              onClose={() => setShowViewer(false)}
-            />
-          </div>
-        </div>
+        <ReportViewerModule
+          template={selectedTemplate}
+          data={{ product: activeHubProduct }}
+          onClose={() => {
+            setShowViewer(false);
+            setSelectedTemplate(null);
+          }}
+        />
       )}
 
       {/* Context Menu */}
