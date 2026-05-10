@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Loader2, ImageIcon, RefreshCw, CheckSquare, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Product } from '../../../core/types';
@@ -152,8 +153,11 @@ export function BulkProductImageUpdateModal({
   const okCount = rows.filter((r) => r.status === 'ok').length;
   const selectedCount = rows.filter((r) => r.status === 'ok' && r.include).length;
 
-  return (
-    <div className="fixed inset-0 z-[11000] overflow-y-auto overflow-x-hidden bg-black/50 backdrop-blur-sm">
+  const overlay = (
+    <div
+      className="fixed inset-0 overflow-y-auto overflow-x-hidden bg-black/50 backdrop-blur-sm"
+      style={{ zIndex: 25200 }}
+    >
       <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-3 sm:p-4 py-6">
         <div
           role="dialog"
@@ -300,4 +304,6 @@ export function BulkProductImageUpdateModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(overlay, document.body) : null;
 }

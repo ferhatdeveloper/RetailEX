@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ColumnDef } from '@tanstack/react-table';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -27,6 +28,8 @@ interface ProductManagementProps {
 const MOBILE_PAGE_SIZE = 40;
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
+/** ManagementModule mobil içerik `z-[10]`; MainLayout üst çubuk `z-[100]` — tam ekranlar body’de üstte kalsın */
+const PRODUCT_FULLSCREEN_PORTAL_Z = 25200;
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
@@ -646,10 +649,13 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         </div>
       </div>
 
-      {/* Mobil: basılı tut ile işlem + detay */}
-      {mobileActionProduct && (
+      {/* Mobil: basılı tut ile işlem + detay — body portal (üst çubuk altında kalmaması için) */}
+      {typeof document !== 'undefined' &&
+        mobileActionProduct &&
+        createPortal(
         <div
-          className="fixed inset-0 z-[10002] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          className="fixed inset-0 flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
+          style={{ zIndex: PRODUCT_FULLSCREEN_PORTAL_Z }}
           role="dialog"
           aria-modal="true"
           onClick={() => setMobileActionProduct(null)}
@@ -796,37 +802,44 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {/* Product Form */}
-      {showProductForm && (
-        <div className="fixed inset-0 z-[10000] bg-white">
-          <ProductFormPage
-            productId={editingProductId}
-            onSave={handleProductFormSubmit}
-            onClose={closeProductForm}
-          />
-        </div>
-      )}
+      {/* Product Form — body portal (üst çubuk altında kalmaması için) */}
+      {typeof document !== 'undefined' &&
+        showProductForm &&
+        createPortal(
+          <div className="fixed inset-0 bg-white" style={{ zIndex: PRODUCT_FULLSCREEN_PORTAL_Z }}>
+            <ProductFormPage
+              productId={editingProductId}
+              onSave={handleProductFormSubmit}
+              onClose={closeProductForm}
+            />
+          </div>,
+          document.body,
+        )}
 
-      {/* Product Hub */}
-      {showProductHub && activeHubProduct && (
-        <ProductOperationHub
-          product={activeHubProduct}
-          initialTab={hubInitialTab}
-          onClose={() => {
-            setShowProductHub(false);
-            setActiveHubProduct(null);
-            setHubInitialTab('overview');
-          }}
-          onSave={(updatedProduct) => {
-            handleProductFormSubmit(updatedProduct);
-            // Update active product in hub to reflect changes without reloading
-            setActiveHubProduct(updatedProduct);
-          }}
-        />
-      )}
+      {/* Product Hub — body portal */}
+      {typeof document !== 'undefined' &&
+        showProductHub &&
+        activeHubProduct &&
+        createPortal(
+          <ProductOperationHub
+            product={activeHubProduct}
+            initialTab={hubInitialTab}
+            onClose={() => {
+              setShowProductHub(false);
+              setActiveHubProduct(null);
+              setHubInitialTab('overview');
+            }}
+            onSave={(updatedProduct) => {
+              handleProductFormSubmit(updatedProduct);
+              setActiveHubProduct(updatedProduct);
+            }}
+          />,
+          document.body,
+        )}
 
       {/* Etiket önizleme — tam ekran; araç çubuğu (Yazdır / PDF) kesilmesin diye ekstra kart sarmalayıcı yok */}
       {showViewer && selectedTemplate && activeHubProduct && (
@@ -965,9 +978,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         />
       )}
 
-      {/* Bulk Rate Modal */}
-      {showBulkRateModal && (
-        <div className="fixed inset-0 z-[11000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      {/* Bulk Rate Modal — body portal */}
+      {typeof document !== 'undefined' &&
+        showBulkRateModal &&
+        createPortal(
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          style={{ zIndex: PRODUCT_FULLSCREEN_PORTAL_Z }}
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-4 border-b bg-orange-50 flex items-center justify-between">
               <h3 className="font-bold text-orange-800 flex items-center gap-2">
@@ -1041,7 +1059,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
