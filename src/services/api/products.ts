@@ -7,10 +7,119 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Product } from '../../core/types';
 import { useAuthStore } from '../../store/useAuthStore';
 
+/** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
+function firmNrPadded(): string {
+  return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+function periodNrPadded(): string {
+  return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+/** PostgREST `or=(col.ilike.*x*)` içinde güvenli alt string */
+function sanitizePostgrestIlike(q: string): string {
+  return String(q || '')
+    .trim()
+    .replace(/[*%,().]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+async function fetchDeleteImpactViaPostgrest(productIds: string[]): Promise<{
+  hasInvoiceRefs: boolean;
+  saleRefs: { productId: string; invoiceNo: string }[];
+  purchaseRefs: { productId: string; invoiceNo: string }[];
+}> {
+  const ids = (productIds || []).filter(Boolean);
+  const empty = {
+    hasInvoiceRefs: false,
+    saleRefs: [] as { productId: string; invoiceNo: string }[],
+    purchaseRefs: [] as { productId: string; invoiceNo: string }[],
+  };
+  if (ids.length === 0) return empty;
+  const firm = firmNrPadded();
+  const period = periodNrPadded();
+  const saleRefs: { productId: string; invoiceNo: string }[] = [];
+  const purchaseRefs: { productId: string; invoiceNo: string }[] = [];
+  const inList = ids.join(',');
+  try {
+    const { postgrest } = await import('./postgrestClient');
+    const saleItemsPath = `/rex_${firm}_${period}_sale_items`;
+    const si = await postgrest.get<any[]>(
+      saleItemsPath,
+      { select: 'product_id,invoice_id', product_id: `in.(${inList})`, limit: 200 },
+      { schema: 'public' }
+    );
+    const invoiceIds = [...new Set((si || []).map((r) => r.invoice_id).filter(Boolean))];
+    const salesById: Record<string, any> = {};
+    if (invoiceIds.length > 0) {
+      const salesPath = `/rex_${firm}_${period}_sales`;
+      const sales = await postgrest.get<any[]>(
+        salesPath,
+        { select: 'id,fiche_no,document_no', id: `in.(${invoiceIds.join(',')})`, limit: 200 },
+        { schema: 'public' }
+      );
+      for (const s of sales || []) salesById[String(s.id)] = s;
+    }
+    for (const r of si || []) {
+      const inv = salesById[String(r.invoice_id)];
+      saleRefs.push({
+        productId: String(r.product_id),
+        invoiceNo: String(inv?.fiche_no || inv?.document_no || r.invoice_id || ''),
+      });
+    }
+
+    const smiPath = `/rex_${firm}_${period}_stock_movement_items`;
+    const mi = await postgrest.get<any[]>(
+      smiPath,
+      { select: 'product_id,movement_id', product_id: `in.(${inList})`, limit: 200 },
+      { schema: 'public' }
+    );
+    const mids = [...new Set((mi || []).map((r) => r.movement_id).filter(Boolean))];
+    const movById: Record<string, any> = {};
+    if (mids.length > 0) {
+      const mov = await postgrest.get<any[]>(
+        `/rex_${firm}_${period}_stock_movements`,
+        {
+          select: 'id,document_no,movement_type',
+          id: `in.(${mids.join(',')})`,
+          limit: 200,
+        },
+        { schema: 'public' }
+      );
+      for (const m of mov || []) movById[String(m.id)] = m;
+    }
+    for (const r of mi || []) {
+      const m = movById[String(r.movement_id)];
+      const mt = String(m?.movement_type || '').toLowerCase();
+      if (mt === 'in' || mt === 'purchase') {
+        purchaseRefs.push({
+          productId: String(r.product_id),
+          invoiceNo: String(m?.document_no || r.movement_id || ''),
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[ProductAPI] getDeleteImpact PostgREST:', e);
+  }
+  return {
+    hasInvoiceRefs: saleRefs.length > 0 || purchaseRefs.length > 0,
+    saleRefs,
+    purchaseRefs,
+  };
+}
+
 export const productAPI = {
   async verifyManagementPassword(password: string): Promise<boolean> {
     const pwd = String(password || '').trim();
     if (!pwd) return false;
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      console.warn(
+        '[ProductAPI] Yönetici şifresi doğrulaması PostgREST üzerinden yapılmıyor; zorunlu silme için pg_bridge veya RPC eklenmelidir.'
+      );
+      return false;
+    }
     try {
       const firmNr = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
       const { rows } = await postgres.query<{ ok: number }>(
@@ -44,6 +153,11 @@ export const productAPI = {
     if (ids.length === 0) {
       return { hasInvoiceRefs: false, saleRefs: [], purchaseRefs: [] };
     }
+
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      return fetchDeleteImpactViaPostgrest(ids);
+    }
+
     const firmNr = String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
     const periodNr = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0');
     const salesTable = `rex_${firmNr}_${periodNr}_sales`;
@@ -112,7 +226,7 @@ export const productAPI = {
    */
   async getAll(): Promise<Product[]> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
@@ -143,7 +257,22 @@ export const productAPI = {
    */
   async getById(id: string): Promise<Product | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            id: `eq.${id}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : null;
+        return row ? mapDatabaseProductToProduct(row) : null;
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -161,10 +290,23 @@ export const productAPI = {
   async getByCode(code: string): Promise<Product | null> {
     if (!code?.trim()) return null;
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            code: `eq.${code.trim()}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : null;
+        return row ? mapDatabaseProductToProduct(row) : null;
+      }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
-        [code.trim(), ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -178,10 +320,24 @@ export const productAPI = {
    */
   async getByBarcode(barcode: string): Promise<Product | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            barcode: `eq.${barcode}`,
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(rows) ? rows[0] : null;
+        return row ? mapDatabaseProductToProduct(row) : null;
+      }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE barcode = $1 AND firm_nr = $2 AND is_active = true`,
-        [barcode, ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -200,6 +356,84 @@ export const productAPI = {
       if (product) return { product };
 
       // 2. Try unit-specific barcodes
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const pbPath = `/rex_${firmNrPadded()}_product_barcodes`;
+        const pbRows = await postgrest.get<any[]>(
+          pbPath,
+          {
+            select: '*',
+            barcode_code: `eq.${barcode}`,
+            order: 'is_primary.desc',
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        const pb = Array.isArray(pbRows) ? pbRows[0] : null;
+        if (!pb) return null;
+        const foundProduct = await this.getById(pb.product_id);
+        if (!foundProduct) return null;
+        const unitName = pb.unit;
+        const unitsetId = (foundProduct as any).unitsetId || (foundProduct as any).unitset_id;
+        let multiplier = 1;
+
+        if (unitName && unitsetId) {
+          try {
+            const ulPath = `/rex_${firmNrPadded()}_unitsetl`;
+            let unitRows = await postgrest.get<any[]>(
+              ulPath,
+              {
+                select: 'conv_fact1,multiplier1',
+                unitset_id: `eq.${unitsetId}`,
+                name: `eq.${unitName}`,
+                limit: 1,
+              },
+              { schema: 'public' }
+            );
+            let ur = Array.isArray(unitRows) ? unitRows[0] : null;
+            if (!ur) {
+              unitRows = await postgrest.get<any[]>(
+                ulPath,
+                {
+                  select: 'conv_fact1,multiplier1',
+                  unitset_id: `eq.${unitsetId}`,
+                  code: `eq.${unitName}`,
+                  limit: 1,
+                },
+                { schema: 'public' }
+              );
+              ur = Array.isArray(unitRows) ? unitRows[0] : null;
+            }
+            if (ur) {
+              multiplier = parseFloat(String(ur.conv_fact1 || ur.multiplier1 || 1)) || 1;
+            }
+          } catch (_) { /* ignore */ }
+        }
+
+        if (multiplier === 1 && unitName) {
+          try {
+            const cPath = `/rex_${firmNrPadded()}_product_unit_conversions`;
+            const convRows = await postgrest.get<any[]>(
+              cPath,
+              {
+                select: 'factor',
+                product_id: `eq.${foundProduct.id}`,
+                from_unit: `eq.${unitName}`,
+                limit: 1,
+              },
+              { schema: 'public' }
+            );
+            const cr = Array.isArray(convRows) ? convRows[0] : null;
+            if (cr) multiplier = parseFloat(String(cr.factor)) || 1;
+          } catch (_) { /* ignore */ }
+        }
+
+        return {
+          product: foundProduct,
+          unitInfo: { ...pb, multiplier },
+        };
+      }
+
       const { rows } = await postgres.query(
         `SELECT * FROM product_barcodes WHERE barcode_code = $1 ORDER BY is_primary DESC LIMIT 1`,
         [barcode]
@@ -258,6 +492,29 @@ export const productAPI = {
    */
   async generateNextBarcode(): Promise<string> {
     try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          '/barcode_templates',
+          {
+            select: '*',
+            is_active: 'eq.true',
+            order: 'created_at.asc',
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        if (!rows?.[0]) return '';
+        const template = rows[0];
+        const nextValue = BigInt(template.current_value) + 1n;
+        const barcodeValue = `${template.prefix}${nextValue.toString().padStart(template.length - template.prefix.length, '0')}`;
+        await postgrest.patch(
+          `/barcode_templates?id=eq.${encodeURIComponent(template.id)}`,
+          { current_value: nextValue.toString(), updated_at: new Date().toISOString() },
+          { schema: 'public', prefer: 'return=minimal' }
+        );
+        return barcodeValue;
+      }
       const { rows } = await postgres.query(
         'SELECT * FROM public.barcode_templates WHERE is_active = true ORDER BY created_at ASC LIMIT 1'
       );
@@ -285,7 +542,7 @@ export const productAPI = {
    */
   async create(product: Omit<Product, 'id'>): Promise<Product | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
       const p = product as any;
       const trunc = (s: unknown, max: number) => String(s ?? '').slice(0, max);
 
@@ -396,7 +653,12 @@ export const productAPI = {
    */
   async addProduct(product: Product): Promise<Product | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const copy = { ...product } as Product & { id?: string };
+        if (!copy.id || copy.id === '') delete (copy as any).id;
+        return this.create(copy as Omit<Product, 'id'>);
+      }
+      const tableName = `rex_${firmNrPadded()}_products`;
       const productData = { ...product, firm_nr: ERP_SETTINGS.firmNr };
 
       // Ensure id is not an empty string (let database generate it if new)
@@ -476,7 +738,7 @@ export const productAPI = {
    */
   async update(id: string, updates: Partial<Product>): Promise<Product | null> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
       const fields: string[] = [];
       const values: any[] = [];
       let i = 1;
@@ -529,25 +791,52 @@ export const productAPI = {
 
       if (fieldValues.size === 0) return productAPI.getById(id);
 
-      // Handle Logging for Custom Exchange Rate BEFORE update
+      // Kur geçmişi
       if (fieldValues.has('custom_exchange_rate')) {
         try {
           const oldProduct = await productAPI.getById(id);
           const oldRate = oldProduct?.customExchangeRate || 0;
           const newRate = fieldValues.get('custom_exchange_rate');
-          
+
           if (oldRate !== newRate) {
             const currentUser = useAuthStore.getState().user;
-            
-            await postgres.query(
-              `INSERT INTO product_exchange_rate_history (product_id, old_rate, new_rate, changed_by) 
-               VALUES ($1, $2, $3, $4)`,
-              [id, oldRate, newRate, currentUser?.fullName || 'Sistem']
-            );
+            const who = currentUser?.fullName || 'Sistem';
+            if (DB_SETTINGS.connectionProvider === 'rest_api') {
+              const { postgrest } = await import('./postgrestClient');
+              await postgrest.post(
+                '/product_exchange_rate_history',
+                {
+                  product_id: id,
+                  old_rate: oldRate,
+                  new_rate: newRate,
+                  changed_by: who,
+                },
+                { schema: 'public', prefer: 'return=minimal' }
+              );
+            } else {
+              await postgres.query(
+                `INSERT INTO product_exchange_rate_history (product_id, old_rate, new_rate, changed_by) 
+                 VALUES ($1, $2, $3, $4)`,
+                [id, oldRate, newRate, who]
+              );
+            }
           }
         } catch (logErr) {
           console.error('[ProductAPI] Logging rate change failed:', logErr);
         }
+      }
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patchBody: Record<string, unknown> = Object.fromEntries(fieldValues);
+        delete patchBody.follow_up_reminder_days;
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          patchBody,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        const row = Array.isArray(patched) ? patched[0] : patched;
+        return row ? mapDatabaseProductToProduct(row) : null;
       }
 
       fieldValues.forEach((value, dbKey) => {
@@ -585,7 +874,16 @@ export const productAPI = {
           throw new Error('Yönetici şifresi hatalı.');
         }
       }
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { is_active: false },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        return Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
+      }
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET is_active = false WHERE id = $1 AND firm_nr = $2`,
         [id, ERP_SETTINGS.firmNr]
@@ -602,7 +900,26 @@ export const productAPI = {
    */
   async search(query: string): Promise<Product[]> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const token = sanitizePostgrestIlike(query);
+        if (!token) return [];
+        const { postgrest } = await import('./postgrestClient');
+        const wild = `*${token}*`;
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: '*',
+            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            is_active: 'eq.true',
+            or: `(name.ilike.${wild},code.ilike.${wild},barcode.ilike.${wild})`,
+            order: 'name.asc',
+            limit: 50,
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseProductToProduct);
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM ${tableName} 
          WHERE (name ILIKE $1 OR barcode ILIKE $1 OR code ILIKE $1) AND firm_nr = $2 AND is_active = true 
@@ -621,7 +938,16 @@ export const productAPI = {
    */
   async updateStock(id: string, quantity: number): Promise<boolean> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
+      const tableName = `rex_${firmNrPadded()}_products`;
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          { stock: quantity },
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        return Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
+      }
       const { rowCount } = await postgres.query(
         `UPDATE ${tableName} SET stock = $1::text::numeric WHERE id = $2 AND firm_nr = $3`,
         [quantity.toString(), id, ERP_SETTINGS.firmNr]
@@ -638,11 +964,7 @@ export const productAPI = {
    */
   async bulkUpdate(ids: string[], updates: Partial<Product>): Promise<number> {
     try {
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_products`;
-      const fields: string[] = [];
-      const values: any[] = [];
-      let i = 1;
-
+      const tableName = `rex_${firmNrPadded()}_products`;
       const fieldMapping: Record<string, string> = {
         price: 'price',
         cost: 'cost',
@@ -652,15 +974,36 @@ export const productAPI = {
         purchasePriceUSD: 'purchase_price_usd',
       };
 
+      const patchBody: Record<string, unknown> = {};
       Object.entries(updates).forEach(([key, value]) => {
         if (key !== 'id' && value !== undefined) {
           const dbKey = fieldMapping[key] || key;
-          fields.push(`${dbKey} = $${i++}`);
-          values.push(value);
+          patchBody[dbKey] = value;
         }
       });
 
-      if (fields.length === 0) return 0;
+      if (Object.keys(patchBody).length === 0) return 0;
+      if (!ids.length) return 0;
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const inList = ids.map((x) => String(x).trim()).filter(Boolean).join(',');
+        if (!inList) return 0;
+        const patched = await postgrest.patch<any[]>(
+          `/${tableName}?id=in.(${inList})&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          patchBody,
+          { schema: 'public', prefer: 'return=representation' }
+        );
+        return Array.isArray(patched) ? patched.length : patched ? 1 : 0;
+      }
+
+      const fields: string[] = [];
+      const values: any[] = [];
+      let i = 1;
+      Object.entries(patchBody).forEach(([dbKey, value]) => {
+        fields.push(`${dbKey} = $${i++}`);
+        values.push(value);
+      });
 
       values.push(ids);
       const query = `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = ANY($${i}) AND firm_nr = ${ERP_SETTINGS.firmNr}`;
@@ -677,10 +1020,23 @@ export const productAPI = {
    */
   async getExchangeRateHistory(productId: string): Promise<any[]> {
     try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          '/product_exchange_rate_history',
+          {
+            select: '*',
+            product_id: `eq.${productId}`,
+            order: 'changed_at.desc',
+          },
+          { schema: 'public' }
+        );
+        return Array.isArray(rows) ? rows : [];
+      }
       const { rows } = await postgres.query(
         `SELECT * FROM product_exchange_rate_history 
          WHERE product_id = $1 
-         ORDER BY change_date DESC`,
+         ORDER BY changed_at DESC NULLS LAST`,
         [productId]
       );
       return rows;

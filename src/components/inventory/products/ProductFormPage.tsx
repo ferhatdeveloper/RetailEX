@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useProductStore } from '../../../store';
 import { productVariantAPI, invoicesAPI } from '../../../services/api/index';
 import { productUnitsAPI } from '../../../services/api/productUnitsAPI';
@@ -491,6 +491,37 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     useTree: false,
   });
 
+  /** Ana birim kartı (`units`) + birim seti satırlarındaki elle girilen isimler */
+  const unitOptions = useMemo((): MasterDataItem[] => {
+    const byName = new Map<string, MasterDataItem>();
+    for (const u of units) {
+      const name = String(u.name || '').trim();
+      if (!name) continue;
+      if (!byName.has(name)) {
+        byName.set(name, {
+          id: String(u.id),
+          code: String(u.code || '').trim() || name,
+          name,
+        });
+      }
+    }
+    for (const us of unitSets) {
+      for (const line of us.lines || []) {
+        const name = String(line.name || '').trim();
+        if (!name || byName.has(name)) continue;
+        const code = String(line.code || '').trim() || name;
+        byName.set(name, {
+          id: String(line.id || `unitset-line:${us.id}:${code}`),
+          code,
+          name,
+        });
+      }
+    }
+    return [...byName.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' })
+    );
+  }, [units, unitSets]);
+
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
@@ -511,16 +542,32 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         setBrands(brandRes);
         setProductGroups(groupRes);
         setUnits(unitRes);
-        if (unitRes.length > 0) {
-          const firstName = unitRes[0].name;
-          setFormData(prev => ({
+        const allowedUnitNames = new Set<string>();
+        for (const u of unitRes) {
+          const n = String(u.name || '').trim();
+          if (n) allowedUnitNames.add(n);
+        }
+        for (const us of unitSetRes) {
+          for (const line of us.lines || []) {
+            const n = String(line.name || '').trim();
+            if (n) allowedUnitNames.add(n);
+          }
+        }
+        const firstName =
+          (unitRes[0] && String(unitRes[0].name || '').trim()) ||
+          [...allowedUnitNames][0] ||
+          'Adet';
+        if (allowedUnitNames.size > 0) {
+          setFormData((prev) => ({
             ...prev,
-            unit: unitRes.some((u: any) => u.name === prev.unit) ? prev.unit : firstName,
+            unit: allowedUnitNames.has(String(prev.unit || '').trim()) ? prev.unit : firstName,
           }));
-          setBarcodes(prev => prev.map(b => ({
-            ...b,
-            unit: b.unit && unitRes.some((u: any) => u.name === b.unit) ? b.unit : firstName,
-          })));
+          setBarcodes((prev) =>
+            prev.map((b) => ({
+              ...b,
+              unit: b.unit && allowedUnitNames.has(String(b.unit).trim()) ? b.unit : firstName,
+            }))
+          );
         }
         setTaxRates(taxRes);
         setSuppliers(suppRes);
@@ -564,7 +611,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         break;
       case 'unit':
         title = 'Birim Seç';
-        items = units;
+        items = unitOptions;
         currentValue = formData.unit || '';
         break;
       case 'taxRate':
@@ -2700,7 +2747,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                               }}
                               className="w-full bg-transparent border-0 font-bold text-blue-800 text-[11px] focus:ring-0"
                             >
-                              {units.map(u => (
+                              {unitOptions.map(u => (
                                 <option key={u.id} value={u.name}>{u.name}</option>
                               ))}
                             </select>
@@ -2744,7 +2791,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                   className="w-full bg-transparent border-0 font-medium text-[11px] focus:ring-0"
                                 >
                                   <option value="">{tm('select')}...</option>
-                                  {units.map(u => (
+                                  {unitOptions.map(u => (
                                     <option key={u.id} value={u.name}>{u.name}</option>
                                   ))}
                                 </select>
@@ -2763,7 +2810,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                   onChange={(e) => updateUnitConversion(conv.id, 'toUnit', e.target.value)}
                                   className="w-full bg-transparent border-0 text-center text-gray-500 text-[11px] focus:ring-0"
                                 >
-                                  {units.map(u => (
+                                  {unitOptions.map(u => (
                                     <option key={u.id} value={u.name}>{u.name}</option>
                                   ))}
                                 </select>
@@ -2807,7 +2854,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                   onChange={(e) => updateUnitConversion(conv.id, 'fromUnit', e.target.value)}
                                   className="w-full bg-transparent border-0 font-medium text-[11px] focus:ring-0"
                                 >
-                                  {units.map(u => (
+                                  {unitOptions.map(u => (
                                     <option key={u.id} value={u.name}>{u.name}</option>
                                   ))}
                                 </select>
@@ -2832,7 +2879,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                   onChange={(e) => updateUnitConversion(conv.id, 'toUnit', e.target.value)}
                                   className="w-full bg-transparent border-0 text-center text-gray-500 text-[11px] focus:ring-0"
                                 >
-                                  {units.map(u => (
+                                  {unitOptions.map(u => (
                                     <option key={u.id} value={u.name}>{u.name}</option>
                                   ))}
                                 </select>
@@ -2870,7 +2917,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                             >
                               <option value={b.unit}>{b.unit}</option>
                               {unitConversions.map(c => <option key={c.id} value={c.fromUnit}>{c.fromUnit}</option>)}
-                              {units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                              {unitOptions.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                             </select>
                           </td>
                           <td className="px-2 py-1 text-center border-r border-gray-200 text-gray-400">?</td>
