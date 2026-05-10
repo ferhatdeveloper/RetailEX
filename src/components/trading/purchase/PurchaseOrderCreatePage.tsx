@@ -12,6 +12,9 @@ import { supplierAPI, Supplier } from '../../../services/api/suppliers';
 import { purchaseOrderAPI } from '../../../services/purchaseOrderAPI';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { unitAPI } from '../../../services/api/masterData';
+import { unitSetAPI } from '../../../services/unitSetAPI';
+import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
 
 interface PurchaseOrderCreatePageProps {
   products: Product[];
@@ -64,8 +67,27 @@ export function PurchaseOrderCreatePage({ products, onBack, onSuccess }: Purchas
   const [showSupplierHistory, setShowSupplierHistory] = useState(false);
   const [selectedSupplierHistory, setSelectedSupplierHistory] = useState<{ id: string, name: string } | null>(null);
 
+  const [unitSelectOptions, setUnitSelectOptions] = useState<UnitSelectOption[]>(() =>
+    buildUnitSelectOptions([], [])
+  );
+
   useEffect(() => {
     loadSuppliers();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [u, s] = await Promise.all([unitAPI.getAll(), unitSetAPI.getAll()]);
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions(u, s));
+      } catch {
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions([], []));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const loadSuppliers = async () => {
@@ -514,10 +536,11 @@ export function PurchaseOrderCreatePage({ products, onBack, onSuccess }: Purchas
                               onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
                               className="w-full h-full px-3 py-2 text-xs focus:outline-none focus:bg-purple-50 bg-transparent appearance-none"
                             >
-                              <option value="Adet">Adet</option>
-                              <option value="Kg">Kg</option>
-                              <option value="Metre">Metre</option>
-                              <option value="Kutu">Kutu</option>
+                              {withMissingUnitValue(unitSelectOptions, item.unit).map((o) => (
+                                <option key={o.id} value={o.name}>
+                                  {o.name}
+                                </option>
+                              ))}
                             </select>
                           </td>
                           <td className="p-0 border-r border-gray-100">

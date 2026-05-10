@@ -129,61 +129,53 @@ export async function batchCalculateFIFOCost(params: {
   firmaId: string;
   donemId: string;
 }): Promise<Map<string, { unitCost: number; totalCost: number; available: boolean }>> {
-  const results = new Map();
-  
-  for (const item of params.items) {
-    try {
-      const layers = await CostAccountingService.getFIFOLayers({
-        product_id: item.productId,
-        firma_id: params.firmaId,
-        donem_id: params.donemId
-      });
-      
-      if (layers.length === 0) {
-        results.set(item.productId, {
-          unitCost: 0,
-          totalCost: 0,
-          available: false
+  const results = new Map<string, { unitCost: number; totalCost: number; available: boolean }>();
+
+  const items = (params.items || []).filter((i) => i.productId);
+  if (items.length === 0) return results;
+
+  const layerRows = await Promise.all(
+    items.map(async (item) => {
+      try {
+        const layers = await CostAccountingService.getFIFOLayers({
+          product_id: item.productId,
+          firma_id: params.firmaId,
+          donem_id: params.donemId,
         });
-        continue;
+        return { item, layers, ok: true as const };
+      } catch (error) {
+        console.error(`[batchCalculateFIFOCost] Error for product ${item.productId}:`, error);
+        return { item, layers: [] as Awaited<ReturnType<typeof CostAccountingService.getFIFOLayers>>, ok: false as const };
       }
-      
-      // FIFO calculation
-      let remainingQty = item.quantity;
-      let totalCost = 0;
-      
-      for (const layer of layers) {
-        if (remainingQty <= 0) break;
-        
-        const qtyToUse = Math.min(remainingQty, layer.remaining_quantity);
-        totalCost += qtyToUse * layer.unit_cost;
-        remainingQty -= qtyToUse;
-      }
-      
-      // Use last known cost for remaining quantity
-      if (remainingQty > 0 && layers.length > 0) {
-        const lastCost = layers[layers.length - 1].unit_cost;
-        totalCost += remainingQty * lastCost;
-      }
-      
-      const unitCost = item.quantity > 0 ? totalCost / item.quantity : 0;
-      
-      results.set(item.productId, {
-        unitCost,
-        totalCost,
-        available: true
-      });
-      
-    } catch (error) {
-      console.error(`[batchCalculateFIFOCost] Error for product ${item.productId}:`, error);
-      results.set(item.productId, {
-        unitCost: 0,
-        totalCost: 0,
-        available: false
-      });
+    })
+  );
+
+  for (const row of layerRows) {
+    const { item, layers, ok } = row;
+    if (!ok || layers.length === 0) {
+      results.set(item.productId, { unitCost: 0, totalCost: 0, available: false });
+      continue;
     }
+
+    let remainingQty = item.quantity;
+    let totalCost = 0;
+
+    for (const layer of layers) {
+      if (remainingQty <= 0) break;
+      const qtyToUse = Math.min(remainingQty, layer.remaining_quantity);
+      totalCost += qtyToUse * layer.unit_cost;
+      remainingQty -= qtyToUse;
+    }
+
+    if (remainingQty > 0 && layers.length > 0) {
+      const lastCost = layers[layers.length - 1].unit_cost;
+      totalCost += remainingQty * lastCost;
+    }
+
+    const unitCost = item.quantity > 0 ? totalCost / item.quantity : 0;
+    results.set(item.productId, { unitCost, totalCost, available: true });
   }
-  
+
   return results;
 }
 

@@ -17,6 +17,8 @@ interface ProductState {
   updateProduct: (id: string, product: Partial<Product>) => Promise<Product | undefined>;
   deleteProduct: (id: string, options?: { force?: boolean; adminPassword?: string }) => Promise<void>;
   updateStock: (id: string, quantity: number) => Promise<void>;
+  /** POS satış sonrası: birden fazla ürün stokunu tek yükleme bayrağı + paralel API ile günceller */
+  updateStocksBatch: (updates: { id: string; quantity: number }[]) => Promise<void>;
   findByBarcode: (barcode: string) => Product | undefined;
   syncWithServer: () => Promise<void>;
 }
@@ -123,6 +125,31 @@ export const useProductStore = create<ProductState>()(
         } catch (error) {
           console.error('[ProductStore] Error updating stock:', error);
           set({ isLoading: false, error: 'Failed to update stock' });
+        }
+      },
+
+      updateStocksBatch: async (updates) => {
+        if (!updates.length) return;
+        set({ isLoading: true, error: null });
+        try {
+          const results = await Promise.all(
+            updates.map((u) => productAPI.updateStock(u.id, u.quantity))
+          );
+          if (results.some((ok) => !ok)) {
+            throw new Error('Bir veya daha fazla stok güncellenemedi');
+          }
+          set((state) => ({
+            products: state.products.map((p) => {
+              const u = updates.find((x) => x.id === p.id);
+              return u ? { ...p, stock: u.quantity } : p;
+            }),
+            isLoading: false,
+            lastSync: Date.now(),
+          }));
+        } catch (error) {
+          console.error('[ProductStore] Error batch updating stock:', error);
+          set({ isLoading: false, error: 'Failed to update stock' });
+          throw error;
         }
       },
 

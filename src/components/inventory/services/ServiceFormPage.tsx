@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   X, Save, FileText, Tag, Banknote, Calculator, Info, 
   Settings, Database, Check, AlertCircle, Briefcase,
@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { serviceAPI, type Service, type CreateServiceInput } from '../../../services/serviceAPI';
 import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, definitionAPI, brandAPI, productGroupAPI, unitAPI, type Brand } from '../../../services/api/masterData';
+import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
+import { buildUnitSelectOptions } from '../../../utils/unitOptions';
 import { MasterDataSelectionModal, type MasterDataItem } from '../../shared/MasterDataSelectionModal';
 import { TreeSelectionModal, type TreeDataItem } from '../../shared/TreeSelectionModal';
 import { ImageSearchModal } from '../../shared/ImageSearchModal';
@@ -121,6 +123,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
   const [brands, setBrands] = useState<Brand[]>([]);
   const [productGroups, setProductGroups] = useState<any[]>([]);
   const [units, setUnits] = useState<MasterDataItem[]>([]);
+  const [unitSets, setUnitSets] = useState<UnitSet[]>([]);
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [suppliers, setSuppliers] = useState<MasterDataItem[]>([]);
   const [allSpecialCodes, setAllSpecialCodes] = useState<SpecialCode[]>([]);
@@ -143,10 +146,15 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     useTree: false,
   });
 
+  const unitOptions = useMemo(
+    () => buildUnitSelectOptions(units, unitSets),
+    [units, unitSets]
+  );
+
   useEffect(() => {
     const fetchMasterData = async () => {
       try {
-        const [currRes, catRes, brandRes, groupRes, unitRes, taxRes, suppRes, specRes] = await Promise.all([
+        const [currRes, catRes, brandRes, groupRes, unitRes, taxRes, suppRes, specRes, unitSetRes] = await Promise.all([
           currencyAPI.getAll(),
           categoryAPI.getAll(),
           brandAPI.getAll(),
@@ -155,12 +163,35 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
           taxRateAPI.getAll(),
           definitionAPI.getAll('suppliers'),
           specialCodeAPI.getAll(),
+          unitSetAPI.getAll(),
         ]);
         setCurrencies(currRes);
         setCategories(catRes);
         setBrands(brandRes);
         setProductGroups(groupRes);
         setUnits(unitRes);
+        setUnitSets(unitSetRes);
+        const allowedUnitNames = new Set<string>();
+        for (const u of unitRes) {
+          const n = String(u.name || '').trim();
+          if (n) allowedUnitNames.add(n);
+        }
+        for (const us of unitSetRes) {
+          for (const line of us.lines || []) {
+            const n = String(line.name || '').trim();
+            if (n) allowedUnitNames.add(n);
+          }
+        }
+        const firstName =
+          (unitRes[0] && String(unitRes[0].name || '').trim()) ||
+          [...allowedUnitNames][0] ||
+          'Adet';
+        if (allowedUnitNames.size > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            unit: allowedUnitNames.has(String(prev.unit || '').trim()) ? prev.unit : firstName,
+          }));
+        }
         setTaxRates(taxRes);
         setSuppliers(suppRes);
         setAllSpecialCodes(specRes);
@@ -392,7 +423,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         break;
       case 'unit':
         title = 'Birim Seç';
-        items = units;
+        items = unitOptions;
         currentValue = formData.unit || '';
         break;
       case 'taxRate':

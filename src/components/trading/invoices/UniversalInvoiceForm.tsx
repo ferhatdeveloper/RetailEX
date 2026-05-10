@@ -46,9 +46,12 @@ import {
   pickExchangeRateValue,
   crossRateDocumentToLedgerFromLatest,
   resolveDocumentCurrencyRateToLedger,
+  unitAPI,
   type Currency,
   type ExchangeRate
 } from '../../../services/api/masterData';
+import { unitSetAPI } from '../../../services/unitSetAPI';
+import type { UnitMasterRow } from '../../../utils/unitOptions';
 
 // Electron API tip tanımı
 declare global {
@@ -423,6 +426,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const [currencyRateType, setCurrencyRateType] = useState('Satış'); // Kur Türü (Alış, Satış, Efektif Alış, Efektif Satış)
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
+  const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
   const [transactionType, setTransactionType] = useState(''); // İşlem
   const [shippingAccountCode, setShippingAccountCode] = useState(''); // Sevkiyat Hesabı Kodu
   const [shippingAccountTitle, setShippingAccountTitle] = useState(''); // Sevkiyat Hesabı Ünvanı
@@ -797,33 +801,21 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     loadServices();
   }, []);
 
-  // Load Unit Sets (birim setleri - ambalaj hiyerarşisi için)
+  // Birim kartı + birim setleri (Tauri / PostgREST / doğrudan PG tek API zinciri)
   useEffect(() => {
-    const loadUnitSets = async () => {
+    const loadUnitsAndSets = async () => {
       try {
-        const { rows: sets } = await postgres.query('SELECT * FROM unitsets ORDER BY name ASC');
-        const setsWithLines = await Promise.all(sets.map(async (set: any) => {
-          const { rows: lines } = await postgres.query(
-            'SELECT * FROM unitsetl WHERE unitset_id = $1 ORDER BY conv_fact1 ASC',
-            [set.id]
-          );
-          return {
-            ...set,
-            lines: lines.map((l: any) => ({
-              id: l.id,
-              code: l.code || l.item_code,
-              name: l.name || l.item_code,
-              conv_fact1: parseFloat(l.conv_fact1) || 1,
-              main_unit: l.main_unit || false
-            }))
-          };
-        }));
-        setUnitSets(setsWithLines);
+        const [unitRows, setsWithLines] = await Promise.all([
+          unitAPI.getAll(),
+          unitSetAPI.getAll(),
+        ]);
+        setMasterUnits(unitRows || []);
+        setUnitSets(Array.isArray(setsWithLines) ? setsWithLines : []);
       } catch (err) {
-        console.error('[UniversalInvoice] Unit sets load failed:', err);
+        console.error('[UniversalInvoice] Units / unit sets load failed:', err);
       }
     };
-    loadUnitSets();
+    loadUnitsAndSets();
   }, []);
 
   // Lookup Effect for Customer Code
@@ -2520,18 +2512,20 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       // Stok ve FIFO Hareketleri (baseQuantity kullan)
       if (!editData?.id) {
         if (invoiceType.category === 'Alis') {
-          for (const item of itemsWithCost) {
-            const baseQty = item.baseQuantity ?? item.quantity;
-            await CostAccountingService.addFIFOLayer({
-              product_id: item.code,
-              quantity: baseQty,
-              unit_cost: item.unitCost || item.unitPrice,
-              purchase_date: invoiceDate.toISOString(),
-              document_no: invoiceNo,
-              firma_id: selectedFirm.id || '',
-              donem_id: selectedPeriod.id || ''
-            });
-          }
+          await Promise.all(
+            itemsWithCost.map((item) => {
+              const baseQty = item.baseQuantity ?? item.quantity;
+              return CostAccountingService.addFIFOLayer({
+                product_id: item.code,
+                quantity: baseQty,
+                unit_cost: item.unitCost || item.unitPrice,
+                purchase_date: invoiceDate.toISOString(),
+                document_no: invoiceNo,
+                firma_id: selectedFirm.id || '',
+                donem_id: selectedPeriod.id || ''
+              });
+            })
+          );
         } else if (invoiceType.category === 'Satis') {
           for (const item of itemsWithCost) {
             const baseQty = item.baseQuantity ?? item.quantity;
@@ -2885,6 +2879,7 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                     productDropdownRef={productDropdownRef}
                     gridRefs={gridRefs}
                     getProductCode={getProductCode}
+                    masterUnits={masterUnits}
                     unitSets={unitSets}
                     currency={currency}
                     currencyRate={effectiveInvoiceCurrencyRate}

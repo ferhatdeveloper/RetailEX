@@ -10,6 +10,9 @@ import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJourn
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { DocumentManager } from '../../shared/DocumentManager';
+import { unitAPI } from '../../../services/api/masterData';
+import { unitSetAPI } from '../../../services/unitSetAPI';
+import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
 
 interface SalesInvoiceModuleProps {
   customers: Customer[];
@@ -483,6 +486,25 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     amount: 0,
     netAmount: 0
   }]);
+
+  const [unitSelectOptions, setUnitSelectOptions] = useState<UnitSelectOption[]>(() =>
+    buildUnitSelectOptions([], [])
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [u, s] = await Promise.all([unitAPI.getAll(), unitSetAPI.getAll()]);
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions(u, s));
+      } catch {
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions([], []));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Filter products
   const getFilteredProducts = () => {
@@ -1162,10 +1184,11 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
                                   onFocus={() => setCurrentRowIndex(index)}
                                   className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
                                 >
-                                  <option>Brüt</option>
-                                  <option>Adet</option>
-                                  <option>Teneke</option>
-                                  <option>Set</option>
+                                  {withMissingUnitValue(unitSelectOptions, item.unit).map((o) => (
+                                    <option key={o.id} value={o.name}>
+                                      {o.name}
+                                    </option>
+                                  ))}
                                 </select>
                               </td>
 

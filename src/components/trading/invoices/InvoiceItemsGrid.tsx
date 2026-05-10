@@ -1,8 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { History, Trash2, Percent, Calendar, Barcode } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
+import {
+  buildUnitSelectOptions,
+  withMissingUnitValue,
+  type UnitMasterRow,
+  type UnitSelectOption,
+} from '../../../utils/unitOptions';
 
 const formatNumber = (num: number | undefined, decimals: number = 2, thousandSeparator: boolean = true) => {
     if (num === undefined || num === null) return '0';
@@ -61,6 +67,8 @@ interface InvoiceItemsGridProps {
     productDropdownRef: React.RefObject<HTMLDivElement | null>;
     gridRefs: React.MutableRefObject<{ [key: string]: HTMLInputElement | null }>;
     getProductCode: (code: string) => string;
+    /** Kart birimleri (`unitAPI`); birim seti dışı satırlarda birleşik liste için */
+    masterUnits?: UnitMasterRow[];
     unitSets?: any[];
     currency?: string;
     currencyRate?: number;
@@ -89,6 +97,7 @@ export const InvoiceItemsGrid = React.memo(({
     productDropdownRef,
     gridRefs,
     getProductCode,
+    masterUnits = [],
     unitSets = [],
     currency = 'IQD',
     currencyRate = 1,
@@ -102,6 +111,31 @@ export const InvoiceItemsGrid = React.memo(({
     const isColumnVisible = (columnId: string) => {
         return itemColumnVisibility[columnId] !== false;
     };
+
+    const globalUnitOptions = useMemo(
+        () => buildUnitSelectOptions(masterUnits, unitSets),
+        [masterUnits, unitSets]
+    );
+
+    const unitSelectOptionsForItem = useCallback(
+        (item: InvoiceItem): UnitSelectOption[] => {
+            if (item.unitsetId) {
+                const lines = unitSets.find((us: any) => us.id === item.unitsetId)?.lines || [];
+                const fromSet: UnitSelectOption[] = (lines as any[]).map((line: any) => {
+                    const name = String(line.name || '').trim();
+                    const code = String(line.code || line.item_code || '').trim() || name;
+                    return {
+                        id: String(line.id || `${item.unitsetId}:${code || name}`),
+                        code: code || name,
+                        name,
+                    };
+                }).filter((o) => o.name);
+                return withMissingUnitValue(fromSet, item.unit);
+            }
+            return withMissingUnitValue(globalUnitOptions, item.unit);
+        },
+        [globalUnitOptions, unitSets]
+    );
 
     const cariTextColor = useMemo(() => {
         switch (invoiceType.category) {
@@ -313,40 +347,11 @@ export const InvoiceItemsGrid = React.memo(({
                                             onClick={(e) => e.stopPropagation()}
                                             className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 bg-white"
                                         >
-                                            {item.unitsetId ? (
-                                                unitSets
-                                                    .find((us) => us.id === item.unitsetId)
-                                                    ?.lines?.map((line: any) => (
-                                                        <option key={line.id || line.code} value={line.name}>
-                                                            {line.name}
-                                                        </option>
-                                                    ))
-                                            ) : unitSets.length > 0 ? (
-                                                Array.from(
-                                                    new Set(
-                                                        unitSets
-                                                            .flatMap((us: any) => us.lines || [])
-                                                            .map((l: any) => l.name)
-                                                            .filter(Boolean)
-                                                    )
-                                                )
-                                                    .sort()
-                                                    .map((name: any) => (
-                                                        <option key={name} value={name}>
-                                                            {name}
-                                                        </option>
-                                                    ))
-                                            ) : (
-                                                <>
-                                                    <option>Adet</option>
-                                                    <option>Kg</option>
-                                                    <option>Metre</option>
-                                                    <option>Litre</option>
-                                                    <option>Koli</option>
-                                                    <option>Set</option>
-                                                    <option>Kutu</option>
-                                                </>
-                                            )}
+                                            {unitSelectOptionsForItem(item).map((o) => (
+                                                <option key={o.id} value={o.name}>
+                                                    {o.name}
+                                                </option>
+                                            ))}
                                         </select>
                                     </label>
                                 )}
@@ -559,27 +564,9 @@ export const InvoiceItemsGrid = React.memo(({
                                             onFocus={() => setCurrentRowIndex(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700"
                                         >
-                                            {item.unitsetId ? (
-                                                unitSets.find(us => us.id === item.unitsetId)?.lines?.map((line: any) => (
-                                                    <option key={line.id || line.code} value={line.name}>{line.name}</option>
-                                                ))
-                                            ) : unitSets.length > 0 ? (
-                                                Array.from(new Set(
-                                                    unitSets.flatMap((us: any) => us.lines || []).map((l: any) => l.name).filter(Boolean)
-                                                )).sort().map((name: any) => (
-                                                    <option key={name} value={name}>{name}</option>
-                                                ))
-                                            ) : (
-                                                <>
-                                                    <option>Adet</option>
-                                                    <option>Kg</option>
-                                                    <option>Metre</option>
-                                                    <option>Litre</option>
-                                                    <option>Koli</option>
-                                                    <option>Set</option>
-                                                    <option>Kutu</option>
-                                                </>
-                                            )}
+                                            {unitSelectOptionsForItem(item).map((o) => (
+                                                <option key={o.id} value={o.name}>{o.name}</option>
+                                            ))}
                                         </select>
                                     </td>
                                 )}

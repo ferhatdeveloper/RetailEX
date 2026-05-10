@@ -1,12 +1,15 @@
 ﻿// ğŸ“¦ Advanced Receiving Form - Gelişmiş Mal Kabul Formu
 // Şartlı kabul, SKT, Parti, Palet seçimi
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   AlertTriangle, Calendar, Package, Box, Layers,
   CheckCircle, XCircle, Clock, Tag, Ruler, Save, X
 } from 'lucide-react';
 import { BarcodeScanner } from './BarcodeScanner';
+import { unitAPI } from '../../../services/api/masterData';
+import { unitSetAPI } from '../../../services/unitSetAPI';
+import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
 
 interface AdvancedReceivingFormProps {
   darkMode: boolean;
@@ -84,6 +87,25 @@ export function AdvancedReceivingForm({
     putaway_location_id: initialData?.putaway_location_id || '',
     notes: initialData?.notes || '',
   });
+
+  const [unitSelectOptions, setUnitSelectOptions] = useState<UnitSelectOption[]>(() =>
+    buildUnitSelectOptions([], [])
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [u, s] = await Promise.all([unitAPI.getAll(), unitSetAPI.getAll()]);
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions(u, s));
+      } catch {
+        if (!cancelled) setUnitSelectOptions(buildUnitSelectOptions([], []));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gray-50';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -274,11 +296,11 @@ export function AdvancedReceivingForm({
                       onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                       className={`w-full px-4 py-2 rounded-lg border ${inputClass}`}
                     >
-                      <option value="Adet">Adet</option>
-                      <option value="Kg">Kg</option>
-                      <option value="Lt">Lt</option>
-                      <option value="Koli">Koli</option>
-                      <option value="Palet">Palet</option>
+                      {withMissingUnitValue(unitSelectOptions, formData.unit).map((o) => (
+                        <option key={o.id} value={o.name}>
+                          {o.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

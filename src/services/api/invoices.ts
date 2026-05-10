@@ -309,12 +309,12 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
   }
 
   if (invoice.items?.length) {
-    for (const item of invoice.items) {
+    const itemEnhancedList = invoice.items.map((item) => {
       const unitMultiplier = Number((item as any).multiplier || 1);
       const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
       const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
       const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
-      const itemEnhanced = {
+      return {
         id: self.crypto.randomUUID(),
         invoice_id: invoiceId,
         firm_nr: String(opts.firmNr),
@@ -336,25 +336,35 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         unit_price_fc: unitPriceFC,
         currency: itemCurrency,
       };
-      const itemLegacy = {
-        id: self.crypto.randomUUID(),
-        invoice_id: invoiceId,
-        firm_nr: String(opts.firmNr),
-        period_nr: String(opts.periodNr),
-        item_code: String(item.code || item.productId || ''),
-        item_name: String(item.description || item.productName || ''),
-        quantity: Number(item.quantity || 0),
-        unit: String((item as any).unit || 'Adet'),
-        unit_price: Number(item.unitPrice || item.price || 0),
-        discount_rate: Number(item.discount || 0),
-        vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
-        total_amount: Number(item.total || item.netAmount || 0),
-        net_amount: Number(item.netAmount || item.total || 0),
-      };
+    });
+    const itemLegacyList = invoice.items.map((item) => ({
+      id: self.crypto.randomUUID(),
+      invoice_id: invoiceId,
+      firm_nr: String(opts.firmNr),
+      period_nr: String(opts.periodNr),
+      item_code: String(item.code || item.productId || ''),
+      item_name: String(item.description || item.productName || ''),
+      quantity: Number(item.quantity || 0),
+      unit: String((item as any).unit || 'Adet'),
+      unit_price: Number(item.unitPrice || item.price || 0),
+      discount_rate: Number(item.discount || 0),
+      vat_rate: Number((item as any).taxRate || (item as any).vat_rate || 0),
+      total_amount: Number(item.total || item.netAmount || 0),
+      net_amount: Number(item.netAmount || item.total || 0),
+    }));
+    try {
+      await postgrest.post<any>(itemsTable, itemEnhancedList, { schema: 'public', prefer: 'return=minimal' });
+    } catch {
       try {
-        await postgrest.post<any>(itemsTable, itemEnhanced, { schema: 'public' });
+        await postgrest.post<any>(itemsTable, itemLegacyList, { schema: 'public', prefer: 'return=minimal' });
       } catch {
-        await postgrest.post<any>(itemsTable, itemLegacy, { schema: 'public' });
+        for (let i = 0; i < invoice.items!.length; i++) {
+          try {
+            await postgrest.post<any>(itemsTable, itemEnhancedList[i]!, { schema: 'public', prefer: 'return=minimal' });
+          } catch {
+            await postgrest.post<any>(itemsTable, itemLegacyList[i]!, { schema: 'public', prefer: 'return=minimal' });
+          }
+        }
       }
     }
   }
@@ -564,54 +574,70 @@ export const invoicesAPI = {
       const invoiceId = rows[0]?.id;
       if (!invoiceId) throw new Error("Invoice creation failed");
 
-      // 2. Insert invoice items
+      // 2. Insert invoice items (tek INSERT) + 3. stok güncellemeleri paralel
       if (invoice.items && invoice.items.length > 0) {
-        for (const item of invoice.items) {
+        const COLS = 20;
+        const rowTuples: string[] = [];
+        const flatParams: unknown[] = [];
+
+        const stockPromises: Promise<void>[] = [];
+
+        for (let idx = 0; idx < invoice.items.length; idx++) {
+          const item = invoice.items[idx]!;
           const productId = item.code || item.productId;
           const unitMultiplier = Number((item as any).multiplier || 1);
           const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
           const unitPriceFC = Number((item as any).unitPriceFC || item.unitPrice || item.price || 0);
           const itemCurrency = String((item as any).currency || (invoice as any).currency || 'IQD');
 
-          await postgres.query(
-            `INSERT INTO sale_items (
-                id,
-                invoice_id, firm_nr, period_nr, item_code, item_name,
-                quantity, unit, unit_price, discount_rate, vat_rate,
-                total_amount, net_amount,
-                unit_cost, total_cost, gross_profit,
-                unit_multiplier, base_quantity, unit_price_fc, currency
-             ) VALUES ($1::text::uuid, $2::text::uuid, $3::text, $4::text, $5::text, $6::text,
-               $7::text::numeric, $8::text, $9::text::numeric, $10::text::numeric, $11::text::numeric,
-               $12::text::numeric, $13::text::numeric,
-               $14::text::numeric, $15::text::numeric, $16::text::numeric,
-               $17::text::numeric, $18::text::numeric, $19::text::numeric, $20::text)`,
-            [
-              self.crypto.randomUUID(),
-              invoiceId,
-              String(firmNr),
-              String(periodNr),
-              String(productId),
-              String(item.description || item.productName),
-              Number(item.quantity),
-              String((item as any).unit || 'Adet'),
-              Number(item.unitPrice || item.price),
-              Number(item.discount || 0),
-              Number((item as any).taxRate || (item as any).vat_rate || 0),
-              Number(item.total || item.netAmount),
-              Number(item.netAmount || item.total),
-              Number(item.unitCost || 0),
-              Number(item.totalCost || 0),
-              Number(item.grossProfit || 0),
-              unitMultiplier,
-              baseQty,
-              unitPriceFC,
-              itemCurrency
-            ],
-            queryOptions
+          const base = idx * COLS;
+          const ph = [
+            `$${base + 1}::text::uuid`,
+            `$${base + 2}::text::uuid`,
+            `$${base + 3}::text`,
+            `$${base + 4}::text`,
+            `$${base + 5}::text`,
+            `$${base + 6}::text`,
+            `$${base + 7}::text::numeric`,
+            `$${base + 8}::text`,
+            `$${base + 9}::text::numeric`,
+            `$${base + 10}::text::numeric`,
+            `$${base + 11}::text::numeric`,
+            `$${base + 12}::text::numeric`,
+            `$${base + 13}::text::numeric`,
+            `$${base + 14}::text::numeric`,
+            `$${base + 15}::text::numeric`,
+            `$${base + 16}::text::numeric`,
+            `$${base + 17}::text::numeric`,
+            `$${base + 18}::text::numeric`,
+            `$${base + 19}::text::numeric`,
+            `$${base + 20}::text`,
+          ];
+          rowTuples.push(`(${ph.join(', ')})`);
+
+          flatParams.push(
+            self.crypto.randomUUID(),
+            invoiceId,
+            String(firmNr),
+            String(periodNr),
+            String(productId),
+            String(item.description || item.productName),
+            Number(item.quantity),
+            String((item as any).unit || 'Adet'),
+            Number(item.unitPrice || item.price),
+            Number(item.discount || 0),
+            Number((item as any).taxRate || (item as any).vat_rate || 0),
+            Number(item.total || item.netAmount),
+            Number(item.netAmount || item.total),
+            Number(item.unitCost || 0),
+            Number(item.totalCost || 0),
+            Number(item.grossProfit || 0),
+            unitMultiplier,
+            baseQty,
+            unitPriceFC,
+            itemCurrency
           );
 
-          // 3. Update stock — use base_quantity (accounts for unit multiplier)
           if (productId) {
             let stockModifier = 0;
             if (invoice.invoice_category === 'Alis') stockModifier = baseQty;
@@ -624,9 +650,10 @@ export const invoicesAPI = {
 
             if (stockModifier !== 0 && !createOptions?.skipProductStockUpdate) {
               const pid = String(productId).trim();
-              // firm_nr: DB'de "1" / "001" karışıklığı; code: ana kod, barkod tablosu ve UUID
-              const stkRes = await postgres.query<{ id: string; code: string; stock: string }>(
-                `UPDATE products AS p
+              stockPromises.push(
+                postgres
+                  .query<{ id: string; code: string; stock: string }>(
+                    `UPDATE products AS p
                  SET stock = COALESCE(p.stock::numeric, 0) + $1::numeric
                  FROM (
                    SELECT p2.id
@@ -650,20 +677,40 @@ export const invoicesAPI = {
                  ) AS sub
                  WHERE p.id = sub.id
                  RETURNING p.id, p.code, p.stock`,
-                [stockModifier, pid, firmNr],
-                queryOptions
+                    [stockModifier, pid, firmNr],
+                    queryOptions
+                  )
+                  .then((stkRes) => {
+                    if (!stkRes.rows?.length) {
+                      console.warn('[InvoicesAPI] Stok güncellenemedi — ürün veya firma eşleşmedi', {
+                        item_code: pid,
+                        firmNr,
+                        stockModifier,
+                        invoice_no: invoice.invoice_no,
+                        category: invoice.invoice_category
+                      });
+                    }
+                  })
               );
-              if (!stkRes.rows?.length) {
-                console.warn('[InvoicesAPI] Stok güncellenemedi — ürün veya firma eşleşmedi', {
-                  item_code: pid,
-                  firmNr,
-                  stockModifier,
-                  invoice_no: invoice.invoice_no,
-                  category: invoice.invoice_category
-                });
-              }
             }
           }
+        }
+
+        await postgres.query(
+          `INSERT INTO sale_items (
+                id,
+                invoice_id, firm_nr, period_nr, item_code, item_name,
+                quantity, unit, unit_price, discount_rate, vat_rate,
+                total_amount, net_amount,
+                unit_cost, total_cost, gross_profit,
+                unit_multiplier, base_quantity, unit_price_fc, currency
+             ) VALUES ${rowTuples.join(', ')}`,
+          flatParams,
+          queryOptions
+        );
+
+        if (stockPromises.length > 0) {
+          await Promise.all(stockPromises);
         }
       }
 

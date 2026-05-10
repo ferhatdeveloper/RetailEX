@@ -256,7 +256,7 @@ function App() {
   const setCampaigns = useCampaignStore((state) => state.setCampaigns);
 
   // Update product stock and customer purchase history
-  const updateProductStock = useProductStore((state) => state.updateStock);
+  const updateStocksBatch = useProductStore((state) => state.updateStocksBatch);
   const updateCustomerPurchaseHistory = useCustomerStore((state) => state.updatePurchaseHistory);
 
   const handleSaleComplete = useCallback(async (sale: any) => {
@@ -283,40 +283,42 @@ function App() {
     try {
       await addSale(sale);
 
-      const restaurantStore = useRestaurantStore.getState();
+      const prods = products || [];
+      const stockMap = new Map<string, number>(prods.map((p) => [p.id, Number(p.stock ?? 0)]));
+      let recipes: any[] = [];
+      try {
+        recipes = useRestaurantStore.getState()?.recipes || [];
+      } catch (e) {
+        logger.warn('[App] Could not get restaurantStore recipes', e);
+      }
 
-      for (const item of sale.items) {
-        // Recipe-aware stock deduction
-        let recipes: any[] = [];
-        try {
-          const restaurantStore = useRestaurantStore.getState();
-          recipes = restaurantStore?.recipes || [];
-        } catch (e) {
-          logger.warn('[App] Could not get restaurantStore recipes', e);
-        }
-
-        const recipe = recipes.find(r => r.menuItemId === item.productId);
-
-        if (recipe && recipe.ingredients) {
-          // It's a recipe item, deduct ingredients
+      for (const item of sale.items || []) {
+        const pid = item.productId;
+        const qty = Number(item.quantity || 0);
+        if (!pid) continue;
+        const recipe = recipes.find((r: any) => r.menuItemId === pid);
+        if (recipe?.ingredients?.length) {
           for (const ingredient of recipe.ingredients) {
-            if (ingredient.materialId) {
-              const product = (products || []).find(p => p.id === ingredient.materialId);
-              if (product) {
-                const usedAmount = (ingredient.quantity || 0) * (item.quantity || 0);
-                const newStock = (product.stock || 0) - usedAmount;
-                await updateProductStock(product.id, newStock);
-              }
-            }
+            const mid = ingredient.materialId;
+            if (!mid || !stockMap.has(mid)) continue;
+            const usedAmount = Number(ingredient.quantity || 0) * qty;
+            stockMap.set(mid, stockMap.get(mid)! - usedAmount);
           }
-        } else {
-          // Standard item, deduct directly
-          const product = (products || []).find(p => p.id === item.productId);
-          if (product) {
-            const newStock = (product.stock || 0) - (item.quantity || 0);
-            await updateProductStock(item.productId, newStock);
-          }
+        } else if (stockMap.has(pid)) {
+          stockMap.set(pid, stockMap.get(pid)! - qty);
         }
+      }
+
+      const stockUpdates: { id: string; quantity: number }[] = [];
+      for (const p of prods) {
+        const newStock = stockMap.get(p.id);
+        if (newStock === undefined) continue;
+        if (newStock !== Number(p.stock ?? 0)) {
+          stockUpdates.push({ id: p.id, quantity: newStock });
+        }
+      }
+      if (stockUpdates.length > 0) {
+        await updateStocksBatch(stockUpdates);
       }
 
       if (sale.customerId) {
@@ -328,7 +330,7 @@ function App() {
       logger.error('Satış kaydedilirken hata oluştu', error);
       alert(`Satış kaydedilemedi! Hata: ${(error as any).message || error}`);
     }
-  }, [addSale, products, sales, updateProductStock, updateCustomerPurchaseHistory]);
+  }, [addSale, products, sales, updateStocksBatch, updateCustomerPurchaseHistory]);
 
   const handleLogout = useCallback(() => {
     logout();

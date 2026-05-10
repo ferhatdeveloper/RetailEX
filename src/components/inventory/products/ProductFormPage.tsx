@@ -25,6 +25,7 @@ import { compressImageToWebP, formatBytes, getBase64Size } from '../../../utils/
 import { imageSearchService } from '../../../services/imageSearchService';
 import { supabaseProductImageService } from '../../../services/supabaseProductImageService';
 import { supabaseMenuSyncService, type MenuItem } from '../../../services/supabaseMenuSyncService';
+import { buildUnitSelectOptions } from '../../../utils/unitOptions';
 
 // BARKOD VE VARYANT KOD ÜRETİCİ UTILITY FONKSIYONLARI
 const generateEAN13 = (baseCode: string, index: number): string => {
@@ -492,35 +493,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   });
 
   /** Ana birim kartı (`units`) + birim seti satırlarındaki elle girilen isimler */
-  const unitOptions = useMemo((): MasterDataItem[] => {
-    const byName = new Map<string, MasterDataItem>();
-    for (const u of units) {
-      const name = String(u.name || '').trim();
-      if (!name) continue;
-      if (!byName.has(name)) {
-        byName.set(name, {
-          id: String(u.id),
-          code: String(u.code || '').trim() || name,
-          name,
-        });
-      }
-    }
-    for (const us of unitSets) {
-      for (const line of us.lines || []) {
-        const name = String(line.name || '').trim();
-        if (!name || byName.has(name)) continue;
-        const code = String(line.code || '').trim() || name;
-        byName.set(name, {
-          id: String(line.id || `unitset-line:${us.id}:${code}`),
-          code,
-          name,
-        });
-      }
-    }
-    return [...byName.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' })
-    );
-  }, [units, unitSets]);
+  const unitOptions = useMemo(
+    (): MasterDataItem[] => buildUnitSelectOptions(units, unitSets),
+    [units, unitSets]
+  );
 
   useEffect(() => {
     const fetchMasterData = async () => {
