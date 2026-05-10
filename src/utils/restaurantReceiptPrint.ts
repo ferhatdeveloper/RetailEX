@@ -1,6 +1,8 @@
 import type { Sale } from '../core/types/models';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { buildReceipt80mmPrintHtml } from './receipt80mmPrintHtml';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
+import { IS_TAURI } from './env';
 
 /** Receipt80mm / mutfak fişi ile aynı dil kodları */
 export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku';
@@ -288,6 +290,13 @@ const KITCHEN_I18N: Record<
   },
 };
 
+/** Mutfak fişi etiketleri (HTML / ESC/POS) */
+export function getKitchenTicketLabels(locale?: KitchenReceiptLocale) {
+  const loc: KitchenReceiptLocale =
+    locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' ? locale : 'tr';
+  return KITCHEN_I18N[loc];
+}
+
 function kitchenDateLocale(locale: KitchenReceiptLocale): string {
   switch (locale) {
     case 'en':
@@ -299,6 +308,13 @@ function kitchenDateLocale(locale: KitchenReceiptLocale): string {
     default:
       return 'tr-TR';
   }
+}
+
+/** Mutfak fişi «SAAT» satırı (ESC/POS ile aynı biçim) */
+export function formatKitchenTicketTime(locale?: KitchenReceiptLocale): string {
+  const loc: KitchenReceiptLocale =
+    locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' ? locale : 'tr';
+  return new Date().toLocaleString(kitchenDateLocale(loc));
 }
 
 /**
@@ -374,11 +390,11 @@ export function buildRestaurantKitchenTicketHtml(input: {
 
   const dir = locale === 'ar' || locale === 'ku' ? 'rtl' : 'ltr';
 
-  return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8"><title>${escapeHtml(L.title)}</title>
+  return `<!DOCTYPE html><html lang="${locale}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${escapeHtml(L.title)}</title>
 <style>
-  @page{size:80mm auto;margin:0}
-  html,body{height:auto!important;min-height:0!important;margin:0;padding:0}
-  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:11px;line-height:1.25;width:80mm;max-width:80mm;box-sizing:border-box;color:#000;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+${RECEIPT_80MM_DOCUMENT_CSS}
+  html, body { height: auto !important; min-height: 0 !important; }
+  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:11px;line-height:1.25;box-sizing:border-box;color:#000;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   *{color:#000 !important;box-sizing:border-box}
   h2{text-align:center;margin:4px 0 6px 0;font-size:15px;font-weight:900;letter-spacing:0.06em}
   hr{border:0;border-top:1.5px dashed #000;margin:6px 0}
@@ -459,21 +475,25 @@ export async function printHtmlInHiddenIframe(html: string): Promise<void> {
  * @param explicitPrinter — `undefined`: kasa fişi ayarındaki Windows yazıcısı; `string`: bu ad; `null`: OS varsayılanı
  */
 export async function printRestaurantHtmlNoPreview(html: string, explicitPrinter?: string | null): Promise<void> {
-  const isTauri = typeof window !== 'undefined' && ((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ || (window as unknown as { __TAURI__?: unknown }).__TAURI__);
-  if (isTauri) {
+  if (IS_TAURI) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    let printerName: string | null;
+    if (explicitPrinter === undefined || explicitPrinter === '') {
+      const { getAccountReceiptSystemPrinterName } = await import('./restaurantAccountReceiptPrinter');
+      printerName = getAccountReceiptSystemPrinterName();
+    } else if (explicitPrinter === null) {
+      printerName = null;
+    } else {
+      const t = String(explicitPrinter).trim();
+      printerName = t.length > 0 ? t : null;
+    }
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      let printerName: string | null;
-      if (explicitPrinter === undefined) {
-        const { getAccountReceiptSystemPrinterName } = await import('./restaurantAccountReceiptPrinter');
-        printerName = getAccountReceiptSystemPrinterName();
-      } else {
-        printerName = explicitPrinter;
-      }
       await invoke('print_html_silent', { html, printerName: printerName ?? null });
       return;
     } catch (e) {
       console.warn('[restaurantReceiptPrint] print_html_silent:', e);
+      /* Masaüstü: iframe+print() iletişim kutusu açar; sessiz yol başarısızsa hatayı üstte gösterilsin diye fırlat */
+      throw e;
     }
   }
 

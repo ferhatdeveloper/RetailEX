@@ -18,6 +18,7 @@ import { PrinterProfile, PrinterRouting } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/components/ui/utils';
 import { mergeWindowsPrinterNameIntoLocalStorage } from '@/utils/tauriPrintSettings';
+import { normKitchenCategory } from '@/utils/restaurantKitchenPrint';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export const RestaurantPrinterSettings: React.FC = () => {
@@ -73,14 +74,19 @@ export const RestaurantPrinterSettings: React.FC = () => {
 
     const handleSaveProfile = () => {
         if (editingProfile && editingProfile.name) {
+            const conn = editingProfile.connection || 'network';
+            const addr = conn === 'network' ? String(editingProfile.address ?? '').trim() : undefined;
+            const portNum = conn === 'network' ? Number(editingProfile.port) || 9100 : undefined;
             updatePrinterProfile({
+                ...editingProfile,
                 id: editingProfile.id || uuidv4(),
                 name: editingProfile.name,
                 type: editingProfile.type || 'thermal',
-                connection: editingProfile.connection || 'network',
+                connection: conn,
                 status: 'online',
-                systemName: editingProfile.connection === 'system' ? editingProfile.systemName : undefined,
-                ...editingProfile
+                systemName: conn === 'system' ? editingProfile.systemName : undefined,
+                address: addr || undefined,
+                port: conn === 'network' ? Math.min(65535, Math.max(1, portNum ?? 9100)) : undefined,
             } as PrinterProfile);
             // Tauri 80mm fiş (print_html_silent) aynı localStorage anahtarını okur — buradan seçilen Windows yazıcısı fişe de yansır
             if (editingProfile.connection === 'system' && editingProfile.systemName?.trim()) {
@@ -100,7 +106,16 @@ export const RestaurantPrinterSettings: React.FC = () => {
                     </p>
                 </div>
                 <button
-                    onClick={() => setEditingProfile({ id: uuidv4(), name: '', type: 'thermal', connection: 'network' })}
+                    onClick={() =>
+                        setEditingProfile({
+                            id: uuidv4(),
+                            name: '',
+                            type: 'thermal',
+                            connection: 'network',
+                            address: '',
+                            port: 9100,
+                        })
+                    }
                     className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black uppercase text-xs transition-all shadow-xl shadow-blue-200 active:scale-95"
                 >
                     <Plus className="w-4 h-4" />
@@ -139,7 +154,12 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{profile.status}</span>
                                         <span className="mx-2 text-slate-200">|</span>
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                                            {profile.type} {profile.connection === 'system' ? `(${profile.systemName})` : profile.connection}
+                                            {profile.type}{' '}
+                                            {profile.connection === 'system'
+                                                ? `(${profile.systemName})`
+                                                : profile.connection === 'network' && profile.address
+                                                  ? `${profile.address}:${profile.port ?? 9100}`
+                                                  : profile.connection}
                                         </span>
                                     </div>
                                 </div>
@@ -203,7 +223,10 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             <h2 className="text-xl font-black text-slate-800 tracking-tight">{tm('restPrintRouteTitle')}</h2>
                         </div>
 
-                        <p className="text-sm text-slate-600 mb-4 leading-relaxed">{tm('restPrintRouteHint')}</p>
+                        <p className="text-sm text-slate-600 mb-2 leading-relaxed">{tm('restPrintRouteHint')}</p>
+                        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4 leading-relaxed">
+                            {tm('restPrintRouteDispatchBanner')}
+                        </p>
 
                         <div className="space-y-4">
                             {categories.length === 0 ? (
@@ -222,12 +245,18 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                 </div>
                             ) : (
                                 categories.map((cat) => {
-                                    const route = printerRoutes.find((r) => r.categoryId === cat);
+                                    const route = printerRoutes.find(
+                                        (r) => normKitchenCategory(r.categoryId) === normKitchenCategory(cat)
+                                    );
+                                    const selectValue =
+                                        route?.printerId && printerProfiles.some((p) => p.id === route.printerId)
+                                            ? route.printerId
+                                            : '';
                                     return (
                                         <div key={cat} className="space-y-2">
                                             <label className="text-xs font-bold text-slate-600 uppercase tracking-wide pl-1">{cat}</label>
                                             <select
-                                                value={route?.printerId || ''}
+                                                value={selectValue}
                                                 onChange={(e) => {
                                                     const pId = e.target.value;
                                                     if (pId) {
@@ -250,6 +279,11 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                                 {printerProfiles.map((p) => (
                                                     <option key={p.id} value={p.id}>
                                                         {p.name}
+                                                        {p.connection === 'network' && p.address
+                                                            ? ` (${p.address}:${p.port ?? 9100})`
+                                                            : p.connection === 'system' && p.systemName
+                                                              ? ` (${p.systemName})`
+                                                              : ''}
                                                     </option>
                                                 ))}
                                             </select>
@@ -322,15 +356,34 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             )}
 
                             {editingProfile.connection === 'network' && (
-                                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                                    <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintIpLabel')}</label>
-                                    <input
-                                        type="text"
-                                        value={(editingProfile as any).address || ''}
-                                        onChange={(e) => setEditingProfile({ ...editingProfile, address: e.target.value } as any)}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                                        placeholder="192.168.1.100"
-                                    />
+                                <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintIpLabel')}</label>
+                                        <input
+                                            type="text"
+                                            value={editingProfile.address || ''}
+                                            onChange={(e) => setEditingProfile({ ...editingProfile, address: e.target.value })}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="192.168.1.100"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintPortLabel')}</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={65535}
+                                            value={editingProfile.port ?? 9100}
+                                            onChange={(e) =>
+                                                setEditingProfile({
+                                                    ...editingProfile,
+                                                    port: Math.min(65535, Math.max(1, Number(e.target.value) || 9100)),
+                                                })
+                                            }
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                        <p className="text-[11px] text-slate-500 pl-1">{tm('restPrintPortHint')}</p>
+                                    </div>
                                 </div>
                             )}
 

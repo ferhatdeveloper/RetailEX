@@ -6,7 +6,7 @@ import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
 import { salesAPI } from '../../../services/api/sales';
 import { supabase } from '../../../utils/supabase/client';
-import type { Sale } from '../../../core/types';
+import type { Sale, Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -53,37 +53,8 @@ const getIcon = (iconName: string) => {
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
 
-interface Invoice {
-  id?: string;
-  invoice_no: string;
-  invoice_date: string;
-  date?: string;
-  invoice_type?: number;
-  trcode?: number; // Added trcode matching DB column
-  invoice_category?: string;
-  source?: 'pos' | 'invoice';
-  customer_name?: string;
-  customer_id?: string;
-  total: number;
-  total_amount?: number;
-  total_cost?: number;
-  gross_profit?: number;
-  profit_margin?: number;
-  subtotal: number;
-  discount: number;
-  tax: number;
-  payment_method: string;
-  currency?: string;
-  currency_rate?: number;
-  cashier?: string;
-  cashier_id?: string;
-  cash_register_id?: string;
-  status: string;
-  items?: any[];
-  campaign_id?: string;
-  campaign_name?: string;
-  campaign_discount?: number;
-}
+/** Liste satırı: SQL/PostgREST `trcode` ve tarih alias'ı `date` */
+type ListInvoice = Invoice & { trcode?: number; date?: string };
 
 export function InvoiceListModule({ customers = [], products = [], defaultInvoiceTypeFilter, defaultCategory, title, description }: InvoiceListModuleProps) {
   const { tm } = useLanguage();
@@ -108,11 +79,11 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     { code: 30, name: tm('salesQuote'), category: 'Teklif', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileSignature', translationKey: 'salesQuote' },
     { code: 31, name: tm('purchaseQuote'), category: 'Teklif', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileSignature', translationKey: 'purchaseQuote' },
   ];
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoices, setInvoices] = useState<ListInvoice[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    invoice: Invoice | null;
+    invoice: ListInvoice | null;
   } | null>(null);
 
   const handleDeleteInvoice = async (id: string, invoiceNo: string) => {
@@ -135,13 +106,13 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   };
 
   // Helper for printing
-  const handlePrintInvoice = async (invoice: Invoice) => {
+  const handlePrintInvoice = async (invoice: ListInvoice) => {
     // Determine label based on invoice type
     const typeLabel = INVOICE_TYPES.find(t => t.code === (invoice.invoice_type || invoice.trcode))?.name?.toUpperCase() || tm('invoice').toUpperCase();
-    await printInvoice(invoice, typeLabel);
+    await printInvoice(invoice as Invoice, typeLabel);
   };
 
-  const handleRowRightClick = (e: React.MouseEvent, invoice: Invoice) => {
+  const handleRowRightClick = (e: React.MouseEvent, invoice: ListInvoice) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
@@ -154,7 +125,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(defaultInvoiceTypeFilter || 'all');
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<ListInvoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showInvoiceTypeModal, setShowInvoiceTypeModal] = useState(false);
   const [selectedInvoiceType, setSelectedInvoiceType] = useState<InvoiceType | null>(null);
@@ -175,7 +146,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
-  const [mobileActionInvoice, setMobileActionInvoice] = useState<Invoice | null>(null);
+  const [mobileActionInvoice, setMobileActionInvoice] = useState<ListInvoice | null>(null);
 
   // Debounce için
   const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(null);
@@ -262,7 +233,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       const purchaseType = INVOICE_TYPES.find(t => t.code === 1);
       if (!purchaseType) return;
       setShowInvoiceTypeModal(false);
-      setEditInvoiceData(payload.editData as Invoice);
+      setEditInvoiceData(payload.editData as unknown as Invoice);
       setNewFormCounter(c => c + 1);
       setSelectedInvoiceType(purchaseType);
     } catch {
@@ -294,8 +265,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
       // Fatura türü filtresi
       if (invoiceTypeFilter !== 'all') {
-        filteredData = filteredData.filter(inv => {
-          const invoiceType = inv.invoice_type || inv.trcode || 0;
+        filteredData = (filteredData as ListInvoice[]).filter(inv => {
+          const invoiceType = inv.invoice_type ?? inv.trcode ?? 0;
           return invoiceType.toString() === invoiceTypeFilter;
         });
       }
@@ -305,7 +276,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         filteredData = filteredData.filter((inv) => invoiceMatchesModuleCategory(inv, defaultCategory));
       }
 
-      setInvoices(filteredData);
+      setInvoices(filteredData as ListInvoice[]);
       setTotalCount(result.total);
       setTotalPages(result.totalPages);
 
@@ -327,7 +298,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     }
   };
 
-  const handleViewDetail = (invoice: Invoice) => {
+  const handleViewDetail = (invoice: ListInvoice) => {
     setSelectedInvoice(invoice);
     setShowDetailModal(true);
   };
@@ -343,7 +314,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   useEffect(() => () => clearLongPress(), [clearLongPress]);
 
   const startLongPress = useCallback(
-    (clientX: number, clientY: number, invoice: Invoice) => {
+    (clientX: number, clientY: number, invoice: ListInvoice) => {
       clearLongPress();
       longPressOriginRef.current = { x: clientX, y: clientY };
       longPressTimerRef.current = setTimeout(() => {
@@ -384,7 +355,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     }
   };
 
-  const getInvoiceTypeMeta = (invoice: Invoice) => {
+  const getInvoiceTypeMeta = (invoice: ListInvoice) => {
     let invoiceTypeCode: number | undefined = invoice.invoice_type;
     if (invoiceTypeCode === undefined || invoiceTypeCode === null) {
       if (invoice.source === 'pos' || invoice.cashier) {
@@ -416,7 +387,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     return colors[status] || 'bg-gray-100 text-gray-700';
   };
 
-  const resolveInvoiceTypeForEdit = (inv: Invoice): InvoiceType => {
+  const resolveInvoiceTypeForEdit = (inv: ListInvoice): InvoiceType => {
     const code = Number(inv.invoice_type ?? inv.trcode ?? 0);
     let t = INVOICE_TYPES.find(x => x.code === code);
     if (t) return t;
@@ -432,7 +403,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     return INVOICE_TYPES.find(x => x.code === 8) || INVOICE_TYPES[0];
   };
 
-  const handleEditInvoice = async (invoice: Invoice) => {
+  const handleEditInvoice = async (invoice: ListInvoice) => {
     if (!invoice.id) {
       toast.error(tm('invoiceSaveError'));
       return;
@@ -447,8 +418,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         ...raw,
         items: Array.isArray(raw.items) ? raw.items.map((it: any) => ({ ...it })) : []
       };
-      const invoiceType = resolveInvoiceTypeForEdit(data);
-      setEditInvoiceData(data);
+      const invoiceType = resolveInvoiceTypeForEdit(data as ListInvoice);
+      setEditInvoiceData(data as Invoice);
       setSelectedInvoiceType(invoiceType);
     } catch (error) {
       console.error('Fatura detayları yüklenirken hata:', error);
@@ -456,8 +427,8 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         ...invoice,
         items: Array.isArray(invoice.items) ? invoice.items.map((it: any) => ({ ...it })) : []
       };
-      const invoiceType = resolveInvoiceTypeForEdit(data);
-      setEditInvoiceData(data);
+      const invoiceType = resolveInvoiceTypeForEdit(data as ListInvoice);
+      setEditInvoiceData(data as Invoice);
       setSelectedInvoiceType(invoiceType);
     }
   };
@@ -522,10 +493,10 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     );
   }
 
-  const totalAmount = invoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0);
 
   // Table columns
-  const columnHelper = createColumnHelper<Invoice>();
+  const columnHelper = createColumnHelper<ListInvoice>();
   const columns = [
     columnHelper.accessor('invoice_no', {
       header: tm('invoiceNo'),
@@ -618,15 +589,15 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     columnHelper.accessor('status', {
       header: tm('status'),
       cell: info => {
-        const status = info.getValue();
+        const status = info.getValue() ?? '';
         const colors: Record<string, string> = {
           'completed': 'bg-green-100 text-green-700',
           'pending': 'bg-yellow-100 text-yellow-700',
           'refunded': 'bg-red-100 text-red-700',
           'cancelled': 'bg-gray-100 text-gray-700',
         };
-        const colorClass = colors[status] || 'bg-gray-100 text-gray-700';
-        const localizedStatus = tm(status) || status;
+        const colorClass = (status ? colors[status] : undefined) || 'bg-gray-100 text-gray-700';
+        const localizedStatus = status ? tm(status) || status : '—';
         return <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>{localizedStatus}</span>;
       }
     }),
@@ -1198,7 +1169,9 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               label: tm('deleteAction'),
               icon: Trash2,
               onClick: () => {
-                if (contextMenu.invoice) handleDeleteInvoice(contextMenu.invoice.id, contextMenu.invoice.invoice_no);
+                if (contextMenu.invoice?.id) {
+                  handleDeleteInvoice(contextMenu.invoice.id, contextMenu.invoice.invoice_no);
+                }
               },
               variant: 'danger'
             }

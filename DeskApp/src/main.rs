@@ -23,12 +23,14 @@ mod caller_id_serial;
 
 use sync::BackgroundSyncService;
 use std::os::windows::process::CommandExt;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use tauri::{Manager, Emitter};
 use tauri::path::BaseDirectory;
 use tokio_postgres::Client;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 // Connection Cache for Performance
 pub struct DbConnection {
@@ -1329,6 +1331,36 @@ async fn pg_execute_file(state: tauri::State<'_, DbState>, conn_str: String, fil
     pg_execute(state, conn_str, sql).await
 }
 
+/// Ağ termal (ham socket, çoğu 9100): ESC/POS baytlarını doğrudan yazıcıya gönderir.
+#[tauri::command]
+async fn print_escpos_tcp(host: String, port: u16, data_b64: String) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpStream;
+    use std::time::Duration;
+
+    let host = host.trim().to_string();
+    if host.is_empty() {
+        return Err("Yazıcı adresi (IP/host) boş.".into());
+    }
+    let data = STANDARD
+        .decode(data_b64.trim())
+        .map_err(|e| format!("Base64 çözümü: {}", e))?;
+    if data.is_empty() {
+        return Err("ESC/POS verisi boş.".into());
+    }
+    let addr = format!("{}:{}", host, port);
+    let mut stream = tokio::time::timeout(Duration::from_secs(8), TcpStream::connect(&addr))
+        .await
+        .map_err(|_| format!("Bağlantı zaman aşımı (8 sn): {}", addr))?
+        .map_err(|e| format!("TCP {}: {}", addr, e))?;
+    stream.set_nodelay(true).map_err(|e| e.to_string())?;
+    tokio::time::timeout(Duration::from_secs(15), stream.write_all(&data))
+        .await
+        .map_err(|_| "Gönderim zaman aşımı (15 sn).".to_string())?
+        .map_err(|e| format!("Yazdırma gönderimi: {}", e))?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn write_bytes(path: String, data: Vec<u8>) -> Result<(), String> {
     if let Some(parent) = std::path::Path::new(&path).parent() {
@@ -1408,12 +1440,71 @@ fn resolve_target_printer_name(printer_name: Option<String>) -> Option<String> {
     get_default_printer_name_windows()
 }
 
+/// Sessiz yazdırma için SumatraPDF.exe yolu: `RETEX_SUMATRA_EXE`, Tauri Resource, `resource_dir` varyantları,
+/// `tauri dev` çıktısı (`target/.../resources/sumatra`), sistem kurulumu.
+fn resolve_sumatra_pdf_exe(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+
+    let try_file = |p: PathBuf| -> Option<PathBuf> { p.is_file().then_some(p) };
+
+    if let Ok(s) = std::env::var("RETEX_SUMATRA_EXE") {
+        let p = PathBuf::from(s.trim());
+        if let Some(x) = try_file(p) {
+            return Some(x);
+        }
+    }
+
+    for rel in ["sumatra/SumatraPDF.exe", "resources/sumatra/SumatraPDF.exe"] {
+        if let Ok(p) = app.path().resolve(rel, BaseDirectory::Resource) {
+            if let Some(x) = try_file(p) {
+                return Some(x);
+            }
+        }
+    }
+
+    if let Ok(rd) = app.path().resource_dir() {
+        let tails: &[&[&str]] = &[
+            &["sumatra", "SumatraPDF.exe"],
+            &["resources", "sumatra", "SumatraPDF.exe"],
+            &["_up_", "resources", "sumatra", "SumatraPDF.exe"],
+        ];
+        for tail in tails {
+            let p = tail.iter().fold(rd.clone(), |acc, s| acc.join(s));
+            if let Some(x) = try_file(p) {
+                return Some(x);
+            }
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for rel in [&["resources", "sumatra", "SumatraPDF.exe"][..], &["sumatra", "SumatraPDF.exe"][..]] {
+                let p = rel.iter().fold(dir.to_path_buf(), |acc, s| acc.join(s));
+                if let Some(x) = try_file(p) {
+                    return Some(x);
+                }
+            }
+        }
+    }
+
+    for sys in [
+        r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
+        r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
+    ] {
+        if let Some(x) = try_file(PathBuf::from(sys)) {
+            return Some(x);
+        }
+    }
+
+    None
+}
+
 /// Windows: Edge headless ile PDF üret; ardından SumatraPDF varsa sessiz yazdır (cmd/WebView önizlemesi yok).
 /// Sumatra yoksa PDF için sistem yazdırma iletişim kutusu açılır (WebView2 önizleme hatasından kaçınır).
 fn print_html_via_edge_windows(
     html: String,
     printer_name: Option<String>,
-    bundled_sumatra: Option<std::path::PathBuf>,
+    sumatra_exe: Option<std::path::PathBuf>,
 ) -> Result<(), String> {
     use std::env;
     use std::fs::File;
@@ -1447,25 +1538,6 @@ fn print_html_via_edge_windows(
         None
     }
 
-    fn find_sumatra(bundled: Option<PathBuf>) -> Option<PathBuf> {
-        if let Some(ref p) = bundled {
-            if p.is_file() {
-                return Some(p.clone());
-            }
-        }
-        let candidates = [
-            r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
-            r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
-        ];
-        for p in candidates {
-            let pb = PathBuf::from(p);
-            if pb.is_file() {
-                return Some(pb);
-            }
-        }
-        None
-    }
-
     fn path_to_file_url(path: &std::path::Path) -> Result<String, String> {
         let s = path.to_str().ok_or("Geçersiz dosya yolu")?;
         let u = s.replace('\\', "/");
@@ -1476,10 +1548,116 @@ fn print_html_via_edge_windows(
         }
     }
 
-    let edge = find_edge().ok_or(
-        "Microsoft Edge bulunamadı. Fiş PDF için Edge gerekir.\n\
-         Kurulum: https://www.microsoft.com/edge",
-    )?;
+    fn find_chrome_for_print() -> Option<PathBuf> {
+        let candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ];
+        for p in candidates {
+            let pb = PathBuf::from(p);
+            if pb.is_file() {
+                return Some(pb);
+            }
+        }
+        let mut w = Command::new("where");
+        w.arg("chrome.exe");
+        w.creation_flags(CREATE_NO_WINDOW);
+        if let Ok(out) = w.output() {
+            if out.status.success() {
+                let line = String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("").trim().to_string();
+                if !line.is_empty() {
+                    return Some(PathBuf::from(line));
+                }
+            }
+        }
+        None
+    }
+
+    /// Headless Chromium: PDF oluşana kadar bekle (Edge bazen süreç bittikten sonra diske yazar).
+    fn run_headless_print_to_pdf(
+        browser_exe: &Path,
+        headless_arg: &str,
+        user_data_dir: &Path,
+        pdf_path: &Path,
+        file_url: &str,
+        disable_gpu: bool,
+    ) -> Result<(), String> {
+        use std::thread;
+        use std::time::Duration;
+
+        let pdf_path_str = pdf_path.to_str().ok_or("Geçersiz PDF yolu")?;
+        let profile_str = user_data_dir.to_str().ok_or("Geçersiz tarayıcı profil yolu")?;
+        let _ = std::fs::create_dir_all(user_data_dir);
+
+        // 302 ≈ 80mm @96dpi — geniş pencerede PDF sayfası A4 kalıp termalde küçük/yanlış ölçeklenebiliyor
+        let mut args: Vec<String> = vec![
+            headless_arg.to_string(),
+            "--window-size=302,8192".into(),
+            "--force-device-scale-factor=1".into(),
+        ];
+        if disable_gpu {
+            args.push("--disable-gpu".into());
+        }
+        args.extend([
+            "--no-first-run".into(),
+            "--no-default-browser-check".into(),
+            "--disable-extensions".into(),
+            "--disable-component-extensions-with-background-pages".into(),
+            "--disable-background-networking".into(),
+            "--disable-sync".into(),
+            "--disable-translate".into(),
+            "--mute-audio".into(),
+            "--no-sandbox".into(),
+            "--disable-popup-blocking".into(),
+            "--disable-hang-monitor".into(),
+            "--disable-ipc-flooding-protection".into(),
+            "--disable-renderer-backgrounding".into(),
+            "--disable-prompt-on-repost".into(),
+            "--disable-features=TranslateUI".into(),
+            "--metrics-recording-only".into(),
+            "--disable-logging".into(),
+            format!("--user-data-dir={}", profile_str),
+            format!("--print-to-pdf={}", pdf_path_str),
+            "--no-pdf-header-footer".into(),
+            "--virtual-time-budget=20000".into(),
+            file_url.to_string(),
+        ]);
+
+        let mut cmd = Command::new(browser_exe);
+        cmd.args(&args);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let out = cmd
+            .output()
+            .map_err(|e| format!("Tarayıcı başlatılamadı ({}): {}", browser_exe.display(), e))?;
+
+        let stderr_lossy = String::from_utf8_lossy(&out.stderr);
+        let stdout_lossy = String::from_utf8_lossy(&out.stdout);
+
+        // PDF bazen birkaç yüz ms sonra oluşur
+        for _ in 0..100 {
+            if pdf_path.is_file() {
+                if let Ok(meta) = pdf_path.metadata() {
+                    if meta.len() > 64 {
+                        return Ok(());
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+
+        let code = out.status.code();
+        Err(format!(
+            "{} PDF üretilemedi. exit={:?} | stderr: {} | stdout: {}",
+            browser_exe.display(),
+            code,
+            stderr_lossy.chars().take(1600).collect::<String>(),
+            stdout_lossy.chars().take(400).collect::<String>()
+        ))
+    }
 
     let temp_dir = env::temp_dir();
     let file_id = uuid::Uuid::new_v4();
@@ -1492,49 +1670,52 @@ fn print_html_via_edge_windows(
     let pdf_path_str = pdf_path.to_str().ok_or("Geçersiz PDF yolu")?;
     let file_url = path_to_file_url(&html_path)?;
 
-    // Tek profil: sonraki yazdırmalarda Edge bileşen önbelleği → daha hızlı soğuk başlatma
-    let edge_profile = temp_dir.join("retailex_edge_print_profile");
-    let _ = std::fs::create_dir_all(&edge_profile);
-    let profile_str = edge_profile.to_str().ok_or("Geçersiz Edge profil yolu")?;
+    // Her fiş için ayrı user-data-dir: paylaşılan profilde kilit / çökme sonrası Edge PDF üretmeyebiliyor.
+    let profile_base = temp_dir.join(format!("retailex_edge_print_{}", file_id));
+    let _ = std::fs::create_dir_all(&profile_base);
 
-    let mut edge_cmd = Command::new(&edge);
-    edge_cmd.args([
-        "--headless=new",
-        "--disable-gpu",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-extensions",
-        "--disable-component-extensions-with-background-pages",
-        "--disable-background-networking",
-        "--disable-sync",
-        "--disable-translate",
-        "--mute-audio",
-        "--no-sandbox",
-        "--disable-popup-blocking",
-        "--disable-hang-monitor",
-        "--disable-ipc-flooding-protection",
-        "--disable-renderer-backgrounding",
-        "--disable-prompt-on-repost",
-        "--disable-features=TranslateUI",
-        "--metrics-recording-only",
-        "--disable-logging",
-    ]);
-    edge_cmd.arg(format!("--user-data-dir={}", profile_str));
-    edge_cmd.arg(format!("--print-to-pdf={}", pdf_path_str));
-    edge_cmd.arg("--no-pdf-header-footer");
-    edge_cmd.arg(&file_url);
-    edge_cmd.stdin(Stdio::null());
-    edge_cmd.stdout(Stdio::null());
-    edge_cmd.stderr(Stdio::null());
-    edge_cmd.creation_flags(CREATE_NO_WINDOW);
+    let mut pdf_err: Option<String> = None;
 
-    let edge_status = edge_cmd
-        .status()
-        .map_err(|e| format!("Edge çalıştırılamadı: {}", e))?;
-    if !edge_status.success() || !pdf_path.exists() {
+    if let Some(edge) = find_edge() {
+        let p1 = profile_base.join("a");
+        match run_headless_print_to_pdf(&edge, "--headless=new", &p1, &pdf_path, &file_url, true) {
+            Ok(()) => pdf_err = None,
+            Err(e1) => {
+                let _ = std::fs::remove_file(&pdf_path);
+                let p2 = profile_base.join("b");
+                match run_headless_print_to_pdf(&edge, "--headless", &p2, &pdf_path, &file_url, false) {
+                    Ok(()) => pdf_err = None,
+                    Err(e2) => {
+                        pdf_err = Some(format!("Edge (headless=new): {} | Edge (headless): {}", e1, e2));
+                    }
+                }
+            }
+        }
+    }
+
+    let pdf_ok_len = || pdf_path.is_file() && pdf_path.metadata().map(|m| m.len()).unwrap_or(0) > 64;
+    if pdf_err.is_some() || !pdf_ok_len() {
+        if let Some(chrome) = find_chrome_for_print() {
+            let _ = std::fs::remove_file(&pdf_path);
+            let p3 = profile_base.join("c");
+            match run_headless_print_to_pdf(&chrome, "--headless", &p3, &pdf_path, &file_url, true) {
+                Ok(()) => pdf_err = None,
+                Err(e3) => {
+                    let prev = pdf_err
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("Edge PDF üretilemedi.");
+                    pdf_err = Some(format!("{} | Chrome: {}", prev, e3));
+                }
+            }
+        }
+    }
+
+    if pdf_err.is_some() || !pdf_ok_len() {
+        let _ = std::fs::remove_file(&html_path);
         return Err(
-            "Edge PDF oluşturamadı (çıkış kodu veya dosya yok). Edge güncel mi kontrol edin."
-                .into(),
+            pdf_err
+                .unwrap_or_else(|| "Edge/Chrome ile PDF oluşturulamadı. Microsoft Edge veya Google Chrome kurulu olmalı.".into()),
         );
     }
 
@@ -1542,64 +1723,48 @@ fn print_html_via_edge_windows(
 
     let target_printer = resolve_target_printer_name(printer_name);
 
-    if let Some(sumatra) = find_sumatra(bundled_sumatra) {
-        // Önce hızlı yol: kuyruğa atıp çık (-exit-on-print yok → yazıcı bitene kadar beklenmez).
-        // Bazı sürücülerde başarısız olursa ikinci denemede -exit-on-print ile tekrarlanır.
-        let run_sumatra = |wait_device: bool| -> Result<std::process::ExitStatus, std::io::Error> {
-            let mut s = Command::new(&sumatra);
-            s.creation_flags(CREATE_NO_WINDOW);
-            s.stdin(Stdio::null());
-            s.stdout(Stdio::null());
-            s.stderr(Stdio::null());
-            match &target_printer {
-                Some(name) => {
-                    s.arg("-print-to").arg(name).arg("-silent");
-                    if wait_device {
-                        s.arg("-exit-on-print");
-                    }
-                    s.arg(pdf_path_str);
-                }
-                None => {
-                    s.arg("-print-to-default").arg("-silent");
-                    if wait_device {
-                        s.arg("-exit-on-print");
-                    }
-                    s.arg(pdf_path_str);
-                }
+    if let Some(sumatra) = sumatra_exe.filter(|p| p.is_file()) {
+        // Her zaman -exit-on-print: Sumatra çok erken çıkınca kuyruk bazen boş kalıyor (sessiz yol «çalışmıyor» gibi).
+        let mut s = Command::new(&sumatra);
+        s.creation_flags(CREATE_NO_WINDOW);
+        s.stdin(Stdio::null());
+        s.stdout(Stdio::null());
+        s.stderr(Stdio::null());
+        // portrait bazı Sumatra sürümlerinde dar PDF ile sorun çıkarabiliyor; noscale yeterli.
+        match &target_printer {
+            Some(name) => {
+                s.arg("-print-to")
+                    .arg(name)
+                    .arg("-print-settings")
+                    .arg("noscale")
+                    .arg("-silent")
+                    .arg("-exit-on-print")
+                    .arg(pdf_path_str);
             }
-            s.status()
-        };
-
-        let ok_fast = run_sumatra(false).map(|st| st.success()).unwrap_or(false);
-        if !ok_fast {
-            let st_slow = run_sumatra(true).map_err(|e| e.to_string())?;
-            if !st_slow.success() {
-                return Err(
-                    "SumatraPDF yazdırma başarısız (hızlı ve bekleme modu). Yazıcı adını kontrol edin."
-                        .into(),
-                );
+            None => {
+                s.arg("-print-to-default")
+                    .arg("-print-settings")
+                    .arg("noscale")
+                    .arg("-silent")
+                    .arg("-exit-on-print")
+                    .arg(pdf_path_str);
             }
+        }
+        let st = s.status().map_err(|e| e.to_string())?;
+        if !st.success() {
+            return Err(
+                "SumatraPDF sessiz yazdırma başarısız. Yazıcı adı / Sumatra sürümü / sürücü kuyruğunu kontrol edin."
+                    .into(),
+            );
         }
     } else {
-        let pdf_esc = pdf_path_str.replace('\'', "''");
-        let ps = format!(
-            "Start-Process -FilePath '{}' -Verb Print -WindowStyle Normal -ErrorAction Stop",
-            pdf_esc
+        let _ = std::fs::remove_file(&pdf_path);
+        return Err(
+            "SumatraPDF.exe bulunamadı; PDF önizlemesi açmadan yazdırmak mümkün değil. \
+Projede kök dizinde `npm run sumatra:fetch` çalıştırıp uygulamayı yeniden derleyin, SumatraPDF kurun veya \
+RETEX_SUMATRA_EXE ortam değişkeniyle SumatraPDF.exe tam yolunu verin."
+                .into(),
         );
-        let mut ps_cmd = Command::new("powershell");
-        ps_cmd.args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &ps,
-        ]);
-        ps_cmd.creation_flags(CREATE_NO_WINDOW);
-        let out = ps_cmd.output().map_err(|e| e.to_string())?;
-        if !out.status.success() {
-            return Err(String::from_utf8_lossy(&out.stderr).to_string());
-        }
     }
 
     let pdf_path_clone = pdf_path.clone();
@@ -1619,14 +1784,9 @@ async fn print_html_silent(
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let bundled_sumatra = app
-            .path()
-            .resource_dir()
-            .ok()
-            .map(|d| d.join("sumatra").join("SumatraPDF.exe"))
-            .filter(|p| p.is_file());
+        let sumatra_exe = resolve_sumatra_pdf_exe(&app);
         tokio::task::spawn_blocking(move || {
-            print_html_via_edge_windows(html, printer_name, bundled_sumatra)
+            print_html_via_edge_windows(html, printer_name, sumatra_exe)
         })
         .await
         .map_err(|e| format!("Yazdırma görevi: {}", e))?
@@ -1747,7 +1907,7 @@ fn main() {
         logger::log_from_frontend, logger::log_crud_error,
         config::get_app_config, config::save_app_config,
         config::get_dashboard_shortcuts, config::save_dashboard_shortcuts, config::reset_dashboard_shortcuts,
-        backup_service::perform_manual_backup, list_system_printers, write_bytes, print_html_silent,
+        backup_service::perform_manual_backup, list_system_printers, write_bytes, print_html_silent, print_escpos_tcp,
         mssql::test_mssql_connection, mssql::get_logo_firms, mssql::get_logo_periods, mssql::get_logo_data_preview, mssql::sync_logo_data,
         sync::enable_remote_support,
         bank_ops::get_bank_registers, bank_ops::save_bank_register, bank_ops::get_bank_transactions, bank_ops::save_bank_transaction,

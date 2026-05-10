@@ -1167,8 +1167,16 @@ export const beautyService = {
     async getFollowUpRemindersInRange(startDate: string, endDate: string): Promise<BeautyFollowUpReminder[]> {
         try {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const logT = postgres.getMovementTableName('beauty_consumable_usage_log', 'beauty');
         const svcBeauty = postgres.getCardTableName('beauty_services', 'beauty');
+        const prodT = postgres.getCardTableName('products');
         const cust = postgres.getCardTableName('customers');
+        const firmRaw = String(ERP_SETTINGS.firmNr ?? '001').trim();
+        const firmPadded = firmRaw.padStart(3, '0').slice(0, 10);
+        const firmCandidates = firmPadded === firmRaw ? [firmPadded] : [firmPadded, firmRaw];
+        const firmInSql = firmCandidates.map((_, i) => `$${3 + i}`).join(', ');
+        const params = [startDate, endDate, ...firmCandidates];
+
         const query = `
             WITH last_done AS (
                 SELECT
@@ -1187,49 +1195,126 @@ export const beautyService = {
                 WHERE s.follow_up_reminder_days IS NOT NULL
                   AND s.follow_up_reminder_days > 0
                   AND (s.is_active IS NULL OR s.is_active = true)
+            ),
+            svc_rows AS (
+                SELECT
+                    (ld.last_dt + svc.days) AS due_date,
+                    ld.last_dt AS last_completed_date,
+                    svc.days AS reminder_days,
+                    ld.service_id::text AS service_id,
+                    svc.service_name,
+                    ld.customer_id::text AS customer_id,
+                    COALESCE(NULLIF(trim(c.name), ''), '') AS customer_name,
+                    'service'::text AS reminder_kind,
+                    NULL::text AS product_id,
+                    NULL::text AS product_name
+                FROM last_done ld
+                INNER JOIN svc ON svc.service_id = ld.service_id
+                LEFT JOIN ${cust} c ON c.id = ld.customer_id
+                WHERE (ld.last_dt + svc.days) >= $1::date
+                  AND (ld.last_dt + svc.days) <= $2::date
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ${table} b
+                    WHERE b.client_id = ld.customer_id
+                      AND b.service_id = ld.service_id
+                      AND b.appointment_date::date > ld.last_dt
+                      AND b.appointment_date::date < (ld.last_dt + svc.days)
+                      AND b.status NOT IN ('cancelled', 'no_show')
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ${table} b2
+                    WHERE b2.client_id = ld.customer_id
+                      AND b2.service_id = ld.service_id
+                      AND b2.appointment_date::date = (ld.last_dt + svc.days)
+                      AND b2.status NOT IN ('cancelled', 'no_show', 'completed')
+                  )
+            ),
+            last_product AS (
+                SELECT DISTINCT ON (a.client_id, l.product_id)
+                    a.client_id AS customer_id,
+                    l.product_id,
+                    a.appointment_date::date AS last_dt,
+                    a.service_id AS anchor_service_id
+                FROM ${logT} l
+                INNER JOIN ${table} a ON a.id = l.appointment_id
+                WHERE a.status = 'completed'
+                  AND a.client_id IS NOT NULL
+                ORDER BY a.client_id, l.product_id, a.appointment_date DESC, a.appointment_time DESC
+            ),
+            prd AS (
+                SELECT p.id AS product_id, trim(p.name) AS product_name, p.follow_up_reminder_days::int AS days
+                FROM ${prodT} p
+                WHERE p.follow_up_reminder_days IS NOT NULL
+                  AND p.follow_up_reminder_days > 0
+                  AND (p.is_active IS NULL OR p.is_active = true)
+                  AND p.firm_nr IN (${firmInSql})
+            ),
+            prd_rows AS (
+                SELECT
+                    (lp.last_dt + prd.days) AS due_date,
+                    lp.last_dt AS last_completed_date,
+                    prd.days AS reminder_days,
+                    lp.anchor_service_id::text AS service_id,
+                    prd.product_name AS service_name,
+                    lp.customer_id::text AS customer_id,
+                    COALESCE(NULLIF(trim(c.name), ''), '') AS customer_name,
+                    'product'::text AS reminder_kind,
+                    lp.product_id::text AS product_id,
+                    prd.product_name AS product_name
+                FROM last_product lp
+                INNER JOIN prd ON prd.product_id = lp.product_id
+                LEFT JOIN ${cust} c ON c.id = lp.customer_id
+                WHERE (lp.last_dt + prd.days) >= $1::date
+                  AND (lp.last_dt + prd.days) <= $2::date
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ${table} b
+                    INNER JOIN ${logT} lb ON lb.appointment_id = b.id AND lb.product_id = lp.product_id
+                    WHERE b.client_id = lp.customer_id
+                      AND b.appointment_date::date > lp.last_dt
+                      AND b.appointment_date::date < (lp.last_dt + prd.days)
+                      AND b.status NOT IN ('cancelled', 'no_show')
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM ${table} b2
+                    INNER JOIN ${logT} lb2 ON lb2.appointment_id = b2.id AND lb2.product_id = lp.product_id
+                    WHERE b2.client_id = lp.customer_id
+                      AND b2.appointment_date::date = (lp.last_dt + prd.days)
+                      AND b2.status NOT IN ('cancelled', 'no_show', 'completed')
+                  )
             )
-            SELECT
-                (ld.last_dt + svc.days) AS due_date,
-                ld.last_dt AS last_completed_date,
-                svc.days AS reminder_days,
-                ld.service_id::text AS service_id,
-                svc.service_name,
-                ld.customer_id::text AS customer_id,
-                COALESCE(NULLIF(trim(c.name), ''), '') AS customer_name
-            FROM last_done ld
-            INNER JOIN svc ON svc.service_id = ld.service_id
-            LEFT JOIN ${cust} c ON c.id = ld.customer_id
-            WHERE (ld.last_dt + svc.days) >= $1::date
-              AND (ld.last_dt + svc.days) <= $2::date
-              AND NOT EXISTS (
-                SELECT 1
-                FROM ${table} b
-                WHERE b.client_id = ld.customer_id
-                  AND b.service_id = ld.service_id
-                  AND b.appointment_date::date > ld.last_dt
-                  AND b.appointment_date::date < (ld.last_dt + svc.days)
-                  AND b.status NOT IN ('cancelled', 'no_show')
-              )
-              AND NOT EXISTS (
-                SELECT 1
-                FROM ${table} b2
-                WHERE b2.client_id = ld.customer_id
-                  AND b2.service_id = ld.service_id
-                  AND b2.appointment_date::date = (ld.last_dt + svc.days)
-                  AND b2.status NOT IN ('cancelled', 'no_show', 'completed')
-              )
-            ORDER BY due_date, svc.service_name, customer_name
+            SELECT * FROM (
+                SELECT * FROM svc_rows
+                UNION ALL
+                SELECT * FROM prd_rows
+            ) u
+            ORDER BY u.due_date, u.reminder_kind, u.service_name, u.customer_name
         `;
-        const result = await postgres.query(query, [startDate, endDate]);
-        return (result.rows as Record<string, unknown>[]).map(r => ({
-            due_date: pgCellToYmd(r.due_date),
-            last_completed_date: pgCellToYmd(r.last_completed_date),
-            reminder_days: Math.max(1, Math.round(Number(r.reminder_days) || 1)),
-            service_id: String(r.service_id ?? ''),
-            service_name: String(r.service_name ?? ''),
-            customer_id: String(r.customer_id ?? ''),
-            customer_name: String(r.customer_name ?? ''),
-        })) as BeautyFollowUpReminder[];
+        const result = await postgres.query(query, params);
+        return (result.rows as Record<string, unknown>[]).map(r => {
+            const kindRaw = String(r.reminder_kind ?? 'service').toLowerCase();
+            const reminder_kind = kindRaw === 'product' ? 'product' : 'service';
+            const product_id = r.product_id != null && String(r.product_id).length > 0 ? String(r.product_id) : undefined;
+            const product_name =
+                reminder_kind === 'product'
+                    ? String(r.product_name ?? r.service_name ?? '').trim() || undefined
+                    : undefined;
+            return {
+                due_date: pgCellToYmd(r.due_date),
+                last_completed_date: pgCellToYmd(r.last_completed_date),
+                reminder_days: Math.max(1, Math.round(Number(r.reminder_days) || 1)),
+                service_id: String(r.service_id ?? ''),
+                service_name: String(r.service_name ?? ''),
+                customer_id: String(r.customer_id ?? ''),
+                customer_name: String(r.customer_name ?? ''),
+                reminder_kind,
+                product_id,
+                product_name,
+            };
+        }) as BeautyFollowUpReminder[];
         } catch (e: unknown) {
             logger.warn('BeautyService', 'getFollowUpRemindersInRange skipped', { error: e instanceof Error ? e.message : String(e) });
             return [];

@@ -28,6 +28,7 @@ import { getBridgeUrl, IS_TAURI } from '../../utils/env';
 import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNotify';
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
+import { Capacitor } from '@capacitor/core';
 
 // Lazy load MarketPOS for better initial performance
 import MarketPOS from '../pos/MarketPOS';
@@ -90,7 +91,7 @@ function MainLayoutClockButton({
       <button
         type="button"
         onClick={onOpenModal}
-        className="flex items-center justify-center gap-1 text-[11px] bg-white/12 hover:bg-white/20 px-2 py-1.5 rounded-xl border border-white/15 transition-colors shrink-0 whitespace-nowrap font-semibold shadow-inner touch-manipulation min-h-[36px] min-w-[3.25rem]"
+        className="flex items-center justify-center gap-1 text-[11px] bg-white/12 hover:bg-white/20 px-2 py-1.5 rounded-xl border border-white/15 transition-colors shrink-0 whitespace-nowrap font-semibold shadow-inner touch-manipulation min-h-[36px] min-w-[3.25rem] max-w-[5.5rem]"
       >
         <Clock className="w-3.5 h-3.5 shrink-0 opacity-90" />
         <span className="tabular-nums">
@@ -309,6 +310,10 @@ export function MainLayout({
   const { isMobile, isTablet, isSmallMobile } = useResponsive();
   /** Mobil + tablet: üst çubuk iki satırlı kompakt düzen */
   const compactShellTopBar = isMobile || isTablet;
+  const isCapacitorAndroid = useMemo(
+    () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android',
+    []
+  );
 
   useEffect(() => {
     if (!mobileTopBarMoreOpen) return;
@@ -928,13 +933,20 @@ export function MainLayout({
     >
       {/* Top Bar - Hidden on mobile POS mode and Restaurant module */}
       {!(compactShellTopBar && currentModule === 'pos') && currentModule !== 'restaurant' && currentModule !== 'beauty' && (
-        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md">
+        <div
+          className="relative z-[100] shrink-0 bg-gradient-to-r from-blue-600 via-blue-600 to-blue-700 text-white border-b border-blue-800 shadow-md pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]"
+          style={{
+            paddingTop: isCapacitorAndroid
+              ? 'max(1.75rem, env(safe-area-inset-top, 0px))'
+              : 'max(0.25rem, env(safe-area-inset-top, 0px))',
+          }}
+        >
           {compactShellTopBar ? (
             <div className="flex flex-col">
               {/* Mobil / tablet: logo + modül ikonları; çok dar ekranda daha sıkı */}
               <div
                 className={cn(
-                  'flex items-center px-2 py-1',
+                  'flex flex-nowrap items-center px-2 py-1',
                   isSmallMobile ? 'min-h-[40px] gap-1' : 'min-h-[44px] gap-2'
                 )}
               >
@@ -1003,14 +1015,16 @@ export function MainLayout({
               {/* Firma/dönem + saat + kullanıcı + diğerleri */}
               <div
                 className={cn(
-                  'flex items-center border-t border-white/10 px-2 py-1',
+                  'flex flex-nowrap items-center border-t border-white/10 px-2 py-1',
                   isSmallMobile ? 'min-h-[40px] gap-1' : 'min-h-[42px] gap-1.5'
                 )}
               >
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <FirmSelector compactMobile />
                 </div>
-                <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
+                <div className="shrink-0">
+                  <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
+                </div>
                 <button
                   type="button"
                   onClick={() => {

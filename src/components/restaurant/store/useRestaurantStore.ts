@@ -309,7 +309,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                         if (t.id !== tableId) return t;
                         const newOrder: OrderItem = {
                             id: dbItem.id,         // Use DB-assigned ID for void/update ops
-                            menuItemId: item.id,
+                            menuItemId: String(item.id ?? ''),
                             name: item.name,
                             quantity,
                             price: item.price,
@@ -337,6 +337,9 @@ export const useRestaurantStore = create<RestaurantState>()(
             sendToKitchen: async (tableId) => {
                 const table = get().tables.find(t => t.id === tableId);
                 if (!table) return;
+                if (get().menu.length === 0) {
+                    await get().loadMenu();
+                }
                 const pendingItems = table.orders.filter(o => o.status === 'pending' && !o.isVoid);
                 if (pendingItems.length === 0) return;
 
@@ -632,7 +635,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                 const activeOrder = await RestaurantService.getActiveOrder(tableId);
                 const mainTableNum = (activeOrder as any)?.table_number ?? table.number;
                 const orders = (activeOrder?.items || []).map((i: any) => ({
-                    id: i.id, menuItemId: i.product_id, name: i.product_name,
+                    id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
                     quantity: Number(i.quantity), price: Number(i.unit_price),
                     status: i.status || 'cooking', course: i.course, options: i.note,
                     isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
@@ -676,7 +679,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                             baseTable.orderDiscountPct = Number.isFinite(odPct) ? odPct : 0;
                             const mainTableNum = (activeOrder as any).table_number ?? baseTable.number;
                             baseTable.orders = (activeOrder.items || []).map((i: any) => ({
-                                id: i.id, menuItemId: i.product_id, name: i.product_name,
+                                id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
                                 quantity: Number(i.quantity), price: Number(i.unit_price),
                                 status: i.status || 'cooking', course: i.course, options: i.note,
                                 isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
@@ -694,7 +697,7 @@ export const useRestaurantStore = create<RestaurantState>()(
                                 const loTableNum = (lo as any).table_number ?? '';
                                 mergedRefs.push({ orderId: lo.id, faturaNo: lo.order_no, tableId: loTableId, tableNumber: loTableNum });
                                 const loItems = (lo.items || []).map((i: any) => ({
-                                    id: i.id, menuItemId: i.product_id, name: i.product_name,
+                                    id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
                                     quantity: Number(i.quantity), price: Number(i.unit_price),
                                     status: i.status || 'cooking', course: i.course, options: i.note,
                                     isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
@@ -715,8 +718,24 @@ export const useRestaurantStore = create<RestaurantState>()(
             },
 
             loadMenu: async () => {
-                const products = useProductStore.getState().products;
-                set({ menu: products.map((p: any) => ({ id: p.id, name: p.name, price: p.price ?? p.sale_price ?? 0, category: p.category ?? p.group_name ?? 'Genel', image: p.image })) });
+                let products = useProductStore.getState().products;
+                if (products.length === 0) {
+                    try {
+                        await useProductStore.getState().loadProducts(true);
+                        products = useProductStore.getState().products;
+                    } catch {
+                        /* ağ yok — boş menü */
+                    }
+                }
+                set({
+                    menu: products.map((p: any) => ({
+                        id: String(p.id ?? ''),
+                        name: p.name,
+                        price: p.price ?? p.sale_price ?? 0,
+                        category: String(p.category ?? p.group_name ?? 'Genel').trim() || 'Genel',
+                        image: p.image,
+                    })),
+                });
             },
 
             loadCategories: async () => {

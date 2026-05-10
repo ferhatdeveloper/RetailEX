@@ -98,6 +98,11 @@ export interface Product {
   customExchangeRate?: number;
   autoCalculateUSD?: boolean;
   unitsetId?: string;
+  /**
+   * Güzellik: tamamlanan randevuda bu ürün sarf (consumable) olarak düştüyünden
+   * X gün sonra müşteri için takip hatırlatması (null / ≤0 = kapalı).
+   */
+  followUpReminderDays?: number | null;
 }
 
 export interface ProductVariant {

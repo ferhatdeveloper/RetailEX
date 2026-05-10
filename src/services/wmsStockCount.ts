@@ -126,7 +126,7 @@ class WMSStockCountService {
      */
     async generateFicheNo(): Promise<string> {
         if (this.usePostgrestWms()) {
-            return wscRest.restGenerateFicheNo();
+            return await wscRest.restGenerateFicheNo();
         }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         const year = new Date().getFullYear();
@@ -144,7 +144,7 @@ class WMSStockCountService {
     async getSlips(status?: string): Promise<CountingSlip[]> {
         await this.ensureSchema();
         if (this.usePostgrestWms()) {
-            return wscRest.restGetSlips(status) as CountingSlip[];
+            return (await wscRest.restGetSlips(status)) as CountingSlip[];
         }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         let sql = `
@@ -176,7 +176,7 @@ class WMSStockCountService {
     async getSlipWithLines(slipId: string): Promise<{ slip: CountingSlip; lines: CountingLine[] }> {
         await this.ensureSchema();
         if (this.usePostgrestWms()) {
-            return wscRest.restGetSlipWithLines(slipId) as { slip: CountingSlip; lines: CountingLine[] };
+            return (await wscRest.restGetSlipWithLines(slipId)) as { slip: CountingSlip; lines: CountingLine[] };
         }
 
         const { rows: slipRows } = await this.conn.query<CountingSlip>(
@@ -210,7 +210,7 @@ class WMSStockCountService {
     }): Promise<CountingSlip> {
         await this.ensureSchema();
         if (this.usePostgrestWms()) {
-            return wscRest.restCreateSlip(data) as CountingSlip;
+            return (await wscRest.restCreateSlip(data)) as CountingSlip;
         }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         const ficheNo = await this.generateFicheNo();
@@ -361,7 +361,7 @@ class WMSStockCountService {
         const ids = productIds.filter(Boolean);
         if (!ids.length) return {};
         if (this.usePostgrestWms()) {
-            return wscRest.restGetLinesPrices(ids);
+            return await wscRest.restGetLinesPrices(ids);
         }
         const priceCols = [
             `COALESCE(price_list_1, 0)::float as sale`,
@@ -403,7 +403,7 @@ class WMSStockCountService {
         sale_price?: number;
     }): Promise<string | null> {
         if (this.usePostgrestWms()) {
-            return wscRest.restCreateProductFromBarcode(data);
+            return await wscRest.restCreateProductFromBarcode(data);
         }
         const firmNr = ERP_SETTINGS.firmNr || '001';
         // Try inserting with progressively fewer columns
@@ -441,7 +441,7 @@ class WMSStockCountService {
     async getLineByBarcode(slipId: string, barcode: string): Promise<CountingLine | null> {
         await this.ensureSchema();
         if (this.usePostgrestWms()) {
-            return wscRest.restGetLineByBarcode(slipId, barcode) as Promise<CountingLine | null>;
+            return (await wscRest.restGetLineByBarcode(slipId, barcode)) as CountingLine | null;
         }
         const { rows } = await this.conn.query<CountingLine>(
             `SELECT * FROM wms.counting_lines WHERE slip_id = $1 AND barcode = $2 LIMIT 1`,
@@ -472,7 +472,7 @@ class WMSStockCountService {
      */
     async getProductStock(productId: string): Promise<number> {
         if (this.usePostgrestWms()) {
-            return wscRest.restGetProductStock(productId);
+            return await wscRest.restGetProductStock(productId);
         }
         try {
             const { rows } = await this.conn.query<{ stock: number }>(
@@ -503,7 +503,7 @@ class WMSStockCountService {
     }): Promise<CountingLine> {
         await this.ensureSchema();
         if (this.usePostgrestWms()) {
-            return wscRest.restUpsertLine(slipId, data) as Promise<CountingLine>;
+            return (await wscRest.restUpsertLine(slipId, data)) as CountingLine;
         }
         console.log('[upsertLine] slipId=', slipId, 'barcode=', data.barcode);
         // Check if line already exists for this barcode in this slip
@@ -586,7 +586,7 @@ class WMSStockCountService {
         net_profit_impact: number;
     }> {
         if (this.usePostgrestWms()) {
-            return wscRest.restGetVarianceSummary(slipId);
+            return await wscRest.restGetVarianceSummary(slipId);
         }
         // Note: products JOIN is avoided to prevent "column does not exist" errors on
         // price / price_list_1 columns that differ between firm schemas.
@@ -723,7 +723,7 @@ class WMSStockCountService {
         shortage: number;
     }> {
         if (this.usePostgrestWms()) {
-            return wscRest.restApplyStockCount(slipId);
+            return await wscRest.restApplyStockCount(slipId);
         }
         // 1. Get slip header
         const { rows: slipRows } = await this.conn.query<any>(

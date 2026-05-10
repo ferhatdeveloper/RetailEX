@@ -46,6 +46,43 @@ const COUNT_TYPE_KEYS: Record<string, string> = {
     location: 'countTypeLocation',
 };
 
+/** Sayım fişinden taslak alış faturası: sessionStorage + yönetim ekranı. Başarıda true. */
+async function navigatePurchaseDraftFromCountSlip(
+    slipId: string,
+    slipFallback: CountingSlip,
+    tm: (k: string) => string,
+    selectedFirm: unknown
+): Promise<boolean> {
+    if (!selectedFirm) {
+        toast.error(tm('countPurchaseFromSurplusNeedFirm'));
+        return false;
+    }
+    try {
+        const { slip: s, lines: freshLines } = await wmsStockCount.getSlipWithLines(slipId);
+        const slipRef = s || slipFallback;
+        const ids = freshLines.map(l => l.product_id).filter(Boolean) as string[];
+        const prices = await wmsStockCount.getLinesPrices(ids);
+        const draft = buildPurchaseEditDataFromCountSlip(slipRef, freshLines, prices);
+        if (!draft) {
+            toast.error(tm('countPurchaseFromSurplusNoLines'));
+            return false;
+        }
+        draft.supplier_name = `${tm('countPurchaseSupplierName')} (${slipRef.fiche_no})`;
+        draft.customer_name = draft.supplier_name;
+        sessionStorage.setItem(
+            PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
+            JSON.stringify({ editData: draft })
+        );
+        window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'purchase-invoice-standard' }));
+        toast.success(tm('countPurchaseFromSurplusSuccess'));
+        return true;
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`${tm('countPurchaseFromSurplusError')}: ${msg}`);
+        return false;
+    }
+}
+
 function StatusBadge({ status }: { status: CountingSlip['status'] }) {
     const { tm } = useLanguage();
     const s = STATUS_STYLE[status] || { tmKey: status, color: 'bg-gray-100 text-gray-600' };
@@ -454,7 +491,7 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
                 const stock = product ? await wmsStockCount.getProductStock(product.id) : 0;
                 const unitMultiplier = product?.unit_multiplier || 1;
                 const result = await wmsStockCount.upsertLine(slip.id, {
-                    product_id: product?.id || null,
+                    product_id: product?.id,
                     barcode: product?.barcode || barcode.trim(),
                     product_name: product?.name || `? ${barcode}`,
                     location_code: locationCode || undefined,
@@ -915,8 +952,8 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
             {/* Camera Scanner Modal */}
             {showCamera && (
                 <BarcodeScanner
-                    onScan={(result) => {
-                        handleBarcodeScanned(result.code);
+                    onScan={(code) => {
+                        handleBarcodeScanned(code);
                         setShowCamera(false);
                     }}
                     onClose={() => setShowCamera(false)}
@@ -953,7 +990,18 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     const { selectedFirm } = useFirmaDonem();
     const [currentSlip, setCurrentSlip] = useState(slip);
     const [lines, setLines] = useState<CountingLine[]>([]);
-    const [summary, setSummary] = useState({ total_items: 0, items_with_variance: 0, total_variance: 0, accuracy_rate: 100 });
+    const [summary, setSummary] = useState({
+        total_items: 0,
+        items_with_variance: 0,
+        total_variance: 0,
+        accuracy_rate: 100,
+        shortage_qty: 0,
+        surplus_qty: 0,
+        shortage_sale_value: 0,
+        shortage_purchase_value: 0,
+        surplus_purchase_value: 0,
+        net_profit_impact: 0,
+    });
     const [loading, setLoading] = useState(true);
     const [completing, setCompleting] = useState(false);
     const [purchaseNavigating, setPurchaseNavigating] = useState(false);
@@ -1003,32 +1051,10 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     };
 
     const handleOpenPurchaseDraft = async () => {
-        if (!selectedFirm) {
-            toast.error(tm('countPurchaseFromSurplusNeedFirm'));
-            return;
-        }
         setPurchaseNavigating(true);
         try {
-            const { slip: s, lines: freshLines } = await wmsStockCount.getSlipWithLines(slip.id);
-            const slipRef = s || slip;
-            const ids = freshLines.map(l => l.product_id).filter(Boolean) as string[];
-            const prices = await wmsStockCount.getLinesPrices(ids);
-            const draft = buildPurchaseEditDataFromCountSlip(slipRef, freshLines, prices);
-            if (!draft) {
-                toast.error(tm('countPurchaseFromSurplusNoLines'));
-                return;
-            }
-            draft.supplier_name = `${tm('countPurchaseSupplierName')} (${slipRef.fiche_no})`;
-            draft.customer_name = draft.supplier_name;
-            sessionStorage.setItem(
-                PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
-                JSON.stringify({ editData: draft })
-            );
-            window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'purchase-invoice-standard' }));
-            toast.success(tm('countPurchaseFromSurplusSuccess'));
-            onComplete();
-        } catch (err: any) {
-            toast.error(`${tm('countPurchaseFromSurplusError')}: ${err?.message || String(err)}`);
+            const ok = await navigatePurchaseDraftFromCountSlip(slip.id, slip, tm, selectedFirm);
+            if (ok) onComplete();
         } finally {
             setPurchaseNavigating(false);
         }
@@ -1068,22 +1094,30 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
             </div>
 
             <div className="p-4 space-y-4">
-                {postApply && (
+                {(postApply || currentSlip.status === 'completed') && (
                     <div
                         className={`rounded-xl border p-4 space-y-3 ${darkMode ? 'bg-gray-800 border-green-700/50' : 'bg-green-50 border-green-200'}`}
                     >
-                        <div className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-800'}`}>
-                            {tm('countSessionCompletedBadge')}
-                            <span className="font-normal opacity-90">
-                                {' '}
-                                — {postApply.processed}
-                                {postApply.surplus > 0 ? ` / +${postApply.surplus}` : ''}
-                                {postApply.shortage > 0 ? ` / −${postApply.shortage}` : ''}
-                            </span>
-                        </div>
-                        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                            {tm('countPurchaseFromSurplusHint')}
-                        </p>
+                        {postApply ? (
+                            <>
+                                <div className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-800'}`}>
+                                    {tm('countSessionCompletedBadge')}
+                                    <span className="font-normal opacity-90">
+                                        {' '}
+                                        — {postApply.processed}
+                                        {postApply.surplus > 0 ? ` / +${postApply.surplus}` : ''}
+                                        {postApply.shortage > 0 ? ` / −${postApply.shortage}` : ''}
+                                    </span>
+                                </div>
+                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                    {tm('countPurchaseFromSurplusHint')}
+                                </p>
+                            </>
+                        ) : (
+                            <p className={`text-sm ${darkMode ? 'text-green-200' : 'text-green-900'}`}>
+                                {tm('countPurchaseCompletedSlipHint')}
+                            </p>
+                        )}
                         <div className="flex flex-wrap gap-2">
                             <button
                                 type="button"
@@ -1282,9 +1316,11 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     onReconciliation: (slip: CountingSlip) => void;
 }) {
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
     const [slips, setSlips] = useState<CountingSlip[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState<string>('');
+    const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
 
     const loadSlips = useCallback(async () => {
         setLoading(true);
@@ -1304,6 +1340,15 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
         if (!confirm(`"${slip.fiche_no}" ${tm('confirmCancelCount')}`)) return;
         await wmsStockCount.cancelSlip(slip.id);
         loadSlips();
+    };
+
+    const handleListPurchaseDraft = async (slip: CountingSlip) => {
+        setPurchaseBusyId(slip.id);
+        try {
+            await navigatePurchaseDraftFromCountSlip(slip.id, slip, tm, selectedFirm);
+        } finally {
+            setPurchaseBusyId(null);
+        }
     };
 
     const bgClass = darkMode ? 'bg-gray-900' : 'bg-gray-50';
@@ -1447,12 +1492,29 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                             </button>
                                         )}
                                         {slip.status === 'completed' && (
-                                            <button
-                                                onClick={() => onReconciliation(slip)}
-                                                className="flex-1 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-gray-600 transition-colors"
-                                            >
-                                                <Eye className="w-4 h-4" /> {tm('viewLabel')}
-                                            </button>
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onReconciliation(slip)}
+                                                    className="flex-1 min-w-0 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-gray-600 transition-colors"
+                                                >
+                                                    <Eye className="w-4 h-4 shrink-0" /> {tm('viewLabel')}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleListPurchaseDraft(slip)}
+                                                    disabled={purchaseBusyId === slip.id}
+                                                    className="flex-1 min-w-0 py-2 bg-cyan-600 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 hover:bg-cyan-500 transition-colors disabled:opacity-60"
+                                                    title={tm('countPurchaseFromSurplusHint')}
+                                                >
+                                                    {purchaseBusyId === slip.id ? (
+                                                        <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                                                    ) : (
+                                                        <ShoppingCart className="w-4 h-4 shrink-0" />
+                                                    )}
+                                                    <span className="truncate">{tm('countPurchaseFromSurplusBtn')}</span>
+                                                </button>
+                                            </>
                                         )}
                                         {(slip.status === 'draft' || slip.status === 'active') && (
                                             <button

@@ -1964,9 +1964,14 @@ export function SmartScheduler() {
                                 followUpBadgeLabel={tm('bFollowUpBadge')}
                                 followUpBookCtaLabel={tm('bFollowUpBookCta')}
                                 formatFollowUpLine={r =>
-                                    tm('bFollowUpContextLine')
-                                        .replace('{last}', r.last_completed_date)
-                                        .replace('{days}', String(r.reminder_days))}
+                                    r.reminder_kind === 'product' && (r.product_name || r.service_name)
+                                        ? tm('bFollowUpProductLine')
+                                              .replace('{name}', (r.product_name || r.service_name || '').trim())
+                                              .replace('{last}', r.last_completed_date)
+                                              .replace('{days}', String(r.reminder_days))
+                                        : tm('bFollowUpContextLine')
+                                              .replace('{last}', r.last_completed_date)
+                                              .replace('{days}', String(r.reminder_days))}
                                 noServicesLabel={tm('bServiceBoardNoActiveServices')}
                                 noAppointmentsInSlotLabel={tm('bServiceBoardNoAptsForServiceDay')}
                                 appointmentsCountTemplate={tm('bDeviceColumnAppointmentCount')}

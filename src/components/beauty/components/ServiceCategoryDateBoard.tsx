@@ -130,7 +130,7 @@ function ServiceBoardServiceCell({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {svcFollowUps.map(fu => (
                     <div
-                        key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}`}
+                        key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}
                         style={{
                             borderRadius: 6,
                             border: '1px solid #fbcfe8',

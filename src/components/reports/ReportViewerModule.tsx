@@ -1,7 +1,65 @@
-import React, { useRef } from 'react';
-import { mmToPx, DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF, pxToMm } from './designerUtils';
+import React, { useEffect, useRef } from 'react';
+import JsBarcode from 'jsbarcode';
+import { mmToPx, DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
+
+function reportBarcodeFormat(value: string): 'EAN13' | 'CODE128' {
+    if (/^\d{13}$/.test(value)) return 'EAN13';
+    return 'CODE128';
+}
+
+function ReportBarcodePreview({
+    svgId,
+    value,
+    widthPx,
+    heightPx,
+}: {
+    svgId: string;
+    value: string;
+    widthPx: number;
+    heightPx: number;
+}) {
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    useEffect(() => {
+        const el = svgRef.current;
+        if (!el || !value) return;
+        while (el.firstChild) el.removeChild(el.firstChild);
+        const barH = Math.max(16, Math.floor(heightPx * 0.72));
+        const modW = Math.max(1, Math.min(2.5, widthPx / 100));
+        const fmt = reportBarcodeFormat(value);
+        const opts = {
+            format: fmt,
+            width: modW,
+            height: barH,
+            displayValue: heightPx >= 44,
+            fontSize: Math.max(8, Math.min(11, heightPx * 0.18)),
+            margin: 0,
+            background: '#ffffff',
+        } as const;
+        try {
+            JsBarcode(el, value, opts);
+        } catch {
+            try {
+                JsBarcode(el, value, { ...opts, format: 'CODE128' as const });
+            } catch {
+                // Geçersiz barkod — SVG boş kalır
+            }
+        }
+    }, [value, widthPx, heightPx, svgId]);
+
+    return (
+        <svg
+            id={svgId}
+            ref={svgRef}
+            className="block w-full h-full max-w-full"
+            preserveAspectRatio="xMidYMid meet"
+            role="img"
+            aria-label={value}
+        />
+    );
+}
 
 interface ReportViewerProps {
     template: ReportTemplate;
@@ -86,11 +144,29 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                                     {comp.binding ? getBoundValue(comp.binding, data) : comp.content}
                                 </div>
                             )}
-                            {comp.type === 'barcode' && (
-                                <div className="w-full h-full bg-slate-50 flex items-center justify-center p-2 text-[8px]">
-                                    [BARCODE: {comp.binding ? getBoundValue(comp.binding, data) : 'TEMP'}]
-                                </div>
-                            )}
+                            {comp.type === 'barcode' && (() => {
+                                const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
+                                const barcodeValue = String(raw ?? '').trim();
+                                const wPx = mmToPx(comp.width);
+                                const hPx = mmToPx(comp.height);
+                                if (!barcodeValue) {
+                                    return (
+                                        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
+                                            Barkod alanı: veri veya içerik yok
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <div className="w-full h-full bg-white flex items-center justify-center p-0.5 overflow-hidden">
+                                        <ReportBarcodePreview
+                                            svgId={`report-barcode-${comp.id}`}
+                                            value={barcodeValue}
+                                            widthPx={wPx}
+                                            heightPx={hPx}
+                                        />
+                                    </div>
+                                );
+                            })()}
                             {comp.type === 'table' && comp.columns && (
                                 <div className="w-full h-full text-[10px]">
                                     {/* Header */}

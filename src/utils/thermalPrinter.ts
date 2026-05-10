@@ -2,6 +2,7 @@ import type { Sale, SaleItem } from '../core/types/models';
 import { Capacitor } from '@capacitor/core';
 import SunmiPrinter, { SunmiUtils } from './sunmiPrinter';
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 
 export interface ReturnReceipt {
   id: string;
@@ -83,10 +84,12 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
     <html dir="${isRTL ? 'rtl' : 'ltr'}">
     <head>
       <meta charset="UTF-8">
+      ${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}
       <style>
-        @media print { @page { size: 80mm auto; margin: 2mm; } body { margin: 0; padding: 0; } }
+        ${RECEIPT_80MM_DOCUMENT_CSS}
+        @media print { body { margin: 0; padding: 0; } }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; font-size: 9px; line-height: 1.25; width: 80mm; max-width: 80mm; padding: 3mm; background: white; color: #000; font-weight: 500; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+        body { font-family: ${isRTL ? 'Arial, sans-serif' : "'Courier New', monospace"}; font-size: 9px; line-height: 1.25; width: 100%; max-width: 100%; padding: 3mm; background: white; color: #000; font-weight: 500; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
         .center { text-align: center; } .bold { font-weight: bold; } .large { font-size: 11px; }
         .divider { border-top: 1px dashed #000; margin: 2mm 0; } .double-divider { border-top: 2px solid #000; margin: 2mm 0; }
         table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }

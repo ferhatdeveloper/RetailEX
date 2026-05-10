@@ -990,6 +990,7 @@ BEGIN
       custom_exchange_rate NUMERIC DEFAULT 0,
       auto_calculate_usd BOOLEAN DEFAULT false,
       preparation_time  INTEGER DEFAULT 5,
+      follow_up_reminder_days INTEGER,
       has_variants      BOOLEAN DEFAULT false,
       hasvariants       BOOLEAN DEFAULT false,
       "hasVariants"     BOOLEAN DEFAULT false,

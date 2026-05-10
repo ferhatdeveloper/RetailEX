@@ -11,6 +11,7 @@ import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
 
 interface Receipt80mmProps {
   sale: Sale;
@@ -151,13 +152,10 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
         onFinished?.();
         return;
       }
-      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
-      /* 80mm termal: sayfa ve gövde aynı genişlik — Edge PDF / Sumatra ile A4’e yayılma önlenir */
-      @page { size: 80mm auto; margin: 0; }
-      @media print { @page { size: 80mm auto; margin: 0; } html, body { width: 80mm !important; max-width: 80mm !important; margin: 0 !important; padding: 0 !important; } }
-      html, body { margin: 0; padding: 0; width: 80mm; max-width: 80mm; box-sizing: border-box; }
+      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
+      ${RECEIPT_80MM_DOCUMENT_CSS}
       body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
-      .receipt-80mm, #receipt-content { width: 80mm !important; max-width: 80mm !important; box-sizing: border-box; }
+      .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
       * { box-sizing: border-box; }
       .flex { display: flex; }
       .justify-between { justify-content: space-between; }
@@ -236,12 +234,13 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
         printWindow.document.write(`
           <html dir="${isRTL ? 'rtl' : 'ltr'}">
             <head>
+              <meta charset="utf-8" />
+              ${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}
               <title>${t.receipt.title} - ${sale.receiptNumber}</title>
               <style>
-                @page { size: 80mm auto; margin: 0; }
-                html, body { margin: 0; padding: 0; width: 80mm; max-width: 80mm; box-sizing: border-box; }
+                ${RECEIPT_80MM_DOCUMENT_CSS}
                 body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
-                .receipt-80mm, #receipt-content { width: 80mm !important; max-width: 80mm !important; box-sizing: border-box; }
+                .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
                 * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-sizing: border-box; }
                 .flex { display: flex; }
                 .justify-between { justify-content: space-between; }
@@ -728,8 +727,8 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
             position: absolute;
             left: 0;
             top: 0;
-            width: 80mm !important;
-            max-width: 80mm !important;
+            width: 100% !important;
+            max-width: 100% !important;
             direction: ${isRTL ? 'rtl' : 'ltr'};
             font-size: 11px;
             font-weight: 700;
@@ -738,7 +737,7 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
             page-break-after: avoid;
           }
           @page { size: 80mm auto; margin: 0; }
-          .receipt-80mm { width: 80mm !important; max-width: 80mm !important; transform: none !important; }
+          .receipt-80mm { width: 100% !important; max-width: 100% !important; transform: none !important; }
           #receipt-content .receipt-items-table {
             width: 100% !important;
             table-layout: fixed !important;

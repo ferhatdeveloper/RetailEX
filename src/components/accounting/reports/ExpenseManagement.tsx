@@ -57,8 +57,20 @@ const CATEGORY_FALLBACK: ExpenseCategory = {
   color: 'bg-slate-100 text-slate-700'
 };
 
+const getCurrentMonthDateRange = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  const from = new Date(year, month, 1).toISOString().split('T')[0];
+  const to = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+  return { from, to };
+};
+
 export function ExpenseManagement() {
   const { tm } = useLanguage();
+  const defaultDateRange = getCurrentMonthDateRange();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,8 +80,8 @@ export function ExpenseManagement() {
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterStore] = useState<string>('all');
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [filterDateFrom, setFilterDateFrom] = useState<string>(defaultDateRange.from);
+  const [filterDateTo, setFilterDateTo] = useState<string>(defaultDateRange.to);
   const [showFilters, setShowFilters] = useState(false);
 
   // Form state
@@ -110,10 +122,7 @@ export function ExpenseManagement() {
   const loadExpenses = async () => {
     setLoading(true);
     try {
-      const data = await expenseAPI.getAll({
-        startDate: filterDateFrom,
-        endDate: filterDateTo
-      });
+      const data = await expenseAPI.getAll();
       setExpenses(data as ExpenseLocal[]);
     } catch (error) {
       console.error('Error loading expenses:', error);
@@ -431,8 +440,9 @@ export function ExpenseManagement() {
                 <button
                   onClick={() => {
                     setFilterCategory('all');
-                    setFilterDateFrom('');
-                    setFilterDateTo('');
+                    const currentMonthRange = getCurrentMonthDateRange();
+                    setFilterDateFrom(currentMonthRange.from);
+                    setFilterDateTo(currentMonthRange.to);
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
                 >

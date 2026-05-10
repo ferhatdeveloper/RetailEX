@@ -3338,12 +3338,36 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'آخر إكمال: {last} · التالي: +{days} يوم',
     ku: 'دوایین تەواو: {last} · دواتر: +{days} ڕۆژ',
   },
+  bFollowUpProductLine: {
+    tr: 'Ürün: {name} — Son tamamlanan işlem: {last} · Tekrar: +{days} gün',
+    en: 'Product: {name} — Last completed: {last} · Next: +{days} days',
+    ar: 'منتج: {name} — آخر إكمال: {last} · التالي: +{days} يوم',
+    ku: 'بەرهەم: {name} — دوایین تەواو: {last} · دواتر: +{days} ڕۆژ',
+  },
+  bProductFollowUpReminderSection: {
+    tr: 'Güzellik / klinik (ürün)',
+    en: 'Beauty / clinic (product)',
+    ar: 'تجميل / عيادة (منتج)',
+    ku: 'جوانی / کلینیک (بەرهەم)',
+  },
+  bProductFollowUpReminderDaysShort: {
+    tr: 'Hatırlatma (gün)',
+    en: 'Reminder (days)',
+    ar: 'تذكير (أيام)',
+    ku: 'بیرهێنان (ڕۆژ)',
+  },
+  bProductFollowUpReminderHint: {
+    tr: 'Tamamlanan randevuda bu ürün sarf olarak düştüğünde (hizmet reçetesi), müşteri için bu kadar gün sonra «Hizmet & tarih» takviminde ürün hatırlatması oluşur. Boş = kapalı.',
+    en: 'When this product is consumed on a completed appointment (service recipe), a product follow-up appears on Services-by-date after this many days. Empty = off.',
+    ar: 'عند استهلاك هذا المنتج في موعد مكتمل (وصفة الخدمة)، يظهر تذكير متابعة للمنتج بعد هذا العدد من الأيام. فارغ = إيقاف.',
+    ku: 'کاتێک ئەم بەرهەمە لە ئامادەبوونی تەواوکراودا بەکاردێت، دوای ئەم ڕۆژانە بیرهێنان دەردەکەوێت. بەتاڵ = کوژاوە.',
+  },
   bFollowUpBookCta: { tr: 'Randevu oluştur', en: 'Book appointment', ar: 'حجز موعد', ku: 'ئامادەبوون دروست بکە' },
   bFollowUpLoginToast: {
-    tr: '{n} müşteri hizmet hatırlatması (önümüzdeki 15 gün)',
-    en: '{n} service follow-up reminder(s) in the next 15 days',
-    ar: '{n} تذكير متابعة خدمة خلال 15 يومًا',
-    ku: '{n} بیرهێنانی خزمەت لە 15 ڕۆژی داهاتوودا',
+    tr: '{n} müşteri takip hatırlatması (hizmet/ürün, önümüzdeki 15 gün)',
+    en: '{n} follow-up reminder(s) (service/product, next 15 days)',
+    ar: '{n} تذكير متابعة (خدمة/منتج، 15 يومًا)',
+    ku: '{n} بیرهێنانی شوێنپێهێنان (خزمەت/بەرهەم، 15 ڕۆژ)',
   },
   bFollowUpLoginToastDesc: {
     tr: 'Randevular → Hizmet & tarih ekranından listeleyebilirsiniz.',
@@ -3735,6 +3759,12 @@ export const wmsModuleTranslations = {
   countDoneBackToList: { tr: 'Listeye dön', en: 'Back to list', ar: 'العودة إلى القائمة', ku: 'گەڕانەوە بۆ لیست' },
   countSessionCompletedBadge: { tr: 'Sayım tamamlandı', en: 'Count completed', ar: 'اكتمل الجرد', ku: 'ژماردن تەواو بوو' },
   countPurchaseSupplierName: { tr: 'Sayım farkı', en: 'Stock count variance', ar: 'فرق الجرد', ku: 'جیاوازی ژماردن' },
+  countPurchaseCompletedSlipHint: {
+    tr: 'Bu sayım tamamlandı. Fazla miktar satırlarından taslak alış faturası açabilirsiniz.',
+    en: 'This count is finished. Open a draft purchase invoice from surplus lines.',
+    ar: 'اكتمل هذا الجرد. افتح مسودة فاتورة شراء من بنود الفائض.',
+    ku: 'ئەم ژماردنە تەواو بووە. لە ڕیزی زێدە وەسڵی کڕینی ڕەشنووس بکەرەوە.',
+  },
 };
 Object.assign(moduleTranslations, supplierTranslations);
 

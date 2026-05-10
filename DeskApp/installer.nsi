@@ -957,6 +957,8 @@ Section Install
     File /a "/oname=retailex-admin.ps1" "D:\RetailEX\DeskApp\resources\retailex-admin.ps1"
     File /a "/oname=retailex-admin.cmd" "D:\RetailEX\DeskApp\resources\retailex-admin.cmd"
     File /a "/oname=install-postgrest.ps1" "D:\RetailEX\DeskApp\resources\install-postgrest.ps1"
+    ; Gömülü PostgREST (npm run postgrest:fetch — yoksa /nonfatal ile atlanır, kurulumda GitHub yedeği)
+    File /nonfatal /a "/oname=postgrest.exe" "resources\postgrest\postgrest.exe"
     File /a "/oname=pg-windows-expose-remote.ps1" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.ps1"
     File /a "/oname=pg-windows-expose-remote.cmd" "D:\RetailEX\DeskApp\resources\pg-windows-expose-remote.cmd"
     File /a "/oname=RetailEX_PostgreSQLRemote.exe" "${POSTGRESREMOTEENABLESRCPATH}"

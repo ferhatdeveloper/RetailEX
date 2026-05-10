@@ -39,12 +39,13 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                 variant="ghost"
                 size="sm"
                 className={cn(
-                    'flex items-center gap-2 rounded transition-colors shrink-0',
+                    'flex items-center gap-2 rounded transition-colors',
+                    !(triggerVariant === 'topbar' && compactMobile) && 'shrink-0',
                     triggerVariant === 'topbar' &&
                         'text-sm bg-white/10 hover:bg-white/20 text-white px-3 py-2',
                     triggerVariant === 'topbar' &&
                         compactMobile &&
-                        'h-9 px-2 gap-1 text-[11px] max-w-[min(46vw,12.5rem)] min-w-0',
+                        'h-9 min-w-0 w-full max-w-full shrink gap-1 px-2 text-[11px] overflow-hidden',
                     triggerVariant === 'clinic' &&
                         'text-xs h-8 px-2 sm:px-2.5 border border-slate-200 bg-white hover:bg-violet-50 hover:border-violet-200 text-slate-700 font-semibold shadow-sm'
                 )}
@@ -59,7 +60,7 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                 <span className="hidden md:inline max-w-[140px] truncate">
                     {selectedFirm?.name || selectedFirm?.firm_nr || 'Firma Seç'}
                 </span>
-                <span className="md:hidden">
+                <span className="min-w-0 truncate md:hidden">
                     {selectedFirm?.firm_nr || '---'}
                 </span>
                 <span className={triggerVariant === 'topbar' ? 'text-blue-200' : 'text-violet-300'}>•</span>

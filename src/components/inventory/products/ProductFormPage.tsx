@@ -393,6 +393,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     warrantyPeriod: 0, // Ay
     warrantyType: '',
     shelfLife: 0, // Gün
+    /** Güzellik sarf sonrası takip (gün); boş = kapalı */
+    followUpReminderDays: '' as number | '',
 
     // Muhasebe
     accountCode: '',
@@ -728,6 +730,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           customExchangeRate: product.customExchangeRate || usdExchangeRate || 0,
           autoCalculateUSD: product.autoCalculateUSD || false,
           currency: (product as any).currency || prev.currency || 'IQD',
+          followUpReminderDays: (() => {
+            const v = (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days;
+            if (v == null || v === '') return '' as number | '';
+            const n = Math.round(Number(v));
+            if (!Number.isFinite(n) || n <= 0) return '' as number | '';
+            return Math.min(3650, n) as number | '';
+          })(),
         }));
 
         // Restore unitset selection
@@ -1535,6 +1544,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       autoCalculateUSD: formData.autoCalculateUSD,
       currency: formData.currency,
       unitsetId: selectedUnitSetId || undefined,
+      followUpReminderDays: (() => {
+        const raw = formData.followUpReminderDays;
+        if (raw === '' || raw == null) return null;
+        const n = Math.round(Number(raw));
+        if (!Number.isFinite(n) || n <= 0) return null;
+        return Math.min(3650, n);
+      })(),
     } as any;
 
     try {
@@ -3448,6 +3464,45 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   </div>
                 </div>
               </div>
+
+              {!formData.isService && (
+                <div className="bg-white border border-gray-300">
+                  <div className="px-3 py-2 bg-gray-100 border-b border-gray-300 text-right">
+                    <span className="text-xs text-gray-700 font-bold">{tm('bProductFollowUpReminderSection')}</span>
+                  </div>
+                  <div className="p-3 grid grid-cols-12 gap-2 max-lg:grid-cols-1">
+                    <div className="col-span-8 max-lg:col-span-1 max-lg:order-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={formData.followUpReminderDays === '' ? '' : formData.followUpReminderDays}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const t = e.target.value.trim();
+                          if (t === '') {
+                            handleInputChange('followUpReminderDays', '' as number | '');
+                            return;
+                          }
+                          const n = Math.round(Number(t));
+                          if (!Number.isFinite(n)) {
+                            handleInputChange('followUpReminderDays', '' as number | '');
+                            return;
+                          }
+                          handleInputChange('followUpReminderDays', Math.min(3650, Math.max(1, n)) as number | '');
+                        }}
+                        className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="—"
+                      />
+                    </div>
+                    <div className="col-span-4 text-right pl-2 max-lg:col-span-1 max-lg:order-1 max-lg:text-left max-lg:pl-0">
+                      <label className="text-xs text-gray-700">{tm('bProductFollowUpReminderDaysShort')}</label>
+                    </div>
+                    <div className="col-span-12 text-xs text-gray-500 leading-snug max-lg:order-3">
+                      {tm('bProductFollowUpReminderHint')}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Açıklamalar */}
               <div className="bg-white border border-gray-300">

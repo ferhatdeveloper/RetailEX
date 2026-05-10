@@ -190,15 +190,19 @@ export function RetailExFlatFieldLabel({
     children,
     required,
     className = '',
+    useSentenceCase = false,
 }: {
     children: React.ReactNode;
     required?: boolean;
     className?: string;
+    /** true: normal yazım, biraz daha büyük — uzun formlarda okunabilirlik */
+    useSentenceCase?: boolean;
 }) {
+    const variantClass = useSentenceCase
+        ? 'text-xs font-semibold text-slate-600 dark:text-slate-300 normal-case tracking-normal mb-1.5 block'
+        : 'text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block';
     return (
-        <span
-            className={`text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block ${className}`}
-        >
+        <span className={`${variantClass} ${className}`}>
             {children}
             {required ? <span className="text-red-500 ml-0.5">*</span> : null}
         </span>

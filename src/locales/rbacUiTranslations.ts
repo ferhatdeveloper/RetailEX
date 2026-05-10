@@ -263,10 +263,16 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
   },
   restPrintRouteTitle: { tr: 'Kategori rotalama', en: 'Category routing', ar: 'توجيه الفئات', ku: 'ڕێڕەوی هاوپۆل' },
   restPrintRouteHint: {
-    tr: 'Her ürün kategorisi için mutfak çıktısının gideceği yazıcı profilini seçin. Liste, ürün stoğundaki kategori alanlarından oluşur.',
-    en: 'Choose the printer profile for each category. The list is built from product categories in stock.',
-    ar: 'اختر ملف الطابعة لكل فئة للمطبخ. تُبنى القائمة من فئات المنتجات.',
-    ku: 'بۆ هەر هاوپۆلێک چاپکەر هەڵبژێرە.',
+    tr: 'Her ürün kategorisi için mutfak fişinin gideceği profili seçin. Liste, ürün stoğundaki kategori alanlarından oluşur.',
+    en: 'Choose the printer profile for each category’s kitchen ticket. The list comes from product categories in stock.',
+    ar: 'اختر ملف الطابعة لكل فئة لإيصال المطبخ. تُبنى القائمة من فئات المنتجات.',
+    ku: 'بۆ هەر هاوپۆلێک پڕۆفایلی چاپکەر هەڵبژێرە.',
+  },
+  restPrintRouteDispatchBanner: {
+    tr: 'DeskApp mutfak fişi: «Sistem yazıcısı» → Windows’ta HTML fiş (Edge+PDF). «Ağ (IP)» → aynı ağdaki termale ham ESC/POS (varsayılan port 9100). Web tarayıcısında yalnızca HTML yazdırma kullanılabilir.',
+    en: 'DeskApp kitchen ticket: «System printer» → HTML receipt via Windows. «Network (IP)» → raw ESC/POS to the printer (default port 9100). Browser can only use HTML printing.',
+    ar: 'تطبيق المكتب: «طابعة النظام» HTML عبر ويندوز؛ «شبكة» ESC/POS خام (9100). المتصفح: HTML فقط.',
+    ku: 'DeskApp: سیستەم → HTML؛ تۆڕ → ESC/POS.',
   },
   restPrintNoCategoriesTitle: { tr: 'Henüz kategori yok', en: 'No categories yet', ar: 'لا فئات بعد', ku: 'هاوپۆل نییە' },
   restPrintNoCategoriesBody: {
@@ -300,6 +306,13 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
   restPrintWinList: { tr: 'Windows yazıcı listesi', en: 'Windows printer list', ar: 'قائمة طابعات ويندوز', ku: 'لیستی Windows' },
   restPrintWinPick: { tr: 'Yazıcı seçin…', en: 'Choose printer…', ar: 'اختر الطابعة…', ku: 'هەڵبژێرە…' },
   restPrintIpLabel: { tr: 'IP adresi', en: 'IP address', ar: 'عنوان IP', ku: 'ناونیشانی IP' },
+  restPrintPortLabel: { tr: 'Port (ham yazdırma)', en: 'Port (raw)', ar: 'المنفذ', ku: 'پۆرت' },
+  restPrintPortHint: {
+    tr: 'Çoğu ağ termali 9100 kullanır (ESC/POS).',
+    en: 'Most network thermal printers use port 9100 (ESC/POS).',
+    ar: 'غالبًا 9100 للحراري.',
+    ku: 'زۆربەی 9100',
+  },
   restPrintCancel: { tr: 'İptal', en: 'Cancel', ar: 'إلغاء', ku: 'هەڵوەشاندنەوە' },
   restPrintSave: { tr: 'Kaydet', en: 'Save', ar: 'حفظ', ku: 'پاشەکەوت' },
 };

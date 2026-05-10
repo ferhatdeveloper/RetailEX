@@ -134,6 +134,10 @@ export interface PrinterProfile {
     status: 'online' | 'offline';
     lastUsed?: string;
     systemName?: string;
+    /** Ağ (IP) ham yazdırma — mutfak ESC/POS */
+    address?: string;
+    /** Raw socket (çoğu termal 9100) */
+    port?: number;
 }
 
 export interface Staff {

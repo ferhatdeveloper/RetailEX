@@ -3,6 +3,7 @@
  * Önizleme modalındaki görünümle hizalı satır düzeni, kesik çizgiler, ödeme blokları, barkod.
  */
 import type { Sale, SaleItem } from '../core/types/models';
+import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
 import { receiptNotesForDisplay } from './receiptNotes';
@@ -400,7 +401,7 @@ ${variantExtra}
     .join('')}</svg>`;
 
   const bodyInner = `
-<div style="width:80mm;max-width:80mm;box-sizing:border-box;margin:0 auto;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:10px;font-weight:600;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
+<div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:10px;font-weight:600;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
     ${logoHtml}
     <div style="font-size:15px;font-weight:800;margin-bottom:4px">${escapeHtml(companyName)}</div>
@@ -445,11 +446,9 @@ ${variantExtra}
   <div style="border-top:2px dashed #000;margin-top:10px"></div>
 </div>`;
 
-  return `<!DOCTYPE html><html lang="${locale}" dir="${dir}"><head><meta charset="utf-8"><title>${escapeHtml(companyName)} - ${escapeHtml(sale.receiptNumber)}</title>
+  return `<!DOCTYPE html><html lang="${locale}" dir="${dir}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${escapeHtml(companyName)} - ${escapeHtml(sale.receiptNumber)}</title>
 <style>
-  @page { size: 80mm auto; margin: 0; }
-  @media print { @page { size: 80mm auto; margin: 0; } html, body { width: 80mm !important; max-width: 80mm !important; margin: 0 !important; padding: 0 !important; } }
-  html, body { margin: 0; padding: 0; width: 80mm; max-width: 80mm; box-sizing: border-box; }
+${RECEIPT_80MM_DOCUMENT_CSS}
   body { padding: 0; font-family: 'Courier New', Courier, monospace; direction: ${dir}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
   * { box-sizing: border-box; }
 </style></head><body>${bodyInner}</body></html>`;

@@ -341,6 +341,9 @@ export const productAPI = {
         sale_price_eur: parseFloat(String((product as any).salePriceEUR ?? (product as any).sale_price_eur ?? 0)) || 0,
         custom_exchange_rate: parseFloat(String((product as any).customExchangeRate ?? (product as any).custom_exchange_rate ?? 0)) || 0,
         auto_calculate_usd: Boolean((product as any).autoCalculateUSD ?? (product as any).auto_calculate_usd ?? false),
+        follow_up_reminder_days: normalizeProductFollowUpReminderDays(
+          (product as any).followUpReminderDays ?? (product as any).follow_up_reminder_days,
+        ),
       };
 
       const columns = Object.keys(productData);
@@ -417,6 +420,7 @@ export const productAPI = {
         purchasePriceEUR: 'purchase_price_eur',
         unitsetId: 'unitset_id',
         image_url_cdn: 'image_url_cdn',
+        followUpReminderDays: 'follow_up_reminder_days',
       };
 
       const finalData: Record<string, any> = {};
@@ -492,6 +496,7 @@ export const productAPI = {
         purchasePriceUSD: 'purchase_price_usd',
         salePriceEUR: 'sale_price_eur',
         purchasePriceEUR: 'purchase_price_eur',
+        followUpReminderDays: 'follow_up_reminder_days',
       };
 
       const fieldValues = new Map<string, any>();
@@ -729,5 +734,22 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     customExchangeRate: parseFloat(dbProduct.custom_exchange_rate || 0),
     autoCalculateUSD: dbProduct.auto_calculate_usd === true,
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
+    followUpReminderDays: normalizeProductFollowUpReminderDaysForProduct(dbProduct.follow_up_reminder_days),
   };
+}
+
+/** DB → Product: yalnızca pozitif günleri sayı olarak döndür */
+function normalizeProductFollowUpReminderDaysForProduct(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.min(3650, n);
+}
+
+/** INSERT/UPDATE: null = kapalı */
+function normalizeProductFollowUpReminderDays(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(3650, n);
 }

@@ -11,6 +11,7 @@ import {
     Checkbox,
     Popconfirm,
     Tag,
+    Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -20,6 +21,7 @@ import {
     ClockCircleOutlined,
     ScissorOutlined,
     FormOutlined,
+    InfoCircleOutlined,
 } from '@ant-design/icons';
 import { Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
@@ -634,7 +636,7 @@ export function ServiceManagement() {
                     onClose={() => setShowModal(false)}
                     title={isEdit ? tm('bEditServiceTitle') : tm('bNewServiceTitle')}
                     headerIcon={<Scissors className="h-5 w-5" aria-hidden />}
-                    maxWidthClass="max-w-2xl"
+                    maxWidthClass="max-w-3xl"
                     cancelLabel={tm('cancel')}
                     confirmLabel={saving ? tm('bSaving') : tm('save')}
                     confirmLoading={saving}
@@ -646,10 +648,12 @@ export function ServiceManagement() {
                         }
                     }}
                 >
-                    <div className="flex w-full flex-col gap-4">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div className="sm:col-span-2">
-                                <RetailExFlatFieldLabel required>{tm('bServiceLabel')}</RetailExFlatFieldLabel>
+                    <div className="flex w-full flex-col gap-6">
+                        <section className="space-y-4">
+                            <div>
+                                <RetailExFlatFieldLabel required useSentenceCase>
+                                    {tm('bServiceLabel')}
+                                </RetailExFlatFieldLabel>
                                 <Input
                                     className="!rounded-2xl !px-4 !py-2.5"
                                     value={editing.name ?? ''}
@@ -657,154 +661,203 @@ export function ServiceManagement() {
                                     placeholder="Lazer epilasyon"
                                 />
                             </div>
-                            <div className="sm:col-span-2">
-                                <RetailExFlatFieldLabel>{tm('bServiceParentCategoryField')}</RetailExFlatFieldLabel>
-                                <Typography.Paragraph type="secondary" className="!mb-1 !text-xs">
-                                    {tm('bServiceParentCategoryHint')}
-                                </Typography.Paragraph>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    list="beauty-service-main-cat-suggestions"
-                                    value={String(editing.parent_category ?? '')}
-                                    onChange={e =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            parent_category: e.target.value.trim() ? e.target.value : undefined,
-                                        }))
-                                    }
-                                    placeholder="Candela"
-                                />
-                                <datalist id="beauty-service-main-cat-suggestions">
-                                    {serviceMainKeys.map(k => (
-                                        <option key={k} value={k} />
-                                    ))}
-                                </datalist>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        <span className="inline-flex items-center gap-1.5">
+                                            {tm('bServiceParentCategoryField')}
+                                            <Tooltip title={tm('bServiceParentCategoryHint')}>
+                                                <InfoCircleOutlined
+                                                    className="text-slate-400 hover:text-blue-500 transition-colors"
+                                                    aria-label={tm('bServiceParentCategoryHint')}
+                                                />
+                                            </Tooltip>
+                                        </span>
+                                    </RetailExFlatFieldLabel>
+                                    <Input
+                                        className="!rounded-2xl !px-4 !py-2.5"
+                                        list="beauty-service-main-cat-suggestions"
+                                        value={String(editing.parent_category ?? '')}
+                                        onChange={e =>
+                                            setEditing(p => ({
+                                                ...p,
+                                                parent_category: e.target.value.trim() ? e.target.value : undefined,
+                                            }))
+                                        }
+                                        placeholder="Candela"
+                                    />
+                                    <datalist id="beauty-service-main-cat-suggestions">
+                                        {serviceMainKeys.map(k => (
+                                            <option key={k} value={k} />
+                                        ))}
+                                    </datalist>
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('bServiceSubCategoryFilter')}
+                                    </RetailExFlatFieldLabel>
+                                    <Select
+                                        {...antSelectInFlatModal}
+                                        className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
+                                        value={editing.category ?? ServiceCategory.BEAUTY}
+                                        onChange={v => setEditing(p => ({ ...p, category: v }))}
+                                        options={categories}
+                                    />
+                                </div>
                             </div>
-                            <div className="sm:col-span-2">
-                                <RetailExFlatFieldLabel>{tm('bServiceSubCategoryFilter')}</RetailExFlatFieldLabel>
-                                <Select
-                                    {...antSelectInFlatModal}
-                                    className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
-                                    value={editing.category ?? ServiceCategory.BEAUTY}
-                                    onChange={v => setEditing(p => ({ ...p, category: v }))}
-                                    options={categories}
-                                />
+                        </section>
+
+                        <div className="h-px shrink-0 bg-slate-100 dark:bg-slate-700/80" aria-hidden />
+
+                        <section className="space-y-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('bServiceDefaultSessions')}
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={1}
+                                        max={99}
+                                        value={editing.default_sessions ?? 1}
+                                        onChange={v =>
+                                            setEditing(p => ({ ...p, default_sessions: Math.max(1, Number(v) || 1) }))
+                                        }
+                                    />
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        <span className="inline-flex items-center gap-1.5">
+                                            {tm('bServiceFollowUpDaysShort')}
+                                            <Tooltip title={tm('bServiceFollowUpDaysHint')}>
+                                                <InfoCircleOutlined
+                                                    className="text-slate-400 hover:text-blue-500 transition-colors"
+                                                    aria-label={tm('bServiceFollowUpDaysHint')}
+                                                />
+                                            </Tooltip>
+                                        </span>
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={1}
+                                        max={3650}
+                                        placeholder="—"
+                                        value={
+                                            editing.follow_up_reminder_days != null &&
+                                            Number.isFinite(Number(editing.follow_up_reminder_days)) &&
+                                            Number(editing.follow_up_reminder_days) > 0
+                                                ? Math.round(Number(editing.follow_up_reminder_days))
+                                                : null
+                                        }
+                                        onChange={v =>
+                                            setEditing(p => ({
+                                                ...p,
+                                                follow_up_reminder_days:
+                                                    v == null || !Number.isFinite(Number(v)) || Number(v) <= 0
+                                                        ? undefined
+                                                        : Math.min(3650, Math.round(Number(v))),
+                                            }))
+                                        }
+                                    />
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('bDurationMin')}
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={5}
+                                        value={editing.duration_min ?? 60}
+                                        onChange={v => setEditing(p => ({ ...p, duration_min: Number(v) || 0 }))}
+                                    />
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('price')}
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={0}
+                                        value={editing.price ?? 0}
+                                        onChange={v => setEditing(p => ({ ...p, price: Number(v) || 0 }))}
+                                    />
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('purchasePrice')}
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={0}
+                                        value={editing.cost_price ?? 0}
+                                        onChange={v => setEditing(p => ({ ...p, cost_price: Number(v) || 0 }))}
+                                    />
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('bCommissionPercentShort')}
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={0}
+                                        max={100}
+                                        value={editing.commission_rate ?? 0}
+                                        onChange={v => setEditing(p => ({ ...p, commission_rate: Number(v) || 0 }))}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bServiceDefaultSessions')}</RetailExFlatFieldLabel>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={1}
-                                    max={99}
-                                    value={editing.default_sessions ?? 1}
-                                    onChange={v => setEditing(p => ({ ...p, default_sessions: Math.max(1, Number(v) || 1) }))}
-                                />
+                        </section>
+
+                        <div className="h-px shrink-0 bg-slate-100 dark:bg-slate-700/80" aria-hidden />
+
+                        <section className="space-y-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                <div className="min-w-0 shrink-0 sm:w-48">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('bColorLabel')}
+                                    </RetailExFlatFieldLabel>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="color"
+                                            value={editing.color ?? RETAILEX_PRIMARY}
+                                            onChange={e => setEditing(p => ({ ...p, color: e.target.value }))}
+                                            className="h-10 w-16 shrink-0 cursor-pointer rounded-xl border border-slate-200 bg-transparent dark:border-slate-600"
+                                        />
+                                        <Typography.Text
+                                            type="secondary"
+                                            className="font-mono text-sm tabular-nums"
+                                        >
+                                            {editing.color ?? RETAILEX_PRIMARY}
+                                        </Typography.Text>
+                                    </div>
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        {tm('description')}
+                                    </RetailExFlatFieldLabel>
+                                    <Input.TextArea
+                                        className="!rounded-2xl !px-4 !py-2.5"
+                                        rows={3}
+                                        value={editing.description ?? ''}
+                                        onChange={e => setEditing(p => ({ ...p, description: e.target.value }))}
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bServiceFollowUpDaysShort')}</RetailExFlatFieldLabel>
-                                <Typography.Paragraph type="secondary" className="!mb-1 !text-xs">
-                                    {tm('bServiceFollowUpDaysHint')}
-                                </Typography.Paragraph>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={1}
-                                    max={3650}
-                                    placeholder="—"
-                                    value={
-                                        editing.follow_up_reminder_days != null &&
-                                        Number.isFinite(Number(editing.follow_up_reminder_days)) &&
-                                        Number(editing.follow_up_reminder_days) > 0
-                                            ? Math.round(Number(editing.follow_up_reminder_days))
-                                            : null
-                                    }
-                                    onChange={v =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            follow_up_reminder_days:
-                                                v == null || !Number.isFinite(Number(v)) || Number(v) <= 0
-                                                    ? undefined
-                                                    : Math.min(3650, Math.round(Number(v))),
-                                        }))
-                                    }
-                                />
+                            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                                <Checkbox
+                                    checked={editing.requires_device ?? false}
+                                    onChange={e => setEditing(p => ({ ...p, requires_device: e.target.checked }))}
+                                >
+                                    {tm('bDeviceZorunlu') ?? 'Cihaz zorunlu'}
+                                </Checkbox>
+                                <Checkbox
+                                    checked={editing.is_active ?? true}
+                                    onChange={e => setEditing(p => ({ ...p, is_active: e.target.checked }))}
+                                >
+                                    {tm('active')}
+                                </Checkbox>
                             </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bDurationMin')}</RetailExFlatFieldLabel>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={5}
-                                    value={editing.duration_min ?? 60}
-                                    onChange={v => setEditing(p => ({ ...p, duration_min: Number(v) || 0 }))}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('price')}</RetailExFlatFieldLabel>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={0}
-                                    value={editing.price ?? 0}
-                                    onChange={v => setEditing(p => ({ ...p, price: Number(v) || 0 }))}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('purchasePrice')}</RetailExFlatFieldLabel>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={0}
-                                    value={editing.cost_price ?? 0}
-                                    onChange={v => setEditing(p => ({ ...p, cost_price: Number(v) || 0 }))}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bCommissionPercentShort')}</RetailExFlatFieldLabel>
-                                <InputNumber
-                                    className="w-full !rounded-2xl"
-                                    min={0}
-                                    max={100}
-                                    value={editing.commission_rate ?? 0}
-                                    onChange={v => setEditing(p => ({ ...p, commission_rate: Number(v) || 0 }))}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bColorLabel')}</RetailExFlatFieldLabel>
-                            <Space>
-                                <input
-                                    type="color"
-                                    value={editing.color ?? RETAILEX_PRIMARY}
-                                    onChange={e => setEditing(p => ({ ...p, color: e.target.value }))}
-                                    className="h-9 w-14 cursor-pointer rounded-xl border border-slate-200 bg-transparent"
-                                />
-                                <Typography.Text type="secondary" className="font-mono text-xs">
-                                    {editing.color ?? RETAILEX_PRIMARY}
-                                </Typography.Text>
-                            </Space>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('description')}</RetailExFlatFieldLabel>
-                            <Input.TextArea
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                rows={2}
-                                value={editing.description ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, description: e.target.value }))}
-                            />
-                        </div>
-                        <Space direction="vertical" className="w-full">
-                            <Checkbox
-                                checked={editing.requires_device ?? false}
-                                onChange={e => setEditing(p => ({ ...p, requires_device: e.target.checked }))}
-                            >
-                                {tm('bDeviceZorunlu') ?? 'Cihaz zorunlu'}
-                            </Checkbox>
-                            <Checkbox
-                                checked={editing.is_active ?? true}
-                                onChange={e => setEditing(p => ({ ...p, is_active: e.target.checked }))}
-                            >
-                                {tm('active')}
-                            </Checkbox>
-                        </Space>
+                        </section>
                     </div>
                 </RetailExFlatModal>
             </div>

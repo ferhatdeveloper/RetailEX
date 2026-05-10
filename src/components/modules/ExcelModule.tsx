@@ -5,9 +5,6 @@
  */
 
 import { useState, useCallback } from 'react';
-import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '@tauri-apps/plugin-fs';
-import { invoke } from '@tauri-apps/api/core';
 import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
@@ -21,13 +18,14 @@ import { supplierAPI } from '../../services/api/suppliers';
 import { productVariantAPI } from '../../services/api/productVariants';
 import { createCurrentAccount } from '../../services/api/currentAccounts';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../utils/currentAccountsExcelExport';
-import { serviceAPI } from '../../services/serviceAPI';
+import { serviceAPI, type Service } from '../../services/serviceAPI';
 import { categoryAPI } from '../../services/api/masterData';
 import { postgres, ERP_SETTINGS } from '../../services/postgres';
 import { useProductStore } from '../../store/useProductStore';
 import { useCustomerStore } from '../../store/useCustomerStore';
 import { useRestaurantStore } from '../restaurant/store/useRestaurantStore';
 import { beautyService } from '../../services/beautyService';
+import type { BeautyService } from '../../types/beauty';
 
 // ─── Tip tanımları ────────────────────────────────────────────────────────────
 
@@ -57,6 +55,30 @@ interface ImportRunOptions {
 interface Notification {
   type: 'success' | 'error' | 'info' | 'loading';
   message: string;
+}
+
+/** Güzellik randevu Excel — hizmet kartı (beauty_services) ile eşlenen sütunlar */
+const COL_BEAUTY_APPT_FOLLOW_UP_DAYS = 'Hat\u0131rlatma (g\u00fcn)';
+const COL_BEAUTY_APPT_DEFAULT_SESSIONS = 'Seans say\u0131s\u0131 (varsay\u0131lan)';
+
+function isTauriExcelRuntime(): boolean {
+  return typeof window !== 'undefined' && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+}
+
+/** Tarayıcı / web görünümünde .xlsx indirme (Tauri save yok) */
+function triggerBrowserXlsxDownload(fileName: string, buf: Uint8Array): void {
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName.replace(/[/\\?%*:|"<>]/g, '-');
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── Şablon tanımları ─────────────────────────────────────────────────────────
@@ -261,6 +283,8 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Müşteri Adı': '',
         'Hizmet Adı*': 'Cilt Bakımı',
         'Hizmet Kodu': '',
+        [COL_BEAUTY_APPT_FOLLOW_UP_DAYS]: 30,
+        [COL_BEAUTY_APPT_DEFAULT_SESSIONS]: 1,
         'Tarih*': '2026-04-20',
         'Saat*': '10:30',
         'Süre (dk)': 45,
@@ -276,6 +300,8 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Müşteri Adı': '',
         'Hizmet Adı*': 'Lazer Epilasyon',
         'Hizmet Kodu': '',
+        [COL_BEAUTY_APPT_FOLLOW_UP_DAYS]: '',
+        [COL_BEAUTY_APPT_DEFAULT_SESSIONS]: '',
         'Tarih*': '2026-04-21',
         'Saat*': '14:00',
         'Süre (dk)': 30,
@@ -344,6 +370,14 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
     keyMap['Hizmet Adı'] = 'Hizmet Adı*';
     keyMap['Tarih'] = 'Tarih*';
     keyMap['Saat'] = 'Saat*';
+    keyMap['Hatirlatma (gun)'] = COL_BEAUTY_APPT_FOLLOW_UP_DAYS;
+    keyMap['Hatirlatma gun'] = COL_BEAUTY_APPT_FOLLOW_UP_DAYS;
+    keyMap['Reminder (days)'] = COL_BEAUTY_APPT_FOLLOW_UP_DAYS;
+    keyMap['follow_up_reminder_days'] = COL_BEAUTY_APPT_FOLLOW_UP_DAYS;
+    keyMap['Seans sayisi (varsayilan)'] = COL_BEAUTY_APPT_DEFAULT_SESSIONS;
+    keyMap['Seans sayısı'] = COL_BEAUTY_APPT_DEFAULT_SESSIONS;
+    keyMap['Default sessions'] = COL_BEAUTY_APPT_DEFAULT_SESSIONS;
+    keyMap['default_sessions'] = COL_BEAUTY_APPT_DEFAULT_SESSIONS;
   } else if (entityType === 'beauty-sales') {
     /* yalnızca dışa aktarım */
   }
@@ -579,7 +613,8 @@ function productImageUrlFromExcelRow(row: Record<string, any>): string {
   return '';
 }
 
-async function downloadExcel(sheetName: string, data: any[], fileName: string) {
+/** @returns true = dosya yazıldı/indirildi; false = kullanıcı iptal (yalnızca Tauri diyalog) */
+async function downloadExcel(sheetName: string, data: any[], fileName: string): Promise<boolean> {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
   const maxWidth = 30;
@@ -588,28 +623,64 @@ async function downloadExcel(sheetName: string, data: any[], fileName: string) {
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
 
-  // Tauri: kayıt yeri seçtir
+  if (!isTauriExcelRuntime()) {
+    triggerBrowserXlsxDownload(fileName, buf);
+    return true;
+  }
+
+  const [{ save }, { writeFile }] = await Promise.all([
+    import('@tauri-apps/plugin-dialog'),
+    import('@tauri-apps/plugin-fs'),
+  ]);
   const savePath = await save({
     defaultPath: fileName,
     filters: [{ name: 'Excel Dosyası', extensions: ['xlsx'] }],
   });
-  if (!savePath) return; // kullanıcı iptal etti
+  if (!savePath) return false;
 
   await writeFile(savePath, buf);
+  return true;
+}
+
+const EXCEL_EXPORT_CANCELLED = '__EXCEL_EXPORT_CANCELLED__';
+
+function isExcelExportCancelled(err: unknown): boolean {
+  return err instanceof Error && err.message === EXCEL_EXPORT_CANCELLED;
+}
+
+async function saveExcelOrThrow(...args: Parameters<typeof downloadExcel>): Promise<void> {
+  const ok = await downloadExcel(...args);
+  if (!ok) throw new Error(EXCEL_EXPORT_CANCELLED);
+}
+
+async function saveExcelWorkbookOrThrow(...args: Parameters<typeof downloadExcelWorkbook>): Promise<void> {
+  const ok = await downloadExcelWorkbook(...args);
+  if (!ok) throw new Error(EXCEL_EXPORT_CANCELLED);
 }
 
 function sheetColWidths(keys: string[], maxW = 34): { wch: number }[] {
   return keys.map((k) => ({ wch: Math.min(Math.max(k.length + 2, 10), maxW) }));
 }
 
-async function downloadExcelWorkbook(wb: XLSX.WorkBook, fileName: string) {
+async function downloadExcelWorkbook(wb: XLSX.WorkBook, fileName: string): Promise<boolean> {
   const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+
+  if (!isTauriExcelRuntime()) {
+    triggerBrowserXlsxDownload(fileName, buf);
+    return true;
+  }
+
+  const [{ save }, { writeFile }] = await Promise.all([
+    import('@tauri-apps/plugin-dialog'),
+    import('@tauri-apps/plugin-fs'),
+  ]);
   const savePath = await save({
     defaultPath: fileName,
     filters: [{ name: 'Excel Dosyası', extensions: ['xlsx'] }],
   });
-  if (!savePath) return;
+  if (!savePath) return false;
   await writeFile(savePath, buf);
+  return true;
 }
 
 // ─── Dışa aktarım fonksiyonları ───────────────────────────────────────────────
@@ -637,7 +708,7 @@ async function exportProducts(): Promise<void> {
     'Görsel URL': (p as any).image_url || '',
     'Aktif (E/H)': p.is_active !== false ? 'E' : 'H',
   }));
-  await downloadExcel('Ürünler', data, `Ürünler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveExcelOrThrow('Ürünler', data, `Ürünler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportCurrentAccounts(): Promise<void> {
@@ -666,23 +737,57 @@ async function exportVariants(): Promise<void> {
     }
   }
   if (rows.length === 0) throw new Error('Dışa aktarılacak varyant bulunamadı.');
-  await downloadExcel('Varyantlar', rows, `Varyantlar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveExcelOrThrow('Varyantlar', rows, `Varyantlar_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportServices(): Promise<void> {
-  const services = await serviceAPI.getAll();
+  const [services, erpServices] = await Promise.all([
+    beautyService.getServices(),
+    serviceAPI.getAll().catch(() => [] as Service[]),
+  ]);
   if (services.length === 0) throw new Error('Dışa aktarılacak hizmet kartı bulunamadı.');
-  const data = services.map(s => ({
-    'Hizmet Kodu*': s.code,
-    'Hizmet Adı*': s.name,
-    'Kategori': s.category || '',
-    'Birim': s.unit || 'Adet',
-    'Birim Fiyat*': s.unit_price,
-    'KDV Oranı (%)': s.tax_rate || 18,
-    'Açıklama': s.description || '',
-    'Aktif (E/H)': s.is_active ? 'E' : 'H',
-  }));
-  await downloadExcel('Hizmet Kartları', data, `HizmetKartlari_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+  const erpById = new Map<string, Service>();
+  for (const e of erpServices) {
+    erpById.set(String(e.id), e);
+  }
+
+  const productCodeById = new Map<string, string>();
+  try {
+    const allProducts = await productAPI.getAll();
+    for (const p of allProducts) {
+      const mt = String((p as { materialType?: string }).materialType ?? '').toLowerCase();
+      if (mt === 'service') {
+        const c = String((p as { code?: string }).code ?? '').trim();
+        if (c) productCodeById.set(String(p.id), c);
+      }
+    }
+  } catch {
+    /* stok hizmet kodları olmadan devam */
+  }
+
+  const data = services.map((s: BeautyService) => {
+    const id = String(s.id);
+    const erp = erpById.get(id);
+    const code = (erp?.code ?? productCodeById.get(id) ?? '').trim();
+    return {
+      'Hizmet Kodu*': code,
+      'Hizmet Adı*': s.name,
+      'Kategori': String(s.category ?? erp?.category ?? ''),
+      'Birim': erp?.unit || 'Adet',
+      'Birim Fiyat*': erp != null ? Number(erp.unit_price ?? 0) : Number(s.price ?? 0),
+      'KDV Oranı (%)': erp != null ? Number(erp.tax_rate ?? 18) : 18,
+      'Açıklama': String(s.description ?? erp?.description ?? ''),
+      'Aktif (E/H)': s.is_active !== false ? 'E' : 'H',
+      'Süre (dk)': s.duration_min ?? 30,
+      'Maliyet': Number(s.cost_price ?? erp?.purchase_price ?? 0),
+      'Komisyon (%)': Number(s.commission_rate ?? 0),
+      'Hatırlatma (gün)':
+        s.follow_up_reminder_days != null && s.follow_up_reminder_days > 0 ? s.follow_up_reminder_days : '',
+      'Seans sayısı (varsayılan)': s.default_sessions ?? 1,
+    };
+  });
+  await saveExcelOrThrow('Hizmet Kartları', data, `HizmetKartlari_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportSuppliers(): Promise<void> {
@@ -707,7 +812,7 @@ async function exportSuppliers(): Promise<void> {
     'Notlar': (s as any).notes || '',
     'Aktif (E/H)': s.is_active !== false ? 'E' : 'H',
   }));
-  await downloadExcel('Tedarikçiler', data, `Tedarikciler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveExcelOrThrow('Tedarikçiler', data, `Tedarikciler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportCategories(): Promise<void> {
@@ -722,7 +827,7 @@ async function exportCategories(): Promise<void> {
     'Açıklama': r.description || '',
     'Aktif (E/H)': r.is_active ? 'E' : 'H',
   }));
-  await downloadExcel('Kategoriler', data, `Kategoriler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveExcelOrThrow('Kategoriler', data, `Kategoriler_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 async function exportBeautyAppointments(): Promise<void> {
@@ -743,7 +848,10 @@ async function exportBeautyAppointments(): Promise<void> {
     codeByCustomerId.set(String(c.id), String(c.code || '').trim());
     phoneByCustomerId.set(String(c.id), String(c.phone || '').trim());
   }
-  const svcMeta = new Map<string, { code: string }>();
+  const svcMeta = new Map<
+    string,
+    { code: string; follow_up_reminder_days: number | null; default_sessions: number }
+  >();
   for (const s of services) {
     const r = s as Record<string, unknown>;
     const code =
@@ -752,7 +860,13 @@ async function exportBeautyAppointments(): Promise<void> {
         : r.product_code != null
           ? String(r.product_code).trim()
           : '';
-    svcMeta.set(String(s.id), { code });
+    const fuRaw = s.follow_up_reminder_days;
+    const fuN = fuRaw == null || fuRaw === '' ? NaN : Math.round(Number(fuRaw));
+    const follow_up_reminder_days =
+      Number.isFinite(fuN) && fuN > 0 ? Math.min(3650, fuN) : null;
+    const dsN = Math.round(Number(s.default_sessions ?? 1));
+    const default_sessions = Number.isFinite(dsN) && dsN >= 1 ? Math.min(99, dsN) : 1;
+    svcMeta.set(String(s.id), { code, follow_up_reminder_days, default_sessions });
   }
   if (list.length === 0) {
     throw new Error('Dışa aktarılacak randevu bulunamadı (son 5 yıl ile bir yıl ileri aralığında).');
@@ -768,6 +882,11 @@ async function exportBeautyAppointments(): Promise<void> {
       'Müşteri Adı': a.customer_name ?? '',
       'Hizmet Adı*': a.service_name ?? '',
       'Hizmet Kodu': svc?.code ?? '',
+      [COL_BEAUTY_APPT_FOLLOW_UP_DAYS]:
+        svc?.follow_up_reminder_days != null && svc.follow_up_reminder_days > 0
+          ? svc.follow_up_reminder_days
+          : '',
+      [COL_BEAUTY_APPT_DEFAULT_SESSIONS]: svc?.default_sessions ?? '',
       'Tarih*': ymd,
       'Saat*': formatAppointmentTimeForExcel(a.time ?? a.appointment_time),
       'Süre (dk)': a.duration ?? 30,
@@ -777,7 +896,7 @@ async function exportBeautyAppointments(): Promise<void> {
       'Notlar': a.notes ?? '',
     };
   });
-  await downloadExcel(
+  await saveExcelOrThrow(
     'Güzellik Randevuları',
     data,
     `Guzellik_Randevular_${new Date().toISOString().split('T')[0]}.xlsx`
@@ -857,7 +976,7 @@ async function exportBeautySales(): Promise<void> {
   wsItems['!cols'] = sheetColWidths(itemKeys);
   XLSX.utils.book_append_sheet(wb, wsItems, 'Kalemler');
 
-  await downloadExcelWorkbook(wb, `Guzellik_Tahsilatlar_${new Date().toISOString().split('T')[0]}.xlsx`);
+  await saveExcelWorkbookOrThrow(wb, `Guzellik_Tahsilatlar_${new Date().toISOString().split('T')[0]}.xlsx`);
 }
 
 // ─── İçe aktarım fonksiyonları ────────────────────────────────────────────────
@@ -1260,6 +1379,8 @@ async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
     beautyService.getServices(),
     beautyService.getSpecialists(),
   ]);
+  /** İçe aktarımda aynı hizmete ardışık satırlarda güncel kart alanları kalsın */
+  let serviceSnapshot = services.slice() as BeautyService[];
   const byCode = new Map<string, string>();
   const byPhone = new Map<string, string>();
   const pushPhone = (digits: string, id: string) => {
@@ -1274,7 +1395,7 @@ async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
   }
   const byServiceName = new Map<string, string>();
   const byServiceCode = new Map<string, string>();
-  for (const s of services) {
+  for (const s of serviceSnapshot) {
     const r = s as Record<string, unknown>;
     const nm = String(s.name || '').trim().toLowerCase();
     if (nm && !byServiceName.has(nm)) byServiceName.set(nm, String(s.id));
@@ -1334,6 +1455,40 @@ async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
       const totalPrice = numFromExcel(row['Tutar'], 0);
       const notes = strFromExcel(row['Notlar']) || undefined;
 
+      const fuCell = row[COL_BEAUTY_APPT_FOLLOW_UP_DAYS];
+      const dsCell = row[COL_BEAUTY_APPT_DEFAULT_SESSIONS];
+      const fuTrim = fuCell !== undefined && fuCell !== null ? String(fuCell).trim() : '';
+      const dsTrim = dsCell !== undefined && dsCell !== null ? String(dsCell).trim() : '';
+
+      let followUpForService: number | null | undefined = undefined;
+      if (fuTrim.length > 0) {
+        const n = Math.round(numFromExcel(fuCell, NaN));
+        if (!Number.isFinite(n) || n < 0) {
+          result.failed++;
+          result.errors.push({
+            row: rowNum,
+            message:
+              'Hatırlatma (gün): sütunu boş bırakın veya 0 (kapalı) ya da 1–3650 arasında tam sayı girin.',
+          });
+          continue;
+        }
+        followUpForService = n <= 0 ? null : Math.min(3650, n);
+      }
+
+      let defaultSessionsForService: number | undefined = undefined;
+      if (dsTrim.length > 0) {
+        const n = Math.round(numFromExcel(dsCell, NaN));
+        if (!Number.isFinite(n) || n < 1 || n > 99) {
+          result.failed++;
+          result.errors.push({
+            row: rowNum,
+            message: 'Seans sayısı (varsayılan): boş bırakın veya 1–99 arası tam sayı girin.',
+          });
+          continue;
+        }
+        defaultSessionsForService = n;
+      }
+
       await beautyService.createAppointment({
         customer_id: customerId,
         service_id: serviceId,
@@ -1345,6 +1500,28 @@ async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
         notes,
         total_price: totalPrice,
       });
+
+      if (followUpForService !== undefined || defaultSessionsForService !== undefined) {
+        const idx = serviceSnapshot.findIndex(s => String(s.id) === serviceId);
+        const svcFull = idx >= 0 ? serviceSnapshot[idx] : undefined;
+        if (svcFull) {
+          await beautyService.updateService(serviceId, {
+            ...svcFull,
+            ...(followUpForService !== undefined ? { follow_up_reminder_days: followUpForService } : {}),
+            ...(defaultSessionsForService !== undefined ? { default_sessions: defaultSessionsForService } : {}),
+          });
+          if (idx >= 0) {
+            serviceSnapshot[idx] = {
+              ...svcFull,
+              ...(followUpForService !== undefined ? { follow_up_reminder_days: followUpForService } : {}),
+              ...(defaultSessionsForService !== undefined
+                ? { default_sessions: defaultSessionsForService }
+                : {}),
+            };
+          }
+        }
+      }
+
       result.success++;
     } catch (err: any) {
       result.failed++;
@@ -1443,7 +1620,7 @@ const TABS: TabConfig[] = [
     exportFn: exportBeautyAppointments,
     importFn: importBeautyAppointments,
     importNote:
-      'Müşteri sistemde (güzellik CRM) kayıtlı olmalı: Müşteri Kodu veya telefon (en az 8 rakam) ile eşlenir. Hizmet adı/kodu güzellik hizmet listesiyle aynı olmalı. Durum: scheduled, confirmed, in_progress, completed, cancelled, no_show. Uzman adı doluysa kullanıcı listesindeki adla birebir eşleşmeli. Her içe aktarım yeni randevu oluşturur.',
+      'Müşteri sistemde (güzellik CRM) kayıtlı olmalı: Müşteri Kodu veya telefon (en az 8 rakam) ile eşlenir. Hizmet adı/kodu güzellik hizmet listesiyle aynı olmalı. Durum: scheduled, confirmed, in_progress, completed, cancelled, no_show. Uzman adı doluysa kullanıcı listesindeki adla birebir eşleşmeli. Her içe aktarım yeni randevu oluşturur. İsteğe bağlı: «Hatırlatma (gün)» ve «Seans sayısı (varsayılan)» doluysa ilgili güzellik hizmet kartı güncellenir (0 = hatırlatma kapalı).',
   },
   {
     id: 'beauty-sales',
@@ -1502,13 +1679,17 @@ export function ExcelModule() {
   // Şablon indir
   const handleDownloadTemplate = useCallback(async () => {
     try {
-      await downloadExcel(
+      await saveExcelOrThrow(
         template.sheetName,
         template.sample,
         `Sablon_${template.sheetName}_${new Date().toISOString().split('T')[0]}.xlsx`
       );
       showNotification({ type: 'success', message: `${tm(template.label as any) || template.label} şablonu indirildi.` });
     } catch (err: any) {
+      if (isExcelExportCancelled(err)) {
+        setNotification(null);
+        return;
+      }
       showNotification({ type: 'error', message: err.message });
     }
   }, [template, showNotification]);
@@ -1522,6 +1703,10 @@ export function ExcelModule() {
       await tab.exportFn();
       showNotification({ type: 'success', message: `${tm(tab.label as any) || tab.label} başarıyla Excel'e aktarıldı.` });
     } catch (err: any) {
+      if (isExcelExportCancelled(err)) {
+        setNotification(null);
+        return;
+      }
       showNotification({ type: 'error', message: err.message });
     } finally {
       setIsLoading(false);

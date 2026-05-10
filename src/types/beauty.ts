@@ -121,10 +121,16 @@ export interface BeautyFollowUpReminder {
     due_date: string;
     last_completed_date: string;
     reminder_days: number;
+    /** Hizmet hatırlatmasında hizmet id; ürün hatırlatmasında son sarfın yapıldığı randevunun hizmet id (takvim sütunu) */
     service_id: string;
     service_name: string;
     customer_id: string;
     customer_name: string;
+    /** `product`: stok ürünü + tamamlanan randevuda sarf (consumable_usage_log) */
+    reminder_kind?: 'service' | 'product';
+    product_id?: string;
+    /** Ürün hatırlatması satır başlığı (ürün adı) */
+    product_name?: string;
 }
 
 export interface BeautyDevice {
