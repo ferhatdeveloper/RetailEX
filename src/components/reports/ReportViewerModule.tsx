@@ -159,38 +159,69 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         window.print();
     };
 
+    /** Yalnızca etiket kağıdı + @page mm — arka plan uygulaması ikinci sayfa / A4 taşmasını engeller */
     const printCss = `
 @media print {
-  .report-viewer-chrome { display: none !important; }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .report-viewer-shell,
+  .report-viewer-shell * {
+    visibility: visible !important;
+  }
+  .report-viewer-chrome {
+    display: none !important;
+  }
   .report-viewer-shell {
     position: static !important;
     inset: auto !important;
-    width: auto !important;
-    height: auto !important;
+    width: ${pw}mm !important;
+    height: ${ph}mm !important;
     min-height: 0 !important;
     max-height: none !important;
-    overflow: visible !important;
-    background: #fff !important;
+    overflow: hidden !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
   .report-viewer-stage {
+    position: static !important;
     flex: none !important;
     padding: 0 !important;
+    margin: 0 !important;
     overflow: visible !important;
+    width: ${pw}mm !important;
+    height: ${ph}mm !important;
     min-height: 0 !important;
-    width: 100% !important;
     display: block !important;
   }
   .report-viewer-paper {
+    position: relative !important;
+    left: 0 !important;
+    top: 0 !important;
     margin: 0 !important;
+    width: ${pw}mm !important;
+    height: ${ph}mm !important;
+    max-width: ${pw}mm !important;
+    max-height: ${ph}mm !important;
     box-shadow: none !important;
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   @page {
     size: ${pw}mm ${ph}mm;
-    margin: 0;
+    margin: 0mm;
   }
 }`;
 
