@@ -144,14 +144,23 @@ interface ReportViewerProps {
     onClose: () => void;
 }
 
+function clampPageMm(n: unknown, fallback: number): number {
+    const x = Number(n);
+    if (!Number.isFinite(x) || x <= 0) return fallback;
+    return Math.min(1200, Math.max(8, x));
+}
+
 export function ReportViewerModule({ template, data, onClose }: ReportViewerProps) {
     const paperRef = useRef<HTMLDivElement>(null);
     const pw = template.pageSize?.width || DEFAULT_A4.width;
     const ph = template.pageSize?.height || DEFAULT_A4.height;
+    /** @page ve baskı için güvenli mm — geçersiz / çok küçük değerler önizlemeyi kilitleyebilir */
+    const pwPrint = clampPageMm(pw, DEFAULT_A4.width);
+    const phPrint = clampPageMm(ph, DEFAULT_A4.height);
 
     const handleDownload = () => {
         if (paperRef.current) {
-            exportToPDF(paperRef.current, `${template.name}.pdf`, { width: pw, height: ph });
+            exportToPDF(paperRef.current, `${template.name}.pdf`, { width: pwPrint, height: phPrint });
         }
     };
 
@@ -160,8 +169,8 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     };
 
     /**
-     * visibility:hidden yerleşimi silmez → boş 1. sayfa + etiket 2. sayfada kalır.
-     * body’de yalnızca .report-viewer-shell bırakılır (portal); diğer kardeşler display:none.
+     * Tüm body kardeşlerini display:none yapmak bazı Chromium sürümlerinde yazdır önizlemesini
+     * “Önizleme yükleniyor”da bırakır. #root ve diğer portal kardeşleri yükseklik 0 + gizle ile akıştan düşürülür.
      */
     const printCss = `
 @media print {
@@ -174,28 +183,44 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     background: #fff !important;
   }
   body > *:not(.report-viewer-shell) {
-    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    border: none !important;
   }
   .report-viewer-chrome {
     display: none !important;
   }
   .report-viewer-shell {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
     right: auto !important;
     bottom: auto !important;
-    width: ${pw}mm !important;
-    height: ${ph}mm !important;
+    width: ${pwPrint}mm !important;
+    height: ${phPrint}mm !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
     max-height: none !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     background: #fff !important;
     backdrop-filter: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    visibility: visible !important;
+  }
+  .report-viewer-shell * {
+    visibility: visible !important;
   }
   .report-viewer-stage {
     position: static !important;
@@ -203,8 +228,8 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
-    width: ${pw}mm !important;
-    height: ${ph}mm !important;
+    width: ${pwPrint}mm !important;
+    height: ${phPrint}mm !important;
     min-height: 0 !important;
     display: block !important;
   }
@@ -213,10 +238,10 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     left: 0 !important;
     top: 0 !important;
     margin: 0 !important;
-    width: ${pw}mm !important;
-    height: ${ph}mm !important;
-    max-width: ${pw}mm !important;
-    max-height: ${ph}mm !important;
+    width: ${pwPrint}mm !important;
+    height: ${phPrint}mm !important;
+    max-width: ${pwPrint}mm !important;
+    max-height: ${phPrint}mm !important;
     box-shadow: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -224,7 +249,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     break-after: avoid !important;
   }
   @page {
-    size: ${pw}mm ${ph}mm;
+    size: ${pwPrint}mm ${phPrint}mm;
     margin: 0mm;
   }
 }`;
@@ -277,8 +302,8 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                     ref={paperRef}
                     className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
                     style={{
-                        width: `${pw}mm`,
-                        height: `${ph}mm`,
+                        width: `${pwPrint}mm`,
+                        height: `${phPrint}mm`,
                     }}
                 >
                     {template.components.map((comp) => (
