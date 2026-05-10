@@ -159,7 +159,10 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         window.print();
     };
 
-    /** Yalnızca etiket kağıdı + @page mm — arka plan uygulaması ikinci sayfa / A4 taşmasını engeller */
+    /**
+     * visibility:hidden yerleşimi silmez → boş 1. sayfa + etiket 2. sayfada kalır.
+     * body’de yalnızca .report-viewer-shell bırakılır (portal); diğer kardeşler display:none.
+     */
     const printCss = `
 @media print {
   html, body {
@@ -170,25 +173,26 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     min-height: 0 !important;
     background: #fff !important;
   }
-  body * {
-    visibility: hidden !important;
-  }
-  .report-viewer-shell,
-  .report-viewer-shell * {
-    visibility: visible !important;
+  body > *:not(.report-viewer-shell) {
+    display: none !important;
   }
   .report-viewer-chrome {
     display: none !important;
   }
   .report-viewer-shell {
-    position: static !important;
-    inset: auto !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
     width: ${pw}mm !important;
     height: ${ph}mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: hidden !important;
-    background: transparent !important;
+    background: #fff !important;
     backdrop-filter: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
