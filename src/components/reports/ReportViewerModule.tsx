@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import JsBarcode from 'jsbarcode';
-import { mmToPx, DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
+import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 
@@ -9,7 +9,45 @@ function reportBarcodeFormat(value: string): 'EAN13' | 'CODE128' {
     return 'CODE128';
 }
 
-function ReportBarcodePreview({
+/** Kutunun genişliğine göre çubuk modülü (px) — yazdırma kutusuna sığacak şekilde. */
+function estimateBarcodeModuleWidthPx(value: string, widthPx: number): number {
+    const fmt = reportBarcodeFormat(value);
+    if (fmt === 'EAN13' && /^\d{13}$/.test(value)) {
+        return Math.max(0.9, Math.min(4, widthPx / 95));
+    }
+    const len = Math.max(value.length, 3);
+    const modulesGuess = 56 + len * 14;
+    return Math.max(0.75, Math.min(4, widthPx / modulesGuess));
+}
+
+function fitBarcodeSvgToContainer(svg: SVGSVGElement) {
+    const apply = () => {
+        try {
+            const b = svg.getBBox();
+            if (!Number.isFinite(b.width) || !Number.isFinite(b.height) || b.width <= 0 || b.height <= 0) return;
+            const pad = 0.5;
+            svg.setAttribute('viewBox', `${b.x - pad} ${b.y - pad} ${b.width + pad * 2} ${b.height + pad * 2}`);
+            svg.removeAttribute('width');
+            svg.removeAttribute('height');
+            svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+            svg.style.width = '100%';
+            svg.style.height = '100%';
+            svg.style.maxWidth = '100%';
+            svg.style.maxHeight = '100%';
+            svg.style.display = 'block';
+        } catch {
+            /* layout henüz hazır değil */
+        }
+    };
+    apply();
+    requestAnimationFrame(() => {
+        apply();
+        requestAnimationFrame(apply);
+    });
+}
+
+/** Barkod çizimi — altındaki rakamlar (displayValue) kutuya göre ölçeklenir. */
+function ReportBarcodeSvg({
     svgId,
     value,
     widthPx,
@@ -24,27 +62,38 @@ function ReportBarcodePreview({
 
     useEffect(() => {
         const el = svgRef.current;
-        if (!el || !value) return;
+        if (!el || !value || widthPx < 2 || heightPx < 2) return;
         while (el.firstChild) el.removeChild(el.firstChild);
-        const barH = Math.max(16, Math.floor(heightPx * 0.72));
-        const modW = Math.max(1, Math.min(2.5, widthPx / 100));
+
+        const showText = true;
+        const textReserve = Math.min(Math.max(8, heightPx * 0.26), heightPx * 0.42);
+        const barH = Math.max(6, Math.floor(heightPx - textReserve - 1));
+        const modW = estimateBarcodeModuleWidthPx(value, widthPx);
         const fmt = reportBarcodeFormat(value);
         const opts = {
             format: fmt,
             width: modW,
             height: barH,
-            displayValue: heightPx >= 44,
-            fontSize: Math.max(8, Math.min(11, heightPx * 0.18)),
+            displayValue: showText,
+            fontSize: Math.max(5, Math.min(14, Math.floor(heightPx * 0.17))),
+            textMargin: 0,
             margin: 0,
             background: '#ffffff',
         } as const;
+
+        const draw = (format: 'EAN13' | 'CODE128') => {
+            while (el.firstChild) el.removeChild(el.firstChild);
+            JsBarcode(el, value, { ...opts, format });
+            fitBarcodeSvgToContainer(el);
+        };
+
         try {
-            JsBarcode(el, value, opts);
+            draw(fmt);
         } catch {
             try {
-                JsBarcode(el, value, { ...opts, format: 'CODE128' as const });
+                draw('CODE128');
             } catch {
-                // Geçersiz barkod — SVG boş kalır
+                // Geçersiz barkod
             }
         }
     }, [value, widthPx, heightPx, svgId]);
@@ -53,11 +102,38 @@ function ReportBarcodePreview({
         <svg
             id={svgId}
             ref={svgRef}
-            className="block w-full h-full max-w-full"
+            className="block min-h-0 min-w-0"
             preserveAspectRatio="xMidYMid meet"
             role="img"
             aria-label={value}
         />
+    );
+}
+
+function ReportBarcodePreview({ svgId, value }: { svgId: string; value: string }) {
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const [dims, setDims] = useState({ w: 0, h: 0 });
+
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (!el) return;
+        const read = () => {
+            const w = Math.max(1, Math.round(el.clientWidth));
+            const h = Math.max(1, Math.round(el.clientHeight));
+            setDims((d) => (d.w === w && d.h === h ? d : { w, h }));
+        };
+        read();
+        const ro = new ResizeObserver(read);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    return (
+        <div ref={wrapRef} className="w-full h-full min-h-0 min-w-0 flex items-center justify-center overflow-hidden box-border">
+            {dims.w > 0 && dims.h > 0 ? (
+                <ReportBarcodeSvg svgId={svgId} value={value} widthPx={dims.w} heightPx={dims.h} />
+            ) : null}
+        </div>
     );
 }
 
@@ -69,10 +145,12 @@ interface ReportViewerProps {
 
 export function ReportViewerModule({ template, data, onClose }: ReportViewerProps) {
     const paperRef = useRef<HTMLDivElement>(null);
+    const pw = template.pageSize?.width || DEFAULT_A4.width;
+    const ph = template.pageSize?.height || DEFAULT_A4.height;
 
     const handleDownload = () => {
         if (paperRef.current) {
-            exportToPDF(paperRef.current, `${template.name}.pdf`);
+            exportToPDF(paperRef.current, `${template.name}.pdf`, { width: pw, height: ph });
         }
     };
 
@@ -80,10 +158,46 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         window.print();
     };
 
+    const printCss = `
+@media print {
+  .report-viewer-chrome { display: none !important; }
+  .report-viewer-shell {
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .report-viewer-stage {
+    flex: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    display: block !important;
+  }
+  .report-viewer-paper {
+    margin: 0 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  @page {
+    size: ${pw}mm ${ph}mm;
+    margin: 0;
+  }
+}`;
+
     return (
-        <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex flex-col items-center">
-            {/* Viewer Toolbar */}
-            <div className="w-full h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
+        <div className="report-viewer-shell fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-sm flex flex-col items-center">
+            <style>{printCss}</style>
+            {/* Araç çubuğu — yazdırmada gizli */}
+            <div className="report-viewer-chrome w-full h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="flex flex-col">
                         <h2 className="text-sm font-bold text-gray-900">{template.name}</h2>
@@ -93,6 +207,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
 
                 <div className="flex items-center gap-2">
                     <button
+                        type="button"
                         onClick={handleDownload}
                         className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all font-mono"
                     >
@@ -100,6 +215,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                         PDF İNDİR
                     </button>
                     <button
+                        type="button"
                         onClick={handlePrint}
                         className="flex items-center gap-2 px-4 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-md shadow-blue-500/20 transition-all"
                     >
@@ -107,36 +223,33 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                         YAZDIR
                     </button>
                     <div className="w-px h-6 bg-gray-200 mx-2" />
-                    <button
-                        onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
-                    >
+                    <button type="button" onClick={onClose} className="p-2 text-gray-400 hover:text-gray-900 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
             </div>
 
-            {/* Preview Area */}
-            <div className="flex-1 w-full overflow-auto p-12 flex justify-center">
+            {/* Önizleme — yazdırmada yalnızca kağıt */}
+            <div className="report-viewer-stage flex-1 w-full min-h-0 overflow-auto p-12 print:p-0 flex justify-center print:justify-start">
                 <div
                     ref={paperRef}
-                    className="bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none"
+                    className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
                     style={{
-                        width: `${mmToPx(template.pageSize?.width || DEFAULT_A4.width)}px`,
-                        height: `${mmToPx(template.pageSize?.height || DEFAULT_A4.height)}px`,
+                        width: `${pw}mm`,
+                        height: `${ph}mm`,
                     }}
                 >
                     {template.components.map((comp) => (
                         <div
                             key={comp.id}
-                            className="absolute overflow-hidden"
+                            className="absolute overflow-hidden box-border"
                             style={{
-                                left: `${mmToPx(comp.x)}px`,
-                                top: `${mmToPx(comp.y)}px`,
-                                width: `${mmToPx(comp.width)}px`,
-                                height: `${mmToPx(comp.height)}px`,
+                                left: `${comp.x}mm`,
+                                top: `${comp.y}mm`,
+                                width: `${comp.width}mm`,
+                                height: `${comp.height}mm`,
                                 ...comp.style,
-                                background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent'
+                                background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent',
                             }}
                         >
                             {comp.type === 'text' && (
@@ -147,8 +260,6 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                             {comp.type === 'barcode' && (() => {
                                 const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
                                 const barcodeValue = String(raw ?? '').trim();
-                                const wPx = mmToPx(comp.width);
-                                const hPx = mmToPx(comp.height);
                                 if (!barcodeValue) {
                                     return (
                                         <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
@@ -157,19 +268,13 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                                     );
                                 }
                                 return (
-                                    <div className="w-full h-full bg-white flex items-center justify-center p-0.5 overflow-hidden">
-                                        <ReportBarcodePreview
-                                            svgId={`report-barcode-${comp.id}`}
-                                            value={barcodeValue}
-                                            widthPx={wPx}
-                                            heightPx={hPx}
-                                        />
+                                    <div className="w-full h-full min-h-0 min-w-0 bg-white flex items-center justify-center overflow-hidden box-border">
+                                        <ReportBarcodePreview svgId={`report-barcode-${comp.id}`} value={barcodeValue} />
                                     </div>
                                 );
                             })()}
                             {comp.type === 'table' && comp.columns && (
                                 <div className="w-full h-full text-[10px]">
-                                    {/* Header */}
                                     <div className="flex bg-gray-100 border-b border-gray-800 font-bold" style={comp.style}>
                                         {comp.columns.map((col, i) => (
                                             <div key={i} style={{ width: `${col.width}%` }} className="p-1.5 border-r border-gray-300 last:border-0 truncate">
@@ -177,15 +282,17 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Rows */}
                                     {(data?.items || []).map((item: any, rowIndex: number) => (
                                         <div key={rowIndex} className="flex border-b border-gray-100 hover:bg-gray-50">
                                             {comp.columns?.map((col, colIndex) => {
                                                 let val = item[col.field];
-                                                // Simple formatting for numbers
                                                 if (typeof val === 'number') val = formatNumber(val, 2, true);
                                                 return (
-                                                    <div key={colIndex} style={{ width: `${col.width}%` }} className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}>
+                                                    <div
+                                                        key={colIndex}
+                                                        style={{ width: `${col.width}%` }}
+                                                        className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}
+                                                    >
                                                         {val}
                                                     </div>
                                                 );
@@ -204,5 +311,3 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         </div>
     );
 }
-
-

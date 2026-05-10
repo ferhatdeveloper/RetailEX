@@ -37,21 +37,32 @@ export const snapToGrid = (val: number) => {
 export const mmToPx = (mm: number) => mm * 3.7795275591;
 export const pxToMm = (px: number) => px / 3.7795275591;
 
-export async function exportToPDF(element: HTMLElement, fileName: string = 'report.pdf') {
+/**
+ * HTML öğesini PDF yapar. `pageSizeMm` verilirse sayfa boyutu şablonla birebir mm olur (yazdırma ile aynı mantık).
+ */
+export async function exportToPDF(
+    element: HTMLElement,
+    fileName: string = 'report.pdf',
+    pageSizeMm: { width: number; height: number } = DEFAULT_A4
+) {
+    const pw = Math.max(1, pageSizeMm.width);
+    const ph = Math.max(1, pageSizeMm.height);
+
     const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
     });
 
     const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    const orientation = ph >= pw ? 'p' : 'l';
+    const pdf = new jsPDF(orientation, 'mm', [pw, ph]);
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    pdf.addImage(imgData, 'PNG', 0, 0, pageW, pageH);
     pdf.save(fileName);
 }
 
