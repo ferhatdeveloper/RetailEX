@@ -28,6 +28,8 @@ interface ProductManagementProps {
 const MOBILE_PAGE_SIZE = 40;
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
+/** Arka plan stok yenilemesi: 30 sn çok sık (web + büyük liste); sekme görünürken 2 dk */
+const PRODUCT_STOCK_REFRESH_MS = 120000;
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
@@ -54,8 +56,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
     // Her 30 saniyede bir stokları güncelle (alış/satış sonrası güncellemeler için)
     const interval = setInterval(() => {
-      loadProducts(true); // Silent refresh
-    }, 30000); // 30 saniye
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      loadProducts(true);
+    }, PRODUCT_STOCK_REFRESH_MS);
 
     return () => clearInterval(interval);
   }, [loadProducts, storeProducts.length]);

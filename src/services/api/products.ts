@@ -3,9 +3,15 @@
  * Note: Uses rex_{firm}_products table
  */
 
+import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Product } from '../../core/types';
 import { useAuthStore } from '../../store/useAuthStore';
+
+/** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
+const PRODUCT_LIST_SELECT =
+  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days';
+const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 
 /** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
 function firmNrPadded(): string {
@@ -154,7 +160,7 @@ export const productAPI = {
       return { hasInvoiceRefs: false, saleRefs: [], purchaseRefs: [] };
     }
 
-    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    if (shouldUseTenantPostgrestApi()) {
       return fetchDeleteImpactViaPostgrest(ids);
     }
 
@@ -227,23 +233,25 @@ export const productAPI = {
   async getAll(): Promise<Product[]> {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const firmEq = firmNrPadded();
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           `/${tableName}`,
           {
-            select: '*',
-            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+            select: PRODUCT_LIST_SELECT,
+            firm_nr: `eq.${firmEq}`,
             is_active: 'eq.true',
             order: 'name.asc',
+            limit: 15000,
           },
           { schema: 'public' }
         );
         return (Array.isArray(rows) ? rows : []).map(mapDatabaseProductToProduct);
       }
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
-        [ERP_SETTINGS.firmNr]
+        `SELECT ${PRODUCT_LIST_SELECT_SQL} FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
+        [firmEq]
       );
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
