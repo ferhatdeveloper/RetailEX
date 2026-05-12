@@ -30,10 +30,12 @@ export const postgrestConfig = {
 };
 
 export function getPostgrestBaseUrl(): string {
-  // Kullanıcı PostgREST kullanıyorsa override’i uygula.
-  if (DB_SETTINGS.connectionProvider === 'rest_api' && DB_SETTINGS.remoteRestUrl) {
-    const u = normalizeBaseUrl(DB_SETTINGS.remoteRestUrl) || getBaseUrlFallback();
-    return rewriteRetailexAppUrlForViteDev(u);
+  // Kiracı PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
+  // Böylece db + hybrid (pg_query köprüsü zayıf/502) senaryosunda da PostgREST okumaları çalışır.
+  const remote = normalizeBaseUrl(String(DB_SETTINGS.remoteRestUrl || '').trim());
+  const offline = DB_SETTINGS.activeMode === 'offline';
+  if (remote && !offline) {
+    return rewriteRetailexAppUrlForViteDev(remote);
   }
   return getBaseUrlFallback();
 }

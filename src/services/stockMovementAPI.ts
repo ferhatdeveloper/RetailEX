@@ -10,6 +10,13 @@ function padPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
 }
 
+/** pg_bridge zorunlu olmasın: tenant PostgREST varsa hareket okuması oradan yapılsın */
+function shouldUsePostgrestForProductMovements(): boolean {
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
+  if (DB_SETTINGS.activeMode === 'offline') return false;
+  return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
+}
+
 export interface StockMovement {
     id: string;
     document_no: string;
@@ -182,7 +189,7 @@ class StockMovementAPI {
             }
         });
 
-        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        if (shouldUsePostgrestForProductMovements()) {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
                 const { productAPI } = await import('./api/products');
