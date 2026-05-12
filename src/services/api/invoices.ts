@@ -1820,7 +1820,8 @@ export const invoicesAPI = {
       const pid = String(productId || '').trim();
       if (!pid) return [];
 
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { shouldUseTenantPostgrestApi } = await import('../../config/postgrest.config');
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const fn = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
         const pn = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
@@ -1830,8 +1831,8 @@ export const invoicesAPI = {
         const suppTable = `rex_${fn}_suppliers`;
         const chunkSize = 35;
 
-        const itemSelect =
-          'id,quantity,unit_price,total_amount,invoice_id,sale_id,item_code,product_id';
+        // Not: dönem sale_items şemasında sale_id yok; yalnızca invoice_id (PostgREST bilinmeyen kolon → 400).
+        const itemSelect = 'id,quantity,unit_price,total_amount,invoice_id,item_code,product_id';
 
         const fetchSaleItems = async (extra: Record<string, string>) =>
           postgrest
@@ -1857,7 +1858,7 @@ export const invoicesAPI = {
         for (const row of mergedBuckets) {
           const key = row?.id
             ? String(row.id)
-            : `${String(row.invoice_id || row.sale_id || '')}|${String(row.item_code || '')}|${String(row.product_id || '')}`;
+            : `${String(row.invoice_id || '')}|${String(row.item_code || '')}|${String(row.product_id || '')}`;
           if (seenKeys.has(key)) continue;
           seenKeys.add(key);
           list.push(row);
@@ -1865,7 +1866,7 @@ export const invoicesAPI = {
         const invIds = [
           ...new Set(
             list
-              .map((x) => String(x.invoice_id || x.sale_id || '').trim())
+              .map((x) => String(x.invoice_id || '').trim())
               .filter((x) => x && isValidUuid(x))
           ),
         ];
@@ -1927,7 +1928,7 @@ export const invoicesAPI = {
 
         const mapped = list
           .map((it) => {
-            const invKey = String(it.invoice_id || it.sale_id || '').trim();
+            const invKey = String(it.invoice_id || '').trim();
             const hd = invKey ? headersById.get(invKey) : undefined;
             if (!hd) return null;
             const partner = hd.customer_id ? namesById.get(String(hd.customer_id)) : undefined;

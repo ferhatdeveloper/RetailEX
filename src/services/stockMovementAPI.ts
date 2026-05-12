@@ -1,4 +1,5 @@
-import { postgres, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
+import { postgres, ERP_SETTINGS } from './postgres';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -8,13 +9,6 @@ function padFirmNr(): string {
 
 function padPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
-}
-
-/** pg_bridge zorunlu olmasın: tenant PostgREST varsa hareket okuması oradan yapılsın */
-function shouldUsePostgrestForProductMovements(): boolean {
-  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
-  if (DB_SETTINGS.activeMode === 'offline') return false;
-  return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
 }
 
 export interface StockMovement {
@@ -189,7 +183,7 @@ class StockMovementAPI {
             }
         });
 
-        if (shouldUsePostgrestForProductMovements()) {
+        if (shouldUseTenantPostgrestApi()) {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
                 const { productAPI } = await import('./api/products');

@@ -29,6 +29,13 @@ export const postgrestConfig = {
   schemas: ['public', 'logic', 'wms', 'rest', 'beauty', 'pos'] as const,
 };
 
+/** Kiracı PostgREST ile okuma (rest_api veya hibritte remote_rest_url) */
+export function shouldUseTenantPostgrestApi(): boolean {
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
+  if (DB_SETTINGS.activeMode === 'offline') return false;
+  return String(DB_SETTINGS.remoteRestUrl || '').trim().length > 0;
+}
+
 export function getPostgrestBaseUrl(): string {
   // Kiracı PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
   // Böylece db + hybrid (pg_query köprüsü zayıf/502) senaryosunda da PostgREST okumaları çalışır.
