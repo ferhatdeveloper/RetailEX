@@ -1,4 +1,14 @@
-import { postgres, ERP_SETTINGS } from './postgres';
+import { postgres, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function padFirmNr(): string {
+  return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
+}
+
+function padPeriodNr(): string {
+  return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
 
 export interface StockMovement {
     id: string;
@@ -171,6 +181,143 @@ class StockMovementAPI {
                 warehouses: { name: r.warehouse_name }
             }
         });
+
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const { productAPI } = await import('./api/products');
+                const { invoicesAPI } = await import('./api/invoices');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const pid = String(productId || '').trim();
+                if (!pid) return [];
+
+                let resolvedUuid = '';
+                if (UUID_RE.test(pid)) {
+                    resolvedUuid = pid;
+                } else {
+                    const p = await productAPI.getByCode(pid);
+                    if (p?.id) resolvedUuid = String(p.id);
+                }
+
+                const combinedRaw: any[] = [];
+
+                // 1) Ambar fişleri (stock_movement_items)
+                if (resolvedUuid) {
+                    const smiPath = `/rex_${fn}_${pn}_stock_movement_items`;
+                    const smiRows = await postgrest
+                        .get<any[]>(
+                            smiPath,
+                            { select: '*', product_id: `eq.${resolvedUuid}`, limit: 500 },
+                            { schema: 'public' }
+                        )
+                        .catch(() => [] as any[]);
+                    const smi = Array.isArray(smiRows) ? smiRows : [];
+                    const mids = [...new Set(smi.map((x) => String(x.movement_id || '').trim()).filter(Boolean))];
+                    const movById = new Map<string, any>();
+                    const chunkSize = 35;
+                    for (let i = 0; i < mids.length; i += chunkSize) {
+                        const chunk = mids.slice(i, i + chunkSize);
+                        const inList = chunk.join(',');
+                        const movPath = `/rex_${fn}_${pn}_stock_movements`;
+                        const mrows = await postgrest
+                            .get<any[]>(
+                                movPath,
+                                {
+                                    select: 'id,document_no,movement_type,movement_date,status,trcode,warehouse_id,exchange_rate',
+                                    id: `in.(${inList})`,
+                                    limit: chunk.length,
+                                },
+                                { schema: 'public' }
+                            )
+                            .catch(() => [] as any[]);
+                        (Array.isArray(mrows) ? mrows : []).forEach((m) => {
+                            if (m?.id) movById.set(String(m.id), m);
+                        });
+                    }
+                    const widSet = new Set<string>();
+                    smi.forEach((row) => {
+                        const m = movById.get(String(row.movement_id));
+                        if (m?.warehouse_id && UUID_RE.test(String(m.warehouse_id))) widSet.add(String(m.warehouse_id));
+                    });
+                    const storeNameById = new Map<string, string>();
+                    const wids = [...widSet];
+                    for (let i = 0; i < wids.length; i += chunkSize) {
+                        const chunk = wids.slice(i, i + chunkSize);
+                        const inList = chunk.join(',');
+                        const srows = await postgrest
+                            .get<any[]>(
+                                '/stores',
+                                { select: 'id,name', id: `in.(${inList})`, limit: chunk.length },
+                                { schema: 'public' }
+                            )
+                            .catch(() => [] as any[]);
+                        (Array.isArray(srows) ? srows : []).forEach((s) => {
+                            if (s?.id) storeNameById.set(String(s.id), String(s.name || ''));
+                        });
+                    }
+                    for (const row of smi) {
+                        const m = movById.get(String(row.movement_id));
+                        if (!m) continue;
+                        const wname =
+                            (m.warehouse_id && storeNameById.get(String(m.warehouse_id))) || 'Merkez Ambar';
+                        combinedRaw.push({
+                            id: row.id,
+                            movement_id: row.movement_id,
+                            product_id: row.product_id,
+                            quantity: row.quantity,
+                            unit_price: row.unit_price,
+                            created_at: row.created_at,
+                            document_no: m.document_no,
+                            movement_type: m.movement_type,
+                            movement_date: m.movement_date,
+                            status: m.status,
+                            trcode: m.trcode,
+                            warehouse_name: wname,
+                            source_type: 'slip',
+                            currency_rate: m.exchange_rate ?? 1,
+                            currency: 'IQD',
+                            gross_profit: 0,
+                            notes: row.notes || '',
+                        });
+                    }
+                }
+
+                // 2) Fatura satırları — invoicesAPI (PostgREST + item_code / product_id birleşimi)
+                const hist = await invoicesAPI.getProductHistory(pid);
+                for (const h of hist) {
+                    combinedRaw.push({
+                        id: `inv-${String(h.documentNo)}-${String(h.date)}`,
+                        movement_id: h.documentNo,
+                        product_id: pid,
+                        quantity: h.quantity,
+                        unit_price: h.unitPrice,
+                        created_at: h.date,
+                        document_no: h.documentNo,
+                        movement_type: h.type === 'purchase' ? 'in' : 'out',
+                        movement_date: h.date,
+                        status: 'approved',
+                        trcode: h.type === 'purchase' ? 1 : 8,
+                        warehouse_name: 'Merkez Ambar',
+                        source_type: 'invoice',
+                        currency_rate: 1,
+                        currency: 'IQD',
+                        gross_profit: 0,
+                        notes: h.supplier || '',
+                    });
+                }
+
+                combinedRaw.sort((a, b) => {
+                    const da = new Date(a.movement_date || a.created_at).getTime();
+                    const db = new Date(b.movement_date || b.created_at).getTime();
+                    return db - da;
+                });
+                return combinedRaw.map(mapRow);
+            } catch (e) {
+                console.warn('[StockMovementAPI] getProductMovements PostgREST:', e);
+                return [];
+            }
+        }
 
         // Query 1: Manual stock movements (ambar fişleri)
         let slipRows: any[] = [];

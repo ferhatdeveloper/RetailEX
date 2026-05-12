@@ -2921,6 +2921,30 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تم تخطي بعض الصفوف أو تحذيرات',
     ku: 'هەندێک ڕیز پانێنرا یان ئاگاداری',
   },
+  purchaseInvoiceExcelImportToastWarn: {
+    tr: '{n} satırda sorun var; ayrıntılar aşağıdaki listede.',
+    en: '{n} row(s) have issues; see the list below.',
+    ar: 'توجد مشكلات في {n} صف(وف); راجع القائمة أدناه.',
+    ku: 'کێشە لە {n} ڕیزدا هەیە؛ لیستی خوارەوە ببینە.',
+  },
+  purchaseInvoiceExcelImportReportTitle: {
+    tr: 'Excel içe aktarma — atlanan / uyarılı satırlar',
+    en: 'Excel import — skipped or warning rows',
+    ar: 'استيراد Excel — صفوف متخطاة أو تحذيرات',
+    ku: 'هێنانی Excel — ڕیزە پانێنراوەکان',
+  },
+  purchaseInvoiceExcelImportReportImported: {
+    tr: '{n} satır eklendi',
+    en: '{n} rows added',
+    ar: 'تمت إضافة {n} صفًا',
+    ku: '{n} ڕیز زیادکرا',
+  },
+  purchaseInvoiceExcelImportReportDismiss: {
+    tr: 'Listeyi kapat',
+    en: 'Dismiss list',
+    ar: 'إغلاق القائمة',
+    ku: 'داخستنی لیست',
+  },
   purchaseInvoiceExcelImportFailed: {
     tr: 'Excel içe aktarılamadı',
     en: 'Excel import failed',

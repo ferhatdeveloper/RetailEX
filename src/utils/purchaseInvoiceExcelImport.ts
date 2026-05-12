@@ -138,6 +138,16 @@ function pickLineNote(row: Record<string, unknown>): string {
   return '';
 }
 
+/** Hata mesajında göstermek için — ham hücre metni */
+function rawCellFromKeys(row: Record<string, unknown>, keys: string[]): string {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+      return String(row[k]).trim();
+    }
+  }
+  return '';
+}
+
 /**
  * İlk uygun sayfayı okur: adı "Alış Kalemleri" ise onu, değilse ilk sayfayı.
  */
@@ -169,11 +179,25 @@ export function parsePurchaseInvoiceExcelWorkbook(wb: XLSX.WorkBook): {
     const quantity = pickQuantity(row);
     const unitPrice = pickUnitPrice(row);
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      errors.push(`Satır ${excelRow}: Miktar geçersiz veya eksik.`);
+      const rawQ = rawCellFromKeys(row, [
+        PURCHASE_INVOICE_EXCEL_COLUMNS.quantity,
+        'Miktar',
+        'Qty',
+        'Quantity',
+      ]);
+      const qNote = rawQ ? `Miktar sütunu: "${rawQ}"` : 'Miktar sütunu boş veya okunamadı';
+      errors.push(`Satır ${excelRow} — "${productKey}": Miktar geçersiz veya eksik (${qNote}).`);
       return;
     }
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      errors.push(`Satır ${excelRow}: Birim fiyat geçersiz veya eksik.`);
+      const rawP = rawCellFromKeys(row, [
+        PURCHASE_INVOICE_EXCEL_COLUMNS.unitPrice,
+        'Birim Fiyat',
+        'Unit Price',
+        'Fiyat',
+      ]);
+      const pNote = rawP ? `Birim fiyat sütunu: "${rawP}"` : 'Birim fiyat sütunu boş veya okunamadı';
+      errors.push(`Satır ${excelRow} — "${productKey}": Birim fiyat geçersiz veya eksik (${pNote}).`);
       return;
     }
     rows.push({

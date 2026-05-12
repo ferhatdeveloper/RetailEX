@@ -221,21 +221,29 @@ export function ProductHistoryModal({ productCode, productName, productId, onClo
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchHistory = async () => {
       setIsLoading(true);
       try {
-        const data = await invoicesAPI.getProductHistory(productId);
-        setHistory(data);
+        if (!productId?.trim()) {
+          setHistory([]);
+          return;
+        }
+        const data = await invoicesAPI.getProductHistory(productId.trim());
+        if (!cancelled) setHistory(data);
       } catch (error) {
         console.error('Failed to fetch product history:', error);
+        if (!cancelled) setHistory([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    if (productId) {
-      fetchHistory();
-    }
+    void fetchHistory();
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
 
   // Statistics calculation

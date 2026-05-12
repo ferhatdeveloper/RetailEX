@@ -1830,18 +1830,38 @@ export const invoicesAPI = {
         const suppTable = `rex_${fn}_suppliers`;
         const chunkSize = 35;
 
-        const its = await postgrest
-          .get<any[]>(
-            itemsPath,
-            {
-              select: 'quantity,unit_price,total_amount,invoice_id,sale_id',
-              item_code: `eq.${pid}`,
-              limit: 500,
-            },
-            { schema: 'public' }
-          )
-          .catch(() => [] as any[]);
-        const list = Array.isArray(its) ? its : [];
+        const itemSelect =
+          'id,quantity,unit_price,total_amount,invoice_id,sale_id,item_code,product_id';
+
+        const fetchSaleItems = async (extra: Record<string, string>) =>
+          postgrest
+            .get<any[]>(
+              itemsPath,
+              {
+                select: itemSelect,
+                limit: 500,
+                ...extra,
+              },
+              { schema: 'public' }
+            )
+            .catch(() => [] as any[]);
+
+        const rowsByItemCode = await fetchSaleItems({ item_code: `eq.${pid}` });
+        const mergedBuckets: any[] = [...(Array.isArray(rowsByItemCode) ? rowsByItemCode : [])];
+        if (isValidUuid(pid)) {
+          const rowsByProductId = await fetchSaleItems({ product_id: `eq.${pid}` });
+          mergedBuckets.push(...(Array.isArray(rowsByProductId) ? rowsByProductId : []));
+        }
+        const seenKeys = new Set<string>();
+        const list: any[] = [];
+        for (const row of mergedBuckets) {
+          const key = row?.id
+            ? String(row.id)
+            : `${String(row.invoice_id || row.sale_id || '')}|${String(row.item_code || '')}|${String(row.product_id || '')}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          list.push(row);
+        }
         const invIds = [
           ...new Set(
             list
@@ -1892,7 +1912,7 @@ export const invoicesAPI = {
                 {
                   select: 'id,name',
                   id: `in.(${inList})`,
-                  firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+                  firm_nr: `eq.${fn}`,
                 },
                 { schema: 'public' }
               )

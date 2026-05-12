@@ -257,17 +257,18 @@ export const productAPI = {
    */
   async getById(id: string): Promise<Product | null> {
     try {
-      const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          {
-            select: '*',
-            id: `eq.${id}`,
-            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
-            limit: 1,
-          },
+        const tableName = `rex_${firmNrPadded()}_products`;
+        const firmEq = firmNrPadded();
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+          const { postgrest } = await import('./postgrestClient');
+          const rows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              id: `eq.${id}`,
+              firm_nr: `eq.${firmEq}`,
+              limit: 1,
+            },
           { schema: 'public' }
         );
         const row = Array.isArray(rows) ? rows[0] : null;
@@ -290,17 +291,18 @@ export const productAPI = {
   async getByCode(code: string): Promise<Product | null> {
     if (!code?.trim()) return null;
     try {
-      const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          {
-            select: '*',
-            code: `eq.${code.trim()}`,
-            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
-            limit: 1,
-          },
+        const tableName = `rex_${firmNrPadded()}_products`;
+        const firmEq = firmNrPadded();
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+          const { postgrest } = await import('./postgrestClient');
+          const rows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              code: `eq.${code.trim()}`,
+              firm_nr: `eq.${firmEq}`,
+              limit: 1,
+            },
           { schema: 'public' }
         );
         const row = Array.isArray(rows) ? rows[0] : null;
@@ -322,18 +324,19 @@ export const productAPI = {
    */
   async getByBarcode(barcode: string): Promise<Product | null> {
     try {
-      const tableName = `rex_${firmNrPadded()}_products`;
-      if (DB_SETTINGS.connectionProvider === 'rest_api') {
-        const { postgrest } = await import('./postgrestClient');
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          {
-            select: '*',
-            barcode: `eq.${barcode}`,
-            firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
-            is_active: 'eq.true',
-            limit: 1,
-          },
+        const tableName = `rex_${firmNrPadded()}_products`;
+        const firmEq = firmNrPadded();
+        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+          const { postgrest } = await import('./postgrestClient');
+          const rows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            {
+              select: '*',
+              barcode: `eq.${barcode}`,
+              firm_nr: `eq.${firmEq}`,
+              is_active: 'eq.true',
+              limit: 1,
+            },
           { schema: 'public' }
         );
         const row = Array.isArray(rows) ? rows[0] : null;
@@ -943,10 +946,11 @@ export const productAPI = {
   async updateStock(id: string, quantity: number): Promise<boolean> {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
+      const firmEq = firmNrPadded();
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
         const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmEq)}`,
           { stock: quantity },
           { schema: 'public', prefer: 'return=representation' }
         );

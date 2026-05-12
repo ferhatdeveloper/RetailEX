@@ -1034,6 +1034,11 @@ export function UniversalInvoiceForm({
   const cashRegisterDropdownRef = useRef<HTMLDivElement>(null);
   const purchaseExcelInputRef = useRef<HTMLInputElement>(null);
   const [purchaseExcelImporting, setPurchaseExcelImporting] = useState(false);
+  /** Excel içe aktarmada atlanan satırlar — tam liste formda gösterilir */
+  const [purchaseExcelImportReport, setPurchaseExcelImportReport] = useState<{
+    importedCount: number;
+    issues: string[];
+  } | null>(null);
 
   // Header renk belirleme
   const getHeaderColor = () => {
@@ -1294,12 +1299,14 @@ export function UniversalInvoiceForm({
       return;
     }
     setPurchaseExcelImporting(true);
+    setPurchaseExcelImportReport(null);
     try {
       const buf = await file.arrayBuffer();
       const { rows, errors } = parsePurchaseInvoiceExcelArrayBuffer(buf);
       if (rows.length === 0) {
+        const issueList = errors.length > 0 ? errors : [tm('purchaseInvoiceExcelEmptyFile')];
+        setPurchaseExcelImportReport({ importedCount: 0, issues: issueList });
         toast.error(tm('purchaseInvoiceExcelEmptyFile'));
-        errors.slice(0, 6).forEach((msg) => toast.info(msg));
         return;
       }
       const built: InvoiceItem[] = [];
@@ -1331,8 +1338,9 @@ export function UniversalInvoiceForm({
         built.push(item);
       }
       if (built.length === 0) {
+        const issueList = [...errors, ...rowErrors].filter(Boolean);
+        setPurchaseExcelImportReport({ importedCount: 0, issues: issueList.length ? issueList : [tm('purchaseInvoiceExcelImportFailed')] });
         toast.error(tm('purchaseInvoiceExcelImportFailed'));
-        rowErrors.slice(0, 10).forEach((m) => toast.error(m));
         return;
       }
       setItems((prev) => {
@@ -1343,9 +1351,10 @@ export function UniversalInvoiceForm({
       toast.success(tm('purchaseInvoiceExcelImportSuccess').replace('{n}', String(built.length)));
       const warnParts = [...errors, ...rowErrors].filter(Boolean);
       if (warnParts.length > 0) {
-        toast.warning(
-          `${tm('purchaseInvoiceExcelImportPartial')}: ${warnParts.slice(0, 8).join(' · ')}`
-        );
+        setPurchaseExcelImportReport({ importedCount: built.length, issues: warnParts });
+        toast.warning(tm('purchaseInvoiceExcelImportToastWarn').replace('{n}', String(warnParts.length)));
+      } else {
+        setPurchaseExcelImportReport(null);
       }
     } catch (err: any) {
       console.error('[UniversalInvoiceForm] purchase excel import:', err);
@@ -3098,6 +3107,43 @@ export function UniversalInvoiceForm({
                         </div>
                       </div>
                       <p className="text-xs text-gray-500">{tm('purchaseInvoiceExcelHint')}</p>
+                      {purchaseExcelImportReport && purchaseExcelImportReport.issues.length > 0 && (
+                        <div
+                          role="status"
+                          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-amber-950 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 text-sm font-semibold leading-snug">
+                              <span className="inline-flex items-center gap-1.5">
+                                <AlertCircle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
+                                {tm('purchaseInvoiceExcelImportReportTitle')}
+                              </span>
+                              {purchaseExcelImportReport.importedCount > 0 && (
+                                <span className="mt-0.5 block text-xs font-normal text-amber-900/90 dark:text-amber-200/90">
+                                  {tm('purchaseInvoiceExcelImportReportImported').replace(
+                                    '{n}',
+                                    String(purchaseExcelImportReport.importedCount)
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPurchaseExcelImportReport(null)}
+                              className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold uppercase tracking-wide text-amber-900 hover:bg-amber-200/80 dark:text-amber-100 dark:hover:bg-amber-800/60"
+                            >
+                              {tm('purchaseInvoiceExcelImportReportDismiss')}
+                            </button>
+                          </div>
+                          <ul className="mt-2 max-h-56 list-disc space-y-1.5 overflow-y-auto overscroll-contain pl-5 text-xs leading-relaxed">
+                            {purchaseExcelImportReport.issues.map((msg, idx) => (
+                              <li key={`${idx}-${msg.slice(0, 40)}`} className="break-words">
+                                {msg}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Kolon Görünürlüğü Sadece Diğer Fatura Türleri İçin (Alış değilse buraya gelir) */}
