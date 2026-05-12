@@ -5,6 +5,7 @@
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { type Invoice } from '../../core/types';
 import { customerAPI } from './customers';
+import { productAPI } from './products';
 export type { Invoice };
 
 // Helper to validate UUID format
@@ -37,6 +38,13 @@ export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null):
   if (p.includes('veresiye')) return true;
   if (p === 'cari' || p === 'açık hesap' || p === 'acik hesap') return true;
   return false;
+}
+
+/** Satış faturasında kasa defterine yansıyacak tahsilat (nakit / POS cash) */
+export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
+  const p = String(pm || '').trim().toLowerCase();
+  if (!p) return false;
+  return p === 'cash' || p === 'nakit';
 }
 
 /** Kasa hareketleri `rex_{firma}_{dönem}_cash_lines` tablosunda; silme sorgusu satışın dönemine göre çözülmeli */
@@ -225,6 +233,224 @@ function deriveFicheTypeFromTrcode(trcode: number): string {
   return 'sales_invoice';
 }
 
+function resolveTrcodeFromInvoice(inv: Invoice): number {
+  const t = Number(inv.invoice_type ?? inv.trcode ?? 0);
+  if (t) return t;
+  switch (inv.invoice_category) {
+    case 'Alis':
+      return 1;
+    case 'Satis':
+      return 8;
+    case 'Iade':
+      return 3;
+    default:
+      return 8;
+  }
+}
+
+/** Ürün UUID → stok değişimi (oluşturma ile aynı kurallar) */
+async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number): Promise<Map<string, number>> {
+  const category = inv.invoice_category;
+  const deltas = new Map<string, number>();
+  if (!inv.items?.length || !category) return deltas;
+
+  for (const item of inv.items) {
+    const productId = item.code || item.productId;
+    if (!productId) continue;
+    const unitMultiplier = Number((item as any).multiplier || 1);
+    const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+    let stockModifier = 0;
+    if (category === 'Alis') stockModifier = baseQty;
+    else if (category === 'Satis') stockModifier = -baseQty;
+    else if (category === 'Iade') {
+      if (Number(trcode) === 3) stockModifier = baseQty;
+      else if (Number(trcode) === 2 || Number(trcode) === 6) stockModifier = -baseQty;
+      else stockModifier = baseQty;
+    }
+    if (stockModifier === 0) continue;
+
+    const prod = await resolveProductForStockLine(String(productId).trim());
+    if (!prod) continue;
+    deltas.set(prod.id, (deltas.get(prod.id) || 0) + stockModifier);
+  }
+  return deltas;
+}
+
+async function applyProductStockDeltaMap(
+  deltas: Map<string, number>,
+  queryOpts?: { firmNr: string; periodNr: string }
+): Promise<void> {
+  if (deltas.size === 0) return;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    await Promise.all(
+      [...deltas.entries()].map(async ([id, delta]) => {
+        if (!delta) return;
+        const p = await productAPI.getById(id);
+        if (!p) return;
+        await productAPI.updateStock(id, Number(p.stock ?? 0) + delta);
+      })
+    );
+  } else {
+    await Promise.all(
+      [...deltas.entries()].map(async ([id, delta]) => {
+        if (!delta) return;
+        await postgres.query(
+          `UPDATE products SET stock = COALESCE(stock::numeric, 0) + $1::numeric WHERE id = $2::uuid`,
+          [delta, id],
+          queryOpts
+        );
+      })
+    );
+  }
+}
+
+/** `mult=1` oluşturma etkisi; `mult=-1` geri alma (fatura güncellemede eski kayıt) */
+async function applyInvoiceBalanceSideEffectsSql(
+  inv: Invoice,
+  firmNr: string,
+  queryOpts: { firmNr: string; periodNr: string },
+  mult: 1 | -1 = 1
+): Promise<void> {
+  const accountId = inv.customer_id || inv.supplier_id;
+  const salePm = (inv as any).payment_method as string | undefined;
+  if (!accountId || !isValidUuid(String(accountId))) return;
+  const baseAmt = Number(inv.total_amount || 0);
+  if (!baseAmt || Number.isNaN(baseAmt)) return;
+  const amount = baseAmt * mult;
+  const trcode = resolveTrcodeFromInvoice(inv);
+  const ficheType = deriveFicheTypeFromTrcode(trcode);
+
+  if (
+    (inv.invoice_category === 'Satis' || inv.invoice_category === 'Hizmet')
+    && paymentMethodImpliesCustomerDebt(salePm)
+  ) {
+    await postgres
+      .query(
+        `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+        [amount, accountId, firmNr],
+        queryOpts
+      )
+      .catch(() => {});
+  } else if (inv.invoice_category === 'Alis') {
+    await postgres
+      .query(`UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`, [amount, accountId], queryOpts)
+      .catch(() => {});
+  } else if (inv.invoice_category === 'Iade') {
+    if (trcode === 3 || ficheType === 'return_invoice') {
+      const { rowCount } = await postgres
+        .query(
+          `UPDATE customers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+          [amount, accountId, firmNr],
+          queryOpts
+        )
+        .catch(() => ({ rowCount: 0 }));
+      if (!rowCount) {
+        await postgres
+          .query(
+            `UPDATE suppliers SET balance = COALESCE(balance, 0) - $1::numeric WHERE id = $2::uuid`,
+            [amount, accountId],
+            queryOpts
+          )
+          .catch(() => {});
+      }
+    }
+  }
+}
+
+async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string): Promise<void> {
+  const accountId = inv.customer_id || inv.supplier_id;
+  if (!accountId || !isValidUuid(String(accountId))) return;
+  const amt = Number(inv.total_amount || 0);
+  if (!amt || Number.isNaN(amt)) return;
+  const trcode = resolveTrcodeFromInvoice(inv);
+  const ficheType = deriveFicheTypeFromTrcode(trcode);
+  const salePm = (inv as any).payment_method as string | undefined;
+
+  if ((inv.invoice_category === 'Satis' || inv.invoice_category === 'Hizmet') && paymentMethodImpliesCustomerDebt(salePm)) {
+    await customerAPI.addBalance(accountId, -amt);
+    return;
+  }
+  if (inv.invoice_category === 'Alis') {
+    await adjustSupplierBalanceDeltaPostgrest(accountId, -amt, firmNr);
+    return;
+  }
+  if (inv.invoice_category === 'Iade') {
+    if (trcode === 3 || ficheType === 'return_invoice') {
+      const ok = await customerAPI.addBalance(accountId, amt);
+      if (!ok) await adjustSupplierBalanceDeltaPostgrest(accountId, amt, firmNr);
+    }
+  }
+}
+
+async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string, periodNr: string): Promise<void> {
+  const trcode = resolveTrcodeFromInvoice(existing);
+  const deltas = await collectInvoiceStockDeltasByProduct(existing, trcode);
+  const neg = new Map<string, number>();
+  deltas.forEach((v, k) => neg.set(k, -v));
+  await applyProductStockDeltaMap(neg, { firmNr, periodNr });
+
+  const queryOpts = { firmNr, periodNr };
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    await revertInvoiceBalanceUpdatesRestApi(existing, firmNr);
+  } else {
+    await applyInvoiceBalanceSideEffectsSql(existing, firmNr, queryOpts, -1);
+  }
+
+  const cashOpts = buildCashLinePgOpts(firmNr, periodNr);
+  const ficheNo = String(existing.invoice_no || '').trim();
+  if (ficheNo) {
+    await removeCashRegisterLinesForSaleFiche(ficheNo, cashOpts);
+  }
+}
+
+async function applyInvoiceLedgerSideEffects(merged: Invoice, firmNr: string, periodNr: string): Promise<void> {
+  const trcode = resolveTrcodeFromInvoice(merged);
+  const ficheType = deriveFicheTypeFromTrcode(trcode);
+  const deltas = await collectInvoiceStockDeltasByProduct(merged, trcode);
+  await applyProductStockDeltaMap(deltas, { firmNr, periodNr });
+
+  const queryOpts = { firmNr, periodNr };
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    await applyInvoiceBalanceUpdatesRestApi(merged, firmNr, trcode, ficheType);
+  } else {
+    await applyInvoiceBalanceSideEffectsSql(merged, firmNr, queryOpts, 1);
+  }
+
+  if (
+    merged.invoice_category === 'Satis'
+    && paymentMethodImpliesCashInKasa((merged as any).payment_method)
+    && Number(merged.total_amount || 0) !== 0
+    && String(merged.status || '').toLowerCase() !== 'cancelled'
+  ) {
+    try {
+      const { fetchKasalar, createKasaIslemi } = await import('./kasa');
+      let targetKasaId = (ERP_SETTINGS as any).selected_cash_registers?.[0] as string | undefined;
+      if (!targetKasaId) {
+        const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
+        if (kasalar.length > 0) targetKasaId = kasalar[0].id;
+      }
+      if (targetKasaId) {
+        const total = Number(merged.total_amount || 0);
+        await createKasaIslemi({
+          firma_id: String(firmNr),
+          kasa_id: targetKasaId,
+          islem_no: String(merged.invoice_no || '').trim() || `INV-${String(merged.id || '').slice(0, 8)}`,
+          islem_tarihi: merged.invoice_date || merged.created_at || new Date().toISOString(),
+          islem_tipi: 'KASA_GIRIS',
+          tutar: total,
+          islem_aciklamasi: `Satış faturası — ${merged.invoice_no || ''}`,
+          cari_hesap_id: merged.customer_id && isValidUuid(merged.customer_id) ? merged.customer_id : undefined,
+          cari_hesap_unvani: merged.customer_name || '',
+          doviz_kodu: 'YEREL',
+          dovizli_tutar: 0,
+        });
+      }
+    } catch (e: any) {
+      console.warn('[InvoicesAPI] Kasa satırı (fatura güncelleme):', e?.message || String(e));
+    }
+  }
+}
+
 function shouldTryRestApiCreateFallback(error: unknown): boolean {
   const msg = String((error as any)?.message || error || '').toLowerCase();
   return (
@@ -376,6 +602,120 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
   };
 }
 
+async function resolveProductForStockLine(pidStr: string): Promise<{ id: string; stock?: number } | null> {
+  const s = String(pidStr || '').trim();
+  if (!s) return null;
+  if (isValidUuid(s)) {
+    const p = await productAPI.getById(s);
+    if (p) return p;
+  }
+  const byCode = await productAPI.getByCode(s);
+  if (byCode) return byCode;
+  const lu = await productAPI.lookupByBarcode(s);
+  return lu?.product || null;
+}
+
+/** `rest_api`: SQL INSERT yok; stok ürün API (PostgREST patch) ile güncellenir */
+async function applyInvoiceStockUpdatesRestApi(
+  invoice: Invoice,
+  createOptions: { skipProductStockUpdate?: boolean } | undefined,
+  trcodeResolved: number
+): Promise<void> {
+  if (createOptions?.skipProductStockUpdate || !invoice.items?.length) return;
+  const category = invoice.invoice_category;
+  const trcode = Number(trcodeResolved || invoice.invoice_type || 0);
+  const deltas = new Map<string, number>();
+
+  for (const item of invoice.items) {
+    const productId = item.code || item.productId;
+    if (!productId) continue;
+    const unitMultiplier = Number((item as any).multiplier || 1);
+    const baseQty = Number((item as any).baseQuantity ?? (Number(item.quantity) * unitMultiplier));
+    let stockModifier = 0;
+    if (category === 'Alis') stockModifier = baseQty;
+    else if (category === 'Satis') stockModifier = -baseQty;
+    else if (category === 'Iade') {
+      if (trcode === 3) stockModifier = baseQty;
+      else if (trcode === 2 || trcode === 6) stockModifier = -baseQty;
+      else stockModifier = baseQty;
+    }
+    if (stockModifier === 0) continue;
+
+    const prod = await resolveProductForStockLine(String(productId).trim());
+    if (!prod) continue;
+    deltas.set(prod.id, (deltas.get(prod.id) || 0) + stockModifier);
+  }
+
+  await Promise.all(
+    [...deltas.entries()].map(async ([id, delta]) => {
+      const p = await productAPI.getById(id);
+      if (!p) return;
+      const next = Number(p.stock ?? 0) + delta;
+      await productAPI.updateStock(id, next);
+    })
+  );
+}
+
+async function adjustSupplierBalanceDeltaPostgrest(supplierId: string, delta: number, firmNr: string): Promise<void> {
+  if (!delta || !isValidUuid(supplierId)) return;
+  try {
+    const { postgrest } = await import('./postgrestClient');
+    const fn = String(firmNr).padStart(3, '0');
+    const table = `/rex_${fn}_suppliers`;
+    const cur = await postgrest.get<any[]>(
+      table,
+      {
+        select: 'balance',
+        id: `eq.${supplierId}`,
+        firm_nr: `eq.${String(firmNr).padStart(3, '0')}`,
+        limit: 1,
+      },
+      { schema: 'public' }
+    );
+    const row = Array.isArray(cur) ? cur[0] : null;
+    if (!row) return;
+    const next = Number(row.balance ?? 0) + delta;
+    await postgrest.patch(
+      `${table}?id=eq.${encodeURIComponent(supplierId)}&firm_nr=eq.${encodeURIComponent(String(firmNr).padStart(3, '0'))}`,
+      { balance: next },
+      { schema: 'public', prefer: 'return=minimal' }
+    );
+  } catch (e) {
+    console.warn('[InvoicesAPI] adjustSupplierBalanceDeltaPostgrest:', e);
+  }
+}
+
+/** `rest_api`: cari borç/alacak — müşteri `customerAPI`, tedarikçi PostgREST patch */
+async function applyInvoiceBalanceUpdatesRestApi(
+  invoice: Invoice,
+  firmNr: string,
+  trcode: number,
+  ficheType: string
+): Promise<void> {
+  const accountId = invoice.customer_id || invoice.supplier_id;
+  const salePm = (invoice as any).payment_method as string | undefined;
+  if (!accountId || !isValidUuid(accountId)) return;
+  const amount = Number(invoice.total_amount || 0);
+
+  if (
+    (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
+    && paymentMethodImpliesCustomerDebt(salePm)
+  ) {
+    await customerAPI.addBalance(accountId, amount);
+    return;
+  }
+  if (invoice.invoice_category === 'Alis') {
+    await adjustSupplierBalanceDeltaPostgrest(accountId, amount, firmNr);
+    return;
+  }
+  if (invoice.invoice_category === 'Iade') {
+    if (trcode === 3 || ficheType === 'return_invoice') {
+      const ok = await customerAPI.addBalance(accountId, -amount);
+      if (!ok) await adjustSupplierBalanceDeltaPostgrest(accountId, -amount, firmNr);
+    }
+  }
+}
+
 /** Modül kategorisi (Alis/Satis/…) ile satırın uyumu — önce DB invoice_category, yoksa Logo trcode grubu */
 export function invoiceMatchesModuleCategory(
   inv: { invoice_category?: string; invoice_type?: number; trcode?: number },
@@ -440,7 +780,9 @@ export const invoicesAPI = {
    */
   async create(invoice: Invoice, createOptions?: { skipProductStockUpdate?: boolean }): Promise<Invoice | null> {
     try {
-      console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
+      if (import.meta.env.DEV) {
+        console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
+      }
 
       // Firma/dönem: fatura logicalref "1" iken ürünler firm_nr "001" — stok UPDATE eşleşmesi için normalize et
       const firmNr = normalizeFirmNrForRow((invoice as any).firma_id ?? ERP_SETTINGS.firmNr);
@@ -475,12 +817,22 @@ export const invoicesAPI = {
         else if ([30, 31].includes(trcode)) ficheType = 'quote';
       }
 
+      // PostgREST-only: fatura ve yan etkiler doğrudan HTTP (SQL köprüsü yok / kullanılmıyor)
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const saved = await createInvoiceViaPostgrest(invoice, { firmNr, periodNr, trcode, ficheType });
+        if (!saved?.id) throw new Error('Fatura PostgREST ile oluşturulamadı');
+        await applyInvoiceStockUpdatesRestApi(invoice, createOptions, trcode);
+        await applyInvoiceBalanceUpdatesRestApi(invoice, firmNr, trcode, ficheType);
+        return saved;
+      }
+
       // 1. Insert invoice header
       let rows;
       const newId = self.crypto.randomUUID();
 
       // 1a. Try Enhanced Schema (with store_id etc)
-      console.time('[InvoicesAPI] Enhanced_Insert');
+      const tEnh = import.meta.env.DEV ? '[InvoicesAPI] Enhanced_Insert' : '';
+      if (import.meta.env.DEV) console.time(tEnh);
       try {
         const result = await postgres.query(
           `INSERT INTO sales (
@@ -526,7 +878,7 @@ export const invoicesAPI = {
         console.warn('Enhanced insert threw error directly:', e);
         rows = [];
       }
-      console.timeEnd('[InvoicesAPI] Enhanced_Insert');
+      if (import.meta.env.DEV) console.timeEnd(tEnh);
 
       // Check if enhanced insert failed (empty rows mean failure in postgres.ts wrapper)
       // If rows is empty, it means the INSERT failed, likely due to schema mismatch or data error.
@@ -534,7 +886,8 @@ export const invoicesAPI = {
         console.warn('[InvoicesAPI] Enhanced INSERT failed (swallowed error or 0 rows), trying legacy fallback...');
 
         // 1b. Fallback to Legacy Schema
-        console.time('[InvoicesAPI] Legacy_Insert');
+        const tLeg = import.meta.env.DEV ? '[InvoicesAPI] Legacy_Insert' : '';
+        if (import.meta.env.DEV) console.time(tLeg);
         const result = await postgres.query(
           `INSERT INTO sales (
               id,
@@ -568,7 +921,7 @@ export const invoicesAPI = {
           queryOptions
         );
         rows = result.rows;
-        console.timeEnd('[InvoicesAPI] Legacy_Insert');
+        if (import.meta.env.DEV) console.timeEnd(tLeg);
       }
 
       const invoiceId = rows[0]?.id;
@@ -1238,15 +1591,25 @@ export const invoicesAPI = {
   async update(id: string, invoice: Partial<Invoice>): Promise<Invoice | null> {
     try {
       console.log('[InvoicesAPI] Updating invoice...', id);
-      const firmNr = ERP_SETTINGS.firmNr;
+      const cleanId = String(id || '').trim();
+      const existingFull = await this.getById(cleanId);
+      if (!existingFull) throw new Error('Fatura bulunamadı');
+      const fn0 = normalizeFirmNrForRow((existingFull as any).firma_id ?? ERP_SETTINGS.firmNr);
+      const pn0 = normalizePeriodNrForRow((existingFull as any).donem_id ?? ERP_SETTINGS.periodNr);
+      const resyncLedger = Array.isArray(invoice.items);
+
+      if (resyncLedger) {
+        try {
+          await revertInvoiceLedgerSideEffects(existingFull, fn0, pn0);
+        } catch (e) {
+          console.warn('[InvoicesAPI] update ledger revert:', e);
+        }
+      }
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const cleanId = String(id || '').trim();
-        const existing = await this.getById(cleanId);
-        if (!existing) throw new Error('Fatura bulunamadı');
-        const fn = normalizeFirmNrForRow((existing as any).firma_id ?? ERP_SETTINGS.firmNr);
-        const pn = normalizePeriodNrForRow((existing as any).donem_id ?? ERP_SETTINGS.periodNr);
+        const fn = fn0;
+        const pn = pn0;
         const salesTable = `/rex_${fn}_${pn}_sales`;
         const itemsTable = `/rex_${fn}_${pn}_sale_items`;
 
@@ -1267,6 +1630,7 @@ export const invoicesAPI = {
         if (invoice.gross_profit !== undefined) patchBody.gross_profit = Number(invoice.gross_profit);
         if (invoice.currency !== undefined) patchBody.currency = invoice.currency;
         if (invoice.currency_rate !== undefined) patchBody.currency_rate = Number(invoice.currency_rate);
+        if (invoice.payment_method !== undefined) patchBody.payment_method = String(invoice.payment_method);
 
         if (Object.keys(patchBody).length > 0) {
           await postgrest.patch(
@@ -1345,7 +1709,15 @@ export const invoicesAPI = {
           }
         }
 
-        return await this.getById(cleanId);
+        const mergedRest = await this.getById(cleanId);
+        if (resyncLedger && mergedRest) {
+          try {
+            await applyInvoiceLedgerSideEffects(mergedRest, fn0, pn0);
+          } catch (e) {
+            console.warn('[InvoicesAPI] update ledger apply:', e);
+          }
+        }
+        return mergedRest;
       }
 
       const fields: string[] = [];
@@ -1369,18 +1741,21 @@ export const invoicesAPI = {
       if (invoice.gross_profit !== undefined) { fields.push(`gross_profit = $${i++}`); values.push(invoice.gross_profit); }
       if (invoice.currency !== undefined) { fields.push(`currency = $${i++}`); values.push(invoice.currency); }
       if (invoice.currency_rate !== undefined) { fields.push(`currency_rate = $${i++}`); values.push(invoice.currency_rate); }
+      if (invoice.payment_method !== undefined) { fields.push(`payment_method = $${i++}`); values.push(String(invoice.payment_method)); }
 
+      const sqlOpts = { firmNr: fn0, periodNr: pn0 };
       if (fields.length > 0) {
         values.push(id);
-        values.push(firmNr);
+        values.push(fn0);
         await postgres.query(
           `UPDATE sales SET ${fields.join(', ')} WHERE id::text = $${i} AND firm_nr = $${i + 1}`,
-          values
+          values,
+          sqlOpts
         );
       }
 
       if (invoice.items) {
-        await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id]);
+        await postgres.query(`DELETE FROM sale_items WHERE invoice_id::text::uuid = $1::text::uuid`, [id], sqlOpts);
         for (const item of invoice.items) {
           const productId = item.code || item.productId;
           const unitMultiplier = Number((item as any).multiplier || 1);
@@ -1401,8 +1776,8 @@ export const invoicesAPI = {
                $16::text::numeric, $17::text::numeric, $18::text::numeric, $19::text)`,
             [
               id,
-              String(firmNr),
-              String(ERP_SETTINGS.periodNr),
+              String(fn0),
+              String(pn0),
               String(productId),
               String(item.description || item.productName),
               Number(item.quantity),
@@ -1419,12 +1794,21 @@ export const invoicesAPI = {
               baseQty,
               unitPriceFC,
               itemCurrency
-            ]
+            ],
+            sqlOpts
           );
         }
       }
 
-      return await this.getById(id);
+      const mergedSql = await this.getById(cleanId);
+      if (resyncLedger && mergedSql) {
+        try {
+          await applyInvoiceLedgerSideEffects(mergedSql, fn0, pn0);
+        } catch (e) {
+          console.warn('[InvoicesAPI] update ledger apply (SQL):', e);
+        }
+      }
+      return mergedSql;
     } catch (error: any) {
       console.error('[InvoicesAPI] update failed:', error);
       throw new Error(error.message || 'Fatura güncellenemedi');

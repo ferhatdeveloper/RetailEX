@@ -2882,6 +2882,57 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   deleteInvoiceConfirm: { tr: 'Bu faturayı silmek istediğinizden emin misiniz?', en: 'Are you sure you want to delete this invoice?', ar: 'هل أنت متأكد أنك تريد حذف هذه الفاتورة؟', ku: 'ئایا دڵنیایت دەتەوێت ئەم وەسڵە بسڕیتەوە؟' },
   invoiceCancelled: { tr: 'Fatura iptal edildi', en: 'Invoice cancelled', ar: 'تم إلغاء الفاتورة', ku: 'وەسڵ هەڵوەشایەوە' },
   loadingInvoices: { tr: 'Faturalar yükleniyor', en: 'Loading invoices', ar: 'جار تحميل الفواتير', ku: 'بارکردنی وەسڵەکان' },
+  purchaseInvoiceExcelTemplateBtn: { tr: 'Excel şablonu', en: 'Excel template', ar: 'قالب Excel', ku: 'قاڵبی Excel' },
+  purchaseInvoiceExcelImportBtn: { tr: "Excel'den içe aktar", en: 'Import from Excel', ar: 'استيراد من Excel', ku: 'هێنان لە Excel' },
+  purchaseInvoiceExcelImporting: { tr: 'İçe aktarılıyor…', en: 'Importing…', ar: 'جار الاستيراد…', ku: 'هێنان…' },
+  purchaseInvoiceExcelHint: {
+    tr: 'Şablondaki sütun başlıklarını değiştirmeyin. Birim fiyat, faturada seçili döviz cinsindendir. Satırlar mevcut kalemlerin sonuna eklenir.',
+    en: 'Do not change the template column headers. Unit price is in the invoice currency. Rows are appended after current lines.',
+    ar: 'لا تغيّر عناوين الأعمدة في القالب. سعر الوحدة بعملة الفاتورة. تُضاف الصفوف بعد الأسطر الحالية.',
+    ku: 'سەرناوەکانی ستوون لە قاڵبدا مەگۆڕە. نرخی یەکە بە دراوی پسوڵە. ڕیزەکان دوای هێڵی ئێستا زیاد دەکرێن.',
+  },
+  purchaseInvoiceExcelTemplateDownloaded: {
+    tr: 'Şablon indirildi',
+    en: 'Template downloaded',
+    ar: 'تم تنزيل القالب',
+    ku: 'قاڵب دابەزێنرا',
+  },
+  purchaseInvoiceExcelDownloadError: {
+    tr: 'Şablon indirilemedi',
+    en: 'Could not download template',
+    ar: 'تعذر تنزيل القالب',
+    ku: 'قاڵب دابەزین نەبوو',
+  },
+  purchaseInvoiceExcelEmptyFile: {
+    tr: 'Excelde geçerli kalem satırı yok (ürün kodu, miktar, birim fiyat zorunlu).',
+    en: 'No valid line rows in Excel (product code, quantity, unit price are required).',
+    ar: 'لا توجد صفوف صالحة (رمز المنتج والكمية وسعر الوحدة مطلوبة).',
+    ku: 'هیچ ڕیزی دروست نییە (کۆد، بڕ، نرخی یەکە پێویستە).',
+  },
+  purchaseInvoiceExcelImportSuccess: {
+    tr: '{n} satır içe aktarıldı',
+    en: '{n} rows imported',
+    ar: 'تم استيراد {n} صفًا',
+    ku: '{n} ڕیز هێنرا',
+  },
+  purchaseInvoiceExcelImportPartial: {
+    tr: 'Bazı satırlar atlandı veya uyarı',
+    en: 'Some rows were skipped or warnings',
+    ar: 'تم تخطي بعض الصفوف أو تحذيرات',
+    ku: 'هەندێک ڕیز پانێنرا یان ئاگاداری',
+  },
+  purchaseInvoiceExcelImportFailed: {
+    tr: 'Excel içe aktarılamadı',
+    en: 'Excel import failed',
+    ar: 'فشل استيراد Excel',
+    ku: 'هێنانی Excel سەرکەوتوو نەبوو',
+  },
+  purchaseInvoiceExcelRowProductMissing: {
+    tr: 'Satır {row}: ürün bulunamadı ({key})',
+    en: 'Row {row}: product not found ({key})',
+    ar: 'الصف {row}: المنتج غير موجود ({key})',
+    ku: 'ڕیز {row}: بەرهەم نەدۆزرایەوە ({key})',
+  },
 
   // Invoice Grid Column Headers
   itemType: { tr: 'Tür', en: 'Type', ar: 'النوع', ku: 'جۆر' },
@@ -3766,6 +3817,49 @@ export const wmsModuleTranslations = {
     en: 'This count is finished. Open a draft purchase invoice from surplus lines.',
     ar: 'اكتمل هذا الجرد. افتح مسودة فاتورة شراء من بنود الفائض.',
     ku: 'ئەم ژماردنە تەواو بووە. لە ڕیزی زێدە وەسڵی کڕینی ڕەشنووس بکەرەوە.',
+  },
+  invoiceTypeCountSurplus: { tr: 'Sayım fazlası', en: 'Count surplus', ar: 'فائض الجرد', ku: 'زێدەی ژماردن' },
+  invoiceBulkPurchaseFromSayimBtn: {
+    tr: 'Seçilenlerden alış taslağı',
+    en: 'Draft purchase from selection',
+    ar: 'مسودة شراء من المحدد',
+    ku: 'ڕەشنووسی کڕین لە هەڵبژاردن',
+  },
+  invoiceBulkPurchaseFromSayimHint: {
+    tr: 'Yalnızca sayım fazlası (trcode 26) faturaları seçin; satırlar birleştirilir, stok tekrar artırılmaz.',
+    en: 'Select only count-surplus invoices (trcode 26); lines merge, stock is not increased again.',
+    ar: 'حدد فواتير فائض الجرد (26) فقط؛ يتم دمج الأسطر دون زيادة المخزون مرة أخرى.',
+    ku: 'تەنها وەسڵی زێدەی ژماردن (26) هەڵبژێرە؛ ڕیزەکان یەکدەگرێنەوە و کۆگا دووبارە زیاد ناکرێت.',
+  },
+  invoiceBulkPurchaseFromSayimNeedSelect: {
+    tr: 'En az bir sayım fazlası faturası seçin.',
+    en: 'Select at least one count-surplus invoice.',
+    ar: 'اختر فاتورة فائض جرد واحدة على الأقل.',
+    ku: 'بەلایەنی کەمەوە یەک وەسڵی زێدەی ژماردن هەڵبژێرە.',
+  },
+  invoiceBulkPurchaseFromSayimNotSayim: {
+    tr: 'Seçimde sayım fazlası (26) dışında fatura var; yalnızca 26 seçilebilir.',
+    en: 'Selection includes non count-surplus (26) invoices; only type 26 is allowed.',
+    ar: 'التضمين يحتوي على فواتير ليست من نوع فائض الجرد (26).',
+    ku: 'هەڵبژاردن وەسڵی جۆری 26 نییە.',
+  },
+  invoiceBulkPurchaseFromSayimNoLines: {
+    tr: 'Seçilen faturalarda satır bulunamadı.',
+    en: 'No line items on selected invoices.',
+    ar: 'لا توجد بنود في الفواتير المحددة.',
+    ku: 'هیچ ڕیزێک لە وەسڵە هەڵبژێردراوەکاندا نییە.',
+  },
+  invoiceBulkPurchaseFromSayimLoading: {
+    tr: 'Fatura satırları yükleniyor…',
+    en: 'Loading invoice lines…',
+    ar: 'جاري تحميل بنود الفاتورة…',
+    ku: 'بارکردنی ڕیزەکانی وەسڵ…',
+  },
+  invoiceBulkPurchaseFromSayimNotesPrefix: {
+    tr: 'Sayım fazlası faturalarından birleştirme:',
+    en: 'Merged from count-surplus invoices:',
+    ar: 'مدمج من فواتير فائض الجرد:',
+    ku: 'یەکخراوە لە وەسڵی زێدەی ژماردن:',
   },
 };
 Object.assign(moduleTranslations, supplierTranslations);

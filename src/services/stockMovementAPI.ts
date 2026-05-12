@@ -15,6 +15,8 @@ export interface StockMovement {
     created_at: string;
     updated_at: string;
     stock_movement_items?: StockMovementItem[];
+    /** slip: ambar fişi; invoice: satış/alış faturası (synthetic liste) */
+    source_kind?: 'slip' | 'invoice';
 }
 
 export interface StockMovementItem {
@@ -52,17 +54,67 @@ class StockMovementAPI {
      */
     async getAll(): Promise<StockMovement[]> {
         try {
-            const { rows } = await postgres.query(
+            const { rows: slipRows } = await postgres.query(
                 `SELECT 
                     m.*, s.name as warehouse_name
                  FROM stock_movements m
                  LEFT JOIN stores s ON m.warehouse_id = s.id
                  ORDER BY m.created_at DESC`
             );
-            return rows.map(r => ({
+            const slips: StockMovement[] = slipRows.map((r: any) => ({
                 ...r,
+                source_kind: 'slip' as const,
                 warehouses: { name: r.warehouse_name }
             }));
+
+            let invRows: any[] = [];
+            try {
+                const { rows } = await postgres.query(
+                    `SELECT
+                        s.id,
+                        s.fiche_no AS document_no,
+                        s.date AS movement_date,
+                        CASE
+                            WHEN s.fiche_type = 'purchase_invoice' THEN 'in'
+                            WHEN s.fiche_type = 'sales_invoice' THEN 'out'
+                            WHEN s.fiche_type = 'return_invoice' AND COALESCE(s.trcode, 0) = 3 THEN 'in'
+                            WHEN s.fiche_type = 'return_invoice' THEN 'out'
+                            ELSE 'out'
+                        END AS movement_type,
+                        COALESCE(s.status, 'approved') AS status,
+                        COALESCE(s.trcode, 0)::int AS trcode,
+                        s.store_id AS warehouse_id,
+                        NULL::uuid AS target_warehouse_id,
+                        COALESCE(s.currency_rate, 1.0) AS exchange_rate,
+                        COALESCE(s.notes, '') AS description,
+                        s.created_at,
+                        s.updated_at,
+                        st.name AS warehouse_name
+                    FROM sales s
+                    LEFT JOIN stores st ON s.store_id = st.id
+                    WHERE s.fiche_type IN ('purchase_invoice', 'sales_invoice', 'return_invoice')
+                    ORDER BY s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
+                    LIMIT 500`
+                );
+                invRows = rows;
+            } catch (err) {
+                console.warn('[StockMovementAPI] getAll sales (fatura hareketleri) eklenemedi:', err);
+            }
+
+            const fromInvoices: StockMovement[] = invRows.map((r: any) => ({
+                ...r,
+                id: `inv-${r.id}`,
+                source_kind: 'invoice' as const,
+                warehouses: { name: r.warehouse_name || 'Merkez Ambar' }
+            }));
+
+            const combined = [...slips, ...fromInvoices];
+            combined.sort((a: any, b: any) => {
+                const ta = new Date(b.created_at || b.movement_date || 0).getTime();
+                const tb = new Date(a.created_at || a.movement_date || 0).getTime();
+                return ta - tb;
+            });
+            return combined;
         } catch (error) {
             console.error('[StockMovementAPI] getAll failed:', error);
             return [];

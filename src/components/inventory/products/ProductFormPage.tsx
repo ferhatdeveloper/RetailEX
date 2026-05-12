@@ -1591,20 +1591,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
 
       const dbProductId = savedProduct.id;
 
-      // Save barcodes
-      await productUnitsAPI.syncBarcodes(dbProductId, barcodes.map(b => ({
-        barcode_code: b.code,
-        unit: b.unit,
-        sale_price: b.price || (b.isPrimary ? formData.salePrice : 0),
-        is_primary: b.isPrimary,
-      })));
-
-      // Save unit conversions
-      await productUnitsAPI.syncUnitConversions(dbProductId, unitConversions.map(c => ({
-        from_unit: c.fromUnit,
-        to_unit: c.toUnit,
-        factor: c.factor,
-      })));
+      await Promise.all([
+        productUnitsAPI.syncBarcodes(dbProductId, barcodes.map(b => ({
+          barcode_code: b.code,
+          unit: b.unit,
+          sale_price: b.price || (b.isPrimary ? formData.salePrice : 0),
+          is_primary: b.isPrimary,
+        }))),
+        productUnitsAPI.syncUnitConversions(dbProductId, unitConversions.map(c => ({
+          from_unit: c.fromUnit,
+          to_unit: c.toUnit,
+          factor: c.factor,
+        }))),
+      ]);
 
       // Then save variants if product has variants
       if (hasVariants && variants.length > 0) {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { FULLSCREEN_BODY_PORTAL_Z } from '../../shared/FullscreenBodyPortal';
-import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera } from 'lucide-react';
+import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera, FileSpreadsheet, Upload } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
@@ -38,7 +38,8 @@ import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { customerAPI } from '../../../services/api/customers';
 import { invoicesAPI } from '../../../services/api/index';
 import { serviceAPI, Service } from '../../../services/serviceAPI';
-import { postgres, getAppDefaultCurrency } from '../../../services/postgres';
+import { postgres, getAppDefaultCurrency, DB_SETTINGS } from '../../../services/postgres';
+import { IS_BROWSER } from '../../../utils/env';
 import { productAPI } from '../../../services/api/products';
 import {
   currencyAPI,
@@ -52,6 +53,10 @@ import {
 } from '../../../services/api/masterData';
 import { unitSetAPI } from '../../../services/unitSetAPI';
 import type { UnitMasterRow } from '../../../utils/unitOptions';
+import {
+  downloadPurchaseInvoiceImportTemplate,
+  parsePurchaseInvoiceExcelArrayBuffer,
+} from '../../../utils/purchaseInvoiceExcelImport';
 
 // Electron API tip tanımı
 declare global {
@@ -134,6 +139,8 @@ interface UniversalInvoiceFormProps {
   products?: Product[];
   onClose: () => void;
   editData?: any; // Düzenleme için fatura verisi
+  /** Sayım sonrası taslak: stok/FIFO/muhasebe tekrarını engelle */
+  createSaveOptions?: { skipProductStockUpdate?: boolean };
 }
 
 // Mock Products - lastPurchasePrice eklendi
@@ -199,6 +206,54 @@ function invoiceEditLineToFormAmounts(
   }
 
   return { unitPrice, amount, netAmount };
+}
+
+/**
+ * Tarayıcı veya doğrudan PG (köprü) modunda: Supabase FIFO katmanına N× istek atmak yerine
+ * yerel ürün kartındaki alış fiyatından tahmini maliyet (kayıt + canlı kar önizlemesi hızlanır).
+ */
+function preferLocalCatalogFifoOverCloud(): boolean {
+  return IS_BROWSER || DB_SETTINGS.connectionProvider === 'db';
+}
+
+function buildLocalCatalogFifoCostMap(
+  validItems: InvoiceItem[],
+  products: Product[],
+  storeProducts: Product[]
+): Map<string, { unitCost: number; totalCost: number; available: boolean }> {
+  const results = new Map<string, { unitCost: number; totalCost: number; available: boolean }>();
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const resolveProduct = (item: InvoiceItem): Product | undefined => {
+    if (uuidRe.test(item.code)) {
+      return products.find((p) => p.id === item.code) || storeProducts.find((p) => p.id === item.code);
+    }
+    return products.find((p) => p.code === item.code) || storeProducts.find((p) => p.code === item.code);
+  };
+
+  for (const item of validItems) {
+    let productId = item.code;
+    if (!uuidRe.test(item.code)) {
+      const pr = resolveProduct(item);
+      if (pr?.id) productId = pr.id;
+    }
+    const pr =
+      resolveProduct(item) ||
+      products.find((p) => p.id === productId) ||
+      storeProducts.find((p) => p.id === productId);
+    /** PostgREST/SQL satırı: `purchase_price`; `mapDatabaseProductToProduct` öncelikle `cost` doldurur. */
+    const unitPurchase = Number(
+      (pr as any)?.purchase_price ?? (pr as any)?.purchasePrice ?? pr.cost ?? 0
+    );
+    const baseQty = item.baseQuantity ?? item.quantity * (item.multiplier || 1);
+    const totalCost = baseQty * unitPurchase;
+    results.set(productId, {
+      unitCost: baseQty > 0 ? totalCost / baseQty : 0,
+      totalCost,
+      available: unitPurchase > 0,
+    });
+  }
+  return results;
 }
 
 function isInvoiceServiceLineType(type: string | undefined): boolean {
@@ -267,7 +322,14 @@ function parseTransactionDateInput(date: Date | string): Date {
   return Number.isNaN(dt.getTime()) ? new Date() : dt;
 }
 
-export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [], products: productsProp = [], onClose, editData }: UniversalInvoiceFormProps) {
+export function UniversalInvoiceForm({
+  invoiceType,
+  customers: customersProp = [],
+  products: productsProp = [],
+  onClose,
+  editData,
+  createSaveOptions,
+}: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
 
   const { selectedFirm, selectedPeriod, selectedBranch, selectedWarehouse } = useFirmaDonem();
@@ -317,6 +379,47 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
 
   // Products prop varsa onu kullan, yoksa store'dan al
   const products = productsProp.length > 0 ? productsProp : storeProducts;
+
+  const lookupInvoiceProductByKey = useCallback(
+    async (raw: string): Promise<{ product: Product; unitInfo?: any } | null> => {
+      const attempts = barcodeLookupAttempts(raw.trim());
+      for (const key of attempts) {
+        const r = await productAPI.lookupByBarcode(key);
+        if (r) return r;
+        const byCode = await productAPI.getByCode(key);
+        if (byCode) return { product: byCode };
+      }
+      const pool: Product[] = [];
+      const seen = new Set<string>();
+      for (const p of [...storeProducts, ...(productsProp.length > 0 ? productsProp : [])]) {
+        const k = (p as Product)?.id || (p as Product)?.code || '';
+        if (k && !seen.has(k)) {
+          seen.add(k);
+          pool.push(p as Product);
+        }
+      }
+      if (pool.length === 0) {
+        for (const p of products) {
+          const k = p?.id || p?.code || '';
+          if (k && !seen.has(k)) {
+            seen.add(k);
+            pool.push(p);
+          }
+        }
+      }
+      for (const key of attempts) {
+        const rawLower = key.toLowerCase();
+        const local = pool.find(
+          (pr) =>
+            (pr.code && pr.code.trim().toLowerCase() === rawLower) ||
+            (pr.barcode && pr.barcode.trim() === key)
+        );
+        if (local) return { product: local };
+      }
+      return null;
+    },
+    [storeProducts, productsProp, products]
+  );
 
   // Suppliers ve Customers state - Veritabanından çekilecek
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -929,6 +1032,8 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const cashRegisterDropdownRef = useRef<HTMLDivElement>(null);
+  const purchaseExcelInputRef = useRef<HTMLInputElement>(null);
+  const [purchaseExcelImporting, setPurchaseExcelImporting] = useState(false);
 
   // Header renk belirleme
   const getHeaderColor = () => {
@@ -1126,55 +1231,136 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
     return item;
   };
 
+  const applyUnitHintToInvoiceItem = (item: InvoiceItem, hint: string): InvoiceItem => {
+    const h = hint.trim();
+    if (!h || !item.unitsetId) return item;
+    const unitSet = unitSets.find((us: any) => us.id === item.unitsetId);
+    const line = unitSet?.lines?.find(
+      (l: any) =>
+        String(l.name || '')
+          .trim()
+          .toLowerCase() === h.toLowerCase() ||
+        String(l.code || '')
+          .trim()
+          .toLowerCase() === h.toLowerCase()
+    );
+    if (!line) return item;
+    const next = { ...item };
+    const oldMult = next.multiplier || 1;
+    const newMult = parseFloat(line.conv_fact1) || parseFloat(line.multiplier1) || 1;
+    next.unit = line.name || line.code || next.unit;
+    next.multiplier = newMult;
+    if (oldMult > 0 && newMult !== oldMult && (next.unitPrice || 0) > 0) {
+      next.unitPrice = next.unitPrice * (newMult / oldMult);
+    }
+    next.baseQuantity = (next.quantity || 0) * (next.multiplier || 1);
+    return next;
+  };
+
+  const finalizePurchaseLineAmounts = (item: InvoiceItem): InvoiceItem => {
+    const next = { ...item };
+    next.discountPercent = Math.min(100, Math.max(0, next.discountPercent || 0));
+    const gross = (next.quantity || 0) * (next.unitPrice || 0);
+    next.discountAmount = gross * ((next.discountPercent || 0) / 100);
+    next.amount = gross;
+    next.netAmount = gross - next.discountAmount;
+    next.baseQuantity = (next.quantity || 0) * (next.multiplier || 1);
+    if (next.lastPurchasePrice != null && next.lastPurchasePrice > 0) {
+      const up = next.unitPrice || 0;
+      next.priceDifference = up - next.lastPurchasePrice;
+      next.priceDifferencePercent =
+        next.lastPurchasePrice > 0 ? ((up - next.lastPurchasePrice) / next.lastPurchasePrice) * 100 : 0;
+    }
+    return next;
+  };
+
+  const handleDownloadPurchaseInvoiceExcelTemplate = async () => {
+    try {
+      const ok = await downloadPurchaseInvoiceImportTemplate();
+      if (ok) toast.success(tm('purchaseInvoiceExcelTemplateDownloaded'));
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || tm('purchaseInvoiceExcelDownloadError'));
+    }
+  };
+
+  const handlePurchaseExcelInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || invoiceType.category !== 'Alis') return;
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith('.xlsx') && !lower.endsWith('.xls')) {
+      toast.error(tm('supportedFormats'));
+      return;
+    }
+    setPurchaseExcelImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const { rows, errors } = parsePurchaseInvoiceExcelArrayBuffer(buf);
+      if (rows.length === 0) {
+        toast.error(tm('purchaseInvoiceExcelEmptyFile'));
+        errors.slice(0, 6).forEach((msg) => toast.info(msg));
+        return;
+      }
+      const built: InvoiceItem[] = [];
+      const rowErrors: string[] = [];
+      for (const pr of rows) {
+        const resolved = await lookupInvoiceProductByKey(pr.productKey);
+        if (!resolved) {
+          rowErrors.push(
+            tm('purchaseInvoiceExcelRowProductMissing')
+              .replace('{row}', String(pr.excelRow))
+              .replace('{key}', pr.productKey)
+          );
+          continue;
+        }
+        const base = createEmptyInvoiceLine();
+        base.quantity = pr.quantity;
+        base.discountPercent = pr.discountPercent;
+        let item = applyLookupResultToInvoiceItem(base, resolved.product, resolved.unitInfo);
+        if (pr.unitHint) {
+          item = applyUnitHintToInvoiceItem(item, pr.unitHint);
+        }
+        if (pr.unitPrice > 0) {
+          item.unitPrice = pr.unitPrice;
+        }
+        if (pr.lineNote) {
+          item.description2 = pr.lineNote;
+        }
+        item = finalizePurchaseLineAmounts(item);
+        built.push(item);
+      }
+      if (built.length === 0) {
+        toast.error(tm('purchaseInvoiceExcelImportFailed'));
+        rowErrors.slice(0, 10).forEach((m) => toast.error(m));
+        return;
+      }
+      setItems((prev) => {
+        const withoutTrailing =
+          prev.length > 0 && lineIsBlank(prev[prev.length - 1]) ? prev.slice(0, -1) : prev;
+        return withTrailingEmptyLine([...withoutTrailing, ...built]);
+      });
+      toast.success(tm('purchaseInvoiceExcelImportSuccess').replace('{n}', String(built.length)));
+      const warnParts = [...errors, ...rowErrors].filter(Boolean);
+      if (warnParts.length > 0) {
+        toast.warning(
+          `${tm('purchaseInvoiceExcelImportPartial')}: ${warnParts.slice(0, 8).join(' · ')}`
+        );
+      }
+    } catch (err: any) {
+      console.error('[UniversalInvoiceForm] purchase excel import:', err);
+      toast.error(err?.message || tm('purchaseInvoiceExcelImportFailed'));
+    } finally {
+      setPurchaseExcelImporting(false);
+    }
+  };
+
   const resolveProductByCodeInput = async (rowIndex: number, codeRaw: string) => {
     const raw = codeRaw.trim();
     if (!raw) return;
 
     try {
-      let resolved: { product: Product; unitInfo?: any } | null = null;
-      const attempts = barcodeLookupAttempts(raw);
-
-      for (const key of attempts) {
-        resolved = await productAPI.lookupByBarcode(key);
-        if (resolved) break;
-        const byCode = await productAPI.getByCode(key);
-        if (byCode) {
-          resolved = { product: byCode };
-          break;
-        }
-      }
-
-      if (!resolved) {
-        const pool: Product[] = [];
-        const seen = new Set<string>();
-        for (const p of [...storeProducts, ...(productsProp.length > 0 ? productsProp : [])]) {
-          const k = (p as Product)?.id || (p as Product)?.code || '';
-          if (k && !seen.has(k)) {
-            seen.add(k);
-            pool.push(p as Product);
-          }
-        }
-        if (pool.length === 0) {
-          for (const p of products) {
-            const k = p?.id || p?.code || '';
-            if (k && !seen.has(k)) {
-              seen.add(k);
-              pool.push(p);
-            }
-          }
-        }
-        for (const key of attempts) {
-          const rawLower = key.toLowerCase();
-          const local = pool.find(pr =>
-            (pr.code && pr.code.trim().toLowerCase() === rawLower) ||
-            (pr.barcode && pr.barcode.trim() === key)
-          );
-          if (local) {
-            resolved = { product: local };
-            break;
-          }
-        }
-      }
+      const resolved = await lookupInvoiceProductByKey(raw);
 
       if (!resolved) {
         toast.error(tm('productNotFound'));
@@ -2190,32 +2376,32 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       }
 
       try {
-        const itemsForFIFO = validItems.map(item => {
-          let productId = item.code;
-          const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!uuidPattern.test(item.code)) {
-            const product = products.find(p => p.code === item.code);
-            if (product && product.id) {
-              productId = product.id;
-            } else {
-              const foundStoreProduct = storeProducts.find(p => p.code === item.code);
-              if (foundStoreProduct && foundStoreProduct.id) {
-                productId = foundStoreProduct.id;
-              }
-            }
-          }
-          return {
-            productId: productId,
-            productCode: item.code,
-            quantity: item.quantity
-          };
-        });
-
-        const costResults = await batchCalculateFIFOCost({
-          items: itemsForFIFO,
-          firmaId: (selectedFirm?.logicalref || 0).toString(),
-          donemId: (selectedPeriod?.logicalref || 0).toString()
-        });
+        const costResults = preferLocalCatalogFifoOverCloud()
+          ? buildLocalCatalogFifoCostMap(validItems, products, storeProducts)
+          : await batchCalculateFIFOCost({
+              items: validItems.map((item) => {
+                let productId = item.code;
+                const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                if (!uuidPattern.test(item.code)) {
+                  const product = products.find((p) => p.code === item.code);
+                  if (product && product.id) {
+                    productId = product.id;
+                  } else {
+                    const foundStoreProduct = storeProducts.find((p) => p.code === item.code);
+                    if (foundStoreProduct && foundStoreProduct.id) {
+                      productId = foundStoreProduct.id;
+                    }
+                  }
+                }
+                return {
+                  productId,
+                  productCode: item.code,
+                  quantity: item.quantity,
+                };
+              }),
+              firmaId: (selectedFirm?.logicalref || 0).toString(),
+              donemId: (selectedPeriod?.logicalref || 0).toString(),
+            });
 
         let calculatedTotalCost = 0;
         let calculatedTotalGrossProfit = 0;
@@ -2417,11 +2603,13 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
           return { productId, productCode: item.code, quantity: baseQty };
         });
 
-        const costResults = await batchCalculateFIFOCost({
-          items: itemsForFIFO,
-          firmaId: (selectedFirm?.logicalref || 0).toString(),
-          donemId: (selectedPeriod?.logicalref || 0).toString()
-        });
+        const costResults = preferLocalCatalogFifoOverCloud()
+          ? buildLocalCatalogFifoCostMap(validItems, products, storeProducts)
+          : await batchCalculateFIFOCost({
+              items: itemsForFIFO,
+              firmaId: (selectedFirm?.logicalref || 0).toString(),
+              donemId: (selectedPeriod?.logicalref || 0).toString()
+            });
 
         itemsWithCost = validItems.map(item => {
           let productId = item.code;
@@ -2499,7 +2687,12 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       if (editData?.id) {
         savedInvoice = await invoicesAPI.update(editData.id, invoiceData);
       } else {
-        savedInvoice = await invoicesAPI.create(invoiceData);
+        savedInvoice = await invoicesAPI.create(
+          invoiceData,
+          createSaveOptions?.skipProductStockUpdate
+            ? { skipProductStockUpdate: true }
+            : undefined
+        );
       }
 
       if (!savedInvoice) throw new Error(tm('invoiceSaveError'));
@@ -2509,89 +2702,98 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
       // Stok DB'de güncellendi; ürün store'unu tazele (liste / katalog / POS stok etiketi)
       void useProductStore.getState().loadProducts(true);
 
-      // Stok ve FIFO Hareketleri (baseQuantity kullan)
+      // Stok ve FIFO Hareketleri (baseQuantity kullan) — yerel PG modunda Supabase'e N× istek atılmaz (stok zaten invoicesAPI ile güncellendi)
+      const skipCloudFifoAfterSave = preferLocalCatalogFifoOverCloud();
+      const skipStockSideEffects = Boolean(createSaveOptions?.skipProductStockUpdate);
       if (!editData?.id) {
-        if (invoiceType.category === 'Alis') {
-          await Promise.all(
-            itemsWithCost.map((item) => {
-              const baseQty = item.baseQuantity ?? item.quantity;
-              return CostAccountingService.addFIFOLayer({
-                product_id: item.code,
-                quantity: baseQty,
-                unit_cost: item.unitCost || item.unitPrice,
-                purchase_date: invoiceDate.toISOString(),
-                document_no: invoiceNo,
-                firma_id: selectedFirm.id || '',
-                donem_id: selectedPeriod.id || ''
-              });
-            })
-          );
-        } else if (invoiceType.category === 'Satis') {
-          for (const item of itemsWithCost) {
-            const baseQty = item.baseQuantity ?? item.quantity;
-            await CostAccountingService.recordStockMovement({
-              product_id: item.code,
-              product_code: item.code,
-              product_name: item.description,
-              movement_type: 'OUT',
-              quantity: baseQty,
-              unit_cost: item.unitCost || 0,
-              unit_price: item.unitPrice,
-              total_cost: item.totalCost || 0,
-              total_price: item.netAmount * rateToIQD,
-              movement_date: invoiceDate.toISOString(),
-              document_no: invoiceNo,
-              document_type: 'SALES_INVOICE',
+        if (!skipStockSideEffects) {
+          if (!skipCloudFifoAfterSave) {
+            if (invoiceType.category === 'Alis') {
+              await Promise.all(
+                itemsWithCost.map((item) => {
+                  const baseQty = item.baseQuantity ?? item.quantity;
+                  return CostAccountingService.addFIFOLayer({
+                    product_id: item.code,
+                    quantity: baseQty,
+                    unit_cost: item.unitCost || item.unitPrice,
+                    purchase_date: invoiceDate.toISOString(),
+                    document_no: invoiceNo,
+                    firma_id: selectedFirm.id || '',
+                    donem_id: selectedPeriod.id || ''
+                  });
+                })
+              );
+            } else if (invoiceType.category === 'Satis') {
+              await Promise.all(
+                itemsWithCost.map((item) => {
+                  const baseQty = item.baseQuantity ?? item.quantity;
+                  return CostAccountingService.recordStockMovement({
+                    product_id: item.code,
+                    product_code: item.code,
+                    product_name: item.description,
+                    movement_type: 'OUT',
+                    quantity: baseQty,
+                    unit_cost: item.unitCost || 0,
+                    unit_price: item.unitPrice,
+                    total_cost: item.totalCost || 0,
+                    total_price: item.netAmount * rateToIQD,
+                    movement_date: invoiceDate.toISOString(),
+                    document_no: invoiceNo,
+                    document_type: 'SALES_INVOICE',
+                    firma_id: selectedFirm.id || '',
+                    donem_id: selectedPeriod.id || '',
+                  });
+                })
+              );
+            }
+          }
+
+          if (priceChangeItems.length > 0) {
+            await priceChangeVouchersAPI.create({
+              voucher_no: `FD-${invoiceNo}`,
+              invoice_no: invoiceNo,
+              date: invoiceDate.toISOString(),
+              items: priceChangeItems,
               firma_id: selectedFirm.id || '',
               donem_id: selectedPeriod.id || ''
             });
           }
         }
-
-        if (priceChangeItems.length > 0) {
-          await priceChangeVouchersAPI.create({
-            voucher_no: `FD-${invoiceNo}`,
-            invoice_no: invoiceNo,
-            date: invoiceDate.toISOString(),
-            items: priceChangeItems,
-            firma_id: selectedFirm.id || '',
-            donem_id: selectedPeriod.id || ''
-          });
-        }
       }
 
-      // ===== 6. OTOMATİK MUHASEBE FİŞİ =====
-      if (!editData?.id && isReady) {
-        let journalResult: any = null;
+      const runJournalIfNeeded = async () => {
+        if (skipStockSideEffects) return;
+        if (!editData?.id && isReady) {
+          let journalResult: any = null;
 
-        if (invoiceType.category === 'Satis' && selectedFirm && selectedPeriod) {
-          journalResult = await createSalesJournal({
-            fatura_no: invoiceNo,
-            tarih: invoiceDate,
-            musteri_adi: customerTitle || supplierTitle,
-            tutar: totals.netIQD,   // IQD
-            aciklama: description
-          });
-        } else if (invoiceType.category === 'Alis' && selectedFirm && selectedPeriod) {
-          journalResult = await createPurchaseJournal({
-            fatura_no: invoiceNo,
-            tarih: invoiceDate,
-            tedarikci_adi: supplierTitle || customerTitle,
-            tutar: totals.netIQD,   // IQD
-            aciklama: description
-          });
+          if (invoiceType.category === 'Satis' && selectedFirm && selectedPeriod) {
+            journalResult = await createSalesJournal({
+              fatura_no: invoiceNo,
+              tarih: invoiceDate,
+              musteri_adi: customerTitle || supplierTitle,
+              tutar: totals.netIQD,
+              aciklama: description
+            });
+          } else if (invoiceType.category === 'Alis' && selectedFirm && selectedPeriod) {
+            journalResult = await createPurchaseJournal({
+              fatura_no: invoiceNo,
+              tarih: invoiceDate,
+              tedarikci_adi: supplierTitle || customerTitle,
+              tutar: totals.netIQD,
+              aciklama: description
+            });
+          }
+
+          if (journalResult && (journalResult as any).success) {
+            toast.success("Muhasebe Fişi Oluşturuldu", {
+              description: formatJournalResult(journalResult as any),
+              duration: 5000,
+            });
+          }
         }
+      };
 
-        if (journalResult && (journalResult as any).success) {
-          toast.success("Muhasebe Fişi Oluşturuldu", {
-            description: formatJournalResult(journalResult as any),
-            duration: 5000,
-          });
-        }
-      }
-
-      // ===== 7. YAZDIRMA =====
-      try {
+      const runPrintIfNeeded = async () => {
         const printData = {
           storeName: selectedFirm?.name || '',
           storeAddress: '',
@@ -2616,11 +2818,20 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
         if (window.electronAPI?.printer) {
           await window.electronAPI.printer.print(printData);
         } else {
-          // Fallback to corporate print
           await handlePrint();
         }
-      } catch (printError) {
-        console.error('[UniversalInvoice] Print error:', printError);
+      };
+
+      if (skipCloudFifoAfterSave) {
+        void runJournalIfNeeded().catch((e) => console.warn('[UniversalInvoice] Arka plan muhasebe fişi:', e));
+        void runPrintIfNeeded().catch((e) => console.warn('[UniversalInvoice] Arka plan yazdırma:', e));
+      } else {
+        await runJournalIfNeeded();
+        try {
+          await runPrintIfNeeded();
+        } catch (printError) {
+          console.error('[UniversalInvoice] Print error:', printError);
+        }
       }
 
       setTimeout(() => onClose(), 1000);
@@ -2819,33 +3030,63 @@ export function UniversalInvoiceForm({ invoiceType, customers: customersProp = [
                 <div className="space-y-3">
                   {/* Toplu Fiyat Artırımı - Sadece Alış Faturaları için */}
                   {invoiceType.category === 'Alis' && (
-                    <div className="hidden md:flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-700 font-medium">{tm('bulkPriceIncrease')}:</span>
-                        <input
-                          type="number"
-                          value={bulkPriceIncreasePercent}
-                          onChange={(e) => setBulkPriceIncreasePercent(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                          className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right"
-                          placeholder="%"
-                          step="0.1"
-                        />
-                        <button
-                          onClick={handleBulkPriceIncrease}
-                          className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
-                        >
-                          {tm('apply')}
-                        </button>
-                        <span className="text-xs text-gray-600">{tm('bulkPriceIncreaseDesc')}</span>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-sm text-gray-700 font-medium">{tm('bulkPriceIncrease')}:</span>
+                          <input
+                            type="number"
+                            value={bulkPriceIncreasePercent}
+                            onChange={(e) => setBulkPriceIncreasePercent(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                            placeholder="%"
+                            step="0.1"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleBulkPriceIncrease}
+                            className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                          >
+                            {tm('apply')}
+                          </button>
+                          <span className="text-xs text-gray-600 max-w-md">{tm('bulkPriceIncreaseDesc')}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadPurchaseInvoiceExcelTemplate()}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-teal-200 bg-teal-50 text-teal-800 text-sm font-medium hover:bg-teal-100 transition-colors"
+                            title={tm('purchaseInvoiceExcelTemplateBtn')}
+                          >
+                            <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                            {tm('purchaseInvoiceExcelTemplateBtn')}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={purchaseExcelImporting}
+                            onClick={() => purchaseExcelInputRef.current?.click()}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                            title={tm('purchaseInvoiceExcelImportBtn')}
+                          >
+                            <Upload className="w-4 h-4 shrink-0" />
+                            {purchaseExcelImporting ? tm('purchaseInvoiceExcelImporting') : tm('purchaseInvoiceExcelImportBtn')}
+                          </button>
+                          <input
+                            ref={purchaseExcelInputRef}
+                            type="file"
+                            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                            className="hidden"
+                            onChange={(ev) => void handlePurchaseExcelInputChange(ev)}
+                          />
+                          <ColumnVisibilityMenu
+                            columns={itemColumns}
+                            onToggle={handleToggleColumn}
+                            onShowAll={handleShowAllColumns}
+                            onHideAll={handleHideAllColumns}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <ColumnVisibilityMenu
-                          columns={itemColumns}
-                          onToggle={handleToggleColumn}
-                          onShowAll={handleShowAllColumns}
-                          onHideAll={handleHideAllColumns}
-                        />
-                      </div>
+                      <p className="text-xs text-gray-500">{tm('purchaseInvoiceExcelHint')}</p>
                     </div>
                   )}
                   {/* Kolon Görünürlüğü Sadece Diğer Fatura Türleri İçin (Alış değilse buraya gelir) */}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send, ClipboardList } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
@@ -19,6 +19,10 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
 import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
+import {
+  buildPurchaseEditDataFromSayimInvoices,
+  isSayimFazlasiAlisInvoice,
+} from '../../../utils/countInvoicePurchaseDraft';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
 export interface InvoiceListModuleProps {
@@ -68,6 +72,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     { code: 7, name: tm('retailSale'), category: 'Satis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'FileText', translationKey: 'retailSale' },
     { code: 3, name: tm('salesReturn'), category: 'Iade', color: 'bg-red-100 text-red-700 border-red-300', icon: 'FileMinus', translationKey: 'salesReturn' },
     { code: 1, name: tm('purchaseInvoices'), category: 'Alis', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileCheck', translationKey: 'purchaseInvoices' },
+    { code: 26, name: tm('invoiceTypeCountSurplus'), category: 'Alis', color: 'bg-amber-100 text-amber-800 border-amber-300', icon: 'FileCheck', translationKey: 'invoiceTypeCountSurplus' },
     { code: 6, name: tm('purchaseReturn'), category: 'Iade', color: 'bg-pink-100 text-pink-700 border-pink-300', icon: 'FileMinus', translationKey: 'purchaseReturn' },
     { code: 9, name: tm('serviceGiven'), category: 'Hizmet', color: 'bg-indigo-100 text-indigo-700 border-indigo-300', icon: 'FileText', translationKey: 'serviceGiven' },
     { code: 4, name: tm('serviceReceived'), category: 'Hizmet', color: 'bg-violet-100 text-violet-700 border-violet-300', icon: 'FileCheck', translationKey: 'serviceReceived' },
@@ -149,6 +154,14 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
   const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
   const [mobileActionInvoice, setMobileActionInvoice] = useState<ListInvoice | null>(null);
 
+  /** Alış listesi: çoklu seçim → sayım fazlasından taslak */
+  const [bulkSelectedInvoices, setBulkSelectedInvoices] = useState<ListInvoice[]>([]);
+  const [bulkPurchaseBuilding, setBulkPurchaseBuilding] = useState(false);
+  const [invoiceGridNonce, setInvoiceGridNonce] = useState(0);
+  const [purchaseCreateSaveOptions, setPurchaseCreateSaveOptions] = useState<{
+    skipProductStockUpdate?: boolean;
+  } | null>(null);
+
   // Debounce için
   const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(null);
 
@@ -193,6 +206,11 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     loadInvoices();
   }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory]);
 
+  useEffect(() => {
+    setBulkSelectedInvoices([]);
+    setInvoiceGridNonce((n) => n + 1);
+  }, [defaultCategory]);
+
   // Arama için debounce
   useEffect(() => {
     if (searchDebounce) {
@@ -228,7 +246,10 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     try {
       const raw = sessionStorage.getItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
       if (!raw) return;
-      const payload = JSON.parse(raw) as { editData?: Record<string, unknown> };
+      const payload = JSON.parse(raw) as {
+        editData?: Record<string, unknown>;
+        skipProductStockUpdate?: boolean;
+      };
       sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
       if (!payload?.editData) return;
       const purchaseType = INVOICE_TYPES.find(t => t.code === 1);
@@ -237,6 +258,11 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       setEditInvoiceData(payload.editData as unknown as Invoice);
       setNewFormCounter(c => c + 1);
       setSelectedInvoiceType(purchaseType);
+      if (payload.skipProductStockUpdate) {
+        setPurchaseCreateSaveOptions({ skipProductStockUpdate: true });
+      } else {
+        setPurchaseCreateSaveOptions(null);
+      }
     } catch {
       sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
     }
@@ -409,6 +435,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       toast.error(tm('invoiceSaveError'));
       return;
     }
+    setPurchaseCreateSaveOptions(null);
 
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
@@ -436,6 +463,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
   const handleCreateInvoice = () => {
     setEditInvoiceData(null);
+    setPurchaseCreateSaveOptions(null);
     // Eğer varsayılan fatura türü filtresi varsa, direkt o türle form aç
     if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
       const invoiceTypeCode = parseInt(defaultInvoiceTypeFilter);
@@ -453,14 +481,58 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
 
   const handleSelectInvoiceType = (type: InvoiceType) => {
     setEditInvoiceData(null);
+    setPurchaseCreateSaveOptions(null);
     setNewFormCounter((c) => c + 1);
     setSelectedInvoiceType(type);
     setShowInvoiceTypeModal(false);
   };
 
+  const handleBulkPurchaseFromSayim = async () => {
+    if (defaultCategory !== 'Alis') return;
+    const rows = bulkSelectedInvoices;
+    if (!rows.length) {
+      toast.error(tm('invoiceBulkPurchaseFromSayimNeedSelect'));
+      return;
+    }
+    if (!rows.every((r) => isSayimFazlasiAlisInvoice(r))) {
+      toast.error(tm('invoiceBulkPurchaseFromSayimNotSayim'));
+      return;
+    }
+    setBulkPurchaseBuilding(true);
+    try {
+      const { invoicesAPI } = await import('../../../services/api/invoices');
+      const full = (
+        await Promise.all(rows.map((r) => (r.id ? invoicesAPI.getById(String(r.id)) : Promise.resolve(null))))
+      ).filter(Boolean) as Invoice[];
+      const draft = buildPurchaseEditDataFromSayimInvoices(full, tm);
+      if (!draft) {
+        toast.error(tm('invoiceBulkPurchaseFromSayimNoLines'));
+        return;
+      }
+      const purchaseType = INVOICE_TYPES.find((t) => t.code === 1);
+      if (!purchaseType) return;
+      setShowInvoiceTypeModal(false);
+      setPurchaseCreateSaveOptions({ skipProductStockUpdate: true });
+      setEditInvoiceData(draft as unknown as Invoice);
+      setNewFormCounter((c) => c + 1);
+      setSelectedInvoiceType(purchaseType);
+      setBulkSelectedInvoices([]);
+      setInvoiceGridNonce((n) => n + 1);
+      toast.success(tm('countPurchaseFromSurplusSuccess'));
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(`${tm('countPurchaseFromSurplusError')}: ${msg}`);
+    } finally {
+      setBulkPurchaseBuilding(false);
+    }
+  };
+
   const handleCloseInvoiceForm = () => {
     setSelectedInvoiceType(null);
     setEditInvoiceData(null);
+    setPurchaseCreateSaveOptions(null);
+    setBulkSelectedInvoices([]);
+    setInvoiceGridNonce((n) => n + 1);
     loadInvoices(); // Fatura oluşturulduktan sonra listeyi yenile
   };
 
@@ -490,6 +562,7 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         products={products}
         onClose={handleCloseInvoiceForm}
         editData={editInvoiceData}
+        createSaveOptions={purchaseCreateSaveOptions ?? undefined}
       />
     );
   }
@@ -678,6 +751,18 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
               <Plus className="w-3 h-3" />
               {tm('newInvoice')}
             </button>
+            {defaultCategory === 'Alis' && !isMobile && (
+              <button
+                type="button"
+                onClick={() => void handleBulkPurchaseFromSayim()}
+                disabled={bulkPurchaseBuilding || bulkSelectedInvoices.length === 0}
+                title={tm('invoiceBulkPurchaseFromSayimHint')}
+                className="flex items-center gap-1 px-2 py-1 bg-white/15 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[10px] font-bold border border-white/30 rounded"
+              >
+                <ClipboardList className="w-3 h-3 shrink-0" />
+                <span className="truncate max-w-[140px]">{tm('invoiceBulkPurchaseFromSayimBtn')}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -919,12 +1004,15 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
         ) : (
           <>
             <DevExDataGrid
+              key={`invlist-${invoiceGridNonce}`}
               data={invoices}
               columns={columns}
               enableSorting={false}
               enableFiltering={true}
               enableColumnResizing
               enablePagination={false}
+              enableSelection={defaultCategory === 'Alis' && !isMobile}
+              onSelectionChange={(rows) => setBulkSelectedInvoices(rows as ListInvoice[])}
               onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
               onRowContextMenu={handleRowRightClick}
             />

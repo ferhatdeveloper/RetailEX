@@ -239,6 +239,12 @@ async function runSqlWithPgClient(pg, filePath) {
   });
   await client.connect();
   try {
+    // DO $$ ... $$, CREATE FUNCTION ... AS $$ ... $$ vb. içindeki ';' basit
+    // split ile bölünemez; tek seferde gönder.
+    if (sql.includes('$$')) {
+      await client.query(sql);
+      return;
+    }
     const parts = splitSqlStatements(sql);
     if (parts.length <= 1) {
       await client.query(parts[0] ? parts[0] + ';' : sql);

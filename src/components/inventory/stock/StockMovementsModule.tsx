@@ -6,6 +6,7 @@ import {
     FileMinus, Archive
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { postgres } from '../../../services/postgres';
 import { stockMovementAPI, StockMovement, STOCK_SLIP_TRCODES } from '../../../services/stockMovementAPI';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
@@ -46,7 +47,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
 
     const loadWarehouses = async () => {
         try {
-            const { rows } = await (postgres as any).query('SELECT id, name FROM stores WHERE is_active = true');
+            const { rows } = await postgres.query('SELECT id, name FROM stores WHERE is_active = true');
             setWarehouses(rows);
             if (rows.length > 0 && !formData.warehouse_id) {
                 setFormData(prev => ({ ...prev, warehouse_id: rows[0].id }));
@@ -111,6 +112,10 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
     const handleDelete = async (id: string | null) => {
         const targetId = id || selectedId;
         if (!targetId) return;
+        if (String(targetId).startsWith('inv-')) {
+            alert('Fatura kaynaklı hareket bu ekrandan silinemez; faturayı düzenleyin veya silin.');
+            return;
+        }
 
         if (!confirm(tm('deleteTransactionConfirm'))) return;
         try {
@@ -315,10 +320,11 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                                         </tr>
                                     ) : (
                                         filteredMovements.map((m: StockMovement) => {
+                                            const rowKey = `${(m as any).source_kind || 'slip'}-${m.id}`;
                                             const isSelected = selectedId === m.id;
                                             return (
                                                 <tr
-                                                    key={m.id}
+                                                    key={rowKey}
                                                     onClick={() => setSelectedId(isSelected ? null : m.id)}
                                                     className={`group transition-all cursor-pointer border-l-4 ${isSelected
                                                         ? 'bg-orange-50/40 border-l-orange-500'

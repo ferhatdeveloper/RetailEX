@@ -71,7 +71,7 @@ async function navigatePurchaseDraftFromCountSlip(
         draft.customer_name = draft.supplier_name;
         sessionStorage.setItem(
             PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
-            JSON.stringify({ editData: draft })
+            JSON.stringify({ editData: draft, skipProductStockUpdate: true })
         );
         window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'purchase-invoice-standard' }));
         toast.success(tm('countPurchaseFromSurplusSuccess'));

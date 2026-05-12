@@ -17,12 +17,12 @@ export const salesAPI = {
    */
   async create(sale: Omit<Sale, 'id'>): Promise<Sale | null> {
     try {
-      console.log('[SalesAPI] Creating sale via invoicesAPI...', JSON.stringify(sale, null, 2));
+      if (import.meta.env.DEV) {
+        console.log('[SalesAPI] Creating sale via invoicesAPI...', sale?.receiptNumber ?? sale?.id);
+      }
 
       const firmNr = sale.firmNr || ERP_SETTINGS.firmNr;
       const periodNr = sale.periodNr || ERP_SETTINGS.periodNr;
-
-      console.log('[SalesAPI] Context:', { firmNr, periodNr, saleFirmNr: sale.firmNr, salePeriodNr: sale.periodNr });
 
       // 1. Calculate Costs (FIFO)
       const itemsForFIFO = sale.items.map(item => ({
@@ -33,7 +33,8 @@ export const salesAPI = {
 
       let costMap = new Map<string, { unitCost: number; totalCost: number; available: boolean }>();
 
-      console.time('[SalesAPI] FIFOCost');
+      const tFifo = import.meta.env.DEV ? '[SalesAPI] FIFOCost' : '';
+      if (import.meta.env.DEV) console.time(tFifo);
       try {
         costMap = await batchCalculateFIFOCost({
           items: itemsForFIFO,
@@ -43,7 +44,7 @@ export const salesAPI = {
       } catch (costError) {
         console.warn('[SalesAPI] Cost calculation failed, proceeding with zero cost:', costError);
       }
-      console.timeEnd('[SalesAPI] FIFOCost');
+      if (import.meta.env.DEV) console.timeEnd(tFifo);
 
       // 2. Map Sale items to Invoice items with cost info
       const invoiceItems = sale.items.map(item => {
@@ -129,21 +130,20 @@ export const salesAPI = {
         items: invoiceItems
       };
 
-      console.log('[SalesAPI] Final Invoice Data to be sent:', JSON.stringify(invoiceData, null, 2));
-
-      console.time('[SalesAPI] InvoicesAPI_Create');
-      // 4. Create via InvoicesAPI
+      const tInv = import.meta.env.DEV ? '[SalesAPI] InvoicesAPI_Create' : '';
+      if (import.meta.env.DEV) console.time(tInv);
       const savedInvoice = await invoicesAPI.create(invoiceData);
 
       if (!savedInvoice) throw new Error("Sale creation failed via InvoicesAPI");
-      console.timeEnd('[SalesAPI] InvoicesAPI_Create');
+      if (import.meta.env.DEV) console.timeEnd(tInv);
 
-      console.log('[SalesAPI] Sale created successfully:', savedInvoice.id);
+      if (import.meta.env.DEV) console.log('[SalesAPI] Sale created successfully:', savedInvoice.id);
 
       // 6. Create Cash Transaction (Kasa İşlemi) if payment method is Cash
       // MarketPOS sales usually come with paymentMethod: 'cash'
       if (sale.paymentMethod === 'cash') {
-        console.time('[SalesAPI] KasaIslemi_Create');
+        const tKasa = import.meta.env.DEV ? '[SalesAPI] KasaIslemi_Create' : '';
+        if (import.meta.env.DEV) console.time(tKasa);
         try {
           // 6a. Find target Cash Register
           // Use selected cash register from settings if available, otherwise first active one
@@ -153,7 +153,9 @@ export const salesAPI = {
             const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
             if (kasalar.length > 0) {
               targetKasaId = kasalar[0].id;
-              console.log('[SalesAPI] No default register selected, using first available:', targetKasaId);
+              if (import.meta.env.DEV) {
+                console.log('[SalesAPI] No default register selected, using first available:', targetKasaId);
+              }
             }
           }
 
@@ -177,7 +179,9 @@ export const salesAPI = {
             };
 
             await createKasaIslemi(islem);
-            console.log('[SalesAPI] Cash transaction created for sale:', sale.receiptNumber);
+            if (import.meta.env.DEV) {
+              console.log('[SalesAPI] Cash transaction created for sale:', sale.receiptNumber);
+            }
           } else {
             console.warn('[SalesAPI] No active cash register found for cash payment!');
           }
@@ -185,7 +189,7 @@ export const salesAPI = {
           console.error('[SalesAPI] Failed to create cash transaction:', kasaError);
           // Don't fail the sale creation itself, just log the error
         }
-        console.timeEnd('[SalesAPI] KasaIslemi_Create');
+        if (import.meta.env.DEV) console.timeEnd(tKasa);
       }
 
       // Veresiye cari borcu: invoicesAPI.create içinde (paymentMethodImpliesCustomerDebt) tek kez güncellenir — burada tekrarlanmaz.

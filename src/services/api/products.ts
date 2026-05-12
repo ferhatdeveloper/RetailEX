@@ -307,6 +307,8 @@ export const productAPI = {
         return row ? mapDatabaseProductToProduct(row) : null;
       }
       const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE code = $1 AND firm_nr = $2 LIMIT 1`,
+        [code.trim(), ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
@@ -338,6 +340,8 @@ export const productAPI = {
         return row ? mapDatabaseProductToProduct(row) : null;
       }
       const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE barcode = $1 AND firm_nr = $2 AND is_active = true LIMIT 1`,
+        [barcode.trim(), ERP_SETTINGS.firmNr]
       );
       return rows[0] ? mapDatabaseProductToProduct(rows[0]) : null;
     } catch (error) {
