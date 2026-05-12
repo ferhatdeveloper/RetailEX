@@ -4,7 +4,8 @@
  * Extra data (barcode, price, cost, stock, is_active) is stored in attributes JSONB
  */
 
-import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
+import { postgres, ERP_SETTINGS } from '../postgres';
 import type { ProductVariant } from '../../core/types';
 
 function padFirmNr(): string {
@@ -15,17 +16,13 @@ function variantsPath(suffix = ''): string {
   return `/rex_${padFirmNr()}_product_variants${suffix}`;
 }
 
-function isRestApi(): boolean {
-  return DB_SETTINGS.connectionProvider === 'rest_api';
-}
-
 export const productVariantAPI = {
   /**
    * Get all variants for a product
    */
   async getByProductId(productId: string): Promise<ProductVariant[]> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           variantsPath(),
@@ -54,7 +51,7 @@ export const productVariantAPI = {
    */
   async getById(id: string): Promise<ProductVariant | null> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           variantsPath(),
@@ -80,7 +77,7 @@ export const productVariantAPI = {
    */
   async getByBarcode(barcode: string): Promise<ProductVariant | null> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.get<any[]>(
           variantsPath(),
@@ -126,7 +123,7 @@ export const productVariantAPI = {
         is_active: true,
       };
 
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const rows = await postgrest.post<any[]>(
           variantsPath(),
@@ -206,7 +203,7 @@ export const productVariantAPI = {
       }
 
       values.push(id);
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const body: Record<string, unknown> = { attributes };
         if (updates.code !== undefined) body.sku = updates.code;
@@ -234,7 +231,7 @@ export const productVariantAPI = {
    */
   async delete(id: string): Promise<boolean> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const dbRow = await postgrest.get<any[]>(
           variantsPath(),
@@ -265,7 +262,7 @@ export const productVariantAPI = {
    */
   async deleteByProductId(productId: string): Promise<boolean> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         await postgrest.delete(
           `${variantsPath()}?product_id=eq.${encodeURIComponent(productId)}`,
@@ -286,7 +283,7 @@ export const productVariantAPI = {
    */
   async updateStock(id: string, quantity: number): Promise<boolean> {
     try {
-      if (isRestApi()) {
+      if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
         const dbRow = await postgrest.get<any[]>(
           variantsPath(),
