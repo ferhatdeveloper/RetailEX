@@ -14,6 +14,11 @@ import { nebimMigrationService } from '../../services/migration/NebimV3Migration
 import { SupabaseMigrationService } from '../../services/api/supabaseMigrationService';
 import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } from '../../utils/env';
 import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
+import {
+    parseSaaSOrCustomPostgrestUrl,
+    buildSaaSTenantPostgrestUrl,
+    DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
+} from '../../services/merkezTenantRegistry';
 
 interface AppConfig {
     is_configured: boolean;
@@ -217,6 +222,23 @@ const SetupWizard: React.FC = () => {
     };
 
     const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
+
+    const [postgrestWizardEntryMode, setPostgrestWizardEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
+        'custom_url',
+    );
+    const [postgrestWizardSlug, setPostgrestWizardSlug] = useState('');
+
+    useEffect(() => {
+        if (config.connection_provider !== 'rest_api') return;
+        const p = parseSaaSOrCustomPostgrestUrl(String(config.remote_rest_url || ''));
+        if (p.kind === 'saas_single_slug') {
+            setPostgrestWizardEntryMode('retailex_cloud');
+            setPostgrestWizardSlug(p.slug);
+        } else {
+            setPostgrestWizardEntryMode('custom_url');
+            setPostgrestWizardSlug('');
+        }
+    }, [config.connection_provider]);
 
     /** Logo Objects (MSSQL) ile gerçek veri: örnek seed çakışmasın. Sadece firma/period dolu olması Logo değildir. */
     const demoSeedConflictsWithLogoObjects =
@@ -2516,15 +2538,105 @@ const SetupWizard: React.FC = () => {
                                                                 <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
                                                                     PostgREST API URL
                                                                 </label>
-                                                                <input
-                                                                    type="text"
-                                                                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
-                                                                    value={config.remote_rest_url || ''}
-                                                                    onChange={(e) => setConfig({ ...config, remote_rest_url: e.target.value })}
-                                                                    placeholder="http://IP:3002"
-                                                                />
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setPostgrestWizardEntryMode('retailex_cloud');
+                                                                            const p = parseSaaSOrCustomPostgrestUrl(
+                                                                                String(config.remote_rest_url || ''),
+                                                                            );
+                                                                            if (p.kind === 'saas_single_slug') {
+                                                                                setPostgrestWizardSlug(p.slug);
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url: buildSaaSTenantPostgrestUrl(
+                                                                                        p.slug,
+                                                                                    ),
+                                                                                }));
+                                                                            } else {
+                                                                                setPostgrestWizardSlug('');
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url: buildSaaSTenantPostgrestUrl(
+                                                                                        '',
+                                                                                    ),
+                                                                                }));
+                                                                            }
+                                                                        }}
+                                                                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                                                                            postgrestWizardEntryMode === 'retailex_cloud'
+                                                                                ? 'bg-indigo-600 text-white'
+                                                                                : 'bg-white/5 text-slate-400 hover:text-white'
+                                                                        }`}
+                                                                    >
+                                                                        RetailEX bulutu
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setPostgrestWizardEntryMode('custom_url')
+                                                                        }
+                                                                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                                                                            postgrestWizardEntryMode === 'custom_url'
+                                                                                ? 'bg-indigo-600 text-white'
+                                                                                : 'bg-white/5 text-slate-400 hover:text-white'
+                                                                        }`}
+                                                                    >
+                                                                        Özel tam URL
+                                                                    </button>
+                                                                </div>
+                                                                {postgrestWizardEntryMode === 'retailex_cloud' ? (
+                                                                    <div className="flex w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                                                                        <span className="flex shrink-0 items-center border-r border-white/10 bg-black/60 px-3 py-4 font-mono text-[10px] font-bold text-blue-200/80">
+                                                                            {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/
+                                                                        </span>
+                                                                        <input
+                                                                            type="text"
+                                                                            className="min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-white focus:outline-none focus:ring-0 font-mono text-sm placeholder:text-blue-200/30"
+                                                                            value={postgrestWizardSlug}
+                                                                            onChange={(e) => {
+                                                                                const raw = e.target.value.trim();
+                                                                                const slug =
+                                                                                    raw
+                                                                                        .replace(
+                                                                                            /^https?:\/\/api\.retailex\.app\/?/i,
+                                                                                            '',
+                                                                                        )
+                                                                                        .split('/')[0]
+                                                                                        ?.replace(/[/?#].*$/, '') ?? '';
+                                                                                setPostgrestWizardSlug(slug);
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url:
+                                                                                        buildSaaSTenantPostgrestUrl(slug),
+                                                                                }));
+                                                                            }}
+                                                                            placeholder="sho_aksesuar"
+                                                                            autoComplete="off"
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
+                                                                        value={config.remote_rest_url || ''}
+                                                                        onChange={(e) =>
+                                                                            setConfig({
+                                                                                ...config,
+                                                                                remote_rest_url: e.target.value,
+                                                                            })
+                                                                        }
+                                                                        placeholder="http://IP:3002"
+                                                                        autoComplete="off"
+                                                                    />
+                                                                )}
                                                                 <p className="text-[9px] text-slate-400 mt-2">
-                                                                    VPN olmadan doğrudan IP ile PostgREST üzerinden veri okunur.
+                                                                    RetailEX bulutu: kayıtta{' '}
+                                                                    <span className="font-mono text-blue-200/90">
+                                                                        {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                                                                    </span>{' '}
+                                                                    birleştirilir. VPN/LAN için «Özel tam URL».
                                                                 </p>
                                                             </>
                                                         ) : (

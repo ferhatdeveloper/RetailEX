@@ -27,6 +27,11 @@ const INFRA_PASS = "10021993";
 const IT_PASS = "30031993";
 
 import { supabase } from '../../utils/supabase/client';
+import {
+  parseSaaSOrCustomPostgrestUrl,
+  buildSaaSTenantPostgrestUrl,
+  DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
+} from '../../services/merkezTenantRegistry';
 
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 const isProduction = import.meta.env.PROD;
@@ -76,6 +81,11 @@ export function Login({ onLogin }: LoginProps) {
   });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('db');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>('http://172.20.0.10:3002');
+  /** Veritabanı modalı: RetailEX bulutunda yalnızca kiracı segmenti vs tam URL */
+  const [tenantPostgrestEntryMode, setTenantPostgrestEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
+    'custom_url',
+  );
+  const [tenantPostgrestSlug, setTenantPostgrestSlug] = useState('');
   /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya VPN) */
   const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
   const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
@@ -121,6 +131,17 @@ export function Login({ onLogin }: LoginProps) {
   const [loadingStores, setLoadingStores] = useState(false);
 
   const { darkMode } = useTheme();
+
+  const applyRemoteRestUrlToTenantInputs = (rest: string) => {
+    const p = parseSaaSOrCustomPostgrestUrl(rest);
+    if (p.kind === 'saas_single_slug') {
+      setTenantPostgrestEntryMode('retailex_cloud');
+      setTenantPostgrestSlug(p.slug);
+    } else {
+      setTenantPostgrestEntryMode('custom_url');
+      setTenantPostgrestSlug('');
+    }
+  };
 
   const isTenantResolvedForWeb = () => {
     if (typeof window === 'undefined') return true;
@@ -207,7 +228,9 @@ export function Login({ onLogin }: LoginProps) {
         password: REMOTE_CONFIG.password,
       });
       setConnectionProvider(DB_SETTINGS.connectionProvider);
-      setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
+      const restLoaded = DB_SETTINGS.remoteRestUrl || '';
+      setRemoteRestUrl(restLoaded || 'http://172.20.0.10:3002');
+      applyRemoteRestUrlToTenantInputs(restLoaded);
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
@@ -220,7 +243,9 @@ export function Login({ onLogin }: LoginProps) {
     import('../../services/postgres').then(({ LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS }) => {
       setDbConnectionMode(DB_SETTINGS.activeMode);
       setConnectionProvider(DB_SETTINGS.connectionProvider);
-      setRemoteRestUrl(DB_SETTINGS.remoteRestUrl || 'http://172.20.0.10:3002');
+      const restLoaded = DB_SETTINGS.remoteRestUrl || '';
+      setRemoteRestUrl(restLoaded || 'http://172.20.0.10:3002');
+      applyRemoteRestUrlToTenantInputs(restLoaded);
       setHybridReadPreference(DB_SETTINGS.hybridReadPreference);
       setHybridSyncDirection(DB_SETTINGS.hybridSyncDirection);
       setDbConfig({
@@ -952,6 +977,115 @@ export function Login({ onLogin }: LoginProps) {
 
   const zoomLevel = parseInt(localStorage.getItem('retailos_zoom_level') || '100');
 
+  const selectRetailExCloudPostgrestMode = () => {
+    setTenantPostgrestEntryMode('retailex_cloud');
+    const p = parseSaaSOrCustomPostgrestUrl(remoteRestUrl);
+    if (p.kind === 'saas_single_slug') {
+      setTenantPostgrestSlug(p.slug);
+      setRemoteRestUrl(buildSaaSTenantPostgrestUrl(p.slug));
+    } else {
+      setTenantPostgrestSlug('');
+      setRemoteRestUrl(buildSaaSTenantPostgrestUrl(''));
+    }
+  };
+
+  const renderTenantPostgrestUrlFields = (variant: 'hybrid' | 'rest_api') => {
+    const fullInputCls =
+      variant === 'hybrid'
+        ? `w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${
+            darkMode ? 'border-gray-800 bg-black text-violet-200' : 'border-gray-200 bg-white text-gray-900'
+          }`
+        : `w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${
+            darkMode ? 'border-gray-800 bg-black text-blue-200' : 'border-gray-200 bg-white text-gray-900'
+          }`;
+    const flexInputCls =
+      variant === 'hybrid'
+        ? `min-w-0 flex-1 border-0 bg-transparent px-3 py-3 text-xs font-bold focus:outline-none focus:ring-0 ${
+            darkMode ? 'text-violet-200 placeholder:text-violet-500/50' : 'text-gray-900 placeholder:text-gray-400'
+          }`
+        : `min-w-0 flex-1 border-0 bg-transparent px-3 py-3 text-xs font-bold focus:outline-none focus:ring-0 ${
+            darkMode ? 'text-blue-200 placeholder:text-blue-500/50' : 'text-gray-900 placeholder:text-gray-400'
+          }`;
+    const wrapCls = `flex w-full overflow-hidden rounded-sm border-2 transition-all focus-within:border-blue-600 ${
+      darkMode ? 'border-gray-800' : 'border-gray-200'
+    }`;
+    const prefixCls = darkMode
+      ? 'flex shrink-0 items-center border-r border-gray-800 bg-gray-950 px-2 py-3 font-mono text-[10px] font-bold text-slate-400'
+      : 'flex shrink-0 items-center border-r border-gray-200 bg-slate-100 px-2 py-3 font-mono text-[10px] font-bold text-slate-600';
+    const onCls =
+      variant === 'hybrid'
+        ? darkMode
+          ? 'bg-violet-900 text-violet-100'
+          : 'bg-violet-600 text-white'
+        : darkMode
+          ? 'bg-blue-900 text-blue-100'
+          : 'bg-blue-600 text-white';
+    const offCls = darkMode
+      ? 'bg-gray-900/80 text-slate-400 hover:text-white'
+      : 'bg-gray-100 text-gray-600 hover:bg-gray-200';
+
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={selectRetailExCloudPostgrestMode}
+            className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+              tenantPostgrestEntryMode === 'retailex_cloud' ? onCls : offCls
+            }`}
+          >
+            RetailEX bulutu
+          </button>
+          <button
+            type="button"
+            onClick={() => setTenantPostgrestEntryMode('custom_url')}
+            className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+              tenantPostgrestEntryMode === 'custom_url' ? onCls : offCls
+            }`}
+          >
+            Özel tam URL
+          </button>
+        </div>
+        {tenantPostgrestEntryMode === 'retailex_cloud' ? (
+          <div className={wrapCls}>
+            <span className={prefixCls}>{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/</span>
+            <input
+              type="text"
+              value={tenantPostgrestSlug}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                const slug =
+                  raw
+                    .replace(/^https?:\/\/api\.retailex\.app\/?/i, '')
+                    .split('/')[0]
+                    ?.replace(/[/?#].*$/, '') ?? '';
+                setTenantPostgrestSlug(slug);
+                setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
+              }}
+              placeholder="sho_aksesuar"
+              className={flexInputCls}
+              autoComplete="off"
+            />
+          </div>
+        ) : (
+          <input
+            type="text"
+            value={remoteRestUrl}
+            onChange={(e) => setRemoteRestUrl(e.target.value)}
+            className={fullInputCls}
+            placeholder="http://LAN_IP:3002 veya https://baska-sunucu/kiracı"
+            autoComplete="off"
+          />
+        )}
+        <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
+          RetailEX bulutu: yalnızca kiracı yolunu yazın (kayıtta{' '}
+          <span className="font-mono">{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı</span> birleştirilir). LAN veya başka
+          domain için «Özel tam URL».
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 antialiased transition-colors duration-500 ${darkMode ? 'bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-slate-900 via-blue-950 to-gray-900' : 'bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700'}`}>
       <div className="w-full max-w-md" style={{ zoom: `${zoomLevel}%` }}>
@@ -1358,12 +1492,12 @@ export function Login({ onLogin }: LoginProps) {
                   autoComplete="off"
                   value={tenantConnectionDraft}
                   onChange={(e) => setTenantConnectionDraft(e.target.value)}
-                  placeholder="Örn. aqua_beauty — veya https://api.retailex.app/aqua"
+                  placeholder="Örn. sho_aksesuar (kiracı kodu) — veya tam URL: https://api.retailex.app/sho_aksesuar"
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-sm"
                 />
                 <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600">Kod:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür.
-                  <strong className="text-slate-600"> URL:</strong> doğrudan bu PostgREST adresi kullanılır (Veritabanı ayarındaki REST URL ile aynı mantık).
+                  <strong className="text-slate-600"> Kod:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca kiracı adı (örn. <code className="text-[10px] bg-slate-100 px-1 rounded">sho_aksesuar</code>) yeterlidir.
+                  <strong className="text-slate-600"> URL:</strong> doğrudan bu PostgREST adresi kullanılır (Veritabanı ayarındaki REST URL ile aynı mantık; orada «RetailEX bulutu» ile yalnız slug da girebilirsiniz).
                 </p>
                 <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                   <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wider text-slate-600 select-none">
@@ -1446,7 +1580,7 @@ export function Login({ onLogin }: LoginProps) {
                           pathSlug: parsed.pathSlug,
                         });
                         const { prev } = await loadPrevAndPreserve();
-                        const merged = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
+                        const merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
                         if (isTauri) {
                           const { invoke } = await import('@tauri-apps/api/core');
                           await invoke('save_app_config', { config: merged });
@@ -1458,6 +1592,7 @@ export function Login({ onLogin }: LoginProps) {
                         await initializeFromSQLite(isTauri ? merged : undefined);
                         setConnectionProvider('rest_api');
                         setRemoteRestUrl(String(merged.remote_rest_url || ''));
+                        applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
                         setDbConnectionMode('online');
                         const tag = parsed.pathSlug || String(merged.remote_rest_url || '');
                         localStorage.setItem('exretail_selected_tenant', tag);
@@ -1491,7 +1626,7 @@ export function Login({ onLogin }: LoginProps) {
                         preserveDbPassword: preserve,
                         forTauri: isTauri,
                       });
-                      const merged = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
+                      const merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
                       if (isTauri) {
                         const { invoke } = await import('@tauri-apps/api/core');
                         await invoke('save_app_config', { config: merged });
@@ -1507,6 +1642,7 @@ export function Login({ onLogin }: LoginProps) {
                           : 'db'
                       );
                       setRemoteRestUrl(String(merged.remote_rest_url || ''));
+                      applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
                       setDbConnectionMode('online');
                       localStorage.setItem('exretail_selected_tenant', row.code || row.id);
                       const preferredModule =
@@ -2157,29 +2293,19 @@ export function Login({ onLogin }: LoginProps) {
                           </button>
                         </div>
                         <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                          Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya tam kiracı yolu. Kaydedilir; <strong>Rest API</strong> modunda sorgular buradan gider.
+                          Kiracı / merkez REST adresi. Aynı ağda örnek: <strong>http://192.168.1.10:3002</strong> veya RetailEX bulutunda yalnızca kiracı adı. Kaydedilir; <strong>Rest API</strong> modunda sorgular buradan gider.
                         </p>
-                        <input
-                          type="text"
-                          value={remoteRestUrl}
-                          onChange={(e) => setRemoteRestUrl(e.target.value)}
-                          className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-violet-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                          placeholder="http://LAN_IP:3002 veya https://api.../kiracı"
-                        />
+                        {renderTenantPostgrestUrlFields('hybrid')}
                       </div>
                     </div>
                   ) : connectionProvider === 'rest_api' ? (
                     <div className="space-y-2">
-                      <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">PostgREST API URL</label>
-                      <input
-                        type="text"
-                        value={remoteRestUrl}
-                        onChange={(e) => setRemoteRestUrl(e.target.value)}
-                        className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
-                        placeholder="https://api.retailex.app/aqua veya http://IP:3002"
-                      />
+                      <label className="px-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                        PostgREST API URL
+                      </label>
+                      {renderTenantPostgrestUrlFields('rest_api')}
                       <p className={`text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                        Kiracıyı üstteki bina ikonundan da tek satırda (kod veya aynı URL) kaydedebilirsiniz; burada elle düzeltme yapıyorsanız aynı adresi kullanın.
+                        Kiracıyı üstteki bina ikonundan da tek satırda (kod veya aynı tam URL) kaydedebilirsiniz; burada elle düzeltme yapıyorsanız aynı mantığı kullanın.
                       </p>
                     </div>
                   ) : (

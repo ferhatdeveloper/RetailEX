@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
 import type { Sale, SaleItem } from '../core/types/models';
-import { postgres, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
+import { postgres, ERP_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import {
@@ -389,6 +390,372 @@ function mapProductServiceRowToBeauty(row: Record<string, unknown>): BeautyServi
     };
 }
 
+const BEAUTY_PGREST_CHUNK = 40;
+
+function periodPaddedForBeauty(): string {
+    return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+async function postgrestGetByIds<T extends Record<string, unknown>>(
+    path: string,
+    ids: string[],
+    schema: 'public' | 'beauty',
+    extra: Record<string, string | number | undefined> = {}
+): Promise<T[]> {
+    const uuidIds = filterUuidIds(ids);
+    if (!uuidIds.length) return [];
+    const { postgrest } = await import('./api/postgrestClient');
+    const out: T[] = [];
+    for (let i = 0; i < uuidIds.length; i += BEAUTY_PGREST_CHUNK) {
+        const chunk = uuidIds.slice(i, i + BEAUTY_PGREST_CHUNK);
+        const inList = chunk.join(',');
+        try {
+            const rows = await postgrest.get<T[]>(
+                path,
+                { select: '*', id: `in.(${inList})`, limit: chunk.length, ...extra },
+                { schema }
+            );
+            if (Array.isArray(rows)) out.push(...rows);
+        } catch {
+            /* tek parça başarısız — diğer parçalar */
+        }
+    }
+    return out;
+}
+
+/** Web hibrit: güzellik hizmet listesi PostgREST (köprü SQL yok) */
+async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
+    if (!shouldUseTenantPostgrestApi()) return null;
+    try {
+        const { postgrest } = await import('./api/postgrestClient');
+        const fn = erpFirmNrForRow();
+        const firmRaw = String(ERP_SETTINGS.firmNr ?? '001').trim();
+        const firmPadded = firmRaw.padStart(3, '0').slice(0, 10);
+        const firmCandidates = firmPadded === firmRaw ? [firmPadded] : [firmPadded, firmRaw];
+        const firmIn = firmCandidates.join(',');
+        const seen = new Set<string>();
+        const out: BeautyService[] = [];
+
+        try {
+            const beautyRows = await postgrest.get<Record<string, unknown>[]>(
+                `/rex_${fn}_beauty_services`,
+                {
+                    select: '*',
+                    order: 'parent_category.asc.nullsfirst,category.asc,name.asc',
+                    limit: 4000,
+                },
+                { schema: 'beauty' }
+            );
+            for (const r of Array.isArray(beautyRows) ? beautyRows : []) {
+                const id = String(r.id);
+                if (seen.has(id)) continue;
+                seen.add(id);
+                const isActive = r.is_active === undefined || r.is_active === null ? true : r.is_active !== false;
+                out.push({ ...(r as unknown as BeautyService), is_active: isActive });
+            }
+        } catch (e) {
+            console.warn('[beautyService] PostgREST beauty_services:', e);
+        }
+
+        try {
+            const erpRows = await postgrest.get<Record<string, unknown>[]>(
+                `/rex_${fn}_services`,
+                {
+                    select: '*',
+                    firm_nr: `in.(${firmIn})`,
+                    order: 'category.asc.nullslast,name.asc',
+                    limit: 4000,
+                },
+                { schema: 'public' }
+            );
+            for (const r of Array.isArray(erpRows) ? erpRows : []) {
+                const id = String(r.id);
+                if (seen.has(id)) continue;
+                const active = r.is_active;
+                if (active !== undefined && active !== null && active === false) continue;
+                seen.add(id);
+                out.push(mapFirmServiceRowToBeauty(r));
+            }
+        } catch (e) {
+            console.warn('[beautyService] PostgREST rex_services:', e);
+        }
+
+        try {
+            const prodRows = await postgrest.get<Record<string, unknown>[]>(
+                `/rex_${fn}_products`,
+                {
+                    select: '*',
+                    firm_nr: `in.(${firmIn})`,
+                    limit: 5000,
+                },
+                { schema: 'public' }
+            );
+            for (const r of Array.isArray(prodRows) ? prodRows : []) {
+                if (!productRowIsService(r)) continue;
+                const id = String(r.id);
+                if (seen.has(id)) continue;
+                seen.add(id);
+                out.push(mapProductServiceRowToBeauty(r));
+            }
+        } catch (e) {
+            console.warn('[beautyService] PostgREST products (hizmet):', e);
+        }
+
+        out.sort((a, b) => {
+            const c = String(a.category ?? '').localeCompare(String(b.category ?? ''), 'tr');
+            if (c !== 0) return c;
+            return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr');
+        });
+        return out;
+    } catch (e) {
+        console.warn('[beautyService] getServicesPostgrestBranch:', e);
+        return null;
+    }
+}
+
+/** Randevu aralığı — PostgREST çoklu istek + birleştirme */
+async function getAppointmentsInRangePostgrestBranch(
+    startDate: string,
+    endDate: string
+): Promise<BeautyAppointment[] | null> {
+    if (!shouldUseTenantPostgrestApi()) return null;
+    const fn = erpFirmNrForRow();
+    const pn = periodPaddedForBeauty();
+    try {
+        const { postgrest } = await import('./api/postgrestClient');
+        const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+        const rows = await postgrest.get<Record<string, unknown>[]>(
+            aptPath,
+            {
+                select: '*',
+                and: `(appointment_date.gte.${startDate},appointment_date.lte.${endDate})`,
+                order: 'appointment_date.asc,appointment_time.asc',
+                limit: 4000,
+            },
+            { schema: 'beauty' }
+        );
+        const appointments = Array.isArray(rows) ? rows : [];
+        const svcIds: string[] = [];
+        const spIds: string[] = [];
+        const custIds: string[] = [];
+        const devIds: string[] = [];
+        for (const a of appointments) {
+            if (a.service_id) svcIds.push(String(a.service_id));
+            if (a.specialist_id) spIds.push(String(a.specialist_id));
+            if (a.client_id) custIds.push(String(a.client_id));
+            if (a.device_id) devIds.push(String(a.device_id));
+        }
+
+        const beautySvc = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_beauty_services`,
+            svcIds,
+            'beauty'
+        );
+        const mapBeautySvc = new Map<string, { name: string; color: string }>();
+        for (const r of beautySvc) {
+            mapBeautySvc.set(String(r.id), {
+                name: String(r.name ?? ''),
+                color: String(r.color ?? '#6366f1'),
+            });
+        }
+
+        const firmIn = fn;
+        const erpSvcList: Record<string, unknown>[] = [];
+        for (let i = 0; i < svcIds.length; i += BEAUTY_PGREST_CHUNK) {
+            const chunk = filterUuidIds(svcIds.slice(i, i + BEAUTY_PGREST_CHUNK));
+            if (!chunk.length) continue;
+            const inList = chunk.join(',');
+            try {
+                const part = await postgrest.get<Record<string, unknown>[]>(
+                    `/rex_${fn}_services`,
+                    {
+                        select: 'id,name',
+                        id: `in.(${inList})`,
+                        firm_nr: `eq.${firmIn}`,
+                        limit: chunk.length,
+                    },
+                    { schema: 'public' }
+                );
+                if (Array.isArray(part)) erpSvcList.push(...part);
+            } catch {
+                /* */
+            }
+        }
+        const mapErpSvc = new Map<string, string>();
+        for (const r of erpSvcList) mapErpSvc.set(String(r.id), String(r.name ?? ''));
+
+        const prodList = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_products`,
+            svcIds,
+            'public'
+        );
+        const mapProdSvc = new Map<string, string>();
+        for (const r of prodList) {
+            if (!productRowIsService(r)) continue;
+            mapProdSvc.set(String(r.id), String(r.name ?? ''));
+        }
+
+        const spCards = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_beauty_specialists`,
+            spIds,
+            'beauty'
+        );
+        const mapSpCard = new Map<string, string>();
+        for (const r of spCards) mapSpCard.set(String(r.id), String(r.name ?? ''));
+
+        const usersList: Record<string, unknown>[] = [];
+        for (let i = 0; i < spIds.length; i += BEAUTY_PGREST_CHUNK) {
+            const chunk = filterUuidIds(spIds.slice(i, i + BEAUTY_PGREST_CHUNK));
+            if (!chunk.length) continue;
+            const inList = chunk.join(',');
+            try {
+                const part = await postgrest.get<Record<string, unknown>[]>(
+                    '/users',
+                    {
+                        select: 'id,full_name,username,phone,email',
+                        id: `in.(${inList})`,
+                        firm_nr: `eq.${firmIn}`,
+                        limit: chunk.length,
+                    },
+                    { schema: 'public' }
+                );
+                if (Array.isArray(part)) usersList.push(...part);
+            } catch {
+                /* users tablosu PostgREST’te kapalı olabilir */
+            }
+        }
+        const mapUserSp = new Map<string, string>();
+        for (const u of usersList) {
+            const nm = String(u.full_name ?? '').trim() || String(u.username ?? '');
+            if (nm) mapUserSp.set(String(u.id), nm);
+        }
+
+        const custRows = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_customers`,
+            custIds,
+            'public'
+        );
+        const mapCust = new Map<string, string>();
+        for (const c of custRows) mapCust.set(String(c.id), String(c.name ?? ''));
+
+        const devRows = await postgrestGetByIds<Record<string, unknown>>(
+            `/rex_${fn}_beauty_devices`,
+            devIds,
+            'beauty'
+        );
+        const mapDev = new Map<string, string>();
+        for (const d of devRows) mapDev.set(String(d.id), String(d.name ?? ''));
+
+        const merged: BeautyAppointment[] = appointments.map((a) => {
+            const sid = a.service_id ? String(a.service_id) : '';
+            const bs = sid ? mapBeautySvc.get(sid) : undefined;
+            const svcName =
+                (bs?.name && bs.name.trim()) ||
+                (sid ? mapErpSvc.get(sid) : '') ||
+                (sid ? mapProdSvc.get(sid) : '') ||
+                '';
+            const spid = a.specialist_id ? String(a.specialist_id) : '';
+            const specName =
+                (spid && mapSpCard.get(spid)) ||
+                (spid && mapUserSp.get(spid)) ||
+                '';
+            const cid = a.client_id ? String(a.client_id) : '';
+            const did = a.device_id ? String(a.device_id) : '';
+            const row: Record<string, unknown> & { clinical_data?: unknown } = {
+                ...a,
+                service_name: svcName,
+                service_color: bs?.color ?? '#6366f1',
+                specialist_name: specName,
+                customer_name: cid ? mapCust.get(cid) ?? '' : '',
+                device_name: did ? mapDev.get(did) ?? '' : '',
+            };
+            return normalizeAppointmentRow(row);
+        });
+        return merged;
+    } catch (e) {
+        console.warn('[beautyService] getAppointmentsInRange PostgREST:', e);
+        return null;
+    }
+}
+
+/** Uzman listesi — kullanıcılar + güzellik kartı (PostgREST) */
+async function getSpecialistsPostgrestBranch(): Promise<BeautySpecialist[] | null> {
+    if (!shouldUseTenantPostgrestApi()) return null;
+    const palette = ['#9333ea', '#6366f1', '#0d9488', '#ea580c', '#db2777', '#0891b2', '#7c3aed', '#059669'];
+    const fn = erpFirmNrForRow();
+    try {
+        const { postgrest } = await import('./api/postgrestClient');
+        let userRows: Record<string, unknown>[] = [];
+        try {
+            const u = await postgrest.get<Record<string, unknown>[]>(
+                '/users',
+                {
+                    select: 'id,full_name,username,phone,email,is_active',
+                    firm_nr: `eq.${fn}`,
+                    order: 'full_name.asc',
+                    limit: 800,
+                },
+                { schema: 'public' }
+            );
+            userRows = Array.isArray(u) ? u : [];
+        } catch {
+            return null;
+        }
+
+        const spRows = await postgrest.get<Record<string, unknown>[]>(
+            `/rex_${fn}_beauty_specialists`,
+            { select: '*', order: 'name.asc', limit: 800 },
+            { schema: 'beauty' }
+        );
+        const spById = new Map<string, Record<string, unknown>>();
+        for (const r of Array.isArray(spRows) ? spRows : []) spById.set(String(r.id), r);
+
+        const fromUsers: BeautySpecialist[] = userRows.map((u, i) => {
+            const bs = spById.get(String(u.id));
+            const name =
+                (bs?.name != null && String(bs.name).trim()) ||
+                String(u.full_name ?? '').trim() ||
+                String(u.username ?? '');
+            return {
+                id: String(u.id),
+                name,
+                phone: u.phone != null ? String(u.phone) : undefined,
+                email: u.email != null ? String(u.email) : undefined,
+                specialty: bs?.specialty != null ? String(bs.specialty) : undefined,
+                color: (bs?.color as string) || palette[i % palette.length],
+                commission_rate: Number(bs?.commission_rate ?? 0) || 0,
+                product_unit_commission: Number(bs?.product_unit_commission ?? 0) || 0,
+                is_active: (bs?.is_active !== undefined ? bs?.is_active : u.is_active) !== false,
+                avatar_url: bs?.avatar_url != null ? String(bs.avatar_url) : undefined,
+                working_hours: bs?.working_hours ?? undefined,
+            } as BeautySpecialist;
+        });
+
+        const userIds = new Set(userRows.map((u) => String(u.id)));
+        const legacy: BeautySpecialist[] = [];
+        for (const r of Array.isArray(spRows) ? spRows : []) {
+            if (userIds.has(String(r.id))) continue;
+            legacy.push({
+                id: String(r.id),
+                name: String(r.name ?? ''),
+                phone: r.phone != null ? String(r.phone) : undefined,
+                email: r.email != null ? String(r.email) : undefined,
+                specialty: r.specialty != null ? String(r.specialty) : undefined,
+                color: (r.color as string) ?? '#9333ea',
+                commission_rate: Number(r.commission_rate) || 0,
+                product_unit_commission: Number(r.product_unit_commission) || 0,
+                is_active: r.is_active !== false,
+                avatar_url: r.avatar_url != null ? String(r.avatar_url) : undefined,
+                working_hours: r.working_hours ?? undefined,
+            } as BeautySpecialist);
+        }
+        return [...fromUsers, ...legacy];
+    } catch (e) {
+        console.warn('[beautyService] getSpecialists PostgREST:', e);
+        return null;
+    }
+}
+
 /** Aylık seri için: önce güzellik hizmet kartı, yoksa ERP hizmet / stok hizmeti */
 async function resolveServiceForMonthlySeries(serviceId: string): Promise<{
     name: string;
@@ -504,16 +871,19 @@ async function runBeautySaleErpAndLoyalty(
         total: sale.total ?? 0,
         discount: 0,
         item_type: 'service',
-    }]).map((item) => ({
-        productId: item.item_id
-            ? String(item.item_id)
-            : `beauty-${String(item.item_type ?? 'line')}-${String(item.name ?? 'x').slice(0, 24)}`,
-        productName: String(item.name ?? 'Kalem'),
-        quantity: Number(item.quantity ?? 1),
-        price: Number(item.unit_price ?? 0),
-        discount: Number(item.discount ?? 0),
-        total: Number(item.total ?? 0),
-    }));
+    }]).map((item) => {
+        const line = item as Partial<BeautySaleItem>;
+        return {
+        productId: line.item_id
+            ? String(line.item_id)
+            : `beauty-${String(line.item_type ?? 'line')}-${String(line.name ?? 'x').slice(0, 24)}`,
+        productName: String(line.name ?? 'Kalem'),
+        quantity: Number(line.quantity ?? 1),
+        price: Number(line.unit_price ?? 0),
+        discount: Number(line.discount ?? 0),
+        total: Number(line.total ?? 0),
+    };
+    });
 
     const customerLabel = await resolveBeautyCustomerName(
         sale.customer_id,
@@ -629,6 +999,33 @@ export const beautyService = {
     // CUSTOMERS  (general rex_{firm}_customers table)
     // =========================================================================
     async getCustomers(): Promise<BeautyCustomer[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<BeautyCustomer[]>(
+                    `/rex_${fn}_customers`,
+                    {
+                        select:
+                            'id,code,name,phone,phone2,age,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes,created_at',
+                        is_active: 'eq.true',
+                        firm_nr: `eq.${fn}`,
+                        order: 'name.asc',
+                        limit: 5000,
+                    },
+                    { schema: 'public' }
+                );
+                const list = Array.isArray(rows) ? rows : [];
+                return list.map((c: BeautyCustomer): BeautyCustomer => ({
+                    ...c,
+                    appointment_count: 0,
+                    last_appointment_date: undefined,
+                    last_service_name: undefined,
+                }));
+            } catch (e) {
+                console.warn('[beautyService] getCustomers PostgREST (basit liste, randevu sayıları yok):', e);
+            }
+        }
         const t = postgres.getCardTableName('customers');
         const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const svc = postgres.getCardTableName('beauty_services', 'beauty');
@@ -667,7 +1064,7 @@ export const beautyService = {
     async searchCustomers(term: string): Promise<BeautyCustomer[]> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
-        if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        if (shouldUseTenantPostgrestApi()) {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
                 const px = `rex_${fn}`;
@@ -688,7 +1085,7 @@ export const beautyService = {
                 );
                 return Array.isArray(rows) ? rows : [];
             } catch (e) {
-                console.warn('[beautyService] searchCustomers rest_api failed:', e);
+                console.warn('[beautyService] searchCustomers PostgREST failed:', e);
                 return [];
             }
         }
@@ -812,6 +1209,14 @@ export const beautyService = {
     // Randevu `specialist_id` aynı UUID’yi kullanır. Eski (yalnızca kart) kayıtlar UNION ile gelir.
     // =========================================================================
     async getSpecialists(): Promise<BeautySpecialist[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const pr = await getSpecialistsPostgrestBranch();
+                if (pr != null) return pr;
+            } catch (e) {
+                console.warn('[beautyService] getSpecialists PostgREST denemesi:', e);
+            }
+        }
         const palette = ['#9333ea', '#6366f1', '#0d9488', '#ea580c', '#db2777', '#0891b2', '#7c3aed', '#059669'];
         const fn = erpFirmNrForRow();
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
@@ -947,6 +1352,14 @@ export const beautyService = {
     // SERVICES  (firm card table: rex_{firm}_beauty_services)
     // =========================================================================
     async getServices(): Promise<BeautyService[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const pr = await getServicesPostgrestBranch();
+                if (pr != null) return pr;
+            } catch (e) {
+                console.warn('[beautyService] getServices PostgREST denemesi:', e);
+            }
+        }
         const seen = new Set<string>();
         const out: BeautyService[] = [];
 
@@ -1113,6 +1526,14 @@ export const beautyService = {
     },
 
     async getAppointmentsInRange(startDate: string, endDate: string): Promise<BeautyAppointment[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const pr = await getAppointmentsInRangePostgrestBranch(startDate, endDate);
+                if (pr != null) return pr;
+            } catch (e) {
+                console.warn('[beautyService] getAppointmentsInRange PostgREST denemesi:', e);
+            }
+        }
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const svcBeauty = postgres.getCardTableName('beauty_services', 'beauty');
         const svcFirm = postgres.getCardTableName('services');
@@ -1332,7 +1753,7 @@ export const beautyService = {
             };
         }) as BeautyFollowUpReminder[];
         } catch (e: unknown) {
-            logger.warn('BeautyService', 'getFollowUpRemindersInRange skipped', { error: e instanceof Error ? e.message : String(e) });
+            console.warn('[beautyService] getFollowUpRemindersInRange skipped:', e instanceof Error ? e.message : String(e));
             return [];
         }
     },
@@ -1665,6 +2086,25 @@ export const beautyService = {
     // DEVICES  (firm card table: rex_{firm}_beauty_devices)
     // =========================================================================
     async getDevices(): Promise<BeautyDevice[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<BeautyDevice[]>(
+                    `/rex_${fn}_beauty_devices`,
+                    {
+                        select: '*',
+                        is_active: 'eq.true',
+                        order: 'name.asc',
+                        limit: 2000,
+                    },
+                    { schema: 'beauty' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] getDevices PostgREST:', e);
+            }
+        }
         const t = postgres.getCardTableName('beauty_devices', 'beauty');
         const { rows } = await postgres.query(
             `SELECT * FROM ${t} WHERE is_active = true ORDER BY name`
@@ -1751,6 +2191,19 @@ export const beautyService = {
     // BODY REGIONS  (shared static table: beauty.body_regions)
     // =========================================================================
     async getBodyRegions(): Promise<BeautyBodyRegion[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const rows = await postgrest.get<BeautyBodyRegion[]>(
+                    '/body_regions',
+                    { select: '*', order: 'sort_order.asc', limit: 500 },
+                    { schema: 'beauty' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] getBodyRegions PostgREST:', e);
+            }
+        }
         const { rows } = await postgres.query(
             'SELECT * FROM beauty.body_regions ORDER BY sort_order'
         );
@@ -1761,6 +2214,21 @@ export const beautyService = {
     // PACKAGES  (firm card table: rex_{firm}_beauty_packages)
     // =========================================================================
     async getPackages(): Promise<BeautyPackage[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<BeautyPackage[]>(
+                    `/rex_${fn}_beauty_packages`,
+                    { select: '*', order: 'name.asc', limit: 2000 },
+                    { schema: 'beauty' }
+                );
+                const list = Array.isArray(rows) ? rows : [];
+                return list.filter((p) => p.is_active !== false);
+            } catch (e) {
+                console.warn('[beautyService] getPackages PostgREST:', e);
+            }
+        }
         const { rows } = await postgres.query(
             'SELECT * FROM beauty_packages WHERE is_active = true ORDER BY name'
         );
@@ -2093,6 +2561,20 @@ export const beautyService = {
     // LEADS  (firm card table: rex_{firm}_beauty_leads)
     // =========================================================================
     async getLeads(): Promise<BeautyLead[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const rows = await postgrest.get<BeautyLead[]>(
+                    `/rex_${fn}_beauty_leads`,
+                    { select: '*', order: 'created_at.desc', limit: 3000 },
+                    { schema: 'beauty' }
+                );
+                return Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] getLeads PostgREST:', e);
+            }
+        }
         const lt = postgres.getCardTableName('beauty_leads', 'beauty');
         const { rows } = await postgres.query(
             `SELECT * FROM ${lt} ORDER BY created_at DESC`
@@ -3246,7 +3728,8 @@ export const beautyService = {
                     [appointmentId, String(ERP_SETTINGS.firmNr ?? '001').trim()]
                 );
                 const a = ar[0] as Record<string, unknown> | undefined;
-                const phone = a?.phone != null ? String(a.phone).trim() : '';
+                if (!a) throw new Error('Randevu bulunamadı');
+                const phone = a.phone != null ? String(a.phone).trim() : '';
                 if (!phone) throw new Error('Müşteri telefonu yok');
 
                 const timeStr = a.appointment_time != null ? String(a.appointment_time).slice(0, 5) : '';
@@ -3258,11 +3741,15 @@ export const beautyService = {
                 };
 
                 if (channel === 'sms') {
-                    const text = buildReminderText(settings.sms_template, 'sms', ctx);
+                    const text = buildReminderText(settings.sms_template ?? undefined, 'sms', ctx);
                     const r = await sendAtakSms(settings, phone, text);
                     if (!r.success) throw new Error(r.error || 'SMS gönderilemedi');
                 } else if (channel === 'whatsapp') {
-                    const text = buildReminderText(settings.whatsapp_template || settings.sms_template, 'whatsapp', ctx);
+                    const text = buildReminderText(
+                        (settings.whatsapp_template ?? settings.sms_template) ?? undefined,
+                        'whatsapp',
+                        ctx
+                    );
                     const r = await sendWhatsAppText(settings, phone, text);
                     if (!r.success) throw new Error(r.error || 'WhatsApp gönderilemedi');
                 } else {
@@ -3432,7 +3919,7 @@ export const beautyService = {
             time: req.requested_time ? String(req.requested_time).slice(0, 5) : '09:00',
             duration,
             total_price: price,
-            status: 'scheduled',
+            status: AppointmentStatus.SCHEDULED,
             booking_channel: 'online',
             notes: req.notes ?? undefined,
         });

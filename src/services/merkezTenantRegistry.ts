@@ -117,6 +117,42 @@ function ensureUrlProtocol(input: string): string {
   return `http://${s}`;
 }
 
+/** RetailEX SaaS kiracı PostgREST kökü — Caddy’de `/kiracı_kodu` tek segment. */
+export const DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN = 'https://api.retailex.app';
+
+export type ParsedSaaSOrCustomPostgrestUrl =
+  | { kind: 'saas_single_slug'; slug: string }
+  | { kind: 'other'; url: string };
+
+/**
+ * Kayıtlı `remote_rest_url`: yalnızca `https://api.retailex.app/{kiracı}` ise slug’a ayrıştırır.
+ * `/merkez` veya çok segmentli yollar “özel” kabul edilir.
+ */
+export function parseSaaSOrCustomPostgrestUrl(raw: string): ParsedSaaSOrCustomPostgrestUrl {
+  const t = normalizeBaseUrl(String(raw || '').trim());
+  if (!t) return { kind: 'other', url: '' };
+  let urlObj: URL;
+  try {
+    urlObj = new URL(/^https?:\/\//i.test(t) ? t : ensureUrlProtocol(t));
+  } catch {
+    return { kind: 'other', url: t };
+  }
+  if (urlObj.hostname === 'api.retailex.app') {
+    const segs = urlObj.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    if (segs.length === 1 && segs[0] && segs[0] !== 'merkez') {
+      return { kind: 'saas_single_slug', slug: segs[0] };
+    }
+  }
+  return { kind: 'other', url: normalizeBaseUrl(urlObj.toString()) };
+}
+
+export function buildSaaSTenantPostgrestUrl(slug: string): string {
+  const o = normalizeBaseUrl(DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN);
+  const s = String(slug || '').trim().replace(/^\/+|\/+$/g, '');
+  if (!s) return o;
+  return `${o}/${s}`;
+}
+
 /**
  * Modal / .env satırı yanlış yapıştırıldığında: `VITE_MERKEZ_REST_URL=http://host:3002` → sadece URL.
  */

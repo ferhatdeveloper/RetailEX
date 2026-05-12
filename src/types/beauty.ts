@@ -248,6 +248,7 @@ export interface BeautyRoom {
     name: string;
     capacity?: number;
     is_active: boolean;
+    sort_order?: number;
 }
 
 export interface BeautyPortalSettings {
