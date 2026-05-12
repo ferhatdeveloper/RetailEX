@@ -110,6 +110,9 @@ export function Login({ onLogin }: LoginProps) {
   const [showTenantFirmIdModal, setShowTenantFirmIdModal] = useState(false);
   /** Kiracı kodu / UUID veya tek satırda tam PostgREST URL (örn. https://api.../aqua) */
   const [tenantConnectionDraft, setTenantConnectionDraft] = useState('');
+  /** Kiracı modalı: merkez kodu mu, yoksa sabit bulut kökü + slug (doğrudan PostgREST) mi */
+  const [tenantModalConnectMode, setTenantModalConnectMode] = useState<'code' | 'cloud'>('code');
+  const [tenantModalCloudSlug, setTenantModalCloudSlug] = useState('');
   /** Yalnızca kiracı kodu ile merkez tenant_registry sorgusu — merkez PostgREST tabanı geçersiz kılma */
   const [merkezBaseUrlDraft, setMerkezBaseUrlDraft] = useState<string>(
     () => (typeof window !== 'undefined'
@@ -1126,7 +1129,16 @@ export function Login({ onLogin }: LoginProps) {
                     /* ignore */
                   }
                   if (!line) line = localStorage.getItem('exretail_selected_tenant') || '';
-                  setTenantConnectionDraft(line);
+                  const parsedLine = parseSaaSOrCustomPostgrestUrl(line);
+                  if (parsedLine.kind === 'saas_single_slug') {
+                    setTenantModalConnectMode('cloud');
+                    setTenantModalCloudSlug(parsedLine.slug);
+                    setTenantConnectionDraft('');
+                  } else {
+                    setTenantModalConnectMode('code');
+                    setTenantModalCloudSlug('');
+                    setTenantConnectionDraft(line);
+                  }
                   setMerkezBaseUrlDraft(localStorage.getItem('merkez_postgrest_base_url') || DEFAULT_MERKEZ_REST_URL);
                   setShowTenantFirmIdModal(true);
                 }}
@@ -1484,20 +1496,92 @@ export function Login({ onLogin }: LoginProps) {
                 </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTenantModalConnectMode('code');
+                      if (tenantModalCloudSlug.trim()) {
+                        setTenantConnectionDraft(tenantModalCloudSlug.trim());
+                      }
+                    }}
+                    className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                      tenantModalConnectMode === 'code'
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Kiracı kodu / UUID
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTenantModalConnectMode('cloud');
+                      const p = parseSaaSOrCustomPostgrestUrl(tenantConnectionDraft.trim());
+                      if (p.kind === 'saas_single_slug') {
+                        setTenantModalCloudSlug(p.slug);
+                        setTenantConnectionDraft('');
+                      }
+                    }}
+                    className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors ${
+                      tenantModalConnectMode === 'cloud'
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    api.retailex.app / yol
+                  </button>
+                </div>
+
+                {tenantModalConnectMode === 'code' ? (
+                  <>
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Kiracı kodu · UUID veya PostgREST URL
+                  Kiracı kodu · UUID veya tam PostgREST URL
                 </label>
                 <input
                   type="text"
                   autoComplete="off"
                   value={tenantConnectionDraft}
                   onChange={(e) => setTenantConnectionDraft(e.target.value)}
-                  placeholder="Örn. sho_aksesuar (kiracı kodu) — veya tam URL: https://api.retailex.app/sho_aksesuar"
+                  placeholder="Örn. sho_aksesuar — veya https://baska-host/postgrest-yolu"
                   className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-mono text-sm"
                 />
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Kiracı yolu (sabit: {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/)
+                    </label>
+                    <div className="flex w-full overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                      <span className="flex shrink-0 items-center border-r border-slate-200 bg-slate-50 px-2 py-3 font-mono text-[10px] font-bold text-slate-500">
+                        {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/
+                      </span>
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        value={tenantModalCloudSlug}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          const slug =
+                            raw
+                              .replace(/^https?:\/\/api\.retailex\.app\/?/i, '')
+                              .split('/')[0]
+                              ?.replace(/[/?#].*$/, '') ?? '';
+                          setTenantModalCloudSlug(slug);
+                        }}
+                        placeholder="sho_aksesuar"
+                        className="min-w-0 flex-1 border-0 bg-transparent px-3 py-3 font-mono text-sm text-slate-800 outline-none focus:ring-0"
+                      />
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-slate-500">
+                      Bu seçenek <strong className="text-slate-600">tenant_registry</strong> kullanmaz; doğrudan bu PostgREST adresiyle bağlanır (Veritabanı ayarındaki «RetailEX bulutu» ile aynı adres).
+                    </p>
+                  </>
+                )}
+
                 <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-                  <strong className="text-slate-600"> Kod:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca kiracı adı (örn. <code className="text-[10px] bg-slate-100 px-1 rounded">sho_aksesuar</code>) yeterlidir.
-                  <strong className="text-slate-600"> URL:</strong> doğrudan bu PostgREST adresi kullanılır (Veritabanı ayarındaki REST URL ile aynı mantık; orada «RetailEX bulutu» ile yalnız slug da girebilirsiniz).
+                  <strong className="text-slate-600"> Kod / UUID:</strong> merkez <code className="text-[10px] bg-slate-100 px-1 rounded">tenant_registry</code> üzerinden çözülür; çoğu kurulumda yalnızca <code className="text-[10px] bg-slate-100 px-1 rounded">sho_aksesuar</code> yeterlidir (üstte «Kiracı kodu / UUID»).
+                  <strong className="text-slate-600"> Bulut yolu:</strong> yalnızca üstteki «api.retailex.app / yol» sekmesinde segment yazın.
                 </p>
                 <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                   <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-wider text-slate-600 select-none">
@@ -1525,7 +1609,17 @@ export function Login({ onLogin }: LoginProps) {
                   type="button"
                   disabled={isMerkezTenantLoading}
                   onClick={async () => {
-                    const line = tenantConnectionDraft.trim();
+                    let line = '';
+                    if (tenantModalConnectMode === 'cloud') {
+                      const slug = tenantModalCloudSlug.trim();
+                      if (!slug) {
+                        toast.error('api.retailex.app altında kiracı yolunu girin (örn. sho_aksesuar).');
+                        return;
+                      }
+                      line = buildSaaSTenantPostgrestUrl(slug);
+                    } else {
+                      line = tenantConnectionDraft.trim();
+                    }
                     if (!line) {
                       toast.error('Kiracı kodu, UUID veya PostgREST URL girin.');
                       return;
