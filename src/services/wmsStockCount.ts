@@ -4,6 +4,7 @@
  */
 
 import { PostgresConnection, ERP_SETTINGS, DB_SETTINGS } from './postgres';
+import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { IS_TAURI } from '../utils/env';
 import * as wscRest from './wmsStockCountPostgrest';
 
@@ -65,9 +66,9 @@ class WMSStockCountService {
     private conn = PostgresConnection.getInstance();
     private schemaReady = false;
 
-    /** Web + PostgREST kiracı modunda sayım fişi SQL’i pg_bridge yerine REST üzerinden. */
+    /** Kiracı PostgREST (rest_api veya hibrit + remote_rest_url) — pg_bridge ile aynı veriyi okumak için. */
     private usePostgrestWms(): boolean {
-        return DB_SETTINGS.connectionProvider === 'rest_api';
+        return shouldUseTenantPostgrestApi();
     }
 
     /**

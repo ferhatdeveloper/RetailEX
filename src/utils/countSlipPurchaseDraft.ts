@@ -7,13 +7,18 @@ export type ProductPriceRow = { purchase: number; sale: number; code?: string };
 
 /** Sayılan miktar (baz birim): base_counted_qty varsa o; yoksa counted × çarpan. */
 function countedBaseQty(line: CountingLine): number {
-    const rawBase = line.base_counted_qty;
-    if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
-        return Number(rawBase);
-    }
     const q = Number(line.counted_qty);
     const m = Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1;
-    return (Number.isFinite(q) ? q : 0) * m;
+    const fromCounted = (Number.isFinite(q) ? q : 0) * m;
+
+    const rawBase = line.base_counted_qty;
+    if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
+        const b = Number(rawBase);
+        // Baz alan bazen 0 kalıp sayılan adet dolu olabiliyor; fazla tespiti için counted×çarpan kullan.
+        if (Math.abs(b) < 1e-9 && Math.abs(fromCounted) > 1e-9) return fromCounted;
+        return b;
+    }
+    return fromCounted;
 }
 
 /**
