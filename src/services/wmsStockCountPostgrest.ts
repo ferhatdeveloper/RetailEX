@@ -233,9 +233,11 @@ export async function restUpsertLine(
     }
 
     if (existing?.id) {
+        const expectedBase = Number(existing.expected_qty) || 0;
         const patch = {
             counted_qty: data.counted_qty,
-            variance: data.counted_qty - (Number(existing.expected_qty) || 0),
+            /* Beklenen stok baz birimde; fark da baz sayılan − beklenen olmalı (birim çarpanı ile uyumlu). */
+            variance: baseCounted - expectedBase,
             counted_by: data.counted_by ?? null,
             counted_at: new Date().toISOString(),
             location_code: data.location_code ?? existing.location_code ?? null,
@@ -254,7 +256,7 @@ export async function restUpsertLine(
         return u;
     }
 
-    const variance = data.counted_qty - (data.expected_qty || 0);
+    const variance = baseCounted - (Number(data.expected_qty) || 0);
     const insertBody: Record<string, unknown> = {
         slip_id: slipId,
         firm_nr: firm,
@@ -358,24 +360,33 @@ export async function restGetLinesPrices(
     if (!ids.length) return {};
     const table = productsTable();
     const inList = ids.map((id) => encodeURIComponent(id)).join(',');
-    try {
-        const rows = await postgrest.get<any[]>(
-            `/${table}`,
-            { id: `in.(${inList})`, select: 'id,code,price_list_1,price,purchase_price' },
-            PUB
-        );
-        const out: Record<string, { purchase: number; sale: number; code?: string }> = {};
-        for (const r of Array.isArray(rows) ? rows : []) {
-            const id = String(r.id);
-            const sale = Number(r.price_list_1 ?? r.price ?? 0) || 0;
-            const purchase = Number(r.purchase_price ?? 0) || 0;
-            const code = r.code != null && String(r.code).trim() ? String(r.code).trim() : undefined;
-            out[id] = { purchase, sale, ...(code ? { code } : {}) };
+    const selectAttempts = [
+        'id,code,price_list_1,price,purchase_price',
+        'id,code,price_list_1,price',
+        'id,code,price_list_1',
+        'id,code',
+    ];
+    for (const select of selectAttempts) {
+        try {
+            const rows = await postgrest.get<any[]>(
+                `/${table}`,
+                { id: `in.(${inList})`, select },
+                PUB
+            );
+            const out: Record<string, { purchase: number; sale: number; code?: string }> = {};
+            for (const r of Array.isArray(rows) ? rows : []) {
+                const id = String(r.id);
+                const sale = Number(r.price_list_1 ?? r.price ?? 0) || 0;
+                const purchase = Number(r.purchase_price ?? 0) || 0;
+                const code = r.code != null && String(r.code).trim() ? String(r.code).trim() : undefined;
+                out[id] = { purchase, sale, ...(code ? { code } : {}) };
+            }
+            return out;
+        } catch {
+            continue;
         }
-        return out;
-    } catch {
-        return {};
     }
+    return {};
 }
 
 /** Barkod ile ürün arama (PostgREST) — basit yol: doğrudan kod/barkod eşleşmesi + product_barcodes */

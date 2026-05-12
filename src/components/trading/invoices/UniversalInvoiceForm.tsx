@@ -2544,8 +2544,19 @@ export function UniversalInvoiceForm({
       return;
     }
 
-    // Kalem kontrolü
-    const validItems = items.filter(item => item.quantity > 0 && item.unitPrice > 0);
+    // Kalem kontrolü — sayım fazlası taslağında birim fiyat 0 olabilir; alışta yine de kayda izin verilir
+    const validItems = items.filter((item) => {
+      if (!(Number(item.quantity) > 0)) return false;
+      const price = Number(item.unitPrice);
+      if (Number.isNaN(price)) return false;
+      if (invoiceType.category === 'Alis') {
+        return (
+          price >= 0 &&
+          (String(item.code || '').trim() !== '' || String(item.description || '').trim() !== '')
+        );
+      }
+      return price > 0;
+    });
     if (validItems.length === 0) {
       toast.error('❌ ' + tm('noInvoiceItems'));
       return;

@@ -363,29 +363,37 @@ class WMSStockCountService {
         if (this.usePostgrestWms()) {
             return await wscRest.restGetLinesPrices(ids);
         }
-        const priceCols = [
+        const saleCols = [
             `COALESCE(price_list_1, 0)::float as sale`,
             `COALESCE(price, 0)::float as sale`,
             `0::float as sale`,
         ];
-        for (const saleCol of priceCols) {
-            try {
-                const { rows } = await this.conn.query<any>(
-                    `SELECT id::text, NULLIF(TRIM(code::text), '') AS code, ${saleCol}, COALESCE(purchase_price, 0)::float as purchase
-                     FROM products WHERE id::text = ANY($1)`,
-                    [ids]
-                );
-                return Object.fromEntries(
-                    rows.map((r: any) => [
-                        r.id,
-                        {
-                            purchase: r.purchase || 0,
-                            sale: r.sale || 0,
-                            ...(r.code ? { code: String(r.code) } : {}),
-                        },
-                    ])
-                );
-            } catch { continue; }
+        const purchaseCols = [
+            `COALESCE(purchase_price, 0)::float as purchase`,
+            `0::float as purchase`,
+        ];
+        for (const saleCol of saleCols) {
+            for (const purchaseCol of purchaseCols) {
+                try {
+                    const { rows } = await this.conn.query<any>(
+                        `SELECT id::text, NULLIF(TRIM(code::text), '') AS code, ${saleCol}, ${purchaseCol}
+                         FROM products WHERE id::text = ANY($1)`,
+                        [ids]
+                    );
+                    return Object.fromEntries(
+                        rows.map((r: any) => [
+                            r.id,
+                            {
+                                purchase: r.purchase || 0,
+                                sale: r.sale || 0,
+                                ...(r.code ? { code: String(r.code) } : {}),
+                            },
+                        ])
+                    );
+                } catch {
+                    continue;
+                }
+            }
         }
         return {};
     }
@@ -522,7 +530,7 @@ class WMSStockCountService {
             const { rows } = await this.conn.query<CountingLine>(
                 `UPDATE wms.counting_lines
                  SET counted_qty = $2,
-                     variance = $2 - COALESCE(expected_qty, 0),
+                     variance = $9 - COALESCE(expected_qty, 0),
                      counted_by = $3,
                      counted_at = NOW(),
                      location_code = COALESCE($4, location_code),
@@ -538,7 +546,7 @@ class WMSStockCountService {
             console.log('[upsertLine] UPDATE returned:', rows.length, 'rows');
             return rows[0];
         } else {
-            const variance = data.counted_qty - (data.expected_qty || 0);
+            const variance = baseCounted - (data.expected_qty || 0);
             const firmNr = ERP_SETTINGS.firmNr || '001';
             const { rows } = await this.conn.query<CountingLine>(
                 `INSERT INTO wms.counting_lines

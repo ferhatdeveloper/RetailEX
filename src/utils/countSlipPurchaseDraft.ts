@@ -5,15 +5,33 @@ export const PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY = 'retailex_purchase_invoic
 
 export type ProductPriceRow = { purchase: number; sale: number; code?: string };
 
-/** Pozitif fark (fazla) miktarı; variance yoksa sayılan − beklenen. */
+/** Sayılan miktar (baz birim): base_counted_qty varsa o; yoksa counted × çarpan. */
+function countedBaseQty(line: CountingLine): number {
+    const rawBase = line.base_counted_qty;
+    if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
+        return Number(rawBase);
+    }
+    const q = Number(line.counted_qty);
+    const m = Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1;
+    return (Number.isFinite(q) ? q : 0) * m;
+}
+
+/**
+ * Pozitif fark (fazla) = baz sayılan − beklenen.
+ * DB'deki `variance` alanına güvenilmez (PostgREST yamasında counted−expected hatası olabiliyor).
+ */
 function signedVariance(line: CountingLine): number {
     const exp = Number(line.expected_qty) || 0;
-    const cnt = Number(line.base_counted_qty ?? line.counted_qty ?? 0) || 0;
-    const v = line.variance;
-    if (v !== undefined && v !== null && Number.isFinite(Number(v))) {
-        return Number(v);
+    return countedBaseQty(line) - exp;
+}
+
+/** Fatura taslağında en az bir fazla (pozitif fark) satırı var mı — ürünü olmayan satırlar sayılmaz. */
+export function countSlipHasSurplusForPurchase(lines: CountingLine[]): boolean {
+    for (const l of lines) {
+        if (!l.product_id) continue;
+        if (signedVariance(l) > 0.000001) return true;
     }
-    return cnt - exp;
+    return false;
 }
 
 /**

@@ -9,16 +9,19 @@ import {
     ArrowLeft, Plus, Scan, Package,
     Minus, ClipboardList, MapPin, User, RefreshCw,
     Warehouse, Calendar, Loader2, Trash2, Eye,
-    CheckCircle2, XCircle, FileText, Camera, BarChart3, AlertTriangle, ShoppingCart
+    CheckCircle2, XCircle, FileText, Camera, BarChart3, AlertTriangle, ShoppingCart,
+    Info, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { wmsStockCount, CountingSlip, CountingLine } from '../../../services/wmsStockCount';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import {
-    PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
     buildPurchaseEditDataFromCountSlip,
+    countSlipHasSurplusForPurchase,
+    PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
 } from '../../../utils/countSlipPurchaseDraft';
+import { normCountingSlipStatus as normSlipStatus } from '../../../utils/wmsCountingSlipStatus';
 import { IS_TAURI } from '../../../utils/env';
 import { BarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 
@@ -46,7 +49,7 @@ const COUNT_TYPE_KEYS: Record<string, string> = {
     location: 'countTypeLocation',
 };
 
-/** Sayım fişinden taslak alış faturası: sessionStorage + yönetim ekranı. Başarıda true. */
+/** Sayım fişinden taslak alış faturası: navigateToScreen + ManagementModule prefill. Başarıda true. */
 async function navigatePurchaseDraftFromCountSlip(
     slipId: string,
     slipFallback: CountingSlip,
@@ -69,12 +72,29 @@ async function navigatePurchaseDraftFromCountSlip(
         }
         draft.supplier_name = `${tm('countPurchaseSupplierName')} (${slipRef.fiche_no})`;
         draft.customer_name = draft.supplier_name;
-        sessionStorage.setItem(
-            PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
-            JSON.stringify({ editData: draft, skipProductStockUpdate: true })
+        try {
+            sessionStorage.setItem(
+                PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
+                JSON.stringify({
+                    editData: draft as Record<string, unknown>,
+                    skipProductStockUpdate: true,
+                })
+            );
+        } catch {
+            /* ignore */
+        }
+        window.dispatchEvent(
+            new CustomEvent('navigateToScreen', {
+                detail: {
+                    screen: 'purchase-invoice-standard',
+                    countPurchaseDraft: {
+                        editData: draft as Record<string, unknown>,
+                        skipProductStockUpdate: true,
+                    },
+                },
+            })
         );
-        window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'purchase-invoice-standard' }));
-        toast.success(tm('countPurchaseFromSurplusSuccess'));
+        toast.success(tm('countPurchaseOpeningInvoiceForm'));
         return true;
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -83,9 +103,116 @@ async function navigatePurchaseDraftFromCountSlip(
     }
 }
 
+/** Sayım → alış taslağı: fazla satırları ve stok davranışını talebe göre netleştiren bilgi modalı */
+function CountPurchaseSurplusInfoModal({
+    open,
+    darkMode,
+    ficheNo,
+    confirmBusy,
+    tm,
+    onClose,
+    onConfirm,
+}: {
+    open: boolean;
+    darkMode: boolean;
+    ficheNo: string;
+    confirmBusy: boolean;
+    tm: (k: string) => string;
+    onClose: () => void;
+    onConfirm: () => void;
+}) {
+    if (!open) return null;
+    const box = darkMode
+        ? 'bg-gray-800 border-gray-700 shadow-xl'
+        : 'bg-white border-slate-200/80 shadow-xl';
+    const bodyText = darkMode ? 'text-gray-200' : 'text-slate-700';
+    const muted = darkMode ? 'text-gray-400' : 'text-slate-500';
+    const subtitle = tm('countPurchaseInfoModalSubtitle').replace(/\{ficheNo\}/g, ficheNo);
+
+    return (
+        <div
+            className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="count-purchase-info-title"
+            onClick={(e) => {
+                if (e.target === e.currentTarget && !confirmBusy) onClose();
+            }}
+        >
+            <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
+                <div
+                    className={`flex w-full max-w-lg max-h-[min(90vh,100dvh)] min-h-0 flex-col overflow-hidden rounded-[2rem] border ${box} animate-in zoom-in-95 duration-200`}
+                >
+                    <div className="shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <h2 id="count-purchase-info-title" className="text-lg font-black uppercase tracking-tight">
+                                    {tm('countPurchaseInfoModalTitle')}
+                                </h2>
+                                <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-blue-100/90">
+                                    {subtitle}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                disabled={confirmBusy}
+                                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/20 transition-colors hover:bg-white/30 disabled:opacity-50"
+                                aria-label={tm('countPurchaseInfoModalCancel')}
+                            >
+                                <X className="h-5 w-5" aria-hidden />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6">
+                        <div className={`mb-4 flex gap-3 rounded-2xl border p-4 ${darkMode ? 'border-amber-700/40 bg-amber-950/30' : 'border-amber-200 bg-amber-50/90'}`}>
+                            <Info className={`mt-0.5 h-5 w-5 shrink-0 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`} aria-hidden />
+                            <p className={`text-sm font-medium leading-relaxed ${darkMode ? 'text-amber-100' : 'text-amber-900'}`}>
+                                {tm('countPurchaseInfoModalIntro')}
+                            </p>
+                        </div>
+                        <ul className={`list-disc space-y-3 pl-5 text-sm leading-relaxed ${bodyText}`}>
+                            <li>{tm('countPurchaseInfoModalPoint1')}</li>
+                            <li>{tm('countPurchaseInfoModalPoint2')}</li>
+                            <li>{tm('countPurchaseInfoModalPoint3')}</li>
+                        </ul>
+                        <p className={`mt-4 text-xs leading-relaxed ${muted}`}>{tm('countPurchaseInfoModalFooter')}</p>
+                    </div>
+                    <div className={`flex shrink-0 flex-col gap-3 border-t p-5 sm:flex-row ${darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-slate-100 bg-slate-50/50'}`}>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={confirmBusy}
+                            className="flex-1 rounded-2xl border-2 border-slate-200 py-3 text-sm font-bold uppercase tracking-wider text-slate-600 transition-colors hover:bg-slate-100 active:scale-[0.98] disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                        >
+                            {tm('countPurchaseInfoModalCancel')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onConfirm}
+                            disabled={confirmBusy}
+                            className="flex-1 rounded-2xl bg-teal-600 py-3 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-teal-200/40 transition-colors hover:bg-teal-700 active:scale-[0.98] disabled:opacity-50 dark:shadow-none"
+                        >
+                            {confirmBusy ? (
+                                <span className="inline-flex items-center justify-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                    {tm('countPurchaseInfoModalWorking')}
+                                </span>
+                            ) : (
+                                tm('countPurchaseInfoModalContinue')
+                            )}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function StatusBadge({ status }: { status: CountingSlip['status'] }) {
     const { tm } = useLanguage();
-    const s = STATUS_STYLE[status] || { tmKey: status, color: 'bg-gray-100 text-gray-600' };
+    const key = normSlipStatus(status);
+    const s = STATUS_STYLE[key] || { tmKey: key || String(status), color: 'bg-gray-100 text-gray-600' };
     return <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${s.color}`}>{tm(s.tmKey)}</span>;
 }
 
@@ -399,7 +526,8 @@ function CountEntryView({ darkMode, slip, onBack, onDone }: {
     useEffect(() => {
         loadLines();
         // Mark slip as counting
-        if (slip.status === 'draft' || slip.status === 'active') {
+        const st = normSlipStatus(slip.status);
+        if (st === 'draft' || st === 'active') {
             wmsStockCount.updateSlipStatus(slip.id, 'counting').catch(console.error);
         }
     }, [slip.id]);
@@ -1004,7 +1132,8 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     });
     const [loading, setLoading] = useState(true);
     const [completing, setCompleting] = useState(false);
-    const [purchaseNavigating, setPurchaseNavigating] = useState(false);
+    const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+    const [purchaseConfirmBusy, setPurchaseConfirmBusy] = useState(false);
     const [postApply, setPostApply] = useState<null | { processed: number; surplus: number; shortage: number }>(null);
     const [filter, setFilter] = useState<'all' | 'variance' | 'ok'>('all');
 
@@ -1032,33 +1161,40 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
     };
 
     const handleComplete = async () => {
-        if (currentSlip.status === 'completed') return;
-        if (!confirm(tm('confirmCompleteCount'))) return;
+        if (normSlipStatus(currentSlip.status) === 'completed') return;
+        if (!confirm(tm('confirmApplyCountStock'))) return;
         setCompleting(true);
         try {
-            const result = await wmsStockCount.applyStockCount(slip.id);
+            const slipId = currentSlip.id || slip.id;
+            const result = await wmsStockCount.applyStockCount(slipId);
             setPostApply({
                 processed: result.processed,
                 surplus: result.surplus ?? 0,
                 shortage: result.shortage ?? 0,
             });
             await loadData();
+            toast.success(tm('countSessionCompletedBadge'));
         } catch (err: any) {
-            alert(`Sayım işleme hatası: ${err?.message || String(err)}`);
+            const msg = err?.message || String(err);
+            toast.error(`${tm('countPurchaseFromSurplusError')}: ${msg}`);
         } finally {
             setCompleting(false);
         }
     };
 
     const handleOpenPurchaseDraft = async () => {
-        setPurchaseNavigating(true);
+        setPurchaseConfirmBusy(true);
         try {
-            const ok = await navigatePurchaseDraftFromCountSlip(slip.id, slip, tm, selectedFirm);
-            if (ok) onComplete();
+            const sid = currentSlip.id || slip.id;
+            const ok = await navigatePurchaseDraftFromCountSlip(sid, currentSlip, tm, selectedFirm);
+            if (ok) setPurchaseModalOpen(false);
         } finally {
-            setPurchaseNavigating(false);
+            setPurchaseConfirmBusy(false);
         }
     };
+
+    const showCompletedActions = Boolean(postApply || normSlipStatus(currentSlip.status) === 'completed');
+    const canOpenPurchaseDraft = countSlipHasSurplusForPurchase(lines);
 
     const filteredLines = lines.filter(l => {
         if (filter === 'variance') return l.variance !== 0 && l.counted_qty !== undefined;
@@ -1075,17 +1211,18 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
             {/* Header */}
             <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sticky top-0 z-10 shadow-lg">
                 <div className="flex items-center gap-3">
-                    <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg">
+                    <button type="button" onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                         <h1 className="text-lg font-bold">{tm('countReconciliation')}</h1>
-                        <p className="text-xs text-purple-100">{currentSlip.fiche_no}</p>
+                        <p className="text-xs text-purple-100 truncate">{currentSlip.fiche_no}</p>
                     </div>
                     <button
-                        onClick={handleComplete}
-                        disabled={completing || loading || currentSlip.status === 'completed'}
-                        className="bg-green-500 hover:bg-green-400 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1.5 disabled:opacity-70"
+                        type="button"
+                        onClick={() => void handleComplete()}
+                        disabled={completing || loading || normSlipStatus(currentSlip.status) === 'completed'}
+                        className="shrink-0 bg-green-500 hover:bg-green-400 px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {completing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                         {tm('confirmBtn')}
@@ -1093,56 +1230,63 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                 </div>
             </div>
 
+            {/* Tamamlanmış sayım: alış taslağı ve liste — yeşil bilgi kutusunun DIŞINDA */}
+            {showCompletedActions && (
+                <div
+                    className={`sticky top-0 z-[9] px-4 py-3 border-b flex flex-wrap items-center gap-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200 shadow-sm'}`}
+                >
+                    <button
+                        type="button"
+                        onClick={() => setPurchaseModalOpen(true)}
+                        disabled={purchaseConfirmBusy || loading || !canOpenPurchaseDraft}
+                        title={!canOpenPurchaseDraft ? tm('countPurchaseFromSurplusNoLines') : tm('countPurchaseFromSurplusHint')}
+                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                    >
+                        {purchaseConfirmBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        ) : (
+                            <ShoppingCart className="h-4 w-4 shrink-0" />
+                        )}
+                        {tm('countPurchaseFromSurplusBtn')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setPostApply(null);
+                            onComplete();
+                        }}
+                        className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 text-gray-800 hover:bg-gray-100'}`}
+                    >
+                        {tm('countDoneBackToList')}
+                    </button>
+                </div>
+            )}
+
             <div className="p-4 space-y-4">
-                {(postApply || currentSlip.status === 'completed') && (
+                {showCompletedActions && (
                     <div
-                        className={`rounded-xl border p-4 space-y-3 ${darkMode ? 'bg-gray-800 border-green-700/50' : 'bg-green-50 border-green-200'}`}
+                        className={`rounded-xl border p-4 ${darkMode ? 'bg-gray-800/80 border-green-700/40' : 'bg-green-50/90 border-green-200'}`}
                     >
                         {postApply ? (
-                            <>
-                                <div className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-800'}`}>
-                                    {tm('countSessionCompletedBadge')}
-                                    <span className="font-normal opacity-90">
-                                        {' '}
-                                        — {postApply.processed}
-                                        {postApply.surplus > 0 ? ` / +${postApply.surplus}` : ''}
-                                        {postApply.shortage > 0 ? ` / −${postApply.shortage}` : ''}
-                                    </span>
-                                </div>
-                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                    {tm('countPurchaseFromSurplusHint')}
-                                </p>
-                            </>
+                            <div className={`text-sm font-semibold ${darkMode ? 'text-green-300' : 'text-green-800'}`}>
+                                {tm('countSessionCompletedBadge')}
+                                <span className="font-normal opacity-90">
+                                    {' '}
+                                    — {postApply.processed}
+                                    {postApply.surplus > 0 ? ` / +${postApply.surplus}` : ''}
+                                    {postApply.shortage > 0 ? ` / −${postApply.shortage}` : ''}
+                                </span>
+                            </div>
                         ) : (
                             <p className={`text-sm ${darkMode ? 'text-green-200' : 'text-green-900'}`}>
                                 {tm('countPurchaseCompletedSlipHint')}
                             </p>
                         )}
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                onClick={handleOpenPurchaseDraft}
-                                disabled={purchaseNavigating || loading}
-                                className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-500 disabled:opacity-60"
-                            >
-                                {purchaseNavigating ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <ShoppingCart className="h-4 w-4" />
-                                )}
-                                {tm('countPurchaseFromSurplusBtn')}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setPostApply(null);
-                                    onComplete();
-                                }}
-                                className={`rounded-lg border px-4 py-2 text-sm font-semibold ${darkMode ? 'border-gray-600 text-gray-200 hover:bg-gray-700' : 'border-gray-300 text-gray-800 hover:bg-gray-100'}`}
-                            >
-                                {tm('countDoneBackToList')}
-                            </button>
-                        </div>
+                        {postApply && (
+                            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                {tm('countPurchaseFromSurplusHint')}
+                            </p>
+                        )}
                     </div>
                 )}
                 {loading ? (
@@ -1302,6 +1446,17 @@ function ReconciliationView({ darkMode, slip, onBack, onComplete }: {
                     </>
                 )}
             </div>
+            <CountPurchaseSurplusInfoModal
+                open={purchaseModalOpen}
+                darkMode={darkMode}
+                ficheNo={currentSlip.fiche_no}
+                confirmBusy={purchaseConfirmBusy}
+                tm={tm}
+                onClose={() => {
+                    if (!purchaseConfirmBusy) setPurchaseModalOpen(false);
+                }}
+                onConfirm={() => void handleOpenPurchaseDraft()}
+            />
         </div>
     );
 }
@@ -1320,7 +1475,10 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     const [slips, setSlips] = useState<CountingSlip[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterStatus, setFilterStatus] = useState<string>('');
-    const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null);
+    const [purchaseModalSlip, setPurchaseModalSlip] = useState<CountingSlip | null>(null);
+    const [purchaseModalBusy, setPurchaseModalBusy] = useState(false);
+    /** Tamamlanan fişlerde fazla satırı var mı (satır bazlı sorgu — taslak boş kalmasın) */
+    const [surplusEligibleBySlip, setSurplusEligibleBySlip] = useState<Record<string, boolean>>({});
 
     const loadSlips = useCallback(async () => {
         setLoading(true);
@@ -1336,6 +1494,34 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
 
     useEffect(() => { loadSlips(); }, [loadSlips]);
 
+    useEffect(() => {
+        const completed = slips.filter(s => normSlipStatus(s.status) === 'completed');
+        if (completed.length === 0) {
+            setSurplusEligibleBySlip({});
+            return;
+        }
+        let cancelled = false;
+        setSurplusEligibleBySlip({});
+        void (async () => {
+            for (const s of completed) {
+                if (cancelled) return;
+                let ok = false;
+                try {
+                    const { lines } = await wmsStockCount.getSlipWithLines(s.id);
+                    ok = countSlipHasSurplusForPurchase(lines);
+                } catch {
+                    ok = false;
+                }
+                if (!cancelled) {
+                    setSurplusEligibleBySlip(prev => ({ ...prev, [s.id]: ok }));
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [slips]);
+
     const handleCancel = async (slip: CountingSlip) => {
         if (!confirm(`"${slip.fiche_no}" ${tm('confirmCancelCount')}`)) return;
         await wmsStockCount.cancelSlip(slip.id);
@@ -1343,11 +1529,12 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     };
 
     const handleListPurchaseDraft = async (slip: CountingSlip) => {
-        setPurchaseBusyId(slip.id);
+        setPurchaseModalBusy(true);
         try {
-            await navigatePurchaseDraftFromCountSlip(slip.id, slip, tm, selectedFirm);
+            const ok = await navigatePurchaseDraftFromCountSlip(slip.id, slip, tm, selectedFirm);
+            if (ok) setPurchaseModalSlip(null);
         } finally {
-            setPurchaseBusyId(null);
+            setPurchaseModalBusy(false);
         }
     };
 
@@ -1356,10 +1543,13 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
 
     const stats = {
-        draft: slips.filter(s => s.status === 'draft').length,
-        active: slips.filter(s => s.status === 'active' || s.status === 'counting').length,
-        reconciliation: slips.filter(s => s.status === 'reconciliation').length,
-        completed: slips.filter(s => s.status === 'completed').length,
+        draft: slips.filter(s => normSlipStatus(s.status) === 'draft').length,
+        active: slips.filter(s => {
+            const st = normSlipStatus(s.status);
+            return st === 'active' || st === 'counting';
+        }).length,
+        reconciliation: slips.filter(s => normSlipStatus(s.status) === 'reconciliation').length,
+        completed: slips.filter(s => normSlipStatus(s.status) === 'completed').length,
     };
 
     return (
@@ -1440,8 +1630,10 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {slips.map(slip => (
-                            <div key={slip.id} className={`${cardClass} border rounded-xl overflow-hidden shadow-sm`}>
+                        {slips.map(slip => {
+                            const st = normSlipStatus(slip.status);
+                            return (
+                            <div key={slip.id} className={`${cardClass} border rounded-xl shadow-sm`}>
                                 <div className="p-4">
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
@@ -1473,53 +1665,63 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                         <p className="text-xs text-gray-500 mb-3">{slip.description}</p>
                                     )}
 
-                                    {/* Action Buttons */}
-                                    <div className="flex gap-2">
-                                        {(slip.status === 'draft' || slip.status === 'active' || slip.status === 'counting') && (
+                                    {/* Action Buttons — overflow-hidden yok; uzun metinlerde sağ buton kırpılmasın */}
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                        {(st === 'draft' || st === 'active' || st === 'counting') && (
                                             <button
                                                 onClick={() => onEntry(slip)}
-                                                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-colors"
+                                                className="w-full sm:flex-1 sm:min-w-[140px] py-2 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-colors"
                                             >
                                                 <Scan className="w-4 h-4" /> {tm('countEntry')}
                                             </button>
                                         )}
-                                        {slip.status === 'reconciliation' && (
+                                        {st === 'reconciliation' && (
                                             <button
                                                 onClick={() => onReconciliation(slip)}
-                                                className="flex-1 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-purple-700 transition-colors"
+                                                className="w-full sm:flex-1 sm:min-w-[140px] py-2 bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-purple-700 transition-colors"
                                             >
                                                 <BarChart3 className="w-4 h-4" /> {tm('countReconciliation')}
                                             </button>
                                         )}
-                                        {slip.status === 'completed' && (
-                                            <>
+                                        {st === 'completed' && (
+                                            <div className="flex w-full flex-col gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => onReconciliation(slip)}
-                                                    className="flex-1 min-w-0 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-gray-600 transition-colors"
+                                                    className="w-full py-3 px-3 bg-gray-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-600 transition-colors"
                                                 >
-                                                    <Eye className="w-4 h-4 shrink-0" /> {tm('viewLabel')}
+                                                    <Eye className="w-4 h-4 shrink-0" aria-hidden />
+                                                    <span>{tm('viewLabel')}</span>
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => void handleListPurchaseDraft(slip)}
-                                                    disabled={purchaseBusyId === slip.id}
-                                                    className="flex-1 min-w-0 py-2 bg-cyan-600 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 hover:bg-cyan-500 transition-colors disabled:opacity-60"
-                                                    title={tm('countPurchaseFromSurplusHint')}
+                                                    onClick={() => setPurchaseModalSlip(slip)}
+                                                    disabled={
+                                                        surplusEligibleBySlip[slip.id] === false
+                                                        || surplusEligibleBySlip[slip.id] === undefined
+                                                        || (purchaseModalSlip !== null && purchaseModalSlip.id !== slip.id)
+                                                        || (purchaseModalSlip?.id === slip.id && purchaseModalBusy)
+                                                    }
+                                                    className="w-full py-3 px-3 bg-teal-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    title={
+                                                        surplusEligibleBySlip[slip.id] === false
+                                                            ? tm('countPurchaseFromSurplusNoLines')
+                                                            : tm('countPurchaseFromSurplusHint')
+                                                    }
                                                 >
-                                                    {purchaseBusyId === slip.id ? (
-                                                        <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                                                    {surplusEligibleBySlip[slip.id] === undefined ? (
+                                                        <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
                                                     ) : (
-                                                        <ShoppingCart className="w-4 h-4 shrink-0" />
+                                                        <ShoppingCart className="w-4 h-4 shrink-0" aria-hidden />
                                                     )}
-                                                    <span className="truncate">{tm('countPurchaseFromSurplusBtn')}</span>
+                                                    <span className="text-center leading-tight">{tm('countPurchaseFromSurplusBtn')}</span>
                                                 </button>
-                                            </>
+                                            </div>
                                         )}
-                                        {(slip.status === 'draft' || slip.status === 'active') && (
+                                        {(st === 'draft' || st === 'active') && (
                                             <button
                                                 onClick={() => handleCancel(slip)}
-                                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors sm:shrink-0"
                                             >
                                                 <XCircle className="w-5 h-5" />
                                             </button>
@@ -1527,10 +1729,24 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
+            <CountPurchaseSurplusInfoModal
+                open={!!purchaseModalSlip}
+                darkMode={darkMode}
+                ficheNo={purchaseModalSlip?.fiche_no ?? ''}
+                confirmBusy={purchaseModalBusy}
+                tm={tm}
+                onClose={() => {
+                    if (!purchaseModalBusy) setPurchaseModalSlip(null);
+                }}
+                onConfirm={() => {
+                    if (purchaseModalSlip) void handleListPurchaseDraft(purchaseModalSlip);
+                }}
+            />
         </div>
     );
 }

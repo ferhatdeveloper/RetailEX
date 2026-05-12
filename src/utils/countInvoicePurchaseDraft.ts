@@ -1,134 +1,131 @@
-import type { Invoice } from '../core/types';
+import type { Invoice } from '../core/types/models';
 
-/** Logo: alış grubunda sayım fazlası fişi (stok zaten sayımla güncellenmiş olabilir). */
-export const SAYIM_FAZLASI_ALIS_TRCODES: ReadonlySet<number> = new Set([26]);
+/** Logo / ERP: sayım fazlası alış faturası */
+const SAYIM_FAZLASI_TRCODE = 26;
 
+/**
+ * Liste satırı: yalnızca sayım fazlası (trcode 26) alış faturaları toplu taslağa alınabilir.
+ */
 export function isSayimFazlasiAlisInvoice(inv: {
-  invoice_type?: number;
-  trcode?: number;
+    invoice_category?: string;
+    invoice_type?: number;
+    trcode?: number;
 }): boolean {
-  const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
-  return SAYIM_FAZLASI_ALIS_TRCODES.has(tc);
+    const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
+    if (tc !== SAYIM_FAZLASI_TRCODE) return false;
+    const cat = inv.invoice_category;
+    if (cat && cat !== 'Alis') return false;
+    return true;
 }
 
-function mergeKeyForItem(item: {
-  productId?: string;
-  code?: string;
-}): string {
-  const pid = item.productId != null ? String(item.productId).trim() : '';
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pid)) {
-    return `uuid:${pid.toLowerCase()}`;
-  }
-  const code = String(item.code || '').trim();
-  if (code) return `code:${code}`;
-  return `anon:${Math.random().toString(36).slice(2)}`;
+type DraftLine = {
+    type: string;
+    productId: string;
+    code: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    discountPercent: number;
+};
+
+function rawLineToDraft(item: Record<string, unknown>): DraftLine | null {
+    const qty = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
+    if (qty <= 0.000001) return null;
+    const pidRaw = item.product_id ?? item.productId;
+    const productId = pidRaw != null && String(pidRaw).trim() !== '' ? String(pidRaw).trim() : '';
+    const code = String(item.item_code ?? item.code ?? item.product_code ?? '').trim();
+    if (!productId && !code) return null;
+    const unitPrice = parseFloat(String(item.unit_price ?? item.price ?? item.unitPrice ?? 0)) || 0;
+    const description = String(
+        item.item_name ?? item.description ?? item.product_name ?? item.productName ?? ''
+    ).trim();
+    const unit = (String(item.unit ?? 'Adet').trim() || 'Adet');
+    const discountPercent = parseFloat(String(item.discount_rate ?? item.discountPercent ?? 0)) || 0;
+    return {
+        type: 'Malzeme',
+        productId: productId || code,
+        code: code || productId,
+        description,
+        quantity: qty,
+        unit,
+        unitPrice,
+        discountPercent,
+    };
 }
 
-function lineBaseQty(item: {
-  baseQuantity?: number;
-  quantity?: number;
-  multiplier?: number;
-}): number {
-  const m = Number(item.multiplier) > 0 ? Number(item.multiplier) : 1;
-  if (item.baseQuantity != null && Number.isFinite(Number(item.baseQuantity))) {
-    return Number(item.baseQuantity);
-  }
-  return (Number(item.quantity) || 0) * m;
+function mergeKey(row: DraftLine): string {
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (row.productId && uuid.test(row.productId)) return `id:${row.productId}`;
+    const c = (row.code || '').trim();
+    if (c) return `code:${c.toLowerCase()}`;
+    return `id:${row.productId}`;
 }
 
 /**
- * Bir veya birden fazla sayım fazlası (trcode 26) alış faturasından,
- * UniversalInvoiceForm için tek taslak (birleştirilmiş satırlar).
+ * Birden çok sayım fazlası (26) faturasının satırlarını tek alış faturası editData taslağında birleştirir.
+ * Aynı ürün (UUID veya kod) satırları toplanır; birim fiyat miktar ağırlıklı ortalama alınır.
  */
 export function buildPurchaseEditDataFromSayimInvoices(
-  fullInvoices: Invoice[],
-  tm: (key: string) => string
+    invoices: Invoice[],
+    tm: (key: string) => string
 ): Record<string, unknown> | null {
-  const bad = fullInvoices.filter((inv) => !isSayimFazlasiAlisInvoice(inv));
-  if (bad.length) return null;
+    if (!invoices.length) return null;
+    const map = new Map<string, DraftLine>();
 
-  type Acc = {
-    description: string;
-    unit: string;
-    qty: number;
-    priceSum: number;
-    code: string;
-    productId: string;
-  };
-  const map = new Map<string, Acc>();
-
-  for (const inv of fullInvoices) {
-    const items = inv.items || [];
-    for (const raw of items as any[]) {
-      const unitPrice = Number(raw.unitPrice ?? raw.price ?? 0) || 0;
-      const baseQty = lineBaseQty(raw);
-      if (baseQty <= 0.0000001) continue;
-      const key = mergeKeyForItem({
-        productId: raw.productId,
-        code: raw.code,
-      });
-      const desc = String(raw.description || raw.productName || '').trim();
-      const unit = String(raw.unit || 'Adet').trim() || 'Adet';
-      const code = String(raw.code || '').trim();
-      const productId =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(raw.productId || ''))
-          ? String(raw.productId)
-          : code;
-
-      const prev = map.get(key);
-      if (!prev) {
-        map.set(key, {
-          description: desc,
-          unit,
-          qty: baseQty,
-          priceSum: unitPrice * baseQty,
-          code,
-          productId,
-        });
-      } else {
-        prev.qty += baseQty;
-        prev.priceSum += unitPrice * baseQty;
-        if (desc && (!prev.description || desc.length > prev.description.length)) {
-          prev.description = desc;
+    for (const inv of invoices) {
+        const rows = Array.isArray(inv.items) ? inv.items : [];
+        for (const raw of rows) {
+            const line = rawLineToDraft(raw as Record<string, unknown>);
+            if (!line) continue;
+            const k = mergeKey(line);
+            const prev = map.get(k);
+            if (!prev) {
+                map.set(k, { ...line });
+                continue;
+            }
+            const q1 = prev.quantity;
+            const q2 = line.quantity;
+            const sumQ = q1 + q2;
+            const w =
+                sumQ > 0.000001 ? (q1 * prev.unitPrice + q2 * line.unitPrice) / sumQ : prev.unitPrice;
+            map.set(k, {
+                ...prev,
+                quantity: sumQ,
+                unitPrice: Number.isFinite(w) ? w : prev.unitPrice,
+                description: prev.description || line.description,
+                code: (prev.code && prev.code.trim()) || line.code,
+                productId: prev.productId || line.productId,
+            });
         }
-      }
     }
-  }
 
-  const formItems: Array<Record<string, unknown>> = [];
-  for (const acc of map.values()) {
-    if (acc.qty <= 0.0000001) continue;
-    const unitPrice = acc.qty > 0 ? acc.priceSum / acc.qty : 0;
-    formItems.push({
-      type: 'Malzeme',
-      productId: acc.productId,
-      code: acc.code,
-      description: acc.description,
-      quantity: acc.qty,
-      unit: acc.unit,
-      unitPrice,
-      discountPercent: 0,
-    });
-  }
+    const items = [...map.values()].map((row) => ({
+        type: row.type,
+        productId: row.productId,
+        code: row.code,
+        description: row.description,
+        quantity: row.quantity,
+        unit: row.unit,
+        unitPrice: row.unitPrice,
+        discountPercent: row.discountPercent,
+    }));
+    if (!items.length) return null;
 
-  if (!formItems.length) return null;
-
-  const nos = fullInvoices
-    .map((i) => String(i.invoice_no || (i as any).fiche_no || '').trim())
-    .filter(Boolean);
-  const labelExtra = nos.length ? nos.join(', ') : String(fullInvoices.length);
-  const supplierLabel = `${tm('countPurchaseSupplierName')} (${labelExtra})`;
-  const today = new Date().toISOString().slice(0, 10);
-  const ids = fullInvoices.map((i) => String(i.id || '').trim()).filter(Boolean);
-
-  return {
-    invoice_date: today,
-    invoice_category: 'Alis',
-    supplier_name: supplierLabel,
-    supplier_code: '',
-    supplier_id: '',
-    customer_name: supplierLabel,
-    notes: `${tm('invoiceBulkPurchaseFromSayimNotesPrefix')} ${labelExtra}${ids.length ? ` [${ids.join(', ')}]` : ''}`,
-    items: formItems,
-  };
+    const today = new Date().toISOString().slice(0, 10);
+    const nos = invoices
+        .map((i) => i.invoice_no)
+        .filter((n) => n != null && String(n).trim() !== '')
+        .join(', ');
+    const supplierLabel = `${tm('invoiceTypeCountSurplus')} (${invoices.length})`;
+    return {
+        invoice_date: today,
+        invoice_category: 'Alis',
+        supplier_name: supplierLabel,
+        supplier_code: '',
+        supplier_id: '',
+        customer_name: supplierLabel,
+        notes: `${tm('invoiceBulkPurchaseFromSayimNotesPrefix')} ${nos}`,
+        items,
+    };
 }

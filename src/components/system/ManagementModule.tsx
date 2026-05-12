@@ -37,7 +37,7 @@ import { LogisticsModule } from '../modules/LogisticsModule';
 import { SalesInvoiceModule } from '../trading/sales/SalesInvoiceModule';
 import { PurchaseInvoiceModule } from '../trading/purchase/PurchaseInvoiceModule';
 import { UnifiedInvoiceModule } from '../trading/invoices/UnifiedInvoiceModule';
-import { InvoiceListModule } from '../trading/invoices/InvoiceListModule';
+import { InvoiceListModule, type CountPurchaseDraftPrefill } from '../trading/invoices/InvoiceListModule';
 import { ETransformModule } from '../modules/ETransformModule';
 import { ReturnModule } from '../trading/invoices/ReturnModule';
 import { ProductionModule } from '../modules/ProductionModule';
@@ -273,6 +273,10 @@ export function ManagementModule({
   };
 
   const [currentScreen, setCurrentScreen] = useState<ExtendedScreen>(getInitialScreen);
+  const [countPurchaseDraftPrefill, setCountPurchaseDraftPrefill] = useState<CountPurchaseDraftPrefill | null>(null);
+  const clearCountPurchaseDraftPrefill = useCallback(() => {
+    setCountPurchaseDraftPrefill(null);
+  }, []);
   const { isMobile, isTablet } = useResponsive();
   const { darkMode } = useTheme();
   const { language: currentLanguage, setLanguage, t } = useLanguage(); // Use global language context
@@ -426,14 +430,33 @@ export function ManagementModule({
   // Listen for navigation events from other components
   useEffect(() => {
     const handleNavigateToScreen = (e: CustomEvent) => {
-      const screen = e.detail as ExtendedScreen;
-      setCurrentScreen(screen);
+      const d = e.detail as unknown;
+      let screenId: ExtendedScreen;
+      if (d && typeof d === 'object' && d !== null && 'screen' in (d as Record<string, unknown>)) {
+        const o = d as {
+          screen: ExtendedScreen;
+          countPurchaseDraft?: { editData: Record<string, unknown>; skipProductStockUpdate?: boolean };
+        };
+        screenId = o.screen;
+        if (o.countPurchaseDraft?.editData) {
+          setCountPurchaseDraftPrefill({
+            editData: o.countPurchaseDraft.editData,
+            skipProductStockUpdate: !!o.countPurchaseDraft.skipProductStockUpdate,
+          });
+        } else {
+          setCountPurchaseDraftPrefill(null);
+        }
+      } else {
+        screenId = d as ExtendedScreen;
+        setCountPurchaseDraftPrefill(null);
+      }
+      setCurrentScreen(screenId);
       if (isMobile) effectiveSetSidebarOpen(false);
 
       // Update storage immediately to prevent remount race conditions
       try {
         const userKey = user ? `last_screen_${user.username}` : 'last_screen_guest';
-        localStorage.setItem(userKey, screen);
+        localStorage.setItem(userKey, String(screenId));
       } catch (e) {
         console.warn('Failed to save screen state');
       }
@@ -1120,9 +1143,28 @@ export function ManagementModule({
         case 'sales-invoice-return':
           return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="3" title={t.salesReturnTitle} description={t.salesReturnDesc} />;
         case 'purchaseinvoice':
-          return <InvoiceListModule products={products} defaultCategory="Alis" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
+          return (
+            <InvoiceListModule
+              products={products}
+              defaultCategory="Alis"
+              title={t.purchaseInvoicesTitle}
+              description={t.purchaseInvoicesDesc}
+              countPurchaseDraftPrefill={countPurchaseDraftPrefill}
+              onCountPurchaseDraftPrefillConsumed={clearCountPurchaseDraftPrefill}
+            />
+          );
         case 'purchase-invoice-standard':
-          return <InvoiceListModule products={products} defaultCategory="Alis" defaultInvoiceTypeFilter="1" title={t.purchaseInvoicesTitle} description={t.purchaseInvoicesDesc} />;
+          return (
+            <InvoiceListModule
+              products={products}
+              defaultCategory="Alis"
+              defaultInvoiceTypeFilter="1"
+              title={t.purchaseInvoicesTitle}
+              description={t.purchaseInvoicesDesc}
+              countPurchaseDraftPrefill={countPurchaseDraftPrefill}
+              onCountPurchaseDraftPrefillConsumed={clearCountPurchaseDraftPrefill}
+            />
+          );
         case 'purchase-invoice-return':
           return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title={t.purchaseReturnTitle} description={t.purchaseReturnDesc} />;
         case 'serviceinvoice':

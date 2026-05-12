@@ -25,6 +25,11 @@ import {
 } from '../../../utils/countInvoicePurchaseDraft';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
+export type CountPurchaseDraftPrefill = {
+  editData: Record<string, unknown>;
+  skipProductStockUpdate?: boolean;
+};
+
 export interface InvoiceListModuleProps {
   onInvoiceSelect?: (invoice: Invoice) => void;
   title?: string;
@@ -33,6 +38,9 @@ export interface InvoiceListModuleProps {
   defaultCategory?: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
   customers?: any[];
   products?: any[];
+  /** Sayım → alış: ManagementModule navigasyonu ile gelen taslak (sessionStorage’dan bağımsız) */
+  countPurchaseDraftPrefill?: CountPurchaseDraftPrefill | null;
+  onCountPurchaseDraftPrefillConsumed?: () => void;
 }
 
 interface InvoiceType {
@@ -61,7 +69,16 @@ const LONG_PRESS_MOVE_PX = 14;
 /** Liste satırı: SQL/PostgREST `trcode` ve tarih alias'ı `date` */
 type ListInvoice = Invoice & { trcode?: number; date?: string };
 
-export function InvoiceListModule({ customers = [], products = [], defaultInvoiceTypeFilter, defaultCategory, title, description }: InvoiceListModuleProps) {
+export function InvoiceListModule({
+  customers = [],
+  products = [],
+  defaultInvoiceTypeFilter,
+  defaultCategory,
+  title,
+  description,
+  countPurchaseDraftPrefill = null,
+  onCountPurchaseDraftPrefillConsumed,
+}: InvoiceListModuleProps) {
   const { tm } = useLanguage();
   const { isMobile } = useResponsive();
   const { selectedFirm } = useFirmaDonem();
@@ -240,9 +257,41 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
     setSelectedCategory(defaultCategory || 'all');
   }, [defaultCategory]);
 
-  /** Sayım mutabakatından gelen alış faturası taslağı (sessionStorage). */
+  /** Sayım → alış taslak: önce props (navigasyon), yoksa sessionStorage (yedek). */
   useEffect(() => {
     if (defaultCategory !== 'Alis') return;
+
+    const openCountPurchaseDraft = (editData: Record<string, unknown>, skipProductStockUpdate?: boolean) => {
+      const purchaseType = INVOICE_TYPES.find((t) => t.code === 1);
+      if (!purchaseType) return;
+      setShowInvoiceTypeModal(false);
+      setEditInvoiceData(editData as unknown as Invoice);
+      setNewFormCounter((c) => c + 1);
+      setSelectedInvoiceType(purchaseType);
+      if (skipProductStockUpdate) {
+        setPurchaseCreateSaveOptions({ skipProductStockUpdate: true });
+      } else {
+        setPurchaseCreateSaveOptions(null);
+      }
+    };
+
+    const ext = countPurchaseDraftPrefill;
+    if (ext?.editData) {
+      openCountPurchaseDraft(ext.editData, !!ext.skipProductStockUpdate);
+      try {
+        sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      /* React 18 Strict Mode: aynı effect iki kez; anında consume edilirse ikinci çalışmada prefill boş kalır */
+      const clearPrefillTimer = window.setTimeout(() => {
+        onCountPurchaseDraftPrefillConsumed?.();
+      }, 0);
+      return () => {
+        window.clearTimeout(clearPrefillTimer);
+      };
+    }
+
     try {
       const raw = sessionStorage.getItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
       if (!raw) return;
@@ -252,22 +301,11 @@ export function InvoiceListModule({ customers = [], products = [], defaultInvoic
       };
       sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
       if (!payload?.editData) return;
-      const purchaseType = INVOICE_TYPES.find(t => t.code === 1);
-      if (!purchaseType) return;
-      setShowInvoiceTypeModal(false);
-      setEditInvoiceData(payload.editData as unknown as Invoice);
-      setNewFormCounter(c => c + 1);
-      setSelectedInvoiceType(purchaseType);
-      if (payload.skipProductStockUpdate) {
-        setPurchaseCreateSaveOptions({ skipProductStockUpdate: true });
-      } else {
-        setPurchaseCreateSaveOptions(null);
-      }
+      openCountPurchaseDraft(payload.editData, !!payload.skipProductStockUpdate);
     } catch {
       sessionStorage.removeItem(PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca Alis ekranına girişte bir kez
-  }, [defaultCategory]);
+  }, [defaultCategory, countPurchaseDraftPrefill, onCountPurchaseDraftPrefillConsumed]);
 
   const loadInvoices = async () => {
     setIsLoading(true);
