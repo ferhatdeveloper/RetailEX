@@ -1435,21 +1435,40 @@ export function ManagementModule({
         />
       )}
 
-      {/* Sidebar Container */}
-      <div
-        className={isMobile
-          ? `fixed inset-y-0 left-0 w-80 max-w-[min(100vw,20rem)] transition-transform duration-300 ease-in-out ${effectiveSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none invisible opacity-0'}`
-          : `transition-all duration-300 ease-in-out ${effectiveSidebarOpen ? 'w-64 md:w-80' : 'w-0 overflow-hidden'} flex-shrink-0 relative`}
-        style={
-          isMobile
-            ? { zIndex: effectiveSidebarOpen ? Z_INDEX.SIDEBAR : Z_INDEX.SIDEBAR_MOBILE_CLOSED }
-            : {}
-        }
-        aria-hidden={isMobile ? !effectiveSidebarOpen : undefined}
-      >
+      {/* Sidebar Container.
+          - Mobil: fixed overlay; closed iken transform ile dışarı kayar (DOM'da kalır).
+          - Desktop: closed iken DOM'dan tamamen kaldırılır, böylece hiç yer kaplamaz.
+          - Açık iken inline style ile width + transition uygulanır. */}
+      {isMobile ? (
         <div
-          className={`h-full transition-opacity duration-300 ${!isMobile && !effectiveSidebarOpen ? 'opacity-0' : 'opacity-100'} ${isMobile && !effectiveSidebarOpen ? 'pointer-events-none' : ''}`}
+          className={`fixed inset-y-0 left-0 w-80 max-w-[min(100vw,20rem)] transition-transform duration-300 ease-in-out ${effectiveSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none invisible opacity-0'}`}
+          style={{ zIndex: effectiveSidebarOpen ? Z_INDEX.SIDEBAR : Z_INDEX.SIDEBAR_MOBILE_CLOSED }}
+          aria-hidden={!effectiveSidebarOpen}
         >
+          <div className={`h-full ${!effectiveSidebarOpen ? 'pointer-events-none' : ''}`}>
+            <ModernSidebar
+              menuSections={menuSections}
+              currentScreen={currentScreen}
+              setCurrentScreen={setScreenFromSidebar}
+              menuSearchQuery={menuSearchQuery}
+              setMenuSearchQuery={setMenuSearchQuery}
+              searchResults={searchResults}
+              handleSearchItemClick={handleSearchItemClick}
+              expandedSections={expandedSections}
+              toggleSection={toggleSection}
+              currentLanguage={currentLanguage}
+              setCurrentLanguage={setLanguage}
+              showLanguageMenu={showLanguageMenu}
+              setShowLanguageMenu={setShowLanguageMenu}
+              languages={languages}
+              APP_VERSION={APP_VERSION}
+              t={t}
+              menuSource={'static'}
+            />
+          </div>
+        </div>
+      ) : effectiveSidebarOpen ? (
+        <div className="w-64 md:w-80 flex-shrink-0 h-full">
           <ModernSidebar
             menuSections={menuSections}
             currentScreen={currentScreen}
@@ -1470,7 +1489,7 @@ export function ManagementModule({
             menuSource={'static'}
           />
         </div>
-      </div>
+      ) : null}
 
       {/* Main Content — mobilde üst bardaki hamburger ile, desktop'ta üst bardaki
           panel toggle butonu (veya Ctrl+B) ile aç/kapa. */}
