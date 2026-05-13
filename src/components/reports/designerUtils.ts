@@ -1,6 +1,69 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
+const H2C_TEMP_ID_PREFIX = 'retailex-h2c-';
+
+/** html2canvas oklch() / modern CSS parse edemiyor; klon üzerinde harici CSS kaldırılıp hesaplanmış stiller inline yapılır. */
+function stripExternalStylesFromClone(clonedDoc: Document) {
+    clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((n) => n.remove());
+    clonedDoc.querySelectorAll('style').forEach((n) => n.remove());
+}
+
+function inlineSubtreeComputedStyles(origRoot: HTMLElement, cloneRoot: HTMLElement) {
+    const origFlat = [origRoot, ...origRoot.querySelectorAll<HTMLElement>('*')];
+    const cloneFlat = [cloneRoot, ...cloneRoot.querySelectorAll<HTMLElement>('*')];
+    const n = Math.min(origFlat.length, cloneFlat.length);
+    for (let i = 0; i < n; i++) {
+        const o = origFlat[i];
+        const c = cloneFlat[i];
+        if (o.tagName === 'CANVAS' || c.tagName === 'CANVAS') continue;
+        const computed = window.getComputedStyle(o);
+        for (let j = 0; j < computed.length; j++) {
+            const name = computed[j];
+            try {
+                const value = computed.getPropertyValue(name);
+                if (value) {
+                    if (computed.getPropertyPriority(name) === 'important') {
+                        c.style.setProperty(name, value, 'important');
+                    } else {
+                        c.style.setProperty(name, value);
+                    }
+                }
+            } catch {
+                /* bazı salt-okunur / motor özellikleri atlanır */
+            }
+        }
+    }
+}
+
+function withPdfCaptureRoot<T>(element: HTMLElement, fn: (tempId: string) => Promise<T>): Promise<T> {
+    const tempId = `${H2C_TEMP_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+    const prevId = element.id;
+    element.id = tempId;
+    return fn(tempId).finally(() => {
+        element.id = prevId;
+    });
+}
+
+const HTML2CANVAS_PDF_BASE = {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor: '#ffffff',
+    scrollX: 0,
+    scrollY: 0,
+} as const;
+
+function onCloneStripOklchAndInline(orig: HTMLElement, tempId: string) {
+    return (clonedDoc: Document) => {
+        stripExternalStylesFromClone(clonedDoc);
+        const cloneRoot = clonedDoc.getElementById(tempId);
+        if (cloneRoot instanceof HTMLElement) {
+            inlineSubtreeComputedStyles(orig, cloneRoot);
+        }
+    };
+}
+
 export interface ReportComponent {
     id: string;
     type: 'text' | 'image' | 'table' | 'barcode' | 'line' | 'rect';
@@ -48,14 +111,12 @@ export async function exportToPDF(
     const pw = Math.max(1, pageSizeMm.width);
     const ph = Math.max(1, pageSizeMm.height);
 
-    const canvas = await html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0,
-    });
+    const canvas = await withPdfCaptureRoot(element, (tempId) =>
+        html2canvas(element, {
+            ...HTML2CANVAS_PDF_BASE,
+            onclone: onCloneStripOklchAndInline(element, tempId),
+        })
+    );
 
     const imgData = canvas.toDataURL('image/png');
     const orientation = ph >= pw ? 'p' : 'l';
@@ -85,14 +146,12 @@ export async function exportElementsToPdfPages(
             pdf.addPage([pw, ph]);
         }
         const el = elements[i];
-        const canvas = await html2canvas(el, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            scrollX: 0,
-            scrollY: 0,
-        });
+        const canvas = await withPdfCaptureRoot(el, (tempId) =>
+            html2canvas(el, {
+                ...HTML2CANVAS_PDF_BASE,
+                onclone: onCloneStripOklchAndInline(el, tempId),
+            })
+        );
         const imgData = canvas.toDataURL('image/png');
         const pageW = pdf.internal.pageSize.getWidth();
         const pageH = pdf.internal.pageSize.getHeight();
