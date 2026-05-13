@@ -9,7 +9,8 @@ import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
   AlertCircle, Loader2, Package, Users, Layers, Wrench,
-  Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info, Calendar, CreditCard
+  Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info, Calendar, CreditCard,
+  TrendingUp
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { productAPI } from '../../services/api/products';
@@ -31,6 +32,7 @@ import type { BeautyService } from '../../types/beauty';
 
 type EntityType =
   | 'products'
+  | 'price-updates'
   | 'current-accounts'
   | 'variants'
   | 'services'
@@ -38,6 +40,9 @@ type EntityType =
   | 'categories'
   | 'beauty-appointments'
   | 'beauty-sales';
+
+/** Fiyat güncelleme — Excel satırından ürün eşleştirme stratejisi */
+type PriceMatchMode = 'barcode-first' | 'code-first' | 'barcode-only' | 'code-only';
 
 interface ImportResult {
   total: number;
@@ -50,6 +55,7 @@ interface ImportRunOptions {
   onLog?: (line: string) => void;
   duplicateCodeMode?: 'update' | 'change-code';
   duplicateBarcodeMode?: 'error' | 'change-barcode';
+  priceMatchMode?: PriceMatchMode;
 }
 
 interface Notification {
@@ -127,6 +133,30 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Açıklama': '',
         'Görsel URL': '',
         'Aktif (E/H)': 'E',
+      },
+    ],
+  },
+  'price-updates': {
+    label: 'Fiyat Güncelleme',
+    sheetName: 'Fiyat Güncelleme',
+    sample: [
+      {
+        'Ürün Kodu': 'URN-001',
+        'Barkod': '8690000000001',
+        'Ürün Adı': 'Örnek Ürün',
+        'Mevcut Alış': 50.00,
+        'Mevcut Satış': 100.00,
+        'Yeni Alış': 55.00,
+        'Yeni Satış': 110.00,
+      },
+      {
+        'Ürün Kodu': 'URN-002',
+        'Barkod': '8690000000002',
+        'Ürün Adı': 'Örnek Ürün 2',
+        'Mevcut Alış': 120.00,
+        'Mevcut Satış': 250.00,
+        'Yeni Alış': '',
+        'Yeni Satış': 275.00,
       },
     ],
   },
@@ -351,6 +381,23 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
     keyMap['Ürün Görsel URL'] = 'Görsel URL';
     keyMap['image_url'] = 'Görsel URL';
     keyMap['Image URL'] = 'Görsel URL';
+  } else if (entityType === 'price-updates') {
+    /** Alternatif sütun başlıkları — kullanıcı dışa aktarımdaki satış/alış yıldızlı kolonları getirebilir */
+    keyMap['Ürün Kodu*'] = 'Ürün Kodu';
+    keyMap['Satış Fiyatı*'] = 'Yeni Satış';
+    keyMap['Satış Fiyatı'] = 'Yeni Satış';
+    keyMap['Alış Fiyatı'] = 'Yeni Alış';
+    keyMap['Yeni Satış Fiyatı'] = 'Yeni Satış';
+    keyMap['Yeni Alış Fiyatı'] = 'Yeni Alış';
+    keyMap['New Sale Price'] = 'Yeni Satış';
+    keyMap['New Cost'] = 'Yeni Alış';
+    keyMap['New Purchase Price'] = 'Yeni Alış';
+    keyMap['Sale Price'] = 'Yeni Satış';
+    keyMap['Cost'] = 'Yeni Alış';
+    keyMap['Purchase Price'] = 'Yeni Alış';
+    keyMap['Code'] = 'Ürün Kodu';
+    keyMap['Product Code'] = 'Ürün Kodu';
+    keyMap['Barcode'] = 'Barkod';
   } else if (entityType === 'current-accounts') {
     keyMap['Hesap Kodu'] = 'Hesap Kodu*';
     keyMap['Ünvan'] = 'Ünvan*';
@@ -718,6 +765,29 @@ async function exportCurrentAccounts(): Promise<void> {
   await saveCurrentAccountsAsXlsx(data);
 }
 
+/**
+ * Fiyat güncelleme dışa aktarımı: yalnızca eşleştirme alanları + mevcut fiyatlar.
+ * Kullanıcı dosyayı doldurup yalnızca alış/satış fiyatlarını günceller; başka alan etkilenmez.
+ */
+async function exportPriceUpdates(): Promise<void> {
+  const products = await productAPI.getAll();
+  if (products.length === 0) throw new Error('Dışa aktarılacak ürün bulunamadı.');
+  const data = products.map(p => ({
+    'Ürün Kodu': p.code || '',
+    'Barkod': p.barcode || '',
+    'Ürün Adı': p.name || '',
+    'Mevcut Alış': Number(p.cost || 0),
+    'Mevcut Satış': Number(p.price || 0),
+    'Yeni Alış': '',
+    'Yeni Satış': '',
+  }));
+  await saveExcelOrThrow(
+    'Fiyat Güncelleme',
+    data,
+    `Fiyat_Guncelleme_${new Date().toISOString().split('T')[0]}.xlsx`
+  );
+}
+
 async function exportVariants(): Promise<void> {
   const products = await productAPI.getAll();
   const rows: any[] = [];
@@ -1033,6 +1103,145 @@ async function ensureCategoriesByNames(names: string[]): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * Excel hücresi gerçekten boş mu? (sadece beyaz boşluk / tire / "-" sayılır)
+ * 0 dahil tüm sayısal değerler "dolu" kabul edilir; o yüzden ayrı kontrol gerekir.
+ */
+function isPriceCellEmpty(val: any): boolean {
+  if (val === null || val === undefined) return true;
+  if (typeof val === 'number') return false;
+  const s = String(val).trim();
+  return s === '' || s === '-';
+}
+
+/**
+ * Fiyat güncelleme içe aktarımı.
+ *
+ * Davranış:
+ *  - Yalnızca `cost` (alış) ve `price` (satış) güncellenir. Diğer ürün alanları korunur.
+ *  - Eşleştirme `priceMatchMode` ile yapılır: önce barkod / önce kod / sadece barkod / sadece kod.
+ *  - Boş bırakılan `Yeni Alış` veya `Yeni Satış` hücresi o alanı atlar (silmez).
+ *  - 0 değeri geçerlidir; kullanıcı bilinçli olarak 0 yazabilir.
+ *  - Bulunamayan satırlar hata listesine yazılır; **yeni ürün eklenmez**.
+ */
+async function importPriceUpdates(rows: any[], options?: ImportRunOptions): Promise<ImportResult> {
+  const log = options?.onLog;
+  const matchMode: PriceMatchMode = options?.priceMatchMode ?? 'barcode-first';
+  const result: ImportResult = { total: rows.length, success: 0, failed: 0, errors: [] };
+  log?.(`[START] Fiyat güncelleme başladı. Toplam satır: ${rows.length}. Eşleştirme: ${matchMode}`);
+
+  /** Performans: tüm ürünleri bir kez yükle, barkod / kod tabanlı Map oluştur. */
+  const allProducts = await productAPI.getAll();
+  const byBarcode = new Map<string, { id: string; code: string; barcode: string; name: string }>();
+  const byCode = new Map<string, { id: string; code: string; barcode: string; name: string }>();
+  for (const p of allProducts) {
+    const meta = {
+      id: String(p.id),
+      code: String(p.code || '').trim(),
+      barcode: String(p.barcode || '').trim(),
+      name: String(p.name || '').trim(),
+    };
+    if (meta.barcode) byBarcode.set(meta.barcode, meta);
+    if (meta.code) byCode.set(meta.code.toUpperCase(), meta);
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowNum = i + 2;
+    const codeRaw = strFromExcel(row['Ürün Kodu']);
+    const barcodeRaw = barcodeFromExcel(row['Barkod']);
+    const codeKey = codeRaw.toUpperCase();
+
+    if (!codeRaw && !barcodeRaw) {
+      result.failed++;
+      result.errors.push({ row: rowNum, message: 'Eşleştirme için en az "Ürün Kodu" veya "Barkod" doldurulmalıdır.' });
+      log?.(`[ROW ${rowNum}] SKIP - Kod/Barkod yok`);
+      continue;
+    }
+
+    /** Eşleştirme stratejisine göre ürünü bul */
+    let matched: { id: string; code: string; barcode: string; name: string } | undefined;
+    let matchedBy: 'barcode' | 'code' | null = null;
+    if (matchMode === 'barcode-first') {
+      if (barcodeRaw) { matched = byBarcode.get(barcodeRaw); if (matched) matchedBy = 'barcode'; }
+      if (!matched && codeKey) { matched = byCode.get(codeKey); if (matched) matchedBy = 'code'; }
+    } else if (matchMode === 'code-first') {
+      if (codeKey) { matched = byCode.get(codeKey); if (matched) matchedBy = 'code'; }
+      if (!matched && barcodeRaw) { matched = byBarcode.get(barcodeRaw); if (matched) matchedBy = 'barcode'; }
+    } else if (matchMode === 'barcode-only') {
+      if (barcodeRaw) { matched = byBarcode.get(barcodeRaw); if (matched) matchedBy = 'barcode'; }
+    } else if (matchMode === 'code-only') {
+      if (codeKey) { matched = byCode.get(codeKey); if (matched) matchedBy = 'code'; }
+    }
+
+    if (!matched) {
+      result.failed++;
+      const lookupInfo = [
+        barcodeRaw ? `barkod: ${barcodeRaw}` : '',
+        codeRaw ? `kod: ${codeRaw}` : '',
+      ].filter(Boolean).join(' / ');
+      result.errors.push({
+        row: rowNum,
+        message: `Ürün bulunamadı (${lookupInfo}). Eşleştirme modu: ${matchMode}.`,
+      });
+      log?.(`[ROW ${rowNum}] SKIP - Ürün bulunamadı (${lookupInfo})`);
+      continue;
+    }
+
+    /** Hangi alanlar güncellenecek? Boş bırakılan hücreyi atla. */
+    const updates: Partial<{ cost: number; price: number }> = {};
+    const newCostCell = row['Yeni Alış'];
+    const newPriceCell = row['Yeni Satış'];
+    if (!isPriceCellEmpty(newCostCell)) {
+      const cost = parseLocaleNumberTR(newCostCell);
+      if (!Number.isFinite(cost) || cost < 0) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: `Yeni Alış geçersiz: "${strFromExcel(newCostCell)}"` });
+        log?.(`[ROW ${rowNum}] ERROR - Yeni Alış geçersiz: ${strFromExcel(newCostCell)}`);
+        continue;
+      }
+      updates.cost = cost;
+    }
+    if (!isPriceCellEmpty(newPriceCell)) {
+      const price = parseLocaleNumberTR(newPriceCell);
+      if (!Number.isFinite(price) || price < 0) {
+        result.failed++;
+        result.errors.push({ row: rowNum, message: `Yeni Satış geçersiz: "${strFromExcel(newPriceCell)}"` });
+        log?.(`[ROW ${rowNum}] ERROR - Yeni Satış geçersiz: ${strFromExcel(newPriceCell)}`);
+        continue;
+      }
+      updates.price = price;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      result.failed++;
+      result.errors.push({
+        row: rowNum,
+        message: 'Hem "Yeni Alış" hem "Yeni Satış" boş. Bu satır atlandı (güncelleme yok).',
+      });
+      log?.(`[ROW ${rowNum}] SKIP - ${matched.code} için yeni fiyat girilmedi`);
+      continue;
+    }
+
+    try {
+      await productAPI.update(matched.id, updates as any);
+      result.success++;
+      const parts: string[] = [];
+      if (updates.cost !== undefined) parts.push(`alış→${updates.cost}`);
+      if (updates.price !== undefined) parts.push(`satış→${updates.price}`);
+      log?.(`[ROW ${rowNum}] UPDATE - ${matched.code || matched.barcode} (${matched.name}) [${matchedBy}] | ${parts.join(', ')}`);
+    } catch (err: any) {
+      result.failed++;
+      const msg = typeof err?.message === 'string' && err.message.trim() ? err.message.trim() : String(err);
+      result.errors.push({ row: rowNum, message: `Güncellenemedi: ${msg}` });
+      log?.(`[ROW ${rowNum}] ERROR - ${matched.code || matched.barcode} | ${msg}`);
+    }
+  }
+
+  log?.(`[END] Fiyat güncelleme bitti. Başarılı: ${result.success}, Hatalı: ${result.failed}`);
+  return result;
 }
 
 async function importProducts(rows: any[], options?: ImportRunOptions): Promise<ImportResult> {
@@ -1559,6 +1768,18 @@ const TABS: TabConfig[] = [
       '"Görsel URL" → image_url. Fiyatlar Türkçe biçimde olabilir: binlik ayırıcı nokta (örn. 5.000 veya 125.000), ondalık virgül (örn. 99,90). Sayfa adı "Ürünler" olmalı.',
   },
   {
+    id: 'price-updates',
+    label: 'priceUpdatesEntities',
+    icon: TrendingUp,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    borderColor: 'border-indigo-200',
+    exportFn: exportPriceUpdates,
+    importFn: importPriceUpdates,
+    importNote:
+      'Yalnızca alış ve satış fiyatlarını günceller; diğer ürün alanlarına dokunmaz. Eşleştirme barkod veya ürün kodu ile yapılır. Boş bırakılan "Yeni Alış" / "Yeni Satış" hücresi atlanır (silmez). Bulunamayan ürünler hata listesine yazılır — yeni ürün eklenmez. Sayfa adı "Fiyat Güncelleme" olmalı.',
+  },
+  {
     id: 'current-accounts',
     label: 'currentAccountsEntities',
     icon: Users,
@@ -1645,6 +1866,7 @@ export function ExcelModule() {
   const [importLogs, setImportLogs] = useState<string[]>([]);
   const [duplicateCodeMode, setDuplicateCodeMode] = useState<'update' | 'change-code'>('change-code');
   const [duplicateBarcodeMode, setDuplicateBarcodeMode] = useState<'error' | 'change-barcode'>('change-barcode');
+  const [priceMatchMode, setPriceMatchMode] = useState<PriceMatchMode>('barcode-first');
   const [isLoading, setIsLoading] = useState(false);
   const [editErrorModal, setEditErrorModal] = useState<{
     open: true;
@@ -1724,6 +1946,7 @@ export function ExcelModule() {
         onLog: appendImportLog,
         duplicateCodeMode,
         duplicateBarcodeMode,
+        priceMatchMode,
       });
       result.errors = result.errors.map((err) => {
         const rowData = rows[err.row - 2] as Record<string, any> | undefined;
@@ -1739,7 +1962,7 @@ export function ExcelModule() {
       }
       // Aktarılan varlığa göre listeyi yenile — Ürün Yönetimi / Cari vb. güncel veriyi göstersin
       if (result.success > 0) {
-        if (tab.id === 'products') loadProducts(true);
+        if (tab.id === 'products' || tab.id === 'price-updates') loadProducts(true);
         else if (tab.id === 'current-accounts') loadCustomers();
       }
     } catch (err: any) {
@@ -1747,7 +1970,7 @@ export function ExcelModule() {
     } finally {
       setIsLoading(false);
     }
-  }, [tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode]);
+  }, [tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode, priceMatchMode]);
 
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1855,6 +2078,7 @@ export function ExcelModule() {
         onLog: appendImportLog,
         duplicateCodeMode,
         duplicateBarcodeMode,
+        priceMatchMode,
       });
       const retryErrors = retryResult.errors.map((err) => ({
         ...err,
@@ -1884,7 +2108,7 @@ export function ExcelModule() {
 
       if (retryResult.failed === 0) {
         showNotification({ type: 'success', message: `Satır ${originalRow} başarıyla aktarıldı.` });
-        if (tab.id === 'products') loadProducts(true);
+        if (tab.id === 'products' || tab.id === 'price-updates') loadProducts(true);
         else if (tab.id === 'current-accounts') loadCustomers();
       } else {
         showNotification({ type: 'error', message: `Satır ${originalRow} için hata devam ediyor.` });
@@ -1896,7 +2120,7 @@ export function ExcelModule() {
     } finally {
       setIsLoading(false);
     }
-  }, [editErrorModal, tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode]);
+  }, [editErrorModal, tab, showNotification, loadProducts, loadCustomers, appendImportLog, duplicateCodeMode, duplicateBarcodeMode, priceMatchMode]);
 
   const handleCloseErrorEditor = useCallback(() => {
     setEditErrorModal({ open: false });
@@ -2184,6 +2408,37 @@ export function ExcelModule() {
                         <option value="change-barcode">Barkodu değiştirip ekle</option>
                         <option value="error">Hata ver, aktarma</option>
                       </select>
+                    </div>
+                  </div>
+                )}
+                {tab.id === 'price-updates' && (
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                        {tm('priceMatchModeLabel') || 'Eşleştirme alanı'}
+                      </label>
+                      <select
+                        value={priceMatchMode}
+                        onChange={(e) => setPriceMatchMode(e.target.value as PriceMatchMode)}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-2 text-xs text-gray-700 dark:text-gray-200"
+                      >
+                        <option value="barcode-first">
+                          {tm('priceMatchBarcodeFirst') || 'Önce barkod, bulamazsa ürün kodu'}
+                        </option>
+                        <option value="code-first">
+                          {tm('priceMatchCodeFirst') || 'Önce ürün kodu, bulamazsa barkod'}
+                        </option>
+                        <option value="barcode-only">
+                          {tm('priceMatchBarcodeOnly') || 'Yalnızca barkod ile eşleştir'}
+                        </option>
+                        <option value="code-only">
+                          {tm('priceMatchCodeOnly') || 'Yalnızca ürün kodu ile eşleştir'}
+                        </option>
+                      </select>
+                    </div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                      {tm('priceMatchHint') ||
+                        'Sadece alış ve satış fiyatları güncellenir. Boş bırakılan "Yeni Alış" / "Yeni Satış" hücresi atlanır. Bulunamayan satırlar hata listesinde gösterilir; yeni ürün eklenmez.'}
                     </div>
                   </div>
                 )}
