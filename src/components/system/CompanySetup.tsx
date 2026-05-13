@@ -24,6 +24,7 @@ import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, c
 import { logger } from '../../services/loggingService';
 import { getReceiptSettings, saveReceiptSettings, type ReceiptSettings } from '../../services/receiptSettingsService';
 import { eTransformService } from '../../services/eTransformService';
+import { emitInvalidate } from '../../services/retailexDataSync';
 import { nilveraDefaultBaseUrl } from '../../config/gibIntegratorProfiles';
 
 // ===== TYPES =====
@@ -229,6 +230,7 @@ export function CompanySetup() {
       };
 
       const newFirmRes = await organizationAPI.saveFirm(newFirmData);
+      emitInvalidate('firms');
       const newFirmId = newFirmRes?.id;
 
       // 2. Copy Accounts if selected
@@ -464,6 +466,7 @@ export function CompanySetup() {
       if (selectedNode?.type === 'company' || (selectedNode?.type === 'root' && mode === 'create')) {
         await organizationAPI.saveFirm(formData);
         eTransformService.resetConfigCache();
+        emitInvalidate('firms');
         toast.success('Firma başarıyla kaydedildi');
       }
       else if (selectedNode?.type === 'branch' || (selectedNode?.type === 'folder-branch' && mode === 'create')) {
@@ -506,6 +509,7 @@ export function CompanySetup() {
     try {
       if (selectedNode?.type === 'company') {
         await organizationAPI.deleteFirm(selectedNode.id);
+        emitInvalidate('firms');
       }
       else if (selectedNode?.type === 'branch') {
         await storeApiService.deleteStore(selectedNode.id);
