@@ -281,14 +281,14 @@ export const LABEL_DESIGNS: LabelDesign[] = [
     id: 'standard',
     name: 'Standart',
     description: 'Ürün bilgisi + Barkod + Fiyat',
-    icon: 'ğŸ“‹',
+    icon: '\u{1F4CB}',
     supportedSizes: ['all']
   },
   {
     id: 'detailed',
     name: 'Detaylı',
     description: 'Tüm bilgiler + Varyant özellikleri',
-    icon: 'ğŸ“',
+    icon: '\u{1F4DD}',
     supportedSizes: ['all']
   },
   {
@@ -302,21 +302,21 @@ export const LABEL_DESIGNS: LabelDesign[] = [
     id: 'promotional',
     name: 'Promosyon',
     description: 'İndirim göstergeli + Eski-Yeni fiyat',
-    icon: 'ğŸ”¥',
+    icon: '\u{1F525}',
     supportedSizes: ['all']
   },
   {
     id: 'qr',
     name: 'QR Kodlu',
     description: 'QR kod + Dijital entegrasyon',
-    icon: 'ğŸ“±',
+    icon: '\u{1F4F1}',
     supportedSizes: ['all']
   },
   {
     id: 'shelf',
     name: 'Raf Etiketi',
     description: 'Büyük font + Stok bilgisi + Konum',
-    icon: 'ğŸ·ï¸',
+    icon: '\u{1F3F7}\u{FE0F}',
     supportedSizes: ['raf-a4-full', 'raf-a4-half', 'raf-a5', 'raf-landscape']
   }
 ];

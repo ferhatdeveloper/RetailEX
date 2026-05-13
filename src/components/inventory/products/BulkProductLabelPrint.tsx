@@ -29,6 +29,7 @@ import {
   addProductsToBulkQueue,
   type BulkLabelQueueItem,
 } from './bulkLabelPrintFromProduct';
+import { DEFAULT_A4, exportElementsToPdfPages, exportToPDF } from '../../reports/designerUtils';
 
 export interface BulkProductLabelPrintProps {
   onClose: () => void;
