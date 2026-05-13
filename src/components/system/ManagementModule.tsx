@@ -8,8 +8,7 @@ import {
   Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
   PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
   Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft,
-  PanelLeftClose, PanelLeftOpen
+  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft
 } from 'lucide-react';
 const DevExDataGrid = lazy(() => import('../shared/DevExDataGrid').then(m => ({ default: m.DevExDataGrid })));
 import { APP_VERSION } from '../../core/version';
@@ -248,9 +247,26 @@ export function ManagementModule({
 
   useEffect(() => {
     const openSidebar = () => effectiveSetSidebarOpen(true);
+    const toggleSidebar = () => effectiveSetSidebarOpen(!effectiveSidebarOpen);
     window.addEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
-    return () => window.removeEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
-  }, [effectiveSetSidebarOpen]);
+    window.addEventListener('retailex-toggle-management-sidebar', toggleSidebar as EventListener);
+    return () => {
+      window.removeEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
+      window.removeEventListener('retailex-toggle-management-sidebar', toggleSidebar as EventListener);
+    };
+  }, [effectiveSidebarOpen, effectiveSetSidebarOpen]);
+
+  // Sidebar durum değişimini dış dünyaya (MainLayout üst bar butonu vb.) bildir.
+  useEffect(() => {
+    try {
+      (window as any).__retailexManagementSidebarOpen = effectiveSidebarOpen;
+      window.dispatchEvent(
+        new CustomEvent('retailex-management-sidebar-state', { detail: { open: effectiveSidebarOpen } })
+      );
+    } catch {
+      /* sessizce yoksay */
+    }
+  }, [effectiveSidebarOpen]);
 
   // Klavye kısayolu: Ctrl/Cmd + B → sidebar aç/kapa (VS Code/Linear stili).
   useEffect(() => {
@@ -1456,26 +1472,11 @@ export function ManagementModule({
         </div>
       </div>
 
-      {/* Main Content — mobil menü ana üst çubuktaki hamburger ile açılır;
-          desktop'ta sol-üst köşedeki floating toggle ile aynı işi yapar (Ctrl+B). */}
+      {/* Main Content — mobilde üst bardaki hamburger ile, desktop'ta üst bardaki
+          panel toggle butonu (veya Ctrl+B) ile aç/kapa. */}
       <div
-        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : 'relative'}`}
+        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
       >
-        {!isMobile && (
-          <button
-            type="button"
-            onClick={() => effectiveSetSidebarOpen(!effectiveSidebarOpen)}
-            title={`${effectiveSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')} (Ctrl+B)`}
-            aria-label={effectiveSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')}
-            aria-expanded={effectiveSidebarOpen}
-            className={`absolute top-2 left-2 z-20 inline-flex items-center justify-center w-9 h-9 rounded-lg border shadow-sm transition-all duration-200 active:scale-95 ${darkMode
-              ? 'bg-gray-800/90 hover:bg-gray-700 border-gray-700 text-gray-200 hover:text-white'
-              : 'bg-white/95 hover:bg-white border-gray-200 text-gray-600 hover:text-blue-700'
-            }`}
-          >
-            {effectiveSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-          </button>
-        )}
         <Suspense fallback={
           <div className="h-full flex items-center justify-center">
             <div className="text-center">

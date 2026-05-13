@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMem
 import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -394,6 +394,24 @@ export function MainLayout({
     const saved = localStorage.getItem('retailos_zoom_level');
     return saved ? parseInt(saved) : 100; // Varsayılan %100
   });
+
+  // Yönetim modülü sidebar açık/kapalı — ManagementModule'dan event ile gelir.
+  // Doğrudan tetiklemiyoruz; sadece üst bar toggle butonunun ikonu için izliyoruz.
+  const [managementSidebarOpen, setManagementSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('retailex-management-sidebar-open');
+    return saved === null ? true : saved === '1';
+  });
+  useEffect(() => {
+    const onState = (e: Event) => {
+      const ce = e as CustomEvent<{ open: boolean }>;
+      if (ce.detail && typeof ce.detail.open === 'boolean') {
+        setManagementSidebarOpen(ce.detail.open);
+      }
+    };
+    window.addEventListener('retailex-management-sidebar-state', onState as EventListener);
+    return () => window.removeEventListener('retailex-management-sidebar-state', onState as EventListener);
+  }, []);
   const [gridColumns, setGridColumns] = useState(() => {
     const saved = localStorage.getItem('retailos_grid_columns');
     return saved ? parseInt(saved) : 4;
@@ -953,13 +971,13 @@ export function MainLayout({
                 {currentModule === 'management' && (
                   <button
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('retailex-open-management-sidebar'))}
+                    onClick={() => window.dispatchEvent(new CustomEvent('retailex-toggle-management-sidebar'))}
                     className={cn(
                       'shrink-0 flex items-center justify-center rounded-xl bg-white/15 border border-white/25 text-white shadow-inner active:scale-[0.98] touch-manipulation',
                       isSmallMobile ? 'h-9 w-9' : 'h-10 w-10'
                     )}
-                    aria-label="Menüyü aç"
-                    title="Menüyü aç"
+                    aria-label="Menüyü aç/kapa"
+                    title="Menüyü aç/kapa"
                   >
                     <Menu className={isSmallMobile ? 'w-4 h-4' : 'w-5 h-5'} />
                   </button>
@@ -1111,8 +1129,22 @@ export function MainLayout({
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 gap-2 sm:gap-3">
-              {/* Left — Logo (büyük kutu + başlık) */}
-              <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Left — Menü toggle (yönetim modülü) + Logo (büyük kutu + başlık) */}
+              <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                {currentModule === 'management' && (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('retailex-toggle-management-sidebar'))}
+                    className="shrink-0 inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white shadow-inner transition-all active:scale-[0.97]"
+                    aria-label={managementSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')}
+                    title={`${managementSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')} (Ctrl+B)`}
+                    aria-expanded={managementSidebarOpen}
+                  >
+                    {managementSidebarOpen
+                      ? <PanelLeftClose className="w-5 h-5" />
+                      : <PanelLeftOpen className="w-5 h-5" />}
+                  </button>
+                )}
                 <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl bg-white/15 flex items-center justify-center p-1.5 sm:p-2 border border-white/25 overflow-hidden shadow-lg shadow-blue-900/20 ring-1 ring-white/10">
                   <img src="/logo.png" alt="RetailEx" className="w-full h-full object-contain drop-shadow-sm" />
                 </div>
