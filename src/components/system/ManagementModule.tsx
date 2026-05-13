@@ -8,7 +8,8 @@ import {
   Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
   PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
   Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft
+  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft,
+  PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 const DevExDataGrid = lazy(() => import('../shared/DevExDataGrid').then(m => ({ default: m.DevExDataGrid })));
 import { APP_VERSION } from '../../core/version';
@@ -225,9 +226,24 @@ export function ManagementModule({
   const { hasPermission, isAdmin } = usePermission();
   const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
-  // Sidebar state — managed internally; prop overrides are optional
-  const [_sidebarOpen, _setSidebarOpen] = useState(sidebarOpen ?? true);
+  // Sidebar state — managed internally; prop overrides are optional.
+  // Desktop toggle tercihi localStorage'da tutulur — yenilemede korunur.
+  const SIDEBAR_PREF_KEY = 'retailex-management-sidebar-open';
+  const [_sidebarOpen, _setSidebarOpenRaw] = useState(() => {
+    if (sidebarOpen !== undefined) return sidebarOpen;
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem(SIDEBAR_PREF_KEY);
+    return saved === null ? true : saved === '1';
+  });
   const effectiveSidebarOpen = sidebarOpen !== undefined ? sidebarOpen : _sidebarOpen;
+  const _setSidebarOpen = useCallback((next: boolean) => {
+    _setSidebarOpenRaw(next);
+    try {
+      localStorage.setItem(SIDEBAR_PREF_KEY, next ? '1' : '0');
+    } catch {
+      /* sessizce yoksay */
+    }
+  }, []);
   const effectiveSetSidebarOpen = setSidebarOpen ?? _setSidebarOpen;
 
   useEffect(() => {
@@ -235,6 +251,25 @@ export function ManagementModule({
     window.addEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
     return () => window.removeEventListener('retailex-open-management-sidebar', openSidebar as EventListener);
   }, [effectiveSetSidebarOpen]);
+
+  // Klavye kısayolu: Ctrl/Cmd + B → sidebar aç/kapa (VS Code/Linear stili).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+        const target = e.target as HTMLElement | null;
+        const isEditable = !!target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          (target as HTMLElement).isContentEditable
+        );
+        if (isEditable) return;
+        e.preventDefault();
+        effectiveSetSidebarOpen(!effectiveSidebarOpen);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [effectiveSidebarOpen, effectiveSetSidebarOpen]);
 
   // Rol bazlı varsayılan ekran belirleme
   const getDefaultScreenForRole = (roles: string[] = []): ExtendedScreen => {
@@ -1421,10 +1456,26 @@ export function ManagementModule({
         </div>
       </div>
 
-      {/* Main Content — mobil menü ana üst çubuktaki hamburger ile açılır */}
+      {/* Main Content — mobil menü ana üst çubuktaki hamburger ile açılır;
+          desktop'ta sol-üst köşedeki floating toggle ile aynı işi yapar (Ctrl+B). */}
       <div
-        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
+        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : 'relative'}`}
       >
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={() => effectiveSetSidebarOpen(!effectiveSidebarOpen)}
+            title={`${effectiveSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')} (Ctrl+B)`}
+            aria-label={effectiveSidebarOpen ? (t.sidebar?.hideMenu || 'Menüyü gizle') : (t.sidebar?.showMenu || 'Menüyü göster')}
+            aria-expanded={effectiveSidebarOpen}
+            className={`absolute top-2 left-2 z-20 inline-flex items-center justify-center w-9 h-9 rounded-lg border shadow-sm transition-all duration-200 active:scale-95 ${darkMode
+              ? 'bg-gray-800/90 hover:bg-gray-700 border-gray-700 text-gray-200 hover:text-white'
+              : 'bg-white/95 hover:bg-white border-gray-200 text-gray-600 hover:text-blue-700'
+            }`}
+          >
+            {effectiveSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+          </button>
+        )}
         <Suspense fallback={
           <div className="h-full flex items-center justify-center">
             <div className="text-center">

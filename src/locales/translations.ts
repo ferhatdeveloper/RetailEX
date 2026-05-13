@@ -157,6 +157,8 @@ export interface SidebarTranslations {
   searchPlaceholderShort: string;
   staticMenu: string;
   tryDifferentSearch: string;
+  hideMenu: string;
+  showMenu: string;
 }
 
 export interface Translations {
@@ -2585,6 +2587,8 @@ export const translations: any = {
       totalRevenue: 'إجمالي الإيرادات',
       totalUppercase: 'TOPLAM',
       tryDifferentSearch: 'Farklı bir arama terimi deneyin',
+      hideMenu: 'Menüyü gizle',
+      showMenu: 'Menüyü göster',
       unitAndMultiplierMgmt: 'إدارة الوحدات والمضاعفات',
       unitCodeLabel: 'رمز الوحدة',
       unitDefinitions: 'تعريفات الوحدات',
@@ -3901,6 +3905,8 @@ export const translations: any = {
       searchPlaceholderShort: 'Search...',
       staticMenu: '📋 Static Menu',
       tryDifferentSearch: 'Try a different search term',
+      hideMenu: 'Hide menu',
+      showMenu: 'Show menu',
     },
     sizeColorChange: 'Size/Color Change',
     slipList: 'Slip List',
@@ -5235,6 +5241,8 @@ export const translations: any = {
       searchPlaceholderShort: 'بحث...',
       staticMenu: '📋 قائمة ثابتة',
       tryDifferentSearch: 'جرب مصطلح بحث مختلف',
+      hideMenu: 'إخفاء القائمة',
+      showMenu: 'إظهار القائمة',
     },
     sizeColorChange: 'تغيير الحجم/اللون',
     slipList: 'قائمة السندات',
@@ -6568,6 +6576,8 @@ export const translations: any = {
       searchPlaceholderShort: 'گەڕان...',
       staticMenu: '📋 لیستی جێگیر',
       tryDifferentSearch: 'زاراوەیەکی تری گەڕان تاقیبکەرەوە',
+      hideMenu: 'شاردنەوەی لیستەکە',
+      showMenu: 'پیشاندانی لیستەکە',
       lastRate: 'دوایین نرخ',
       change: 'گۆڕانکاری',
       baseCurrency: 'دراوی سەرەکی',
