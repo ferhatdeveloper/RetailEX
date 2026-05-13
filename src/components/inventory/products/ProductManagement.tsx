@@ -22,6 +22,143 @@ import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
+/** Malzeme listesi hızlı etiket — referans mağaza düzeni: marka, kod+ad, fiyat (sol) | stok+birim (sağ), barkod. */
+function buildQuickRetailProductLabelTemplate(product: Product, size: { w: number; h: number }): ReportTemplate {
+  const w = size.w;
+  const h = size.h;
+  const m = Math.max(0.5, Math.min(1.2, w * 0.028));
+  const innerW = w - 2 * m;
+  const brandRaw = (product.brand || '').trim();
+  const catFirst = (product.category || '').split(/[>/|]/)[0]?.trim() || '';
+  const brand = (brandRaw || catFirst || '—').toLocaleUpperCase('tr-TR');
+  const codePart = (product.code || product.sku || '').toString().trim();
+  const title = `${codePart} ${product.name || ''}`.replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
+  const priceStr = formatCurrency(Number(product.price) || 0, 2, false);
+  const unit = (product.unit || 'Adet').trim() || 'Adet';
+  const qtyStr = `${Math.round(Number(product.stock) || 0)} ${unit}`;
+
+  if (h < 24) {
+    const nameH = Math.min(7, Math.max(4, h * 0.35));
+    const priceH = Math.min(6, Math.max(4, h * 0.28));
+    const barH = Math.max(5, h - m * 2 - nameH - priceH - 1);
+    return {
+      name: `${w}x${h}mm Ürün Etiketi`,
+      category: 'etiket',
+      pageSize: { width: w, height: h },
+      components: [
+        {
+          id: 'p_name',
+          type: 'text',
+          x: m,
+          y: m,
+          width: innerW,
+          height: nameH,
+          content: title.slice(0, 120),
+          style: { fontSize: w < 50 ? '7px' : '8px', fontWeight: '700', textAlign: 'center' },
+        },
+        {
+          id: 'p_price',
+          type: 'text',
+          x: m,
+          y: m + nameH + 0.5,
+          width: innerW,
+          height: priceH,
+          content: priceStr,
+          style: { fontSize: w < 50 ? '10px' : '12px', fontWeight: '900', textAlign: 'center', color: '#1d4ed8' },
+        },
+        {
+          id: 'barcode',
+          type: 'barcode',
+          x: m + w * 0.04,
+          y: m + nameH + priceH + 1,
+          width: Math.max(4, innerW - w * 0.08),
+          height: barH,
+          content: product.barcode,
+        },
+      ],
+    };
+  }
+
+  const half = innerW / 2 - 0.5;
+  const usable = h - 2 * m;
+  const hBrand = Math.max(3, Math.min(5, usable * 0.12));
+  const hTitle = Math.max(4.5, Math.min(10, usable * 0.3));
+  const hRow = Math.max(3.2, Math.min(5, usable * 0.12));
+  const gap = Math.max(0.35, usable * 0.02);
+  let y = m;
+  const components: ReportTemplate['components'] = [
+    {
+      id: 'lb_brand',
+      type: 'text',
+      x: m,
+      y,
+      width: innerW,
+      height: hBrand,
+      content: brand,
+      style: { fontSize: w < 50 ? '7px' : '9px', fontWeight: '800', textAlign: 'center' },
+    },
+  ];
+  y += hBrand + gap;
+  components.push({
+    id: 'lb_title',
+    type: 'text',
+    x: m,
+    y,
+    width: innerW,
+    height: hTitle,
+    content: title.slice(0, 160),
+    style: {
+      fontSize: w < 50 ? '6px' : '7px',
+      fontWeight: '600',
+      textAlign: 'center',
+      overflow: 'hidden',
+      lineHeight: '1.15',
+    },
+  });
+  y += hTitle + gap;
+  components.push(
+    {
+      id: 'lb_price',
+      type: 'text',
+      x: m,
+      y,
+      width: half,
+      height: hRow,
+      content: priceStr,
+      style: { fontSize: w < 50 ? '9px' : '11px', fontWeight: '800', textAlign: 'left' },
+    },
+    {
+      id: 'lb_qty',
+      type: 'text',
+      x: m + half + 1,
+      y,
+      width: half,
+      height: hRow,
+      content: qtyStr,
+      style: { fontSize: w < 50 ? '8px' : '10px', fontWeight: '700', textAlign: 'right' },
+    }
+  );
+  y += hRow + gap;
+  const barH = Math.max(6, h - m - y - 0.3);
+  const barPad = Math.max(0.3, w * 0.03);
+  components.push({
+    id: 'barcode',
+    type: 'barcode',
+    x: m + barPad,
+    y,
+    width: Math.max(4, innerW - 2 * barPad),
+    height: barH,
+    content: product.barcode,
+  });
+
+  return {
+    name: `${w}x${h}mm Ürün Etiketi`,
+    category: 'etiket',
+    pageSize: { width: w, height: h },
+    components,
+  };
+}
+
 interface ProductManagementProps {
   products: Product[];
   setProducts: (products: Product[]) => void;
@@ -159,38 +296,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     }
   };
 
-  const printLabel = (product: Product, size: { w: number, h: number }) => {
+  const printLabel = (product: Product, size: { w: number; h: number }) => {
     setActiveHubProduct(product);
-    const template: ReportTemplate = {
-      name: `${size.w}x${size.h}mm Ürün Etiketi`,
-      category: 'etiket',
-      pageSize: { width: size.w, height: size.h },
-      components: [
-        {
-          id: 'p_name',
-          type: 'text',
-          x: 2, y: 2,
-          width: size.w - 4, height: 6,
-          content: product.name,
-          style: { fontSize: size.w < 50 ? '8px' : '10px', fontWeight: 'bold', textAlign: 'center' }
-        },
-        {
-          id: 'p_price',
-          type: 'text',
-          x: 2, y: size.h / 2 - 2,
-          width: size.w - 4, height: 8,
-          content: formatCurrency(product.price || 0, 2, false),
-          style: { fontSize: size.w < 50 ? '12px' : '16px', fontWeight: '900', textAlign: 'center', color: '#1d4ed8' }
-        },
-        {
-          id: 'barcode',
-          type: 'barcode',
-          x: size.w * 0.1, y: size.h - (size.h * 0.35),
-          width: size.w * 0.8, height: size.h * 0.25,
-          content: product.barcode
-        }
-      ]
-    };
+    const template = buildQuickRetailProductLabelTemplate(product, size);
     setSelectedTemplate(template);
     setShowViewer(true);
   };

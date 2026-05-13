@@ -313,13 +313,22 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
      * Tüm body kardeşlerini display:none yapmak bazı Chromium sürümlerinde yazdır önizlemesini
      * “Önizleme yükleniyor”da bırakır. #root ve diğer portal kardeşleri yükseklik 0 + gizle ile akıştan düşürülür.
      */
+    /** Termal etikette: tam sayfa mm + sol üst sabit; aksi halde tarayıcı/sürücü içeriği ortalayıp sağa kaydırabiliyor. */
+    const labelHtmlBody =
+        isLabelTemplate &&
+        `width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;`;
+
     const printCss = `
 @media print {
   html, body {
     margin: 0 !important;
     padding: 0 !important;
-    width: 100% !important;
-    height: auto !important;
+    ${labelHtmlBody || `width: 100% !important;
+    height: auto !important;`}
     min-height: 0 !important;
     background: #fff !important;
   }
@@ -342,18 +351,20 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     display: none !important;
   }
   .report-viewer-shell {
-    position: relative !important;
-    top: auto !important;
-    left: auto !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
     right: auto !important;
     bottom: auto !important;
+    inset: auto !important;
     width: ${pageWPrint}mm !important;
     height: ${pageHPrint}mm !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;
     background: #fff !important;
     backdrop-filter: none !important;
     -webkit-print-color-adjust: exact !important;
@@ -368,11 +379,14 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     flex: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    overflow: visible !important;
+    overflow: hidden !important;
     width: ${pageWPrint}mm !important;
     height: ${pageHPrint}mm !important;
     min-height: 0 !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
     display: block !important;
+    box-sizing: border-box !important;
   }
   .report-viewer-paper {
     position: relative !important;
@@ -383,6 +397,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     height: ${pageHPrint}mm !important;
     max-width: ${pageWPrint}mm !important;
     max-height: ${pageHPrint}mm !important;
+    box-sizing: border-box !important;
     box-shadow: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -391,7 +406,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
   }
   @page {
     size: ${pageWPrint}mm ${pageHPrint}mm;
-    margin: 0mm;
+    margin: 0 !important;
   }
 }`;
 
