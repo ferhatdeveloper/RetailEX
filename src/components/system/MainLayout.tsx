@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMem
 import { createPortal } from 'react-dom';
 import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
-import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical } from 'lucide-react';
+import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
 import type { Module, ManagementScreen } from '../../App';
 import { POSCustomerModal } from '../pos/POSCustomerModal';
@@ -1207,6 +1207,54 @@ export function MainLayout({
                     <p className="text-[7px] sm:text-[8px] text-blue-100 mt-0.5 truncate">{currentUser.role || t.administrator}</p>
                   </div>
                 </button>
+
+                {/* Zoom controls — kullanıcı UI ölçeğini canlı değiştirir, %100'e basınca sıfırlar */}
+                <div
+                  className="flex items-center bg-white/10 rounded overflow-hidden min-h-[44px]"
+                  role="group"
+                  aria-label={tm('uiZoom') || 'Yakınlaştırma'}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = Math.max(50, zoomLevel - 10);
+                      setZoomLevel(next);
+                      localStorage.setItem('retailos_zoom_level', String(next));
+                    }}
+                    disabled={zoomLevel <= 50}
+                    className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
+                    title={tm('zoomOut') || 'Küçült'}
+                    aria-label={tm('zoomOut') || 'Küçült'}
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoomLevel(100);
+                      localStorage.setItem('retailos_zoom_level', '100');
+                    }}
+                    className="hidden sm:inline-block px-1.5 text-[10px] font-mono tabular-nums leading-none min-w-[40px] text-center hover:bg-white/15 transition-colors"
+                    title={tm('zoomReset') || 'Sıfırla (%100)'}
+                    aria-label={tm('zoomReset') || 'Sıfırla'}
+                  >
+                    {zoomLevel}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = Math.min(200, zoomLevel + 10);
+                      setZoomLevel(next);
+                      localStorage.setItem('retailos_zoom_level', String(next));
+                    }}
+                    disabled={zoomLevel >= 200}
+                    className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
+                    title={tm('zoomIn') || 'Büyüt'}
+                    aria-label={tm('zoomIn') || 'Büyüt'}
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </button>
+                </div>
 
                 {/* Language Selector */}
                 <button
