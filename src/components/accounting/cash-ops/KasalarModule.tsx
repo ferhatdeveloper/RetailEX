@@ -51,6 +51,7 @@ import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { ContextMenu } from '../../shared/ContextMenu';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
 // ===== COMPONENT =====
 
@@ -242,17 +243,47 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const handleDeleteIslem = async (islem: KasaIslemi | null) => {
     if (!islem || !islem.id || !selectedKasa) return;
-    const confirmMsg = (tm('confirmDeleteTransaction') ||
-      'Bu işlemi silmek istediğinize emin misiniz? Bakiyeler tersine alınacak.') +
-      `\n\n${islem.islem_no || ''} • ${formatCurrency(islem.tutar || 0)} ${selectedKasa.id_doviz_kodu || ''}`;
-    if (!window.confirm(confirmMsg)) return;
+    const islemIdSnapshot = islem.id;
+    setDeletingId(islemIdSnapshot);
     try {
-      setDeletingId(islem.id);
-      await deleteKasaIslemi(islem.id);
-      toast.success(tm('transactionDeleted') || 'İşlem silindi');
-      setSelectedId(null);
-      await loadKasaIslemleri(selectedKasa.id);
-      await loadKasalar();
+      const ok = await confirmDialog({
+        variant: 'danger',
+        title: tm('deleteTransaction') || 'İşlemi sil',
+        description:
+          tm('confirmDeleteTransaction') ||
+          'Bu işlemi silmek istediğinize emin misiniz?',
+        meta: (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                {tm('documentNo') || 'Belge No'}:
+              </span>
+              <span className="font-mono font-semibold">{islem.islem_no || '-'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">
+                {tm('amount') || 'Tutar'}:
+              </span>
+              <span className="font-bold">
+                {formatCurrency(islem.tutar || 0)} {selectedKasa.id_doviz_kodu || ''}
+              </span>
+            </div>
+            <div className="mt-2 text-[11px] opacity-90">
+              {tm('balancesWillBeReversed') || 'Kasa, cari ve banka bakiyeleri tersine alınacaktır.'}
+            </div>
+          </div>
+        ),
+        confirmLabel: tm('deleteAction') || 'Sil',
+        cancelLabel: tm('cancel') || 'İptal',
+        onConfirm: async () => {
+          await deleteKasaIslemi(islemIdSnapshot);
+          toast.success(tm('transactionDeleted') || 'İşlem silindi');
+          setSelectedId(null);
+          await loadKasaIslemleri(selectedKasa.id);
+          await loadKasalar();
+        },
+      });
+      if (!ok) return;
     } catch (err: any) {
       console.error('[KasalarModule] deleteKasaIslemi failed', err);
       toast.error(err?.message || tm('deleteFailed') || 'İşlem silinemedi');

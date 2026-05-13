@@ -2835,7 +2835,9 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   inventoryList: { tr: 'Envanter Listesi', en: 'Inventory List', ar: 'قائمة المخزون', ku: 'لیستی کۆگا' },
 
   // Cash Register Operations
-  confirmDeleteTransaction: { tr: 'Bu işlemi silmek istediğinize emin misiniz? Bakiyeler tersine alınacak.', en: 'Are you sure you want to delete this transaction? Balances will be reversed.', ar: 'هل أنت متأكد من حذف هذه المعاملة؟ سيتم عكس الأرصدة.', ku: 'دڵنیایت لە سڕینەوەی ئەم مامەڵەیە؟ باڵانسەکان دەگەڕێنرێنەوە.' },
+  confirmDeleteTransaction: { tr: 'Bu işlemi silmek istediğinize emin misiniz?', en: 'Are you sure you want to delete this transaction?', ar: 'هل أنت متأكد من حذف هذه المعاملة؟', ku: 'دڵنیایت لە سڕینەوەی ئەم مامەڵەیە؟' },
+  deleteTransaction: { tr: 'İşlemi Sil', en: 'Delete Transaction', ar: 'حذف المعاملة', ku: 'سڕینەوەی مامەڵە' },
+  balancesWillBeReversed: { tr: 'Kasa, cari ve banka bakiyeleri tersine alınacaktır.', en: 'Cash register, current account and bank balances will be reversed.', ar: 'سيتم عكس أرصدة الصندوق والحساب الجاري والبنك.', ku: 'باڵانسی صندووق، حسابی جاری و بانک دەگەڕێنرێنەوە.' },
   transactionDeleted: { tr: 'İşlem silindi', en: 'Transaction deleted', ar: 'تم حذف المعاملة', ku: 'مامەڵە سڕایەوە' },
   deleteFailed: { tr: 'Silme başarısız', en: 'Delete failed', ar: 'فشل الحذف', ku: 'سڕینەوە سەرکەوتوو نەبوو' },
   deleting: { tr: 'Siliniyor...', en: 'Deleting...', ar: 'جار الحذف...', ku: 'سڕینەوە...' },
