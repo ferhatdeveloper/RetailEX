@@ -11,10 +11,11 @@ import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber, formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
 import { formatCurrency } from '../../../utils/currency';
 import { toast } from 'sonner';
-import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon } from 'lucide-react';
+import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon, Printer } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
+import { BulkProductLabelPrint } from './BulkProductLabelPrint';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
 import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
@@ -81,6 +82,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkRateModal, setShowBulkRateModal] = useState(false);
   const [showBulkImageModal, setShowBulkImageModal] = useState(false);
+  const [showBulkLabelPrint, setShowBulkLabelPrint] = useState(false);
+  const [bulkLabelModalKey, setBulkLabelModalKey] = useState(0);
+  const [bulkLabelInitial, setBulkLabelInitial] = useState<Product[] | undefined>(undefined);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
   const [mobilePage, setMobilePage] = useState(0);
@@ -407,6 +411,19 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <Upload className="w-3 h-3" />
               <span>{tm('import')}</span>
+            </button>
+            <button
+              onClick={() => {
+                setBulkLabelInitial(selectedProducts.length > 0 ? [...selectedProducts] : undefined);
+                setBulkLabelModalKey((k) => k + 1);
+                setShowBulkLabelPrint(true);
+              }}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]"
+              title={tm('bulkBarcodeLabelPrint')}
+              type="button"
+            >
+              <Printer className="w-3 h-3" />
+              <span>{tm('bulkLabelPrintButton')}</span>
             </button>
             <button
               onClick={() => openProductForm()}
@@ -1047,6 +1064,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             </div>
           </div>
         </FullscreenBodyPortal>
+      )}
+
+      {showBulkLabelPrint && (
+        <BulkProductLabelPrint
+          key={bulkLabelModalKey}
+          onClose={() => setShowBulkLabelPrint(false)}
+          initialQueueProducts={bulkLabelInitial}
+          gridSelectedProducts={selectedProducts}
+        />
       )}
     </div>
   );

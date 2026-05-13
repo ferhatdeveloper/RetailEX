@@ -3,6 +3,7 @@
  * SHA256 hash ile kayıt benzersizliği kontrolü
  */
 
+import { useState } from 'react';
 import CryptoJS from 'crypto-js';
 
 export interface DuplicateCheckResult {

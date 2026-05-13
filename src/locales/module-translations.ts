@@ -2338,6 +2338,56 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'لە سووڕانەوەی پاڵ، قەبارەی پەڕەی نێردراو بۆ چاپگەر دەگۆڕێت. ئاراستەی خوراکدانی لایبڵ لە چاپگەری گەرما بپشکنە.',
   },
 
+  qr: { tr: 'QR Kodlu', en: 'QR Code', ar: 'رمز QR', ku: 'QR' },
+
+  bulkBarcodeLabelPrint: {
+    tr: 'Toplu barkod etiket yazdırma',
+    en: 'Bulk barcode label printing',
+    ar: 'طباعة ملصقات الباركود بالجملة',
+    ku: 'چاپکردنی لایبڵی بارکۆدی کۆمەڵەیی',
+  },
+  bulkBarcodeLabelPrintSubtitle: {
+    tr: 'Birden fazla ürünü aynı tasarım ve boyutta yazdırın',
+    en: 'Print multiple products with the same layout and size',
+    ar: 'طباعة عدة منتجات بنفس التخطيط والحجم',
+    ku: 'چاپکردنی چەند بەرهەمێک بە هەمان دیزاین و قەبارە',
+  },
+  bulkLabelPrintButton: {
+    tr: 'Toplu etiket',
+    en: 'Bulk labels',
+    ar: 'ملصقات جماعية',
+    ku: 'لایبڵی کۆ',
+  },
+  shelfLabelShort: { tr: 'Raf', en: 'Shelf', ar: 'رف', ku: 'ڕەفە' },
+  bulkQueueProducts: { tr: 'Kuyruk satırı', en: 'Queue rows', ar: 'صفوف الطابور', ku: 'ڕیزەکانی نۆرە' },
+  addProductsToQueue: { tr: 'Ürün ekle', en: 'Add products', ar: 'إضافة منتجات', ku: 'زیادکردنی بەرهەم' },
+  addGridSelectionToQueue: {
+    tr: 'Tablodaki seçimi kuyruğa ekle',
+    en: 'Add table selection to queue',
+    ar: 'إضافة اختيار الجدول إلى الطابور',
+    ku: 'هەڵبژاردنی خشتە زیاد بکە بۆ نۆرە',
+  },
+  clearQueue: { tr: 'Kuyruğu temizle', en: 'Clear queue', ar: 'مسح الطابور', ku: 'پاککردنەوەی نۆرە' },
+  bulkQueueEmptyHint: {
+    tr: 'Henüz yazdırılacak satır yok',
+    en: 'No rows to print yet',
+    ar: 'لا توجد صفوف للطباعة بعد',
+    ku: 'هێشتا هیچ ڕیزێک نییە بۆ چاپ',
+  },
+  bulkQueueEmptyHint2: {
+    tr: 'Soldan ürün seçin veya tabloda seçili ürünleri ekleyin',
+    en: 'Pick products on the left or add your table selection',
+    ar: 'اختر المنتجات يسارًا أو أضف اختيار الجدول',
+    ku: 'لای چەپ بەرهەم هەڵبژێرە یان هەڵبژاردنی خشتە زیاد بکە',
+  },
+  printQueue: { tr: 'Yazdırma kuyruğu', en: 'Print queue', ar: 'طابور الطباعة', ku: 'نۆرەی چاپ' },
+  shelfLocationPlaceholder: {
+    tr: 'Örn: A-12, Koridor 3',
+    en: 'e.g. A-12, aisle 3',
+    ar: 'مثال: A-12، الممر 3',
+    ku: 'نمونە: A-12، ڕێڕەو 3',
+  },
+
   // Label Designs
   minimal: { tr: 'Minimal', en: 'Minimal', ar: 'مبسط', ku: 'کەمترین' },
   standard: { tr: 'Standart', en: 'Standard', ar: 'قياسي', ku: 'ستاندارد' },

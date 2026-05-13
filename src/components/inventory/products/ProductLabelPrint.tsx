@@ -4,9 +4,9 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
-type PrintRotation = 0 | 90 | 180 | 270;
+export type PrintRotation = 0 | 90 | 180 | 270;
 
-interface Variant {
+export interface LabelPrintVariant {
   id: string;
   variantCode: string;
   barcode: string;
@@ -19,13 +19,13 @@ interface Variant {
 
 interface ProductLabelPrintProps {
   productName: string;
-  variants: Variant[];
+  variants: LabelPrintVariant[];
   currency: string;
   category?: string;
   onClose: () => void;
 }
 
-interface LabelSize {
+export interface LabelSize {
   id: string;
   name: string;
   width: number; // mm
@@ -36,7 +36,7 @@ interface LabelSize {
   category: 'termal' | 'a4' | 'raf';
 }
 
-interface LabelDesign {
+export interface LabelDesign {
   id: string;
   name: string;
   description: string;
@@ -45,12 +45,12 @@ interface LabelDesign {
 }
 
 interface SelectedVariant {
-  variant: Variant;
+  variant: LabelPrintVariant;
   quantity: number;
 }
 
 // GENİŞLETİLMİŞ ETİKET BOYUTLARI
-const LABEL_SIZES: LabelSize[] = [
+export const LABEL_SIZES: LabelSize[] = [
   // TERMAL YAZICI BOYUTLARI
   {
     id: 't-20x10',
@@ -259,7 +259,7 @@ const LABEL_SIZES: LabelSize[] = [
 ];
 
 // ETİKET TASARIMLARI
-const LABEL_DESIGNS: LabelDesign[] = [
+export const LABEL_DESIGNS: LabelDesign[] = [
   {
     id: 'minimal',
     name: 'Minimal',
@@ -346,14 +346,20 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
   // Barkodları ve QR kodları otomatik oluştur
   useEffect(() => {
     const timer = setTimeout(() => {
-      selectedVariants.forEach((sv, idx) => {
-        // Barkod oluştur
+      const cells = selectedVariants.flatMap((sv, svIdx) =>
+        Array.from({ length: sv.quantity }, (_, qIdx) => ({
+          barcodeId: `barcode-${svIdx}-${qIdx}`,
+          qrId: `qrcode-${svIdx}-${qIdx}`,
+          barcode: sv.variant.barcode,
+        }))
+      );
+      cells.forEach((cell) => {
         if (selectedDesign.id !== 'qr') {
-          const canvas = document.getElementById(`barcode-${idx}`) as HTMLCanvasElement;
-          if (canvas && sv.variant.barcode) {
+          const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement;
+          if (canvas && cell.barcode) {
             try {
-              JsBarcode(canvas, sv.variant.barcode, {
-                format: sv.variant.barcode.length === 13 ? 'EAN13' : 'CODE128',
+              JsBarcode(canvas, cell.barcode, {
+                format: cell.barcode.length === 13 ? 'EAN13' : 'CODE128',
                 width: selectedSize.width < 50 ? 1.5 : 2,
                 height: selectedSize.height < 30 ? 20 : selectedSize.height < 50 ? 30 : 40,
                 displayValue: true,
@@ -366,12 +372,11 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           }
         }
 
-        // QR kod oluştur
         if (selectedDesign.id === 'qr') {
-          const qrCanvas = document.getElementById(`qrcode-${idx}`) as HTMLCanvasElement;
-          if (qrCanvas && sv.variant.barcode) {
-            const qrSize = Math.min(selectedSize.width * 3, selectedSize.height * 3); // mm to px approximation
-            QRCode.toCanvas(qrCanvas, sv.variant.barcode, {
+          const qrCanvas = document.getElementById(cell.qrId) as HTMLCanvasElement;
+          if (qrCanvas && cell.barcode) {
+            const qrSize = Math.min(selectedSize.width * 3, selectedSize.height * 3);
+            QRCode.toCanvas(qrCanvas, cell.barcode, {
               width: qrSize,
               margin: 1,
               errorCorrectionLevel: 'M'
@@ -385,7 +390,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
   }, [selectedVariants, selectedSize, selectedDesign]);
 
   // Varyant seç/kaldır
-  const toggleVariant = (variant: Variant) => {
+  const toggleVariant = (variant: LabelPrintVariant) => {
     const exists = selectedVariants.find(sv => sv.variant.id === variant.id);
     if (exists) {
       setSelectedVariants(selectedVariants.filter(sv => sv.variant.id !== variant.id));
@@ -816,8 +821,8 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                             productName={productName}
                             currency={currency}
                             category={category}
-                            barcodeId={qIdx === 0 ? `barcode-${svIdx}` : undefined}
-                            qrId={qIdx === 0 ? `qrcode-${svIdx}` : undefined}
+                            barcodeId={`barcode-${svIdx}-${qIdx}`}
+                            qrId={`qrcode-${svIdx}-${qIdx}`}
                             size={selectedSize}
                             design={selectedDesign}
                             showDiscount={showDiscount}
@@ -869,7 +874,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
  * 90°/270°'de görsel kutu boyutu yer değiştirir; barkod, fiyat ve metin
  * etiketle birlikte fiziksel olarak da yazıcıya döndürülmüş gönderilir.
  */
-function RotatedLabel({
+export function RotatedLabel({
   rotation,
   size,
   children,
@@ -912,7 +917,7 @@ function RotatedLabel({
 }
 
 interface LabelContentProps {
-  variant: Variant;
+  variant: LabelPrintVariant;
   productName: string;
   currency: string;
   category?: string;
@@ -925,7 +930,7 @@ interface LabelContentProps {
   shelfLocation?: string;
 }
 
-function LabelContent({
+export function LabelContent({
   variant,
   productName,
   currency,
