@@ -2325,6 +2325,19 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   selectedVariant: { tr: 'Seçili Varyant', en: 'Selected Variant', ar: 'المتغير المحدد', ku: 'جۆری هەڵبژێردراو' },
   a4: { tr: 'A4', en: 'A4', ar: 'A4', ku: 'A4' },
 
+  // Print rotation / yazdırma yönü
+  printRotation: { tr: 'Yazdırma Yönü', en: 'Print Rotation', ar: 'اتجاه الطباعة', ku: 'ئاراستەی چاپ' },
+  rotationNormal: { tr: 'Normal', en: 'Normal', ar: 'عادي', ku: 'ئاسایی' },
+  rotationRight: { tr: 'Sağa 90°', en: 'Right 90°', ar: 'يمين 90°', ku: 'ڕاست ٩٠°' },
+  rotationFlip: { tr: 'Ters 180°', en: 'Flip 180°', ar: 'مقلوب 180°', ku: 'پێچەوانە ١٨٠°' },
+  rotationLeft: { tr: 'Sola 270°', en: 'Left 270°', ar: 'يسار 270°', ku: 'چەپ ٢٧٠°' },
+  rotationPaperHint: {
+    tr: 'Yatay döndürmede yazıcıya gönderilen sayfa boyutu yer değiştirir. Termal yazıcıda etiketin besleme yönünü kontrol edin.',
+    en: 'When rotating sideways, the page size sent to the printer is swapped. Check the label feed direction on your thermal printer.',
+    ar: 'عند الدوران الجانبي، يتم تبديل أبعاد الصفحة المرسلة إلى الطابعة. تحقق من اتجاه تغذية الملصق على الطابعة الحرارية.',
+    ku: 'لە سووڕانەوەی پاڵ، قەبارەی پەڕەی نێردراو بۆ چاپگەر دەگۆڕێت. ئاراستەی خوراکدانی لایبڵ لە چاپگەری گەرما بپشکنە.',
+  },
+
   // Label Designs
   minimal: { tr: 'Minimal', en: 'Minimal', ar: 'مبسط', ku: 'کەمترین' },
   standard: { tr: 'Standart', en: 'Standard', ar: 'قياسي', ku: 'ستاندارد' },

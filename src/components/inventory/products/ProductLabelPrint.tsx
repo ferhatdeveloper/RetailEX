@@ -1,7 +1,10 @@
-﻿import { X, Printer, Tag, Plus, Minus, Download, Sparkles } from 'lucide-react';
+﻿import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+
+type PrintRotation = 0 | 90 | 180 | 270;
 
 interface Variant {
   id: string;
@@ -317,7 +320,28 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(20);
   const [shelfLocation, setShelfLocation] = useState('');
+  const [printRotation, setPrintRotation] = useState<PrintRotation>(() => {
+    if (typeof window === 'undefined') return 0;
+    const saved = Number(localStorage.getItem('retailex-label-print-rotation'));
+    return ([0, 90, 180, 270] as PrintRotation[]).includes(saved as PrintRotation)
+      ? (saved as PrintRotation)
+      : 0;
+  });
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Yön tercihini hatırla (yazıcıya kağıt yerleştirme şekli sabit kalır)
+  useEffect(() => {
+    try {
+      localStorage.setItem('retailex-label-print-rotation', String(printRotation));
+    } catch {
+      /* sessizce yoksay */
+    }
+  }, [printRotation]);
+
+  // 90°/270° için fiziksel sayfa boyutu (kağıt yatay beslenirse w/h yer değişir)
+  const isSideways = printRotation === 90 || printRotation === 270;
+  const pageWidthMm = isSideways ? selectedSize.height : selectedSize.width;
+  const pageHeightMm = isSideways ? selectedSize.width : selectedSize.height;
 
   // Barkodları ve QR kodları otomatik oluştur
   useEffect(() => {
@@ -525,6 +549,58 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
               </div>
             </div>
 
+            {/* Yazdırma Yönü */}
+            <div className="p-4 border-b border-gray-200 bg-white">
+              <label className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
+                <RotateCw className="w-4 h-4 text-purple-600" />
+                {tm('printRotation') || 'Yazdırma Yönü'}
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {([
+                  { value: 0, label: '0°', hint: tm('rotationNormal') || 'Normal' },
+                  { value: 90, label: '90°', hint: tm('rotationRight') || 'Sağa' },
+                  { value: 180, label: '180°', hint: tm('rotationFlip') || 'Ters' },
+                  { value: 270, label: '270°', hint: tm('rotationLeft') || 'Sola' },
+                ] as Array<{ value: PrintRotation; label: string; hint: string }>).map((opt) => {
+                  const active = printRotation === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setPrintRotation(opt.value)}
+                      title={`${opt.label} — ${opt.hint}`}
+                      className={`flex flex-col items-center justify-center gap-1 px-2 py-2 border-2 rounded-lg transition-all ${
+                        active
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-200 hover:border-gray-300 bg-white text-gray-700'
+                      }`}
+                    >
+                      <div
+                        className="text-[14px] font-bold"
+                        style={{
+                          transform: `rotate(${opt.value}deg)`,
+                          transformOrigin: 'center center',
+                          transition: 'transform 200ms',
+                          lineHeight: 1,
+                        }}
+                        aria-hidden
+                      >
+                        A
+                      </div>
+                      <div className="text-[10px] font-medium">{opt.label}</div>
+                      <div className="text-[9px] text-gray-500">{opt.hint}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              {isSideways && (
+                <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 leading-relaxed">
+                  {tm('rotationPaperHint') ||
+                    'Yatay döndürmede yazıcıya gönderilen sayfa boyutu yer değiştirir. Termal yazıcıda etiketin besleme yönünü kontrol edin.'}
+                </div>
+              )}
+            </div>
+
             {/* Promosyon Ayarları */}
             {selectedDesign.id === 'promotional' && (
               <div className="p-4 border-b border-gray-200 bg-white">
@@ -730,20 +806,25 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                     }`}>
                     {selectedVariants.flatMap((sv, svIdx) =>
                       Array.from({ length: sv.quantity }, (_, qIdx) => (
-                        <LabelContent
+                        <RotatedLabel
                           key={`${svIdx}-${qIdx}`}
-                          variant={sv.variant}
-                          productName={productName}
-                          currency={currency}
-                          category={category}
-                          barcodeId={qIdx === 0 ? `barcode-${svIdx}` : undefined}
-                          qrId={qIdx === 0 ? `qrcode-${svIdx}` : undefined}
+                          rotation={printRotation}
                           size={selectedSize}
-                          design={selectedDesign}
-                          showDiscount={showDiscount}
-                          discountPercent={discountPercent}
-                          shelfLocation={shelfLocation}
-                        />
+                        >
+                          <LabelContent
+                            variant={sv.variant}
+                            productName={productName}
+                            currency={currency}
+                            category={category}
+                            barcodeId={qIdx === 0 ? `barcode-${svIdx}` : undefined}
+                            qrId={qIdx === 0 ? `qrcode-${svIdx}` : undefined}
+                            size={selectedSize}
+                            design={selectedDesign}
+                            showDiscount={showDiscount}
+                            discountPercent={discountPercent}
+                            shelfLocation={shelfLocation}
+                          />
+                        </RotatedLabel>
                       ))
                     )}
                   </div>
@@ -773,14 +854,59 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           @page {
             margin: ${selectedSize.category === 'termal' ? '0' : '5mm'};
             size: ${selectedSize.category === 'termal'
-          ? `${selectedSize.width}mm ${selectedSize.height}mm`
-          : selectedSize.category === 'raf'
-            ? 'A4'
-            : 'A4'
+          ? `${pageWidthMm}mm ${pageHeightMm}mm`
+          : 'A4 portrait'
         };
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+/**
+ * Etiketi seçili açıyla döndüren konteyner.
+ * 90°/270°'de görsel kutu boyutu yer değiştirir; barkod, fiyat ve metin
+ * etiketle birlikte fiziksel olarak da yazıcıya döndürülmüş gönderilir.
+ */
+function RotatedLabel({
+  rotation,
+  size,
+  children,
+}: {
+  rotation: PrintRotation;
+  size: LabelSize;
+  children: ReactNode;
+}) {
+  if (rotation === 0) {
+    return <div className="rotated-label-wrapper">{children}</div>;
+  }
+
+  const sideways = rotation === 90 || rotation === 270;
+  const outerWidth = sideways ? size.height : size.width;
+  const outerHeight = sideways ? size.width : size.height;
+
+  return (
+    <div
+      className="rotated-label-wrapper"
+      style={{
+        width: `${outerWidth}mm`,
+        height: `${outerHeight}mm`,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
