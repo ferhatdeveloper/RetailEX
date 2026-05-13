@@ -13,6 +13,48 @@ export function wmsFirmNrPadded(): string {
     return String(ERP_SETTINGS.firmNr || '001').padStart(3, '0');
 }
 
+function periodNrPadded(): string {
+    return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+function restMovementPaths(): { movements: string; items: string } {
+    const f = wmsFirmNrPadded();
+    const p = periodNrPadded();
+    return {
+        movements: `/rex_${f}_${p}_stock_movements`,
+        items: `/rex_${f}_${p}_stock_movement_items`,
+    };
+}
+
+const CREATED_BY_UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function restCreatedByUuid(raw: unknown): string | undefined {
+    const s = String(raw ?? '').trim();
+    return CREATED_BY_UUID_RE.test(s) ? s : undefined;
+}
+
+/** Sayım satırı: baz birim sayılan (wmsStockCount SQL yolu ile uyumlu). */
+function restLineCountedBase(l: any): number {
+    const q = Number(l.counted_qty);
+    const m = Number(l.unit_multiplier) > 0 ? Number(l.unit_multiplier) : 1;
+    const fromCounted = (Number.isFinite(q) ? q : 0) * m;
+    const rawBase = l.base_counted_qty;
+    if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
+        const b = Number(rawBase);
+        if (Math.abs(b) < 1e-9 && Math.abs(fromCounted) > 1e-9) return fromCounted;
+        return b;
+    }
+    return fromCounted;
+}
+
+function restLineIsCountable(l: any): boolean {
+    if (l.product_id == null || l.product_id === '') return false;
+    if (l.counted_qty != null && l.counted_qty !== '') return true;
+    if (l.base_counted_qty != null && l.base_counted_qty !== '') return true;
+    return false;
+}
+
 function productsTable(): string {
     return `rex_${wmsFirmNrPadded()}_products`;
 }
@@ -445,7 +487,10 @@ export async function restCreateProductFromBarcode(data: {
     }
 }
 
-/** Stokları ürün kartına yazar ve fişi tamamlar. `stock_movements` hareketleri yalnızca Tauri/pg SQL yolunda oluşturulur. */
+/**
+ * Sayım uygula: TRCODE 26 (Sayım Fazlası) / 50 (Sayım Eksiği) stok fişleri,
+ * ürün kartı stok güncellemesi, fişi tamamlandı işaretle (PostgREST).
+ */
 export async function restApplyStockCount(slipId: string): Promise<{
     processed: number;
     surplus: number;
@@ -453,30 +498,116 @@ export async function restApplyStockCount(slipId: string): Promise<{
 }> {
     const { slip, lines } = await restGetSlipWithLines(slipId);
     if (!slip) throw new Error('Sayım fişi bulunamadı');
-    const relevant = lines.filter((l: any) => l.product_id != null && l.counted_qty != null);
+
+    const relevant = lines.filter(restLineIsCountable);
     if (!relevant.length) {
         await restCompleteReconciliation(slipId);
         return { processed: 0, surplus: 0, shortage: 0 };
     }
+
+    const firmNr = wmsFirmNrPadded();
+    const periodNr = periodNrPadded();
+    const { movements: movPath, items: itemsPath } = restMovementPaths();
+    const now = new Date().toISOString();
+    const warehouseId = slip.warehouse_id || slip.store_id || null;
+    const createdBy = restCreatedByUuid(slip.created_by);
+    const ficheNo = String(slip.fiche_no ?? '');
+
+    const surplusLines = relevant.filter(
+        (l: any) => restLineCountedBase(l) > (Number(l.expected_qty) || 0) + 1e-9
+    );
+    const shortageLines = relevant.filter(
+        (l: any) => restLineCountedBase(l) < (Number(l.expected_qty) || 0) - 1e-9
+    );
+
+    const insertMovementWithItems = async (
+        documentNo: string,
+        movementType: 'in' | 'out',
+        trcode: number,
+        desc: string,
+        lineSet: any[],
+        qtyFn: (line: any) => number
+    ) => {
+        const linesWithQty = lineSet.filter((l) => qtyFn(l) > 1e-9);
+        if (linesWithQty.length === 0) return;
+
+        const header: Record<string, unknown> = {
+            firm_nr: firmNr,
+            period_nr: periodNr,
+            document_no: documentNo,
+            movement_type: movementType,
+            trcode,
+            warehouse_id: warehouseId,
+            movement_date: now,
+            exchange_rate: 1,
+            description: desc,
+            status: 'completed',
+        };
+        if (createdBy) header.created_by = createdBy;
+
+        const mrows = await postgrest.post<any[]>(movPath, header, {
+            ...PUB,
+            prefer: 'return=representation',
+        });
+        const mov = Array.isArray(mrows) ? mrows[0] : mrows;
+        const mvId = mov?.id;
+        if (!mvId) throw new Error('Stok fişi oluşturulamadı (PostgREST yanıtında id yok)');
+
+        for (const line of linesWithQty) {
+            const qty = qtyFn(line);
+            await postgrest.post(
+                itemsPath,
+                {
+                    movement_id: mvId,
+                    product_id: line.product_id,
+                    quantity: qty,
+                    unit_price: 0,
+                    cost_price: 0,
+                    exchange_rate: 1,
+                    unit_name: line.unit || 'Adet',
+                    convert_factor: Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1,
+                    notes: `Sayım: ${line.product_name || ''}`,
+                },
+                { ...PUB, prefer: 'return=minimal' }
+            );
+        }
+    };
+
+    await insertMovementWithItems(
+        `SAY-FAZ-${ficheNo}`,
+        'in',
+        26,
+        `Sayım Fazlası - ${ficheNo}`,
+        surplusLines,
+        (line) => restLineCountedBase(line) - (Number(line.expected_qty) || 0)
+    );
+
+    await insertMovementWithItems(
+        `SAY-EKS-${ficheNo}`,
+        'out',
+        50,
+        `Sayım Eksiği - ${ficheNo}`,
+        shortageLines,
+        (line) => (Number(line.expected_qty) || 0) - restLineCountedBase(line)
+    );
+
     const table = productsTable();
     for (const line of relevant) {
-        const newStock = line.base_counted_qty ?? line.counted_qty;
+        const newStock = restLineCountedBase(line);
         await postgrest.patch(
             `/${table}?id=eq.${encodeURIComponent(String(line.product_id))}`,
             { stock: newStock },
             { ...PUB, prefer: 'return=minimal' }
         );
     }
+
     await restCompleteReconciliation(slipId);
-    let surplus = 0;
-    let shortage = 0;
-    for (const line of relevant) {
-        const b = Number(line.base_counted_qty ?? line.counted_qty);
-        const e = Number(line.expected_qty) || 0;
-        if (b > e) surplus++;
-        if (b < e) shortage++;
-    }
-    return { processed: relevant.length, surplus, shortage };
+
+    return {
+        processed: relevant.length,
+        surplus: surplusLines.length,
+        shortage: shortageLines.length,
+    };
 }
 
 export async function restLookupProductByBarcode(barcode: string): Promise<{

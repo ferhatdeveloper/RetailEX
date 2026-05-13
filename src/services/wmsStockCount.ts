@@ -742,10 +742,11 @@ class WMSStockCountService {
         if (!slipRows[0]) throw new Error('Sayım fişi bulunamadı');
         const slip = slipRows[0];
 
-        // 2. Get all lines that have a product linked
+        // 2. Get all lines that have a product linked and a sayılan değer (counted veya baz)
         const { rows: lines } = await this.conn.query<any>(
             `SELECT * FROM wms.counting_lines
-             WHERE slip_id = $1 AND product_id IS NOT NULL AND counted_qty IS NOT NULL`,
+             WHERE slip_id = $1 AND product_id IS NOT NULL
+               AND (counted_qty IS NOT NULL OR base_counted_qty IS NOT NULL)`,
             [slipId]
         );
 
@@ -754,13 +755,27 @@ class WMSStockCountService {
             return { processed: 0, surplus: 0, shortage: 0 };
         }
 
-        const now = new Date().toISOString();
+        const countedBase = (l: any): number => {
+            const q = Number(l.counted_qty);
+            const m = Number(l.unit_multiplier) > 0 ? Number(l.unit_multiplier) : 1;
+            const fromCounted = (Number.isFinite(q) ? q : 0) * m;
+            const rawBase = l.base_counted_qty;
+            if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
+                const b = Number(rawBase);
+                if (Math.abs(b) < 1e-9 && Math.abs(fromCounted) > 1e-9) return fromCounted;
+                return b;
+            }
+            return fromCounted;
+        };
 
-        const surplusLines = lines.filter((l: any) =>
-            (l.base_counted_qty ?? l.counted_qty) > (l.expected_qty || 0)
+        const now = new Date().toISOString();
+        const warehouseId = slip.warehouse_id || slip.store_id || null;
+
+        const surplusLines = lines.filter(
+            (l: any) => countedBase(l) > (Number(l.expected_qty) || 0) + 1e-9
         );
-        const shortageLines = lines.filter((l: any) =>
-            (l.base_counted_qty ?? l.counted_qty) < (l.expected_qty || 0)
+        const shortageLines = lines.filter(
+            (l: any) => countedBase(l) < (Number(l.expected_qty) || 0) - 1e-9
         );
 
         // 3. Create Sayım Fazlası movement (TRCODE 26) for surplus lines
@@ -772,14 +787,15 @@ class WMSStockCountService {
                  RETURNING *`,
                 [
                     `SAY-FAZ-${slip.fiche_no}`, 'in', 26,
-                    slip.warehouse_id || null, now,
+                    warehouseId, now,
                     `Sayım Fazlası - ${slip.fiche_no}`, 'completed',
                     slip.created_by || null,
                 ]
             );
             const mvId = mvRows[0].id;
             for (const line of surplusLines) {
-                const qty = (line.base_counted_qty ?? line.counted_qty) - (line.expected_qty || 0);
+                const qty = countedBase(line) - (Number(line.expected_qty) || 0);
+                if (qty <= 1e-9) continue;
                 await this.conn.query(
                     `INSERT INTO stock_movement_items
                         (movement_id, product_id, quantity, unit_name, convert_factor, notes)
@@ -800,14 +816,15 @@ class WMSStockCountService {
                  RETURNING *`,
                 [
                     `SAY-EKS-${slip.fiche_no}`, 'out', 50,
-                    slip.warehouse_id || null, now,
+                    warehouseId, now,
                     `Sayım Eksiği - ${slip.fiche_no}`, 'completed',
                     slip.created_by || null,
                 ]
             );
             const mvId = mvRows[0].id;
             for (const line of shortageLines) {
-                const qty = (line.expected_qty || 0) - (line.base_counted_qty ?? line.counted_qty);
+                const qty = (Number(line.expected_qty) || 0) - countedBase(line);
+                if (qty <= 1e-9) continue;
                 await this.conn.query(
                     `INSERT INTO stock_movement_items
                         (movement_id, product_id, quantity, unit_name, convert_factor, notes)
@@ -821,7 +838,7 @@ class WMSStockCountService {
 
         // 5. Adjust product stocks to counted values
         for (const line of lines) {
-            const newStock = line.base_counted_qty ?? line.counted_qty;
+            const newStock = countedBase(line);
             await this.conn.query(
                 `UPDATE products SET stock = $1 WHERE id::text = $2`,
                 [newStock, String(line.product_id)]
