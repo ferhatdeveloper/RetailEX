@@ -14,6 +14,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { invoke } from '@tauri-apps/api/core';
 import { IS_TAURI } from '../../utils/env';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../services/loggingService';
 
 const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
@@ -39,6 +40,9 @@ interface DashboardModuleProps {
 
 export function DashboardModule({ products, customers, sales, setCurrentScreen, menuMode = 0 }: DashboardModuleProps) {
   const { t } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  // Aktif firmanın ana para birimi — fallback olarak çeviri kodu, en sonda IQD.
+  const currency = selectedFirm?.ana_para_birimi || t.currencyCode || 'IQD';
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -471,7 +475,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   </span>
                 )}
               </div>
-              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {currency}</div>
               <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {t.transaction || 'işlem'}</div>
             </div>
 
@@ -480,7 +484,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 <TrendingUp className="w-4 h-4 text-green-600" />
                 <span className="text-[10px] text-gray-600">{t.weeklySales || 'Haftalık Satış'}</span>
               </div>
-              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {currency}</div>
               <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {t.transaction || 'işlem'}</div>
             </div>
 
@@ -494,7 +498,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   </span>
                 )}
               </div>
-              <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {currency}</div>
               <div className="text-[9px] text-gray-500 mt-0.5">{t.profitMargin || 'Kâr Marjı'}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
             </div>
 
@@ -509,7 +513,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 )}
               </div>
               <div className="text-base text-gray-900">{products.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{t.stockManagement || 'Stok'}: {formatNumber(totalStockSaleValue, 0, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{t.stockManagement || 'Stok'}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
             </div>
 
             <div className="p-3">
@@ -534,15 +538,15 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
           <div className="grid grid-cols-4 divide-x divide-gray-200">
             <div className="p-3">
               <div className="text-[10px] text-gray-600 mb-1">{t.stockValueCost || 'Stok Değeri (Maliyet)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
               <div className="text-[10px] text-gray-600 mb-1">{t.stockValueSales || 'Stok Değeri (Satış)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
               <div className="text-[10px] text-gray-600 mb-1">{t.potentialProfit || 'Potansiyel Kar'}</div>
-              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} {t.currencyCode || 'IQD'}</div>
+              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
               <div className="text-[10px] text-gray-600 mb-1">{t.profitMarginDashboard || 'Kar Marjı'}</div>
