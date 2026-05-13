@@ -20,6 +20,7 @@ import {
   LABEL_SIZES,
   LabelContent,
   RotatedLabel,
+  buildLabelPrintStyleBlock,
   type LabelDesign,
   type LabelSize,
   type PrintRotation,
@@ -769,27 +770,11 @@ export function BulkProductLabelPrint({
         </div>
       </div>
 
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-area,
-          .print-area * {
-            visibility: visible;
-          }
-          .print-area {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-          }
-          @page {
-            margin: ${selectedSize.category === 'termal' ? '0' : '5mm'};
-            size: ${selectedSize.category === 'termal' ? `${pageWidthMm}mm ${pageHeightMm}mm` : 'A4 portrait'};
-          }
-        }
-      `}</style>
+      <style>{buildLabelPrintStyleBlock({
+        category: selectedSize.category,
+        pageWidthMm,
+        pageHeightMm,
+      })}</style>
     </div>
   );
 }

@@ -968,33 +968,81 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
         </div>
       </div>
 
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print-area,
-          .print-area * {
-            visibility: visible;
-          }
-          .print-area {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-          }
-          @page {
-            margin: ${selectedSize.category === 'termal' ? '0' : '5mm'};
-            size: ${selectedSize.category === 'termal'
-          ? `${pageWidthMm}mm ${pageHeightMm}mm`
-          : 'A4 portrait'
-        };
-          }
-        }
-      `}</style>
+      <style>{buildLabelPrintStyleBlock({
+        category: selectedSize.category,
+        pageWidthMm,
+        pageHeightMm,
+      })}</style>
     </div>
   );
+}
+
+/** Ortak @media print — barkod/rakam netliği, termal mm sınırı, döndürmede kırpma önleme */
+export function buildLabelPrintStyleBlock(p: {
+  category: 'termal' | 'a4' | 'raf';
+  pageWidthMm: number;
+  pageHeightMm: number;
+}): string {
+  const thermal = p.category === 'termal';
+  const w = p.pageWidthMm;
+  const h = p.pageHeightMm;
+  const labelBody = thermal
+    ? `width: ${w}mm !important;
+    height: ${h}mm !important;
+    max-width: ${w}mm !important;
+    max-height: ${h}mm !important;
+    overflow: hidden !important;`
+    : '';
+
+  return `
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    ${labelBody}
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-area canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+  .print-area .text-gray-700,
+  .print-area .text-gray-600,
+  .print-area .text-gray-500 {
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .print-area .text-black {
+    color: #000 !important;
+  }
+  .rotated-label-wrapper {
+    overflow: visible !important;
+  }
+  @page {
+    margin: ${thermal ? '0' : '5mm'};
+    size: ${thermal ? `${w}mm ${h}mm` : 'A4 portrait'};
+  }
+}
+`;
 }
 
 /**
@@ -1012,7 +1060,9 @@ export function RotatedLabel({
   children: ReactNode;
 }) {
   if (rotation === 0) {
-    return <div className="rotated-label-wrapper">{children}</div>;
+    return (
+      <div className="rotated-label-wrapper overflow-hidden print:overflow-visible">{children}</div>
+    );
   }
 
   const sideways = rotation === 90 || rotation === 270;
@@ -1021,12 +1071,11 @@ export function RotatedLabel({
 
   return (
     <div
-      className="rotated-label-wrapper"
+      className="rotated-label-wrapper overflow-hidden print:overflow-visible"
       style={{
         width: `${outerWidth}mm`,
         height: `${outerHeight}mm`,
         position: 'relative',
-        overflow: 'hidden',
       }}
     >
       <div

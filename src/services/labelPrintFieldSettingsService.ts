@@ -102,12 +102,16 @@ export function buildJsBarcodeOptions(
   const narrow = size.width < 50;
   const low = size.height < 30;
   const mid = size.height < 50;
+  /** Yazdırmada çubuk ve rakamların okunması için modül yüksekliği / font biraz büyük tutulur. */
   const base: Record<string, unknown> = {
     format: fmt,
-    width: narrow ? 1.5 : 2,
-    height: low ? 20 : mid ? 30 : 40,
+    width: narrow ? 2 : 2.5,
+    height: low ? 24 : mid ? 34 : 46,
     margin: 0,
-    fontSize: narrow ? 10 : 12,
+    fontSize: narrow ? 11 : 13,
+    font: 'monospace',
+    fontOptions: 'bold',
+    textMargin: 2,
   };
   if (captionMode === 'none') {
     return { ...base, displayValue: false };
