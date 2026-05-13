@@ -553,6 +553,43 @@ export const productAPI = {
   },
 
   /**
+   * Sıradaki barkodu önizler — şablon `current_value`'yu güncellemez.
+   * UI yeni ürün formu açılırken kullanıcıya göstermek için kullanılır.
+   * Kayıt anında `generateNextBarcode()` çağrılınca gerçek sayaç ilerletilir.
+   */
+  async peekNextBarcode(): Promise<string> {
+    try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          '/barcode_templates',
+          {
+            select: '*',
+            is_active: 'eq.true',
+            order: 'created_at.asc',
+            limit: 1,
+          },
+          { schema: 'public' }
+        );
+        if (!rows?.[0]) return '';
+        const template = rows[0];
+        const nextValue = BigInt(template.current_value) + 1n;
+        return `${template.prefix}${nextValue.toString().padStart(template.length - template.prefix.length, '0')}`;
+      }
+      const { rows } = await postgres.query(
+        'SELECT * FROM public.barcode_templates WHERE is_active = true ORDER BY created_at ASC LIMIT 1'
+      );
+      if (!rows[0]) return '';
+      const template = rows[0];
+      const nextValue = BigInt(template.current_value) + 1n;
+      return `${template.prefix}${nextValue.toString().padStart(template.length - template.prefix.length, '0')}`;
+    } catch (error) {
+      console.error('[ProductAPI] peekNextBarcode failed:', error);
+      return '';
+    }
+  },
+
+  /**
    * Create new product
    */
   async create(product: Omit<Product, 'id'>): Promise<Product | null> {

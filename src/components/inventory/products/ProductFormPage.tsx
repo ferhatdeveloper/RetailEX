@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useProductStore } from '../../../store';
 import { productVariantAPI, invoicesAPI } from '../../../services/api/index';
+import { productAPI } from '../../../services/api/products';
 import { productUnitsAPI } from '../../../services/api/productUnitsAPI';
 import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
 import {
@@ -697,6 +698,11 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   };
 
   const lastLoadedIdRef = useRef<string | null>(null);
+  /** Yeni ürün açılışında `peekNextBarcode` ile çekilen barkod; kullanıcı elle değiştirip
+   *  değiştirmediğini anlamak için saklarız (commit edip etmeme kararı için). */
+  const peekedBarcodeRef = useRef<string | null>(null);
+  /** Otomatik atanan değerin tekrar tekrar set edilmesini önlemek için flag. */
+  const autoBarcodeAppliedRef = useRef(false);
 
   // Load existing product
   useEffect(() => {
@@ -856,6 +862,34 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       lastLoadedIdRef.current = null;
     }
   }, [productId, products]);
+
+  // Yeni ürün modunda: barkod alanını otomatik olarak şablondaki "son numara + 1" ile doldur.
+  // peek* fonksiyonu sayaç ilerletmez; gerçek artırma kayıt anında yapılır.
+  useEffect(() => {
+    if (productId) return; // düzenleme modunda dokunma
+    if (autoBarcodeAppliedRef.current) return; // zaten uygulandı
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await productAPI.peekNextBarcode();
+        if (cancelled || !next) return;
+        // Sadece kullanıcı henüz elle bir şey yazmamışsa doldur (boş ise).
+        setBarcodes(prev => {
+          if (prev.length === 1 && !prev[0].code) {
+            peekedBarcodeRef.current = next;
+            autoBarcodeAppliedRef.current = true;
+            return [{ ...prev[0], code: next, isPrimary: true }];
+          }
+          return prev;
+        });
+      } catch (err) {
+        console.warn('[ProductFormPage] peekNextBarcode hata:', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
 
   // Load master data (currencies, etc.)
   useEffect(() => {
@@ -1068,8 +1102,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   }, []);
 
   // Barcode Operations
-  const addBarcode = () => {
-    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit: formData.unit, price: formData.salePrice, isPrimary: false }]);
+  // Yeni satır eklerken peekNextBarcode ile "son numara + 1"i baz olarak getir.
+  // Sayaç sadece kayıt anında handleSave içinde generateNextBarcode ile ilerletilir.
+  const addBarcode = async () => {
+    let nextCode = '';
+    try {
+      nextCode = await productAPI.peekNextBarcode();
+    } catch {
+      /* hata olursa boş bırak */
+    }
+    setBarcodes((prev: Barcode[]) => [
+      ...prev,
+      { id: Date.now().toString(), code: nextCode, unit: formData.unit, price: formData.salePrice, isPrimary: false },
+    ]);
   };
 
   const removeBarcode = (id: string) => {
@@ -1078,11 +1123,20 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
   };
 
-  const addBarcodeWithUnit = (unit: string) => {
+  const addBarcodeWithUnit = async (unit: string) => {
     const conversion = unitConversions.find(c => c.fromUnit === unit);
     const multiplier = conversion ? conversion.factor : 1;
     const initialPrice = formData.salePrice * multiplier;
-    setBarcodes((prev: Barcode[]) => [...prev, { id: Date.now().toString(), code: '', unit, price: initialPrice, isPrimary: false }]);
+    let nextCode = '';
+    try {
+      nextCode = await productAPI.peekNextBarcode();
+    } catch {
+      /* hata olursa boş bırak */
+    }
+    setBarcodes((prev: Barcode[]) => [
+      ...prev,
+      { id: Date.now().toString(), code: nextCode, unit, price: initialPrice, isPrimary: false },
+    ]);
   };
 
   const updateBarcode = (id: string, field: string, value: any) => {
@@ -1501,6 +1555,23 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     if (!formData.code || !formData.description_tr) {
       toast.error('Ürün kodu ve Türkçe açıklama zorunludur');
       return;
+    }
+
+    // Yeni ürün modunda kullanıcı peek'lenmiş barkodu değiştirmediyse, şablon sayacını
+    // burada gerçekten ilerletip yeni bir numara alalım. Böylece kullanıcılar arasında
+    // aynı barkodun atanma riski en aza iner (peek sayaç ilerletmez).
+    if (!productId && peekedBarcodeRef.current && barcodes[0]?.code === peekedBarcodeRef.current) {
+      try {
+        const committed = await productAPI.generateNextBarcode();
+        if (committed) {
+          setBarcodes(prev => prev.map((b, i) => (i === 0 ? { ...b, code: committed } : b)));
+          // local kopyayı da güncelle ki bundan sonraki kayıt akışı bu değeri kullansın
+          barcodes[0] = { ...barcodes[0], code: committed } as any;
+          peekedBarcodeRef.current = null; // tek seferlik
+        }
+      } catch (err) {
+        console.warn('[ProductFormPage] generateNextBarcode commit hata:', err);
+      }
     }
 
     const primaryBarcode = barcodes[0]?.code || '';
