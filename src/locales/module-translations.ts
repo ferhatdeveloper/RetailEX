@@ -2419,6 +2419,19 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'لای چەپ بەرهەم هەڵبژێرە یان هەڵبژاردنی خشتە زیاد بکە',
   },
   printQueue: { tr: 'Yazdırma kuyruğu', en: 'Print queue', ar: 'طابور الطباعة', ku: 'نۆرەی چاپ' },
+  bulkLabelPdfDownload: { tr: 'PDF indir', en: 'Download PDF', ar: 'تنزيل PDF', ku: 'دابەزاندنی PDF' },
+  bulkLabelPdfReady: {
+    tr: 'PDF dosyası indirildi',
+    en: 'PDF file downloaded',
+    ar: 'تم تنزيل ملف PDF',
+    ku: 'پەڕەی PDF دابەزێنرا',
+  },
+  bulkLabelPdfExportFailed: {
+    tr: 'PDF oluşturulamadı',
+    en: 'Could not create PDF',
+    ar: 'تعذر إنشاء PDF',
+    ku: 'PDF دروست نەکرا',
+  },
   shelfLocationPlaceholder: {
     tr: 'Örn: A-12, Koridor 3',
     en: 'e.g. A-12, aisle 3',

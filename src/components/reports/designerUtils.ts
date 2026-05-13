@@ -66,6 +66,41 @@ export async function exportToPDF(
     pdf.save(fileName);
 }
 
+/**
+ * Her HTML öğesi ayrı bir PDF sayfası (aynı mm boyut). Termal etiket kuyruğu gibi çoklu hücreler için.
+ */
+export async function exportElementsToPdfPages(
+    elements: HTMLElement[],
+    fileName: string = 'labels.pdf',
+    pageSizeMm: { width: number; height: number } = DEFAULT_A4
+): Promise<void> {
+    if (!elements.length) return;
+    const pw = Math.max(1, pageSizeMm.width);
+    const ph = Math.max(1, pageSizeMm.height);
+    const orientation = ph >= pw ? 'p' : 'l';
+    const pdf = new jsPDF(orientation, 'mm', [pw, ph]);
+
+    for (let i = 0; i < elements.length; i++) {
+        if (i > 0) {
+            pdf.addPage([pw, ph]);
+        }
+        const el = elements[i];
+        const canvas = await html2canvas(el, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            scrollX: 0,
+            scrollY: 0,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        pdf.addImage(imgData, 'PNG', 0, 0, pageW, pageH);
+    }
+    pdf.save(fileName);
+}
+
 export const DEFAULT_A4 = {
     width: 210,
     height: 297

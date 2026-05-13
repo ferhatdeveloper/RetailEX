@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks } from 'lucide-react';
+import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Product } from '../../../core/types';
@@ -84,6 +84,7 @@ export function BulkProductLabelPrint({
   const [fieldSettings, setFieldSettings] = useState<LabelPrintFieldSettings>(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
   const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
   const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -192,6 +193,37 @@ export function BulkProductLabelPrint({
     window.print();
   };
 
+  const handlePdfExport = async () => {
+    if (queue.length === 0) {
+      toast.error(tm('bulkQueueEmptyHint'));
+      return;
+    }
+    const root = printRef.current;
+    if (!root) return;
+    setPdfExporting(true);
+    try {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise((r) => setTimeout(r, 220));
+      const fname = `retailex-etiketler-${new Date().toISOString().slice(0, 10)}.pdf`;
+      if (selectedSize.category === 'termal') {
+        const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
+        if (cells.length > 0) {
+          await exportElementsToPdfPages(cells, fname, { width: pageWidthMm, height: pageHeightMm });
+        } else {
+          await exportToPDF(root, fname, { width: pageWidthMm, height: pageHeightMm });
+        }
+      } else {
+        await exportToPDF(root, fname, DEFAULT_A4);
+      }
+      toast.success(tm('bulkLabelPdfReady'));
+    } catch (e) {
+      toast.error((e as Error)?.message || tm('bulkLabelPdfExportFailed'));
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
   const bumpQuantity = (queueKey: string, delta: number) => {
     setQueue((prev) =>
       prev
@@ -231,6 +263,16 @@ export function BulkProductLabelPrint({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePdfExport}
+              disabled={queue.length === 0 || pdfExporting}
+              className="px-3 sm:px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-45 disabled:cursor-not-allowed flex items-center gap-2 text-xs sm:text-sm font-bold border border-white/30 whitespace-nowrap"
+              title={tm('bulkLabelPdfDownload')}
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              <span>{pdfExporting ? '…' : tm('bulkLabelPdfDownload')}</span>
+            </button>
             <button
               type="button"
               onClick={handlePrint}
@@ -600,6 +642,16 @@ export function BulkProductLabelPrint({
                     {tm('clearQueue')}
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handlePdfExport}
+                  disabled={queue.length === 0 || pdfExporting}
+                  className="px-4 py-2 bg-white border border-purple-200 text-purple-800 rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow text-sm"
+                  title={tm('bulkLabelPdfDownload')}
+                >
+                  <Download className="w-4 h-4" />
+                  {pdfExporting ? '…' : tm('bulkLabelPdfDownload')}
+                </button>
                 <button
                   type="button"
                   onClick={handlePrint}
