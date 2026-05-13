@@ -6,6 +6,8 @@ import { formatNumber as formatNumberUtil } from '../../utils/formatNumber';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { confirm as confirmDialog } from '../shared/ConfirmDialog';
 
 interface POSCartItemActionModalProps {
   item: CartItem;
@@ -35,6 +37,7 @@ export function POSCartItemActionModal({
   unitSets = []
 }: POSCartItemActionModalProps) {
   const { darkMode } = useTheme();
+  const { tm } = useLanguage();
   const [quantity, setQuantity] = useState(item.quantity.toString());
   const [discount, setDiscount] = useState(item.discount.toString());
   const [price, setPrice] = useState((item.price ?? item.variant?.price ?? item.product.price).toString());
@@ -125,8 +128,15 @@ export function POSCartItemActionModal({
     onClose();
   };
 
-  const handleRemove = () => {
-    if (window.confirm(`${item.product.name} ürününü sepetten çıkarmak istediğinizden emin misiniz?`)) {
+  const handleRemove = async () => {
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('removeFromCart') || 'Üründü Kaldır',
+      description: (tm('confirmRemoveFromCart') || '{name} ürününü sepetten çıkarmak istediğinizden emin misiniz?').replace('{name}', item.product.name),
+      confirmLabel: tm('removeAction') || 'Kaldır',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (ok) {
       onRemoveItem(itemIndex);
       onClose();
     }

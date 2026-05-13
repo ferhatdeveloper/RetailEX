@@ -6,6 +6,7 @@ import { serviceAPI, type Service } from '../../../services/serviceAPI';
 import { ServiceFormPage } from './ServiceFormPage';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
 import { Briefcase, Edit, Trash2, RefreshCw, Plus, Search, Layers, Banknote } from 'lucide-react';
@@ -132,10 +133,17 @@ export function ServiceManagement() {
   ], [tm]);
 
   const handleDelete = async (service: Service) => {
-    if (window.confirm(`${service.name} silinecek. Emin misiniz?`)) {
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('deleteService') || 'Hizmeti Sil',
+      description: (tm('confirmServiceDelete') || '{name} silinecek. Emin misiniz?').replace('{name}', service.name),
+      confirmLabel: tm('deleteAction') || 'Sil',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (ok) {
       try {
         await serviceAPI.delete(service.id);
-        toast.success('Hizmet silindi');
+        toast.success(tm('serviceDeleted') || 'Hizmet silindi');
         loadServices(true);
       } catch (error) {
         toast.error('Silme işlemi başarısız');

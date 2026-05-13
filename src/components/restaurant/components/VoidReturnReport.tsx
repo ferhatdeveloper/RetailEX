@@ -5,6 +5,7 @@ import { RestaurantService } from '../../../services/restaurant';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { moduleTranslations } from '../../../locales/module-translations';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
 interface VoidReturnReportProps {
     onBack?: () => void;
@@ -109,12 +110,18 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
                       .replace('{from}', fromDate || '…')
                       .replace('{to}', toDate || '…')
                 : '';
-        const ok = window.confirm(
-            (isVoidTab ? tm('resVoidConfirmDeleteVoids') : tm('resVoidConfirmDeleteReturns')).replace(
+        const ok = await confirmDialog({
+            variant: 'danger',
+            title: isVoidTab
+                ? (tm('resVoidDeleteVoidsTitle') || 'İptal Kayıtlarını Sil')
+                : (tm('resVoidDeleteReturnsTitle') || 'İade Kayıtlarını Sil'),
+            description: (isVoidTab ? tm('resVoidConfirmDeleteVoids') : tm('resVoidConfirmDeleteReturns')).replace(
                 '{range}',
                 rangeSuffix
-            )
-        );
+            ),
+            confirmLabel: tm('deleteAction') || 'Sil',
+            cancelLabel: tm('cancel') || 'İptal',
+        });
         if (!ok) return;
 
         try {

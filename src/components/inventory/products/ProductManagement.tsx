@@ -20,6 +20,7 @@ import { ReportViewerModule } from '../../reports/ReportViewerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
 import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
 interface ProductManagementProps {
   products: Product[];
@@ -96,19 +97,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [showViewer, setShowViewer] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
 
-  const buildInvoiceWarningText = (productNames: string[], saleRefs: string[], purchaseRefs: string[]) => {
-    const names = productNames.slice(0, 8).join(', ');
-    const sales = saleRefs.length > 0 ? `Satış: ${saleRefs.slice(0, 8).join(', ')}` : '';
-    const purchases = purchaseRefs.length > 0 ? `Alış: ${purchaseRefs.slice(0, 8).join(', ')}` : '';
-    return [
-      `Bu ürün(ler) faturalarda kullanılmış: ${names}${productNames.length > 8 ? '...' : ''}`,
-      sales,
-      purchases,
-      'Bu faturalardaki geçmiş kayıt ilişkilerini kaldırmak istediğinize emin misiniz?',
-      'Devam etmek için yönetici şifresi girmeniz gerekecek.'
-    ].filter(Boolean).join('\n');
-  };
-
   const executeDeleteWithProtection = async (targets: Product[]) => {
     if (!targets.length) return;
     const ids = targets.map((p) => p.id);
@@ -119,15 +107,35 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     if (hasRefs) {
       const saleInvoiceNos = Array.from(new Set(impact.saleRefs.map((x) => x.invoiceNo)));
       const purchaseInvoiceNos = Array.from(new Set(impact.purchaseRefs.map((x) => x.invoiceNo)));
-      const msg = buildInvoiceWarningText(
-        targets.map((p) => p.name),
-        saleInvoiceNos,
-        purchaseInvoiceNos
-      );
-      if (!window.confirm(msg)) return;
-      const adminPassword = window.prompt('Yönetici şifresi gerekli:');
+      const names = targets.map((p) => p.name).slice(0, 8).join(', ');
+      const ok = await confirmDialog({
+        variant: 'danger',
+        title: tm('productHasInvoiceRefsTitle') || 'Ürün faturalarda kullanılmış',
+        description: `${names}${targets.length > 8 ? '...' : ''}`,
+        meta: (
+          <div className="space-y-1 text-xs">
+            {saleInvoiceNos.length > 0 && (
+              <div>
+                <span className="font-bold uppercase tracking-wider opacity-70">{tm('salesInvoice') || 'Satış'}:</span>{' '}
+                <span className="font-mono">{saleInvoiceNos.slice(0, 8).join(', ')}{saleInvoiceNos.length > 8 ? '…' : ''}</span>
+              </div>
+            )}
+            {purchaseInvoiceNos.length > 0 && (
+              <div>
+                <span className="font-bold uppercase tracking-wider opacity-70">{tm('purchaseInvoice') || 'Alış'}:</span>{' '}
+                <span className="font-mono">{purchaseInvoiceNos.slice(0, 8).join(', ')}{purchaseInvoiceNos.length > 8 ? '…' : ''}</span>
+              </div>
+            )}
+            <div className="mt-2">{tm('productHasInvoiceRefsHint') || 'Bu faturalardaki geçmiş kayıt ilişkilerini kaldırmak istediğinize emin misiniz? Devam etmek için yönetici şifresi gerekecek.'}</div>
+          </div>
+        ),
+        confirmLabel: tm('continue') || 'Devam Et',
+        cancelLabel: tm('cancel') || 'İptal',
+      });
+      if (!ok) return;
+      const adminPassword = window.prompt(tm('adminPasswordPromptShort') || 'Yönetici şifresi gerekli:');
       if (!adminPassword) {
-        toast.error('Yönetici şifresi girilmedi, işlem iptal edildi.');
+        toast.error(tm('adminPasswordNotProvided') || 'Yönetici şifresi girilmedi, işlem iptal edildi.');
         return;
       }
       options = { force: true, adminPassword };
@@ -445,7 +453,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <>
                 <button
                   onClick={async () => {
-                    if (!window.confirm(`${selectedProducts.length} ürün silinecek. Emin misiniz?`)) return;
+                    const ok = await confirmDialog({
+                      variant: 'danger',
+                      title: tm('deleteSelectedProducts') || 'Seçili ürünleri sil',
+                      description: (tm('confirmBulkProductDelete') || '{count} ürün silinecek. Emin misiniz?').replace('{count}', String(selectedProducts.length)),
+                      confirmLabel: tm('deleteAction') || 'Sil',
+                      cancelLabel: tm('cancel') || 'İptal',
+                    });
+                    if (!ok) return;
                     await executeDeleteWithProtection(selectedProducts);
                     setSelectedProducts([]);
                   }}
@@ -804,7 +819,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                   const message = t.confirmItemDelete
                     ? t.confirmItemDelete.replace('{item}', product.name)
                     : `${product.name} silinsin mi?`;
-                  if (!window.confirm(message)) return;
+                  const ok = await confirmDialog({
+                    variant: 'danger',
+                    title: tm('deleteProduct') || 'Ürünü sil',
+                    description: message,
+                    confirmLabel: tm('deleteAction') || 'Sil',
+                    cancelLabel: tm('cancel') || 'İptal',
+                  });
+                  if (!ok) return;
                   setMobileActionProduct(null);
                   try {
                     await executeDeleteWithProtection([product]);
@@ -938,7 +960,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 const message = t.confirmItemDelete
                   ? t.confirmItemDelete.replace('{item}', product.name)
                   : `${product.name} silinsin mi? Emin misiniz?`;
-                if (!window.confirm(message)) return;
+                const ok = await confirmDialog({
+                  variant: 'danger',
+                  title: tm('deleteProduct') || 'Ürünü sil',
+                  description: message,
+                  confirmLabel: tm('deleteAction') || 'Sil',
+                  cancelLabel: tm('cancel') || 'İptal',
+                });
+                if (!ok) return;
                 setContextMenu(null);
                 try {
                   await executeDeleteWithProtection([product]);
@@ -954,9 +983,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     label: `Demo ürünleri toplu sil (${demoProductsInList.length} adet)`,
                     icon: Trash2,
                     variant: 'danger' as const,
-                    onClick: () => {
-                      const message = `${demoProductsInList.length} demo ürünü silinecek. Emin misiniz?`;
-                      if (!window.confirm(message)) {
+                    onClick: async () => {
+                      const ok = await confirmDialog({
+                        variant: 'danger',
+                        title: tm('deleteDemoProducts') || 'Demo ürünleri sil',
+                        description: (tm('confirmBulkDemoProductDelete') || '{count} demo ürünü silinecek. Emin misiniz?').replace('{count}', String(demoProductsInList.length)),
+                        confirmLabel: tm('deleteAction') || 'Sil',
+                        cancelLabel: tm('cancel') || 'İptal',
+                      });
+                      if (!ok) {
                         setContextMenu(null);
                         return;
                       }

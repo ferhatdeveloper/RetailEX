@@ -10,6 +10,7 @@ import {
     getActiveStores, getProductByBarcode,
 } from '../../../services/wmsService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -404,9 +405,22 @@ function EntryView({
 
             // Stock check
             if (product.stock < qty) {
-                const proceed = window.confirm(
-                    `⚠️ ${tm('stockWarningConfirm')}\n${product.name}\n${tm('stockLabel')}: ${product.stock} — ${qty}\n\n${tm('stockWarningConfirm')}`
-                );
+                const proceed = await confirmDialog({
+                    variant: 'warning',
+                    title: tm('stockWarningTitle') || 'Yetersiz Stok',
+                    description: tm('stockWarningConfirm'),
+                    meta: (
+                        <div className="space-y-1 text-xs">
+                            <div className="font-semibold">{product.name}</div>
+                            <div>
+                                <span className="opacity-70">{tm('stockLabel')}:</span>{' '}
+                                <span className="font-mono">{product.stock} / {qty}</span>
+                            </div>
+                        </div>
+                    ),
+                    confirmLabel: tm('continueAnyway') || 'Devam Et',
+                    cancelLabel: tm('cancel') || 'İptal',
+                });
                 if (!proceed) {
                     beep(false);
                     setBarcode('');

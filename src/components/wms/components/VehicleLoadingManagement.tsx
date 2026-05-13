@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { optimizeVehicleLoad, optimizeRouteSequence, LoadItem, VehicleCapacity } from '../utils/logisticsLogic';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 
 interface VehicleLoadingManagementProps {
   darkMode: boolean;
@@ -256,11 +257,18 @@ export function VehicleLoadingManagement({ darkMode, onBack }: VehicleLoadingMan
               <p className="text-gray-500">{selectedVehicle.plate_number} • Sürücü: {selectedVehicle.driver_name}</p>
             </div>
             <button
-              onClick={() => {
-                if (assignedOrders.length > 0 && !window.confirm('Mevcut yükleme listesi sıfırlanacak. Devam edilsin mi?')) return;
+              onClick={async () => {
+                if (assignedOrders.length > 0) {
+                  const ok = await confirmDialog({
+                    variant: 'warning',
+                    title: 'Yükleme listesini sıfırla',
+                    description: 'Mevcut yükleme listesi sıfırlanacak. Devam edilsin mi?',
+                    confirmLabel: 'Devam Et',
+                    cancelLabel: 'İptal',
+                  });
+                  if (!ok) return;
+                }
 
-                // Import logic dynamically or assume imported at top
-                // Since replace_file_content is partial, we will assume logic is available or inline adapter here.
                 // Adapting local Order type to LoadItem
                 const loadItems = orders.map(o => ({
                   id: o.id,

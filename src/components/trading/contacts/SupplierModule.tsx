@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
@@ -225,7 +226,14 @@ export function SupplierModule() {
   const handleBulkDeleteDemoAccounts = async () => {
     const n = demoAccountsInList.length;
     if (n === 0) return;
-    if (!window.confirm(`${n} demo cari kaydı silinecek. Emin misiniz?`)) return;
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('deleteDemoSuppliers') || 'Demo cari kayıtlarını sil',
+      description: (tm('confirmBulkDemoSupplierDelete') || '{count} demo cari kaydı silinecek. Emin misiniz?').replace('{count}', String(n)),
+      confirmLabel: tm('deleteAction') || 'Sil',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (!ok) return;
     setContextMenu(null);
     let ok = 0;
     for (const a of demoAccountsInList) {

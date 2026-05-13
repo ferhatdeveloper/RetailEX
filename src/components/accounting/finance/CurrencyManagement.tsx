@@ -17,6 +17,7 @@ import {
   Loader2, Trash2, X, Check, Calculator
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { currencyAPI, exchangeRateAPI, type Currency as APICurrency, type ExchangeRate as APIExchangeRate } from '../../../services/api/masterData';
@@ -432,7 +433,14 @@ export function CurrencyManagement() {
   };
 
   const handleDeleteCurrency = async (id: string) => {
-    if (!window.confirm(tm('confirmDelete') || 'Silmek istediğinize emin misiniz?')) return;
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('deleteCurrency') || 'Para Birimini Sil',
+      description: tm('confirmDelete') || 'Silmek istediğinize emin misiniz?',
+      confirmLabel: tm('deleteAction') || 'Sil',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (!ok) return;
 
     setIsLoading(true);
     try {
@@ -559,7 +567,14 @@ export function CurrencyManagement() {
   };
 
   const handleDeleteRate = async (id: string) => {
-    if (!window.confirm(tm('confirmDelete') || 'Silmek istediğinize emin misiniz?')) return;
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('deleteExchangeRate') || 'Kuru Sil',
+      description: tm('confirmDelete') || 'Silmek istediğinize emin misiniz?',
+      confirmLabel: tm('deleteAction') || 'Sil',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (!ok) return;
 
     setIsLoading(true);
     try {

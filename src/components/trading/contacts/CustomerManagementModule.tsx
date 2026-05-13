@@ -5,6 +5,7 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { useCustomerStore } from '../../../store/useCustomerStore';
 import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
@@ -298,7 +299,14 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   const handleBulkDeleteDemoCustomers = async () => {
     const n = demoCustomersInList.length;
     if (n === 0) return;
-    if (!window.confirm(`${n} demo müşterisi silinecek. Emin misiniz?`)) return;
+    const ok = await confirmDialog({
+      variant: 'danger',
+      title: tm('deleteDemoCustomers') || 'Demo müşterileri sil',
+      description: (tm('confirmBulkDemoCustomerDelete') || '{count} demo müşterisi silinecek. Emin misiniz?').replace('{count}', String(n)),
+      confirmLabel: tm('deleteAction') || 'Sil',
+      cancelLabel: tm('cancel') || 'İptal',
+    });
+    if (!ok) return;
     setContextMenu(null);
     let ok = 0;
     for (const c of demoCustomersInList) {

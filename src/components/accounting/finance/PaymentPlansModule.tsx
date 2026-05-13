@@ -13,6 +13,7 @@ import {
     ChevronRight, Layout, Info, Save, Clock, Percent, Banknote, RefreshCw
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { createColumnHelper } from '@tanstack/react-table';
 import { paymentPlansAPI, PaymentPlan, PaymentPlanLine } from '../../../services/api/paymentPlans';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -21,7 +22,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 const columnHelper = createColumnHelper<PaymentPlan>();
 
 export function PaymentPlansModule() {
-    const { t } = useLanguage();
+    const { t, tm } = useLanguage();
     const { darkMode } = useTheme();
 
     const [plans, setPlans] = useState<PaymentPlan[]>([]);
@@ -79,7 +80,14 @@ export function PaymentPlansModule() {
     };
 
     const handleDelete = async (id: string) => {
-        if (window.confirm('Bu ödeme planını silmek istediğinize emin misiniz?')) {
+        const ok = await confirmDialog({
+            variant: 'danger',
+            title: tm('deletePaymentPlan') || 'Ödeme Planını Sil',
+            description: tm('confirmDeletePaymentPlan') || 'Bu ödeme planını silmek istediğinize emin misiniz?',
+            confirmLabel: tm('deleteAction') || 'Sil',
+            cancelLabel: tm('cancel') || 'İptal',
+        });
+        if (ok) {
             const success = await paymentPlansAPI.delete(id);
             if (success) loadPlans();
         }
