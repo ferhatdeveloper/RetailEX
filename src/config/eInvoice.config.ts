@@ -32,6 +32,21 @@ function parseRegion(raw: string | undefined): RegulatoryRegion {
   return 'IQ';
 }
 
+/** Sol menü / kısayollar: GİB e-belge (e-Fatura, e-dönüşüm vb.) yalnızca TR bölgesinde. */
+export function isGibEdocumentUiEnabled(
+  regulatoryRegion: string | undefined | null
+): boolean {
+  return parseRegion(String(regulatoryRegion ?? '')) === 'TR';
+}
+
+/** TR dışında gizlenen yönetim ekranı kimlikleri (`ManagementModule` vb.). */
+export const GIB_EDOCUMENT_SCREEN_IDS = new Set<string>([
+  'etransform',
+  'einvoice',
+  'ewaybill',
+  'eledger',
+]);
+
 function parseMockTransport(raw: string | undefined): boolean {
   if (raw === undefined || raw === '') return true;
   const v = String(raw).trim().toLowerCase();

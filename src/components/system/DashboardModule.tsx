@@ -13,6 +13,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import { invoke } from '@tauri-apps/api/core';
 import { IS_TAURI } from '../../utils/env';
+import { isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../services/loggingService';
@@ -98,19 +99,22 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     { id: 'excel', icon: FileSpreadsheet, label: t.excelImportExport || 'Excel İçe/Dışa Aktar', color: 'from-emerald-500 to-emerald-600', category: t.systemSettings },
   ];
 
-  // Filter actions based on menuMode
+  // Filter actions based on menuMode + mevzuat (IQ: GİB e-belge kısayolu yok)
   const allAvailableActions = useMemo(() => {
+    const gibOk =
+      selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
+    const source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
     if (menuMode === 1) {
       // Hide specific categories or IDs in simplified mode
       const hiddenIds = ['crm', 'logistics', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
       const hiddenCategories = ['Lojistik', 'Üretim', 'İK', 'Sistem'];
-      return baseActions.filter((a: any) =>
+      return source.filter((a: any) =>
         !hiddenIds.includes(a.id) &&
         !hiddenCategories.includes(a.category)
       );
     }
-    return baseActions;
-  }, [menuMode]);
+    return source;
+  }, [menuMode, selectedFirm]);
 
   // Load shortcuts: Tauri → SQLite komutları; web → localStorage
   useEffect(() => {

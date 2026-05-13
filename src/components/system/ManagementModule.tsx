@@ -209,6 +209,8 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'restaurant' | 'beauty';
 
 import { useAuth } from '../../contexts/AuthContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { GIB_EDOCUMENT_SCREEN_IDS, isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 
 export function ManagementModule({
   products,
@@ -222,6 +224,10 @@ export function ManagementModule({
   setSidebarOpen
 }: ManagementModuleProps) {
   const { user, hasPermission: contextHasPermission } = useAuth();
+  const { selectedFirm } = useFirmaDonem();
+  /** Firma yüklenene kadar menüyü daraltma; yüklendiyse yalnızca TR'de GİB. */
+  const gibEdocumentMenuEnabled =
+    selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
   const { hasPermission, isAdmin } = usePermission();
   const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
@@ -501,6 +507,14 @@ export function ManagementModule({
         screenId = d as ExtendedScreen;
         setCountPurchaseDraftPrefill(null);
       }
+      if (
+        selectedFirm != null &&
+        !isGibEdocumentUiEnabled(selectedFirm.regulatory_region) &&
+        GIB_EDOCUMENT_SCREEN_IDS.has(String(screenId))
+      ) {
+        screenId = 'dashboard';
+        setCountPurchaseDraftPrefill(null);
+      }
       setCurrentScreen(screenId);
       if (isMobile) effectiveSetSidebarOpen(false);
 
@@ -514,7 +528,7 @@ export function ManagementModule({
     };
     window.addEventListener('navigateToScreen', handleNavigateToScreen as EventListener);
     return () => window.removeEventListener('navigateToScreen', handleNavigateToScreen as EventListener);
-  }, [user, isMobile, effectiveSetSidebarOpen]);
+  }, [user, isMobile, effectiveSetSidebarOpen, selectedFirm]);
 
   // Convert API menu items to menuSections format (önce tanımlanmalı)
   const convertMenuItemsToSections = useCallback((items: any[]): any[] => {
@@ -679,20 +693,43 @@ export function ManagementModule({
 
   const handleSearchItemClick = useCallback((item: any) => {
     if (item?.id == null || item.id === '') return;
+    if (
+      selectedFirm != null &&
+      !isGibEdocumentUiEnabled(selectedFirm.regulatory_region) &&
+      GIB_EDOCUMENT_SCREEN_IDS.has(String(item.id))
+    ) {
+      return;
+    }
     setCurrentScreen(item.id);
     if (isMobile) effectiveSetSidebarOpen(false);
     setMenuSearchQuery('');
     setSearchResults([]);
-  }, [isMobile, effectiveSetSidebarOpen]);
+  }, [isMobile, effectiveSetSidebarOpen, selectedFirm]);
 
   /** Mobilde menüden ekran seçilince drawer kapanır; kapalı drawer z-index ile içeriğin altında kalmalıdır. */
   const setScreenFromSidebar = useCallback(
     (s: any) => {
+      if (
+        selectedFirm != null &&
+        !isGibEdocumentUiEnabled(selectedFirm.regulatory_region) &&
+        GIB_EDOCUMENT_SCREEN_IDS.has(String(s))
+      ) {
+        return;
+      }
       setCurrentScreen(s);
       if (isMobile) effectiveSetSidebarOpen(false);
     },
-    [isMobile, effectiveSetSidebarOpen]
+    [isMobile, effectiveSetSidebarOpen, selectedFirm]
   );
+
+  /** IQ vb.: son ekran GİB modülü kaldıysa panele dön. */
+  useEffect(() => {
+    if (selectedFirm == null) return;
+    if (isGibEdocumentUiEnabled(selectedFirm.regulatory_region)) return;
+    if (GIB_EDOCUMENT_SCREEN_IDS.has(String(currentScreen))) {
+      setCurrentScreen('dashboard');
+    }
+  }, [selectedFirm, currentScreen]);
 
 
 
@@ -704,6 +741,10 @@ export function ManagementModule({
     const filterHidden = (items: any[]): any[] => {
       return items
         .filter(item => {
+          if (!gibEdocumentMenuEnabled && item.id != null && GIB_EDOCUMENT_SCREEN_IDS.has(String(item.id))) {
+            return false;
+          }
+
           // 1. Check hidden_modules from config
           if (hiddenModules.includes(item.id)) return false;
 
@@ -732,7 +773,7 @@ export function ManagementModule({
     };
 
     return filterHidden(baseSections);
-  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin]);
+  }, [dynamicMenuSections, staticMenuSections, hiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
