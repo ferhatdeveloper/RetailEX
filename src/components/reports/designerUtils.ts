@@ -3,7 +3,106 @@ import html2canvas from 'html2canvas';
 
 const H2C_TEMP_ID_PREFIX = 'retailex-h2c-';
 
-/** html2canvas oklch() / modern CSS parse edemiyor; klon üzerinde harici CSS kaldırılıp hesaplanmış stiller inline yapılır. */
+/**
+ * html2canvas modern CSS Color 4 fonksiyonlarını (oklch, oklab, lab, lch, hwb,
+ * color(), color-mix()) parse edemez. Tailwind 4 / shadcn varsayılan olarak
+ * `oklch()` üretir ve `getComputedStyle()` modern Chromium'da bu değerleri
+ * olduğu gibi geri döndürür — bu yüzden klona inline yazarken RGB'ye çevirmek
+ * gerekir. Canvas `fillStyle` hack'i bu çevirimi tarayıcıya yaptırır.
+ */
+
+let _colorNormalizeCtx: CanvasRenderingContext2D | null | undefined;
+function getColorNormalizeCtx(): CanvasRenderingContext2D | null {
+    if (_colorNormalizeCtx !== undefined) return _colorNormalizeCtx;
+    if (typeof document === 'undefined') {
+        _colorNormalizeCtx = null;
+        return null;
+    }
+    try {
+        const c = document.createElement('canvas');
+        _colorNormalizeCtx = c.getContext('2d');
+    } catch {
+        _colorNormalizeCtx = null;
+    }
+    return _colorNormalizeCtx;
+}
+
+/**
+ * Tek bir renk ifadesini RGB(A) stringine çevirir; tarayıcı reddederse orijinali döner.
+ * Geçerli mi diye anlamak için alışılmadık bir sentinel ile reset yapılır: atamadan
+ * sonra değer hâlâ sentinele eşitse tarayıcı renkleri kabul etmemiş demektir.
+ */
+function rgbifyColor(value: string): string {
+    const ctx = getColorNormalizeCtx();
+    if (!ctx) return value;
+    try {
+        ctx.fillStyle = '#feedba';
+        const sentinel = String(ctx.fillStyle).toLowerCase();
+        ctx.fillStyle = value;
+        const out = String(ctx.fillStyle);
+        if (!out || out.toLowerCase() === sentinel) return value;
+        return out;
+    } catch {
+        return value;
+    }
+}
+
+/** Hızlı ön kontrol — değer içinde modern color fonksiyonu var mı? */
+const MODERN_COLOR_QUICK_RE = /\b(?:oklch|oklab|lch|lab|hwb|color-mix|color)\s*\(/i;
+
+const MODERN_COLOR_FN_NAMES = ['oklch', 'oklab', 'lab', 'lch', 'hwb', 'color-mix', 'color'];
+
+/**
+ * Bir CSS değer içindeki tüm modern renk fonksiyonu çağrılarını (iç içe
+ * parantezler dâhil) RGB karşılıklarıyla değiştirir. `color()` ve `color-mix()`
+ * iç içe parantez içerebileceği için basit regex yerine paranteze duyarlı
+ * tarayıcı kullanılır.
+ */
+function replaceModernColorFns(value: string): string {
+    if (!value || !MODERN_COLOR_QUICK_RE.test(value)) return value;
+    let out = '';
+    let i = 0;
+    const s = value;
+    while (i < s.length) {
+        let matchedName: string | null = null;
+        for (const name of MODERN_COLOR_FN_NAMES) {
+            if (!s.startsWith(name, i)) continue;
+            const prev = i === 0 ? '' : s[i - 1];
+            if (prev && /[A-Za-z0-9_-]/.test(prev)) continue;
+            let p = i + name.length;
+            while (p < s.length && s[p] === ' ') p++;
+            if (s[p] !== '(') continue;
+            matchedName = name;
+            break;
+        }
+        if (!matchedName) {
+            out += s[i];
+            i++;
+            continue;
+        }
+        const start = i;
+        i += matchedName.length;
+        while (i < s.length && s[i] === ' ') i++;
+        i++; /* '(' atla */
+        let depth = 1;
+        while (i < s.length && depth > 0) {
+            const ch = s[i];
+            if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+            i++;
+        }
+        const fullMatch = s.slice(start, i);
+        out += rgbifyColor(fullMatch);
+    }
+    return out;
+}
+
+function normalizeCssValue(value: string): string {
+    if (!value || typeof value !== 'string') return value;
+    if (!MODERN_COLOR_QUICK_RE.test(value)) return value;
+    return replaceModernColorFns(value);
+}
+
 function stripExternalStylesFromClone(clonedDoc: Document) {
     clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((n) => n.remove());
     clonedDoc.querySelectorAll('style').forEach((n) => n.remove());
@@ -21,13 +120,13 @@ function inlineSubtreeComputedStyles(origRoot: HTMLElement, cloneRoot: HTMLEleme
         for (let j = 0; j < computed.length; j++) {
             const name = computed[j];
             try {
-                const value = computed.getPropertyValue(name);
-                if (value) {
-                    if (computed.getPropertyPriority(name) === 'important') {
-                        c.style.setProperty(name, value, 'important');
-                    } else {
-                        c.style.setProperty(name, value);
-                    }
+                const rawValue = computed.getPropertyValue(name);
+                if (!rawValue) continue;
+                const value = normalizeCssValue(rawValue);
+                if (computed.getPropertyPriority(name) === 'important') {
+                    c.style.setProperty(name, value, 'important');
+                } else {
+                    c.style.setProperty(name, value);
                 }
             } catch {
                 /* bazı salt-okunur / motor özellikleri atlanır */
