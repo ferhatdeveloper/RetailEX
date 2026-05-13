@@ -1,5 +1,7 @@
 import React from 'react';
 import { Bike, Link2, ShieldAlert } from 'lucide-react';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { isGibEdocumentUiEnabled } from '../../../config/eInvoice.config';
 import { FOOD_DELIVERY_CHANNELS } from '../../../config/foodDeliveryChannels';
 
 /**
@@ -7,6 +9,9 @@ import { FOOD_DELIVERY_CHANNELS } from '../../../config/foodDeliveryChannels';
  * Otomatik sipariş aktarımı için pg_bridge üzerindeki webhook uç noktasını kullanın.
  */
 export function RestaurantFoodDeliverySettings() {
+    const { selectedFirm } = useFirmaDonem();
+    /** Yalnızca TR (GİB e-belge) bölgesi: Türkiye paket kanalı rozetleri; IQ veya firma bilinmiyorsa gizli. */
+    const showChannelBadgesSection = isGibEdocumentUiEnabled(selectedFirm?.regulatory_region);
     const pushUrl = 'http://localhost:3001/api/delivery_order/push';
 
     return (
@@ -32,20 +37,22 @@ export function RestaurantFoodDeliverySettings() {
                 </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h4 className="text-sm font-bold text-slate-700 mb-3">Desteklenen kanallar (paket ekranında rozet)</h4>
-                <ul className="grid sm:grid-cols-2 gap-2 text-sm">
-                    {FOOD_DELIVERY_CHANNELS.filter((c) => c.id !== 'manual').map((c) => (
-                        <li
-                            key={c.id}
-                            className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2"
-                        >
-                            <span className="font-semibold text-slate-800 shrink-0">{c.label}</span>
-                            <span className="text-slate-500 text-xs leading-snug">{c.description}</span>
-                        </li>
-                    ))}
-                </ul>
-            </div>
+            {showChannelBadgesSection && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h4 className="text-sm font-bold text-slate-700 mb-3">Desteklenen kanallar (paket ekranında rozet)</h4>
+                    <ul className="grid sm:grid-cols-2 gap-2 text-sm">
+                        {FOOD_DELIVERY_CHANNELS.filter((c) => c.id !== 'manual').map((c) => (
+                            <li
+                                key={c.id}
+                                className="flex items-start gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2"
+                            >
+                                <span className="font-semibold text-slate-800 shrink-0">{c.label}</span>
+                                <span className="text-slate-500 text-xs leading-snug">{c.description}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
                 <div className="flex items-center gap-2 mb-3 text-slate-800 font-semibold">

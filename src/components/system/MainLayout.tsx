@@ -42,7 +42,7 @@ import { FirmSelector } from './FirmSelector';
 import { cn } from '../ui/utils';
 import {
   getPrimaryShellModuleForCallerId,
-  getShellModuleFallbackOrder,
+  getShellModuleDisplayOrder,
   isMainModuleVisible,
 } from '../../utils/mainModuleVisibility';
 import { NeonLogo } from '../ui/NeonLogo';
@@ -272,13 +272,13 @@ export function MainLayout({
       return;
     }
     if (!MAIN_MODULE_IDS.includes(cm as Module)) {
-      const orderedModules = getShellModuleFallbackOrder() as Module[];
+      const orderedModules = getShellModuleDisplayOrder() as Module[];
       const nextVisible = orderedModules.find((m) => isModuleVisible(m));
       if (nextVisible) setCurrentModule(nextVisible);
       return;
     }
     if (isModuleVisible(currentModule)) return;
-    const orderedModules = getShellModuleFallbackOrder() as Module[];
+    const orderedModules = getShellModuleDisplayOrder() as Module[];
     const nextVisible = orderedModules.find((m) => isModuleVisible(m));
     if (nextVisible) setCurrentModule(nextVisible);
   }, [currentModule]);
@@ -863,7 +863,7 @@ export function MainLayout({
       },
     };
 
-    const ordered = getShellModuleFallbackOrder() as Module[];
+    const ordered = getShellModuleDisplayOrder() as Module[];
     const permissionMap: Record<Module, boolean> = {
       pos: hasPermission('pos', 'READ'),
       management: hasPermission('management', 'READ'),

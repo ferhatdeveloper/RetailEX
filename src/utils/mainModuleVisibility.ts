@@ -20,6 +20,9 @@ export function isMainModuleVisible(moduleId: string): boolean {
 
 const PRIMARY_SHELL_IDS = new Set<string>(['pos', 'wms', 'mobile-pos', 'restaurant', 'beauty']);
 
+/** Ana kabuk modülleri — üst çubuk sırası ve `retailex_enabled_modules` ile eşleşen id'ler. */
+const SHELL_MODULE_IDS = new Set<string>(['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty']);
+
 function isPrimaryShellId(id: string): id is Module {
   return PRIMARY_SHELL_IDS.has(id);
 }
@@ -38,7 +41,7 @@ export function getPrimaryShellModuleForCallerId(activeShell?: Module): Module {
       return activeShell;
     }
   }
-  const order = getShellModuleFallbackOrder();
+  const order = getShellModuleDisplayOrder();
   for (const id of order) {
     if (id === 'management') continue;
     if (isMainModuleVisible(id) && isPrimaryShellId(id)) {
@@ -62,5 +65,41 @@ export function getShellModuleFallbackOrder(): string[] {
     return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
   } catch {
     return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
+  }
+}
+
+/**
+ * Üst kabukta modül ikonlarının sırası.
+ * `retailex_enabled_modules` doluysa önce bu dizideki kabuk id'leri (kurulumdaki sıra), ardından
+ * görünür kalanlar `getShellModuleFallbackOrder` ile tamamlanır (ör. yönetim her zaman).
+ */
+export function getShellModuleDisplayOrder(): string[] {
+  const fallback = getShellModuleFallbackOrder();
+  if (typeof localStorage === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem('retailex_enabled_modules');
+    if (!raw) return fallback;
+    const enabled: string[] = JSON.parse(raw);
+    if (!Array.isArray(enabled) || enabled.length === 0) return fallback;
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+
+    for (const id of enabled) {
+      if (!SHELL_MODULE_IDS.has(id) || seen.has(id)) continue;
+      if (!isMainModuleVisible(id)) continue;
+      out.push(id);
+      seen.add(id);
+    }
+
+    for (const id of fallback) {
+      if (seen.has(id)) continue;
+      if (!isMainModuleVisible(id)) continue;
+      out.push(id);
+      seen.add(id);
+    }
+    return out;
+  } catch {
+    return fallback;
   }
 }
