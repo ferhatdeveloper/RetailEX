@@ -226,20 +226,20 @@ export function SupplierModule() {
   const handleBulkDeleteDemoAccounts = async () => {
     const n = demoAccountsInList.length;
     if (n === 0) return;
-    const ok = await confirmDialog({
+    const confirmed = await confirmDialog({
       variant: 'danger',
       title: tm('deleteDemoSuppliers') || 'Demo cari kayıtlarını sil',
       description: (tm('confirmBulkDemoSupplierDelete') || '{count} demo cari kaydı silinecek. Emin misiniz?').replace('{count}', String(n)),
       confirmLabel: tm('deleteAction') || 'Sil',
       cancelLabel: tm('cancel') || 'İptal',
     });
-    if (!ok) return;
+    if (!confirmed) return;
     setContextMenu(null);
-    let ok = 0;
+    let deletedCount = 0;
     for (const a of demoAccountsInList) {
       try {
         await supplierAPI.delete(a.id, a.cardType || 'supplier');
-        ok++;
+        deletedCount++;
       } catch {
         // devam
       }
@@ -248,8 +248,8 @@ export function SupplierModule() {
       setSelectedAccount(null);
     }
     await loadSuppliers();
-    if (ok > 0) toast.success(`${ok} demo cari kaydı silindi.`);
-    if (ok < n) toast.error('Bazı kayıtlar silinemedi.');
+    if (deletedCount > 0) toast.success(`${deletedCount} demo cari kaydı silindi.`);
+    if (deletedCount < n) toast.error('Bazı kayıtlar silinemedi.');
   };
 
   const columnHelper = createColumnHelper<Supplier>();

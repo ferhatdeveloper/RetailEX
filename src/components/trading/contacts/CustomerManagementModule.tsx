@@ -299,24 +299,24 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   const handleBulkDeleteDemoCustomers = async () => {
     const n = demoCustomersInList.length;
     if (n === 0) return;
-    const ok = await confirmDialog({
+    const confirmed = await confirmDialog({
       variant: 'danger',
       title: tm('deleteDemoCustomers') || 'Demo müşterileri sil',
       description: (tm('confirmBulkDemoCustomerDelete') || '{count} demo müşterisi silinecek. Emin misiniz?').replace('{count}', String(n)),
       confirmLabel: tm('deleteAction') || 'Sil',
       cancelLabel: tm('cancel') || 'İptal',
     });
-    if (!ok) return;
+    if (!confirmed) return;
     setContextMenu(null);
-    let ok = 0;
+    let deletedCount = 0;
     for (const c of demoCustomersInList) {
       const success = await customerAPI.delete(c.id);
-      if (success) ok++;
+      if (success) deletedCount++;
     }
     await useCustomerStore.getState().loadCustomers();
     setCustomers(useCustomerStore.getState().customers);
-    if (ok > 0) toast.success(`${ok} demo müşteri silindi.`);
-    if (ok < n) toast.error('Bazı kayıtlar silinemedi.');
+    if (deletedCount > 0) toast.success(`${deletedCount} demo müşteri silindi.`);
+    if (deletedCount < n) toast.error('Bazı kayıtlar silinemedi.');
   };
 
   // View customer details

@@ -2467,7 +2467,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   barcodeStartHint: { tr: 'Bir sonraki ürün için üretilecek numara. Mevcut numaralarla çakışmaması önerilir.', en: 'Number to be generated for the next product. Should not conflict with existing numbers.', ar: 'الرقم الذي سيتم إنشاؤه للمنتج التالي. يُستحسن ألا يتعارض مع الأرقام الحالية.', ku: 'ژمارەی کە بۆ بەرهەمی داهاتوو دروست دەکرێت. پێشنیار دەکرێت لەگەڵ ژمارە بەردەستەکان نەکێشێت.' },
   useRecommended: { tr: 'Öneriyi kullan', en: 'Use recommended', ar: 'استخدم الموصى به', ku: 'پێشنیارکراو بەکاربهێنە' },
   preview: { tr: 'Önizleme', en: 'Preview', ar: 'معاينة', ku: 'پێشبینین' },
-  saving: { tr: 'Kaydediliyor...', en: 'Saving...', ar: 'جارٍ الحفظ...', ku: 'پاشەکەوت دەکرێت...' },
   refreshStocks: { tr: 'Stokları Yenile', en: 'Refresh Stocks', ar: 'تحديث المخزون', ku: 'نوێکردنەوەی کۆگا' },
   newProduct: { tr: 'Yeni Ürün', en: 'New Product', ar: 'منتج جديد', ku: 'بەرهەمی نوێ' },
   productSearchPlaceholder: { tr: 'Ürün adı, barkod veya kategori ara...', en: 'Search product name, barcode or category...', ar: 'بحث عن اسم المنتج أو الباركود أو الفئة...', ku: 'گەڕان بۆ ناوی بەرهەم، بارکۆد یان هاوپۆل...' },
@@ -2832,7 +2831,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   productionEntry: { tr: 'Üretim Girişi', en: 'Production Entry', ar: 'إدخال الإنتاج', ku: 'تۆماری بەرھەمھێنان' },
   otherType: { tr: 'Diğer', en: 'Other', ar: 'أخرى', ku: 'هیتر' },
   localCurrencyUnit: { tr: 'Yerel Para Birimi', en: 'Local Currency', ar: 'العملة المحلية', ku: 'دراوی ناوخۆ' },
-  inventoryList: { tr: 'Envanter Listesi', en: 'Inventory List', ar: 'قائمة المخزون', ku: 'لیستی کۆگا' },
 
   // Confirm Dialog — Common Delete / Bulk Actions
   productHasInvoiceRefsTitle: { tr: 'Ürün faturalarda kullanılmış', en: 'Product is used in invoices', ar: 'تم استخدام المنتج في الفواتير', ku: 'بەرهەم لە فاتورەکاندا بەکارهاتووە' },
@@ -2860,8 +2858,6 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   removeFromCart: { tr: 'Ürünü Sepetten Çıkar', en: 'Remove from Cart', ar: 'إزالة من السلة', ku: 'لابردن لە سەبەتە' },
   confirmRemoveFromCart: { tr: '{name} ürününü sepetten çıkarmak istediğinizden emin misiniz?', en: 'Are you sure you want to remove {name} from the cart?', ar: 'هل أنت متأكد من إزالة {name} من السلة؟', ku: 'دڵنیایت لە لابردنی {name} لە سەبەتە؟' },
   removeAction: { tr: 'Kaldır', en: 'Remove', ar: 'إزالة', ku: 'لابردن' },
-  resVoidDeleteVoidsTitle: { tr: 'İptal Kayıtlarını Sil', en: 'Delete Void Records', ar: 'حذف سجلات الإلغاء', ku: 'سڕینەوەی تۆماری ھەڵوەشاندنەوە' },
-  resVoidDeleteReturnsTitle: { tr: 'İade Kayıtlarını Sil', en: 'Delete Return Records', ar: 'حذف سجلات الإرجاع', ku: 'سڕینەوەی تۆماری گەڕاندنەوە' },
   stockWarningTitle: { tr: 'Yetersiz Stok', en: 'Insufficient Stock', ar: 'مخزون غير كافٍ', ku: 'کۆگای ناتەواو' },
 
   // Cash Register Operations
