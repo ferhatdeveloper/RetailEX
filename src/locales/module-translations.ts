@@ -2834,6 +2834,13 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   localCurrencyUnit: { tr: 'Yerel Para Birimi', en: 'Local Currency', ar: 'العملة المحلية', ku: 'دراوی ناوخۆ' },
   inventoryList: { tr: 'Envanter Listesi', en: 'Inventory List', ar: 'قائمة المخزون', ku: 'لیستی کۆگا' },
 
+  // Cash Register Operations
+  confirmDeleteTransaction: { tr: 'Bu işlemi silmek istediğinize emin misiniz? Bakiyeler tersine alınacak.', en: 'Are you sure you want to delete this transaction? Balances will be reversed.', ar: 'هل أنت متأكد من حذف هذه المعاملة؟ سيتم عكس الأرصدة.', ku: 'دڵنیایت لە سڕینەوەی ئەم مامەڵەیە؟ باڵانسەکان دەگەڕێنرێنەوە.' },
+  transactionDeleted: { tr: 'İşlem silindi', en: 'Transaction deleted', ar: 'تم حذف المعاملة', ku: 'مامەڵە سڕایەوە' },
+  deleteFailed: { tr: 'Silme başarısız', en: 'Delete failed', ar: 'فشل الحذف', ku: 'سڕینەوە سەرکەوتوو نەبوو' },
+  deleting: { tr: 'Siliniyor...', en: 'Deleting...', ar: 'جار الحذف...', ku: 'سڕینەوە...' },
+  operationUpdatedSuccessfully: { tr: 'İşlem güncellendi', en: 'Transaction updated', ar: 'تم تحديث المعاملة', ku: 'مامەڵە نوێکرایەوە' },
+
   // Purchase Order
   createNewOrder: { tr: 'Yeni Sipariş Oluştur', en: 'Create New Order', ar: 'إنشاء طلب جديد', ku: 'دروستکردنی داواکاری نوێ' },
 

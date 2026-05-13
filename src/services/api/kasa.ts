@@ -764,7 +764,292 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     islem_tipi: row.transaction_type,
     tutar: parseFloat(row.amount || 0),
     islem_aciklamasi: row.definition,
-    olusturma_tarihi: row.created_at
+    cari_hesap_id: row.customer_id || undefined,
+    doviz_kodu: row.currency_code || undefined,
+    dovizli_tutar: row.f_amount !== undefined ? parseFloat(row.f_amount || 0) : undefined,
+    ozel_kod: row.special_code || undefined,
+    target_register_id: row.target_register_id || undefined,
+    bank_id: row.bank_id || undefined,
+    bank_account_id: row.bank_account_id || undefined,
+    expense_card_id: row.expense_card_id || undefined,
+    tax_rate: row.tax_rate !== undefined ? parseFloat(row.tax_rate || 0) : undefined,
+    withholding_tax_rate: row.withholding_tax_rate !== undefined ? parseFloat(row.withholding_tax_rate || 0) : undefined,
+    olusturma_tarihi: row.created_at,
   };
+}
+
+/**
+ * Kasa işlemini sil — bakiye ters yönde geri alınır.
+ * VIRMAN ise eşli karşı satır, banka entegrasyonu varsa bank_lines satırı,
+ * CH_TAHSILAT/CH_ODEME ise cari/tedarikçi bakiyesi de tersine alınır.
+ */
+export async function deleteKasaIslemi(id: string): Promise<void> {
+  if (!id) throw new Error('Silinecek işlem ID boş');
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    return await deleteKasaIslemiViaPostgrest(id);
+  }
+
+  const table = 'cash_lines';
+  const kasaTable = 'cash_registers';
+
+  // 1) Satırı oku
+  const { rows: prevRows } = await postgres.query(
+    `SELECT * FROM ${table} WHERE id = $1::text::uuid LIMIT 1`,
+    [id]
+  );
+  const row = prevRows?.[0];
+  if (!row) throw new Error('İşlem bulunamadı');
+
+  const amount = parseFloat(row.amount || 0);
+  const sign = parseInt(row.sign || 0, 10);
+  const registerId = row.register_id;
+  const targetRegisterId = row.target_register_id;
+  const ficheNo = row.fiche_no || '';
+  const trType = row.transaction_type || '';
+  const customerId = row.customer_id;
+  const bankId = row.bank_id;
+
+  await postgres.query('BEGIN');
+  try {
+    // 2) Kasa bakiyesini geri al
+    if (registerId) {
+      await postgres.query(
+        `UPDATE ${kasaTable} SET balance = balance - $1::text::numeric WHERE id = $2::text::uuid`,
+        [(amount * sign).toString(), registerId]
+      );
+    }
+
+    // 3) Cari hesap entegrasyonu — orijinal işlem cari bakiyeyi -tutar ile değiştirmişti, geri al
+    if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
+      const delta = amount.toString();
+      await postgres.query(
+        `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [delta, customerId]
+      );
+      await postgres.query(
+        `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [delta, customerId]
+      );
+    }
+
+    // 4) VIRMAN karşı satırını ve hedef kasa bakiyesini temizle
+    if (trType === 'VIRMAN' && targetRegisterId && sign === -1) {
+      // Kaynak satırı: ficheNo / sign=-1. Karşı satır fiche_no = `${ficheNo}-VRM`
+      const counterFiche = `${ficheNo}-VRM`;
+      const { rows: ctr } = await postgres.query(
+        `SELECT id, amount FROM ${table}
+         WHERE fiche_no = $1::text AND register_id = $2::text::uuid AND transaction_type = 'VIRMAN'
+         LIMIT 1`,
+        [counterFiche, targetRegisterId]
+      );
+      const counter = ctr?.[0];
+      if (counter) {
+        await postgres.query(
+          `UPDATE ${kasaTable} SET balance = balance - $1::text::numeric WHERE id = $2::text::uuid`,
+          [(parseFloat(counter.amount || 0)).toString(), targetRegisterId]
+        );
+        await postgres.query(`DELETE FROM ${table} WHERE id = $1::text::uuid`, [counter.id]);
+      }
+    } else if (trType === 'VIRMAN' && sign === 1) {
+      // Karşı tarafın kendisi siliniyorsa kaynak satırı bul ve onu da temizle.
+      // Kaynak satırın fiche_no'su, karşı satırın fiche_no'sundan `-VRM` suffix'i atılarak elde edilir.
+      if (ficheNo.endsWith('-VRM')) {
+        const sourceFiche = ficheNo.slice(0, -4);
+        const { rows: src } = await postgres.query(
+          `SELECT id, register_id, amount, sign FROM ${table}
+           WHERE fiche_no = $1::text AND transaction_type = 'VIRMAN'
+           LIMIT 1`,
+          [sourceFiche]
+        );
+        const s = src?.[0];
+        if (s) {
+          await postgres.query(
+            `UPDATE ${kasaTable} SET balance = balance - $1::text::numeric WHERE id = $2::text::uuid`,
+            [(parseFloat(s.amount || 0) * parseInt(s.sign || 0, 10)).toString(), s.register_id]
+          );
+          await postgres.query(`DELETE FROM ${table} WHERE id = $1::text::uuid`, [s.id]);
+        }
+      }
+    }
+
+    // 5) Banka entegrasyonu — orijinal createKasaIslemi'de bank_lines INSERT eklenmişti
+    if ((trType === 'BANKA_YATIRILAN' || trType === 'BANKADAN_CEKILEN') && bankId) {
+      const bankSign = trType === 'BANKA_YATIRILAN' ? 1 : -1;
+      const bankLinesTable = 'bank_lines';
+      const bankRegTable = 'bank_registers';
+      // Banka satırını fiche_no ile eşleştir
+      const { rows: bl } = await postgres.query(
+        `SELECT id FROM ${bankLinesTable}
+         WHERE fiche_no = $1::text AND register_id = $2::text::uuid
+         ORDER BY created_at DESC NULLS LAST
+         LIMIT 1`,
+        [ficheNo, bankId]
+      );
+      if (bl?.[0]?.id) {
+        await postgres.query(`DELETE FROM ${bankLinesTable} WHERE id = $1::text::uuid`, [bl[0].id]);
+      }
+      await postgres.query(
+        `UPDATE ${bankRegTable} SET balance = balance - $1::text::numeric WHERE id = $2::text::uuid`,
+        [(amount * bankSign).toString(), bankId]
+      );
+    }
+
+    // 6) Ana satırı sil
+    await postgres.query(`DELETE FROM ${table} WHERE id = $1::text::uuid`, [id]);
+
+    await postgres.query('COMMIT');
+  } catch (err: any) {
+    try { await postgres.query('ROLLBACK'); } catch { /* ignore */ }
+    console.error('[Kasa] deleteKasaIslemi failed:', err);
+    throw err;
+  }
+}
+
+async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
+  const { postgrest } = await import('./postgrestClient');
+  const fn = padKasaFirmNr();
+  const pn = padKasaPeriodNr();
+  const linesPath = `/rex_${fn}_${pn}_cash_lines`;
+  const kasaPath = `/rex_${fn}_cash_registers`;
+  const bankLinesPath = `/rex_${fn}_${pn}_bank_lines`;
+  const bankRegPath = `/rex_${fn}_bank_registers`;
+
+  const rs = await postgrest.get<any[]>(
+    linesPath,
+    { select: '*', id: `eq.${id}`, limit: 1 },
+    { schema: 'public' }
+  );
+  const row = Array.isArray(rs) ? rs[0] : null;
+  if (!row) throw new Error('İşlem bulunamadı');
+
+  const amount = Number(row.amount || 0);
+  const sign = Number(row.sign || 0);
+  const registerId = row.register_id;
+  const targetRegisterId = row.target_register_id;
+  const ficheNo = row.fiche_no || '';
+  const trType = row.transaction_type || '';
+  const customerId = row.customer_id;
+  const bankId = row.bank_id;
+
+  const bumpKasa = async (rid: string | undefined, delta: number) => {
+    if (!rid || !Number.isFinite(delta) || delta === 0) return;
+    const cur = await postgrest.get<any[]>(
+      kasaPath,
+      { select: 'balance', id: `eq.${rid}`, limit: 1 },
+      { schema: 'public' }
+    );
+    const r = Array.isArray(cur) ? cur[0] : null;
+    if (!r) return;
+    await postgrest.patch(
+      `${kasaPath}?id=eq.${encodeURIComponent(String(rid))}`,
+      { balance: Number(r.balance ?? 0) + delta },
+      { schema: 'public', prefer: 'return=minimal' }
+    );
+  };
+
+  // Kasa bakiyesini ters al
+  await bumpKasa(registerId, -(amount * sign));
+
+  // Cari hesap geri al
+  if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
+    const custPath = `/rex_${fn}_customers`;
+    const supPath = `/rex_${fn}_suppliers`;
+    const delta = amount;
+    const patchPartner = async (path: string, withFirm: boolean) => {
+      try {
+        const q: Record<string, string> = { select: 'balance', id: `eq.${customerId}`, limit: '1' };
+        if (withFirm) q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;
+        const rsP = await postgrest.get<any[]>(path, q, { schema: 'public' });
+        const rp = Array.isArray(rsP) ? rsP[0] : null;
+        if (!rp) return;
+        const url = withFirm
+          ? `${path}?id=eq.${encodeURIComponent(String(customerId))}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`
+          : `${path}?id=eq.${encodeURIComponent(String(customerId))}`;
+        await postgrest.patch(url, { balance: Number(rp.balance ?? 0) + delta }, { schema: 'public', prefer: 'return=minimal' });
+      } catch { /* ignore */ }
+    };
+    await patchPartner(custPath, true);
+    await patchPartner(supPath, false);
+  }
+
+  // VIRMAN karşı taraf temizle
+  if (trType === 'VIRMAN' && targetRegisterId && sign === -1) {
+    const counterFiche = `${ficheNo}-VRM`;
+    const ctr = await postgrest.get<any[]>(
+      linesPath,
+      {
+        select: 'id,amount',
+        fiche_no: `eq.${counterFiche}`,
+        register_id: `eq.${targetRegisterId}`,
+        transaction_type: 'eq.VIRMAN',
+        limit: 1,
+      },
+      { schema: 'public' }
+    );
+    const counter = Array.isArray(ctr) ? ctr[0] : null;
+    if (counter?.id) {
+      await bumpKasa(targetRegisterId, -Number(counter.amount || 0));
+      await postgrest.delete(`${linesPath}?id=eq.${encodeURIComponent(String(counter.id))}`, { schema: 'public', prefer: 'return=minimal' });
+    }
+  } else if (trType === 'VIRMAN' && sign === 1 && String(ficheNo).endsWith('-VRM')) {
+    const sourceFiche = String(ficheNo).slice(0, -4);
+    const src = await postgrest.get<any[]>(
+      linesPath,
+      {
+        select: 'id,register_id,amount,sign',
+        fiche_no: `eq.${sourceFiche}`,
+        transaction_type: 'eq.VIRMAN',
+        limit: 1,
+      },
+      { schema: 'public' }
+    );
+    const s = Array.isArray(src) ? src[0] : null;
+    if (s?.id) {
+      await bumpKasa(s.register_id, -(Number(s.amount || 0) * Number(s.sign || 0)));
+      await postgrest.delete(`${linesPath}?id=eq.${encodeURIComponent(String(s.id))}`, { schema: 'public', prefer: 'return=minimal' });
+    }
+  }
+
+  // Banka entegrasyonu
+  if ((trType === 'BANKA_YATIRILAN' || trType === 'BANKADAN_CEKILEN') && bankId) {
+    const bankSign = trType === 'BANKA_YATIRILAN' ? 1 : -1;
+    const bl = await postgrest.get<any[]>(
+      bankLinesPath,
+      { select: 'id', fiche_no: `eq.${ficheNo}`, register_id: `eq.${bankId}`, limit: 1 },
+      { schema: 'public' }
+    );
+    const bRow = Array.isArray(bl) ? bl[0] : null;
+    if (bRow?.id) {
+      await postgrest.delete(`${bankLinesPath}?id=eq.${encodeURIComponent(String(bRow.id))}`, { schema: 'public', prefer: 'return=minimal' });
+    }
+    const curB = await postgrest.get<any[]>(
+      bankRegPath,
+      { select: 'balance', id: `eq.${bankId}`, limit: 1 },
+      { schema: 'public' }
+    );
+    const br = Array.isArray(curB) ? curB[0] : null;
+    if (br) {
+      await postgrest.patch(
+        `${bankRegPath}?id=eq.${encodeURIComponent(String(bankId))}`,
+        { balance: Number(br.balance ?? 0) - amount * bankSign },
+        { schema: 'public', prefer: 'return=minimal' }
+      );
+    }
+  }
+
+  // Ana satırı sil
+  await postgrest.delete(`${linesPath}?id=eq.${encodeURIComponent(String(id))}`, { schema: 'public', prefer: 'return=minimal' });
+}
+
+/**
+ * Kasa işlemini güncelle — pragmatik: önce eski işlemi sil (bakiyeyi geri al),
+ * sonra yeni değerlerle createKasaIslemi ile tekrar oluştur.
+ */
+export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<KasaIslemi> {
+  if (!id) throw new Error('Güncellenecek işlem ID boş');
+  await deleteKasaIslemi(id);
+  const created = await createKasaIslemi({ ...islem, id: undefined });
+  return created;
 }
 

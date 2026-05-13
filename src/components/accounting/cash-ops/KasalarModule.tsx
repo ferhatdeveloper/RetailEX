@@ -40,6 +40,7 @@ import {
   createKasa,
   updateKasa,
   deleteKasa,
+  deleteKasaIslemi,
   type Kasa,
   type KasaIslemi
 } from '../../../services/api/kasa';
@@ -69,6 +70,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showIslemModal, setShowIslemModal] = useState(false);
+  const [editingIslem, setEditingIslem] = useState<KasaIslemi | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [islemModalType, setIslemModalType] = useState<'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK' | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -213,8 +216,49 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       toast.error(tm('selectSafeFirst'));
       return;
     }
+    setEditingIslem(null);
     setIslemModalType(type);
     setShowIslemModal(true);
+  };
+
+  // İşlem aksiyonları: düzenle / görüntüle / sil
+  const findIslem = (id: string | null): KasaIslemi | null => {
+    if (!id) return null;
+    return kasaIslemleri.find(i => i.id === id) || null;
+  };
+
+  const handleEditIslem = (islem: KasaIslemi | null) => {
+    if (!islem || !islem.id || !selectedKasa) return;
+    setEditingIslem(islem);
+    setIslemModalType(islem.islem_tipi as any);
+    setShowIslemModal(true);
+  };
+
+  const handleViewIslem = (islem: KasaIslemi | null) => {
+    if (!islem) return;
+    setSelectedIslem(islem);
+    setShowIslemDetayModal(true);
+  };
+
+  const handleDeleteIslem = async (islem: KasaIslemi | null) => {
+    if (!islem || !islem.id || !selectedKasa) return;
+    const confirmMsg = (tm('confirmDeleteTransaction') ||
+      'Bu işlemi silmek istediğinize emin misiniz? Bakiyeler tersine alınacak.') +
+      `\n\n${islem.islem_no || ''} • ${formatCurrency(islem.tutar || 0)} ${selectedKasa.id_doviz_kodu || ''}`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      setDeletingId(islem.id);
+      await deleteKasaIslemi(islem.id);
+      toast.success(tm('transactionDeleted') || 'İşlem silindi');
+      setSelectedId(null);
+      await loadKasaIslemleri(selectedKasa.id);
+      await loadKasalar();
+    } catch (err: any) {
+      console.error('[KasalarModule] deleteKasaIslemi failed', err);
+      toast.error(err?.message || tm('deleteFailed') || 'İşlem silinemedi');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const filteredTransactions = kasaIslemleri.filter(m => {
@@ -391,22 +435,25 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           </button>
           <button
             disabled={!selectedId}
+            onClick={() => handleEditIslem(findIslem(selectedId))}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
             <Edit className="w-4 h-4" /> {tm('edit')}
           </button>
           <button
             disabled={!selectedId}
+            onClick={() => handleViewIslem(findIslem(selectedId))}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
             <Eye className="w-4 h-4" /> {tm('view')}
           </button>
           <div className="w-px h-6 bg-gray-200 mx-1" />
           <button
-            disabled={!selectedId}
+            disabled={!selectedId || deletingId === selectedId}
+            onClick={() => handleDeleteIslem(findIslem(selectedId))}
             className="h-9 px-3 gap-2 text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40 flex items-center text-sm font-medium rounded-md"
           >
-            <Trash2 className="w-4 h-4" /> {tm('deleteAction')}
+            <Trash2 className="w-4 h-4" /> {deletingId === selectedId ? (tm('deleting') || 'Siliniyor...') : tm('deleteAction')}
           </button>
           <div className="w-px h-6 bg-gray-200 mx-1" />
           <button className="h-9 px-3 gap-2 text-gray-700 hover:bg-gray-100 transition-colors flex items-center text-sm font-medium rounded-md">
@@ -497,15 +544,18 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
         <KasaIslemModal
           kasa={selectedKasa}
           islemTipi={islemModalType}
+          editingIslem={editingIslem}
           onClose={() => {
             setShowIslemModal(false);
             setIslemModalType(null);
+            setEditingIslem(null);
           }}
           onSuccess={() => {
             loadKasaIslemleri(selectedKasa.id);
             loadKasalar();
             setShowIslemModal(false);
             setIslemModalType(null);
+            setEditingIslem(null);
           }}
         />
       )}
@@ -645,7 +695,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
               id: 'duzenle',
               label: tm('edit'),
               icon: Edit,
-              onClick: () => toast.info(tm('editComingSoon'))
+              onClick: () => handleEditIslem(contextMenu.data as KasaIslemi)
             },
             {
               id: 'yazdir',
@@ -659,7 +709,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
               label: tm('deleteAction'),
               icon: Trash2,
               variant: 'danger',
-              onClick: () => toast.info(tm('deleteComingSoon'))
+              onClick: () => handleDeleteIslem(contextMenu.data as KasaIslemi)
             }
           ]}
         />

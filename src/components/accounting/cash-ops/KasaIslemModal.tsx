@@ -9,7 +9,7 @@ import { X, Calendar, Search, Save, Wallet } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { createKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import { createKasaIslemi, updateKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { formatCurrency, formatNumber, parseNumber } from '../../../utils/formatNumber';
@@ -19,6 +19,8 @@ interface KasaIslemModalProps {
   islemTipi: 'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK';
   onClose: () => void;
   onSuccess: () => void;
+  /** Düzenleme modu: dolu ise form mevcut işlem değerleriyle açılır ve kayıt updateKasaIslemi ile yapılır. */
+  editingIslem?: KasaIslemi | null;
 }
 
 interface CariHesap {
@@ -33,33 +35,44 @@ export function KasaIslemModal({
   islemTipi,
   onClose,
   onSuccess,
+  editingIslem,
 }: KasaIslemModalProps) {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
+
+  const isEdit = !!editingIslem?.id;
 
   // State
   const [loading, setLoading] = useState(false);
 
-  // Form state
-  // Determine sign based on type
-  // CIKIS/ODEME/YATIRILAN(Bankaya) = -1 OUT
-  // GIRIS/TAHSILAT/CEKILEN(Bankadan) = 1 IN
-  // VIRMAN = -1 (Source), +1 (Target - handled backend or second insert)
-
-  const [formData, setFormData] = useState<Partial<KasaIslemi>>({
-    firma_id: selectedFirma?.id || '',
-    donem_id: selectedDonem?.id || '',
-    kasa_id: kasa.id,
-    islem_tarihi: new Date().toISOString().split('T')[0],
-    islem_saati: new Date().toTimeString().slice(0, 5),
-    duzenlenme_tarihi: new Date().toISOString().split('T')[0],
-    islem_tipi: islemTipi,
-    doviz_kodu: kasa.id_doviz_kodu || 'USD',
-    tutar: 0,
-    dovizli_tutar: 0,
-    // Defaults
-    tax_rate: 0,
-    withholding_tax_rate: 0
+  // Form state — düzenleme modunda mevcut işlemi prefill et
+  const [formData, setFormData] = useState<Partial<KasaIslemi>>(() => {
+    if (editingIslem) {
+      return {
+        ...editingIslem,
+        firma_id: selectedFirma?.id || editingIslem.firma_id || '',
+        donem_id: selectedDonem?.id || editingIslem.donem_id || '',
+        kasa_id: editingIslem.kasa_id || kasa.id,
+        islem_tipi: editingIslem.islem_tipi || islemTipi,
+        islem_tarihi: (editingIslem.islem_tarihi || new Date().toISOString()).slice(0, 10),
+        doviz_kodu: editingIslem.doviz_kodu || kasa.id_doviz_kodu || 'IQD',
+        tutar: Number(editingIslem.tutar || 0),
+      };
+    }
+    return {
+      firma_id: selectedFirma?.id || '',
+      donem_id: selectedDonem?.id || '',
+      kasa_id: kasa.id,
+      islem_tarihi: new Date().toISOString().split('T')[0],
+      islem_saati: new Date().toTimeString().slice(0, 5),
+      duzenlenme_tarihi: new Date().toISOString().split('T')[0],
+      islem_tipi: islemTipi,
+      doviz_kodu: kasa.id_doviz_kodu || 'USD',
+      tutar: 0,
+      dovizli_tutar: 0,
+      tax_rate: 0,
+      withholding_tax_rate: 0,
+    };
   });
 
   // Amount Formatting Logic
@@ -165,12 +178,17 @@ export function KasaIslemModal({
 
     setLoading(true);
     try {
-      console.log('[KasaIslemModal] Submitting formData:', formData);
+      console.log('[KasaIslemModal] Submitting formData:', formData, 'isEdit:', isEdit);
       if (!formData.kasa_id) {
         throw new Error(t['missingKasaId']);
       }
-      await createKasaIslemi(formData as KasaIslemi);
-      toast.success(t['operationSavedSuccessfully']);
+      if (isEdit && editingIslem?.id) {
+        await updateKasaIslemi(editingIslem.id, formData as KasaIslemi);
+        toast.success(tm('operationUpdatedSuccessfully') || 'İşlem güncellendi');
+      } else {
+        await createKasaIslemi(formData as KasaIslemi);
+        toast.success(t['operationSavedSuccessfully']);
+      }
       onSuccess();
     } catch (error: any) {
       toast.error(error.message || t['operationSaveFailed']);
@@ -226,7 +244,9 @@ export function KasaIslemModal({
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white flex items-center justify-between border-b dark:border-gray-700">
           <div className="flex items-center gap-3">
             <Wallet className="w-5 h-5" />
-            <h3 className="text-lg font-semibold">{getModalTitle()}</h3>
+            <h3 className="text-lg font-semibold">
+              {isEdit ? `${tm('edit') || 'Düzenle'}: ${getModalTitle()}` : getModalTitle()}
+            </h3>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-white/10 rounded transition-colors">
             <X className="w-5 h-5" />
