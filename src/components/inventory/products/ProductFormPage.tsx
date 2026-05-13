@@ -3,12 +3,13 @@ import { useProductStore } from '../../../store';
 import { productVariantAPI, invoicesAPI } from '../../../services/api/index';
 import { productAPI } from '../../../services/api/products';
 import { productUnitsAPI } from '../../../services/api/productUnitsAPI';
+import { BarcodeTemplateModal } from './BarcodeTemplateModal';
 import { unitSetAPI, type UnitSet } from '../../../services/unitSetAPI';
 import {
   Share2, Trash2, Plus, X, Search, Database, LayoutGrid, Save, MoreVertical,
   Barcode as BarcodeIcon, Tag, Calculator, Check, Download,
   Image as ImageIcon, FileText, Globe, Building, Ruler, Weight,
-  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link
+  Calendar, Layers, ChevronDown, ChevronRight, Printer, Package, Upload, Banknote, Cloud, Link, Settings as SettingsIcon
 } from 'lucide-react';
 import { currencyAPI, categoryAPI, brandAPI, productGroupAPI, unitAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type Brand, type ProductGroup, type Unit, type TaxRate, type SpecialCode } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/api/masterData';
@@ -446,6 +447,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [groupBy, setGroupBy] = useState<string>(''); // Gruplama tercihi: '' = grupsuz
   const [showLabelPrint, setShowLabelPrint] = useState(false);
+  const [showBarcodeTemplateModal, setShowBarcodeTemplateModal] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const translationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
@@ -2795,6 +2797,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       )}
                     </div>
                     <button
+                      onClick={() => setShowBarcodeTemplateModal(true)}
+                      title={tm('barcodeFormatSettings') || 'Barkod Format Ayarları'}
+                      className="flex items-center gap-1 px-3 py-0.5 text-xs bg-slate-600 text-white rounded hover:bg-slate-700 transition-colors"
+                    >
+                      <SettingsIcon className="w-3 h-3" />
+                      {tm('barcodeFormatSettings') || 'Format'}
+                    </button>
+                    <button
                       onClick={addBarcode}
                       className="flex items-center gap-1 px-3 py-0.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                     >
@@ -4010,6 +4020,26 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
           )}
         </div>
       </div>
+      {/* Barkod Format Ayarları Modal */}
+      {showBarcodeTemplateModal && (
+        <BarcodeTemplateModal
+          onClose={() => setShowBarcodeTemplateModal(false)}
+          onSaved={async () => {
+            // Şablon güncellendi — ana barkod alanını yeniden peek et.
+            try {
+              const next = await productAPI.peekNextBarcode();
+              if (next) {
+                peekedBarcodeRef.current = next;
+                autoBarcodeAppliedRef.current = true;
+                setBarcodes(prev => prev.map((b, i) => (i === 0 ? { ...b, code: next } : b)));
+              }
+            } catch (err) {
+              console.warn('[ProductFormPage] re-peek after template save failed', err);
+            }
+          }}
+        />
+      )}
+
       {/* Etiket Yazdırma Modal */}
       {
         showLabelPrint && (

@@ -553,6 +553,126 @@ export const productAPI = {
   },
 
   /**
+   * Aktif barkod şablonunu döner (varsa). UI ayar ekranı için kullanılır.
+   */
+  async getActiveBarcodeTemplate(): Promise<{
+    id: string;
+    name: string;
+    prefix: string;
+    current_value: string;
+    length: number;
+    is_active: boolean;
+  } | null> {
+    try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          '/barcode_templates',
+          { select: '*', is_active: 'eq.true', order: 'created_at.asc', limit: 1 },
+          { schema: 'public' }
+        );
+        return rows?.[0] || null;
+      }
+      const { rows } = await postgres.query(
+        'SELECT * FROM public.barcode_templates WHERE is_active = true ORDER BY created_at ASC LIMIT 1'
+      );
+      return rows[0] || null;
+    } catch (error) {
+      console.error('[ProductAPI] getActiveBarcodeTemplate failed:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Barkod şablonunu kaydet/güncelle. id verilmişse update; yoksa yeni kayıt eklenir.
+   * Yeni kayıt aktifleştirilirse diğer şablonlar pasif edilir.
+   *
+   * NOT: `current_value` "bir sonraki üretilecek barkodun değeri - 1" olarak saklanır.
+   * UI'da kullanıcıya gösterilen / aldığımız "başlangıç numarası" sıradaki üretilecek
+   * barkodu temsil etmeli. Bu yüzden kaydederken `start - 1` olarak çeviriyoruz.
+   */
+  async upsertBarcodeTemplate(input: {
+    id?: string;
+    name: string;
+    prefix: string;
+    /** Sıradaki üretilecek barkod numarası (kullanıcı için anlamlı). */
+    start: bigint | string;
+    length: number;
+    is_active?: boolean;
+  }): Promise<boolean> {
+    try {
+      const startBig = typeof input.start === 'bigint' ? input.start : BigInt(String(input.start || '0'));
+      const currentValue = (startBig > 0n ? startBig - 1n : 0n).toString();
+      const isActive = input.is_active !== false;
+
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        if (isActive) {
+          // Diğer aktif şablonları pasif et
+          await postgrest.patch(
+            `/barcode_templates?is_active=eq.true${input.id ? `&id=neq.${encodeURIComponent(input.id)}` : ''}`,
+            { is_active: false, updated_at: new Date().toISOString() },
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+        }
+        if (input.id) {
+          await postgrest.patch(
+            `/barcode_templates?id=eq.${encodeURIComponent(input.id)}`,
+            {
+              name: input.name,
+              prefix: input.prefix,
+              current_value: currentValue,
+              length: input.length,
+              is_active: isActive,
+              updated_at: new Date().toISOString(),
+            },
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+        } else {
+          await postgrest.post(
+            '/barcode_templates',
+            {
+              name: input.name,
+              prefix: input.prefix,
+              current_value: currentValue,
+              length: input.length,
+              is_active: isActive,
+            },
+            { schema: 'public', prefer: 'return=minimal' }
+          );
+        }
+        return true;
+      }
+
+      if (isActive) {
+        await postgres.query(
+          `UPDATE public.barcode_templates SET is_active = false, updated_at = NOW()
+            WHERE is_active = true ${input.id ? 'AND id <> $1' : ''}`,
+          input.id ? [input.id] : []
+        );
+      }
+      if (input.id) {
+        await postgres.query(
+          `UPDATE public.barcode_templates
+            SET name = $1, prefix = $2, current_value = $3, length = $4, is_active = $5, updated_at = NOW()
+            WHERE id = $6`,
+          [input.name, input.prefix, currentValue, input.length, isActive, input.id]
+        );
+      } else {
+        await postgres.query(
+          `INSERT INTO public.barcode_templates (name, prefix, current_value, length, is_active)
+            VALUES ($1, $2, $3, $4, $5)`,
+          [input.name, input.prefix, currentValue, input.length, isActive]
+        );
+      }
+      return true;
+    } catch (error) {
+      console.error('[ProductAPI] upsertBarcodeTemplate failed:', error);
+      return false;
+    }
+  },
+
+  /**
    * Sıradaki barkodu önizler — şablon `current_value`'yu güncellemez.
    * UI yeni ürün formu açılırken kullanıcıya göstermek için kullanılır.
    * Kayıt anında `generateNextBarcode()` çağrılınca gerçek sayaç ilerletilir.
