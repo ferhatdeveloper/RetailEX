@@ -2,8 +2,11 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
 import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
-import { Download, Printer, X } from 'lucide-react';
+import { Download, Printer, X, RotateCw } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
+import { useLanguage } from '../../contexts/LanguageContext';
+
+type EtiketPrintRotation = 0 | 90 | 180 | 270;
 
 function reportBarcodeFormat(value: string): 'EAN13' | 'CODE128' {
     if (/^\d{13}$/.test(value)) return 'EAN13';
@@ -151,6 +154,7 @@ function clampPageMm(n: unknown, fallback: number): number {
 }
 
 export function ReportViewerModule({ template, data, onClose }: ReportViewerProps) {
+    const { tm } = useLanguage();
     const paperRef = useRef<HTMLDivElement>(null);
     const pw = template.pageSize?.width || DEFAULT_A4.width;
     const ph = template.pageSize?.height || DEFAULT_A4.height;
@@ -158,15 +162,152 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     const pwPrint = clampPageMm(pw, DEFAULT_A4.width);
     const phPrint = clampPageMm(ph, DEFAULT_A4.height);
 
+    const isLabelTemplate = template.category === 'etiket';
+    const [printRotation, setPrintRotation] = useState<EtiketPrintRotation>(() => {
+        if (typeof window === 'undefined' || template.category !== 'etiket') return 0;
+        const saved = Number(localStorage.getItem('retailex-label-print-rotation'));
+        return ([0, 90, 180, 270] as EtiketPrintRotation[]).includes(saved as EtiketPrintRotation)
+            ? (saved as EtiketPrintRotation)
+            : 0;
+    });
+
+    useEffect(() => {
+        if (!isLabelTemplate) return;
+        try {
+            localStorage.setItem('retailex-label-print-rotation', String(printRotation));
+        } catch {
+            /* ignore */
+        }
+    }, [isLabelTemplate, printRotation]);
+
+    const effectiveRotation = isLabelTemplate ? printRotation : 0;
+    const isSideways = effectiveRotation === 90 || effectiveRotation === 270;
+    const pageWPrint = isSideways ? phPrint : pwPrint;
+    const pageHPrint = isSideways ? pwPrint : phPrint;
+
     const handleDownload = () => {
         if (paperRef.current) {
-            exportToPDF(paperRef.current, `${template.name}.pdf`, { width: pwPrint, height: phPrint });
+            exportToPDF(paperRef.current, `${template.name}.pdf`, { width: pageWPrint, height: pageHPrint });
         }
     };
 
     const handlePrint = () => {
         window.print();
     };
+
+    const rotationOptions: { value: EtiketPrintRotation; label: string; hint: string }[] = [
+        { value: 0, label: '0°', hint: tm('rotationNormal') },
+        { value: 90, label: '90°', hint: tm('rotationRight') },
+        { value: 180, label: '180°', hint: tm('rotationFlip') },
+        { value: 270, label: '270°', hint: tm('rotationLeft') },
+    ];
+
+    const paperLayers = template.components.map((comp) => (
+        <div
+            key={comp.id}
+            className="absolute overflow-hidden box-border"
+            style={{
+                left: `${comp.x}mm`,
+                top: `${comp.y}mm`,
+                width: `${comp.width}mm`,
+                height: `${comp.height}mm`,
+                ...comp.style,
+                background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent',
+            }}
+        >
+            {comp.type === 'text' && (
+                <div className="w-full h-full p-0.5">
+                    {comp.binding ? getBoundValue(comp.binding, data) : comp.content}
+                </div>
+            )}
+            {comp.type === 'barcode' && (() => {
+                const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
+                const barcodeValue = String(raw ?? '').trim();
+                if (!barcodeValue) {
+                    return (
+                        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
+                            Barkod alanı: veri veya içerik yok
+                        </div>
+                    );
+                }
+                return (
+                    <div className="w-full h-full min-h-0 min-w-0 bg-white flex items-center justify-center overflow-hidden box-border">
+                        <ReportBarcodePreview svgId={`report-barcode-${comp.id}`} value={barcodeValue} />
+                    </div>
+                );
+            })()}
+            {comp.type === 'table' && comp.columns && (
+                <div className="w-full h-full text-[10px]">
+                    <div className="flex bg-gray-100 border-b border-gray-800 font-bold" style={comp.style}>
+                        {comp.columns.map((col, i) => (
+                            <div key={i} style={{ width: `${col.width}%` }} className="p-1.5 border-r border-gray-300 last:border-0 truncate">
+                                {col.header}
+                            </div>
+                        ))}
+                    </div>
+                    {(data?.items || []).map((item: any, rowIndex: number) => (
+                        <div key={rowIndex} className="flex border-b border-gray-100 hover:bg-gray-50">
+                            {comp.columns?.map((col, colIndex) => {
+                                let val = item[col.field];
+                                if (typeof val === 'number') val = formatNumber(val, 2, true);
+                                return (
+                                    <div
+                                        key={colIndex}
+                                        style={{ width: `${col.width}%` }}
+                                        className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}
+                                    >
+                                        {val}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))}
+                    {(!data?.items || data.items.length === 0) && (
+                        <div className="p-2 text-center text-gray-400 italic">Veri yok</div>
+                    )}
+                </div>
+            )}
+        </div>
+    ));
+
+    const paperInner = <div className="relative box-border" style={{ width: `${pwPrint}mm`, height: `${phPrint}mm` }}>{paperLayers}</div>;
+
+    const paperBlock =
+        effectiveRotation === 0 ? (
+            <div
+                ref={paperRef}
+                className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                style={{
+                    width: `${pwPrint}mm`,
+                    height: `${phPrint}mm`,
+                }}
+            >
+                {paperInner}
+            </div>
+        ) : (
+            <div
+                ref={paperRef}
+                className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                style={{
+                    width: `${pageWPrint}mm`,
+                    height: `${pageHPrint}mm`,
+                    position: 'relative',
+                    overflow: 'hidden',
+                }}
+            >
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: `translate(-50%, -50%) rotate(${effectiveRotation}deg)`,
+                        transformOrigin: 'center center',
+                    }}
+                >
+                    {paperInner}
+                </div>
+            </div>
+        );
 
     /**
      * Tüm body kardeşlerini display:none yapmak bazı Chromium sürümlerinde yazdır önizlemesini
@@ -206,8 +347,8 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     left: auto !important;
     right: auto !important;
     bottom: auto !important;
-    width: ${pwPrint}mm !important;
-    height: ${phPrint}mm !important;
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
@@ -228,8 +369,8 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
-    width: ${pwPrint}mm !important;
-    height: ${phPrint}mm !important;
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
     min-height: 0 !important;
     display: block !important;
   }
@@ -238,10 +379,10 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     left: 0 !important;
     top: 0 !important;
     margin: 0 !important;
-    width: ${pwPrint}mm !important;
-    height: ${phPrint}mm !important;
-    max-width: ${pwPrint}mm !important;
-    max-height: ${phPrint}mm !important;
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
     box-shadow: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
@@ -249,7 +390,7 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
     break-after: avoid !important;
   }
   @page {
-    size: ${pwPrint}mm ${phPrint}mm;
+    size: ${pageWPrint}mm ${pageHPrint}mm;
     margin: 0mm;
   }
 }`;
@@ -264,15 +405,16 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         >
             <style>{printCss}</style>
             {/* Araç çubuğu — yazdırmada gizli */}
-            <div className="report-viewer-chrome w-full h-14 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col">
-                        <h2 className="text-sm font-bold text-gray-900">{template.name}</h2>
-                        <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Rapor Önizleme</p>
+            <div className="report-viewer-chrome shrink-0 bg-white border-b border-gray-200 shadow-sm">
+                <div className="w-full min-h-14 flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-2">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <div className="flex flex-col min-w-0">
+                            <h2 className="text-sm font-bold text-gray-900 truncate">{template.name}</h2>
+                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Rapor Önizleme</p>
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                     <button
                         type="button"
                         onClick={handleDownload}
@@ -293,87 +435,57 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                     <button type="button" onClick={onClose} className="p-2 text-gray-400 hover:text-gray-900 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
+                    </div>
                 </div>
+                {isLabelTemplate && (
+                    <div className="px-4 sm:px-6 pb-3 pt-1 border-t border-gray-100 bg-slate-50/70">
+                        <div className="flex items-center gap-2 mb-2">
+                            <RotateCw className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden />
+                            <span className="text-[11px] font-bold text-gray-700">{tm('printRotation')}</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5 max-w-md">
+                            {rotationOptions.map((opt) => {
+                                const active = printRotation === opt.value;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => setPrintRotation(opt.value)}
+                                        title={`${opt.label} — ${opt.hint}`}
+                                        className={`flex flex-col items-center justify-center gap-0.5 px-1.5 py-1.5 border-2 rounded-lg transition-all ${
+                                            active
+                                                ? 'border-blue-600 bg-blue-50 text-blue-800'
+                                                : 'border-gray-200 hover:border-gray-300 bg-white text-gray-700'
+                                        }`}
+                                    >
+                                        <span
+                                            className="text-[13px] font-bold leading-none"
+                                            style={{
+                                                transform: `rotate(${opt.value}deg)`,
+                                                transformOrigin: 'center center',
+                                            }}
+                                            aria-hidden
+                                        >
+                                            A
+                                        </span>
+                                        <span className="text-[9px] font-semibold">{opt.label}</span>
+                                        <span className="text-[8px] text-gray-500 leading-tight text-center line-clamp-2">{opt.hint}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {isSideways && (
+                            <p className="mt-2 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 leading-snug">
+                                {tm('rotationPaperHint')}
+                            </p>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Önizleme — yazdırmada yalnızca kağıt */}
             <div className="report-viewer-stage flex-1 w-full min-h-0 min-w-0 overflow-auto p-6 sm:p-12 print:p-0 flex justify-center print:justify-start">
-                <div
-                    ref={paperRef}
-                    className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
-                    style={{
-                        width: `${pwPrint}mm`,
-                        height: `${phPrint}mm`,
-                    }}
-                >
-                    {template.components.map((comp) => (
-                        <div
-                            key={comp.id}
-                            className="absolute overflow-hidden box-border"
-                            style={{
-                                left: `${comp.x}mm`,
-                                top: `${comp.y}mm`,
-                                width: `${comp.width}mm`,
-                                height: `${comp.height}mm`,
-                                ...comp.style,
-                                background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent',
-                            }}
-                        >
-                            {comp.type === 'text' && (
-                                <div className="w-full h-full p-0.5">
-                                    {comp.binding ? getBoundValue(comp.binding, data) : comp.content}
-                                </div>
-                            )}
-                            {comp.type === 'barcode' && (() => {
-                                const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
-                                const barcodeValue = String(raw ?? '').trim();
-                                if (!barcodeValue) {
-                                    return (
-                                        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
-                                            Barkod alanı: veri veya içerik yok
-                                        </div>
-                                    );
-                                }
-                                return (
-                                    <div className="w-full h-full min-h-0 min-w-0 bg-white flex items-center justify-center overflow-hidden box-border">
-                                        <ReportBarcodePreview svgId={`report-barcode-${comp.id}`} value={barcodeValue} />
-                                    </div>
-                                );
-                            })()}
-                            {comp.type === 'table' && comp.columns && (
-                                <div className="w-full h-full text-[10px]">
-                                    <div className="flex bg-gray-100 border-b border-gray-800 font-bold" style={comp.style}>
-                                        {comp.columns.map((col, i) => (
-                                            <div key={i} style={{ width: `${col.width}%` }} className="p-1.5 border-r border-gray-300 last:border-0 truncate">
-                                                {col.header}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {(data?.items || []).map((item: any, rowIndex: number) => (
-                                        <div key={rowIndex} className="flex border-b border-gray-100 hover:bg-gray-50">
-                                            {comp.columns?.map((col, colIndex) => {
-                                                let val = item[col.field];
-                                                if (typeof val === 'number') val = formatNumber(val, 2, true);
-                                                return (
-                                                    <div
-                                                        key={colIndex}
-                                                        style={{ width: `${col.width}%` }}
-                                                        className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}
-                                                    >
-                                                        {val}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ))}
-                                    {(!data?.items || data.items.length === 0) && (
-                                        <div className="p-2 text-center text-gray-400 italic">Veri yok</div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
+                {paperBlock}
             </div>
         </div>
     );

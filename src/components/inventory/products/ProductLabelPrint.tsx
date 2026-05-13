@@ -1,8 +1,18 @@
 ﻿import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw, LayoutGrid, ListChecks } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import {
+  buildJsBarcodeOptions,
+  DEFAULT_LABEL_PRINT_FIELD_SETTINGS,
+  getLabelPrintFieldSettings,
+  normalizeLabelPrintFieldSettings,
+  saveLabelPrintFieldSettings,
+  type BarcodeCaptionMode,
+  type LabelPrintFieldSettings,
+} from '../../../services/labelPrintFieldSettingsService';
 
 export type PrintRotation = 0 | 90 | 180 | 270;
 
@@ -327,7 +337,28 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
       ? (saved as PrintRotation)
       : 0;
   });
+  const [leftPanelTab, setLeftPanelTab] = useState<'design' | 'fields'>('design');
+  const [fieldSettings, setFieldSettings] = useState<LabelPrintFieldSettings>(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
+  const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
+  const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await getLabelPrintFieldSettings();
+        if (!cancelled) setFieldSettings(s);
+      } catch {
+        if (!cancelled) setFieldSettings(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
+      } finally {
+        if (!cancelled) setFieldSettingsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Yön tercihini hatırla (yazıcıya kağıt yerleştirme şekli sabit kalır)
   useEffect(() => {
@@ -351,6 +382,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           barcodeId: `barcode-${svIdx}-${qIdx}`,
           qrId: `qrcode-${svIdx}-${qIdx}`,
           barcode: sv.variant.barcode,
+          variantCode: sv.variant.variantCode,
         }))
       );
       cells.forEach((cell) => {
@@ -358,14 +390,11 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement;
           if (canvas && cell.barcode) {
             try {
-              JsBarcode(canvas, cell.barcode, {
-                format: cell.barcode.length === 13 ? 'EAN13' : 'CODE128',
-                width: selectedSize.width < 50 ? 1.5 : 2,
-                height: selectedSize.height < 30 ? 20 : selectedSize.height < 50 ? 30 : 40,
-                displayValue: true,
-                fontSize: selectedSize.width < 50 ? 10 : 12,
-                margin: 0
+              const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
+                width: selectedSize.width,
+                height: selectedSize.height,
               });
+              JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
             } catch (err) {
               console.error('Barkod oluşturma hatası:', err);
             }
@@ -387,7 +416,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [selectedVariants, selectedSize, selectedDesign]);
+  }, [selectedVariants, selectedSize, selectedDesign, fieldSettings]);
 
   // Varyant seç/kaldır
   const toggleVariant = (variant: LabelPrintVariant) => {
@@ -479,9 +508,38 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           </div>
         </div>
 
-        <div className="flex-1 overflow-hidden flex">
+        <div className="flex-1 overflow-hidden flex min-h-0">
           {/* Sol Panel - Ayarlar */}
-          <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50">
+          <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50 min-h-0 shrink-0">
+            <div className="shrink-0 flex border-b border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setLeftPanelTab('design')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
+                  leftPanelTab === 'design'
+                    ? 'text-purple-700 border-b-2 border-purple-600 bg-purple-50/50'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                {tm('labelPrintTabDesign')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeftPanelTab('fields')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
+                  leftPanelTab === 'fields'
+                    ? 'text-purple-700 border-b-2 border-purple-600 bg-purple-50/50'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <ListChecks className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                {tm('labelPrintTabFields')}
+              </button>
+            </div>
+
+            {leftPanelTab === 'design' ? (
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
             {/* Tasarım Seçimi */}
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">ğŸ¨ Etiket Tasarımı</label>
@@ -665,6 +723,75 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                 </div>
               </div>
             </div>
+            </div>
+            ) : (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-white space-y-4">
+              {fieldSettingsLoading ? (
+                <p className="text-sm text-gray-500">{tm('loading') || '…'}</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">{tm('labelPrintFieldsHint')}</p>
+                  {(
+                    [
+                      ['showProductName', tm('labelPrintFieldProductName')] as const,
+                      ['showVariantCode', tm('labelPrintFieldVariantCode')] as const,
+                      ['showVariantAttributes', tm('labelPrintFieldVariantAttrs')] as const,
+                      ['showPrice', tm('labelPrintFieldPrice')] as const,
+                      ['showStock', tm('labelPrintFieldStock')] as const,
+                      ['showCategory', tm('labelPrintFieldCategory')] as const,
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fieldSettings[key]}
+                        onChange={(e) => setFieldSettings((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                  <div className="pt-2 border-t border-gray-100">
+                    <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeCaptionLabel')}</label>
+                    <select
+                      value={fieldSettings.barcodeCaptionMode}
+                      onChange={(e) =>
+                        setFieldSettings((prev) => ({
+                          ...prev,
+                          barcodeCaptionMode: e.target.value as BarcodeCaptionMode,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="barcode">{tm('labelPrintBarcodeCaptionBarcode')}</option>
+                      <option value="variantCode">{tm('labelPrintBarcodeCaptionVariant')}</option>
+                      <option value="both">{tm('labelPrintBarcodeCaptionBoth')}</option>
+                      <option value="none">{tm('labelPrintBarcodeCaptionNone')}</option>
+                    </select>
+                    <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{tm('labelPrintBarcodeCaptionHint')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={fieldSettingsSaving}
+                    onClick={async () => {
+                      setFieldSettingsSaving(true);
+                      try {
+                        await saveLabelPrintFieldSettings(fieldSettings);
+                        toast.success(tm('labelFieldSettingsSaved'));
+                      } catch {
+                        toast.error(tm('labelFieldSettingsSaveFailed'));
+                      } finally {
+                        setFieldSettingsSaving(false);
+                      }
+                    }}
+                    className="w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    {fieldSettingsSaving ? '…' : tm('labelSaveFieldSettings')}
+                  </button>
+                </>
+              )}
+            </div>
+            )}
           </div>
 
           {/* Orta Panel - Varyant Seçimi */}
@@ -828,6 +955,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                             showDiscount={showDiscount}
                             discountPercent={discountPercent}
                             shelfLocation={shelfLocation}
+                            fieldSettings={fieldSettings}
                           />
                         </RotatedLabel>
                       ))
@@ -928,6 +1056,8 @@ interface LabelContentProps {
   showDiscount?: boolean;
   discountPercent?: number;
   shelfLocation?: string;
+  /** Firma bazlı etiket alanı tercihleri (kısmi merge edilir) */
+  fieldSettings?: Partial<LabelPrintFieldSettings>;
 }
 
 export function LabelContent({
@@ -941,8 +1071,10 @@ export function LabelContent({
   design,
   showDiscount,
   discountPercent,
-  shelfLocation
+  shelfLocation,
+  fieldSettings,
 }: LabelContentProps) {
+  const f = normalizeLabelPrintFieldSettings(fieldSettings);
   const isSmall = size.width < 50;
   const isMedium = size.width >= 50 && size.width < 80;
   const isLarge = size.width >= 80 && size.width < 150;
@@ -971,9 +1103,11 @@ export function LabelContent({
               }}
             />
           )}
+          {f.showPrice && (
           <div className={`${isSmall ? 'text-[10px]' : 'text-[14px]'} font-bold mt-1`}>
             {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
           </div>
+          )}
         </div>
       </div>
     );
@@ -991,11 +1125,13 @@ export function LabelContent({
         }}
       >
         <div className="h-full flex flex-col justify-between text-black">
+          {f.showProductName && (
           <div className={`${isSmall ? 'text-[7px]' : isMedium ? 'text-[9px]' : 'text-[11px]'} font-bold truncate`}>
             {productName}
           </div>
+          )}
 
-          {!isSmall && (
+          {!isSmall && f.showVariantAttributes && (
             <div className={`${isSmall ? 'text-[6px]' : 'text-[8px]'} text-gray-700`}>
               {Object.entries(variant.attributes).slice(0, 2).map(([key, value]) => (
                 <div key={key}>{key}: {value}</div>
@@ -1015,9 +1151,11 @@ export function LabelContent({
             </div>
           )}
 
+          {f.showPrice && (
           <div className={`${isSmall ? 'text-[9px]' : isMedium ? 'text-[12px]' : 'text-[14px]'} font-bold text-center`}>
             {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
           </div>
+          )}
         </div>
       </div>
     );
@@ -1036,17 +1174,20 @@ export function LabelContent({
       >
         <div className="h-full flex flex-col justify-between text-black">
           <div>
+            {f.showProductName && (
             <div className={`${isSmall ? 'text-[7px]' : 'text-[10px]'} font-bold truncate border-b border-gray-300 pb-0.5`}>
               {productName}
             </div>
+            )}
             <div className={`${isSmall ? 'text-[6px]' : 'text-[8px]'} text-gray-700 mt-1 space-y-0.5`}>
-              {Object.entries(variant.attributes).map(([key, value]) => (
+              {f.showVariantAttributes &&
+                Object.entries(variant.attributes).map(([key, value]) => (
                 <div key={key} className="flex justify-between">
                   <span className="font-medium">{key}:</span>
                   <span>{value}</span>
                 </div>
               ))}
-              {category && <div className="text-gray-500">Kategori: {category}</div>}
+              {f.showCategory && category && <div className="text-gray-500">Kategori: {category}</div>}
             </div>
           </div>
 
@@ -1056,13 +1197,23 @@ export function LabelContent({
             </div>
           )}
 
+          {f.showStock && variant.stock !== undefined && (
+            <div className={`${isSmall ? 'text-[7px]' : 'text-[8px]'} text-gray-600 text-center`}>
+              Stok: {variant.stock}
+            </div>
+          )}
+
           <div>
+            {f.showPrice && (
             <div className={`${isSmall ? 'text-[11px]' : 'text-[14px]'} font-bold text-center bg-gray-100 py-1 rounded`}>
               {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
             </div>
+            )}
+            {f.showVariantCode && (
             <div className={`${isSmall ? 'text-[6px]' : 'text-[7px]'} text-gray-500 text-center mt-0.5`}>
               {variant.variantCode}
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1081,12 +1232,15 @@ export function LabelContent({
         }}
       >
         <div className="h-full flex flex-col justify-between text-black">
+          {f.showProductName && (
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-2 py-1 rounded -m-0.5 mb-1">
             <div className={`${isSmall ? 'text-[7px]' : 'text-[10px]'} font-bold truncate`}>
               {productName}
             </div>
           </div>
+          )}
 
+          {f.showVariantAttributes && (
           <div className={`${isSmall ? 'text-[7px]' : 'text-[9px]'} text-gray-700 space-y-0.5`}>
             {Object.entries(variant.attributes).map(([key, value]) => (
               <div key={key} className="flex gap-1">
@@ -1095,6 +1249,7 @@ export function LabelContent({
               </div>
             ))}
           </div>
+          )}
 
           {variant.barcode && (
             <div className="flex justify-center my-1 bg-white p-1 rounded">
@@ -1102,11 +1257,13 @@ export function LabelContent({
             </div>
           )}
 
+          {f.showPrice && (
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white text-center py-1.5 rounded">
             <div className={`${isSmall ? 'text-[10px]' : 'text-[13px]'} font-bold`}>
               {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
             </div>
           </div>
+          )}
         </div>
       </div>
     );
@@ -1130,13 +1287,17 @@ export function LabelContent({
         )}
 
         <div className="h-full flex flex-col justify-between text-black pt-3">
+          {f.showProductName && (
           <div className={`${isSmall ? 'text-[8px]' : 'text-[10px]'} font-bold truncate`}>
             {productName}
           </div>
+          )}
 
+          {f.showVariantAttributes && (
           <div className={`${isSmall ? 'text-[7px]' : 'text-[8px]'} text-gray-600`}>
             {Object.values(variant.attributes).join(' • ')}
           </div>
+          )}
 
           {variant.barcode && (
             <div className="flex justify-center my-1">
@@ -1145,14 +1306,16 @@ export function LabelContent({
           )}
 
           <div>
-            {showDiscount && oldPrice > 0 && (
+            {showDiscount && oldPrice > 0 && f.showPrice && (
               <div className={`${isSmall ? 'text-[8px]' : 'text-[10px]'} text-gray-500 line-through text-center`}>
                 {oldPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
               </div>
             )}
+            {f.showPrice && (
             <div className={`${isSmall ? 'text-[12px]' : 'text-[16px]'} font-bold text-red-600 text-center`}>
               {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1171,9 +1334,11 @@ export function LabelContent({
         }}
       >
         <div className="h-full flex flex-col justify-between items-center text-black">
+          {f.showProductName && (
           <div className={`${isSmall ? 'text-[7px]' : 'text-[9px]'} font-bold text-center w-full truncate`}>
             {productName}
           </div>
+          )}
 
           {variant.barcode && (
             <div className="flex justify-center">
@@ -1188,12 +1353,16 @@ export function LabelContent({
           )}
 
           <div className="text-center w-full">
+            {f.showVariantAttributes && (
             <div className={`${isSmall ? 'text-[6px]' : 'text-[7px]'} text-gray-600`}>
               {Object.values(variant.attributes).join(' • ')}
             </div>
+            )}
+            {f.showPrice && (
             <div className={`${isSmall ? 'text-[10px]' : 'text-[12px]'} font-bold mt-1`}>
               {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1218,11 +1387,12 @@ export function LabelContent({
                 ğŸ“ {shelfLocation}
               </div>
             )}
-            <div className="text-[24px] font-bold mb-2">{productName}</div>
-            {category && <div className="text-[16px] text-gray-600 mb-3">Kategori: {category}</div>}
+            {f.showProductName && <div className="text-[24px] font-bold mb-2">{productName}</div>}
+            {f.showCategory && category && <div className="text-[16px] text-gray-600 mb-3">Kategori: {category}</div>}
           </div>
 
           <div className="space-y-3">
+            {f.showVariantAttributes && (
             <div className="grid grid-cols-2 gap-4 text-[14px]">
               {Object.entries(variant.attributes).map(([key, value]) => (
                 <div key={key} className="border-2 border-gray-300 p-2 rounded">
@@ -1231,8 +1401,9 @@ export function LabelContent({
                 </div>
               ))}
             </div>
+            )}
 
-            {variant.stock !== undefined && (
+            {f.showStock && variant.stock !== undefined && (
               <div className={`text-[14px] font-medium p-2 rounded ${variant.stock > 10 ? 'bg-green-100 text-green-800' :
                 variant.stock > 0 ? 'bg-yellow-100 text-yellow-800' :
                   'bg-red-100 text-red-800'
@@ -1248,16 +1419,20 @@ export function LabelContent({
             </div>
           )}
 
+          {f.showPrice && (
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-center py-4 rounded-lg">
             <div className="text-[16px] mb-1">Satış Fiyatı</div>
             <div className="text-[32px] font-bold">
               {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
             </div>
           </div>
+          )}
 
+          {f.showVariantCode && (
           <div className="text-[12px] text-gray-500 text-center mt-2">
             Kod: {variant.variantCode}
           </div>
+          )}
         </div>
       </div>
     );

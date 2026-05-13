@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Printer, Tag, Plus, Minus, Search, RotateCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Product } from '../../../core/types';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useProductStore } from '../../../store/useProductStore';
+import {
+  buildJsBarcodeOptions,
+  DEFAULT_LABEL_PRINT_FIELD_SETTINGS,
+  getLabelPrintFieldSettings,
+  saveLabelPrintFieldSettings,
+  type BarcodeCaptionMode,
+  type LabelPrintFieldSettings,
+} from '../../../services/labelPrintFieldSettingsService';
 import {
   LABEL_DESIGNS,
   LABEL_SIZES,
@@ -71,6 +80,10 @@ export function BulkProductLabelPrint({
       ? (saved as PrintRotation)
       : 0;
   });
+  const [leftPanelTab, setLeftPanelTab] = useState<'design' | 'fields'>('design');
+  const [fieldSettings, setFieldSettings] = useState<LabelPrintFieldSettings>(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
+  const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
+  const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +93,23 @@ export function BulkProductLabelPrint({
       /* ignore */
     }
   }, [printRotation]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await getLabelPrintFieldSettings();
+        if (!cancelled) setFieldSettings(s);
+      } catch {
+        if (!cancelled) setFieldSettings(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
+      } finally {
+        if (!cancelled) setFieldSettingsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (storeProducts.length === 0) void loadProducts();
@@ -104,6 +134,7 @@ export function BulkProductLabelPrint({
           barcodeId: `bulk-barcode-${rowIdx}-${qIdx}`,
           qrId: `bulk-qrcode-${rowIdx}-${qIdx}`,
           barcode: row.variant.barcode,
+          variantCode: row.variant.variantCode,
         }))
       );
       cells.forEach((cell) => {
@@ -111,14 +142,11 @@ export function BulkProductLabelPrint({
           const canvas = document.getElementById(cell.barcodeId) as HTMLCanvasElement | null;
           if (canvas && cell.barcode) {
             try {
-              JsBarcode(canvas, cell.barcode, {
-                format: cell.barcode.length === 13 ? 'EAN13' : 'CODE128',
-                width: selectedSize.width < 50 ? 1.5 : 2,
-                height: selectedSize.height < 30 ? 20 : selectedSize.height < 50 ? 30 : 40,
-                displayValue: true,
-                fontSize: selectedSize.width < 50 ? 10 : 12,
-                margin: 0,
+              const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
+                width: selectedSize.width,
+                height: selectedSize.height,
               });
+              JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
             } catch (err) {
               console.error('Barkod oluşturma hatası:', err);
             }
@@ -138,7 +166,7 @@ export function BulkProductLabelPrint({
       });
     }, 120);
     return () => clearTimeout(timer);
-  }, [queue, selectedSize, selectedDesign]);
+  }, [queue, selectedSize, selectedDesign, fieldSettings]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);
@@ -227,7 +255,36 @@ export function BulkProductLabelPrint({
         </div>
 
         <div className="flex-1 overflow-hidden flex min-h-0">
-          <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50 shrink-0 overflow-y-auto">
+          <div className="w-80 border-r border-gray-200 flex flex-col bg-gray-50 shrink-0 min-h-0">
+            <div className="shrink-0 flex border-b border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => setLeftPanelTab('design')}
+                className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-semibold ${
+                  leftPanelTab === 'design'
+                    ? 'text-purple-700 border-b-2 border-purple-600 bg-purple-50/50'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                {tm('labelPrintTabDesign')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeftPanelTab('fields')}
+                className={`flex-1 flex items-center justify-center gap-1 py-2.5 text-xs font-semibold ${
+                  leftPanelTab === 'fields'
+                    ? 'text-purple-700 border-b-2 border-purple-600 bg-purple-50/50'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <ListChecks className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                {tm('labelPrintTabFields')}
+              </button>
+            </div>
+
+            {leftPanelTab === 'design' ? (
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelDesign')}</label>
               <div className="grid grid-cols-2 gap-2">
@@ -412,6 +469,75 @@ export function BulkProductLabelPrint({
                 </div>
               </div>
             </div>
+            </div>
+            ) : (
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-white space-y-4">
+              {fieldSettingsLoading ? (
+                <p className="text-sm text-gray-500">{tm('loading')}</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">{tm('labelPrintFieldsHint')}</p>
+                  {(
+                    [
+                      ['showProductName', tm('labelPrintFieldProductName')] as const,
+                      ['showVariantCode', tm('labelPrintFieldVariantCode')] as const,
+                      ['showVariantAttributes', tm('labelPrintFieldVariantAttrs')] as const,
+                      ['showPrice', tm('labelPrintFieldPrice')] as const,
+                      ['showStock', tm('labelPrintFieldStock')] as const,
+                      ['showCategory', tm('labelPrintFieldCategory')] as const,
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={fieldSettings[key]}
+                        onChange={(e) => setFieldSettings((prev) => ({ ...prev, [key]: e.target.checked }))}
+                        className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                  <div className="pt-2 border-t border-gray-100">
+                    <label className="text-xs font-semibold text-gray-700 block mb-1.5">{tm('labelPrintBarcodeCaptionLabel')}</label>
+                    <select
+                      value={fieldSettings.barcodeCaptionMode}
+                      onChange={(e) =>
+                        setFieldSettings((prev) => ({
+                          ...prev,
+                          barcodeCaptionMode: e.target.value as BarcodeCaptionMode,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="barcode">{tm('labelPrintBarcodeCaptionBarcode')}</option>
+                      <option value="variantCode">{tm('labelPrintBarcodeCaptionVariant')}</option>
+                      <option value="both">{tm('labelPrintBarcodeCaptionBoth')}</option>
+                      <option value="none">{tm('labelPrintBarcodeCaptionNone')}</option>
+                    </select>
+                    <p className="text-[10px] text-gray-500 mt-1.5 leading-snug">{tm('labelPrintBarcodeCaptionHint')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={fieldSettingsSaving}
+                    onClick={async () => {
+                      setFieldSettingsSaving(true);
+                      try {
+                        await saveLabelPrintFieldSettings(fieldSettings);
+                        toast.success(tm('labelFieldSettingsSaved'));
+                      } catch {
+                        toast.error(tm('labelFieldSettingsSaveFailed'));
+                      } finally {
+                        setFieldSettingsSaving(false);
+                      }
+                    }}
+                    className="w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    {fieldSettingsSaving ? '…' : tm('labelSaveFieldSettings')}
+                  </button>
+                </>
+              )}
+            </div>
+            )}
           </div>
 
           <div className="w-80 border-r border-gray-200 flex flex-col min-w-0 shrink-0">

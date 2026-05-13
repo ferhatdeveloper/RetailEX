@@ -2342,6 +2342,40 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'لە سووڕانەوەی پاڵ، قەبارەی پەڕەی نێردراو بۆ چاپگەر دەگۆڕێت. ئاراستەی خوراکدانی لایبڵ لە چاپگەری گەرما بپشکنە.',
   },
 
+  labelPrintTabDesign: { tr: 'Tasarım', en: 'Design', ar: 'التصميم', ku: 'دیزاین' },
+  labelPrintTabFields: { tr: 'Etiket alanları', en: 'Label fields', ar: 'حقول الملصق', ku: 'خانەکانی لایبڵ' },
+  labelPrintFieldsHint: {
+    tr: 'Bu seçimler firma bazında kaydedilir; tüm etiket ekranlarında geçerlidir.',
+    en: 'These choices are saved per company and apply to all label printing screens.',
+    ar: 'تُحفظ هذه الاختيارات لكل شركة وتنطبق على جميع شاشات طباعة الملصقات.',
+    ku: 'ئەم هەڵبژاردنانە بۆ هەر کۆمپانیایەک پاشەکەوت دەکرێن و لە هەموو شاشەکانی چاپکردنی لایبڵدا جێبەجێ دەبن.',
+  },
+  labelPrintFieldProductName: { tr: 'Ürün adı', en: 'Product name', ar: 'اسم المنتج', ku: 'ناوی بەرهەم' },
+  labelPrintFieldVariantCode: { tr: 'Varyant / SKU kodu', en: 'Variant / SKU code', ar: 'رمز المتغير / SKU', ku: 'کۆدی جۆر / SKU' },
+  labelPrintFieldVariantAttrs: { tr: 'Varyant özellikleri (beden vb.)', en: 'Variant attributes (size, etc.)', ar: 'خصائص المتغير (المقاس…)', ku: 'تایبەتمەندییەکانی جۆر' },
+  labelPrintFieldPrice: { tr: 'Satış fiyatı', en: 'Sale price', ar: 'سعر البيع', ku: 'نرخی فرۆشتن' },
+  labelPrintFieldStock: { tr: 'Stok miktarı', en: 'Stock quantity', ar: 'كمية المخزون', ku: 'بڕی مەخزەن' },
+  labelPrintFieldCategory: { tr: 'Kategori', en: 'Category', ar: 'الفئة', ku: 'هاوپۆل' },
+  labelPrintBarcodeCaptionLabel: { tr: 'Barkod altı yazı (1D)', en: 'Text under barcode (1D)', ar: 'النص تحت الباركود (1D)', ku: 'دەق لە ژێر بارکۆد (1D)' },
+  labelPrintBarcodeCaptionBarcode: { tr: 'Barkod numarası', en: 'Barcode number', ar: 'رقم الباركود', ku: 'ژمارەی بارکۆد' },
+  labelPrintBarcodeCaptionVariant: { tr: 'Varyant kodu', en: 'Variant code', ar: 'رمز المتغير', ku: 'کۆدی جۆر' },
+  labelPrintBarcodeCaptionBoth: { tr: 'Barkod + varyant kodu', en: 'Barcode + variant code', ar: 'الباركود + رمز المتغير', ku: 'بارکۆد + کۆدی جۆر' },
+  labelPrintBarcodeCaptionNone: { tr: 'Rakamsız (çizgi only)', en: 'No text (bars only)', ar: 'بدون أرقام (الأشرطة فقط)', ku: 'بێ ژمارە (تەنها هێڵەکان)' },
+  labelPrintBarcodeCaptionHint: {
+    tr: 'EAN-13 barkodlarda altta yasal rakamlar gösterilir; CODE128’de seçiminiz uygulanır.',
+    en: 'EAN-13 keeps standard digits under the bars; CODE128 uses your caption choice.',
+    ar: 'EAN-13 يعرض الأرقام القياسية؛ CODE128 يطبق اختيار النص الذي حددته.',
+    ku: 'EAN-13 ژمارە ستانداردەکان پیشان دەدات؛ CODE128 هەڵبژاردنی دەقەکەت جێبەجێ دەکات.',
+  },
+  labelSaveFieldSettings: { tr: 'Ayarları kaydet', en: 'Save settings', ar: 'حفظ الإعدادات', ku: 'پاشەکەوتکردنی ڕێکخستن' },
+  labelFieldSettingsSaved: { tr: 'Etiket alanı ayarları kaydedildi', en: 'Label field settings saved', ar: 'تم حفظ إعدادات حقول الملصق', ku: 'ڕێکخستنی خانەکانی لایبڵ پاشەکەوت کرا' },
+  labelFieldSettingsSaveFailed: {
+    tr: 'Kayıt başarısız — bağlantıyı kontrol edin',
+    en: 'Save failed — check your connection',
+    ar: 'فشل الحفظ — تحقق من الاتصال',
+    ku: 'پاشەکەوت سەرکەوتوو نەبوو — پەیوەندی بپشکنە',
+  },
+
   qr: { tr: 'QR Kodlu', en: 'QR Code', ar: 'رمز QR', ku: 'QR' },
 
   bulkBarcodeLabelPrint: {
