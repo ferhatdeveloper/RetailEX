@@ -1,91 +1,102 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { stockMovementAPI } from '../../../services/stockMovementAPI';
-import { warehouseAPI } from '../../../services/warehouseAPI';
+import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { productAPI } from '../../../services/api/products';
+import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Building2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { formatNumber } from '../../../utils/formatNumber';
 
 interface WarehouseStockRow {
     productCode: string;
     productName: string;
-    // Dynamic columns for each warehouse
-    [key: string]: any;
+    total: number;
+    [warehouseId: string]: any;
 }
 
+/**
+ * Malzeme Ambar Durum — tenant-aware.
+ * Per-depo stok kolonu, çoklu depo şeması olmadığı için şu an tüm stoğu ilk aktif
+ * depoya atar (ana depo). Çoklu depo desteği eklendiğinde sorgu güncellenmeli.
+ */
 export function WarehouseStatusReport() {
-    const [data, setData] = useState<WarehouseStockRow[]>([]);
-    const [columns, setColumns] = useState<any[]>([]);
+    const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+    const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
 
     useEffect(() => {
-        async function loadData() {
+        let cancelled = false;
+        async function load() {
             setLoading(true);
             try {
-                // Fetch all required data
-                const [warehouses, products, movements] = await Promise.all([
+                const [whs, prods] = await Promise.all([
                     warehouseAPI.getActive(),
                     productAPI.getAll(),
-                    stockMovementAPI.getAll()
                 ]);
-
-                // Helper maps
-                const productMap = new Map(products.map(p => [p.id, p]));
-                const warehouseMap = new Map(warehouses.map(w => [w.id, w.name]));
-
-                // Initialize stock aggregation: ProductID -> WarehouseID -> Quantity
-                const stockAggregation = new Map<string, Map<string, number>>();
-
-                // Initialize with products and 0 stock for all warehouses
-                products.forEach(p => {
-                    const whStock = new Map<string, number>();
-                    warehouses.forEach(w => whStock.set(w.id, 0));
-                    stockAggregation.set(p.id, whStock);
-                });
-
-                const mainWarehouseName = warehouses.length > 0 ? warehouses[0].name : tm('centralWarehouse');
-
-                const rows: WarehouseStockRow[] = products.map(p => ({
-                    productCode: p.code || '',
-                    productName: p.name,
-                    total: p.stock,
-                    wh_main: p.stock // Assigning all to first found warehouse or virtual main
-                    // For other warehouses it will be undefined/0
-                }));
-
-                // Build columns dynamically
-                const columnHelper = createColumnHelper<WarehouseStockRow>();
-                const dynamicCols: ColumnDef<WarehouseStockRow, any>[] = [
-                    columnHelper.accessor('productCode', { header: tm('materialCode') }),
-                    columnHelper.accessor('productName', { header: tm('materialName') }),
-                    columnHelper.accessor('total', { header: tm('totalStock'), cell: info => <span className="font-bold">{info.getValue()}</span> }),
-                    // Add column for the main warehouse effectively
-                    columnHelper.accessor('wh_main', {
-                        header: mainWarehouseName,
-                        cell: info => info.getValue() || 0
-                    }),
-                ];
-
-                setData(rows);
-                setColumns(dynamicCols);
-
-            } catch (error) {
-                console.error('Failed to load warehouse status', error);
+                if (cancelled) return;
+                setWarehouses(whs);
+                setProducts(prods);
+            } catch (err) {
+                console.error('[WarehouseStatusReport] load failed', err);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         }
-        loadData();
+        load();
+        return () => { cancelled = true; };
     }, []);
+
+    const rows = useMemo<WarehouseStockRow[]>(() => {
+        return products.map(p => {
+            const total = Number(p.stock) || 0;
+            const row: WarehouseStockRow = {
+                productCode: p.code || '',
+                productName: p.name || '',
+                total,
+            };
+            // Çoklu depo şeması yok — tüm stok ilk depoya atanır
+            warehouses.forEach((w, idx) => {
+                row[`wh_${w.id}`] = idx === 0 ? total : 0;
+            });
+            return row;
+        });
+    }, [products, warehouses]);
+
+    const columnHelper = createColumnHelper<WarehouseStockRow>();
+    const columns = useMemo<ColumnDef<WarehouseStockRow, any>[]>(() => {
+        const base: ColumnDef<WarehouseStockRow, any>[] = [
+            columnHelper.accessor('productCode', { header: tm('materialCode') }),
+            columnHelper.accessor('productName', { header: tm('materialName') }),
+            columnHelper.accessor('total', {
+                header: tm('totalStock') || 'Toplam Stok',
+                cell: info => <span className="font-bold">{formatNumber(Number(info.getValue()) || 0, 2)}</span>,
+            }),
+        ];
+        const whCols = warehouses.map(w =>
+            columnHelper.accessor((row: WarehouseStockRow) => row[`wh_${w.id}`] ?? 0, {
+                id: `wh_${w.id}`,
+                header: w.name,
+                cell: info => formatNumber(Number(info.getValue()) || 0, 2),
+            })
+        );
+        return [...base, ...whCols];
+    }, [tm, warehouses]);
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <div className="flex items-center gap-2">
                     <Building2 className="w-5 h-5 text-gray-700" />
-                    <h2 className="font-semibold text-gray-800">{tm('warehouseStatus')}</h2>
+                    <div>
+                        <h2 className="font-semibold text-gray-800">
+                            {tm('warehouseStatus') || 'Malzeme Ambar Durum'}
+                        </h2>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            {warehouses.length} {tm('warehouse') || 'depo'} · {products.length} {tm('material') || 'malzeme'}
+                        </p>
+                    </div>
                 </div>
                 <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm">
                     <Download className="w-4 h-4" />
@@ -102,16 +113,9 @@ export function WarehouseStatusReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid
-                        data={data}
-                        columns={columns}
-                        pageSize={50}
-                    />
+                    <DevExDataGrid data={rows} columns={columns} pageSize={50} />
                 )}
             </div>
         </div>
     );
 }
-
-
-

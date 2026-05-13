@@ -5,11 +5,14 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Package } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 
 export function InventoryReport() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
+    const currency = selectedFirm?.ana_para_birimi || 'IQD';
 
     useEffect(() => {
         async function loadData() {
@@ -57,17 +60,17 @@ export function InventoryReport() {
             cell: info => info.getValue() || '-',
         }),
         columnHelper.accessor('cost', {
-            header: 'ALIŞ FİYATI',
-            cell: info => info.getValue() ? info.getValue().toLocaleString() : '0',
-            size: 120
+            header: tm('purchasePrice') || 'Alış Fiyatı',
+            cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
+            size: 140
         }),
         columnHelper.accessor(row => (row.cost || 0) * (row.stock || 0), {
             id: 'total_cost',
-            header: 'TOPLAM DEĞER',
-            cell: info => info.getValue() ? info.getValue().toLocaleString() : '0',
-            size: 140
+            header: tm('totalValue') || 'Toplam Değer',
+            cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
+            size: 160
         }),
-    ], [tm]);
+    ], [tm, currency]);
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
@@ -105,21 +108,21 @@ export function InventoryReport() {
                 <div className="flex-shrink-0 mx-4 mb-4 mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg flex justify-between items-center shadow-inner">
                     <div className="flex items-center gap-4">
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Toplam Çeşit</span>
+                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{tm('totalVariety') || 'Toplam Çeşit'}</span>
                             <span className="text-lg font-black text-blue-900">{products.length}</span>
                         </div>
                         <div className="w-px h-8 bg-blue-200"></div>
                         <div className="flex flex-col">
-                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Toplam Stok Adet</span>
+                            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{tm('totalStockUnits') || 'Toplam Stok Adet'}</span>
                             <span className="text-lg font-black text-blue-900">
                                 {products.reduce((acc, p) => acc + (p.stock || 0), 0).toLocaleString()}
                             </span>
                         </div>
                     </div>
                     <div className="bg-white px-6 py-2 rounded-xl border border-blue-200 shadow-sm flex flex-col items-end">
-                        <span className="text-xs text-blue-500 font-bold uppercase">Envanter Toplam Alış Değeri</span>
+                        <span className="text-xs text-blue-500 font-bold uppercase">{tm('totalInventoryValue') || 'Envanter Toplam Alış Değeri'}</span>
                         <span className="text-2xl font-black text-blue-700">
-                            {products.reduce((acc, p) => acc + ((p.cost || 0) * (p.stock || 0)), 0).toLocaleString()} <span className="text-sm font-bold opacity-70">IQD</span>
+                            {products.reduce((acc, p) => acc + ((p.cost || 0) * (p.stock || 0)), 0).toLocaleString()} <span className="text-sm font-bold opacity-70">{currency}</span>
                         </span>
                     </div>
                 </div>

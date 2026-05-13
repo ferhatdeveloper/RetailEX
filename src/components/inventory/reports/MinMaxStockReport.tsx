@@ -114,14 +114,9 @@ export function MinMaxStockReport() {
                         onClick={() => setFilterType('out')}
                         className={`px-3 py-1.5 rounded-md text-sm transition-colors ${filterType === 'out' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >
-                        Tükenenler
+                        {tm('outOfStock') || 'Tükenenler'}
                     </button>
                 </div>
-
-                <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors">
-                    <Download className="w-4 h-4" />
-                    Excel
-                </button>
             </div>
 
             <div className="flex-1 overflow-hidden p-4">
@@ -129,7 +124,7 @@ export function MinMaxStockReport() {
                     <div className="h-full flex items-center justify-center">
                         <div className="text-center">
                             <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                            <p className="text-gray-500">Analiz ediliyor...</p>
+                            <p className="text-gray-500">{tm('analyzing') || 'Analiz ediliyor...'}</p>
                         </div>
                     </div>
                 ) : (

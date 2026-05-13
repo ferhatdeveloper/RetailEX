@@ -2813,6 +2813,27 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   direction: { tr: 'Yön', en: 'Direction', ar: 'الاتجاه', ku: 'ئاراستە' },
   openingBalance: { tr: 'Devir', en: 'Opening Balance', ar: 'الرصيد الافتتاحي', ku: 'باڵانسی کردنەوە' },
 
+  // Reports - Common
+  prepareReport: { tr: 'Raporu Hazırla', en: 'Prepare Report', ar: 'تحضير التقرير', ku: 'ئامادەکردنی ڕاپۆرت' },
+  selectMaterialHint: { tr: 'Ekstresini görmek istediğiniz malzemeyi yukarıdan seçin.', en: 'Select a material above to view its statement.', ar: 'حدد مادة من الأعلى لعرض كشف حسابها.', ku: 'ماددەیەک هەڵبژێرە بۆ بینینی کشتوکاڵەکەی.' },
+  warehouseSlip: { tr: 'Ambar Fişi', en: 'Warehouse Slip', ar: 'إيصال المستودع', ku: 'پسوڵەی کۆگا' },
+  totalVariety: { tr: 'Toplam Çeşit', en: 'Total Variety', ar: 'إجمالي الأنواع', ku: 'کۆی جۆرەکان' },
+  totalStockUnits: { tr: 'Toplam Stok Adet', en: 'Total Stock Units', ar: 'إجمالي وحدات المخزون', ku: 'کۆی یەکەکانی کۆگا' },
+  materialCodeOrName: { tr: 'Malzeme Kodu / Adı', en: 'Material Code / Name', ar: 'رمز/اسم المادة', ku: 'کۆد/ناوی ماددە' },
+  selectMaterialPlaceholder: { tr: 'Malzeme arayın...', en: 'Search material...', ar: 'البحث عن مادة...', ku: 'گەڕان بۆ ماددە...' },
+  dateRangeLabel: { tr: 'Tarih Aralığı', en: 'Date Range', ar: 'النطاق الزمني', ku: 'مەودای کات' },
+  inOutQty: { tr: 'Giriş/Çıkış', en: 'In/Out', ar: 'دخول/خروج', ku: 'هاتن/چوون' },
+  runningQuantity: { tr: 'Kümülatif Bakiye', en: 'Running Balance', ar: 'الرصيد التراكمي', ku: 'باڵانسی کۆی گشتی' },
+  ficheType: { tr: 'Fiş Tipi', en: 'Fiche Type', ar: 'نوع الإيصال', ku: 'جۆری پسوڵە' },
+  noRecordsFound: { tr: 'Kayıt bulunamadı', en: 'No records found', ar: 'لم يتم العثور على سجلات', ku: 'هیچ تۆمارێک نەدۆزرایەوە' },
+  loadingTransactions: { tr: 'Hareketler yükleniyor...', en: 'Loading transactions...', ar: 'جاري تحميل المعاملات...', ku: 'بارکردنی جووڵەکان...' },
+  consumption: { tr: 'Sarf', en: 'Consumption', ar: 'استهلاك', ku: 'بەکارهێنان' },
+  warehouseReceipt: { tr: 'Ambar Fişi', en: 'Warehouse Receipt', ar: 'إيصال المستودع', ku: 'پسوڵەی کۆگا' },
+  productionEntry: { tr: 'Üretim Girişi', en: 'Production Entry', ar: 'إدخال الإنتاج', ku: 'تۆماری بەرھەمھێنان' },
+  otherType: { tr: 'Diğer', en: 'Other', ar: 'أخرى', ku: 'هیتر' },
+  localCurrencyUnit: { tr: 'Yerel Para Birimi', en: 'Local Currency', ar: 'العملة المحلية', ku: 'دراوی ناوخۆ' },
+  inventoryList: { tr: 'Envanter Listesi', en: 'Inventory List', ar: 'قائمة المخزون', ku: 'لیستی کۆگا' },
+
   // Purchase Order
   createNewOrder: { tr: 'Yeni Sipariş Oluştur', en: 'Create New Order', ar: 'إنشاء طلب جديد', ku: 'دروستکردنی داواکاری نوێ' },
 
