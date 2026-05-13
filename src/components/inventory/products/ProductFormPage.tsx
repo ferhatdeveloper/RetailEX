@@ -863,33 +863,83 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }
   }, [productId, products]);
 
-  // Yeni ürün modunda: barkod alanını otomatik olarak şablondaki "son numara + 1" ile doldur.
-  // peek* fonksiyonu sayaç ilerletmez; gerçek artırma kayıt anında yapılır.
+  /**
+   * Mevcut ürün barkodlarının numerik en büyüğünü bulup +1 eklenmiş haliyle döner.
+   * Prefix ve uzunluk korunur (varsa). DB şablonu okunamadığında fallback olarak kullanılır.
+   * Örn. "BRZ00000002031588989032" → "BRZ00000002031588989033".
+   */
+  const computeNextBarcodeFromStore = useCallback((): string => {
+    const codes = products
+      .map(p => String(p.barcode || '').trim())
+      .filter(Boolean);
+    if (codes.length === 0) return '';
+
+    // En sık görülen prefix (harf+sembol kısmı). Hepsi aynı prefix kullanıyorsa onu al.
+    const prefixMatch = (s: string) => {
+      const m = s.match(/^(\D+)?(\d+)$/);
+      if (!m) return { prefix: '', digits: '' };
+      return { prefix: m[1] || '', digits: m[2] || '' };
+    };
+
+    const parsed = codes.map(prefixMatch).filter(p => p.digits.length > 0);
+    if (parsed.length === 0) return '';
+
+    // En çok kullanılan prefix'i seç
+    const prefixCount: Record<string, number> = {};
+    parsed.forEach(p => { prefixCount[p.prefix] = (prefixCount[p.prefix] || 0) + 1; });
+    const dominantPrefix = Object.keys(prefixCount).reduce((a, b) =>
+      prefixCount[a] >= prefixCount[b] ? a : b
+    );
+
+    const sameFamily = parsed.filter(p => p.prefix === dominantPrefix);
+    const digitLen = Math.max(...sameFamily.map(p => p.digits.length));
+
+    // BigInt ile maksimum
+    let max = 0n;
+    for (const p of sameFamily) {
+      try {
+        const n = BigInt(p.digits);
+        if (n > max) max = n;
+      } catch {
+        /* yoksay */
+      }
+    }
+    const next = (max + 1n).toString().padStart(digitLen, '0');
+    return `${dominantPrefix}${next}`;
+  }, [products]);
+
+  // Yeni ürün modunda: barkod alanını otomatik olarak "son numara + 1" ile doldur.
+  // Önce DB şablonunu (peekNextBarcode) dener; başarısız olursa store'daki son barkod +1.
+  // Sayaç sadece kayıt anında handleSave içinde generateNextBarcode ile ilerletilir.
   useEffect(() => {
     if (productId) return; // düzenleme modunda dokunma
     if (autoBarcodeAppliedRef.current) return; // zaten uygulandı
     let cancelled = false;
     (async () => {
+      let next = '';
       try {
-        const next = await productAPI.peekNextBarcode();
-        if (cancelled || !next) return;
-        // Sadece kullanıcı henüz elle bir şey yazmamışsa doldur (boş ise).
-        setBarcodes(prev => {
-          if (prev.length === 1 && !prev[0].code) {
-            peekedBarcodeRef.current = next;
-            autoBarcodeAppliedRef.current = true;
-            return [{ ...prev[0], code: next, isPrimary: true }];
-          }
-          return prev;
-        });
+        next = await productAPI.peekNextBarcode();
       } catch (err) {
         console.warn('[ProductFormPage] peekNextBarcode hata:', err);
       }
+      if (!next) {
+        // DB şablonu yok / okunamadı → store fallback
+        next = computeNextBarcodeFromStore();
+      }
+      if (cancelled || !next) return;
+      setBarcodes(prev => {
+        if (prev.length === 1 && !prev[0].code) {
+          peekedBarcodeRef.current = next;
+          autoBarcodeAppliedRef.current = true;
+          return [{ ...prev[0], code: next, isPrimary: true }];
+        }
+        return prev;
+      });
     })();
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, computeNextBarcodeFromStore]);
 
   // Load master data (currencies, etc.)
   useEffect(() => {
@@ -1109,8 +1159,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     try {
       nextCode = await productAPI.peekNextBarcode();
     } catch {
-      /* hata olursa boş bırak */
+      /* hata olursa fallback'e geç */
     }
+    if (!nextCode) nextCode = computeNextBarcodeFromStore();
     setBarcodes((prev: Barcode[]) => [
       ...prev,
       { id: Date.now().toString(), code: nextCode, unit: formData.unit, price: formData.salePrice, isPrimary: false },
@@ -1131,8 +1182,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     try {
       nextCode = await productAPI.peekNextBarcode();
     } catch {
-      /* hata olursa boş bırak */
+      /* hata olursa fallback'e geç */
     }
+    if (!nextCode) nextCode = computeNextBarcodeFromStore();
     setBarcodes((prev: Barcode[]) => [
       ...prev,
       { id: Date.now().toString(), code: nextCode, unit, price: initialPrice, isPrimary: false },

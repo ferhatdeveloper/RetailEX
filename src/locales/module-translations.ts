@@ -2454,6 +2454,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   additionalInfo: { tr: 'Ek Bilgi', en: 'Additional Info', ar: 'معلومات إضافية', ku: 'زانیاری زیادە' },
   image: { tr: 'Resim', en: 'Image', ar: 'صورة', ku: 'وێنە' },
   unitBarcode: { tr: 'Birim ve Barkod', en: 'Unit and Barcode', ar: 'الوحدة والباركود', ku: 'یەکە و بارکۆد' },
+  addBarcode: { tr: 'Barkod Ekle', en: 'Add Barcode', ar: 'إضافة باركود', ku: 'زیادکردنی بارکۆد' },
+  enterBarcode: { tr: 'Barkod girin...', en: 'Enter barcode...', ar: 'أدخل الباركود...', ku: 'بارکۆد بنووسە...' },
   refreshStocks: { tr: 'Stokları Yenile', en: 'Refresh Stocks', ar: 'تحديث المخزون', ku: 'نوێکردنەوەی کۆگا' },
   newProduct: { tr: 'Yeni Ürün', en: 'New Product', ar: 'منتج جديد', ku: 'بەرهەمی نوێ' },
   productSearchPlaceholder: { tr: 'Ürün adı, barkod veya kategori ara...', en: 'Search product name, barcode or category...', ar: 'بحث عن اسم المنتج أو الباركود أو الفئة...', ku: 'گەڕان بۆ ناوی بەرهەم، بارکۆد یان هاوپۆل...' },
