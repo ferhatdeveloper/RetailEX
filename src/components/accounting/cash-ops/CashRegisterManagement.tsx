@@ -6,12 +6,12 @@
 import { useState, useEffect } from 'react';
 import {
   Wallet, Banknote, TrendingUp, AlertTriangle, Clock,
-  CheckCircle, Plus, RefreshCw, Search
+  CheckCircle, Plus, RefreshCw, Search, Trash2
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
-import { fetchKasalar, fetchKasaIslemleri, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { toast } from 'sonner';
@@ -38,6 +38,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
   const [selectedKasa, setSelectedKasa] = useState<Kasa | null>(null);
   const [selectedKasaIslemleri, setSelectedKasaIslemleri] = useState<KasaIslemi[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
 
   const loadData = async () => {
     // If firm not selected, don't even try - prevents noise
@@ -89,6 +90,29 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
   }, []);
+
+  const handleDeleteTransaction = async (tx: KasaIslemi) => {
+    const id = tx.id;
+    if (!id) {
+      toast.error(tm('transactionDeleteNoId') || 'Bu satırda silinecek kayıt kimliği yok.');
+      return;
+    }
+    const ok = window.confirm(
+      `${tm('deleteTransactionConfirm')}\n\n${tx.islem_no || ''} — ${tx.islem_tipi || ''} — ${formatCurrency(tx.tutar)}`
+    );
+    if (!ok) return;
+    setDeletingTxId(id);
+    try {
+      await deleteKasaIslemi(id);
+      toast.success(tm('transactionDeleted'));
+      await loadData();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || tm('error') || 'Silinemedi');
+    } finally {
+      setDeletingTxId(null);
+    }
+  };
 
   const kasaColumnHelper = createColumnHelper<Kasa>();
   const kasaColumns = [
@@ -168,7 +192,31 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     txColumnHelper.accessor('islem_aciklamasi', {
       header: t.description.toUpperCase(),
       size: 250
-    })
+    }),
+    txColumnHelper.display({
+      id: 'actions',
+      header: tm('actions').toUpperCase(),
+      size: 88,
+      cell: ({ row }) => {
+        const tx = row.original;
+        const id = tx.id;
+        const busy = id != null && deletingTxId === id;
+        return (
+          <button
+            type="button"
+            disabled={!id || busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleDeleteTransaction(tx);
+            }}
+            className="inline-flex items-center justify-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+            title={tm('delete')}
+          >
+            <Trash2 className={`h-4 w-4 ${busy ? 'animate-pulse' : ''}`} />
+          </button>
+        );
+      },
+    }),
   ];
 
   const stats = {

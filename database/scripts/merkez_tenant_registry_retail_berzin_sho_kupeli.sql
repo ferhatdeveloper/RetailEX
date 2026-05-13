@@ -101,4 +101,4 @@ ON CONFLICT (code) DO UPDATE SET
 SELECT code, display_name, module, connection_provider, db_host, db_port, database_name, is_active
 FROM tenant_registry
 WHERE code IN ('berzin_com', 'sho_aksesuar', 'kupeli')
-ORDER BY code;
+ORDER BY module, display_name;

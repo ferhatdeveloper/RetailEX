@@ -2912,6 +2912,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   deleteTransaction: { tr: 'İşlemi Sil', en: 'Delete Transaction', ar: 'حذف المعاملة', ku: 'سڕینەوەی مامەڵە' },
   balancesWillBeReversed: { tr: 'Kasa, cari ve banka bakiyeleri tersine alınacaktır.', en: 'Cash register, current account and bank balances will be reversed.', ar: 'سيتم عكس أرصدة الصندوق والحساب الجاري والبنك.', ku: 'باڵانسی صندووق، حسابی جاری و بانک دەگەڕێنرێنەوە.' },
   transactionDeleted: { tr: 'İşlem silindi', en: 'Transaction deleted', ar: 'تم حذف المعاملة', ku: 'مامەڵە سڕایەوە' },
+  transactionDeleteNoId: {
+    tr: 'Bu satırda silinecek kayıt kimliği yok (eski veri veya senkronizasyon).',
+    en: 'This row has no record id to delete (legacy or sync issue).',
+    ar: 'لا يوجد معرف سجل للحذف في هذا الصف.',
+    ku: 'ناسنامەی تۆمار بۆ سڕینەوە لەم ڕیزەدا نییە.',
+  },
   deleteFailed: { tr: 'Silme başarısız', en: 'Delete failed', ar: 'فشل الحذف', ku: 'سڕینەوە سەرکەوتوو نەبوو' },
   deleting: { tr: 'Siliniyor...', en: 'Deleting...', ar: 'جار الحذف...', ku: 'سڕینەوە...' },
   operationUpdatedSuccessfully: { tr: 'İşlem güncellendi', en: 'Transaction updated', ar: 'تم تحديث المعاملة', ku: 'مامەڵە نوێکرایەوە' },

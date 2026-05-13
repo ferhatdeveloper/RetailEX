@@ -90,6 +90,7 @@ export function buildDirectPostgrestTenantPatch(input: {
     is_configured: true,
     db_mode: 'online',
     system_type: 'retail',
+    enabled_modules: ['pos', 'wms'],
     connection_provider: 'rest_api',
     remote_rest_url: u,
     // Direct URL akışında da legacy SQL çağrıları eski tenant DB'sine sapmasın diye
@@ -226,6 +227,33 @@ function moduleToSystemType(module: string): 'retail' | 'market' | 'wms' | 'rest
   }
 }
 
+/**
+ * `tenant_registry.module` → ana kabukta hangi modül sekmeleri (mavi alan) açık olsun.
+ * `retailex_enabled_modules` / web_config.enabled_modules ile uyumlu id'ler: pos, management, wms, mobile-pos, restaurant, beauty.
+ * Yönetim sekmesi `isMainModuleVisible` ile her zaman görünür; burada listelemek isteğe bağlı (sıra için).
+ */
+export function shellEnabledModulesForTenantRegistryModule(module: string): string[] {
+  const m = String(module || '').toLowerCase();
+  switch (m) {
+    case 'clinic':
+      return ['beauty'];
+    case 'restaurant':
+      return ['pos', 'restaurant'];
+    case 'wms':
+      return ['wms'];
+    case 'retail':
+    case 'market':
+      return ['pos', 'wms'];
+    case 'pdks':
+    case 'hrm':
+      return ['management'];
+    case 'tenant_registry':
+      return ['management'];
+    default:
+      return ['pos', 'wms'];
+  }
+}
+
 export async function fetchTenantRegistryRow(tenantInput: string): Promise<TenantRegistryRow> {
   const base = normalizeBaseUrl(getMerkezRestBaseUrl());
   const q = tenantInput.trim();
@@ -305,6 +333,7 @@ export function tenantRowToAppConfigPatch(
     db_mode: 'online',
     system_type,
     tenant_module: row.module,
+    enabled_modules: shellEnabledModulesForTenantRegistryModule(row.module),
     connection_provider: provider,
     merkez_tenant_code: row.code,
     merkez_tenant_id: row.id,

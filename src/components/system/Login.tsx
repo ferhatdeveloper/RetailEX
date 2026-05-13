@@ -1682,6 +1682,10 @@ export function Login({ onLogin }: LoginProps) {
                           localStorage.setItem('retailex_web_config', JSON.stringify(merged));
                           localStorage.setItem('exretail_firma_donem_configured', 'true');
                         }
+                        const emDir = merged.enabled_modules;
+                        if (Array.isArray(emDir) && emDir.length > 0) {
+                          localStorage.setItem('retailex_enabled_modules', JSON.stringify(emDir));
+                        }
                         const { initializeFromSQLite } = await import('../../services/postgres');
                         await initializeFromSQLite(isTauri ? merged : undefined);
                         setConnectionProvider('rest_api');
@@ -1728,6 +1732,10 @@ export function Login({ onLogin }: LoginProps) {
                         localStorage.setItem('retailex_web_config', JSON.stringify(merged));
                         localStorage.setItem('exretail_firma_donem_configured', 'true');
                       }
+                      const emReg = merged.enabled_modules;
+                      if (Array.isArray(emReg) && emReg.length > 0) {
+                        localStorage.setItem('retailex_enabled_modules', JSON.stringify(emReg));
+                      }
                       const { initializeFromSQLite } = await import('../../services/postgres');
                       await initializeFromSQLite(isTauri ? merged : undefined);
                       setConnectionProvider(
@@ -1744,6 +1752,8 @@ export function Login({ onLogin }: LoginProps) {
                         row.module === 'restaurant' ? 'restaurant' :
                         row.module === 'retail' ? 'management' :
                         row.module === 'pdks' || row.module === 'hrm' ? 'management' :
+                        row.module === 'tenant_registry' ? 'management' :
+                        row.module === 'wms' ? 'wms' :
                         '';
                       if (preferredModule) {
                         localStorage.setItem('retailex_active_module', preferredModule);

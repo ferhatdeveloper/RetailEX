@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS tenant_registry (
 
 CREATE INDEX IF NOT EXISTS idx_tenant_registry_active ON tenant_registry (is_active) WHERE is_active = true;
 
-COMMENT ON TABLE tenant_registry IS 'Bulut kiracıları: kod, modül ve hedef PostgreSQL veritabanı adı';
+CREATE INDEX IF NOT EXISTS idx_tenant_registry_module_display ON tenant_registry (module, display_name);
+
+COMMENT ON TABLE tenant_registry IS 'Bulut kiracıları: kod, modül ve hedef PostgreSQL veritabanı adı. Modüle göre liste: ORDER BY module, display_name; PostgREST: order=module.asc,display_name.asc';
 
 -- Idempotent seed (code üzerinden)
 INSERT INTO tenant_registry (code, display_name, module, database_name, notes)

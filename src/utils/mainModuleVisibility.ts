@@ -1,17 +1,47 @@
 import type { Module } from '../App';
+import { shellEnabledModulesForTenantRegistryModule } from '../services/merkezTenantRegistry';
+
+function readStoredShellEnabledModules(): string[] {
+  try {
+    const enabled: unknown = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]');
+    return Array.isArray(enabled) ? (enabled as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
- * MainLayout üst modül sekmeleri ile aynı kurallar (retailex_enabled_modules + bayi_seti).
- * Kurulum sihirbazı: "Yönetim (Backoffice) her zaman erişilebilir" — management burada her zaman görünür.
+ * Kabuk için açık modül listesi: önce `retailex_enabled_modules`; boşsa merkez kiracı
+ * `retailex_web_config.tenant_module` (tenant_registry.module) ile türetilir; ikisi de yoksa null (bayi / tümü mantığı).
+ */
+function getExplicitShellEnabledList(): string[] | null {
+  const stored = readStoredShellEnabledModules();
+  if (stored.length > 0) return stored;
+  try {
+    const rawCfg = localStorage.getItem('retailex_web_config');
+    if (!rawCfg) return null;
+    const cfg = JSON.parse(rawCfg) as { tenant_module?: string };
+    const tm = String(cfg.tenant_module || '').trim().toLowerCase();
+    if (!tm) return null;
+    const shell = shellEnabledModulesForTenantRegistryModule(tm);
+    return shell.length > 0 ? shell : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * MainLayout üst modül sekmeleri: `retailex_enabled_modules`, yoksa `retailex_web_config.tenant_module`
+ * (merkez tenant_registry.module), bayi_seti ile uyumlu görünürlük.
+ * Yönetim (Backoffice) her zaman erişilebilir.
  */
 export function isMainModuleVisible(moduleId: string): boolean {
   if (moduleId === 'management') return true;
   if (typeof localStorage === 'undefined') return true;
   const bayiSeti = localStorage.getItem('retailex_bayi_seti') === 'true';
   try {
-    const enabled: string[] = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]');
-    const hasExplicitEnabledList = Array.isArray(enabled) && enabled.length > 0;
-    if (hasExplicitEnabledList) return enabled.includes(moduleId);
+    const explicit = getExplicitShellEnabledList();
+    if (explicit !== null) return explicit.includes(moduleId);
     return !bayiSeti;
   } catch {
     return true;
@@ -70,22 +100,20 @@ export function getShellModuleFallbackOrder(): string[] {
 
 /**
  * Üst kabukta modül ikonlarının sırası.
- * `retailex_enabled_modules` doluysa önce bu dizideki kabuk id'leri (kurulumdaki sıra), ardından
+ * `retailex_enabled_modules` veya `tenant_module` ile gelen liste önce; ardından
  * görünür kalanlar `getShellModuleFallbackOrder` ile tamamlanır (ör. yönetim her zaman).
  */
 export function getShellModuleDisplayOrder(): string[] {
   const fallback = getShellModuleFallbackOrder();
   if (typeof localStorage === 'undefined') return fallback;
   try {
-    const raw = localStorage.getItem('retailex_enabled_modules');
-    if (!raw) return fallback;
-    const enabled: string[] = JSON.parse(raw);
-    if (!Array.isArray(enabled) || enabled.length === 0) return fallback;
+    const explicit = getExplicitShellEnabledList();
+    if (explicit === null) return fallback;
 
     const seen = new Set<string>();
     const out: string[] = [];
 
-    for (const id of enabled) {
+    for (const id of explicit) {
       if (!SHELL_MODULE_IDS.has(id) || seen.has(id)) continue;
       if (!isMainModuleVisible(id)) continue;
       out.push(id);

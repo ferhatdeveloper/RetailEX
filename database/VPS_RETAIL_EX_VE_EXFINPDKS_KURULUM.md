@@ -175,7 +175,7 @@ curl -sS https://api.retailex.app/
 
 Beklenen: `{"ok":true,"service":"retailex-api"}`.
 
-Merkez PostgREST (örnek): `https://api.retailex.app/merkez/tenant_registry?select=code`.
+Merkez PostgREST (örnek): `https://api.retailex.app/merkez/tenant_registry?select=code,module,display_name&order=module.asc,display_name.asc` (modüle göre sıralı liste).
 
 ---
 
