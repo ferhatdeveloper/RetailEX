@@ -14,6 +14,8 @@ export interface LabelPrintFieldSettings {
   showPrice: boolean;
   showStock: boolean;
   showCategory: boolean;
+  /** Ürün kartındaki özel kod 2 (special_code_2) — standart/detaylı etiket satırı. */
+  showSpecialCode2: boolean;
   /** 1D barkod çizgisinin altındaki yazı (CODE128’de özelleştirilebilir; EAN-13’te rakamlar standart). */
   barcodeCaptionMode: BarcodeCaptionMode;
 }
@@ -25,6 +27,7 @@ export const DEFAULT_LABEL_PRINT_FIELD_SETTINGS: LabelPrintFieldSettings = {
   showPrice: true,
   showStock: true,
   showCategory: true,
+  showSpecialCode2: true,
   barcodeCaptionMode: 'barcode',
 };
 

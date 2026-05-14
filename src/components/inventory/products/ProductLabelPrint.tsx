@@ -24,6 +24,7 @@ import {
   readLabelCustomMmEnabled,
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
+import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
 
 export type PrintRotation = 0 | 90 | 180 | 270;
 
@@ -49,6 +50,8 @@ interface ProductLabelPrintProps {
   productBrand?: string;
   /** Birim etiket metni (örn. formdaki satış birimi) */
   productUnit?: string;
+  /** Ürün kartı `special_code_2` — etiket satırı (alan açıksa) */
+  productSpecialCode2?: string;
   onClose: () => void;
 }
 
@@ -345,6 +348,7 @@ export function ProductLabelPrint({
   category,
   productBrand,
   productUnit,
+  productSpecialCode2,
   onClose,
 }: ProductLabelPrintProps) {
   const { tm } = useLanguage();
@@ -366,6 +370,7 @@ export function ProductLabelPrint({
   const [fieldSettings, setFieldSettings] = useState<LabelPrintFieldSettings>(DEFAULT_LABEL_PRINT_FIELD_SETTINGS);
   const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
   const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -522,6 +527,37 @@ export function ProductLabelPrint({
     window.print();
   };
 
+  const handlePdfExport = async () => {
+    if (selectedVariants.length === 0) {
+      toast.error(tm('selectVariantForLabel'));
+      return;
+    }
+    const root = printRef.current;
+    if (!root) return;
+    setPdfExporting(true);
+    try {
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise((r) => setTimeout(r, 220));
+      const fname = `retailex-etiket-${new Date().toISOString().slice(0, 10)}.pdf`;
+      if (selectedSize.category === 'termal') {
+        const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
+        if (cells.length > 0) {
+          await exportLabelGridToPdfPages(root, cells, fname, { width: pageWidthMm, height: pageHeightMm });
+        } else {
+          await exportToPDF(root, fname, { width: pageWidthMm, height: pageHeightMm });
+        }
+      } else {
+        await exportToPDF(root, fname, DEFAULT_A4);
+      }
+      toast.success(tm('bulkLabelPdfReady'));
+    } catch (e) {
+      toast.error((e as Error)?.message || tm('bulkLabelPdfExportFailed'));
+    } finally {
+      setPdfExporting(false);
+    }
+  };
+
   // Tasarım değiştiğinde uygun boyut seç
   const handleDesignChange = (design: LabelDesign) => {
     setSelectedDesign(design);
@@ -549,6 +585,16 @@ export function ProductLabelPrint({
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handlePdfExport}
+              disabled={selectedVariants.length === 0 || pdfExporting}
+              className="px-3 sm:px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-45 disabled:cursor-not-allowed flex items-center gap-2 text-xs sm:text-sm font-bold border border-white/30 whitespace-nowrap"
+              title={tm('bulkLabelPdfDownload')}
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              {pdfExporting ? '…' : tm('bulkLabelPdfDownload')}
+            </button>
             <button
               type="button"
               onClick={handlePrint}
@@ -865,6 +911,7 @@ export function ProductLabelPrint({
                       ['showPrice', tm('labelPrintFieldPrice')] as const,
                       ['showStock', tm('labelPrintFieldStock')] as const,
                       ['showCategory', tm('labelPrintFieldCategory')] as const,
+                      ['showSpecialCode2', tm('labelPrintFieldSpecialCode2')] as const,
                     ] as const
                   ).map(([key, label]) => (
                     <label key={key} className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
@@ -1028,16 +1075,29 @@ export function ProductLabelPrint({
           {/* Sağ Panel - Önizleme */}
           <div className="flex-1 flex flex-col bg-gray-100">
             <div className="p-4 border-b border-gray-200 bg-white">
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-gray-900">Etiket Önizleme</h3>
-                <button
-                  onClick={handlePrint}
-                  disabled={selectedVariants.length === 0}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg"
-                >
-                  <Printer className="w-4 h-4" />
-                  Yazdır ({totalLabels} etiket)
-                </button>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="font-medium text-gray-900">{tm('labelPreview')}</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePdfExport}
+                    disabled={selectedVariants.length === 0 || pdfExporting}
+                    className="px-4 py-2 bg-white border border-purple-200 text-purple-800 rounded-lg hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow text-sm"
+                    title={tm('bulkLabelPdfDownload')}
+                  >
+                    <Download className="w-4 h-4" />
+                    {pdfExporting ? '…' : tm('bulkLabelPdfDownload')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    disabled={selectedVariants.length === 0}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg"
+                  >
+                    <Printer className="w-4 h-4" />
+                    {tm('print')} ({totalLabels})
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1077,6 +1137,7 @@ export function ProductLabelPrint({
                             category={category}
                             productBrand={productBrand}
                             productUnit={productUnit}
+                            productSpecialCode2={productSpecialCode2}
                             barcodeId={`barcode-${svIdx}-${qIdx}`}
                             qrId={`qrcode-${svIdx}-${qIdx}`}
                             size={activePrintSize}
@@ -1280,6 +1341,8 @@ interface LabelContentProps {
   category?: string;
   productBrand?: string;
   productUnit?: string;
+  /** Ürün `special_code_2` — standart/detaylı etiket satırı */
+  productSpecialCode2?: string;
   barcodeId?: string;
   qrId?: string;
   size: LabelSize;
@@ -1298,6 +1361,7 @@ export function LabelContent({
   category,
   productBrand,
   productUnit,
+  productSpecialCode2,
   barcodeId,
   qrId,
   size,
@@ -1308,6 +1372,10 @@ export function LabelContent({
   fieldSettings,
 }: LabelContentProps) {
   const f = normalizeLabelPrintFieldSettings(fieldSettings);
+  const sc2Line =
+    f.showSpecialCode2 && typeof productSpecialCode2 === 'string' && productSpecialCode2.trim() !== ''
+      ? productSpecialCode2.trim()
+      : '';
   const isSmall = size.width < 50;
   const isMedium = size.width >= 50 && size.width < 80;
   const isLarge = size.width >= 80 && size.width < 150;
@@ -1385,6 +1453,14 @@ export function LabelContent({
                 {titleLine.slice(0, 120)}
               </div>
             )}
+            {sc2Line && (
+              <div
+                className="text-center leading-tight text-gray-700 truncate w-full"
+                style={{ fontSize: size.width < 50 ? '5px' : '6px', maxHeight: '2.8mm', overflow: 'hidden' }}
+              >
+                {sc2Line}
+              </div>
+            )}
             {f.showPrice && (
               <div
                 className="font-extrabold text-center leading-none"
@@ -1414,7 +1490,8 @@ export function LabelContent({
     const hTitle = Math.max(4.5, Math.min(10, usable * 0.3));
     const hRow = Math.max(3.2, Math.min(5, usable * 0.12));
     const gap = Math.max(0.35, usable * 0.02);
-    const yAfterTop = m + hBrand + gap + hTitle + gap + hRow + gap;
+    const hSpec = sc2Line ? Math.max(2.2, Math.min(4, usable * 0.075)) : 0;
+    const yAfterTop = m + hBrand + gap + hTitle + gap + (sc2Line ? hSpec + gap : 0) + hRow + gap;
     const barH = Math.max(6, size.height - yAfterTop - m);
 
     return (
@@ -1447,6 +1524,19 @@ export function LabelContent({
               }}
             >
               {titleLine.slice(0, 160)}
+            </div>
+          )}
+          {sc2Line && (
+            <div
+              className="font-medium text-center leading-tight text-gray-700 truncate w-full shrink-0"
+              style={{
+                fontSize: size.width < 50 ? '5.5px' : '6.5px',
+                minHeight: `${hSpec}mm`,
+                maxHeight: `${hSpec}mm`,
+                overflow: 'hidden',
+              }}
+            >
+              {sc2Line}
             </div>
           )}
           <div
@@ -1529,6 +1619,12 @@ export function LabelContent({
                   <span>{value}</span>
                 </div>
               ))}
+              {sc2Line && (
+                <div className="flex justify-between gap-1">
+                  <span className="font-medium shrink-0">Özel kod 2:</span>
+                  <span className="text-right truncate">{sc2Line}</span>
+                </div>
+              )}
               {f.showCategory && category && <div className="text-gray-500">Kategori: {category}</div>}
             </div>
           </div>

@@ -4060,6 +4060,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
             category={formData.category}
             productBrand={formData.brand}
             productUnit={formData.unit}
+            productSpecialCode2={formData.specialCode2}
             onClose={() => setShowLabelPrint(false)}
           />
         )

@@ -7,6 +7,8 @@ export interface BulkLabelQueueItem {
   category?: string;
   brand?: string;
   unit?: string;
+  /** Ürün `special_code_2` — etiket satırı */
+  specialCode2?: string;
   variant: LabelPrintVariant;
   quantity: number;
 }
@@ -62,6 +64,7 @@ export function addProductToBulkQueue(prev: BulkLabelQueueItem[], p: Product): B
         category: p.category,
         brand: (p.brand || '').trim() || undefined,
         unit: (p.unit || 'Adet').toString().trim() || 'Adet',
+        specialCode2: (p.specialCode2 || '').trim() || undefined,
         variant,
         quantity: 1,
       });

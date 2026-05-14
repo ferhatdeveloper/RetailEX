@@ -640,6 +640,7 @@ export function BulkProductLabelPrint({
                       ['showPrice', tm('labelPrintFieldPrice')] as const,
                       ['showStock', tm('labelPrintFieldStock')] as const,
                       ['showCategory', tm('labelPrintFieldCategory')] as const,
+                      ['showSpecialCode2', tm('labelPrintFieldSpecialCode2')] as const,
                     ] as const
                   ).map(([key, label]) => (
                     <label key={key} className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
@@ -863,6 +864,7 @@ export function BulkProductLabelPrint({
                               category={row.category}
                               productBrand={row.brand}
                               productUnit={row.unit}
+                              productSpecialCode2={row.specialCode2}
                               barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
                               qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
                               size={activePrintSize}

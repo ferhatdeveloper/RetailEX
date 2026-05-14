@@ -2377,6 +2377,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   labelPrintFieldPrice: { tr: 'Satış fiyatı', en: 'Sale price', ar: 'سعر البيع', ku: 'نرخی فرۆشتن' },
   labelPrintFieldStock: { tr: 'Stok miktarı', en: 'Stock quantity', ar: 'كمية المخزون', ku: 'بڕی مەخزەن' },
   labelPrintFieldCategory: { tr: 'Kategori', en: 'Category', ar: 'الفئة', ku: 'هاوپۆل' },
+  labelPrintFieldSpecialCode2: {
+    tr: 'Özel kod 2',
+    en: 'Special code 2',
+    ar: 'الرمز الخاص 2',
+    ku: 'کۆدی تایبەت ٢',
+  },
   labelPrintBarcodeCaptionLabel: { tr: 'Barkod altı yazı (1D)', en: 'Text under barcode (1D)', ar: 'النص تحت الباركود (1D)', ku: 'دەق لە ژێر بارکۆد (1D)' },
   labelPrintBarcodeCaptionBarcode: { tr: 'Barkod numarası', en: 'Barcode number', ar: 'رقم الباركود', ku: 'ژمارەی بارکۆد' },
   labelPrintBarcodeCaptionVariant: { tr: 'Varyant kodu', en: 'Variant code', ar: 'رمز المتغير', ku: 'کۆدی جۆر' },
