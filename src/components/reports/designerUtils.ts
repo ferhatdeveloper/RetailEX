@@ -177,42 +177,36 @@ function inlineSubtreeComputedStyles(origRoot: HTMLElement, cloneRoot: HTMLEleme
 }
 
 /**
- * html2canvas iframe içinde `parseTree` ile klon üzerinde çalışır; klon oluşturulurken
- * `copyCSSStyles` ana belgedeki computed değerleri (oklch dâhil) inline’a kopyalar.
- * Bu adım iframe `getComputedStyle` ile kalan modern renkleri tekrar normalize eder.
+ * copyCSSStyles’ın bıraktığı oklch vb. yalnızca `style` üzerindeki açık özelliklerde aranır;
+ * iframe’de tüm getComputedStyle listesini taramaktan çok daha hızlıdır.
  */
-function scrubCloneSubtreeIframeComputedColors(clonedDoc: Document, cloneRoot: HTMLElement) {
-    const win = clonedDoc.defaultView;
-    if (!win) return;
-
-    const scrubOne = (el: HTMLElement) => {
+function scrubInlineModernColorsSubtree(cloneRoot: HTMLElement) {
+    const visit = (el: HTMLElement) => {
         if (el.tagName === 'CANVAS') return;
-        const cs = win.getComputedStyle(el);
-        for (let j = 0; j < cs.length; j++) {
-            const name = cs[j];
+        const st = el.style;
+        if (!st?.length) return;
+        for (let k = 0; k < st.length; k++) {
+            const name = st[k];
             try {
-                const raw = cs.getPropertyValue(name);
+                const raw = st.getPropertyValue(name);
                 if (!raw || !MODERN_COLOR_QUICK_RE.test(raw)) continue;
-                const value = normalizeCssValue(raw);
-                if (cs.getPropertyPriority(name) === 'important') {
-                    el.style.setProperty(name, value, 'important');
+                const val = normalizeCssValue(raw);
+                if (st.getPropertyPriority(name) === 'important') {
+                    el.style.setProperty(name, val, 'important');
                 } else {
-                    el.style.setProperty(name, value);
+                    el.style.setProperty(name, val);
                 }
             } catch {
                 /* ignore */
             }
         }
     };
-
     let p: HTMLElement | null = cloneRoot;
     while (p) {
-        scrubOne(p);
+        visit(p);
         p = p.parentElement;
     }
-    cloneRoot.querySelectorAll<HTMLElement>('*').forEach((el) => {
-        if (el.tagName !== 'CANVAS') scrubOne(el);
-    });
+    cloneRoot.querySelectorAll<HTMLElement>('*').forEach((el) => visit(el));
 }
 
 function withPdfCaptureRoot<T>(element: HTMLElement, fn: (tempId: string) => Promise<T>): Promise<T> {
@@ -233,13 +227,70 @@ const HTML2CANVAS_PDF_BASE = {
     scrollY: 0,
 } as const;
 
+/** Toplu termal PDF: tek html2canvas + hücre kırpma (etiket başına ayrı iframe yok). */
+export async function exportLabelGridToPdfPages(
+    gridContainer: HTMLElement,
+    cells: HTMLElement[],
+    fileName: string,
+    pageSizeMm: { width: number; height: number },
+    opts?: { scale?: number }
+): Promise<void> {
+    if (!cells.length) return;
+    const scale = opts?.scale ?? 1.5;
+    const pw = Math.max(1, pageSizeMm.width);
+    const ph = Math.max(1, pageSizeMm.height);
+    const orientation = ph >= pw ? 'p' : 'l';
+    const pdf = new jsPDF(orientation, 'mm', [pw, ph]);
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+
+    const fullCanvas = await withPdfCaptureRoot(gridContainer, (tempId) =>
+        html2canvas(gridContainer, {
+            ...HTML2CANVAS_PDF_BASE,
+            scale,
+            onclone: onCloneStripOklchAndInline(gridContainer, tempId),
+        })
+    );
+
+    const rootRect = gridContainer.getBoundingClientRect();
+    const scrW = Math.max(1, rootRect.width);
+    const scrH = Math.max(1, rootRect.height);
+    const sx = fullCanvas.width / scrW;
+    const sy = fullCanvas.height / scrH;
+
+    for (let i = 0; i < cells.length; i++) {
+        if (i > 0) {
+            pdf.addPage([pw, ph]);
+        }
+        const cell = cells[i];
+        const cr = cell.getBoundingClientRect();
+        const x0 = Math.max(0, Math.floor((cr.left - rootRect.left) * sx));
+        const y0 = Math.max(0, Math.floor((cr.top - rootRect.top) * sy));
+        const x1 = Math.min(fullCanvas.width, Math.ceil((cr.right - rootRect.left) * sx));
+        const y1 = Math.min(fullCanvas.height, Math.ceil((cr.bottom - rootRect.top) * sy));
+        const sw = Math.max(1, x1 - x0);
+        const sh = Math.max(1, y1 - y0);
+
+        const slice = document.createElement('canvas');
+        slice.width = sw;
+        slice.height = sh;
+        const sctx = slice.getContext('2d');
+        if (!sctx) continue;
+        sctx.imageSmoothingEnabled = true;
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(fullCanvas, x0, y0, sw, sh, 0, 0, sw, sh);
+        pdf.addImage(slice.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH);
+    }
+    pdf.save(fileName);
+}
+
 function onCloneStripOklchAndInline(orig: HTMLElement, tempId: string) {
     return (clonedDoc: Document) => {
         stripExternalStylesFromClone(clonedDoc);
         const cloneRoot = clonedDoc.getElementById(tempId);
         if (cloneRoot instanceof HTMLElement) {
             inlineSubtreeComputedStyles(orig, cloneRoot);
-            scrubCloneSubtreeIframeComputedColors(clonedDoc, cloneRoot);
+            scrubInlineModernColorsSubtree(cloneRoot);
         }
     };
 }

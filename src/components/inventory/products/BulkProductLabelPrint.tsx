@@ -41,7 +41,7 @@ import {
   readLabelCustomMmEnabled,
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
-import { DEFAULT_A4, exportElementsToPdfPages, exportToPDF } from '../../reports/designerUtils';
+import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
 
 export interface BulkProductLabelPrintProps {
   onClose: () => void;
@@ -256,7 +256,7 @@ export function BulkProductLabelPrint({
       if (selectedSize.category === 'termal') {
         const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
         if (cells.length > 0) {
-          await exportElementsToPdfPages(cells, fname, { width: pageWidthMm, height: pageHeightMm });
+          await exportLabelGridToPdfPages(root, cells, fname, { width: pageWidthMm, height: pageHeightMm });
         } else {
           await exportToPDF(root, fname, { width: pageWidthMm, height: pageHeightMm });
         }
