@@ -33,7 +33,7 @@ export function WarehouseStatusReport() {
             try {
                 const [whs, prods] = await Promise.all([
                     warehouseAPI.getActive(),
-                    productAPI.getAll(),
+                    productAPI.getAllForReports(),
                 ]);
                 if (cancelled) return;
                 setWarehouses(whs);

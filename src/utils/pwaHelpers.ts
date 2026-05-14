@@ -216,8 +216,8 @@ export async function sendNotification(
         icon: '/icons/icon-192x192.png',
         badge: '/icons/icon-72x72.png',
         vibrate: [200, 100, 200],
-        ...options
-      });
+        ...options,
+      } as unknown as Parameters<ServiceWorkerRegistration['showNotification']>[1]);
     } else {
       new Notification(title, {
         icon: '/icons/icon-192x192.png',

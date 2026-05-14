@@ -54,6 +54,11 @@ function uiTypeToDbType(uiType: string): string | null {
   }
 }
 
+function displayUnit(unit: string | undefined): string {
+  const u = String(unit ?? '').trim();
+  return u || 'Adet';
+}
+
 export function MaterialMovementReport() {
   const { tm } = useLanguage();
   const dateLocale = tm('localeCode');

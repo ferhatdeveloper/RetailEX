@@ -243,6 +243,13 @@ export interface SaleItem {
   multiplier?: number;
   /** Güzellik: bu satırdaki personel adı (fiş) */
   beautyStaffName?: string;
+  /** Eski / alternatif POS bileşenleri — camelCase ile birlikte kullanılabilir */
+  product_id?: string;
+  product_name?: string;
+  variant_name?: string;
+  /** Satır indirim tutarı (IQD); yoksa `discount` (yüzde veya tutar, ekrana göre) kullanılır */
+  discount_amount?: number;
+  discount_percentage?: number;
 }
 
 export interface Campaign {

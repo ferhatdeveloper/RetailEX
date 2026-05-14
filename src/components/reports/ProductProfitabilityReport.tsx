@@ -50,8 +50,8 @@ export function ProductProfitabilityReport() {
     try {
       // Get all stock movements for the period
       const movements = await CostAccountingService.getStockMovements({
-        firma_id: selectedFirma.id,
-        donem_id: selectedDonem.id,
+        firma_id: selectedFirma.id ?? String(selectedFirma.logicalref),
+        donem_id: selectedDonem.id ?? String(selectedDonem.logicalref),
         movement_type: 'OUT' // Only sales
       });
 
@@ -136,17 +136,18 @@ export function ProductProfitabilityReport() {
   });
 
   // Summary
+  const totalRevenueSum = filteredData.reduce((sum, p) => sum + p.totalRevenue, 0);
+  const totalCostSum = filteredData.reduce((sum, p) => sum + p.totalCost, 0);
+  const totalProfitSum = filteredData.reduce((sum, p) => sum + p.grossProfit, 0);
   const summary = {
     totalProducts: filteredData.length,
-    totalRevenue: filteredData.reduce((sum, p) => sum + p.totalRevenue, 0),
-    totalCost: filteredData.reduce((sum, p) => sum + p.totalCost, 0),
-    totalProfit: filteredData.reduce((sum, p) => sum + p.grossProfit, 0),
+    totalRevenue: totalRevenueSum,
+    totalCost: totalCostSum,
+    totalProfit: totalProfitSum,
     profitableProducts: filteredData.filter(p => p.grossProfit > 0).length,
-    lossProducts: filteredData.filter(p => p.grossProfit < 0).length
+    lossProducts: filteredData.filter(p => p.grossProfit < 0).length,
+    profitMargin: totalRevenueSum > 0 ? (totalProfitSum / totalRevenueSum) * 100 : 0,
   };
-  summary.profitMargin = summary.totalRevenue > 0 
-    ? (summary.totalProfit / summary.totalRevenue) * 100 
-    : 0;
 
   const exportToExcel = () => {
     // Simple CSV export
@@ -159,7 +160,7 @@ export function ProductProfitabilityReport() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `product-profitability-${selectedDonem?.donem_adi}.csv`;
+    a.download = `product-profitability-${selectedDonem?.donem_adi ?? selectedDonem?.name ?? 'donem'}.csv`;
     a.click();
     
     toast.success('Rapor Excel\'e aktarıldı!');

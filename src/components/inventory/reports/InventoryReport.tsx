@@ -18,7 +18,7 @@ export function InventoryReport() {
         async function loadData() {
             setLoading(true);
             try {
-                const data = await productAPI.getAll();
+                const data = await productAPI.getAllForReports();
                 setProducts(data);
             } catch (error) {
                 console.error('Failed to load inventory', error);

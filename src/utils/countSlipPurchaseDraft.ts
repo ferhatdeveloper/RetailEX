@@ -18,7 +18,7 @@ function countedBaseQty(line: CountingLine): number {
     const fromCounted = (Number.isFinite(q) ? q : 0) * m;
 
     const rawBase = line.base_counted_qty;
-    if (rawBase != null && rawBase !== '' && Number.isFinite(Number(rawBase))) {
+    if (rawBase != null && Number.isFinite(Number(rawBase))) {
         const b = Number(rawBase);
         // Baz alan bazen 0 kalıp sayılan adet dolu olabiliyor; fazla tespiti için counted×çarpan kullan.
         if (Math.abs(b) < 1e-9 && Math.abs(fromCounted) > 1e-9) return fromCounted;

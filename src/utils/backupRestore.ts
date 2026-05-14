@@ -53,7 +53,7 @@ class BackupRestoreSystem {
       };
 
       // IndexedDB'ye kaydet
-      await dbCache.set(`backup_${backup.id}`, backup, 'system', Infinity);
+      await dbCache.set(`backup_${backup.id}`, backup);
       
       // LocalStorage'a son yedek bilgisini kaydet
       localStorage.setItem('retailos_last_backup', JSON.stringify({
@@ -73,18 +73,17 @@ class BackupRestoreSystem {
   }
 
   /**
-   * Yede
-
-ği geri yükle
+   * Yedeği geri yükle
    */
   async restoreBackup(backupId: string): Promise<void> {
     try {
       logger.log('backup', `Restoring backup ${backupId}...`);
 
-      const backup = await dbCache.get<BackupData>(`backup_${backupId}`, 'system');
-      if (!backup) {
+      const raw = await dbCache.get(`backup_${backupId}`);
+      if (!raw || typeof raw !== 'object' || !('data' in raw)) {
         throw new Error('Backup not found');
       }
+      const backup = raw as BackupData;
 
       // Verileri geri yükle
       await this.restoreSalesData(backup.data.sales);
@@ -111,9 +110,9 @@ class BackupRestoreSystem {
       // IndexedDB'den yedekleri al (simplified version)
       const keys = await this.getBackupKeys();
       for (const key of keys) {
-        const backup = await dbCache.get<BackupData>(key, 'system');
-        if (backup) {
-          backups.push(backup);
+        const raw = await dbCache.get(key);
+        if (raw && typeof raw === 'object' && 'timestamp' in raw) {
+          backups.push(raw as BackupData);
         }
       }
 
@@ -129,7 +128,7 @@ class BackupRestoreSystem {
    */
   async deleteBackup(backupId: string): Promise<void> {
     try {
-      await dbCache.delete(`backup_${backupId}`, 'system');
+      await dbCache.remove(`backup_${backupId}`);
       logger.log('backup', `Backup ${backupId} deleted`);
     } catch (error) {
       logger.error('backup', 'Failed to delete backup', error);
@@ -175,10 +174,11 @@ class BackupRestoreSystem {
    */
   async downloadBackup(backupId: string): Promise<void> {
     try {
-      const backup = await dbCache.get<BackupData>(`backup_${backupId}`, 'system');
-      if (!backup) {
+      const raw = await dbCache.get(`backup_${backupId}`);
+      if (!raw || typeof raw !== 'object') {
         throw new Error('Backup not found');
       }
+      const backup = raw as BackupData;
 
       const json = JSON.stringify(backup, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -204,7 +204,7 @@ class BackupRestoreSystem {
   async uploadBackup(file: File): Promise<string> {
     try {
       const text = await file.text();
-      const backup: BackupData = JSON.parse(text);
+      const backup = JSON.parse(text) as BackupData;
       
       // Validate backup
       if (!backup.id || !backup.data) {
@@ -212,7 +212,7 @@ class BackupRestoreSystem {
       }
 
       // Save to IndexedDB
-      await dbCache.set(`backup_${backup.id}`, backup, 'system', Infinity);
+      await dbCache.set(`backup_${backup.id}`, backup);
       
       logger.log('backup', 'Backup uploaded', { id: backup.id });
       
@@ -231,11 +231,13 @@ class BackupRestoreSystem {
   }
 
   private async getProductsData(): Promise<any[]> {
-    return await dbCache.get('products', 'data') || [];
+    const v = await dbCache.get('products');
+    return Array.isArray(v) ? v : [];
   }
 
   private async getCustomersData(): Promise<any[]> {
-    return await dbCache.get('customers', 'data') || [];
+    const v = await dbCache.get('customers');
+    return Array.isArray(v) ? v : [];
   }
 
   private async getSettingsData(): Promise<any> {
@@ -249,11 +251,13 @@ class BackupRestoreSystem {
   }
 
   private async getCampaignsData(): Promise<any[]> {
-    return await dbCache.get('campaigns', 'data') || [];
+    const v = await dbCache.get('campaigns');
+    return Array.isArray(v) ? v : [];
   }
 
   private async getUsersData(): Promise<any[]> {
-    return await dbCache.get('users', 'data') || [];
+    const v = await dbCache.get('users');
+    return Array.isArray(v) ? v : [];
   }
 
   private async restoreSalesData(sales: any[]): Promise<void> {
@@ -261,11 +265,11 @@ class BackupRestoreSystem {
   }
 
   private async restoreProductsData(products: any[]): Promise<void> {
-    await dbCache.set('products', products, 'data', Infinity);
+    await dbCache.set('products', products);
   }
 
   private async restoreCustomersData(customers: any[]): Promise<void> {
-    await dbCache.set('customers', customers, 'data', Infinity);
+    await dbCache.set('customers', customers);
   }
 
   private async restoreSettingsData(settings: any): Promise<void> {
@@ -277,23 +281,20 @@ class BackupRestoreSystem {
   }
 
   private async restoreCampaignsData(campaigns: any[]): Promise<void> {
-    await dbCache.set('campaigns', campaigns, 'data', Infinity);
+    await dbCache.set('campaigns', campaigns);
   }
 
   private async restoreUsersData(users: any[]): Promise<void> {
-    await dbCache.set('users', users, 'data', Infinity);
+    await dbCache.set('users', users);
   }
 
   private async getBackupKeys(): Promise<string[]> {
-    // Simplified - in real implementation, would query IndexedDB
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('retailos_backup_')) {
-        keys.push(key.replace('retailos_', ''));
-      }
+    try {
+      const all = await dbCache.keys();
+      return all.filter((k) => k.startsWith('backup_'));
+    } catch {
+      return [];
     }
-    return keys;
   }
 }
 

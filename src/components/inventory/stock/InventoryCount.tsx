@@ -437,6 +437,17 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
             </button>
           </div>
         </div>
+
+        <BarcodeScanner
+          darkMode={false}
+          isOpen={showCameraScanner}
+          title="Lokasyon Barkodu Tara"
+          onClose={() => setShowCameraScanner(false)}
+          onScan={(barcode) => {
+            handleLocationScan(barcode);
+            setShowCameraScanner(false);
+          }}
+        />
       </div>
     );
   }
@@ -659,6 +670,18 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
         )}
 
         <div className="h-20"></div>
+
+        <BarcodeScanner
+          darkMode={false}
+          isOpen={showCameraScanner}
+          title="Ürün Barkodu Tara"
+          onClose={() => setShowCameraScanner(false)}
+          onScan={(barcode) => {
+            setScannedBarcode(barcode);
+            void handleItemScan(barcode);
+            setShowCameraScanner(false);
+          }}
+        />
       </div>
     );
   }
@@ -779,15 +802,11 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
       <BarcodeScanner
         darkMode={false}
         isOpen={showCameraScanner}
-        title={step === 'location-scan' ? 'Lokasyon Barkodu Tara' : 'Ürün Barkodu Tara'}
+        title="Ürün Barkodu Tara"
         onClose={() => setShowCameraScanner(false)}
         onScan={(barcode) => {
-          if (step === 'location-scan') {
-            handleLocationScan(barcode);
-          } else {
-            setScannedBarcode(barcode);
-            void handleItemScan(barcode);
-          }
+          setScannedBarcode(barcode);
+          void handleItemScan(barcode);
           setShowCameraScanner(false);
         }}
       />

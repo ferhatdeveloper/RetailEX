@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, Plus, Minus, X, Trash2, User, CreditCard, Banknote, Smartphone, ShoppingBag, Grid3x3, ArrowLeft, Tag, RefreshCw, FileText, Truck, Send, FileCheck, Menu, Camera, Database, Globe } from 'lucide-react';
 import type { Product, Customer, Sale, SaleItem, Campaign } from '../../App';
-import { BarcodeScanner, type BarcodeScanResult } from '../inventory/stock/BarcodeScanner';
+import { BarcodeScanner } from '../inventory/stock/BarcodeScanner';
 import { formatNumber } from '../../utils/formatNumber';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -1058,15 +1058,15 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {/* Barcode Scanner Modal */}
       {showBarcodeScanner && (
         <BarcodeScanner
-          onScan={async result => {
+          onScan={async (code: string) => {
             // Close scanner first
             setShowBarcodeScanner(false);
 
             // Debug - log what we're searching for
-            console.log('Scanned barcode:', result.code);
+            console.log('Scanned barcode:', code);
 
             try {
-              const lookupResult = await productAPI.lookupByBarcode(result.code);
+              const lookupResult = await productAPI.lookupByBarcode(code);
 
               if (lookupResult && lookupResult.product) {
                 const product = lookupResult.product;
@@ -1081,7 +1081,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 addToCart(product, undefined, unitInfo?.unit_code, unitInfo?.multiplier, price);
                 showNotif(`${product.name} sepete eklendi`, 'success');
               } else {
-                showNotif(`Ürün bulunamadı!\nAranan barkod: ${result.code}`, 'error');
+                showNotif(`Ürün bulunamadı!\nAranan barkod: ${code}`, 'error');
               }
             } catch (error) {
               console.error('[MobilePOS] Barcode scanning error:', error);

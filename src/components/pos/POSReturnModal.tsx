@@ -542,7 +542,7 @@ export function POSReturnModal({
                                   onClick={() => handleQuantityChange(itemKey, item.quantity)}
                                   className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
                                 >
-                                  {t.all}
+                                  {String(t.all)}
                                 </button>
                               </div>
                             </div>
@@ -610,7 +610,7 @@ export function POSReturnModal({
                                     onClick={() => handleQuantityChange(itemKey, group.totalQuantity)}
                                     className="ml-2 px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
                                   >
-                                    {t.all}
+                                    {String(t.all)}
                                   </button>
                                 </div>
                               </div>

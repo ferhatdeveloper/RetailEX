@@ -10,9 +10,15 @@ const isDevelopment = typeof process !== 'undefined' && process.env.NODE_ENV ===
  * In production, errors are forwarded to the Rust backend logger.
  */
 export const logger = {
-  log: isDevelopment ? console.log.bind(console) : () => { },
-  info: isDevelopment ? console.info.bind(console) : () => { },
-  warn: isDevelopment ? console.warn.bind(console) : () => { },
+  log: (...args: unknown[]) => {
+    if (isDevelopment) console.log(...args);
+  },
+  info: (...args: unknown[]) => {
+    if (isDevelopment) console.info(...args);
+  },
+  warn: (...args: unknown[]) => {
+    if (isDevelopment) console.warn(...args);
+  },
   error: (...args: any[]) => {
     console.error(...args);
     // Forward to Tauri backend

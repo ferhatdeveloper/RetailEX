@@ -8,6 +8,7 @@ import { ShoppingCart, Heart, Star, Gift, QrCode, Package } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import type { Customer } from '../../App';
 import { formatCurrency } from '../../utils/formatNumber';
+import { toast } from 'sonner';
 
 interface Product {
   id: string;
@@ -26,9 +27,9 @@ export function CustomerScreen() {
   // Simulated product rotation (for demo)
   useEffect(() => {
     const products: Product[] = [
-      { id: '1', name: 'Premium Kahve 1kg', price: 450, image: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400' },
-      { id: '2', name: 'Organik Çay Seti', price: 280, image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400' },
-      { id: '3', name: 'Özel Baharat Karışımı', price: 120, image: 'https://images.unsplash.com/photo-1596040033229-a0b676e5ab3f?w=400' }
+      { id: '1', name: 'Premium Kahve 1kg', price: 450, quantity: 1, image: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400' },
+      { id: '2', name: 'Organik Çay Seti', price: 280, quantity: 1, image: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400' },
+      { id: '3', name: 'Özel Baharat Karışımı', price: 120, quantity: 1, image: 'https://images.unsplash.com/photo-1596040033229-a0b676e5ab3f?w=400' }
     ];
 
     let index = 0;
@@ -71,8 +72,9 @@ export function CustomerScreen() {
   }, []);
 
   // Calculate totals
+  const discountRate = customer?.discount_rate ?? 0;
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const discount = customer ? subtotal * (customer.discount_rate / 100) : 0;
+  const discount = customer ? subtotal * (discountRate / 100) : 0;
   const total = subtotal - discount;
 
   // Points to earn
@@ -144,18 +146,18 @@ export function CustomerScreen() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white/20 rounded-xl p-4 backdrop-blur-sm">
                     <div className="text-sm mb-1">Puanınız</div>
-                    <div className="text-3xl">{customer.points.toLocaleString()}</div>
+                    <div className="text-3xl">{(customer.points ?? 0).toLocaleString()}</div>
                   </div>
                   <div className="bg-white/20 rounded-xl p-4 backdrop-blur-sm">
                     <div className="text-sm mb-1">Seviyeniz</div>
-                    <div className="text-3xl">{customer.tier}</div>
+                    <div className="text-3xl">{customer.customer_tier ?? '—'}</div>
                   </div>
                 </div>
 
-                {customer.discount_rate > 0 && (
+                {discountRate > 0 && (
                   <div className="mt-4 bg-white/20 rounded-xl p-4 text-center backdrop-blur-sm">
                     <div className="text-sm mb-1">İndiriminiz</div>
-                    <div className="text-4xl">%{customer.discount_rate}</div>
+                    <div className="text-4xl">%{discountRate}</div>
                   </div>
                 )}
               </div>
@@ -237,7 +239,7 @@ export function CustomerScreen() {
 
                 {discount > 0 && (
                   <div className="flex justify-between text-lg text-green-600">
-                    <span>İndirim (%{customer?.discount_rate})</span>
+                    <span>İndirim (%{discountRate})</span>
                     <span>-{formatCurrency(discount)}</span>
                   </div>
                 )}
@@ -266,9 +268,13 @@ export function CustomerScreen() {
             const mockCustomer: Customer = {
               id: customerId,
               name: 'Değerli Müşteri',
+              phone: '',
+              email: '',
+              address: '',
+              totalPurchases: 0,
               points: 5420,
-              tier: 'GOLD',
-              discount_rate: 10
+              customer_tier: 'vip',
+              discount_rate: 10,
             };
 
             setCustomer(mockCustomer);

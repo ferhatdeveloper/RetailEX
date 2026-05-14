@@ -16,7 +16,7 @@ export function MinMaxStockReport() {
         async function loadData() {
             setLoading(true);
             try {
-                const allData = await productAPI.getAll();
+                const allData = await productAPI.getAllForReports();
                 let filteredData = allData;
 
                 if (filterType === 'low') {

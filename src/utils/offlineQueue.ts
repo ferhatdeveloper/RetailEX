@@ -34,8 +34,8 @@ class OfflineQueue {
    */
   private async loadQueue() {
     try {
-      const cached = await dbCache.get<QueuedTransaction[]>('offline_queue', 'system');
-      if (cached) {
+      const cached = await dbCache.get<QueuedTransaction[]>('offline_queue');
+      if (cached && Array.isArray(cached)) {
         this.queue = cached;
         logger.log('offline-queue', `Loaded ${this.queue.length} queued transactions`);
       }
@@ -44,7 +44,7 @@ class OfflineQueue {
       // Fallback to localStorage
       const stored = localStorage.getItem(QUEUE_STORAGE_KEY);
       if (stored) {
-        this.queue = JSON.parse(stored);
+        this.queue = JSON.parse(stored) as QueuedTransaction[];
       }
     }
   }
@@ -54,7 +54,7 @@ class OfflineQueue {
    */
   private async saveQueue() {
     try {
-      await dbCache.set('offline_queue', this.queue, 'system', Infinity);
+      await dbCache.set('offline_queue', this.queue);
       localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.queue));
       logger.log('offline-queue', `Saved ${this.queue.length} queued transactions`);
     } catch (error) {

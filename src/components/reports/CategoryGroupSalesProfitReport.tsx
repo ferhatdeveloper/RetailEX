@@ -317,7 +317,7 @@ export function CategoryGroupSalesProfitReport() {
                       {groupName}
                     </span>
                     <span className="flex gap-6 text-sm font-normal">
-                      <span>Adet: {fmt(gt.q)}</span>
+                      <span>Adet: {fmt(gt.qty)}</span>
                       <span>Ciro: {fmt(gt.revenue)}</span>
                       <span>Kar: {fmt(gt.profit)}</span>
                     </span>
@@ -338,7 +338,7 @@ export function CategoryGroupSalesProfitReport() {
                               {catName}
                             </span>
                             <span className="flex gap-4 text-xs font-normal">
-                              <span>{fmt(bucket.q)} ad.</span>
+                              <span>{fmt(bucket.qty)} ad.</span>
                               <span>{fmt(bucket.revenue)}</span>
                               <span>{fmt(bucket.profit)}</span>
                             </span>

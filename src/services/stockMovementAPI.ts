@@ -90,12 +90,17 @@ class StockMovementAPI {
      */
     async getAll(): Promise<StockMovement[]> {
         try {
+            /** `m.*` yerine açık kolon + üst sınır: büyük dönemlerde rapor / liste ekranı kilitlenmesini önler. */
+            const SLIP_LIST_CAP = 25000;
             const { rows: slipRows } = await postgres.query(
                 `SELECT 
-                    m.*, s.name as warehouse_name
+                    m.id, m.document_no, m.trcode, m.movement_type, m.warehouse_id, m.target_warehouse_id,
+                    m.movement_date, m.exchange_rate, m.description, m.status, m.created_by, m.created_at, m.updated_at,
+                    s.name AS warehouse_name
                  FROM stock_movements m
                  LEFT JOIN stores s ON m.warehouse_id = s.id
-                 ORDER BY m.created_at DESC`
+                 ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
+                 LIMIT ${SLIP_LIST_CAP}`
             );
             const slips: StockMovement[] = slipRows.map((r: any) => ({
                 ...r,

@@ -1,0 +1,765 @@
+﻿src/components/inventory/products/ProductManagement.tsx(610,54): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/inventory/products/ProductManagement.tsx(1042,86): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/inventory/stock/InventoryCount.tsx(782,16): error TS2367: This comparison appears to be unintentional because the types '"summary"' and '"location-scan"' have no overlap.
+src/components/inventory/stock/InventoryCount.tsx(785,15): error TS2367: This comparison appears to be unintentional because the types '"summary"' and '"location-scan"' have no overlap.
+src/components/inventory/stock/LotSerialManagement.tsx(123,17): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/inventory/stock/StockPriceChangeSlipsModule.tsx(246,43): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/components/inventory/stock/StockPriceChangeSlipsModule.tsx(263,45): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/components/management/CampaignManagement.tsx(314,15): error TS2322: Type '{}' is not assignable to type 'string'.
+src/components/management/CampaignManagement.tsx(320,15): error TS2322: Type '{}' is not assignable to type 'string'.
+src/components/management/CampaignManagement.tsx(326,15): error TS2322: Type '{}' is not assignable to type 'string'.
+src/components/management/MaterialsIntakeModule.tsx(78,63): error TS2339: Property 'message' does not exist on type '{}'.
+src/components/modules/AppointmentModule.tsx(202,11): error TS2322: Type '{ id: string; customerName: string; customerPhone: string; customerEmail: string; service: string; staff: string; date: string; time: string; duration: number; status: string; type: string; reminderSent: boolean; notes: string; } | { ...; } | undefined' is not assignable to type 'Appointment | undefined'.
+  Type '{ id: string; customerName: string; customerPhone: string; customerEmail: string; service: string; staff: string; date: string; time: string; duration: number; status: string; type: string; reminderSent: boolean; notes: string; }' is not assignable to type 'Appointment'.
+    Types of property 'status' are incompatible.
+      Type 'string' is not assignable to type 'AppointmentStatus'.
+src/components/modules/AppointmentModule.tsx(445,93): error TS2345: Argument of type 'string' is not assignable to parameter of type 'AppointmentStatus'.
+src/components/modules/AppointmentModule.tsx(583,50): error TS2345: Argument of type 'string' is not assignable to parameter of type 'AppointmentType'.
+src/components/modules/AppointmentModule.tsx(613,131): error TS2345: Argument of type 'string' is not assignable to parameter of type 'AppointmentStatus'.
+src/components/modules/AppointmentModule.tsx(614,45): error TS2345: Argument of type 'string' is not assignable to parameter of type 'AppointmentStatus'.
+src/components/modules/AppointmentModule.tsx(630,56): error TS2345: Argument of type '{ id: string; customerName: string; customerPhone: string; customerEmail: string; service: string; staff: string; date: string; time: string; duration: number; status: string; type: string; reminderSent: boolean; notes: string; } | { ...; }' is not assignable to parameter of type 'SetStateAction<Appointment | null>'.
+  Type '{ id: string; customerName: string; customerPhone: string; customerEmail: string; service: string; staff: string; date: string; time: string; duration: number; status: string; type: string; reminderSent: boolean; notes: string; }' is not assignable to type 'SetStateAction<Appointment | null>'.
+    Type '{ id: string; customerName: string; customerPhone: string; customerEmail: string; service: string; staff: string; date: string; time: string; duration: number; status: string; type: string; reminderSent: boolean; notes: string; }' is not assignable to type 'Appointment'.
+      Types of property 'status' are incompatible.
+        Type 'string' is not assignable to type 'AppointmentStatus'.
+src/components/modules/BroadcastChangesTimeline.tsx(28,13): error TS2322: Type '{ id: string; type: "error" | "received" | "warning" | "sent"; title: string; description: string; timestamp: number; data: any; }[]' is not assignable to type 'TimelineChange[]'.
+  Type '{ id: string; type: "error" | "received" | "warning" | "sent"; title: string; description: string; timestamp: number; data: any; }' is not assignable to type 'TimelineChange'.
+    Types of property 'timestamp' are incompatible.
+      Type 'number' is not assignable to type 'Date'.
+src/components/modules/BroadcastChangesTimeline.tsx(30,13): error TS2367: This comparison appears to be unintentional because the types '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"' and '"error"' have no overlap.
+src/components/modules/BroadcastChangesTimeline.tsx(31,18): error TS2367: This comparison appears to be unintentional because the types '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"' and '"completed"' have no overlap.
+src/components/modules/BroadcastChangesTimeline.tsx(38,32): error TS2339: Property 'deviceTargets' does not exist on type 'BroadcastMessage'.
+src/components/modules/BroadcastDataSelector.tsx(26,61): error TS2551: Property 'fetchCustomers' does not exist on type 'CustomerState'. Did you mean 'setCustomers'?
+src/components/modules/BroadcastDataSelector.tsx(27,64): error TS2551: Property 'loading' does not exist on type 'CustomerState'. Did you mean 'isLoading'?
+src/components/modules/BroadcastDataSelector.tsx(31,61): error TS2551: Property 'fetchCampaigns' does not exist on type 'CampaignState'. Did you mean 'setCampaigns'?
+src/components/modules/BroadcastDataSelector.tsx(32,64): error TS2551: Property 'loading' does not exist on type 'CampaignState'. Did you mean 'isLoading'?
+src/components/modules/BroadcastDataSelector.tsx(72,19): error TS2339: Property 'code' does not exist on type 'Campaign'.
+src/components/modules/CentralDataBroadcastPanel.tsx(15,11): error TS2339: Property 'theme' does not exist on type 'ThemeContextType'.
+src/components/modules/CentralDataBroadcastPanel.tsx(354,28): error TS2604: JSX element type 'StatusIcon' does not have any construct or call signatures.
+src/components/modules/CentralDataBroadcastPanel.tsx(354,28): error TS2786: 'StatusIcon' cannot be used as a JSX component.
+  Its type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>> | undefined' is not a valid JSX element type.
+    Type 'undefined' is not assignable to type 'ElementType'.
+src/components/modules/ExcelModule.tsx(74,26): error TS2322: Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'BlobPart'.
+  Type 'Uint8Array<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+    Types of property 'buffer' are incompatible.
+      Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+        Type 'SharedArrayBuffer' is missing the following properties from type 'ArrayBuffer': resizable, resize, detached, transfer, transferToFixedLength
+src/components/modules/ExcelModule.tsx(933,15): error TS2352: Conversion of type 'BeautyService' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BeautyService'.
+src/components/modules/ExcelModule.tsx(941,34): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/components/modules/ExcelModule.tsx(1680,15): error TS2352: Conversion of type 'BeautyService' to type 'Record<string, unknown>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BeautyService'.
+src/components/modules/RestaurantModule.tsx(68,31): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ available: string; occupied: string; reserved: string; }'.
+  No index signature with a parameter of type 'string' was found on type '{ available: string; occupied: string; reserved: string; }'.
+src/components/modules/VoiceAssistantWeb.tsx(435,49): error TS2339: Property 'search' does not exist on type '{ getAll(): Promise<Supplier[]>; getById(id: string): Promise<Supplier | null>; getByCode(code: string): Promise<Supplier | null>; ... 4 more ...; generateCode(cardType: "customer" | "supplier"): Promise<...>; }'.
+src/components/pos/MarketPOS.tsx(875,30): error TS2339: Property 'replace' does not exist on type '{}'.
+src/components/pos/MobilePOS.tsx(1066,52): error TS2339: Property 'code' does not exist on type 'string'.
+src/components/pos/MobilePOS.tsx(1069,76): error TS2339: Property 'code' does not exist on type 'string'.
+src/components/pos/MobilePOS.tsx(1084,70): error TS2339: Property 'code' does not exist on type 'string'.
+src/components/pos/POSCustomerModal.tsx(235,37): error TS2339: Property 'type' does not exist on type 'Customer'.
+src/components/pos/POSCustomerModal.tsx(263,61): error TS2551: Property 'lastPurchaseDate' does not exist on type 'Customer'. Did you mean 'lastPurchase'?
+src/components/pos/POSCustomerModal.tsx(263,98): error TS2551: Property 'lastPurchaseDate' does not exist on type 'Customer'. Did you mean 'lastPurchase'?
+src/components/pos/POSDetailSidebar.tsx(32,43): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/pos/POSDetailSidebar.tsx(87,47): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/pos/POSDetailSidebar.tsx(100,47): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/pos/ServiceReceipt80mm.tsx(43,25): error TS2322: Type '{ title: string; receiptNo: string; date: string; cashier: string; customer: string; table: string; device: string; staff: string; operation: string; treatmentDegreeLabel: string; treatmentShotsLabel: string; ... 11 more ...; autoPrintReceipt: string; }' is not assignable to type 'ReactNode'.
+src/components/reports/CategoryGroupSalesProfitReport.tsx(320,43): error TS2339: Property 'q' does not exist on type '{ qty: number; revenue: number; profit: number; }'.
+src/components/reports/CategoryGroupSalesProfitReport.tsx(341,49): error TS2339: Property 'q' does not exist on type '{ products: CategoryGroupProductRow[]; qty: number; revenue: number; profit: number; }'.
+src/components/reports/ReportChatAI.tsx(5,15): error TS2459: Module '"../../services/reportAIService"' declares 'ChatMessage' locally, but it is not exported.
+src/components/reports/ReportChatAI.tsx(121,9): error TS2345: Argument of type '{ role: any; content: any; }[]' is not assignable to parameter of type 'ChatMessage[]'.
+  Property 'timestamp' is missing in type '{ role: any; content: any; }' but required in type 'ChatMessage'.
+src/components/reports/ReportsModule.tsx(6346,32): error TS2339: Property 'items' does not exist on type '{ name: string; totalRevenue: number; totalQuantity: number; productCount: number; avgPrice: number; }'.
+src/components/reports/ReportsModule.tsx(6346,45): error TS2339: Property 'items' does not exist on type '{ name: string; totalRevenue: number; totalQuantity: number; productCount: number; avgPrice: number; }'.
+src/components/reports/ReportsModule.tsx(6346,68): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6346,74): error TS7006: Parameter 'j' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6410,51): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6410,54): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6411,54): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6411,57): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/components/reports/ReportsModule.tsx(6531,57): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/components/reports/SalesTrendReport.tsx(171,15): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: TooltipProps<number, string>): Tooltip<number, string>', gave the following error.
+    Type '(value: number, _name: string, item: { dataKey?: string; } | undefined) => string | number' is not assignable to type 'Formatter<number, string>'.
+      Types of parameters 'item' and 'item' are incompatible.
+        Type 'Payload<number, string>' is not assignable to type '{ dataKey?: string | undefined; }'.
+          Types of property 'dataKey' are incompatible.
+            Type 'string | number | undefined' is not assignable to type 'string | undefined'.
+              Type 'number' is not assignable to type 'string'.
+  Overload 2 of 2, '(props: TooltipProps<number, string>, context: any): Tooltip<number, string>', gave the following error.
+    Type '(value: number, _name: string, item: { dataKey?: string; } | undefined) => string | number' is not assignable to type 'Formatter<number, string>'.
+      Types of parameters 'item' and 'item' are incompatible.
+        Type 'Payload<number, string>' is not assignable to type '{ dataKey?: string | undefined; }'.
+          Types of property 'dataKey' are incompatible.
+            Type 'string | number | undefined' is not assignable to type 'string | undefined'.
+              Type 'number' is not assignable to type 'string'.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(34,91): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(35,131): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(46,30): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(51,114): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(70,48): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(83,26): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantDiscountModal.tsx(89,62): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(97,157): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(195,39): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(214,111): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(219,105): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(232,26): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantMoveTableModal.tsx(240,72): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(36,91): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(37,131): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(49,30): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(54,114): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(60,42): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(72,57): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantOrderNoteModal.tsx(78,62): error TS2554: Expected 2 arguments, but got 1.
+src/components/restaurant/components/RestaurantProductOptionsModal.tsx(4,10): error TS2305: Module '"../types"' has no exported member 'Product'.
+src/components/restaurant/store/useRestaurantStore.ts(624,27): error TS2322: Type '(Table | { status: string; waiter: string | undefined; total: number; startTime: string | undefined; id: string; number: string; seats: number; floorId: string; location?: string | undefined; ... 12 more ...; orderDiscountPct?: number | undefined; })[]' is not assignable to type 'Table[]'.
+  Type 'Table | { status: string; waiter: string | undefined; total: number; startTime: string | undefined; id: string; number: string; seats: number; floorId: string; location?: string | undefined; ... 12 more ...; orderDiscountPct?: number | undefined; }' is not assignable to type 'Table'.
+    Type '{ status: string; waiter: string | undefined; total: number; startTime: string | undefined; id: string; number: string; seats: number; floorId: string; location?: string; orders: OrderItem[]; ... 11 more ...; orderDiscountPct?: number; }' is not assignable to type 'Table'.
+      Types of property 'status' are incompatible.
+        Type 'string' is not assignable to type 'TableStatus'.
+src/components/restaurant/store/useRestaurantStore.ts(644,45): error TS7006: Parameter 'o' implicitly has an 'any' type.
+src/components/restaurant/store/useRestaurantStore.ts(644,69): error TS7006: Parameter 'sum' implicitly has an 'any' type.
+src/components/restaurant/store/useRestaurantStore.ts(644,74): error TS7006: Parameter 'o' implicitly has an 'any' type.
+src/components/scale/ScaleScannerModal.tsx(39,21): error TS2345: Argument of type 'ScanProgress' is not assignable to parameter of type 'SetStateAction<{ current: number; total: number; currentIP: string; }>'.
+  Type 'ScanProgress' is not assignable to type '{ current: number; total: number; currentIP: string; }'.
+    Types of property 'currentIP' are incompatible.
+      Type 'string | undefined' is not assignable to type 'string'.
+        Type 'undefined' is not assignable to type 'string'.
+src/components/shared/AdvancedSearch.tsx(3,23): error TS2307: Cannot find module './ui/input' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(4,24): error TS2307: Cannot find module './ui/button' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(5,23): error TS2307: Cannot find module './ui/badge' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(6,26): error TS2307: Cannot find module '../contexts/ThemeContext' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(7,29): error TS2307: Cannot find module '../contexts/LanguageContext' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(8,36): error TS2307: Cannot find module '../hooks/useDebouncedSearch' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(9,47): error TS2307: Cannot find module '../utils/fuzzySearch' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(10,24): error TS2307: Cannot find module '../utils/logger' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(11,30): error TS2307: Cannot find module '../core/types' or its corresponding type declarations.
+src/components/shared/AdvancedSearch.tsx(33,3): error TS2300: Duplicate identifier 'showSuggestions'.
+src/components/shared/AdvancedSearch.tsx(45,10): error TS2300: Duplicate identifier 'showSuggestions'.
+src/components/shared/AdvancedSearch.tsx(180,22): error TS7006: Parameter 'e' implicitly has an 'any' type.
+src/components/shared/AdvancedSearch.tsx(252,38): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/shared/AdvancedSearch.tsx(252,44): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(13,33): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
+src/components/shared/AdvancedStoreSearch.tsx(31,31): error TS2339: Property 'reduce' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/AdvancedStoreSearch.tsx(31,39): error TS7006: Parameter 'total' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(31,46): error TS7006: Parameter 'region' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(126,42): error TS7006: Parameter 'store' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(173,26): error TS2339: Property 'map' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/AdvancedStoreSearch.tsx(173,31): error TS7006: Parameter 'region' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(195,22): error TS2339: Property 'find' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/AdvancedStoreSearch.tsx(195,27): error TS7006: Parameter 'r' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(196,39): error TS7006: Parameter 'subRegion' implicitly has an 'any' type.
+src/components/shared/AdvancedStoreSearch.tsx(228,32): error TS2339: Property 'revenue' does not exist on type 'SearchFilters'.
+src/components/shared/AdvancedStoreSearch.tsx(229,59): error TS2353: Object literal may only specify known properties, and 'revenue' does not exist in type 'SetStateAction<SearchFilters>'.
+src/components/shared/DocumentManager.tsx(94,27): error TS2304: Cannot find name 'ScannedDocument'.
+src/components/shared/DocumentManager.tsx(102,13): error TS2304: Cannot find name 'setScannedDocuments'.
+src/components/shared/DocumentManager.tsx(102,33): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/components/shared/DocumentManager.tsx(124,36): error TS2367: This comparison appears to be unintentional because the types '"disconnected"' and '"connected"' have no overlap.
+src/components/shared/HierarchicalStoreTree.tsx(15,35): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
+src/components/shared/HierarchicalStoreTree.tsx(39,31): error TS2339: Property 'reduce' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/HierarchicalStoreTree.tsx(39,39): error TS7006: Parameter 'total' implicitly has an 'any' type.
+src/components/shared/HierarchicalStoreTree.tsx(39,46): error TS7006: Parameter 'region' implicitly has an 'any' type.
+src/components/shared/HierarchicalStoreTree.tsx(92,20): error TS2339: Property 'length' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/HierarchicalStoreTree.tsx(98,18): error TS2339: Property 'map' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
+src/components/shared/HierarchicalStoreTree.tsx(98,23): error TS7006: Parameter 'region' implicitly has an 'any' type.
+src/components/shared/HierarchicalStoreTree.tsx(130,43): error TS7006: Parameter 'subRegion' implicitly has an 'any' type.
+src/components/shared/OfflineQueueIndicator.tsx(3,23): error TS2307: Cannot find module './ui/badge' or its corresponding type declarations.
+src/components/shared/OfflineQueueIndicator.tsx(4,24): error TS2307: Cannot find module './ui/button' or its corresponding type declarations.
+src/components/shared/OfflineQueueIndicator.tsx(5,85): error TS2307: Cannot find module './ui/dialog' or its corresponding type declarations.
+src/components/shared/OfflineQueueIndicator.tsx(6,26): error TS2307: Cannot find module '../contexts/ThemeContext' or its corresponding type declarations.
+src/components/shared/OfflineQueueIndicator.tsx(7,29): error TS2307: Cannot find module '../contexts/LanguageContext' or its corresponding type declarations.
+src/components/shared/StoreSelector.tsx(20,34): error TS2307: Cannot find module '../hooks/useOnlineOffline' or its corresponding type declarations.
+src/components/shared/StoreSelector.tsx(21,35): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
+src/components/shared/StoreSelector.tsx(168,26): error TS7006: Parameter 'store' implicitly has an 'any' type.
+src/components/system/CompanySetup.tsx(323,20): error TS2345: Argument of type 'Firm[]' is not assignable to parameter of type 'SetStateAction<Company[]>'.
+  Type 'Firm[]' is not assignable to type 'Company[]'.
+    Type 'Firm' is missing the following properties from type 'Company': firma_adi, firma_kodu, vergi_no, vergi_dairesi, and 8 more.
+src/components/system/CompanySetup.tsx(339,24): error TS2322: Type '(Period | Period)[]' is not assignable to type 'Period[]'.
+  Type 'Period | Period' is not assignable to type 'Period'.
+    Type 'Period' is missing the following properties from type 'Period': firma_id, baslangic_tarihi, bitis_tarihi, durum
+src/components/system/CompanySetup.tsx(340,75): error TS2339: Property 'firma_adi' does not exist on type 'Firm'.
+src/components/system/DashboardModule.tsx(450,63): error TS2322: Type 'unknown' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(475,61): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(520,64): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(724,60): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(739,52): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(740,59): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(815,50): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DashboardModule.tsx(842,19): error TS2322: Type '{}' is not assignable to type 'ReactNode'.
+src/components/system/DebugDatabaseStatus.tsx(9,33): error TS2307: Cannot find module '../store' or its corresponding type declarations.
+src/components/system/DebugDatabaseStatus.tsx(29,36): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/system/FirmSelector.tsx(102,71): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string | number'.
+  Type 'undefined' is not assignable to type 'string | number'.
+src/components/system/MainLayout.tsx(221,43): error TS2551: Property 'roles' does not exist on type 'User'. Did you mean 'role'?
+src/components/system/MainLayout.tsx(357,75): error TS2339: Property 'message' does not exist on type '{}'.
+src/components/system/MainLayout.tsx(378,64): error TS2551: Property 'full_name' does not exist on type 'User'. Did you mean 'fullName'?
+src/components/system/MainLayout.tsx(382,33): error TS2551: Property 'full_name' does not exist on type 'User'. Did you mean 'fullName'?
+src/components/system/MainLayout.tsx(383,19): error TS2551: Property 'full_name' does not exist on type 'User'. Did you mean 'fullName'?
+src/components/system/MainLayout.tsx(850,9): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/components/system/MainLayout.tsx(1578,15): error TS2322: Type 'Dispatch<SetStateAction<Module>>' is not assignable to type '(module: string) => void'.
+  Types of parameters 'value' and 'module' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<Module>'.
+src/components/system/ManagementModule.tsx(985,14): error TS2678: Type '"material-definitions"' is not comparable to type 'ExtendedScreen'.
+src/components/system/new_demo_toggle.tsx(3,85): error TS2304: Cannot find name 'loadDemoData'.
+src/components/system/new_demo_toggle.tsx(4,116): error TS2304: Cannot find name 'loadDemoData'.
+src/components/system/new_demo_toggle.tsx(9,22): error TS2304: Cannot find name 'loadDemoData'.
+src/components/system/new_demo_toggle.tsx(10,30): error TS2304: Cannot find name 'setLoadDemoData'.
+src/components/system/PrinterSettings.tsx(97,14): error TS2339: Property 'store' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/components/system/PrinterSettings.tsx(98,11): error TS2339: Property 'store' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/components/system/PrinterSettings.tsx(108,40): error TS2339: Property 'listPrinters' does not exist on type '{ print: (data: any) => Promise<{ success: boolean; }>; }'.
+src/components/system/PrinterSettings.tsx(118,15): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/components/system/PrinterSettings.tsx(121,32): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/components/system/PrinterSettings.tsx(183,31): error TS2339: Property 'error' does not exist on type '{ success: boolean; }'.
+src/components/system/SentMessagesList.tsx(35,12): error TS2678: Type '"completed"' is not comparable to type '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"'.
+src/components/system/SentMessagesList.tsx(39,12): error TS2678: Type '"broadcasting"' is not comparable to type '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"'.
+src/components/system/SentMessagesList.tsx(41,12): error TS2678: Type '"error"' is not comparable to type '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"'.
+src/components/system/SentMessagesList.tsx(62,36): error TS7053: Element implicitly has an 'any' type because expression of type '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+  Property 'cancelled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+src/components/system/SentMessagesList.tsx(63,10): error TS7053: Element implicitly has an 'any' type because expression of type '"pending" | "cancelled" | "sending" | "delivered" | "scheduled" | "expired" | "failed" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+  Property 'cancelled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+src/components/system/SentMessagesList.tsx(199,41): error TS2345: Argument of type 'number' is not assignable to parameter of type 'Date'.
+src/components/system/SentMessagesList.tsx(200,38): error TS2339: Property 'deviceTargets' does not exist on type 'BroadcastMessage'.
+src/components/system/SentMessagesList.tsx(228,28): error TS2339: Property 'scheduledFor' does not exist on type 'BroadcastMessage'.
+src/components/system/SentMessagesList.tsx(231,66): error TS2339: Property 'scheduledFor' does not exist on type 'BroadcastMessage'.
+src/components/system/SettingsPanel.tsx(83,19): error TS2322: Type '(branchId: string | number) => void' is not assignable to type 'ChangeEventHandler<HTMLSelectElement>'.
+  Types of parameters 'branchId' and 'event' are incompatible.
+    Type 'ChangeEvent<HTMLSelectElement>' is not assignable to type 'string | number'.
+src/components/system/SettingsPanel.tsx(100,19): error TS2322: Type '(warehouseId: string | number) => void' is not assignable to type 'ChangeEventHandler<HTMLSelectElement>'.
+  Types of parameters 'warehouseId' and 'event' are incompatible.
+    Type 'ChangeEvent<HTMLSelectElement>' is not assignable to type 'string | number'.
+src/components/system/SetupWizard.tsx(4242,25): error TS2322: Type '{ showNavigation: true; onPrev: () => void; onNext: (() => Promise<void>) | undefined; prevDisabled: boolean; nextDisabled: boolean; nextLabel: string; prevLabel: string; forceShowStatus: boolean; }' is not assignable to type 'IntrinsicAttributes & AppFooterProps'.
+  Property 'forceShowStatus' does not exist on type 'IntrinsicAttributes & AppFooterProps'.
+src/components/system/VirtualStoreList.tsx(33,49): error TS18046: 'page' is of type 'unknown'.
+src/components/system/VirtualStoreList.tsx(34,38): error TS2339: Property 'pagination' does not exist on type '{}'.
+src/components/trading/contacts/CustomerManagement.tsx(3,31): error TS2307: Cannot find module './DevExDataGrid' or its corresponding type declarations.
+src/components/trading/contacts/CustomerManagement.tsx(6,34): error TS2307: Cannot find module '../store' or its corresponding type declarations.
+src/components/trading/contacts/CustomerManagement.tsx(17,41): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/contacts/CustomerManagement.tsx(18,44): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/contacts/CustomerManagement.tsx(19,53): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/contacts/CustomerManagement.tsx(184,32): error TS7006: Parameter 'customer' implicitly has an 'any' type.
+src/components/trading/contacts/CustomerProfitabilityReport.tsx(143,11): error TS2339: Property 'profitMargin' does not exist on type '{ totalCustomers: number; totalTransactions: number; totalRevenue: number; totalCost: number; totalProfit: number; }'.
+src/components/trading/contacts/CustomerProfitabilityReport.tsx(146,11): error TS2339: Property 'avgTransactionValue' does not exist on type '{ totalCustomers: number; totalTransactions: number; totalRevenue: number; totalCost: number; totalProfit: number; }'.
+src/components/trading/contacts/CustomerProfitabilityReport.tsx(264,28): error TS2339: Property 'profitMargin' does not exist on type '{ totalCustomers: number; totalTransactions: number; totalRevenue: number; totalCost: number; totalProfit: number; }'.
+src/components/trading/contacts/CustomerProfitabilityReport.tsx(274,34): error TS2339: Property 'avgTransactionValue' does not exist on type '{ totalCustomers: number; totalTransactions: number; totalRevenue: number; totalCost: number; totalProfit: number; }'.
+src/components/trading/contacts/CustomerProfitabilityReport.tsx(368,30): error TS2339: Property 'profitMargin' does not exist on type '{ totalCustomers: number; totalTransactions: number; totalRevenue: number; totalCost: number; totalProfit: number; }'.
+src/components/trading/contacts/SupplierModule.tsx(378,60): error TS2551: Property 'currentAccountPersonel' does not exist on type 'MenuTranslations'. Did you mean 'currentAccounts'?
+src/components/trading/contacts/SupplierModule.tsx(667,9): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Object literal may only specify known properties, and 'className' does not exist in type 'Partial<unknown> & Attributes'.
+src/components/trading/invoices/InvoiceLineWithProfit.tsx(61,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/trading/invoices/InvoiceLineWithProfit.tsx(62,11): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/trading/invoices/UniversalInvoiceForm.tsx(263,68): error TS18048: 'pr' is possibly 'undefined'.
+src/components/trading/invoices/UniversalInvoiceForm.tsx(2078,20): error TS2339: Property 'type' does not exist on type '{ code: string; name: string; unit: string; price: number; vat: number; barcode: string; lastPurchasePrice: number; } | { code: string; name: string; unit: string; price: number; barcode: string; lastPurchasePrice: number; type: string; } | { ...; }'.
+  Property 'type' does not exist on type '{ code: string; name: string; unit: string; price: number; vat: number; barcode: string; lastPurchasePrice: number; }'.
+src/components/trading/invoices/UniversalInvoiceForm.tsx(2095,18): error TS2339: Property 'type' does not exist on type '{ code: string; name: string; unit: string; price: number; vat: number; barcode: string; lastPurchasePrice: number; } | { code: string; name: string; unit: string; price: number; barcode: string; lastPurchasePrice: number; type: string; } | { ...; }'.
+  Property 'type' does not exist on type '{ code: string; name: string; unit: string; price: number; vat: number; barcode: string; lastPurchasePrice: number; }'.
+src/components/trading/invoices/UniversalInvoiceModule_COMPLETE.tsx(10,33): error TS2307: Cannot find module './DocumentManager' or its corresponding type declarations.
+src/components/trading/invoices/UniversalInvoiceModule_COMPLETE.tsx(15,66): error TS2307: Cannot find module './PurchaseInvoiceLineEnhanced' or its corresponding type declarations.
+src/components/trading/invoices/UniversalInvoiceModule_COMPLETE.tsx(573,13): error TS2353: Object literal may only specify known properties, and 'firma_id' does not exist in type '{ fatura_no: string; tarih: Date; tedarikci_adi: string; tutar: number; aciklama?: string | undefined; }'.
+src/components/trading/invoices/UniversalInvoiceModule_COMPLETE.tsx(581,13): error TS2353: Object literal may only specify known properties, and 'firma_id' does not exist in type '{ fatura_no: string; tarih: Date; musteri_adi: string; tutar: number; aciklama?: string | undefined; }'.
+src/components/trading/invoices/WaybillModule.tsx(118,39): error TS2554: Expected 1 arguments, but got 2.
+src/components/trading/invoices/WaybillModule.tsx(119,35): error TS2345: Argument of type '{ data: Invoice[]; total: number; page: number; pageSize: number; totalPages: number; }' is not assignable to parameter of type 'SetStateAction<Waybill[]>'.
+src/components/trading/invoices/WaybillModule.tsx(188,50): error TS2554: Expected 1 arguments, but got 2.
+src/components/trading/invoices/WaybillModule.tsx(189,39): error TS2345: Argument of type '{ data: Invoice[]; total: number; page: number; pageSize: number; totalPages: number; }' is not assignable to parameter of type 'SetStateAction<Waybill[]>'.
+src/components/trading/invoices/WaybillModule.tsx(203,50): error TS2554: Expected 1 arguments, but got 2.
+src/components/trading/invoices/WaybillModule.tsx(204,39): error TS2345: Argument of type '{ data: Invoice[]; total: number; page: number; pageSize: number; totalPages: number; }' is not assignable to parameter of type 'SetStateAction<Waybill[]>'.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(2,67): error TS2307: Cannot find module '../../store/usePendingPurchaseStore' or its corresponding type declarations.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(11,53): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(12,49): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(13,51): error TS7006: Parameter 'state' implicitly has an 'any' type.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(118,56): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/trading/purchase/PendingPurchaseInvoiceModal.tsx(118,62): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/components/trading/purchase/PurchaseRequestCreatePage.tsx(12,36): error TS2307: Cannot find module './ProductSearchModal' or its corresponding type declarations.
+src/components/trading/purchase/PurchaseRequestCreatePage.tsx(779,30): error TS2345: Argument of type '(RequestItem | { id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; })[]' is not assignable to parameter of type 'SetStateAction<RequestItem[]>'.
+  Type '(RequestItem | { id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; })[]' is not assignable to type 'RequestItem[]'.
+    Type 'RequestItem | { id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; }' is not assignable to type 'RequestItem'.
+      Type '{ id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; }' is not assignable to type 'RequestItem'.
+        Types of property 'status' are incompatible.
+          Type 'string' is not assignable to type '"pending" | "draft" | "approved" | "transferred" | "purchased" | "partially_fulfilled" | "completed" | "cancelled"'.
+src/components/trading/sales/QuotationModule.tsx(135,21): error TS2345: Argument of type 'Invoice[]' is not assignable to parameter of type 'SetStateAction<Quotation[]>'.
+  Type 'Invoice[]' is not assignable to type 'Quotation[]'.
+    Type 'Invoice' is missing the following properties from type 'Quotation': quotation_no, quotation_type, version, quotation_date, and 5 more.
+src/components/trading/sales/SalesOrderModule.tsx(59,60): error TS2551: Property 'salesOrders' does not exist on type 'MenuTranslations'. Did you mean 'salesOrder'?
+src/components/trading/sales/SalesOrderModule.tsx(146,17): error TS2322: Type '"custom"' is not assignable to type 'FilterFnOption<any> | undefined'.
+src/components/ui/accordion.tsx(4,37): error TS2307: Cannot find module '@radix-ui/react-accordion@1.2.3' or its corresponding type declarations.
+src/components/ui/accordion.tsx(5,33): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/alert-dialog.tsx(4,39): error TS2307: Cannot find module '@radix-ui/react-alert-dialog@1.1.6' or its corresponding type declarations.
+src/components/ui/alert.tsx(2,40): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/aspect-ratio.tsx(3,39): error TS2307: Cannot find module '@radix-ui/react-aspect-ratio@1.1.2' or its corresponding type declarations.
+src/components/ui/avatar.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-avatar@1.1.3' or its corresponding type declarations.
+src/components/ui/badge.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot@1.1.2' or its corresponding type declarations.
+src/components/ui/badge.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/breadcrumb.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot@1.1.2' or its corresponding type declarations.
+src/components/ui/breadcrumb.tsx(3,46): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/button.tsx(2,22): error TS2307: Cannot find module '@radix-ui/react-slot@1.1.2' or its corresponding type declarations.
+src/components/ui/button.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/calendar.tsx(4,43): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/calendar.tsx(5,27): error TS2307: Cannot find module 'react-day-picker@8.10.1' or its corresponding type declarations.
+src/components/ui/calendar.tsx(63,22): error TS7031: Binding element 'className' implicitly has an 'any' type.
+src/components/ui/calendar.tsx(66,23): error TS7031: Binding element 'className' implicitly has an 'any' type.
+src/components/ui/carousel.tsx(6,8): error TS2307: Cannot find module 'embla-carousel-react@8.6.0' or its corresponding type declarations.
+src/components/ui/carousel.tsx(7,39): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/chart.tsx(4,36): error TS2307: Cannot find module 'recharts@2.15.2' or its corresponding type declarations.
+src/components/ui/chart.tsx(182,23): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/ui/chart.tsx(182,29): error TS7006: Parameter 'index' implicitly has an 'any' type.
+src/components/ui/chart.tsx(278,21): error TS7006: Parameter 'item' implicitly has an 'any' type.
+src/components/ui/checkbox.tsx(4,36): error TS2307: Cannot find module '@radix-ui/react-checkbox@1.1.4' or its corresponding type declarations.
+src/components/ui/checkbox.tsx(5,27): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/collapsible.tsx(3,39): error TS2307: Cannot find module '@radix-ui/react-collapsible@1.1.3' or its corresponding type declarations.
+src/components/ui/command.tsx(4,45): error TS2307: Cannot find module 'cmdk@1.1.1' or its corresponding type declarations.
+src/components/ui/command.tsx(5,28): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/context-menu.tsx(4,39): error TS2307: Cannot find module '@radix-ui/react-context-menu@2.2.6' or its corresponding type declarations.
+src/components/ui/context-menu.tsx(5,57): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/dialog.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-dialog@1.1.6' or its corresponding type declarations.
+src/components/ui/dialog.tsx(5,23): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/drawer.tsx(4,43): error TS2307: Cannot find module 'vaul@1.1.2' or its corresponding type declarations.
+src/components/ui/dropdown-menu.tsx(4,40): error TS2307: Cannot find module '@radix-ui/react-dropdown-menu@2.1.6' or its corresponding type declarations.
+src/components/ui/dropdown-menu.tsx(5,57): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/form.tsx(4,33): error TS2307: Cannot find module '@radix-ui/react-label@2.1.2' or its corresponding type declarations.
+src/components/ui/form.tsx(5,22): error TS2307: Cannot find module '@radix-ui/react-slot@1.1.2' or its corresponding type declarations.
+src/components/ui/form.tsx(14,8): error TS2307: Cannot find module 'react-hook-form@7.55.0' or its corresponding type declarations.
+src/components/ui/hover-card.tsx(4,37): error TS2307: Cannot find module '@radix-ui/react-hover-card@1.1.6' or its corresponding type declarations.
+src/components/ui/input-otp.tsx(4,43): error TS2307: Cannot find module 'input-otp@1.4.2' or its corresponding type declarations.
+src/components/ui/input-otp.tsx(5,27): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/input-otp.tsx(47,61): error TS2339: Property 'slots' does not exist on type '{}'.
+src/components/ui/label.tsx(4,33): error TS2307: Cannot find module '@radix-ui/react-label@2.1.2' or its corresponding type declarations.
+src/components/ui/menubar.tsx(4,35): error TS2307: Cannot find module '@radix-ui/react-menubar@1.1.6' or its corresponding type declarations.
+src/components/ui/menubar.tsx(5,57): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/navigation-menu.tsx(2,42): error TS2307: Cannot find module '@radix-ui/react-navigation-menu@1.2.5' or its corresponding type declarations.
+src/components/ui/navigation-menu.tsx(3,21): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/navigation-menu.tsx(4,33): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/pagination.tsx(6,8): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/pagination.tsx(75,7): error TS2783: 'size' is specified more than once, so this usage will be overwritten.
+src/components/ui/pagination.tsx(92,7): error TS2783: 'size' is specified more than once, so this usage will be overwritten.
+src/components/ui/popover.tsx(4,35): error TS2307: Cannot find module '@radix-ui/react-popover@1.1.6' or its corresponding type declarations.
+src/components/ui/progress.tsx(4,36): error TS2307: Cannot find module '@radix-ui/react-progress@1.1.2' or its corresponding type declarations.
+src/components/ui/radio-group.tsx(4,38): error TS2307: Cannot find module '@radix-ui/react-radio-group@1.2.3' or its corresponding type declarations.
+src/components/ui/radio-group.tsx(5,28): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/resizable.tsx(4,34): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/resizable.tsx(5,37): error TS2307: Cannot find module 'react-resizable-panels@2.1.7' or its corresponding type declarations.
+src/components/ui/scroll-area.tsx(4,38): error TS2307: Cannot find module '@radix-ui/react-scroll-area@1.2.3' or its corresponding type declarations.
+src/components/ui/select.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-select@2.1.6' or its corresponding type declarations.
+src/components/ui/select.tsx(9,8): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/separator.tsx(4,37): error TS2307: Cannot find module '@radix-ui/react-separator@1.1.2' or its corresponding type declarations.
+src/components/ui/sheet.tsx(4,33): error TS2307: Cannot find module '@radix-ui/react-dialog@1.1.6' or its corresponding type declarations.
+src/components/ui/sheet.tsx(5,23): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/sidebar.tsx(4,22): error TS2307: Cannot find module '@radix-ui/react-slot@1.1.2' or its corresponding type declarations.
+src/components/ui/sidebar.tsx(5,35): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/sidebar.tsx(6,31): error TS2307: Cannot find module 'lucide-react@0.487.0' or its corresponding type declarations.
+src/components/ui/sidebar.tsx(270,17): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/components/ui/slider.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-slider@1.2.3' or its corresponding type declarations.
+src/components/ui/sonner.tsx(3,26): error TS2307: Cannot find module 'next-themes@0.4.6' or its corresponding type declarations.
+src/components/ui/switch.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-switch@1.1.3' or its corresponding type declarations.
+src/components/ui/tabs.tsx(4,32): error TS2307: Cannot find module '@radix-ui/react-tabs@1.1.3' or its corresponding type declarations.
+src/components/ui/toggle-group.tsx(4,39): error TS2307: Cannot find module '@radix-ui/react-toggle-group@1.1.2' or its corresponding type declarations.
+src/components/ui/toggle-group.tsx(5,35): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/toggle.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-toggle@1.1.2' or its corresponding type declarations.
+src/components/ui/toggle.tsx(5,40): error TS2307: Cannot find module 'class-variance-authority@0.7.1' or its corresponding type declarations.
+src/components/ui/tooltip.tsx(4,35): error TS2307: Cannot find module '@radix-ui/react-tooltip@1.1.8' or its corresponding type declarations.
+src/components/wms/components/AdvancedReceivingForm.tsx(665,30): error TS18048: 'formData.pallet_count' is possibly 'undefined'.
+src/components/wms/components/AdvancedReceivingForm.tsx(665,98): error TS18048: 'formData.pallet_count' is possibly 'undefined'.
+src/components/wms/components/LanguageSelector.tsx(3,23): error TS2459: Module '"../utils/i18n/LanguageContext"' declares 'Language' locally, but it is not exported.
+src/components/wms/EXAMPLE.tsx(40,9): error TS2322: Type '{ darkMode: boolean; language: string; onLogout: () => void; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/EXAMPLE.tsx(54,26): error TS2307: Cannot find module '../contexts/ThemeContext' or its corresponding type declarations.
+src/components/wms/EXAMPLE.tsx(55,29): error TS2307: Cannot find module '../contexts/LanguageContext' or its corresponding type declarations.
+src/components/wms/EXAMPLE.tsx(71,7): error TS2322: Type '{ darkMode: any; language: "tr" | "en" | "ar"; onLogout: () => void; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/EXAMPLE.tsx(90,13): error TS2322: Type '{ darkMode: boolean; language: string; onLogout: () => void; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/EXAMPLE.tsx(235,13): error TS2322: Type '{ darkMode: boolean; language: string; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/EXAMPLE.tsx(303,13): error TS2322: Type '{ darkMode: boolean; language: string; onLogout: () => void; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/EXAMPLE.tsx(385,7): error TS2322: Type '{ darkMode: boolean; language: string; onLogout: () => void; }' is not assignable to type 'IntrinsicAttributes & WarehouseManagementProps'.
+  Property 'darkMode' does not exist on type 'IntrinsicAttributes & WarehouseManagementProps'.
+src/components/wms/utils/toast.tsx(193,34): error TS2345: Argument of type 'null' is not assignable to parameter of type '(type: ToastType, message: string, duration?: number | undefined) => void'.
+src/components/wms/WMSDashboard.tsx(105,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(108,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(115,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(129,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(137,16): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(147,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(165,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(173,16): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(183,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(201,18): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(209,16): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(233,20): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(236,20): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(239,26): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(265,20): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(268,20): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSDashboard.tsx(276,16): error TS2349: This expression is not callable.
+  Type 'Translations' has no call signatures.
+src/components/wms/WMSGoodsReceiving.tsx(18,11): error TS2339: Property 'currentLanguage' does not exist on type 'LanguageContextType'.
+src/config/voiceCommandDefinitions.ts(411,9): error TS2739: Type '{ tr: string[]; en: string[]; }' is missing the following properties from type '{ tr: string[]; en: string[]; ar: string[]; ckb: string[]; }': ar, ckb
+src/data/storeData.ts(59,20): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ Baghdad: string[]; Basra: string[]; Erbil: string[]; Sulaymaniyah: string[]; Najaf: string[]; }'.
+  No index signature with a parameter of type 'string' was found on type '{ Baghdad: string[]; Basra: string[]; Erbil: string[]; Sulaymaniyah: string[]; Najaf: string[]; }'.
+src/features/pos/services/posService.ts(45,11): error TS2739: Type '{ id: string; date: string; customerId: string | undefined; customerName: string | undefined; items: SaleItem[]; subtotal: number; discount: number; total: number; paymentMethod: string; campaignId: string | undefined; }' is missing the following properties from type 'Sale': receiptNumber, cashier
+src/hooks/useAutoJournal.ts(12,38): error TS2459: Module '"../services/journalEntryGenerator"' declares 'JournalEntry' locally, but it is not exported.
+src/hooks/useAutoJournal.ts(12,57): error TS2459: Module '"../services/journalEntryGenerator"' declares 'JournalLine' locally, but it is not exported.
+src/hooks/useAutoJournal.ts(144,40): error TS7006: Parameter 'satir' implicitly has an 'any' type.
+src/hooks/useAutoJournal.ts(198,43): error TS2339: Property 'generateSalesInvoiceEntry' does not exist on type 'typeof JournalEntryGenerator'.
+src/hooks/useAutoJournal.ts(255,43): error TS2339: Property 'generatePurchaseInvoiceEntry' does not exist on type 'typeof JournalEntryGenerator'.
+src/hooks/useAutoJournal.ts(313,43): error TS2339: Property 'generateReceiptEntry' does not exist on type 'typeof JournalEntryGenerator'.
+src/hooks/useAutoJournal.ts(371,43): error TS2339: Property 'generatePaymentEntry' does not exist on type 'typeof JournalEntryGenerator'.
+src/hooks/useAutoJournal.ts(429,43): error TS2339: Property 'generateTransferEntry' does not exist on type 'typeof JournalEntryGenerator'.
+src/hooks/useElectron.ts(53,5): error TS2717: Subsequent property declarations must have the same type.  Property 'electronAPI' must be of type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; } | undefined', but here has type 'ElectronAPI | undefined'.
+src/hooks/useElectron.ts(68,36): error TS18048: 'window.electronAPI.app' is possibly 'undefined'.
+src/hooks/useElectron.ts(69,37): error TS18048: 'window.electronAPI.app' is possibly 'undefined'.
+src/hooks/useElectron.ts(94,42): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(102,37): error TS2339: Property 'store' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(105,19): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(109,13): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(119,16): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(120,13): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(121,13): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(136,30): error TS2339: Property 'update' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(140,9): error TS2339: Property 'update' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(145,9): error TS2339: Property 'update' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(152,14): error TS2339: Property 'update' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(153,17): error TS2339: Property 'update' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(169,30): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(178,15): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(182,30): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(188,30): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(193,30): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useElectron.ts(206,15): error TS2339: Property 'sync' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
+src/hooks/useInfiniteStores.ts(7,27): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(options: DefinedInitialDataInfiniteOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>, queryClient?: QueryClient | undefined): DefinedUseInfiniteQueryResult<...>', gave the following error.
+    Argument of type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' is not assignable to parameter of type 'DefinedInitialDataInfiniteOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+      Property 'initialPageParam' is missing in type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' but required in type 'UseInfiniteQueryOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+  Overload 2 of 3, '(options: UndefinedInitialDataInfiniteOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>, queryClient?: QueryClient | undefined): UseInfiniteQueryResult<...>', gave the following error.
+    Argument of type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' is not assignable to parameter of type 'UndefinedInitialDataInfiniteOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+      Property 'initialPageParam' is missing in type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' but required in type 'UseInfiniteQueryOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+  Overload 3 of 3, '(options: UseInfiniteQueryOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>, queryClient?: QueryClient | undefined): UseInfiniteQueryResult<...>', gave the following error.
+    Argument of type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' is not assignable to parameter of type 'UseInfiniteQueryOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+      Property 'initialPageParam' is missing in type '{ queryKey: (string | number | SearchFilters | undefined)[]; queryFn: ({ pageParam }: { client: QueryClient; queryKey: (string | number | SearchFilters | undefined)[]; signal: AbortSignal; pageParam: unknown; direction: FetchDirection; meta: Record<...> | undefined; }) => Promise<...>; getNextPageParam: (lastPage: u...' but required in type 'UseInfiniteQueryOptions<unknown, Error, InfiniteData<unknown, unknown>, (string | number | SearchFilters | undefined)[], unknown>'.
+src/hooks/useInfiniteStores.ts(12,7): error TS18046: 'lastPage' is of type 'unknown'.
+src/hooks/useInfiniteStores.ts(12,45): error TS18046: 'lastPage' is of type 'unknown'.
+src/services/api/currentAccounts.ts(224,21): error TS2554: Expected 2 arguments, but got 1.
+src/services/api/expenses.ts(98,11): error TS2322: Type 'number' is not assignable to type 'string'.
+src/services/api/invoices.ts(237,44): error TS2339: Property 'trcode' does not exist on type 'Invoice'.
+src/services/api/sales.ts(21,97): error TS2339: Property 'id' does not exist on type 'Omit<Sale, "id">'.
+src/services/api/suppliers.ts(481,11): error TS2322: Type 'number' is not assignable to type 'string'.
+src/services/api/users.ts(51,13): error TS2322: Type '(User | null)[]' is not assignable to type 'User[]'.
+  Type 'User | null' is not assignable to type 'User'.
+    Type 'null' is not assignable to type 'User'.
+src/services/campaignEngine.ts(225,54): error TS18048: 'item.price' is possibly 'undefined'.
+src/services/campaignEngine.ts(284,35): error TS18048: 'campaign.currentUsage' is possibly 'undefined'.
+src/services/campaignEngine.ts(310,55): error TS18048: 'item.price' is possibly 'undefined'.
+src/services/campaignEngine.ts(331,48): error TS2339: Property 'id' does not exist on type 'CartItem'.
+src/services/campaignEngine.ts(341,61): error TS18048: 'b.price' is possibly 'undefined'.
+src/services/campaignEngine.ts(341,71): error TS18048: 'a.price' is possibly 'undefined'.
+src/services/campaignEngine.ts(352,19): error TS18048: 'item.price' is possibly 'undefined'.
+src/services/campaignEngine.ts(421,59): error TS18048: 'b.priority' is possibly 'undefined'.
+src/services/campaignEngine.ts(421,72): error TS18048: 'a.priority' is possibly 'undefined'.
+src/services/campaignEngine.ts(441,44): error TS2345: Argument of type 'CampaignType | undefined' is not assignable to parameter of type 'CampaignType'.
+  Type 'undefined' is not assignable to type 'CampaignType'.
+src/services/campaignEngine.ts(520,3): error TS2739: Type '{ id: string; code: string; name: string; type: "PERCENTAGE_DISCOUNT"; trigger: "AUTO"; discountRate: number; minBasketAmount: number; startDate: string; endDate: string; is_active: true; currentUsage: number; canStackWithOthers: false; priority: number; }' is missing the following properties from type 'Campaign': description, discountType, discountValue, active, productIds
+src/services/campaignEngine.ts(535,3): error TS2739: Type '{ id: string; code: string; name: string; type: "AMOUNT_DISCOUNT"; trigger: "AUTO"; discountAmount: number; minBasketAmount: number; startTime: string; endTime: string; validDays: number[]; startDate: string; ... 4 more ...; priority: number; }' is missing the following properties from type 'Campaign': description, discountType, discountValue, active, productIds
+src/services/campaignEngine.ts(553,3): error TS2739: Type '{ id: string; code: string; name: string; type: "BUY_X_GET_Y"; trigger: "AUTO"; buyQuantity: number; getQuantity: number; startDate: string; endDate: string; is_active: true; currentUsage: number; canStackWithOthers: false; priority: number; }' is missing the following properties from type 'Campaign': description, discountType, discountValue, active, productIds
+src/services/campaignEngine.ts(568,3): error TS2739: Type '{ id: string; code: string; name: string; type: "SEGMENT_BASED"; trigger: "AUTO"; discountRate: number; customerSegments: string[]; startDate: string; endDate: string; is_active: true; currentUsage: number; canStackWithOthers: true; priority: number; }' is missing the following properties from type 'Campaign': description, discountType, discountValue, active, productIds
+src/services/customerSegmentationService.ts(350,37): error TS2339: Property 'loyalty_points' does not exist on type 'Customer'.
+src/services/customerSegmentationService.ts(595,15): error TS2484: Export declaration conflicts with exported declaration of 'CustomerAnalytics'.
+src/services/customerSegmentationService.ts(595,34): error TS2484: Export declaration conflicts with exported declaration of 'LoyaltyTierConfig'.
+src/services/customerSegmentationService.ts(595,53): error TS2484: Export declaration conflicts with exported declaration of 'LoyaltyTransaction'.
+src/services/exportService.ts(352,46): error TS2339: Property 'name' does not exist on type 'SaleItem'.
+src/services/exportService.ts(353,29): error TS2339: Property 'name' does not exist on type 'SaleItem'.
+src/services/fieldSalesService.ts(744,3): error TS2484: Export declaration conflicts with exported declaration of 'GeoLocation'.
+src/services/fieldSalesService.ts(744,16): error TS2484: Export declaration conflicts with exported declaration of 'SalesRoute'.
+src/services/fieldSalesService.ts(744,28): error TS2484: Export declaration conflicts with exported declaration of 'PlannedVisit'.
+src/services/fieldSalesService.ts(744,42): error TS2484: Export declaration conflicts with exported declaration of 'Visit'.
+src/services/fieldSalesService.ts(744,49): error TS2484: Export declaration conflicts with exported declaration of 'LocationTrack'.
+src/services/fieldSalesService.ts(745,3): error TS2484: Export declaration conflicts with exported declaration of 'Salesperson'.
+src/services/fieldSalesService.ts(745,16): error TS2484: Export declaration conflicts with exported declaration of 'VisitOutcome'.
+src/services/fieldSalesService.ts(745,30): error TS2484: Export declaration conflicts with exported declaration of 'RouteOptimizationRequest'.
+src/services/imageSearchService.ts(95,17): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/services/lotSerialService.ts(615,15): error TS2484: Export declaration conflicts with exported declaration of 'Lot'.
+src/services/lotSerialService.ts(615,20): error TS2484: Export declaration conflicts with exported declaration of 'SerialNumber'.
+src/services/lotSerialService.ts(615,34): error TS2484: Export declaration conflicts with exported declaration of 'LotMovement'.
+src/services/lotSerialService.ts(615,47): error TS2484: Export declaration conflicts with exported declaration of 'SerialMovement'.
+src/services/lotSerialService.ts(615,63): error TS2484: Export declaration conflicts with exported declaration of 'LotSelectionResult'.
+src/services/postgres.ts(85,52): error TS2741: Property 'isConfigured' is missing in type '{ host: string; port: number; database: string; user: string; password: string; }' but required in type '{ host: string; port: number; database: string; user: string; password: string; isConfigured: boolean; }'.
+src/services/postgres.ts(88,13): error TS2741: Property 'isConfigured' is missing in type '{ host: string; port: number; database: string; user: string; password: string; }' but required in type '{ host: string; port: number; database: string; user: string; password: string; isConfigured: boolean; }'.
+src/services/postgres.ts(90,25): error TS2741: Property 'isConfigured' is missing in type '{ host: string; port: number; database: string; user: string; password: string; }' but required in type '{ host: string; port: number; database: string; user: string; password: string; isConfigured: boolean; }'.
+src/services/qrScannerService.ts(431,15): error TS2484: Export declaration conflicts with exported declaration of 'QRScanResult'.
+src/services/qrScannerService.ts(431,29): error TS2484: Export declaration conflicts with exported declaration of 'ScanOptions'.
+src/services/staffManagementService.ts(391,64): error TS2339: Property 'id' does not exist on type 'SaleItem'.
+src/services/staffManagementService.ts(572,3): error TS2484: Export declaration conflicts with exported declaration of 'Shift'.
+src/services/staffManagementService.ts(572,10): error TS2484: Export declaration conflicts with exported declaration of 'ShiftAssignment'.
+src/services/staffManagementService.ts(572,27): error TS2484: Export declaration conflicts with exported declaration of 'CommissionRule'.
+src/services/staffManagementService.ts(572,43): error TS2484: Export declaration conflicts with exported declaration of 'CommissionCalculation'.
+src/services/staffManagementService.ts(573,3): error TS2484: Export declaration conflicts with exported declaration of 'StaffPerformance'.
+src/services/staffManagementService.ts(573,21): error TS2484: Export declaration conflicts with exported declaration of 'AttendanceRecord'.
+src/services/warehouseService.ts(647,15): error TS2484: Export declaration conflicts with exported declaration of 'Warehouse'.
+src/services/warehouseService.ts(647,26): error TS2484: Export declaration conflicts with exported declaration of 'WarehouseStock'.
+src/services/warehouseService.ts(647,42): error TS2484: Export declaration conflicts with exported declaration of 'StockTransfer'.
+src/services/warehouseService.ts(647,57): error TS2484: Export declaration conflicts with exported declaration of 'TransferItem'.
+src/services/warehouseService.ts(647,71): error TS2484: Export declaration conflicts with exported declaration of 'StockMovement'.
+src/services/zainCashService.ts(158,35): error TS2339: Property 'Body' does not exist on type 'typeof import("D:/RetailEX/node_modules/@tauri-apps/plugin-http/dist-js/index")'.
+src/services/zainCashService.ts(165,47): error TS2558: Expected 0 type arguments, but got 1.
+src/services/zainCashService.ts(180,74): error TS2339: Property 'data' does not exist on type 'Response'.
+src/services/zainCashService.ts(181,43): error TS2339: Property 'data' does not exist on type 'Response'.
+src/services/zainCashService.ts(181,67): error TS2339: Property 'data' does not exist on type 'Response'.
+src/services/zainCashService.ts(181,111): error TS2339: Property 'data' does not exist on type 'Response'.
+src/services/zainCashService.ts(181,128): error TS2339: Property 'data' does not exist on type 'Response'.
+src/services/zainCashService.ts(185,37): error TS2339: Property 'data' does not exist on type 'Response'.
+src/supabase/functions/server/accounting.ts(10,30): error TS2307: Cannot find module 'jsr:@supabase/supabase-js@2' or its corresponding type declarations.
+src/supabase/functions/server/accounting.ts(13,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/accounting.ts(14,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/auth.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/auth.ts(10,30): error TS2307: Cannot find module 'jsr:@supabase/supabase-js@2' or its corresponding type declarations.
+src/supabase/functions/server/auth.ts(11,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/auth.ts(16,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/auth.ts(17,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/auth.ts(42,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/auth.ts(100,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/auth.ts(156,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/auth.ts(206,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/auth.ts(228,39): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/bank-accounts.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/bank-accounts.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(43,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(61,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(95,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(128,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(161,37): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(194,38): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(249,49): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(285,52): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/bank-accounts.ts(330,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/chart-of-accounts.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/chart-of-accounts.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(46,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(64,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(88,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(131,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(174,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(215,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/chart-of-accounts.ts(366,35): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/checks.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/checks.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(53,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(71,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(102,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(138,39): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(175,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/checks.ts(199,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(11,22): error TS2307: Cannot find module 'npm:hono@4.0.0' or its corresponding type declarations.
+src/supabase/functions/server/cost-accounting.ts(12,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/cost-accounting.ts(56,31): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(109,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(169,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(214,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(259,38): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(304,36): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(374,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/cost-accounting.ts(450,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/current-accounts.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/current-accounts.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(48,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(66,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(105,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(138,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(169,37): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(198,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/current-accounts.ts(245,38): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(6,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/exchange-rates.tsx(7,30): error TS2307: Cannot find module 'npm:@supabase/supabase-js@2.39.3' or its corresponding type declarations.
+src/supabase/functions/server/exchange-rates.tsx(12,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/exchange-rates.tsx(13,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/exchange-rates.tsx(17,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(44,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(49,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(68,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(73,29): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(99,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(104,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(179,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(184,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(208,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(213,31): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(229,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(234,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(261,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/exchange-rates.tsx(266,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/exchange-rates.tsx(311,28): error TS18046: 'error' is of type 'unknown'.
+src/supabase/functions/server/index.tsx(1,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/index.tsx(2,22): error TS2307: Cannot find module 'npm:hono/cors' or its corresponding type declarations.
+src/supabase/functions/server/index.tsx(3,24): error TS2307: Cannot find module 'npm:hono/logger' or its corresponding type declarations.
+src/supabase/functions/server/index.tsx(4,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(5,29): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(6,34): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(7,33): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(8,23): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(9,24): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(10,26): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(11,35): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(12,24): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(13,28): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(14,24): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(15,30): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(16,32): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(17,35): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(18,32): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/index.tsx(38,42): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(45,69): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(93,67): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(109,70): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(125,68): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(153,75): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(223,57): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(245,61): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(261,58): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(292,61): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(330,64): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(348,47): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(389,52): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(400,56): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(415,53): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(435,58): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(456,63): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(486,51): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(497,52): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(509,55): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(522,58): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/index.tsx(533,1): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/kasa.ts(11,30): error TS2307: Cannot find module 'jsr:@supabase/supabase-js@2' or its corresponding type declarations.
+src/supabase/functions/server/kasa.ts(16,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/kasa.ts(17,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/kasa.ts(83,49): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/kv_store.tsx(13,30): error TS2307: Cannot find module 'jsr:@supabase/supabase-js@2.49.8' or its corresponding type declarations.
+src/supabase/functions/server/kv_store.tsx(16,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/kv_store.tsx(17,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/kv_store.tsx(67,21): error TS7006: Parameter 'd' implicitly has an 'any' type.
+src/supabase/functions/server/kv_store.tsx(86,21): error TS7006: Parameter 'd' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/lots.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/lots.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(49,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(67,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(101,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(137,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(167,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(236,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(268,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/lots.ts(293,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(6,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/organization.ts(7,30): error TS2307: Cannot find module 'npm:@supabase/supabase-js@2.39.3' or its corresponding type declarations.
+src/supabase/functions/server/organization.ts(13,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/organization.ts(14,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/organization.ts(24,29): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(43,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(66,41): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(100,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(122,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(146,36): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(171,29): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(198,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(221,47): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(259,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(281,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(305,40): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(331,46): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(373,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(400,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(423,48): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(461,31): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(483,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(511,28): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(538,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(561,47): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(599,29): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/organization.ts(621,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/quotations.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/quotations.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(49,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(67,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(108,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(150,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(182,30): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(224,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(261,32): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(298,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/quotations.ts(335,7): error TS7053: Element implicitly has an 'any' type because expression of type '"fatura_no"' can't be used to index type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+  Property 'fatura_no' does not exist on type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+src/supabase/functions/server/quotations.ts(336,7): error TS7053: Element implicitly has an 'any' type because expression of type '"fatura_tarihi"' can't be used to index type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+  Property 'fatura_tarihi' does not exist on type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+src/supabase/functions/server/quotations.ts(342,7): error TS7053: Element implicitly has an 'any' type because expression of type '"siparis_no"' can't be used to index type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+  Property 'siparis_no' does not exist on type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+src/supabase/functions/server/quotations.ts(343,7): error TS7053: Element implicitly has an 'any' type because expression of type '"siparis_tarihi"' can't be used to index type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+  Property 'siparis_tarihi' does not exist on type '{ id: `${string}-${string}-${string}-${string}-${string}`; firma_id: any; donem_id: any; tip: string; cari_id: any; cari_unvan: any; urunler: any; ara_toplam: any; TAX_toplam: any; genel_toplam: any; teklif_referans: any; aciklama: string; created_at: string; updated_at: string; }'.
+src/supabase/functions/server/quotations.ts(378,34): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/tax.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/tax.ts(10,30): error TS2307: Cannot find module 'jsr:@supabase/supabase-js@2' or its corresponding type declarations.
+src/supabase/functions/server/tax.ts(15,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/tax.ts(16,3): error TS2304: Cannot find name 'Deno'.
+src/supabase/functions/server/tax.ts(25,35): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/tax.ts(69,37): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/tax.ts(99,33): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/tax.ts(179,31): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/tax.ts(225,40): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(9,22): error TS2307: Cannot find module 'npm:hono' or its corresponding type declarations.
+src/supabase/functions/server/waybills.ts(10,21): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+src/supabase/functions/server/waybills.ts(15,21): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(49,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(67,22): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(111,24): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(153,27): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/supabase/functions/server/waybills.ts(183,44): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/tests/services/campaignEngine.test.ts(18,9): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'CartItem'.
+src/tests/services/campaignEngine.test.ts(26,9): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'CartItem'.
+src/tests/services/campaignEngine.test.ts(67,11): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'CartItem'.
+src/tests/services/costAccountingService.test.ts(20,50): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(34,31): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(45,50): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(59,70): error TS2345: Argument of type '{ product_code: string; product_name: string; quantity: number; movement_type: "IN"; unit_cost: number; firma_id: string; donem_id: string; }' is not assignable to parameter of type 'Omit<StockMovement, "id" | "created_at">'.
+  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "IN"; unit_cost: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': product_id, total_cost, document_no, movement_date, document_type
+src/tests/services/costAccountingService.test.ts(74,70): error TS2345: Argument of type '{ product_code: string; product_name: string; quantity: number; movement_type: "OUT"; unit_price: number; firma_id: string; donem_id: string; }' is not assignable to parameter of type 'Omit<StockMovement, "id" | "created_at">'.
+  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "OUT"; unit_price: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': product_id, total_cost, document_no, unit_cost, and 2 more.
+src/tests/services/costAccountingService.test.ts(85,21): error TS2339: Property 'total_cost' does not exist on type '{ success: boolean; movement_id?: string | undefined; error?: string | undefined; }'.
+src/tests/services/costAccountingService.test.ts(86,21): error TS2339: Property 'gross_profit' does not exist on type '{ success: boolean; movement_id?: string | undefined; error?: string | undefined; }'.
+src/tests/services/costAccountingService.test.ts(92,50): error TS2551: Property 'getProductProfitability' does not exist on type 'typeof CostAccountingService'. Did you mean 'getDocumentProfitability'?
+src/tests/services/costAccountingService.test.ts(104,50): error TS2551: Property 'getCustomerProfitability' does not exist on type 'typeof CostAccountingService'. Did you mean 'getDocumentProfitability'?
+src/tests/services/costAccountingService.test.ts(115,50): error TS2339: Property 'getProfitabilitySummary' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(130,31): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(141,31): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
+src/tests/services/costAccountingService.test.ts(151,50): error TS2551: Property 'getProductProfitability' does not exist on type 'typeof CostAccountingService'. Did you mean 'getDocumentProfitability'?
+src/tests/services/exportService.test.ts(22,19): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'SaleItem'.
+src/tests/services/exportService.test.ts(34,7): error TS2739: Type '{ id: string; code: string; barcode: string; name: string; category: string; price: number; stock: number; taxRate: number; }' is missing the following properties from type 'Product': cost, unit
+src/tests/services/exportService.test.ts(81,19): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'SaleItem'.
+src/tests/services/exportService.test.ts(92,19): error TS2353: Object literal may only specify known properties, and 'id' does not exist in type 'SaleItem'.
+src/tests/services/exportService.test.ts(102,7): error TS2739: Type '{ id: string; code: string; barcode: string; name: string; category: string; price: number; stock: number; taxRate: number; }' is missing the following properties from type 'Product': cost, unit
+src/tests/services/exportService.test.ts(103,7): error TS2739: Type '{ id: string; code: string; barcode: string; name: string; category: string; price: number; stock: number; taxRate: number; }' is missing the following properties from type 'Product': cost, unit
+src/tests/services/exportService.test.ts(104,7): error TS2739: Type '{ id: string; code: string; barcode: string; name: string; category: string; price: number; stock: number; taxRate: number; }' is missing the following properties from type 'Product': cost, unit

@@ -54,7 +54,7 @@ export function CostReport() {
                         endDate,
                         invoiceCategory: 'sales',
                     }),
-                    productAPI.getAll(),
+                    productAPI.getAllForReports(),
                 ]);
                 const productByCode = new Map<string, Product>();
                 const productById = new Map<string, Product>();

@@ -374,12 +374,12 @@ export function POSCloseCashRegisterModal({
                   <span className="font-medium text-gray-900">{currentStaff}</span>
                 </div>
                 <div>
-                  <span className="text-gray-600">{t.cashRegisterLabel} </span>
-                  <span className="font-medium text-gray-900">{t.cashRegister} #1</span>
+                  <span className="text-gray-600">{String(t.cashRegisterLabel)} </span>
+                  <span className="font-medium text-gray-900">{String(t.cashRegister)} #1</span>
                 </div>
                 <div>
-                  <span className="text-gray-600">{t.session}: </span>
-                  <span className="font-medium text-gray-900">{t.sessionDay}</span>
+                  <span className="text-gray-600">{String(t.session)}: </span>
+                  <span className="font-medium text-gray-900">{String(t.sessionDay)}</span>
                 </div>
               </div>
               <div className="text-gray-600">

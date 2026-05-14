@@ -30,6 +30,9 @@
     "include": [
         "src"
     ],
+    "exclude": [
+        "src/vitest.config.ts"
+    ],
     "references": [
         {
             "path": "./tsconfig.node.json"

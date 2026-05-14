@@ -232,7 +232,7 @@ export function POSCustomerModal({
                           {customer.cardType === 'supplier' ? 'Tedarikçi' : 'Müşteri'}
                         </span>
                         <span className={`px-2 py-0.5 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                          {customer.type === 'individual' ? t.individual : t.corporate}
+                          {customer.company?.trim() ? t.corporate : t.individual}
                         </span>
                       </div>
                       
@@ -260,7 +260,7 @@ export function POSCustomerModal({
                       {customer.totalPurchases > 0 && (
                         <div className={`mt-2 pt-2 border-t flex items-center gap-4 text-xs ${darkMode ? 'border-gray-700 text-gray-500' : 'border-gray-200 text-gray-500'}`}>
                           <span>{t.totalPurchases}: {customer.totalPurchases.toFixed(2)}</span>
-                          <span>{t.lastPurchase}: {customer.lastPurchaseDate ? new Date(customer.lastPurchaseDate).toLocaleDateString('tr-TR') : '-'}</span>
+                          <span>{t.lastPurchase}: {customer.lastPurchase ? new Date(customer.lastPurchase).toLocaleDateString('tr-TR') : '-'}</span>
                         </div>
                       )}
                     </div>

@@ -51,7 +51,7 @@ class CacheManager<T> {
    * Get data from cache
    * Returns null if cache is expired or doesn't exist
    */
-  async get(key: string): Promise<T | null> {
+  async get<U = T>(key: string): Promise<U | null> {
     try {
       const entry = await this.store.getItem<CacheEntry<T>>(key);
       
@@ -76,7 +76,7 @@ class CacheManager<T> {
       }
 
       logger.log(`Cache hit: ${key}`);
-      return entry.data;
+      return entry.data as unknown as U;
     } catch (error) {
       logger.error('Cache get error:', error);
       return null;

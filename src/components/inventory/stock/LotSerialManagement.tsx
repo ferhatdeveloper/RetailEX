@@ -120,7 +120,7 @@ export function LotSerialManagement() {
   // Fetch lots on component mount
   useEffect(() => {
     if (selectedFirma) {
-      fetchLots(selectedFirma.id)
+      fetchLots(selectedFirma.id ?? String(selectedFirma.logicalref))
         .then(data => setLots(data))
         .catch(error => toast.error('Lotlar yüklenirken hata oluştu'));
     }

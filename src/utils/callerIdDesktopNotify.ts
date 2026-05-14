@@ -38,7 +38,7 @@ export async function showCallerIdDesktopNotification(options: {
       body: options.body,
       tag: 'retailex-caller-id-global',
       renotify: true,
-    });
+    } as unknown as NotificationOptions);
     if (options.onClick) {
       n.onclick = () => {
         options.onClick?.();

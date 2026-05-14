@@ -607,26 +607,26 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       ? [
           columnHelper.accessor('cost', {
             header: tm('cost').toUpperCase(),
-            cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
+            cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
             size: 120
           }),
         ]
       : []),
     columnHelper.accessor('price', {
       header: tm('unitPrice').toUpperCase(),
-      cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
+      cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
       size: 140
     }),
     columnHelper.accessor('salePriceUSD' as any, {
       header: 'FİYAT (USD)',
-      cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
+      cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
       size: 120
     }),
     ...(showPurchasePricing
       ? [
           columnHelper.accessor('purchasePriceUSD' as any, {
             header: 'ALIŞ (USD)',
-            cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
+            cell: info => info.getValue() != null && String(info.getValue()).trim() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
             size: 120
           }),
         ]
@@ -1039,7 +1039,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 [tm('category').toUpperCase(), mobileActionProduct.category || '—'],
                 ...(showPurchasePricing
                   ? [
-                      [tm('cost').toUpperCase(), mobileActionProduct.cost != null && mobileActionProduct.cost !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'] as [string, string],
+                      [tm('cost').toUpperCase(), mobileActionProduct.cost != null && String(mobileActionProduct.cost).trim() !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'] as [string, string],
                     ]
                   : []),
                 [tm('unitPrice').toUpperCase(), formatCurrency(Number(mobileActionProduct.price) || 0, 2, false)],

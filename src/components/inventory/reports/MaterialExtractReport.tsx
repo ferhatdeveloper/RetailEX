@@ -54,7 +54,7 @@ export function MaterialExtractReport() {
         let cancelled = false;
         async function load() {
             try {
-                const list = await productAPI.getAll();
+                const list = await productAPI.getAllForReports();
                 if (!cancelled) setProducts(list);
             } catch (err) {
                 console.error('[MaterialExtractReport] products load failed', err);

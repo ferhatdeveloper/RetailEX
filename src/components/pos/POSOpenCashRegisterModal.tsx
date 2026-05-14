@@ -151,19 +151,19 @@ export function POSOpenCashRegisterModal({
             <h4 className="text-sm text-blue-900 mb-3">{t.sessionInformation}</h4>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">{t.cashierLabel}</span>
+                <span className="text-gray-600">{String(t.cashierLabel)}</span>
                 <span className="text-gray-900">Sistem Yöneticisi</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">{t.cashRegisterLabel}</span>
+                <span className="text-gray-600">{String(t.cashRegisterLabel)}</span>
                 <span className="text-gray-900">KASA #1</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">{t.dateLabel}</span>
+                <span className="text-gray-600">{String(t.dateLabel)}</span>
                 <span className="text-gray-900">{new Date().toLocaleDateString('tr-TR')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">{t.timeLabel}</span>
+                <span className="text-gray-600">{String(t.timeLabel)}</span>
                 <span className="text-gray-900">{new Date().toLocaleTimeString('tr-TR')}</span>
               </div>
             </div>

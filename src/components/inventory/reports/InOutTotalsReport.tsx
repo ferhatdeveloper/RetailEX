@@ -43,7 +43,7 @@ export function InOutTotalsReport() {
             setLoading(true);
             try {
                 const [products, invRes, slipMovements] = await Promise.all([
-                    productAPI.getAll(),
+                    productAPI.getAllForReports(),
                     // Hem satış hem alış faturaları
                     Promise.all([
                         invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'sales' }),

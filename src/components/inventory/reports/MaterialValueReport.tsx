@@ -35,7 +35,7 @@ export function MaterialValueReport() {
         async function loadData() {
             setLoading(true);
             try {
-                const data = await productAPI.getAll();
+                const data = await productAPI.getAllForReports();
                 if (!cancelled) setProducts(data);
             } catch (err) {
                 console.error('[MaterialValueReport] load failed', err);

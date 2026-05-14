@@ -59,7 +59,7 @@ export function POSCampaignModal({
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter(campaign => {
       if (filter === 'active') {
-        return campaign.isActive;
+        return campaign.active;
       }
       return true;
     }).filter(campaign => {

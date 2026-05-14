@@ -872,7 +872,12 @@ export default function MarketPOS({
       }
       return item;
     }));
-    showNotif(t.unitChanged?.replace('{unit}', unit) || `Birim ${unit} olarak güncellendi`, 'success');
+    const rawUnitChanged = t.unitChanged;
+    const unitChangedMsg =
+      typeof rawUnitChanged === 'string'
+        ? rawUnitChanged.replace('{unit}', unit)
+        : `Birim ${unit} olarak güncellendi`;
+    showNotif(unitChangedMsg, 'success');
   };
 
   // Clear cart

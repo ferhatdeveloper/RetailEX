@@ -1,6 +1,10 @@
 import { Campaign, CartItem } from '../core/types';
 import { roundPosDiscountAmountUp } from './discountRounding';
 
+function cartItemUnitPrice(item: CartItem): number {
+  return item.variant?.price ?? item.product.price;
+}
+
 export interface CampaignResult {
   totalDiscount: number;
   itemDiscounts: { index: number, discountAmount: number }[];
@@ -44,7 +48,7 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
 
   // Calculate sum of eligible items (after item-level discounts)
   const eligibleSubtotal = eligibleItems.reduce((sum, { item }) => {
-    const price = item.price || item.variant?.price || item.product.price;
+    const price = cartItemUnitPrice(item);
     const itemDiscount = (item.quantity * price) * (item.discount / 100);
     return sum + (item.quantity * price) - itemDiscount;
   }, 0);
@@ -78,7 +82,7 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
       // Standard practice: "N al M öde" applies to items of same price or cheapest in set.
       const flattenedItems: { index: number, price: number }[] = [];
       eligibleItems.forEach(({ item, index }) => {
-        const itemPrice = item.price || item.variant?.price || item.product.price;
+        const itemPrice = cartItemUnitPrice(item);
         // Consider item-level percentage discount
         const effectivePrice = itemPrice * (1 - item.discount / 100);
         for (let i = 0; i < item.quantity; i++) {
@@ -117,7 +121,7 @@ export function applyCampaign(cart: CartItem[], campaign: Campaign): CampaignRes
     // Force a specific price for all eligible items
     let discount = 0;
     eligibleItems.forEach(({ item, index }) => {
-      const originalPrice = item.price || item.variant?.price || item.product.price;
+      const originalPrice = cartItemUnitPrice(item);
       const effectivePrice = originalPrice * (1 - item.discount / 100);
       const campaignPrice = campaign.discountValue; // discountValue stores the override price
       

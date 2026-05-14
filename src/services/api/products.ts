@@ -13,6 +13,11 @@ const PRODUCT_LIST_SELECT =
   'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 
+/** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
+const PRODUCT_REPORT_LIST_SELECT =
+  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,cost,purchase_price,unit,brand';
+const PRODUCT_REPORT_LIST_SELECT_SQL = PRODUCT_REPORT_LIST_SELECT.replace(/,/g, ', ');
+
 /** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
 function firmNrPadded(): string {
   return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
@@ -280,6 +285,39 @@ export const productAPI = {
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
       console.error('[ProductAPI] getAll failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Aktif ürünler — rapor ekranları için hafif kolon seti (`getAll` yerine tercih edin).
+   */
+  async getAllForReports(): Promise<Product[]> {
+    try {
+      const tableName = `rex_${firmNrPadded()}_products`;
+      const firmEq = firmNrPadded();
+      if (shouldUseTenantPostgrestApi()) {
+        const { postgrest } = await import('./postgrestClient');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: PRODUCT_REPORT_LIST_SELECT,
+            firm_nr: `eq.${firmEq}`,
+            is_active: 'eq.true',
+            order: 'name.asc',
+            limit: 15000,
+          },
+          { schema: 'public' }
+        );
+        return (Array.isArray(rows) ? rows : []).map(mapDatabaseProductToProduct);
+      }
+      const { rows } = await postgres.query(
+        `SELECT ${PRODUCT_REPORT_LIST_SELECT_SQL} FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC LIMIT 25000`,
+        [firmEq]
+      );
+      return rows.map(mapDatabaseProductToProduct);
+    } catch (error) {
+      console.error('[ProductAPI] getAllForReports failed:', error);
       return [];
     }
   },

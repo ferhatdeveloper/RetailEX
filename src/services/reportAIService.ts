@@ -35,7 +35,7 @@ interface ReportData {
   }>;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;

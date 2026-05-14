@@ -113,7 +113,7 @@ export function ReportChatAI({
       // ChatGPT ile analiz yap (fallback ile)
       const conversationHistory = messages
         .filter(m => m.role !== 'assistant' || m.content !== 'Merhaba! ğŸ‘‹\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!')
-        .map(m => ({ role: m.role, content: m.content }));
+        .map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }));
       
       const response = await generateAIResponse(
         userMessage.content, 

@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { offlineQueue, QueuedTransaction } from '../utils/offlineQueue';
+import { offlineQueue, QueuedTransaction } from '../../utils/offlineQueue';
 
 export function OfflineQueueIndicator() {
   const { theme } = useTheme();
