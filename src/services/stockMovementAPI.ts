@@ -57,6 +57,8 @@ export const STOCK_SLIP_TRCODES = {
     COUNTING: 25,        // Sayım Fişi
     SURPLUS: 26,         // Sayım Fazlası
     SHORTAGE: 50,        // Sayım Eksiği
+    /** Fiyat değişim fişi (Excel toplu fiyat vb.) — stok miktarı değişmez */
+    PRICE_CHANGE: 78,
 };
 
 class StockMovementAPI {
@@ -268,6 +270,7 @@ class StockMovementAPI {
                             product_id: row.product_id,
                             quantity: row.quantity,
                             unit_price: row.unit_price,
+                            cost_price: row.cost_price,
                             created_at: row.created_at,
                             document_no: m.document_no,
                             movement_type: m.movement_type,
@@ -325,7 +328,8 @@ class StockMovementAPI {
         try {
             const { rows } = await postgres.query(
                 `SELECT
-                    i.id, i.movement_id, i.product_id::text as product_id, i.quantity, i.unit_price, i.created_at,
+                    i.id, i.movement_id, i.product_id::text as product_id, i.quantity, i.unit_price, i.cost_price,
+                    i.notes, i.created_at,
                     m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
                     COALESCE(s.name, '') as warehouse_name,
                     'slip' as source_type,
@@ -406,6 +410,7 @@ class StockMovementAPI {
             if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
             if (movement.movement_type === 'transfer') trcode = STOCK_SLIP_TRCODES.TRANSFER;
             if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
+            if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
 
             // Header
             const { rows } = await postgres.query(
@@ -447,8 +452,8 @@ class StockMovementAPI {
                     ]
                 );
 
-                // Update stock in products table
-                if (item.product_id) {
+                // Fiyat değişim fişi: stok güncellenmez
+                if (movement.movement_type !== 'price_change' && item.product_id) {
                     let modifier = Number(item.quantity) || 0;
                     // If out-type movement, subtract stock (except for specific in-types)
                     if (['out', 'adjustment'].includes(movement.movement_type || 'out')) {
@@ -471,6 +476,59 @@ class StockMovementAPI {
             console.error('[StockMovementAPI] create failed:', error);
             throw error;
         }
+    }
+
+    /**
+     * Toplu fiyat güncellemesi sonrası tek bir "fiyat değişim fişi" oluşturur.
+     * `stock_movements` + `stock_movement_items` (miktar=0); ürün stoku değişmez.
+     * Malzeme geçmişi / ürün hareketleri ekranında `movement_type = price_change` ile listelenir.
+     */
+    async createPriceChangeSlip(
+        lines: Array<{
+            product_id: string;
+            product_name: string;
+            product_code?: string;
+            old_cost: number;
+            old_price: number;
+            new_cost: number;
+            new_price: number;
+            unit_name?: string;
+        }>,
+        opts?: { sourceNote?: string }
+    ): Promise<StockMovement | null> {
+        if (!lines.length) return null;
+        const src = (opts?.sourceNote || 'Excel fiyat güncelleme').trim().slice(0, 200);
+        const docNo = `FD-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`.slice(0, 50);
+        const desc = `Fiyat değişim fişi — ${lines.length} kalem — ${src}`;
+        const items: Partial<StockMovementItem>[] = lines.map((line) => {
+            const code = (line.product_code || '').trim();
+            const note = [
+                `Alış: ${line.old_cost} → ${line.new_cost}`,
+                `Satış: ${line.old_price} → ${line.new_price}`,
+                code ? `Kod: ${code}` : '',
+            ]
+                .filter(Boolean)
+                .join(' | ');
+            return {
+                product_id: line.product_id,
+                quantity: 0,
+                unit_price: line.new_price,
+                cost_price: line.new_cost,
+                unit_name: line.unit_name || 'Adet',
+                notes: note.slice(0, 2000),
+            };
+        });
+        return this.create(
+            {
+                document_no: docNo,
+                movement_type: 'price_change',
+                trcode: STOCK_SLIP_TRCODES.PRICE_CHANGE,
+                movement_date: new Date().toISOString(),
+                description: desc,
+                status: 'completed',
+            },
+            items
+        );
     }
 
     /**

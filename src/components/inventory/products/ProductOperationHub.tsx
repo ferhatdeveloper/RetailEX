@@ -13,6 +13,12 @@ import { ProductFormPage } from './ProductFormPage';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 
+function formatTrNumberOrDash(n: unknown): string {
+    if (n === null || n === undefined || n === '') return '—';
+    const x = typeof n === 'number' ? n : parseFloat(String(n));
+    return Number.isFinite(x) ? x.toLocaleString('tr-TR', { maximumFractionDigits: 4 }) : '—';
+}
+
 interface ProductOperationHubProps {
     product: Product;
     onClose: () => void;
@@ -34,7 +40,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
     // Filter states
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
-    const [filterType, setFilterType] = useState<'all' | 'in' | 'out'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'in' | 'out' | 'price_change'>('all');
 
     // Load movements when overview or movements tab is active
     useEffect(() => {
@@ -210,26 +216,41 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                 <p className="text-xs">Henüz hareket yok</p>
                                             </div>
                                         ) : (
-                                            movements.slice(0, 5).map((item) => (
+                                            movements.slice(0, 5).map((item) => {
+                                                const mt = item.movement?.movement_type;
+                                                const isPrice = mt === 'price_change';
+                                                return (
                                                 <div key={item.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`text-xs font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
+                                                            <span className={`text-xs font-bold ${
+                                                                isPrice ? 'text-violet-600' : item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
                                                                 }`}>
-                                                                {item.movement?.movement_type === 'in' ? 'Giriş' : 'Çıkış'}
+                                                                {isPrice ? 'Fiyat fişi' : item.movement?.movement_type === 'in' ? 'Giriş' : 'Çıkış'}
                                                             </span>
                                                             <span className="text-[10px] text-gray-500">
                                                                 {new Date(item.movement?.movement_date || item.created_at).toLocaleDateString('tr-TR')}
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-gray-600 truncate">{item.movement?.document_no || 'Manuel'}</p>
+                                                        {isPrice && (item.notes || item.unit_price != null) ? (
+                                                            <p className="text-[10px] text-violet-700 truncate max-w-[200px]">
+                                                                {item.notes || `Alış ${formatTrNumberOrDash(item.cost_price)} · Satış ${formatTrNumberOrDash(item.unit_price)}`}
+                                                            </p>
+                                                        ) : null}
                                                     </div>
-                                                    <span className={`text-sm font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
+                                                    <span className={`text-sm font-bold ${
+                                                        isPrice ? 'text-violet-600' : item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
                                                         }`}>
-                                                        {item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}
+                                                        {isPrice ? (
+                                                            <>A:{formatTrNumberOrDash(item.cost_price)} S:{formatTrNumberOrDash(item.unit_price)}</>
+                                                        ) : (
+                                                            <>{item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}</>
+                                                        )}
                                                     </span>
                                                 </div>
-                                            ))
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </div>
@@ -345,12 +366,13 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
 
                                 <select 
                                     value={filterType}
-                                    onChange={(e) => setFilterType(e.target.value as any)}
+                                    onChange={(e) => setFilterType(e.target.value as 'all' | 'in' | 'out' | 'price_change')}
                                     className="text-[10px] font-bold bg-white border border-gray-200 rounded-lg px-2 py-1 outline-none"
                                 >
                                     <option value="all">TÜMÜ</option>
                                     <option value="in">GİRİŞ ( + )</option>
                                     <option value="out">ÇIKIŞ ( - )</option>
+                                    <option value="price_change">FİYAT FİŞİ</option>
                                 </select>
                             </div>
 
@@ -438,13 +460,22 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                         <span className="text-[9px] text-gray-400 truncate max-w-[120px] block">{item.notes || '---'}</span>
                                                     </td>
                                                     <td className="px-4 py-2">
-                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${item.movement?.movement_type === 'in'
+                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                            item.movement?.movement_type === 'in'
                                                             ? 'bg-green-100 text-green-700'
                                                             : item.movement?.movement_type === 'out'
                                                                 ? 'bg-red-100 text-red-700'
-                                                                : 'bg-blue-100 text-blue-700'
+                                                                : item.movement?.movement_type === 'price_change'
+                                                                    ? 'bg-violet-100 text-violet-800'
+                                                                    : 'bg-blue-100 text-blue-700'
                                                             } `}>
-                                                            {item.movement?.movement_type === 'in' ? 'Giriş' : item.movement?.movement_type === 'out' ? 'Çıkış' : 'Düzeltme'}
+                                                            {item.movement?.movement_type === 'in'
+                                                                ? 'Giriş'
+                                                                : item.movement?.movement_type === 'out'
+                                                                    ? 'Çıkış'
+                                                                    : item.movement?.movement_type === 'price_change'
+                                                                        ? 'Fiyat fişi'
+                                                                        : 'Düzeltme'}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-2 text-gray-600 text-[11px]">
@@ -459,10 +490,17 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-2 text-right">
-                                                        <span className={`text-[11px] font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
-                                                            } `}>
-                                                            {item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}
-                                                        </span>
+                                                        {item.movement?.movement_type === 'price_change' ? (
+                                                            <div className="text-[10px] font-bold text-violet-700 leading-tight text-right">
+                                                                <div>Alış {formatTrNumberOrDash(item.cost_price)}</div>
+                                                                <div>Satış {formatTrNumberOrDash(item.unit_price)}</div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className={`text-[11px] font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
+                                                                } `}>
+                                                                {item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ))}
