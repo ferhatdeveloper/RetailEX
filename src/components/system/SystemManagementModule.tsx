@@ -1,6 +1,6 @@
 // System Management Module - All System Settings Modules
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download, Loader2,
@@ -683,6 +683,18 @@ function BackupRestoreView() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const logPreRef = useRef<HTMLPreElement>(null);
+
+  const appendLog = useCallback((line: string) => {
+    const stamp = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+    setLogLines((prev) => [...prev, `[${stamp}] ${line}`]);
+  }, []);
+
+  useEffect(() => {
+    const el = logPreRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logLines]);
 
   useEffect(() => {
     if (IS_TAURI) return;
@@ -697,9 +709,10 @@ function BackupRestoreView() {
 
   const handleFullPgBackup = async () => {
     setToast(null);
+    appendLog('=== PostgreSQL tam yedek ===');
     setBusy(true);
     try {
-      const res = await runPostgresFullBackup();
+      const res = await runPostgresFullBackup((line) => appendLog(line));
       if (res.ok) {
         if (res.mode === 'tauri') {
           setToast({ kind: 'ok', text: res.message });
@@ -710,6 +723,7 @@ function BackupRestoreView() {
         setToast({ kind: 'err', text: res.message });
       }
     } finally {
+      appendLog('=== İşlem sonu ===');
       setBusy(false);
     }
   };
@@ -749,6 +763,33 @@ function BackupRestoreView() {
               istemci araçlarında <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> bulunmalıdır.
             </p>
           )}
+
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">İşlem günlüğü</span>
+              <button
+                type="button"
+                disabled={busy || logLines.length === 0}
+                onClick={() => setLogLines([])}
+                className="text-xs text-slate-500 hover:text-indigo-600 disabled:opacity-40 disabled:pointer-events-none"
+              >
+                Günlüğü temizle
+              </button>
+            </div>
+            <pre
+              ref={logPreRef}
+              className="min-h-[10rem] max-h-72 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-emerald-400 shadow-inner whitespace-pre-wrap break-words"
+              aria-live="polite"
+              aria-label="Yedekleme günlüğü"
+            >
+              {logLines.length === 0 ? (
+                <span className="text-slate-500">Henüz kayıt yok. «Tam PostgreSQL yedeği al» ile başlatın.</span>
+              ) : (
+                logLines.join('\n')
+              )}
+            </pre>
+          </div>
+
           {toast && (
             <div
               className={`rounded-lg px-4 py-3 text-sm ${

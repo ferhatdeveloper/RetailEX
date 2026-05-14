@@ -6,6 +6,8 @@ export interface MenuTranslations {
   advancedReports100: string;
   aiProductAnalytics: string;
   backupRestore: string;
+  /** Sistem Yönetimi menüsü: PostgreSQL tam yedek kısayolu */
+  postgresBackup: string;
   balanceSheet: string;
   bankAccounts: string;
   bankPaymentPlans: string;
@@ -1827,6 +1829,7 @@ export const translations: any = {
       advancedReports100: '⭐ Gelişmiş Raporlar (100+)',
       aiProductAnalytics: 'AI Ürün Analitiği',
       backupRestore: 'Yedekleme/Geri Yükleme',
+      postgresBackup: 'Yedekleme',
       balanceSheet: 'Bilanço (Balance Sheet)',
       bankAccounts: 'Banka Hesapları',
       bankPaymentPlans: 'Banka Ödeme Planları',
@@ -3284,6 +3287,7 @@ export const translations: any = {
       advancedReports100: '⭐ Advanced Reports (100+)',
       aiProductAnalytics: 'AI Product Analytics',
       backupRestore: 'Backup/Restore',
+      postgresBackup: 'Backup',
       balanceSheet: 'Balance Sheet',
       bankAccounts: 'Bank Accounts',
       bankPaymentPlans: 'Bank Payment Plans',
@@ -4619,6 +4623,7 @@ export const translations: any = {
       advancedReports100: '⭐ التقارير المتقدمة (+100)',
       aiProductAnalytics: 'تحليلات المنتجات بالذكاء الاصطناعي',
       backupRestore: 'النسخ الاحتياطي/الاستعادة',
+      postgresBackup: 'نسخ احتياطي',
       balanceSheet: 'الميزانية العمومية',
       bankAccounts: 'الحسابات البنكية',
       bankPaymentPlans: 'خطط الدفع البنكية',
@@ -5957,6 +5962,7 @@ export const translations: any = {
       advancedReports100: '⭐ ڕاپۆرتە پێشکەوتووەکان (100+)',
       aiProductAnalytics: 'شیکاری بەرهەم بە ژیری دەستکرد',
       backupRestore: 'پاڵپشتی و گەڕاندنەوە',
+      postgresBackup: 'پاڵپشتی',
       balanceSheet: 'بەیانی دارایی',
       bankAccounts: 'حیسابە بانکییەکان',
       bankPaymentPlans: 'پلانی پارەدانی بانکی',

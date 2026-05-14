@@ -6,6 +6,19 @@ export type PostgresFullBackupResult =
   | { ok: true; mode: 'web'; fileName: string }
   | { ok: false; message: string };
 
+/** Terminal günlüğü satırı (UI tarafında zaman damgası eklenebilir). */
+export type PostgresBackupLogFn = (line: string) => void;
+
+function redactConnStr(connStr: string): string {
+  try {
+    const u = new URL(connStr);
+    if (u.password) u.password = '***';
+    return u.href;
+  } catch {
+    return '(bağlantı özeti okunamadı)';
+  }
+}
+
 /** Köprü çalışıyor mu (tarayıcı modunda). */
 export async function checkPgBridgeReachable(): Promise<boolean> {
   if (IS_TAURI) return true;
@@ -24,13 +37,23 @@ export async function checkPgBridgeReachable(): Promise<boolean> {
  * — Tauri: yerel `export_full_postgres_dump` (diske yazar, tam yol döner).
  * — Web: pg_bridge `/api/pg_dump` (indirme); sunucuda `pg_dump` gerekir.
  */
-export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult> {
+export async function runPostgresFullBackup(onLog?: PostgresBackupLogFn): Promise<PostgresFullBackupResult> {
+  const log = (s: string) => {
+    onLog?.(s);
+  };
+
   if (IS_TAURI) {
     try {
+      log('[1/2] Masaüstü (Tauri): export_full_postgres_dump çağrılıyor…');
+      log('[1/2] Not: pg_dump süresi veritabanı boyutuna bağlıdır; arayüz bu adımda bekler.');
       const message = await safeInvoke<string>('export_full_postgres_dump');
+      log('[2/2] pg_dump tamamlandı.');
+      log(message);
       return { ok: true, mode: 'tauri', message };
     } catch (e: unknown) {
-      return { ok: false, message: (e as Error)?.message || String(e) };
+      const msg = (e as Error)?.message || String(e);
+      log(`HATA: ${msg}`);
+      return { ok: false, message: msg };
     }
   }
 
@@ -40,8 +63,19 @@ export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult>
     typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_PG_DUMP_TOKEN
       ? String((import.meta as any).env.VITE_PG_DUMP_TOKEN).trim()
       : '';
+
+  log('[1/5] Web modu: aktif SQL hedefi (parola gizli)');
+  log(`      ${redactConnStr(connStr)}`);
+  log(`[2/5] Köprü tabanı: ${bridge}`);
+  if (bridgeDumpToken) {
+    log('[2/5] İstek: VITE_PG_DUMP_TOKEN ile body.token eklendi (PG_DUMP_TOKEN koruması).');
+  } else {
+    log('[2/5] Uyarı: PG_DUMP_TOKEN tanımlı değilse köprü /api/pg_dump korumasız olabilir.');
+  }
+
   let res: Response;
   try {
+    log('[3/5] POST /api/pg_dump gönderiliyor…');
     res = await fetch(`${bridge}/api/pg_dump`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/sql, application/octet-stream, */*' },
@@ -51,14 +85,17 @@ export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult>
       }),
     });
   } catch (err: unknown) {
-    return {
-      ok: false,
-      message:
-        `Köprüye bağlanılamadı (${bridge}). ` +
-        `Tarayıcıda tam yedek için pg_bridge çalışmalı ve sunucuda pg_dump kurulu olmalı. ` +
-        String((err as Error)?.message || err),
-    };
+    const msg =
+      `Köprüye bağlanılamadı (${bridge}). ` +
+      `Tarayıcıda tam yedek için pg_bridge çalışmalı ve sunucuda pg_dump kurulu olmalı. ` +
+      String((err as Error)?.message || err);
+    log(`HATA: ${msg}`);
+    return { ok: false, message: msg };
   }
+
+  log(`[4/5] HTTP ${res.status} ${res.statusText || ''}`.trim());
+  const ct = res.headers.get('Content-Type');
+  if (ct) log(`      Content-Type: ${ct}`);
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -69,6 +106,7 @@ export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult>
     } catch {
       /* metin olduğu gibi */
     }
+    log(`HATA: ${detail || `HTTP ${res.status}`}`);
     return { ok: false, message: detail || `HTTP ${res.status}` };
   }
 
@@ -83,7 +121,12 @@ export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult>
     }
   }
 
+  log('[5/5] Yanıt gövdesi okunuyor (blob)…');
   const blob = await res.blob();
+  const kb = blob.size / 1024;
+  log(`[5/5] Boyut: ${kb < 1024 ? `${kb.toFixed(1)} KiB` : `${(kb / 1024).toFixed(2)} MiB`}`);
+  log(`[5/5] İndirme başlatılıyor: ${fileName}`);
+
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
@@ -97,5 +140,6 @@ export async function runPostgresFullBackup(): Promise<PostgresFullBackupResult>
     URL.revokeObjectURL(url);
   }
 
+  log('Bitti: tarayıcı indirmeyi tetikledi.');
   return { ok: true, mode: 'web', fileName };
 }

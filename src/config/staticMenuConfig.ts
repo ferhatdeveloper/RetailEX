@@ -10,7 +10,7 @@ import {
     Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout
+    Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive
 } from 'lucide-react';
 import { Translations } from '../locales/translations';
 
@@ -303,6 +303,7 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
+            { label: t.menu.postgresBackup, screen: 'backuprestore', icon: HardDrive },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock }
         ]
     }
@@ -436,6 +437,7 @@ export const staticMenuSections = getStaticMenuSections({
         menuManagement: 'Menü Yönetimi',
         definitionsParameters: 'Tanımlar/Parametreler',
         backupRestore: 'Yedekleme/Geri Yükleme',
+        postgresBackup: 'Yedekleme',
         logAudit: 'Log/Denetim',
         virtualPbxCallerId: 'Sanal santral (Caller ID)',
         supabaseDataTransfer: 'Supabase Veri Aktarımı',
