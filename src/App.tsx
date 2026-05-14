@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { Login } from './components/system/Login';
 import { VersionProvider } from './contexts/VersionContext';
@@ -32,19 +31,6 @@ export type ManagementScreen = 'dashboard' | 'products' | 'customers' | 'reports
 
 // Re-export types for backward compatibility
 export type { Product, ProductVariant, Customer, Sale, SaleItem, Campaign, User } from './core/types';
-
-// Create a client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 dk — aynı veri için tekrar sorgu azalır
-      gcTime: 2 * 60 * 1000, // kullanılmayan sorgu önbelleği 2 dk sonra serbest (düşük RAM)
-    },
-  },
-});
 
 function App() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
