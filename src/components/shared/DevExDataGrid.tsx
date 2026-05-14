@@ -15,6 +15,8 @@ import { ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
+
 interface DevExDataGridProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
@@ -22,6 +24,8 @@ interface DevExDataGridProps<T> {
   enableFiltering?: boolean;
   enableColumnResizing?: boolean;
   enablePagination?: boolean;
+  /** Sayfa başına satır seçenekleri (masaüstü alt çubuk). Varsayılan: 10…100 */
+  pageSizeOptions?: number[];
   columnVisibility?: Record<string, boolean>;
   onColumnVisibilityChange?: (visibility: any) => void;
   pageSize?: number;
@@ -195,6 +199,7 @@ export function DevExDataGrid<T>({
   enableFiltering = true,
   enableColumnResizing = true,
   enablePagination = true,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   columnVisibility,
   onColumnVisibilityChange,
   pageSize = 20,
@@ -313,7 +318,7 @@ export function DevExDataGrid<T>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     enableRowSelection: true,
     filterFns: {
       custom: customFilterFn,
@@ -363,27 +368,29 @@ export function DevExDataGrid<T>({
         </div>
 
         {/* Mobile Pagination */}
-        <div className="bg-white border-t border-gray-200 p-3 sm:p-4 space-y-2">
-          <div className="text-xs sm:text-sm text-gray-600 text-center">
-            {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()} • {table.getFilteredRowModel().rows.length} {tm('records')}
+        {enablePagination && (
+          <div className="bg-white border-t border-gray-200 p-3 sm:p-4 space-y-2">
+            <div className="text-xs sm:text-sm text-gray-600 text-center">
+              {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()} • {table.getFilteredRowModel().rows.length} {tm('records')}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm sm:text-base font-medium rounded-lg min-h-[44px] active:scale-95"
+              >
+                {tm('previous')}
+              </button>
+              <button
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+                className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm sm:text-base font-medium rounded-lg min-h-[44px] active:scale-95"
+              >
+                {tm('next')}
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm sm:text-base font-medium rounded-lg min-h-[44px] active:scale-95"
-            >
-              {tm('previous')}
-            </button>
-            <button
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm sm:text-base font-medium rounded-lg min-h-[44px] active:scale-95"
-            >
-              {tm('next')}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -498,60 +505,62 @@ export function DevExDataGrid<T>({
       </div>
 
       {/* Pagination */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span>
-            {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()}
-          </span>
-          <span className="text-gray-400">|</span>
-          <span>
-            {table.getFilteredRowModel().rows.length} {tm('records')}
-          </span>
-        </div>
+      {enablePagination && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span>
+              {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()}
+            </span>
+            <span className="text-gray-400">|</span>
+            <span>
+              {table.getFilteredRowModel().rows.length} {tm('records')}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => table.setPageIndex(0)}
-            disabled={!table.getCanPreviousPage()}
-            className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
-          >
-            {tm('first')}
-          </button>
-          <button
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
-          >
-            {tm('previous')}
-          </button>
-          <button
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
-          >
-            {tm('next')}
-          </button>
-          <button
-            onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-            disabled={!table.getCanNextPage()}
-            className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
-          >
-            {tm('last')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => table.setPageIndex(0)}
+              disabled={!table.getCanPreviousPage()}
+              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            >
+              {tm('first')}
+            </button>
+            <button
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            >
+              {tm('previous')}
+            </button>
+            <button
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            >
+              {tm('next')}
+            </button>
+            <button
+              onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+              disabled={!table.getCanNextPage()}
+              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+            >
+              {tm('last')}
+            </button>
 
-          <select
-            value={table.getState().pagination.pageSize}
-            onChange={(e) => table.setPageSize(Number(e.target.value))}
-            className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            {[10, 15, 20, 25, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                {tm('show')} {size}
-              </option>
-            ))}
-          </select>
+            <select
+              value={table.getState().pagination.pageSize}
+              onChange={(e) => table.setPageSize(Number(e.target.value))}
+              className="px-3 py-1.5 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {tm('show')} {size}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

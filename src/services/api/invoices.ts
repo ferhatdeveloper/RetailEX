@@ -2394,7 +2394,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     total_cost: parseFloat(dbInv.total_cost || 0),
     gross_profit: parseFloat(dbInv.gross_profit || 0),
     profit_margin: parseFloat(dbInv.profit_margin || 0),
-    currency: dbInv.currency || 'IQD',
+    currency: String(dbInv.currency ?? dbInv.currency_code ?? '').trim() || 'IQD',
     currency_rate: parseFloat(dbInv.currency_rate || 1),
     payment_method: dbInv.payment_method,
   } as Invoice;

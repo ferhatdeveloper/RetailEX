@@ -321,7 +321,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   }, [searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy]);
 
   const filteredProducts = useMemo(() => {
-    return displayProducts.filter(product => {
+    const list = displayProducts.filter(product => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = searchQuery === '' ||
         (product.name?.toLowerCase() || '').includes(searchLower) ||
@@ -335,6 +335,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         : String(product.barcode || '').trim();
       const matchesDuplicate = duplicateDetectBy === 'none' || duplicateKeys.has(duplicateKey);
       return matchesSearch && matchesCategory && matchesService && matchesDuplicate;
+    });
+    /** Stok ≤ 0 olanlar listenin sonunda (pozitif stokta isim sırası) */
+    return [...list].sort((a, b) => {
+      const stockA = Number(a.stock ?? 0);
+      const stockB = Number(b.stock ?? 0);
+      const lastA = stockA <= 0 ? 1 : 0;
+      const lastB = stockB <= 0 ? 1 : 0;
+      if (lastA !== lastB) return lastA - lastB;
+      return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr', { sensitivity: 'base' });
     });
   }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy, duplicateKeys]);
 

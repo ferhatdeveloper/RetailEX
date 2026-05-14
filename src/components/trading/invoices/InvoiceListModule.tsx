@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
 import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send, ClipboardList } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
@@ -65,6 +65,9 @@ const getIcon = (iconName: string) => {
 
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_MOVE_PX = 14;
+
+/** Sunucu sayfalama (getPaginated) — satır başına kayıt seçenekleri */
+const INVOICE_LIST_PAGE_SIZES = [200, 300, 400, 500, 1000, 2000] as const;
 
 /** Liste satırı: SQL/PostgREST `trcode` ve tarih alias'ı `date` */
 type ListInvoice = Invoice & { trcode?: number; date?: string };
@@ -163,7 +166,7 @@ export function InvoiceListModule({
 
   // Sayfalama state
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState<number>(INVOICE_LIST_PAGE_SIZES[0]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
@@ -607,6 +610,21 @@ export function InvoiceListModule({
 
   const totalAmount = invoices.reduce((sum, inv) => sum + (inv.total ?? inv.total_amount ?? 0), 0);
 
+  const resolveListRowCurrency = (inv: ListInvoice): string => {
+    const c = String(inv.currency ?? '').trim().toUpperCase();
+    if (c) return c;
+    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
+    return firm || 'IQD';
+  };
+
+  const headerTotalsCurrency = useMemo(() => {
+    const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
+    const uniq = new Set(codes);
+    if (uniq.size === 1) return [...uniq][0];
+    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
+    return firm || 'IQD';
+  }, [invoices, selectedFirm]);
+
   // Table columns
   const columnHelper = createColumnHelper<ListInvoice>();
   const columns = [
@@ -695,7 +713,12 @@ export function InvoiceListModule({
         const invoice = info.row.original;
         // total_amount varsa onu kullan, yoksa total kullan
         const value = invoice.total_amount || invoice.total || 0;
-        return <span className="font-semibold">{value > 0 ? `${formatNumber(value, 2, true)} IQD` : '0,00 IQD'}</span>;
+        const cur = resolveListRowCurrency(invoice);
+        return (
+          <span className="font-semibold">
+            {value > 0 ? `${formatNumber(value, 2, true)} ${cur}` : `0,00 ${cur}`}
+          </span>
+        );
       }
     }),
     columnHelper.accessor('status', {
@@ -771,7 +794,7 @@ export function InvoiceListModule({
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium">{title || tm('invoices')}</h2>
               <span className="text-blue-100 text-[10px]">• {totalCount.toLocaleString(tm('localeCode'))} {tm('invoicesCount')}</span>
-              <span className="text-blue-100 text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {tm('currencyCode')}</span>
+              <span className="text-blue-100 text-[10px] ml-1">• {formatNumber(totalAmount, 2, true)} {headerTotalsCurrency}</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
@@ -916,6 +939,7 @@ export function InvoiceListModule({
                   const meta = getInvoiceTypeMeta(inv);
                   const TypeIcon = meta.Icon;
                   const totalVal = inv.total_amount ?? inv.total ?? 0;
+                  const rowCur = resolveListRowCurrency(inv);
                   const rowKey = String(inv.id ?? inv.invoice_no);
                   const st = inv.status || '';
                   return (
@@ -979,7 +1003,7 @@ export function InvoiceListModule({
                         <div className="flex justify-between gap-2">
                           <span className="text-gray-500 shrink-0">{tm('total')}</span>
                           <span className="font-semibold tabular-nums">
-                            {totalVal > 0 ? `${formatNumber(totalVal, 2, true)} ${tm('currencyCode')}` : `0 ${tm('currencyCode')}`}
+                            {totalVal > 0 ? `${formatNumber(totalVal, 2, true)} ${rowCur}` : `0 ${rowCur}`}
                           </span>
                         </div>
                         <div className="flex justify-between gap-2 items-center">
@@ -1031,10 +1055,11 @@ export function InvoiceListModule({
                   }}
                   className="max-w-[200px] w-full px-2 py-1.5 border border-gray-200 rounded-lg text-[11px] bg-gray-50"
                 >
-                  <option value={25}>25 / sayfa</option>
-                  <option value={50}>50 / sayfa</option>
-                  <option value={100}>100 / sayfa</option>
-                  <option value={200}>200 / sayfa</option>
+                  {INVOICE_LIST_PAGE_SIZES.map((n) => (
+                    <option key={n} value={n}>
+                      {tm('show')} {n}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1068,10 +1093,11 @@ export function InvoiceListModule({
                   }}
                   className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value={25}>25 / sayfa</option>
-                  <option value={50}>50 / sayfa</option>
-                  <option value={100}>100 / sayfa</option>
-                  <option value={200}>200 / sayfa</option>
+                  {INVOICE_LIST_PAGE_SIZES.map((n) => (
+                    <option key={n} value={n}>
+                      {tm('show')} {n}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1150,7 +1176,8 @@ export function InvoiceListModule({
                   tm('total'),
                   (() => {
                     const v = mobileActionInvoice.total_amount ?? mobileActionInvoice.total ?? 0;
-                    return v > 0 ? `${formatNumber(v, 2, true)} ${tm('currencyCode')}` : `0 ${tm('currencyCode')}`;
+                    const cur = resolveListRowCurrency(mobileActionInvoice);
+                    return v > 0 ? `${formatNumber(v, 2, true)} ${cur}` : `0 ${cur}`;
                   })()
                 ],
                 [tm('status'), tm(mobileActionInvoice.status || '') || mobileActionInvoice.status || '—'],
@@ -1417,7 +1444,7 @@ export function InvoiceListModule({
                           <div>
                             <span className="text-gray-600">{tm('campaignDiscountLabel')}:</span>
                             <span className="font-medium text-orange-600 ml-2">
-                              {formatNumber(selectedInvoice.campaign_discount, 2, true)} IQD
+                              {formatNumber(selectedInvoice.campaign_discount, 2, true)} {resolveListRowCurrency(selectedInvoice)}
                             </span>
                           </div>
                         )}
@@ -1465,23 +1492,23 @@ export function InvoiceListModule({
                     <div className="space-y-3 max-w-md ml-auto">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600">{tm('subtotal')}:</span>
-                        <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.subtotal || 0, 2, true)} IQD</span>
+                        <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.subtotal || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                       </div>
                       {selectedInvoice.discount > 0 && (
                         <div className="flex justify-between text-sm text-red-600">
                           <span>{tm('discount')}:</span>
-                          <span className="font-semibold">-{formatNumber(selectedInvoice.discount, 2, true)} IQD</span>
+                          <span className="font-semibold">-{formatNumber(selectedInvoice.discount, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                         </div>
                       )}
                       {selectedInvoice.tax > 0 && (
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-600">{tm('tax')}:</span>
-                          <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.tax, 2, true)} IQD</span>
+                          <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.tax, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-2xl font-bold border-t-2 border-blue-600 pt-4 mt-4">
                         <span className="text-gray-900">{tm('grandTotal')}:</span>
-                        <span className="text-blue-600">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} IQD</span>
+                        <span className="text-blue-600">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
                       </div>
                     </div>
                   </div>
