@@ -98,6 +98,7 @@ import { SerialLotModule } from '../inventory/stock/SerialLotModule';
 import { WarehouseDefinitionsModule } from '../inventory/warehouse/WarehouseDefinitionsModule';
 import { ServiceCardsModule } from '../modules/ServiceCardsModule';
 import { StockMovementsModule } from '../inventory/stock/StockMovementsModule';
+import { StockPriceChangeSlipsModule } from '../inventory/stock/StockPriceChangeSlipsModule';
 import { WarehouseTransferModule } from '../inventory/warehouse/WarehouseTransferModule';
 import { StockCountModule as WMSStockCountModule } from '../wms/components/StockCountModule';
 import { MaterialReportsModule } from '../inventory/products/MaterialReportsModule';
@@ -200,7 +201,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
-  'stockmovements-deficit' | 'stockmovements-surplus' |
+  'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
   'report-designer' | 'label-designer' |
@@ -1055,6 +1056,9 @@ export function ManagementModule({
 
         case 'stockmovements-surplus':
           return <StockMovementsModule defaultFilter="surplus" />;
+
+        case 'stock-price-change-slips':
+          return <StockPriceChangeSlipsModule />;
 
         // Material Management - Counting
         case 'stockcount':

@@ -122,6 +122,8 @@ export interface MenuTranslations {
   specialCodes: string;
   stockInventory: string;
   stockManagementPanel: string;
+  /** Malzeme → Hareketler: Excel/stok fiyat değişim fişleri listesi */
+  stockPriceChangeSlips: string;
   stockReports: string;
   storeConfiguration: string;
   storeManagement: string;
@@ -1891,6 +1893,7 @@ export const translations: any = {
       materialExtract: 'Malzeme Ekstresi',
       materialManagement: 'Malzeme Yönetimi',
       materialManagementSlips: 'Malzeme Yönetim Fişleri',
+      stockPriceChangeSlips: 'Fiyat değişim fişleri (stok)',
       materialValue: 'Malzeme Değer',
       materialWarehouseStatus: 'Malzeme Ambar Durum',
       materials: 'Malzemeler',
@@ -3350,6 +3353,7 @@ export const translations: any = {
       materialExtract: 'Material Extract',
       materialManagement: 'Material Management',
       materialManagementSlips: 'Material Management Slips',
+      stockPriceChangeSlips: 'Price change slips (stock)',
       materialValue: 'Material Value',
       materialWarehouseStatus: 'Material Warehouse Status',
       materials: 'Materials',
@@ -4690,6 +4694,7 @@ export const translations: any = {
       materialExtract: 'كشف المواد',
       materialManagement: 'إدارة المواد',
       materialManagementSlips: 'سندات إدارة المواد',
+      stockPriceChangeSlips: 'سندات تغيير الأسعار (المخزون)',
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'حالة مخزن المواد',
       materials: 'المواد',
@@ -6029,6 +6034,7 @@ export const translations: any = {
       materialExtract: 'کورتەی ماددە',
       materialManagement: 'بەڕێوەبردنی ماددەکان',
       materialManagementSlips: 'پسوڵەکانی بەڕێوەبردنی ماددە',
+      stockPriceChangeSlips: 'پسوڵەکانی گۆڕینی نرخ (کۆگا)',
       materialValue: 'قيمة المواد',
       materialWarehouseStatus: 'باری کۆگای ماددەکان',
       materials: 'ماددەکان',

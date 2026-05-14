@@ -45,6 +45,17 @@ export interface StockMovementItem {
     notes?: string;
 }
 
+/** Liste: Excel vb. ile oluşturulan fiyat değişim fişi özetleri */
+export interface PriceChangeSlipSummary {
+    id: string;
+    document_no: string;
+    movement_date: string;
+    created_at: string;
+    description: string | null;
+    status: string;
+    line_count: number;
+}
+
 /**
  * Logo ERP Standard Stock Slip TRCODEs
  */
@@ -130,6 +141,96 @@ class StockMovementAPI {
             return combined;
         } catch (error) {
             console.error('[StockMovementAPI] getAll failed:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Tüm fiyat değişim fişleri (`movement_type = price_change`) — fiş tarihi ve oluşturulma tarihi ile.
+     * Excel toplu fiyat güncelleme bu tabloya yazar; ürün bazlı hareket listesiyle aynı kaynak.
+     */
+    async listPriceChangeSlipSummaries(): Promise<PriceChangeSlipSummary[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const movPath = `/rex_${fn}_${pn}_stock_movements`;
+                const rows = await postgrest.get<any[]>(
+                    movPath,
+                    {
+                        select: 'id,document_no,movement_date,created_at,description,status,trcode',
+                        movement_type: 'eq.price_change',
+                        order: 'movement_date.desc,created_at.desc',
+                        limit: 500,
+                    },
+                    { schema: 'public' }
+                );
+                const list = Array.isArray(rows) ? rows : [];
+                if (list.length === 0) return [];
+
+                const itemPath = `/rex_${fn}_${pn}_stock_movement_items`;
+                const countMap = new Map<string, number>();
+                const mids = list.map((r) => String(r.id));
+                const chunkSize = 35;
+                for (let i = 0; i < mids.length; i += chunkSize) {
+                    const chunk = mids.slice(i, i + chunkSize);
+                    const inList = chunk.join(',');
+                    const items = await postgrest
+                        .get<any[]>(
+                            itemPath,
+                            {
+                                select: 'movement_id',
+                                movement_id: `in.(${inList})`,
+                                limit: 20000,
+                            },
+                            { schema: 'public' }
+                        )
+                        .catch(() => [] as any[]);
+                    for (const row of Array.isArray(items) ? items : []) {
+                        const mid = String(row.movement_id || '');
+                        if (!mid) continue;
+                        countMap.set(mid, (countMap.get(mid) || 0) + 1);
+                    }
+                }
+
+                return list.map((r) => ({
+                    id: String(r.id),
+                    document_no: String(r.document_no || ''),
+                    movement_date: r.movement_date || r.created_at || '',
+                    created_at: r.created_at || '',
+                    description: r.description != null ? String(r.description) : null,
+                    status: String(r.status || ''),
+                    line_count: countMap.get(String(r.id)) || 0,
+                }));
+            } catch (e) {
+                console.warn('[StockMovementAPI] listPriceChangeSlipSummaries PostgREST:', e);
+                return [];
+            }
+        }
+
+        try {
+            const { rows } = await postgres.query(
+                `SELECT m.id, m.document_no, m.movement_date, m.created_at, m.description, m.status,
+                        COUNT(i.id)::int AS line_count
+                 FROM stock_movements m
+                 LEFT JOIN stock_movement_items i ON i.movement_id = m.id
+                 WHERE m.movement_type = 'price_change'
+                 GROUP BY m.id
+                 ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
+                 LIMIT 500`
+            );
+            return (rows as any[]).map((r) => ({
+                id: String(r.id),
+                document_no: String(r.document_no || ''),
+                movement_date: r.movement_date || r.created_at || '',
+                created_at: r.created_at || '',
+                description: r.description != null ? String(r.description) : null,
+                status: String(r.status || ''),
+                line_count: Number(r.line_count) || 0,
+            }));
+        } catch (error) {
+            console.error('[StockMovementAPI] listPriceChangeSlipSummaries failed:', error);
             return [];
         }
     }
