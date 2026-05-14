@@ -90,6 +90,16 @@ export function getDbSqlTargetChain(): PgEndpointConfig[] {
   return [LOCAL_CONFIG, REMOTE_CONFIG];
 }
 
+/** Birincil SQL ucu — pg_bridge `pg_dump` ve benzeri için bağlantı dizesi (özel karakterler URI-encode). */
+export function getPrimarySqlConnectionString(): string {
+  const config = getDbSqlTargetChain()[0];
+  const effectiveHost = config.host === 'localhost' ? '127.0.0.1' : config.host;
+  const u = encodeURIComponent(config.user);
+  const p = encodeURIComponent(config.password);
+  const d = encodeURIComponent(config.database);
+  return `postgresql://${u}:${p}@${effectiveHost}:${config.port}/${d}`;
+}
+
 async function executePgQueryRows(
   resolvedSql: string,
   normalizedParams: any[],

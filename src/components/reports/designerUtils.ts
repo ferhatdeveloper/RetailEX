@@ -34,17 +34,58 @@ function getColorNormalizeCtx(): CanvasRenderingContext2D | null {
  */
 function rgbifyColor(value: string): string {
     const ctx = getColorNormalizeCtx();
-    if (!ctx) return value;
+    if (!ctx) return fallbackStripModernColors(value);
     try {
         ctx.fillStyle = '#feedba';
         const sentinel = String(ctx.fillStyle).toLowerCase();
         ctx.fillStyle = value;
-        const out = String(ctx.fillStyle);
-        if (!out || out.toLowerCase() === sentinel) return value;
+        let out = String(ctx.fillStyle);
+        if (!out || out.toLowerCase() === sentinel) return fallbackStripModernColors(value);
+        /** Chromium bazen oklch’yi fillStyle’da kabul edip aynı oklch stringini döndürür — html2canvas parse edemez. */
+        if (MODERN_COLOR_QUICK_RE.test(out)) return fallbackStripModernColors(value);
         return out;
     } catch {
-        return value;
+        return fallbackStripModernColors(value);
     }
+}
+
+/** Parantez içi iç içe olabilen modern renk çağrılarını düz rgb ile değiştirir (son çare). */
+function fallbackStripModernColors(value: string): string {
+    if (!value || !MODERN_COLOR_QUICK_RE.test(value)) return value;
+    let out = '';
+    let i = 0;
+    const s = value;
+    while (i < s.length) {
+        let matchedName: string | null = null;
+        for (const name of MODERN_COLOR_FN_NAMES) {
+            if (!s.startsWith(name, i)) continue;
+            const prev = i === 0 ? '' : s[i - 1];
+            if (prev && /[A-Za-z0-9_-]/.test(prev)) continue;
+            let p = i + name.length;
+            while (p < s.length && s[p] === ' ') p++;
+            if (s[p] !== '(') continue;
+            matchedName = name;
+            break;
+        }
+        if (!matchedName) {
+            out += s[i];
+            i++;
+            continue;
+        }
+        const start = i;
+        i += matchedName.length;
+        while (i < s.length && s[i] === ' ') i++;
+        i++;
+        let depth = 1;
+        while (i < s.length && depth > 0) {
+            const ch = s[i];
+            if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+            i++;
+        }
+        out += 'rgb(55, 65, 81)';
+    }
+    return out;
 }
 
 /** Hızlı ön kontrol — değer içinde modern color fonksiyonu var mı? */

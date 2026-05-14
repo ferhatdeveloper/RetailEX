@@ -1,5 +1,33 @@
 version: "3.9"
 
+# Dokploy / Docker Compose — RetailEX SaaS yığını
+#
+# Veri güvenliği: Bu dosya volume adlarını veya postgres veri dizinini değiştirmez;
+# yalnızca ortam değişkenleri ve servis tanımlarıdır. Mevcut named volume’lar
+# (örn. saas_postgres_data) aynı isimle kalır; silinmedikçe DB verisi korunur.
+#
+# pg_bridge + tarayıcıdan “PostgreSQL tam yedek”:
+#   1) retailex_bridge: PG_DUMP_TOKEN (runtime) — boşsa /api/pg_dump korumasız kalır (önerilmez).
+#   2) retailex_frontend build: VITE_PG_DUMP_TOKEN — PG_DUMP_TOKEN ile AYNI olmalı (Dokploy’da
+#      frontend image build arg / secret olarak aynı değeri verin).
+#   3) İsteğe bağlı: PG_DUMP_PATH (Alpine’da genelde boş; pg_dump zaten client paketinde).
+#
+# Örnek isimler: kökte .env.example ve docker/dokploy.env.example
+#
+# pg_bridge ortamı — Dokploy’da “Environment” veya “Secrets” ile aynı isimleri doldurun
+x-bridge-env: &bridge-env
+  NODE_ENV: production
+  # Dinleme portu (Dockerfile EXPOSE ve Nginx upstream ile uyumlu)
+  BRIDGE_PORT: ${BRIDGE_PORT:-3001}
+  # Tam yedek /api/pg_dump: tanımlıysa Bearer / ?token= / body.token zorunlu (üretimde önerilir)
+  PG_DUMP_TOKEN: ${PG_DUMP_TOKEN:-}
+  # pg_dump tam yolu (Alpine’da genelde gerekmez); özel kurulumda örn. /usr/lib/postgresql/17/bin/pg_dump
+  PG_DUMP_PATH: ${PG_DUMP_PATH:-}
+  # Caller ID webhook / poll koruması (isteğe bağlı)
+  CALLER_ID_PUSH_TOKEN: ${CALLER_ID_PUSH_TOKEN:-}
+  # Paket servis push (isteğe bağlı)
+  DELIVERY_PUSH_TOKEN: ${DELIVERY_PUSH_TOKEN:-}
+
 x-postgrest-env: &postgrest-env
   PGRST_DB_ANON_ROLE: anon
   PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos"
@@ -75,7 +103,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      NODE_ENV: production
+      <<: *bridge-env
     networks:
       - berqenas_net
 
@@ -86,6 +114,8 @@ services:
       args:
         VITE_BRIDGE_URL: ""
         VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
+        # PG_DUMP_TOKEN ile aynı olmalı (yalnızca token kullanıyorsanız)
+        VITE_PG_DUMP_TOKEN: ${VITE_PG_DUMP_TOKEN:-}
     image: retailex-web:latest
     container_name: retailex_frontend
     restart: always

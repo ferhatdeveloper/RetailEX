@@ -10,6 +10,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Pool } from 'pg';
 import { serve } from '@hono/node-server';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { spawn, execSync } from 'node:child_process';
+import { Readable } from 'node:stream';
 import { normalizeFoodDeliveryChannel } from '../config/foodDeliveryChannels';
 
 const app = new Hono();
@@ -37,6 +42,49 @@ function deliveryPushTokenOk(
     const q = c.req.query('token')?.trim();
     const b = bodyToken?.trim();
     return bearer === required || q === required || b === required;
+}
+
+function pgDumpTokenOk(
+    c: { req: { header: (n: string) => string | undefined; query: (n: string) => string | undefined } },
+    bodyToken?: string
+): boolean {
+    const required = process.env.PG_DUMP_TOKEN?.trim();
+    if (!required) return true;
+    const bearer = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')?.trim();
+    const q = c.req.query('token')?.trim();
+    const b = bodyToken?.trim();
+    return bearer === required || q === required || b === required;
+}
+
+function resolvePgDumpBinary(): string {
+    const envPath = process.env.PG_DUMP_PATH?.trim();
+    if (envPath && fs.existsSync(envPath)) return envPath;
+
+    const winPaths = [
+        'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
+        'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
+        'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe',
+        'C:\\Program Files\\PostgreSQL\\14\\bin\\pg_dump.exe',
+    ];
+    for (const p of winPaths) {
+        if (fs.existsSync(p)) return p;
+    }
+
+    try {
+        const isWin = process.platform === 'win32';
+        const out = execSync(isWin ? 'where pg_dump' : 'which pg_dump', {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        })
+            .trim()
+            .split(/\r?\n/)[0]
+            ?.trim();
+        if (out && fs.existsSync(out)) return out;
+    } catch {
+        /* PATH yok */
+    }
+
+    return 'pg_dump';
 }
 
 function callerIdTokenOk(
@@ -267,6 +315,70 @@ app.post('/api/delivery_order/push', async (c) => {
     } catch (error: any) {
         console.error('[delivery_order/push]', error);
         return c.json({ error: error?.message || 'push failed' }, 500);
+    }
+});
+
+/**
+ * Tam veritabanı yedeği (pg_dump düz SQL). Sunucuda `pg_dump` gerekir.
+ * Güvenlik: `PG_DUMP_TOKEN` tanımlıysa Authorization: Bearer, ?token= veya body.token zorunlu.
+ */
+app.post('/api/pg_dump', async (c) => {
+    let tmpFile: string | null = null;
+    try {
+        const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+        const bodyTok = typeof body.token === 'string' ? body.token : undefined;
+        if (!pgDumpTokenOk(c, bodyTok)) {
+            return c.json({ error: 'Unauthorized' }, 401);
+        }
+
+        const connStr = typeof body.connStr === 'string' ? body.connStr.trim() : '';
+        if (!connStr || !connStr.toLowerCase().startsWith('postgresql://')) {
+            return c.json({ error: 'postgresql:// ile başlayan connStr gerekli' }, 400);
+        }
+
+        tmpFile = path.join(os.tmpdir(), `retailex_pg_dump_${Date.now()}.sql`);
+        const pgDumpBin = resolvePgDumpBinary();
+        const args = ['-d', connStr, '-F', 'p', '--no-owner', '--no-acl', '-f', tmpFile];
+
+        await new Promise<void>((resolve, reject) => {
+            const child = spawn(pgDumpBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            let stderr = '';
+            child.stderr?.on('data', (chunk: Buffer) => {
+                stderr += chunk.toString();
+            });
+            child.on('error', (err) => reject(err));
+            child.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(stderr.trim() || `pg_dump çıkış kodu ${code}`));
+            });
+        });
+
+        const downloadName = `retailex_full_${Date.now()}.sql`;
+        const nodeStream = fs.createReadStream(tmpFile);
+        const cleanup = () => {
+            if (tmpFile) fs.unlink(tmpFile, () => {});
+        };
+        nodeStream.on('close', cleanup);
+        nodeStream.on('error', cleanup);
+
+        const webStream = Readable.toWeb(nodeStream) as ReadableStream;
+        return new Response(webStream, {
+            headers: {
+                'Content-Type': 'application/sql; charset=utf-8',
+                'Content-Disposition': `attachment; filename="${downloadName}"`,
+            },
+        });
+    } catch (error: unknown) {
+        if (tmpFile) {
+            try {
+                fs.unlinkSync(tmpFile);
+            } catch {
+                /* yok */
+            }
+        }
+        const err = error as { message?: string };
+        console.error('[PG Bridge pg_dump]', error);
+        return c.json({ error: err?.message || 'pg_dump başarısız' }, 500);
     }
 });
 

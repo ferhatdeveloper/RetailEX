@@ -18,6 +18,9 @@ ENV VITE_MERKEZ_REST_URL=${VITE_MERKEZ_REST_URL}
 # Koprü her zaman web ile aynı origin (Nginx /api → retailex_bridge); api.* alt alanına asla sabitlemeyin
 ARG VITE_BRIDGE_URL=
 ENV VITE_BRIDGE_URL=${VITE_BRIDGE_URL}
+# Dokploy/pg_bridge: PG_DUMP_TOKEN kullanılıyorsa köprü ile aynı değer (build zamanı bundle’a gider)
+ARG VITE_PG_DUMP_TOKEN=
+ENV VITE_PG_DUMP_TOKEN=${VITE_PG_DUMP_TOKEN}
 RUN npm run build
 
 FROM nginx:alpine

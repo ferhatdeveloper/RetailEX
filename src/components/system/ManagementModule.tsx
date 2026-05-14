@@ -1327,7 +1327,7 @@ export function ManagementModule({
         case 'systemhealth':
         case 'smsmanage':
         case 'emailcamp':
-          return <SystemManagementModule />;
+          return <SystemManagementModule routeHint={currentScreen} />;
         case 'excel':
           return <ExcelModule />;
         case 'multistore':

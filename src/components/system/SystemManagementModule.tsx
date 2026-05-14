@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Users, Shield, Database, Radio, HardDrive,
-  Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download,
+  Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download, Loader2,
   Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
   Phone, Menu,
 } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { IS_TAURI } from '../../utils/env';
+import { checkPgBridgeReachable, runPostgresFullBackup } from '../../services/postgresFullBackup';
 import { PrinterSettings } from './PrinterSettings';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
@@ -25,11 +27,32 @@ type SystemView =
   | 'logAudit'
   | 'systemHealth';
 
-export function SystemManagementModule() {
+type SystemManagementModuleProps = {
+  /** Yönetim modülünden gelen ekran kimliği — sol menüde doğru sekme açılır */
+  routeHint?: string;
+};
+
+const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
+  settings: 'userManagement',
+  generalsettings: 'definitionsParameters',
+  definitions: 'definitionsParameters',
+  backuprestore: 'backupRestore',
+  systemhealth: 'systemHealth',
+  smsmanage: 'definitionsParameters',
+  emailcamp: 'definitionsParameters',
+};
+
+export function SystemManagementModule({ routeHint }: SystemManagementModuleProps) {
   const [currentView, setCurrentView] = useState<SystemView>('userManagement');
   const { tm } = useLanguage();
   const { isMobile } = useResponsive();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!routeHint) return;
+    const v = ROUTE_HINT_TO_VIEW[routeHint];
+    if (v) setCurrentView(v);
+  }, [routeHint]);
 
   useEffect(() => {
     if (!isMobile) setMobileMenuOpen(false);
@@ -657,36 +680,111 @@ function DataBroadcastView() {
 
 // Backup Restore View
 function BackupRestoreView() {
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [bridgeOk, setBridgeOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (IS_TAURI) return;
+    let cancelled = false;
+    checkPgBridgeReachable().then((ok) => {
+      if (!cancelled) setBridgeOk(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleFullPgBackup = async () => {
+    setToast(null);
+    setBusy(true);
+    try {
+      const res = await runPostgresFullBackup();
+      if (res.ok) {
+        if (res.mode === 'tauri') {
+          setToast({ kind: 'ok', text: res.message });
+        } else {
+          setToast({ kind: 'ok', text: `Dosya indirildi: ${res.fileName}` });
+        }
+      } else {
+        setToast({ kind: 'err', text: res.message });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Database className="h-5 w-5 text-indigo-600" />
+            PostgreSQL tam yedek
+          </h3>
+          <p className="text-sm text-gray-600 mt-2 max-w-3xl">
+            <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> ile şema ve verilerin tamamı düz SQL
+            dosyası olarak alınır. Çevrimiçi modda uzak sunucu, çevrimdışı veya hibritte yerel şube veritabanı
+            yedeklenir.
+          </p>
+        </div>
+        <div className="p-6 space-y-4">
+          {!IS_TAURI && bridgeOk !== null && (
+            <div
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                bridgeOk
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}
+            >
+              {bridgeOk
+                ? 'pg_bridge erişilebilir — tarayıcıdan tam yedek indirilebilir (sunucuda pg_dump kurulu olmalı).'
+                : 'pg_bridge yanıt vermiyor. Web’de tam yedek için `npm run bridge` veya aynı origin üzerinden köprüyü çalıştırın.'}
+            </div>
+          )}
+          {IS_TAURI && (
+            <p className="text-sm text-gray-600">
+              Yedek dosyası, yapılandırmada tanımlı yedek klasörüne (boşsa{' '}
+              <code className="text-xs bg-gray-100 px-1 rounded">C:\RetailEX_Backups</code>) yazılır. PostgreSQL
+              istemci araçlarında <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> bulunmalıdır.
+            </p>
+          )}
+          {toast && (
+            <div
+              className={`rounded-lg px-4 py-3 text-sm ${
+                toast.kind === 'ok' ? 'bg-green-50 text-green-900 border border-green-200' : 'bg-red-50 text-red-900 border border-red-200'
+              }`}
+            >
+              {toast.text}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleFullPgBackup}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <Download className="h-5 w-5" aria-hidden />}
+              {busy ? 'Yedekleniyor…' : 'Tam PostgreSQL yedeği al'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="p-4 border-b">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
             <HardDrive className="h-5 w-5 text-indigo-600" />
-            Yedekleme ve Geri Yükleme
+            Diğer yedekleme / geri yükleme
           </h3>
         </div>
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <button className="p-6 border-2 border-dashed border-blue-300 rounded-lg hover:bg-blue-50 flex flex-col items-center gap-3">
-              <Download className="h-8 w-8 text-blue-600" />
-              <span className="font-medium text-gray-900">Yedek Al</span>
-              <span className="text-sm text-gray-600">Sistem yedeğini indir</span>
-            </button>
-            <button className="p-6 border-2 border-dashed border-green-300 rounded-lg hover:bg-green-50 flex flex-col items-center gap-3">
-              <Upload className="h-8 w-8 text-green-600" />
-              <span className="font-medium text-gray-900">Geri Yükle</span>
-              <span className="text-sm text-gray-600">Yedekten geri yükle</span>
-            </button>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div>
-                <h4 className="font-medium text-blue-900 mb-1">Son Yedekleme</h4>
-                <p className="text-sm text-blue-800">18 Ocak 2025, 02:00 - Otomatik yedekleme başarılı</p>
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-6 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center gap-3 text-center">
+              <Upload className="h-8 w-8 text-gray-400" />
+              <span className="font-medium text-gray-700">Geri yükleme</span>
+              <span className="text-sm text-gray-500">SQL geri yükleme sihirbazı bu ekranda yakında sunulacak.</span>
             </div>
           </div>
         </div>
