@@ -56,6 +56,18 @@ export interface PriceChangeSlipSummary {
     line_count: number;
 }
 
+/** Son fiyat fişindeki değerler ile ürün kartındaki güncel fiyatların karşılaştırması (PG). */
+export interface PriceDriftCandidate {
+    product_id: string;
+    product_code: string;
+    product_name: string;
+    unit: string;
+    current_cost: number;
+    current_price: number;
+    last_slip_cost: number;
+    last_slip_price: number;
+}
+
 /**
  * Logo ERP Standard Stock Slip TRCODEs
  */
@@ -268,9 +280,94 @@ class StockMovementAPI {
     }
 
     /**
-     * Get movements for a specific product
+     * Ürün hareketleri için `product_id` UUID çözümü: doğrudan UUID, kod, id veya barkod ipucu.
      */
-    async getProductMovements(productId: string): Promise<any[]> {
+    async resolveProductUuidForMovements(
+        productId: string,
+        hint?: { code?: string; barcode?: string }
+    ): Promise<string | null> {
+        const pid = String(productId || '').trim();
+        if (!pid) return null;
+        if (UUID_RE.test(pid)) return pid;
+        const { productAPI } = await import('./api/products');
+        const tryCode = async (c: string | undefined) => {
+            if (!c?.trim()) return null;
+            const p = await productAPI.getByCode(c.trim());
+            return p?.id ? String(p.id) : null;
+        };
+        const fromHintCode = await tryCode(hint?.code);
+        if (fromHintCode) return fromHintCode;
+        const fromPidCode = await tryCode(pid);
+        if (fromPidCode) return fromPidCode;
+        const byId = await productAPI.getById(pid);
+        if (byId?.id) return String(byId.id);
+        if (hint?.barcode?.trim()) {
+            const b = await productAPI.getByBarcode(hint.barcode.trim());
+            if (b?.id) return String(b.id);
+        }
+        return null;
+    }
+
+    /**
+     * Son kayıtlı fiyat değişim fişindeki alış/satış ile ürün kartındaki mevcut fiyatı karşılaştırır.
+     * Yalnızca doğrudan PostgreSQL sorgusu (tablo öneki yeniden yazımı); PostgREST-only ortamda boş dizi döner.
+     */
+    async findPriceDriftVsLastSlip(): Promise<PriceDriftCandidate[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            return [];
+        }
+        try {
+            const { rows } = await postgres.query(
+                `WITH ranked AS (
+                    SELECT i.product_id,
+                           i.cost_price,
+                           i.unit_price,
+                           ROW_NUMBER() OVER (
+                             PARTITION BY i.product_id
+                             ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
+                           ) AS rn
+                    FROM stock_movement_items i
+                    INNER JOIN stock_movements m ON m.id = i.movement_id AND m.movement_type = 'price_change'
+                )
+                SELECT p.id::text AS product_id,
+                       COALESCE(p.code, '') AS product_code,
+                       COALESCE(p.name, '') AS product_name,
+                       COALESCE(p.unit, 'Adet') AS unit,
+                       COALESCE(p.cost, 0)::numeric AS current_cost,
+                       COALESCE(p.price, 0)::numeric AS current_price,
+                       COALESCE(r.cost_price, 0)::numeric AS last_slip_cost,
+                       COALESCE(r.unit_price, 0)::numeric AS last_slip_price
+                FROM products p
+                INNER JOIN ranked r ON r.product_id = p.id AND r.rn = 1
+                WHERE ABS(COALESCE(p.cost, 0)::numeric - COALESCE(r.cost_price, 0)::numeric) > 0.0000001
+                   OR ABS(COALESCE(p.price, 0)::numeric - COALESCE(r.unit_price, 0)::numeric) > 0.0000001
+                ORDER BY p.code NULLS LAST
+                LIMIT 2000`
+            );
+            return (rows as any[]).map((row) => ({
+                product_id: String(row.product_id),
+                product_code: String(row.product_code || ''),
+                product_name: String(row.product_name || ''),
+                unit: String(row.unit || 'Adet'),
+                current_cost: Number(row.current_cost) || 0,
+                current_price: Number(row.current_price) || 0,
+                last_slip_cost: Number(row.last_slip_cost) || 0,
+                last_slip_price: Number(row.last_slip_price) || 0,
+            }));
+        } catch (e) {
+            console.error('[StockMovementAPI] findPriceDriftVsLastSlip failed:', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get movements for a specific product
+     * @param hint Ürün kodu/barkod — `id` UUID değilse PostgREST eşlemesi için kullanılır.
+     */
+    async getProductMovements(
+        productId: string,
+        hint?: { code?: string; barcode?: string }
+    ): Promise<any[]> {
         const mapRow = (r: any) => ({
             ...r,
             currency: r.currency,
@@ -289,20 +386,13 @@ class StockMovementAPI {
         if (shouldUseTenantPostgrestApi()) {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
-                const { productAPI } = await import('./api/products');
                 const { invoicesAPI } = await import('./api/invoices');
                 const fn = padFirmNr();
                 const pn = padPeriodNr();
                 const pid = String(productId || '').trim();
                 if (!pid) return [];
 
-                let resolvedUuid = '';
-                if (UUID_RE.test(pid)) {
-                    resolvedUuid = pid;
-                } else {
-                    const p = await productAPI.getByCode(pid);
-                    if (p?.id) resolvedUuid = String(p.id);
-                }
+                const resolvedUuid = (await this.resolveProductUuidForMovements(productId, hint)) || '';
 
                 const combinedRaw: any[] = [];
 
@@ -389,12 +479,13 @@ class StockMovementAPI {
                 }
 
                 // 2) Fatura satırları — invoicesAPI (PostgREST + item_code / product_id birleşimi)
-                const hist = await invoicesAPI.getProductHistory(pid);
+                const histPid = resolvedUuid || pid;
+                const hist = await invoicesAPI.getProductHistory(histPid);
                 for (const h of hist) {
                     combinedRaw.push({
                         id: `inv-${String(h.documentNo)}-${String(h.date)}`,
                         movement_id: h.documentNo,
-                        product_id: pid,
+                        product_id: histPid,
                         quantity: h.quantity,
                         unit_price: h.unitPrice,
                         created_at: h.date,

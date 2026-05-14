@@ -92,7 +92,10 @@ export function MaterialExtractReport() {
         }
         setLoading(true);
         try {
-            const movements = await stockMovementAPI.getProductMovements(selectedProduct.id);
+            const movements = await stockMovementAPI.getProductMovements(selectedProduct.id, {
+                code: selectedProduct.code,
+                barcode: selectedProduct.barcode,
+            });
             const start = new Date(startDate).getTime();
             const end = new Date(endDate).getTime() + 86_400_000;
             const filtered = movements.filter((m: any) => {

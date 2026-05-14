@@ -67,7 +67,10 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
     const loadMovements = async () => {
         try {
             setLoadingMovements(true);
-            const data = await stockMovementAPI.getProductMovements(product.id);
+            const data = await stockMovementAPI.getProductMovements(product.id, {
+                code: product.code,
+                barcode: product.barcode,
+            });
             setMovements(data);
         } catch (error) {
             console.error('Failed to load movements:', error);
