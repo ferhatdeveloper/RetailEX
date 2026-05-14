@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ManagementModule } from './ManagementModule';
 import { MobilePOS } from '../pos/MobilePOS';
 import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { User as UserType, Product, Customer, Sale, Campaign } from '../../core/types';
@@ -30,9 +29,10 @@ import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
 import { Capacitor } from '@capacitor/core';
 
-// Lazy load MarketPOS for better initial performance
-import MarketPOS from '../pos/MarketPOS';
-// const MarketPOS = lazy(() => import('../pos/MarketPOS'));
+const MarketPOS = lazy(() => import('../pos/MarketPOS'));
+const ManagementModule = lazy(() =>
+  import('./ManagementModule').then((m) => ({ default: m.ManagementModule }))
+);
 // Lazy load WMS
 const WarehouseManagement = lazy(() => import('../wms')) as any;
 // Lazy load Restaurant & Beauty
@@ -218,7 +218,11 @@ export function MainLayout({
     }
 
     // 0b. Garson / Waiter rolü — koşulsuz restoran
-    const primaryRoleName = (currentUser?.roles?.[0]?.name || currentUser?.role || '').toLowerCase();
+    const primaryRoleName = (
+      ((currentUser as { roles?: { name?: string }[] }).roles?.[0]?.name) ||
+      currentUser?.role ||
+      ''
+    ).toLowerCase();
     if (primaryRoleName === 'garson' || primaryRoleName === 'waiter') return 'restaurant';
 
     // Yönetici: varsayılan yönetim paneli (yönetim sekmesi her zaman görünür)
@@ -354,7 +358,7 @@ export function MainLayout({
       );
       return rows.length > 0;
     } catch (err) {
-      console.error('[MainLayout] verifyManagementPassword failed:', err?.message || String(err));
+      console.error('[MainLayout] verifyManagementPassword failed:', err instanceof Error ? err.message : String(err));
       return false;
     }
   };
@@ -375,12 +379,16 @@ export function MainLayout({
 
   // POS state - müşteri ve personel seçimi
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [currentStaff, setCurrentStaff] = useState(currentUser.full_name || currentUser.username || (currentUser as any).fullName);
+  const [currentStaff, setCurrentStaff] = useState(
+    currentUser.fullName || (currentUser as { full_name?: string }).full_name || currentUser.username
+  );
 
   // Sync staff name when user changes (e.g. after switching user in POSStaffModal)
   useEffect(() => {
-    setCurrentStaff(currentUser.full_name || currentUser.username || (currentUser as any).fullName);
-  }, [currentUser.full_name, currentUser.username, (currentUser as any).fullName]);
+    setCurrentStaff(
+      currentUser.fullName || (currentUser as { full_name?: string }).full_name || currentUser.username
+    );
+  }, [currentUser.fullName, (currentUser as { full_name?: string }).full_name, currentUser.username]);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerModalInitialQuery, setCustomerModalInitialQuery] = useState('');
   const [showStaffModal, setShowStaffModal] = useState(false);
@@ -847,7 +855,7 @@ export function MainLayout({
         onClick: () => setCurrentModule('wms'),
       },
       'mobile-pos': {
-        title: t.mobilePOS,
+        title: String((t as Record<string, unknown>).mobilePOS ?? 'Mobil POS'),
         icon: Smartphone,
         onClick: () => setCurrentModule('mobile-pos'),
       },
@@ -1575,7 +1583,7 @@ export function MainLayout({
               currentUser={currentUser}
               onSaleComplete={onSaleComplete}
               onLogout={onLogout}
-              setActiveModule={setCurrentModule}
+              setActiveModule={(m) => setCurrentModule(m as Module)}
               zoomLevel={zoomLevel}
               setZoomLevel={setZoomLevel}
               rtlMode={rtlMode}
@@ -1597,15 +1605,25 @@ export function MainLayout({
             />
           </Suspense>
         ) : (
-          <ManagementModule
-            products={products}
-            setProducts={setProducts}
-            customers={customers}
-            setCustomers={setCustomers}
-            sales={sales}
-            campaigns={campaigns}
-            setCampaigns={setCampaigns}
-          />
+          <Suspense
+            fallback={
+              <ModuleLazySplash
+                productLine="retail"
+                accent="blue"
+                subtitle="Yönetim paneli yükleniyor..."
+              />
+            }
+          >
+            <ManagementModule
+              products={products}
+              setProducts={setProducts}
+              customers={customers}
+              setCustomers={setCustomers}
+              sales={sales}
+              campaigns={campaigns}
+              setCampaigns={setCampaigns}
+            />
+          </Suspense>
         )}
       </div>
 

@@ -34,6 +34,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { fetchWaybills, createWaybill, updateWaybill, deleteWaybill, convertWaybillToInvoice } from '../../../services/api/waybills';
+import type { Invoice } from '../../../core/types';
 
 // ===== TYPES =====
 
@@ -98,6 +99,50 @@ interface WaybillLine {
 type WaybillStatus = Waybill['durum'];
 type WaybillType = Waybill['irsaliye_tipi'];
 
+function mapInvoiceStatusToWaybillDurum(status: string | undefined): WaybillStatus {
+  const s = (status || '').toLowerCase();
+  if (s.includes('sevk')) return 'SEVK_EDILDI';
+  if (s.includes('teslim')) return 'TESLIM_EDILDI';
+  if (s.includes('onay') || s === 'approved') return 'ONAYLANDI';
+  if (s.includes('iptal') || s === 'cancelled') return 'IPTAL';
+  return 'TASLAK';
+}
+
+function mapTrcodeToWaybillTipi(trcode: number): WaybillType {
+  if (trcode === 12) return 'TRANSFER';
+  if ([2, 3, 11].includes(trcode)) return 'IADE';
+  return 'SEVK';
+}
+
+function mapInvoiceToWaybill(inv: Invoice): Waybill {
+  const rawItems = Array.isArray(inv.items) ? inv.items : [];
+  const satirlar: WaybillLine[] = rawItems.map((it: Record<string, unknown>, idx: number) => ({
+    id: String((it as { id?: string }).id ?? idx),
+    urun_id: String((it as { product_id?: string; productId?: string }).product_id ?? (it as { productId?: string }).productId ?? ''),
+    urun_kodu: String((it as { product_code?: string; code?: string }).product_code ?? (it as { code?: string }).code ?? ''),
+    urun_adi: String((it as { product_name?: string; name?: string }).product_name ?? (it as { name?: string }).name ?? ''),
+    miktar: Number((it as { quantity?: number }).quantity ?? 0),
+    birim: String((it as { unit?: string }).unit ?? 'adet'),
+  }));
+  return {
+    id: inv.id ?? inv.invoice_no,
+    firma_id: inv.firma_id,
+    donem_id: inv.donem_id,
+    irsaliye_no: inv.invoice_no,
+    irsaliye_tipi: mapTrcodeToWaybillTipi(inv.invoice_type),
+    tarih: inv.invoice_date,
+    cari_id: inv.customer_id,
+    cari_adi: inv.customer_name,
+    satirlar,
+    durum: mapInvoiceStatusToWaybillDurum(inv.status),
+    fatura_kesildi: false,
+    aciklama: inv.notes || '',
+    created_at: inv.created_at ?? new Date().toISOString(),
+    updated_at: inv.created_at ?? new Date().toISOString(),
+    created_by: inv.cashier || '',
+  };
+}
+
 // ===== COMPONENT =====
 
 export function WaybillModule() {
@@ -115,9 +160,9 @@ export function WaybillModule() {
   // Fetch waybills on component mount
   useEffect(() => {
     if (selectedFirma && selectedDonem) {
-      fetchWaybills(selectedFirma.id, selectedDonem.id)
-        .then(data => setWaybills(data))
-        .catch(error => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+      fetchWaybills({ page: 1, pageSize: 1000 })
+        .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
+        .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
     }
   }, [selectedFirma, selectedDonem]);
 
@@ -185,9 +230,9 @@ export function WaybillModule() {
         .then(() => {
           toast.success('İrsaliye faturaya dönüştürüldü');
           // Refresh waybills
-          fetchWaybills(selectedFirma?.id || '', selectedDonem?.id || '')
-            .then(data => setWaybills(data))
-            .catch(error => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+          fetchWaybills({ page: 1, pageSize: 1000 })
+            .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
+            .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
         })
         .catch(error => toast.error('Fatura dönüştürülürken hata oluştu'));
     }
@@ -200,9 +245,9 @@ export function WaybillModule() {
         .then(() => {
           toast.success('İrsaliye silindi');
           // Refresh waybills
-          fetchWaybills(selectedFirma?.id || '', selectedDonem?.id || '')
-            .then(data => setWaybills(data))
-            .catch(error => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+          fetchWaybills({ page: 1, pageSize: 1000 })
+            .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
+            .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
         })
         .catch(error => toast.error('İrsaliye silinirken hata oluştu'));
     }

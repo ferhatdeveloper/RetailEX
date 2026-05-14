@@ -347,7 +347,7 @@ export class CustomerSegmentationService {
     const predicted_churn_risk = this.predictChurnRisk(rfm_score, days_since_last_purchase);
 
     // Get loyalty info
-    const loyalty_points = customer.loyalty_points || 0;
+    const loyalty_points = (customer as Customer & { loyalty_points?: number }).loyalty_points || 0;
     const loyalty_tier_config = this.loyaltyTierManager.getTier(loyalty_points);
 
     // Determine segment
@@ -590,7 +590,3 @@ export class CustomerSegmentationService {
 
 // Singleton instance
 export const customerSegmentationService = new CustomerSegmentationService();
-
-// Export types
-export type { CustomerAnalytics, LoyaltyTierConfig, LoyaltyTransaction };
-

@@ -6,7 +6,8 @@
 import { useState, useEffect } from 'react';
 import { Database, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { supabase, SUPABASE_CONFIGURED } from '../../utils/supabase/client';
-import { useProductStore } from '../store';
+import type { Product } from '../../core/types';
+import { useProductStore } from '../../store/useProductStore';
 
 export function DebugDatabaseStatus() {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,7 +27,7 @@ export function DebugDatabaseStatus() {
   });
   const [checking, setChecking] = useState(false);
   
-  const products = useProductStore(state => state.products);
+  const products = useProductStore((state: { products: Product[] }) => state.products);
 
   const checkDatabase = async () => {
     setChecking(true);

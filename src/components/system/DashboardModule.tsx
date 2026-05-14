@@ -42,6 +42,9 @@ interface DashboardModuleProps {
 export function DashboardModule({ products, customers, sales, setCurrentScreen, menuMode = 0 }: DashboardModuleProps) {
   const { t } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
+  /** Çeviri nesnesi bazen geniş JSON'dan `unknown`/`{}` gelebilir; metin çocuklarında güvenli metin */
+  const tLabel = (v: unknown, fallback: string) =>
+    typeof v === 'string' || typeof v === 'number' ? String(v) : fallback;
   // Aktif firmanın ana para birimi — fallback olarak çeviri kodu, en sonda IQD.
   const currency = selectedFirm?.ana_para_birimi || t.currencyCode || 'IQD';
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
@@ -412,8 +415,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg text-white">{t.dashboard || 'Dashboard'}</h2>
-            <p className="text-blue-100 text-[10px] mt-0.5">{t.welcomeDashboard || 'Hoş geldiniz, işletme performansınızı takip edin'}</p>
+            <h2 className="text-lg text-white">{tLabel(t.dashboard, 'Dashboard')}</h2>
+            <p className="text-blue-100 text-[10px] mt-0.5">{tLabel(t.welcomeDashboard, 'Hoş geldiniz, işletme performansınızı takip edin')}</p>
           </div>
           <div className="text-right">
             <p className="text-blue-100 text-[10px]">{new Date().toLocaleDateString(t.locale || 'tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
@@ -427,7 +430,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
         <div>
           <div className="flex items-center gap-1.5 mb-2">
             <Zap className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm text-gray-800">{t.quickAccess || 'Hızlı Erişim'}</h3>
+            <h3 className="text-sm text-gray-800">{tLabel(t.quickAccess, 'Hızlı Erişim')}</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             {currentQuickActions.map((action) => {
@@ -447,7 +450,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                     <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center group-hover:bg-white/30 transition-all">
                       <Icon className="w-4 h-4" />
                     </div>
-                    <span className="text-[10px] text-center">{action.label}</span>
+                    <span className="text-[10px] text-center">{String(action.label)}</span>
                   </div>
                 </button>
               );
@@ -458,7 +461,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
               className="text-[10px] text-blue-500 hover:text-blue-600 font-medium"
               onClick={() => setShowCustomizeModal(true)}
             >
-              {t.editQuickAccess || 'Hızlı Erişimleri Düzenle'}
+              {tLabel(t.editQuickAccess, 'Hızlı Erişimleri Düzenle')}
             </button>
           </div>
         </div>
@@ -466,13 +469,13 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
         {/* Kurumsal Özet Panel - Modern KPI Cards yerine */}
         <div className="bg-white border border-gray-300 rounded">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">{t.dailySummary || 'Günlük Özet'}</h3>
+            <h3 className="text-[11px] text-gray-700">{tLabel(t.dailySummary, 'Günlük Özet')}</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Banknote className="w-4 h-4 text-blue-600" />
-                <span className="text-[10px] text-gray-600">{t.todaysSales || 'Bugünkü Satış'}</span>
+                <span className="text-[10px] text-gray-600">{tLabel(t.todaysSales, 'Bugünkü Satış')}</span>
                 {revenueChange !== 0 && (
                   <span className={`text-[9px] ${revenueChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {revenueChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(revenueChange), 1, false)}%
@@ -480,22 +483,22 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 )}
               </div>
               <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {t.transaction || 'işlem'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-[10px] text-gray-600">{t.weeklySales || 'Haftalık Satış'}</span>
+                <span className="text-[10px] text-gray-600">{tLabel(t.weeklySales, 'Haftalık Satış')}</span>
               </div>
               <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {t.transaction || 'işlem'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-emerald-600" />
-                <span className="text-[10px] text-gray-600">{t.todaysProfit || 'Bugünkü Kâr'}</span>
+                <span className="text-[10px] text-gray-600">{tLabel(t.todaysProfit, 'Bugünkü Kâr')}</span>
                 {profitChange !== 0 && (
                   <span className={`text-[9px] ${profitChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {profitChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(profitChange), 1, false)}%
@@ -503,13 +506,13 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 )}
               </div>
               <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{t.profitMargin || 'Kâr Marjı'}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.profitMargin, 'Kâr Marjı')}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Package className="w-4 h-4 text-purple-600" />
-                <span className="text-[10px] text-gray-600">{t.totalProductsDashboard || 'Toplam Ürün'}</span>
+                <span className="text-[10px] text-gray-600">{tLabel(t.totalProductsDashboard, 'Toplam Ürün')}</span>
                 {lowStockProducts.length > 0 && (
                   <span className="text-[9px] text-red-600">
                     ⚠ {lowStockProducts.length}
@@ -517,16 +520,16 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                 )}
               </div>
               <div className="text-base text-gray-900">{products.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{t.stockManagement || 'Stok'}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-orange-600" />
-                <span className="text-[10px] text-gray-600">{t.activeCustomers || 'Aktif Müşteri'}</span>
+                <span className="text-[10px] text-gray-600">{tLabel(t.activeCustomers, 'Aktif Müşteri')}</span>
               </div>
               <div className="text-base text-gray-900">{customers.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{t.registeredCustomers || 'Kayıtlı müşteri'}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.registeredCustomers, 'Kayıtlı müşteri')}</div>
             </div>
           </div>
         </div>
@@ -721,7 +724,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Package className="w-6 h-6 text-green-600" />
                   </div>
-                  <p className="text-[11px] text-gray-500">{t.noLowStockInfo || 'Düşük stok seviyesinde ürün yok'}</p>
+                  <p className="text-[11px] text-gray-500">{String(t.noLowStockInfo ?? 'Düşük stok seviyesinde ürün yok')}</p>
                 </div>
               )}
             </div>
@@ -736,8 +739,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
               <div>
-                <h3 className="text-xl text-white">{t.customizeQuickAccess || 'Hızlı Erişimleri Özelleştir'}</h3>
-                <p className="text-blue-100 text-sm mt-1">{t.max8Shortcuts || 'En fazla 8 kısayol seçebilirsiniz'} ({selectedActions.length}/8)</p>
+                <h3 className="text-xl text-white">{String(t.customizeQuickAccess ?? 'Hızlı Erişimleri Özelleştir')}</h3>
+                <p className="text-blue-100 text-sm mt-1">{String(t.max8Shortcuts ?? 'En fazla 8 kısayol seçebilirsiniz')} ({selectedActions.length}/8)</p>
               </div>
               <button
                 className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
@@ -812,9 +815,9 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between">
               <p className="text-sm text-gray-600">
                 {selectedActions.length === 0 ? (
-                  <span className="text-red-600">{t.min1Shortcut || 'En az 1 kısayol seçmelisiniz'}</span>
+                  <span className="text-red-600">{String(t.min1Shortcut ?? 'En az 1 kısayol seçmelisiniz')}</span>
                 ) : (
-                  <span>{selectedActions.length} {t.shortcutsSelected || 'kısayol seçildi'}</span>
+                  <span>{selectedActions.length} {String(t.shortcutsSelected ?? 'kısayol seçildi')}</span>
                 )}
               </p>
               <div className="flex gap-3">
@@ -839,7 +842,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   onClick={saveQuickActions}
                   disabled={selectedActions.length === 0}
                 >
-                  {t.save || 'Kaydet'}
+                  {t.save != null ? String(t.save) : 'Kaydet'}
                 </button>
               </div>
             </div>

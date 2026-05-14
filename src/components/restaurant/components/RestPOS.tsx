@@ -43,6 +43,7 @@ import {
     Square,
 } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { Sheet, SheetContent, SheetTrigger } from '../../ui/sheet';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import {
     buildRestaurantAdisyonHtml,
@@ -1571,20 +1572,165 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             <header className="flex flex-col shrink-0 z-20">
                 {/* TOP HEADER */}
                 <div
-                    className="border-b px-4 py-2.5 flex items-center justify-between gap-4 shadow-xl min-h-[64px] backdrop-blur-xl relative overflow-hidden"
+                    className="border-b px-2 sm:px-4 py-2 sm:py-2.5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-4 shadow-xl min-h-0 md:min-h-[64px] backdrop-blur-xl relative overflow-hidden"
                     style={{ backgroundColor: 'rgba(37, 99, 235, 0.95)', borderColor: 'rgba(255, 255, 255, 0.1)' }}
                 >
                     {/* Glossy Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
 
-                    <div className="flex items-center gap-4 flex-1 min-w-0 relative z-10 transition-all">
+                    <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0 relative z-10 transition-all w-full md:w-auto">
                         <button
                             onClick={handleBackWithWarning}
-                            className="flex items-center gap-2.5 px-5 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl font-black text-[12px] uppercase transition-all shadow-lg border border-white/20 group active:scale-90 shrink-0"
+                            className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-5 py-2.5 bg-white/15 hover:bg-white/25 text-white rounded-2xl font-black text-[12px] uppercase transition-all shadow-lg border border-white/20 group active:scale-90 shrink-0 min-h-[44px]"
                         >
                             <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-                            {tmR('resPosBack')}
+                            <span className="hidden sm:inline">{tmR('resPosBack')}</span>
                         </button>
+
+                        {/* Mobil: kategori paneli (yatay taşmayı önler) */}
+                        <Sheet>
+                            <SheetTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="md:hidden flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black text-[11px] uppercase transition-all shadow-lg border border-white/15 active:scale-95 shrink-0 min-h-[44px]"
+                                    title="Kategoriler"
+                                >
+                                    <LayoutGrid className="w-4.5 h-4.5" />
+                                    Kategoriler
+                                </button>
+                            </SheetTrigger>
+                            <SheetContent side="left" className="p-0 w-[92vw] max-w-sm">
+                                <div className="h-full w-full bg-slate-50 border-r border-slate-200 overflow-y-auto overscroll-contain pt-10 pb-8">
+                                    {/* Desktop sidebar ile aynı içerik (mobil sheet içinde) */}
+                                    <div className="px-3 mt-4 mb-3 space-y-2">
+                                        {catMain !== null && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setCatMain(null); setCatSub(null); setCatMainSolo(null); }}
+                                                className="w-full rounded-xl flex items-center gap-2 px-3 py-2 text-left text-[11px] font-black uppercase tracking-wide text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 active:scale-[0.98] min-h-[44px]"
+                                            >
+                                                <ChevronLeft className="w-4 h-4 shrink-0" />
+                                                {tmR('resPosMainCategories')}
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCatMain(null); setCatSub(null); setCatMainSolo(null); }}
+                                            className={cn(
+                                                'w-full rounded-[20px] flex items-center gap-3.5 px-5 py-4.5 transition-all text-left group shadow-lg active:scale-95 border-2 min-h-[56px]',
+                                                catMain === null && catSub === null && catMainSolo === null
+                                                    ? 'bg-blue-600 text-white font-black border-blue-400 shadow-blue-500/20'
+                                                    : 'text-slate-600 bg-white hover:bg-slate-50 font-bold border-transparent hover:border-slate-200'
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                'w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 transition-all',
+                                                catMain === null && catSub === null && catMainSolo === null ? 'bg-white/20 rotate-12' : 'bg-blue-50 group-hover:rotate-12'
+                                            )}>
+                                                <Utensils className={cn('w-5.5 h-5.5 transition-transform', catMain === null && catSub === null && catMainSolo === null ? 'text-white' : 'text-blue-500')} />
+                                            </div>
+                                            <span className="text-[14px] font-black uppercase tracking-widest flex-1">{tmR('resPosAllShort')}</span>
+                                        </button>
+                                    </div>
+
+                                    {catMain === null ? (
+                                        <div className="px-1">
+                                            <div className="mx-4 mb-2 flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{tmR('resPosCategoryMainLabel')}</span>
+                                                <div className="h-[1px] flex-1 ml-4 bg-slate-200/50" />
+                                            </div>
+                                            <div className="px-3 flex flex-col items-stretch space-y-2">
+                                                {mainCats.map((main) => {
+                                                    const subs = subsByMain[main] ?? [];
+                                                    const hasSubs = subs.length > 0;
+                                                    const soloSelected = catMainSolo === main;
+                                                    return (
+                                                        <button
+                                                            key={main}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (hasSubs) {
+                                                                    setCatMainSolo(null);
+                                                                    setCatMain(main);
+                                                                    setCatSub(null);
+                                                                } else {
+                                                                    setCatMain(null);
+                                                                    setCatSub(null);
+                                                                    setCatMainSolo(prev => (prev === main ? null : main));
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 group active:scale-[0.97] min-h-[44px]',
+                                                                soloSelected
+                                                                    ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                                    : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
+                                                            )}
+                                                        >
+                                                            <span className={cn(
+                                                                'shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center border border-slate-200/80',
+                                                                soloSelected ? 'bg-blue-50 border-blue-200/80' : 'bg-slate-100 group-hover:bg-amber-50 group-hover:border-amber-200/80'
+                                                            )}>
+                                                                <MainCategoryIcon name={main} className="w-5 h-5 text-amber-800" />
+                                                            </span>
+                                                            <span className="text-[13px] font-bold tracking-tight leading-tight uppercase truncate">{main}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="px-1">
+                                            <div className={cn('mx-4', subsForMain.length > 0 ? 'mb-2' : '')}>
+                                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 block truncate" title={catMain}>{catMain}</span>
+                                                {subsForMain.length > 0 && (
+                                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Alt kategori</span>
+                                                )}
+                                            </div>
+                                            {subsForMain.length > 0 && (
+                                                <div className="px-3 flex flex-col items-stretch space-y-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCatSub(null)}
+                                                        className={cn(
+                                                            'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97] min-h-[44px]',
+                                                            catSub === null
+                                                                ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                                : 'text-slate-500 bg-transparent hover:bg-white border-transparent hover:border-slate-200'
+                                                        )}
+                                                    >
+                                                        <span className="shrink-0 w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200/80">
+                                                            <List className="w-4 h-4 text-slate-600" />
+                                                        </span>
+                                                        <span className="text-[13px] font-bold tracking-tight">Bu grupta tümü</span>
+                                                    </button>
+                                                    {subsForMain.map((sub) => {
+                                                        const active = catSub === sub;
+                                                        return (
+                                                            <button
+                                                                key={sub}
+                                                                type="button"
+                                                                onClick={() => setCatSub(active ? null : sub)}
+                                                                className={cn(
+                                                                    'w-full rounded-[18px] flex items-center gap-3.5 px-4.5 py-3.5 transition-all text-left border-2 active:scale-[0.97] min-h-[44px]',
+                                                                    active
+                                                                        ? 'bg-white text-blue-600 font-black border-blue-500 shadow-lg shadow-blue-500/10'
+                                                                        : 'text-slate-500 bg-transparent hover:bg-white hover:text-slate-900 border-transparent hover:border-slate-200'
+                                                                )}
+                                                            >
+                                                                <span className="shrink-0 w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center border border-slate-200/80">
+                                                                    <SubCategoryIcon className="w-4 h-4 text-violet-700" />
+                                                                </span>
+                                                                <span className="text-[13px] font-bold tracking-tight leading-tight truncate">{sub}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </SheetContent>
+                        </Sheet>
 
                         <div className="relative group flex-1 min-w-0 max-w-lg h-12">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70 group-focus-within:text-white transition-colors pointer-events-none z-10" />
@@ -1606,7 +1752,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex flex-1 items-center gap-3 overflow-x-auto no-scrollbar px-2 mx-auto justify-end relative z-10">
+                    <div className="flex flex-1 min-w-0 w-full md:flex-1 items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-0.5 md:px-2 md:mx-auto md:justify-end relative z-10 touch-pan-x">
                         <button
                             onClick={() => setShowStaffModal(true)}
                             className={cn(
@@ -1636,7 +1782,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-4 relative z-10 transition-all">
+                    <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4 relative z-10 transition-all w-full md:w-auto min-w-0">
                         <div className="flex flex-col items-end">
                             {posMode === 'retail' ? (
                                 <div className="flex flex-col items-end gap-2">
@@ -1721,7 +1867,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* SECONDARY ACTION BAR (Plate Chips & Actions) */}
                 <div
-                    className="flex items-center justify-between px-6 z-10 shrink-0 overflow-x-auto no-scrollbar border-b border-white/10"
+                    className="flex items-center justify-between px-2 sm:px-4 md:px-6 z-10 shrink-0 overflow-x-auto no-scrollbar border-b border-white/10 touch-pan-x"
                     style={{
                         background: 'linear-gradient(to bottom, #2563eb, #1d4ed8)',
                         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 6px -1px rgba(0,0,0,0.1)'
@@ -1871,10 +2017,10 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             </header>
 
             {/* ── MAIN BODY ──────────────────────────────────────────── */}
-            <div className="flex-1 flex overflow-hidden min-h-0 min-w-0">
+            <div className="flex-1 flex overflow-hidden min-h-0 min-w-0 flex-col md:flex-row">
 
                 {/* ── LEFT SIDEBAR ────────────────────────────────────── */}
-                <aside className="w-[200px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col shadow-inner z-10 pb-8 content-start touch-pan-y">
+                <aside className="hidden md:flex w-[200px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex-col shadow-inner z-10 pb-8 content-start touch-pan-y">
                     <div className="px-3 mt-6 mb-3 space-y-2">
                         {catMain !== null && (
                             <button
@@ -2005,7 +2151,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── PRODUCTS GRID ────────────────────────────────────── */}
                 <main className="flex-1 min-w-0 overflow-y-auto p-2 bg-[#f4f6fb]">
-                    <div className="grid grid-cols-4 xl:grid-cols-5 xxl:grid-cols-6 gap-2 content-start">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 xxl:grid-cols-6 gap-2 content-start">
                         {filtered.map(product => {
                             const pm = parseMainSub(product);
                             const cat = pm.sub ? `${pm.main} › ${pm.sub}` : pm.main;
@@ -2127,8 +2273,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden"
-                    style={{ width: '520px', minWidth: '520px', maxWidth: '520px', flexShrink: 0, flexGrow: 0 }}
+                    className="bg-white flex flex-col overflow-hidden w-full md:w-[420px] md:min-w-[420px] md:max-w-[420px] lg:w-[520px] lg:min-w-[520px] lg:max-w-[520px] flex-shrink-0 flex-grow-0 border-t border-gray-200 md:border-t-0 md:border-l h-[45dvh] sm:h-[40dvh] md:h-auto"
                 >
 
                     {/* ── CART ITEMS ── */}

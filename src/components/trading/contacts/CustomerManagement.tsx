@@ -1,9 +1,9 @@
 ﻿import { useState } from 'react';
 import { Users, Plus, Search, Mail, Phone, Edit, Trash2, MapPin, TrendingUp, ShoppingBag, User } from 'lucide-react';
-import { DevExDataGrid } from './DevExDataGrid';
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Customer, Sale } from '../../../App';
-import { useCustomerStore } from '../store';
+import { useCustomerStore } from '../../../store/useCustomerStore';
 
 interface CustomerManagementProps {
   customers: Customer[];

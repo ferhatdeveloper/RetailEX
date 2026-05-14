@@ -23,6 +23,7 @@ import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCateg
 import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import { Receipt80mm } from '../../pos/Receipt80mm';
@@ -326,6 +327,7 @@ export function AppointmentPOS({
     } = useBeautyStore();
     const { products, loadProducts, updateStock } = useProductStore();
     const { tm, language: uiLanguage } = useLanguage();
+    const { isMobile } = useResponsive();
     const { selectedFirm } = useFirmaDonem();
     const { isAdmin } = usePermission();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
@@ -2510,7 +2512,7 @@ export function AppointmentPOS({
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
 
             {/* ── TOP BAR: tarih + saat + cihaz + durum (altta yalnızca not) ── */}
-            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flexWrap: 'wrap' }}>
+            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: isMobile ? '10px 12px' : '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flexWrap: 'wrap' }}>
                 {onBack && (
                     <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 5, background: '#f9fafb', color: '#374151', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                         <ArrowLeft size={13} /> {tm('bPOSBackCalendar')}
@@ -2675,10 +2677,10 @@ export function AppointmentPOS({
             </div>
 
             {/* ── BODY ────────────────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: isMobile ? 'auto' : 'hidden', minHeight: 0 }}>
 
                 {/* ── LEFT: Item grid ─────────────────────────────── */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #e8e4f0' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: isMobile ? 'none' : '1px solid #e8e4f0', minHeight: 0 }}>
                     {/* Tabs + search (+ hizmetlerde kategori + varsayılan uzman tek satır) */}
                     <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 14px', flexShrink: 0 }}>
                         {/* Arama solda, daha büyük dokunma alanı; sekmeler sağda/yanında */}
@@ -2962,7 +2964,7 @@ export function AppointmentPOS({
                             <aside
                                 className="custom-scrollbar"
                                 style={{
-                                    width: 200,
+                                    width: isMobile ? 160 : 200,
                                     flexShrink: 0,
                                     background: '#f8fafc',
                                     borderRight: '1px solid #e2e8f0',
@@ -3178,7 +3180,19 @@ export function AppointmentPOS({
                 </div>
 
                 {/* ── RIGHT: Cart + Appointment + Checkout ─────────── */}
-                <div style={{ width: 400, height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+                <div
+                    style={{
+                        width: isMobile ? '100%' : 400,
+                        height: isMobile ? 'auto' : '100%',
+                        maxHeight: isMobile ? '55dvh' : undefined,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: '#fff',
+                        overflow: 'hidden',
+                        borderTop: isMobile ? '1px solid #e5e7eb' : undefined,
+                        flexShrink: 0,
+                    }}
+                >
 
                     {/* Customer Section - Compact & Modern */}
                     <div style={{ padding: '12px 14px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
@@ -3488,7 +3502,7 @@ export function AppointmentPOS({
                                                     <Field label={tm('custLabelFullName')}>
                                                         <input value={newCust.name} onChange={e => setNewCust(p => ({ ...p, name: e.target.value }))} placeholder={tm('bPlaceholderNameRequired')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                     </Field>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                                         <Field label={tm('custLabelPhone1')}>
                                                             <input value={newCust.phone} onChange={e => setNewCust(p => ({ ...p, phone: e.target.value }))} placeholder={tm('bPhone')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
@@ -3496,7 +3510,7 @@ export function AppointmentPOS({
                                                             <input value={newCust.phone2} onChange={e => setNewCust(p => ({ ...p, phone2: e.target.value }))} placeholder={tm('custPhPhone2')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                                         <Field label={tm('custLabelAge')}>
                                                             <input type="number" min={0} max={150} value={newCust.age} onChange={e => setNewCust(p => ({ ...p, age: e.target.value }))} placeholder={tm('custPhAge')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
@@ -3504,7 +3518,7 @@ export function AppointmentPOS({
                                                             <input value={newCust.file_id} onChange={e => setNewCust(p => ({ ...p, file_id: e.target.value }))} placeholder={tm('custPhFileId')} style={{ ...iStyle, borderRadius: 10, height: 40 }} autoComplete="off" />
                                                         </Field>
                                                     </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                                         <Field label={tm('bGender')}>
                                                             <select
                                                                 value={newCust.gender}
@@ -3541,7 +3555,7 @@ export function AppointmentPOS({
                                                     <Field label={tm('custLabelAddress')}>
                                                         <textarea value={newCust.address} onChange={e => setNewCust(p => ({ ...p, address: e.target.value }))} placeholder={tm('custPhAddress')} rows={2} style={{ ...iStyle, height: 'auto', padding: '8px 10px', resize: 'vertical', lineHeight: 1.45, borderRadius: 10 }} />
                                                     </Field>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                                         <Field label={tm('custLabelOccupation')}>
                                                             <input value={newCust.occupation} onChange={e => setNewCust(p => ({ ...p, occupation: e.target.value }))} placeholder={tm('custPhOccupation')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>

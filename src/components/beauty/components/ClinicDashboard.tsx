@@ -299,10 +299,13 @@ export function ClinicDashboard() {
     const topServices = services.slice(0, 6);
 
     return (
-        <div style={{ height: '100%', overflowY: 'auto', background: T.bg, padding: 20 }} className="custom-scrollbar">
+        <div
+            style={{ height: '100%', overflowY: 'auto', background: T.bg }}
+            className="custom-scrollbar p-3 sm:p-5"
+        >
 
             {/* ── Date strip ──────────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 20 }}>
                 <div>
                     <h1 style={{ fontSize: 18, fontWeight: 800, color: T.textPrimary, letterSpacing: '-0.02em' }}>
                         {tm('bClinicPanelTitle')}
@@ -315,6 +318,7 @@ export function ClinicDashboard() {
                     display: 'flex', alignItems: 'center', gap: 6,
                     background: T.surface, border: `1px solid ${T.border}`,
                     borderRadius: 6, padding: '6px 12px',
+                    maxWidth: '100%',
                 }}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.green, display: 'inline-block' }} />
                     <span style={{ fontSize: 11, fontWeight: 700, color: T.green, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{tm('bLiveBadge')}</span>
@@ -324,7 +328,7 @@ export function ClinicDashboard() {
             </div>
 
             {/* ── KPI Strip ───────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
                 <KpiCard label={tm('bKpiDailyRevenue')}       value={fmt(stats.revenue)}   accent={T.violet}  icon={TrendingUp} />
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
@@ -533,7 +537,7 @@ export function ClinicDashboard() {
                         background: '#fff',
                     }}
                 >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 220px', minWidth: 0 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                             {tm('beautyServiceFilterLabel')}
                         </span>
@@ -548,8 +552,7 @@ export function ClinicDashboard() {
                                 fontWeight: 600,
                                 color: T.textPrimary,
                                 background: '#fff',
-                                minWidth: 180,
-                                maxWidth: 280,
+                                width: '100%',
                                 cursor: 'pointer',
                             }}
                         >
@@ -563,7 +566,7 @@ export function ClinicDashboard() {
                                 ))}
                         </select>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 220px', minWidth: 0 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                             {tm('bCallBoardFilterDevice')}
                         </span>
@@ -578,8 +581,7 @@ export function ClinicDashboard() {
                                 fontWeight: 600,
                                 color: T.textPrimary,
                                 background: '#fff',
-                                minWidth: 180,
-                                maxWidth: 280,
+                                width: '100%',
                                 cursor: 'pointer',
                             }}
                         >
@@ -601,6 +603,7 @@ export function ClinicDashboard() {
                             cursor: 'pointer',
                             marginLeft: 4,
                             paddingTop: 18,
+                            flex: '1 1 240px',
                         }}
                     >
                         <input
@@ -664,7 +667,7 @@ export function ClinicDashboard() {
                                         </span>
                                     </div>
                                     <div style={{ overflowX: 'auto' }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                        <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 12 }}>
                                             <thead>
                                                 <tr style={{ background: '#f8fafc', borderBottom: `1px solid ${T.border}` }}>
                                                     <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: T.textMuted }}>{tm('date')}</th>
@@ -823,7 +826,7 @@ export function ClinicDashboard() {
             />
 
             {/* ── Main Grid ───────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
 
                 {/* Today's Appointments */}
                 <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -839,77 +842,84 @@ export function ClinicDashboard() {
                         <Calendar size={16} style={{ color: T.violet }} />
                     </div>
 
-                    {/* Column headers */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
-                        gap: 8, padding: '8px 18px',
-                        borderBottom: `1px solid ${T.border}`,
-                        background: '#faf9fd',
-                    }}>
-                        {[tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bDurationHeader'), tm('bStatus'), tm('bDashboardColAmount')].map((h, i) => (
-                            <span key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
-                        ))}
-                    </div>
+                    <div style={{ overflowX: 'auto' }} className="custom-scrollbar">
+                        {/* Column headers */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
+                            minWidth: 560,
+                            gap: 8, padding: '8px 18px',
+                            borderBottom: `1px solid ${T.border}`,
+                            background: '#faf9fd',
+                        }}>
+                            {[tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bDurationHeader'), tm('bStatus'), tm('bDashboardColAmount')].map((h, i) => (
+                                <span key={i} style={{ fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
+                            ))}
+                        </div>
 
-                    {/* Rows */}
-                    <div style={{ maxHeight: 400, overflowY: 'auto' }} className="custom-scrollbar">
-                        {stats.todayApts.length === 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', color: T.textMuted }}>
-                                <Calendar size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-                                <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointmentsToday')}</p>
-                            </div>
-                        ) : stats.todayApts.map(apt => {
-                            const cfg  = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
-                            const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
-                            return (
-                                <div
-                                    key={apt.id}
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
-                                        gap: 8, padding: '11px 18px',
-                                        borderBottom: `1px solid ${T.border}`,
-                                        alignItems: 'center',
-                                        transition: 'background 0.1s',
-                                    }}
-                                    onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
-                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                >
-                                    {/* Time */}
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, fontFamily: 'monospace' }}>{time}</span>
-
-                                    {/* Status dot */}
-                                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, display: 'inline-block', boxShadow: `0 0 0 2px ${cfg.bg}` }} />
-
-                                    {/* Info */}
-                                    <div>
-                                        <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary }}>{apt.customer_name ?? tm('bCustomerFallbackName')}</p>
-                                        <p style={{ fontSize: 11, fontWeight: 500, color: T.textMuted, marginTop: 1 }}>
-                                            {apt.service_name ?? '—'}{apt.specialist_name ? ` · ${apt.specialist_name}` : ''}
-                                        </p>
-                                    </div>
-
-                                    {/* Duration */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: T.textMuted }}>
-                                        <Clock size={11} />
-                                        <span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration ?? '?'}{tm('bDkSuffix')}</span>
-                                    </div>
-
-                                    {/* Status pill */}
-                                    <span style={{
-                                        display: 'inline-block', fontSize: 10, fontWeight: 700,
-                                        padding: '2px 8px', borderRadius: 4,
-                                        background: cfg.bg, color: cfg.color,
-                                    }}>{cfg.label}</span>
-
-                                    {/* Price */}
-                                    <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, textAlign: 'right' }}>
-                                        {(apt.total_price ?? 0) > 0 ? fmt(apt.total_price) : '—'}
-                                    </span>
+                        {/* Rows */}
+                        <div style={{ maxHeight: 400, overflowY: 'auto' }} className="custom-scrollbar">
+                            {stats.todayApts.length === 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', color: T.textMuted }}>
+                                    <Calendar size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
+                                    <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointmentsToday')}</p>
                                 </div>
-                            );
-                        })}
+                            ) : stats.todayApts.map(apt => {
+                                const cfg  = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+                                const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
+                                return (
+                                    <div
+                                        key={apt.id}
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: '56px 8px 1fr 72px 88px 80px',
+                                            minWidth: 560,
+                                            gap: 8, padding: '11px 18px',
+                                            borderBottom: `1px solid ${T.border}`,
+                                            alignItems: 'center',
+                                            transition: 'background 0.1s',
+                                        }}
+                                        onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
+                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                    >
+                                        {/* Time */}
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{time}</span>
+
+                                        {/* Status dot */}
+                                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: cfg.color, display: 'inline-block', boxShadow: `0 0 0 2px ${cfg.bg}` }} />
+
+                                        {/* Info */}
+                                        <div style={{ minWidth: 0 }}>
+                                            <p style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {apt.customer_name ?? tm('bCustomerFallbackName')}
+                                            </p>
+                                            <p style={{ fontSize: 11, fontWeight: 500, color: T.textMuted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {apt.service_name ?? '—'}{apt.specialist_name ? ` · ${apt.specialist_name}` : ''}
+                                            </p>
+                                        </div>
+
+                                        {/* Duration */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: T.textMuted, whiteSpace: 'nowrap' }}>
+                                            <Clock size={11} />
+                                            <span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration ?? '?'}{tm('bDkSuffix')}</span>
+                                        </div>
+
+                                        {/* Status pill */}
+                                        <span style={{
+                                            display: 'inline-block', fontSize: 10, fontWeight: 700,
+                                            padding: '2px 8px', borderRadius: 4,
+                                            background: cfg.bg, color: cfg.color,
+                                            whiteSpace: 'nowrap',
+                                        }}>{cfg.label}</span>
+
+                                        {/* Price */}
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: T.textPrimary, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                            {(apt.total_price ?? 0) > 0 ? fmt(apt.total_price) : '—'}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
 

@@ -99,7 +99,10 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                                     firms.map((firm) => (
                                         <button
                                             key={firm.id || firm.firm_nr}
-                                            onClick={() => selectFirm(firm.id || firm.firm_nr)}
+                                            onClick={() => {
+                                                const fid = firm.id ?? firm.firm_nr;
+                                                if (fid != null && fid !== '') selectFirm(fid);
+                                            }}
                                             className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${(selectedFirm?.id === firm.id || (firm.firm_nr && selectedFirm?.firm_nr === firm.firm_nr))
                                                 ? 'bg-blue-100 dark:bg-blue-900 border-2 border-blue-500'
                                                 : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-2 border-transparent'

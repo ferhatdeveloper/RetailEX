@@ -478,7 +478,7 @@ export const supplierAPI = {
           select: 'code',
           code: `like.${likePat}`,
           order: 'created_at.desc',
-          limit: 1,
+          limit: '1',
         };
         if (!isSupplier) {
           q.firm_nr = `eq.${ERP_SETTINGS.firmNr}`;

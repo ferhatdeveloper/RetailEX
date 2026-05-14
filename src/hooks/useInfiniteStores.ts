@@ -6,10 +6,11 @@ import { storeApiService, type SearchFilters, type Store } from '../services/sto
 export function useInfiniteStores(filters?: SearchFilters, pageSize: number = 50) {
   return useInfiniteQuery({
     queryKey: ['stores', 'infinite', filters, pageSize],
-    queryFn: ({ pageParam = 0 }) => 
+    initialPageParam: 0,
+    queryFn: ({ pageParam = 0 }) =>
       storeApiService.fetchStores(pageParam as number, pageSize, filters),
-    getNextPageParam: (lastPage) => 
-      lastPage.pagination.cursor ? parseInt(lastPage.pagination.cursor) : undefined,
+    getNextPageParam: (lastPage: Awaited<ReturnType<typeof storeApiService.fetchStores>>) =>
+      lastPage.pagination.cursor ? parseInt(lastPage.pagination.cursor, 10) : undefined,
     staleTime: 60000, // 1 minute
     gcTime: 5 * 60000, // 5 minutes (formerly cacheTime)
     refetchOnWindowFocus: false,

@@ -5,8 +5,19 @@
 import { useState } from 'react';
 import { UtensilsCrossed, Coffee, Clock, Users } from 'lucide-react';
 
+type TableStatus = 'occupied' | 'available' | 'reserved';
+
+interface RestaurantTable {
+  id: string;
+  number: number;
+  seats: number;
+  status: TableStatus;
+  orderValue: number;
+  duration: number;
+}
+
 export function RestaurantModule() {
-  const [tables] = useState([
+  const [tables] = useState<RestaurantTable[]>([
     { id: '1', number: 1, seats: 4, status: 'occupied', orderValue: 125000, duration: 45 },
     { id: '2', number: 2, seats: 2, status: 'available', orderValue: 0, duration: 0 },
     { id: '3', number: 3, seats: 6, status: 'occupied', orderValue: 280000, duration: 25 },
@@ -19,16 +30,16 @@ export function RestaurantModule() {
   const totalRevenue = tables.reduce((sum, t) => sum + t.orderValue, 0);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <UtensilsCrossed className="w-8 h-8 text-orange-600" />
-          Restoran & Cafe Yönetimi
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 min-w-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 min-w-0">
+          <UtensilsCrossed className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 text-orange-600" />
+          <span className="truncate">Restoran & Cafe Yönetimi</span>
         </h1>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-green-50 rounded-lg p-4">
           <Users className="w-8 h-8 text-green-600 mb-2" />
           <p className="text-sm text-green-700">Dolu Masalar</p>
@@ -53,10 +64,10 @@ export function RestaurantModule() {
 
       {/* Tables Grid */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Masa Durumu</h2>
-        <div className="grid grid-cols-6 gap-4">
+        <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Masa Durumu</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
           {tables.map(table => {
-            const colors = {
+            const colors: Record<TableStatus, string> = {
               available: 'bg-green-100 border-green-300 text-green-900',
               occupied: 'bg-red-100 border-red-300 text-red-900',
               reserved: 'bg-yellow-100 border-yellow-300 text-yellow-900',

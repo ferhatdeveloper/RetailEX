@@ -92,7 +92,7 @@ class ImageSearchService {
 
             out.push({
                 id: `wm-${p.pageid}`,
-                thumbnailUrl: thumb,
+                thumbnailUrl: thumb ?? fullUrl,
                 fullUrl,
                 photographer: 'Wikimedia Commons',
                 alt: (p.title || '').replace(/^File:/i, '') || q,

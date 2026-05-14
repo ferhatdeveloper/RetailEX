@@ -9,7 +9,7 @@
 
 import { useCallback } from 'react';
 import { useFirmaDonem } from '../contexts/FirmaDonemContext';
-import { JournalEntryGenerator, type JournalEntry, type JournalLine } from '../services/journalEntryGenerator';
+import { JournalEntryGenerator, type JournalEntry, type JournalLine, type FirmaDonemContext } from '../services/journalEntryGenerator';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { logger } from '../utils/logger';
 
@@ -138,10 +138,10 @@ export const useAutoJournal = () => {
           firma_id: entry.firma_id,
           donem_id: entry.donem_id,
           fis_tarihi: entry.fis_tarihi,
-          aciklama: entry.aciklama,
-          kaynak_belge_tipi: entry.kaynak_belge_tipi,
-          kaynak_belge_no: entry.kaynak_belge_no,
-          satirlar: entry.satirlar.map(satir => ({
+          aciklama: entry.fis_aciklama,
+          kaynak_belge_tipi: entry.kaynak_belge ?? '',
+          kaynak_belge_no: entry.kaynak_id ?? '',
+          satirlar: entry.lines.map((satir) => ({
             hesap_kodu: satir.hesap_kodu,
             hesap_adi: satir.hesap_adi,
             borc: satir.borc,
@@ -194,27 +194,27 @@ export const useAutoJournal = () => {
         };
       }
 
-      // Muhasebe fişi oluştur
-      const entry = JournalEntryGenerator.generateSalesInvoiceEntry({
+      const context: FirmaDonemContext = {
         firma_id: selectedFirma.id,
         donem_id: selectedDonem.id,
-        ...params,
+      };
+      const generator = new JournalEntryGenerator(context);
+      const entry = await generator.generateSaleEntry({
+        id: params.fatura_no,
+        invoice_no: params.fatura_no,
+        sale_date: params.tarih.toISOString().split('T')[0],
+        total: params.tutar,
+        subtotal: params.tutar,
+        tax_amount: 0,
+        discount_amount: 0,
+        customer_name: params.musteri_adi,
+        payment_method: 'cash',
       });
 
-      // Backend'e kaydet
-      const saved = await saveJournalEntry(entry);
-
-      if (saved) {
-        return {
-          success: true,
-          journalEntry: entry,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Muhasebe fişi kaydedilemedi',
-        };
-      }
+      return {
+        success: true,
+        journalEntry: entry,
+      };
     } catch (error: any) {
       logger.error('[AutoJournal] Error creating sales journal:', error);
       return {
@@ -222,7 +222,7 @@ export const useAutoJournal = () => {
         error: error.message || 'Bilinmeyen hata',
       };
     }
-  }, [selectedFirm, selectedPeriod, saveJournalEntry]);
+  }, [selectedFirm, selectedPeriod]);
 
   /**
    * Alış faturası için otomatik fiş
@@ -251,27 +251,25 @@ export const useAutoJournal = () => {
         };
       }
 
-      // Muhasebe fişi oluştur
-      const entry = JournalEntryGenerator.generatePurchaseInvoiceEntry({
+      const context: FirmaDonemContext = {
         firma_id: selectedFirma.id,
         donem_id: selectedDonem.id,
-        ...params,
+      };
+      const generator = new JournalEntryGenerator(context);
+      const entry = await generator.generatePurchaseEntry({
+        id: params.fatura_no,
+        invoice_no: params.fatura_no,
+        purchase_date: params.tarih.toISOString().split('T')[0],
+        total: params.tutar,
+        subtotal: params.tutar,
+        tax_amount: 0,
+        payment_method: 'cash',
       });
 
-      // Backend'e kaydet
-      const saved = await saveJournalEntry(entry);
-
-      if (saved) {
-        return {
-          success: true,
-          journalEntry: entry,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Muhasebe fişi kaydedilemedi',
-        };
-      }
+      return {
+        success: true,
+        journalEntry: entry,
+      };
     } catch (error: any) {
       logger.error('[AutoJournal] Error creating purchase journal:', error);
       return {
@@ -279,7 +277,7 @@ export const useAutoJournal = () => {
         error: error.message || 'Bilinmeyen hata',
       };
     }
-  }, [selectedFirm, selectedPeriod, saveJournalEntry]);
+  }, [selectedFirm, selectedPeriod]);
 
   /**
    * Tahsilat için otomatik fiş
@@ -309,27 +307,31 @@ export const useAutoJournal = () => {
         };
       }
 
-      // Muhasebe fişi oluştur
-      const entry = JournalEntryGenerator.generateReceiptEntry({
+      const mapOdeme = (o: 'NAKIT' | 'KART' | 'HAVALE'): 'cash' | 'bank' | 'credit_card' => {
+        if (o === 'NAKIT') return 'cash';
+        if (o === 'HAVALE') return 'bank';
+        return 'credit_card';
+      };
+
+      const context: FirmaDonemContext = {
         firma_id: selectedFirma.id,
         donem_id: selectedDonem.id,
-        ...params,
+      };
+      const generator = new JournalEntryGenerator(context);
+      const entry = await generator.generatePaymentEntry({
+        id: params.belge_no,
+        payment_no: params.belge_no,
+        payment_date: params.tarih.toISOString().split('T')[0],
+        amount: params.tutar,
+        payment_type: 'receipt',
+        payment_method: mapOdeme(params.odeme_yontemi),
+        description: params.aciklama ?? `Tahsilat - ${params.musteri_adi}`,
       });
 
-      // Backend'e kaydet
-      const saved = await saveJournalEntry(entry);
-
-      if (saved) {
-        return {
-          success: true,
-          journalEntry: entry,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Muhasebe fişi kaydedilemedi',
-        };
-      }
+      return {
+        success: true,
+        journalEntry: entry,
+      };
     } catch (error: any) {
       logger.error('[AutoJournal] Error creating receipt journal:', error);
       return {
@@ -337,7 +339,7 @@ export const useAutoJournal = () => {
         error: error.message || 'Bilinmeyen hata',
       };
     }
-  }, [selectedFirm, selectedPeriod, saveJournalEntry]);
+  }, [selectedFirm, selectedPeriod]);
 
   /**
    * Ödeme için otomatik fiş
@@ -367,27 +369,32 @@ export const useAutoJournal = () => {
         };
       }
 
-      // Muhasebe fişi oluştur
-      const entry = JournalEntryGenerator.generatePaymentEntry({
+      const mapOdeme = (o: 'NAKIT' | 'KART' | 'HAVALE'): 'cash' | 'bank' | 'credit_card' => {
+        if (o === 'NAKIT') return 'cash';
+        if (o === 'HAVALE') return 'bank';
+        return 'credit_card';
+      };
+
+      const context: FirmaDonemContext = {
         firma_id: selectedFirma.id,
         donem_id: selectedDonem.id,
-        ...params,
+      };
+      const generator = new JournalEntryGenerator(context);
+      const entry = await generator.generatePaymentEntry({
+        id: params.belge_no,
+        payment_no: params.belge_no,
+        payment_date: params.tarih.toISOString().split('T')[0],
+        amount: params.tutar,
+        payment_type: 'payment',
+        payment_method: mapOdeme(params.odeme_yontemi),
+        description: params.aciklama ?? `Ödeme - ${params.tedarikci_adi}`,
+        supplier_id: undefined,
       });
 
-      // Backend'e kaydet
-      const saved = await saveJournalEntry(entry);
-
-      if (saved) {
-        return {
-          success: true,
-          journalEntry: entry,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Muhasebe fişi kaydedilemedi',
-        };
-      }
+      return {
+        success: true,
+        journalEntry: entry,
+      };
     } catch (error: any) {
       logger.error('[AutoJournal] Error creating payment journal:', error);
       return {
@@ -395,7 +402,7 @@ export const useAutoJournal = () => {
         error: error.message || 'Bilinmeyen hata',
       };
     }
-  }, [selectedFirm, selectedPeriod, saveJournalEntry]);
+  }, [selectedFirm, selectedPeriod]);
 
   /**
    * Transfer için otomatik fiş
@@ -425,27 +432,24 @@ export const useAutoJournal = () => {
         };
       }
 
-      // Muhasebe fişi oluştur
-      const entry = JournalEntryGenerator.generateTransferEntry({
+      const context: FirmaDonemContext = {
         firma_id: selectedFirma.id,
         donem_id: selectedDonem.id,
-        ...params,
+      };
+      const generator = new JournalEntryGenerator(context);
+      const entry = await generator.generateTransferEntry({
+        id: params.belge_no,
+        transfer_no: params.belge_no,
+        transfer_date: params.tarih.toISOString().split('T')[0],
+        from_store_id: '1',
+        to_store_id: '2',
+        total_cost: params.tutar,
       });
 
-      // Backend'e kaydet
-      const saved = await saveJournalEntry(entry);
-
-      if (saved) {
-        return {
-          success: true,
-          journalEntry: entry,
-        };
-      } else {
-        return {
-          success: false,
-          error: 'Muhasebe fişi kaydedilemedi',
-        };
-      }
+      return {
+        success: true,
+        journalEntry: entry,
+      };
     } catch (error: any) {
       logger.error('[AutoJournal] Error creating transfer journal:', error);
       return {
@@ -453,7 +457,7 @@ export const useAutoJournal = () => {
         error: error.message || 'Bilinmeyen hata',
       };
     }
-  }, [selectedFirm, selectedPeriod, saveJournalEntry]);
+  }, [selectedFirm, selectedPeriod]);
 
   /**
    * Genel amaçlı muhasebe fişi oluştur

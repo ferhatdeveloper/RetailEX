@@ -356,12 +356,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   const filteredProducts = useMemo(() => {
     const list = displayProducts.filter(product => {
-      const searchLower = searchQuery.toLowerCase();
+      const searchLower = searchQuery.toLocaleLowerCase('tr-TR');
       const matchesSearch = searchQuery === '' ||
-        (product.name?.toLowerCase() || '').includes(searchLower) ||
-        (product.code?.toLowerCase() || '').includes(searchLower) ||
+        (product.name?.toLocaleLowerCase('tr-TR') || '').includes(searchLower) ||
+        (product.code?.toLocaleLowerCase('tr-TR') || '').includes(searchLower) ||
         (product.barcode || '').includes(searchQuery) ||
-        (product.category?.toLowerCase() || '').includes(searchLower);
+        (product.category?.toLocaleLowerCase('tr-TR') || '').includes(searchLower);
       const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
       const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
       const duplicateKey = duplicateDetectBy === 'code'
@@ -660,11 +660,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       : []),
     columnHelper.accessor('stock', {
       header: tm('stock').toUpperCase(),
-      cell: info => (
-        <span className={info.getValue() < 10 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-          {info.getValue()}
-        </span>
-      ),
+      cell: (info) => {
+        const raw = info.getValue();
+        const stock = typeof raw === 'number' ? raw : Number(raw ?? 0);
+        const safeStock = Number.isFinite(stock) ? stock : 0;
+        return (
+          <span className={safeStock < 10 ? 'text-red-600 font-medium' : 'text-gray-700'}>
+            {safeStock}
+          </span>
+        );
+      },
       size: 100
     }),
     columnHelper.accessor('unit', {
@@ -867,7 +872,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 ) : (
                   mobilePagedProducts.map((p) => {
                     const selected = selectedProducts.some((s) => s.id === p.id);
-                    const low = (p.stock ?? 0) < 10;
+                    const stockN = Number(p.stock ?? 0);
+                    const safeStock = Number.isFinite(stockN) ? stockN : 0;
+                    const low = safeStock < 10;
                     const code = (p.barcode || p.code || '—').trim();
                     return (
                       <div
@@ -953,7 +960,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                                   : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/70'
                               }`}
                             >
-                              {tm('stock')} {p.stock ?? 0}
+                              {tm('stock')} {safeStock}
                             </span>
                           </div>
                         </div>
@@ -1404,7 +1411,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     const mround = (num: number, mult: number) => num > 0 ? Math.round(num / mult) * mult : 0;
                     
                     const promises = selectedProducts.map(p => {
-                      const basePrice = p.salePriceUSD || 0;
+                      const basePrice = Number((p as any).salePriceUSD ?? 0);
                       if (basePrice > 0) {
                         const calculatedPrice = basePrice * bulkRate;
                         const roundedPrice = mround(calculatedPrice, roundTo);

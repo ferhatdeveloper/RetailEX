@@ -243,7 +243,7 @@ export function StockPriceChangeSlipsModule() {
                     <th className="px-2 py-2 w-10">
                       <Checkbox
                         checked={allDriftSelected}
-                        onCheckedChange={(v) => selectAllDrift(v === true)}
+                        onCheckedChange={(v: boolean | 'indeterminate') => selectAllDrift(v === true)}
                         aria-label="Tümünü seç"
                       />
                     </th>
@@ -260,7 +260,7 @@ export function StockPriceChangeSlipsModule() {
                       <td className="px-2 py-1.5">
                         <Checkbox
                           checked={selectedDrift.has(d.product_id)}
-                          onCheckedChange={(v) => toggleSelectDrift(d.product_id, v === true)}
+                          onCheckedChange={(v: boolean | 'indeterminate') => toggleSelectDrift(d.product_id, v === true)}
                           aria-label={d.product_name}
                         />
                       </td>

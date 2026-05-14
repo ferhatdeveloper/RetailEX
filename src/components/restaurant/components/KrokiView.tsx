@@ -1012,7 +1012,7 @@ export function KrokiView({ activeFloor }: KrokiViewProps) {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#f1f3f5' }}>
             {/* Toolbar */}
-            <div className="flex items-center gap-4 px-6 py-3.5 bg-slate-900 border-b border-white/5 shrink-0 relative overflow-hidden backdrop-blur-md">
+            <div className="flex flex-wrap items-center gap-3 px-3 sm:px-6 py-3 bg-slate-900 border-b border-white/5 shrink-0 relative overflow-hidden backdrop-blur-md">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-transparent pointer-events-none" />
 
                 <div className="flex items-center gap-3 relative z-10">

@@ -23,13 +23,13 @@ export function BroadcastDataSelector({ type, isOpen, onClose, onSelect, theme }
 
     // Customer Store
     const customers = useCustomerStore((state) => state.customers);
-    const loadCustomers = useCustomerStore((state) => state.fetchCustomers);
-    const customersLoading = useCustomerStore((state) => state.loading);
+    const loadCustomers = useCustomerStore((state) => state.loadCustomers);
+    const customersLoading = useCustomerStore((state) => state.isLoading);
 
     // Campaign Store
     const campaigns = useCampaignStore((state) => state.campaigns);
-    const loadCampaigns = useCampaignStore((state) => state.fetchCampaigns);
-    const campaignsLoading = useCampaignStore((state) => state.loading);
+    const loadCampaigns = useCampaignStore((state) => state.loadCampaigns);
+    const campaignsLoading = useCampaignStore((state) => state.isLoading);
 
     useEffect(() => {
         if (isOpen) {
@@ -48,28 +48,33 @@ export function BroadcastDataSelector({ type, isOpen, onClose, onSelect, theme }
     };
 
     const getFilteredData = () => {
-        const query = searchQuery.toLowerCase();
+        const queryRaw = searchQuery.trim();
+        const query = queryRaw.toLocaleLowerCase('tr-TR');
 
         if (type === 'product') {
             return products.filter(p =>
-                p.name.toLowerCase().includes(query) ||
-                p.barcode.toLowerCase().includes(query) ||
-                p.category.toLowerCase().includes(query)
+                (p.name || '').toLocaleLowerCase('tr-TR').includes(query) ||
+                (p.barcode || '').toLocaleLowerCase('tr-TR').includes(query) ||
+                (p.category || '').toLocaleLowerCase('tr-TR').includes(query)
             );
         }
 
         if (type === 'customer') {
             return customers.filter(c =>
-                c.name.toLowerCase().includes(query) ||
-                (c.phone && c.phone.includes(query)) ||
-                (c.email && c.email.toLowerCase().includes(query))
+                (c.name || '').toLocaleLowerCase('tr-TR').includes(query) ||
+                (c.phone || '').includes(queryRaw) ||
+                (c.email || '').toLocaleLowerCase('tr-TR').includes(query)
             );
         }
 
         if (type === 'campaign') {
             return campaigns.filter(c =>
-                c.name.toLowerCase().includes(query) ||
-                c.code?.toLowerCase().includes(query)
+                (c.name || '').toLocaleLowerCase('tr-TR').includes(query) ||
+                (c.id || '').toLocaleLowerCase('tr-TR').includes(query) ||
+                (() => {
+                    const code = (c as { code?: string }).code;
+                    return typeof code === 'string' && code.toLocaleLowerCase('tr-TR').includes(query);
+                })()
             );
         }
 
@@ -167,7 +172,7 @@ export function BroadcastDataSelector({ type, isOpen, onClose, onSelect, theme }
                                     {type === 'customer' && (
                                         <div className="flex gap-3">
                                             <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                                <div className="font-bold text-gray-500">{item.name.substring(0, 2).toUpperCase()}</div>
+                                                <div className="font-bold text-gray-500">{item.name.substring(0, 2).toLocaleUpperCase('tr-TR')}</div>
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-medium truncate">{item.name}</div>
@@ -187,7 +192,7 @@ export function BroadcastDataSelector({ type, isOpen, onClose, onSelect, theme }
                                                 <div className="font-medium truncate">{item.name}</div>
                                                 <div className="text-xs opacity-60 flex justify-between mt-1">
                                                     <span className="bg-purple-100 text-purple-700 px-1.5 rounded text-[10px]">
-                                                        {item.status === 'active' ? 'Aktif' : 'Pasif'}
+                                                        {item.active ? 'Aktif' : 'Pasif'}
                                                     </span>
                                                     <span>{new Date(item.startDate).toLocaleDateString()}</span>
                                                 </div>

@@ -643,6 +643,3 @@ export class WarehouseService {
 // Singleton instance
 export const warehouseService = new WarehouseService();
 
-// Export types
-export type { Warehouse, WarehouseStock, StockTransfer, TransferItem, StockMovement };
-

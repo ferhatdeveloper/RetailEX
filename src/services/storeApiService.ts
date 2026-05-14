@@ -56,6 +56,8 @@ export interface SearchFilters {
   region?: string;
   subRegion?: string;
   status?: string;
+  /** UI ciro bandı seçimi (örn. 100k+); API katmanında min/max’e çevrilebilir */
+  revenue?: string;
   minRevenue?: number;
   maxRevenue?: number;
 }

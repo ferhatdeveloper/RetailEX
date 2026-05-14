@@ -218,7 +218,10 @@ export function StaffTimelineView({
     }
 
     return (
-        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', height: '100%' }} className="custom-scrollbar">
+        <div
+            style={{ display: 'flex', gap: 12, overflowX: 'auto', height: '100%', WebkitOverflowScrolling: 'touch' }}
+            className="custom-scrollbar"
+        >
             {columnData.map(({ col, isUnassigned, appointments: colApts, revenue, commission, rate }) => {
                 const accent = (col as BeautySpecialist).color ?? '#7c3aed';
                 const queueRowCount = queueMode ? groupBeautyQueueByCustomer(colApts).length : colApts.length;
@@ -238,7 +241,7 @@ export function StaffTimelineView({
                         key={col.id}
                         style={{
                             flexShrink: 0,
-                            width: 260,
+                            width: 'min(260px, 88vw)',
                             background: '#fff',
                             border: '1px solid #e8e4f0',
                             borderRadius: 8,

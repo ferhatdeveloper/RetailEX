@@ -35,6 +35,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { fetchQuotations, createQuotation, updateQuotation, deleteQuotation, sendQuotation, acceptQuotation, convertQuotation } from '../../../services/api/quotations';
+import type { Invoice } from '../../../core/types';
 
 // ===== TYPES =====
 
@@ -114,6 +115,63 @@ interface QuotationItem {
 
 type QuotationStatus = Quotation['status'];
 
+function mapInvoiceStatusToQuotation(status: string | undefined): QuotationStatus {
+  const s = (status || '').toLowerCase();
+  if (s === 'sent' || s === 'gönderildi') return 'SENT';
+  if (s === 'viewed' || s === 'görüntülendi') return 'VIEWED';
+  if (s === 'accepted' || s === 'approved' || s === 'onaylandı') return 'ACCEPTED';
+  if (s === 'rejected' || s === 'reddedildi') return 'REJECTED';
+  if (s === 'expired') return 'EXPIRED';
+  if (s === 'converted') return 'CONVERTED';
+  return 'DRAFT';
+}
+
+function invoiceToQuotation(inv: Invoice): Quotation {
+  const rawItems = Array.isArray(inv.items) ? inv.items : [];
+  const items: QuotationItem[] = rawItems.map((it: Record<string, unknown>, idx: number) => {
+    const qty = Number((it as { quantity?: number }).quantity ?? 0);
+    const unitPrice = Number((it as { unit_price?: number; price?: number }).unit_price ?? (it as { price?: number }).price ?? 0);
+    const lineSub = Number((it as { subtotal?: number }).subtotal ?? qty * unitPrice);
+    const lineTotal = Number((it as { total?: number }).total ?? lineSub);
+    return {
+      id: String((it as { id?: string }).id ?? idx),
+      product_id: String((it as { product_id?: string; productId?: string }).product_id ?? (it as { productId?: string }).productId ?? ''),
+      product_code: String((it as { product_code?: string; code?: string }).product_code ?? (it as { code?: string }).code ?? ''),
+      product_name: String((it as { product_name?: string; name?: string }).product_name ?? (it as { name?: string }).name ?? ''),
+      quantity: qty,
+      unit: String((it as { unit?: string }).unit ?? 'adet'),
+      unit_price: unitPrice,
+      discount_percent: 0,
+      discount_amount: 0,
+      tax_rate: 0,
+      tax_amount: 0,
+      subtotal: lineSub,
+      total: lineTotal,
+    };
+  });
+  return {
+    id: inv.id || inv.invoice_no,
+    firma_id: inv.firma_id,
+    donem_id: inv.donem_id,
+    quotation_no: inv.invoice_no,
+    quotation_type: 'QUOTATION',
+    version: 1,
+    quotation_date: inv.invoice_date,
+    validity_date: inv.invoice_date,
+    customer_id: inv.customer_id || '',
+    customer_name: inv.customer_name || '',
+    items,
+    subtotal: inv.subtotal,
+    discount_amount: inv.discount,
+    tax_amount: inv.tax,
+    total_amount: inv.total_amount,
+    status: mapInvoiceStatusToQuotation(inv.status),
+    created_by: inv.cashier || '',
+    created_at: inv.created_at || '',
+    updated_at: inv.created_at || '',
+  };
+}
+
 // ===== COMPONENT =====
 
 export function QuotationModule() {
@@ -131,8 +189,8 @@ export function QuotationModule() {
   // Fetch quotations on mount
   useEffect(() => {
     const fetchAndSetQuotations = async () => {
-      const fetchedQuotations = await fetchQuotations(selectedFirma?.id || '', selectedDonem?.id || '');
-      setQuotations(fetchedQuotations);
+      const fetchedInvoices = await fetchQuotations(selectedFirma?.id || '', selectedDonem?.id || '');
+      setQuotations(fetchedInvoices.map(invoiceToQuotation));
     };
     fetchAndSetQuotations();
   }, [selectedFirma, selectedDonem]);

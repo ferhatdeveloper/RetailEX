@@ -7,12 +7,12 @@
 
 import { useState } from 'react';
 import { FileText, Plus, Search, Save, X, Printer, Send, Calendar, AlertCircle, Check, TrendingUp, Banknote } from 'lucide-react';
-import { DocumentManager } from './DocumentManager';
+import { DocumentManager } from '../../shared/DocumentManager';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { CostAccountingService } from '../../../services/costAccountingService';
 import { InvoiceLineWithProfit } from './InvoiceLineWithProfit';
-import { PurchaseInvoiceLineEnhanced, ProductHistoryModal } from './PurchaseInvoiceLineEnhanced';
+import { PurchaseInvoiceLineEnhanced, ProductHistoryModal } from '../purchase/PurchaseInvoiceLineEnhanced';
 import { toast } from 'sonner';
 
 // Para formatlama - IQD için ondalık kısım olmadan
@@ -338,7 +338,11 @@ function CreateInvoiceFormComplete({
   const [activeTab, setActiveTab] = useState<'fatura' | 'detaylar' | 'ekliDosyalar'>('fatura');
   const [saving, setSaving] = useState(false);
   const [showProductHistory, setShowProductHistory] = useState(false);
-  const [selectedProductForHistory, setSelectedProductForHistory] = useState<{ code: string; name: string } | null>(null);
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState<{
+    code: string;
+    name: string;
+    productId: string;
+  } | null>(null);
 
   // Form Data
   const [invoiceNo] = useState(
@@ -387,7 +391,8 @@ function CreateInvoiceFormComplete({
     if (line) {
       setSelectedProductForHistory({
         code: productCode,
-        name: line.productName
+        name: line.productName,
+        productId: line.productCode || line.id,
       });
       setShowProductHistory(true);
     }
@@ -570,21 +575,17 @@ function CreateInvoiceFormComplete({
             tarih: tarih,
             tedarikci_adi: invoice.customer_name,
             tutar: total,
-            firma_id: selectedFirma.id,
-            donem_id: selectedDonem.id
           })
           : createSalesJournal({
             fatura_no: invoice.invoice_no,
             tarih: tarih,
             musteri_adi: invoice.customer_name,
             tutar: total,
-            firma_id: selectedFirma.id,
-            donem_id: selectedDonem.id
           })
       );
 
       if (journalResult.success) {
-        toast.success('ğŸ“‹ Muhasebe fişi oluşturuldu!', {
+        toast.success('Muhasebe fişi oluşturuldu!', {
           description: formatJournalResult(journalResult),
           duration: 5000
         });
@@ -902,6 +903,7 @@ function CreateInvoiceFormComplete({
         <ProductHistoryModal
           productCode={selectedProductForHistory.code}
           productName={selectedProductForHistory.name}
+          productId={selectedProductForHistory.productId}
           onClose={() => setShowProductHistory(false)}
         />
       )}

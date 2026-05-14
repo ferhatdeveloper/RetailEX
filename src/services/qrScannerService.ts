@@ -426,7 +426,3 @@ export class LoyaltyPointsProcessor {
 // Singleton instances
 export const qrScannerService = new QRScannerService();
 export const loyaltyPointsProcessor = new LoyaltyPointsProcessor();
-
-// Export types
-export type { QRScanResult, ScanOptions };
-

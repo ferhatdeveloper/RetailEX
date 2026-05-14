@@ -611,6 +611,3 @@ export class LotSerialService {
 // Singleton instance
 export const lotSerialService = new LotSerialService();
 
-// Export types
-export type { Lot, SerialNumber, LotMovement, SerialMovement, LotSelectionResult };
-

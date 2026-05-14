@@ -53,6 +53,9 @@ export function ReportChatAI({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const WELCOME_CONTENT =
+    'Merhaba! 👋\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"';
+
   // Örnek sorular
   const exampleQuestions = [
     'Bugünkü satışlar nasıl?',
@@ -67,7 +70,7 @@ export function ReportChatAI({
     // Hoş geldin mesajı
     const welcomeMessage: ChatMessage = {
       role: 'assistant',
-      content: 'Merhaba! ğŸ‘‹\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"',
+      content: WELCOME_CONTENT,
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);
@@ -112,7 +115,7 @@ export function ReportChatAI({
 
       // ChatGPT ile analiz yap (fallback ile)
       const conversationHistory = messages
-        .filter(m => m.role !== 'assistant' || m.content !== 'Merhaba! ğŸ‘‹\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!')
+        .filter((m) => m.role !== 'assistant' || m.content !== WELCOME_CONTENT)
         .map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp }));
       
       const response = await generateAIResponse(
@@ -161,7 +164,7 @@ export function ReportChatAI({
     chatHistory.clear();
     const welcomeMessage: ChatMessage = {
       role: 'assistant',
-      content: 'Merhaba! ğŸ‘‹\n\nRaporlar hakkında sorular sorabilirsiniz. Size yardımcı olmaya hazırım!',
+      content: WELCOME_CONTENT,
       timestamp: new Date()
     };
     setMessages([welcomeMessage]);

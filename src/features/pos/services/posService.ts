@@ -44,7 +44,9 @@ export class POSService {
 
     const sale: Sale = {
       id: generateInvoiceNumber('FIS'),
+      receiptNumber: generateInvoiceNumber('FIS'),
       date: getCurrentTimestamp(),
+      cashier: '',
       customerId,
       customerName,
       items: saleItems,

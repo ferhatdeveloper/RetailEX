@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Upload, Printer, Eye, Download, Trash2, FileText, Settings, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 
 interface Document {
@@ -24,6 +24,7 @@ interface ScanSettings {
 
 export function DocumentManager() {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const wasConnectedRef = useRef(false);
   const [scanners, setScanners] = useState<Scanner[]>([]);
   const [selectedScanner, setSelectedScanner] = useState<string>('');
   const [wsConnected, setWsConnected] = useState(false);
@@ -73,6 +74,7 @@ export function DocumentManager() {
         console.log('✅ Tarayıcı servisi bağlandı (ws://localhost:9999/scan)');
         setWsConnected(true);
         setWsStatus('connected');
+        wasConnectedRef.current = true;
         
         // Tarayıcı listesini iste
         try {
@@ -91,15 +93,14 @@ export function DocumentManager() {
           if (data.type === 'scanners_list') {
             setScanners(data.scanners || []);
           } else if (data.type === 'scan_complete') {
-            const newDoc: ScannedDocument = {
+            const newDoc: Document = {
               id: Date.now().toString(),
-              fileName: data.filename,
-              fileSize: data.fileSize || 0,
-              fileType: data.format || 'image/jpeg',
-              uploadDate: new Date().toISOString(),
-              previewUrl: data.imageData
+              name: String(data.filename ?? 'tarama'),
+              size: Number(data.fileSize || 0) / 1024,
+              uploadDate: new Date().toLocaleDateString('tr-TR'),
+              dataUrl: data.imageData
             };
-            setScannedDocuments(prev => [...prev, newDoc]);
+            setDocuments((prev: Document[]) => [...prev, newDoc]);
             setIsScanning(false);
           } else if (data.type === 'scan_progress') {
             console.log(`ğŸ“Š Tarama ilerliyor: ${data.progress}%`);
@@ -121,9 +122,10 @@ export function DocumentManager() {
         clearTimeout(connectionTimeout);
         
         // Sadece beklenmedik kapanmalarda log bas
-        if (event.code !== 1000 && wsStatus === 'connected') {
+        if (event.code !== 1000 && wasConnectedRef.current) {
           console.log(`ğŸ“¡ Bağlantı kesildi (kod: ${event.code})`);
         }
+        wasConnectedRef.current = false;
         
         setWsConnected(false);
         setWsStatus('disconnected');

@@ -361,7 +361,10 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
             // Create a temp canvas to hold the original image
             const img = new Image();
             img.src = drawingImage;
-            await new Promise(r => img.onload = r);
+            await new Promise<void>((resolve, reject) => {
+                img.onload = () => resolve();
+                img.onerror = () => reject(new Error('Görsel yüklenemedi.'));
+            });
 
             // For now, simpler approach: Just send the original image AGAIN but marked as ROI?
             // Or actually crop it.
@@ -432,7 +435,15 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
     const checkAndPromptMissingEntities = async (result: any) => {
         // 1. Check Supplier
         if (result.supplier) {
-            const suppliers = await supplierAPI.search(result.supplier);
+            const query = String(result.supplier ?? '').trim();
+            const q = query.toLocaleLowerCase('tr-TR');
+            const all = await supplierAPI.getAll();
+            const suppliers = (all ?? []).filter((s: any) => {
+                const name = String(s?.name ?? '');
+                const code = String(s?.code ?? '');
+                const hay = `${name} ${code}`.toLocaleLowerCase('tr-TR');
+                return hay.includes(q);
+            });
             const exists = suppliers.length > 0;
 
             if (!exists) {

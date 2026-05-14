@@ -22,6 +22,9 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; campaign: Campaign } | null>(null);
+  const tAny = t as Record<string, unknown>;
+  const labelOr = (value: unknown, fallback: string) =>
+    typeof value === 'string' && value.trim() ? value : fallback;
 
   // Load campaigns from database on mount
   useEffect(() => {
@@ -311,19 +314,21 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
           items={[
             {
               id: 'edit',
-              label: t.editCampaign || 'Kampanyayı Düzenle',
+              label: labelOr(tAny.editCampaign, 'Kampanyayı Düzenle'),
               icon: Edit2,
               onClick: () => handleEdit(contextMenu.campaign)
             },
             {
               id: 'status',
-              label: contextMenu.campaign.active ? (t.makePassive || 'Pasife Al') : (t.makeActive || 'Aktife Al'),
+              label: contextMenu.campaign.active
+                ? labelOr(tAny.makePassive, 'Pasife Al')
+                : labelOr(tAny.makeActive, 'Aktife Al'),
               icon: Calendar,
               onClick: () => handleToggleActive(contextMenu.campaign.id)
             },
             {
               id: 'delete',
-              label: t.deleteCampaign || 'Kampanyayı Sil',
+              label: labelOr(tAny.deleteCampaign, 'Kampanyayı Sil'),
               icon: Trash2,
               variant: 'danger',
               divider: true,

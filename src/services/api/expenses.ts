@@ -95,7 +95,7 @@ export const expenseAPI = {
           select: '*',
           firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
           order: 'expense_date.desc',
-          limit: 2000,
+          limit: '2000',
         };
         if (filters?.startDate && !filters?.endDate) {
           q.expense_date = `gte.${String(filters.startDate).slice(0, 10)}`;

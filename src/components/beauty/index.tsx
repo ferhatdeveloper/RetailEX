@@ -543,28 +543,23 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                             <button
                                 type="button"
                                 onClick={() => setMobileNavOpen(true)}
-                                className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm h-9 w-9"
+                                className="flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm h-11 w-11 min-h-[44px] min-w-[44px]"
                                 aria-label={tm('mainMenu')}
                                 title={tm('mainMenu')}
                             >
-                                <Menu size={18} aria-hidden />
+                                <Menu size={20} aria-hidden />
                             </button>
                         )}
-                        <span className="truncate" style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
+                        <span className="truncate min-w-0" style={{ fontWeight: 800, fontSize: 15, color: '#111827', letterSpacing: '-0.01em' }}>
                             {PAGE_TITLES[activeTab] ?? activeTab}
                         </span>
-                        <span style={{
-                            display: 'flex', alignItems: 'center', gap: 5,
-                            fontSize: 10, fontWeight: 700, color: '#059669',
-                            background: '#ecfdf5', border: '1px solid #a7f3d0',
-                            padding: '2px 8px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.08em',
-                        }}>
-                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                        <span className="hidden sm:inline-flex shrink-0 items-center gap-1.5 font-bold text-[10px] uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" aria-hidden />
                             {tm('bShellSystemActive')}
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap justify-end min-w-0">
+                    <div className="flex items-center gap-2 justify-end min-w-0 overflow-x-auto whitespace-nowrap">
                         {clinicSessionBar && (
                             <>
                                 <FirmSelector triggerVariant="clinic" />

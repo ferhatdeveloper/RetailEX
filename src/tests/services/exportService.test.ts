@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ExportService, ChartDataService } from '../../services/exportService';
-import { Sale, Product } from '../../App';
+import type { Sale, Product, SaleItem } from '../../core/types/models';
 
 describe('ExportService', () => {
   let service: ExportService;
@@ -14,20 +14,32 @@ describe('ExportService', () => {
   beforeEach(() => {
     service = new ExportService();
 
+    const saleItems: SaleItem[] = [
+      {
+        productId: 'p1',
+        productName: 'Ürün 1',
+        quantity: 2,
+        price: 100,
+        discount: 0,
+        total: 200,
+      },
+    ];
+
     mockSales = [
       {
         id: 'sale-1',
-        receiptNo: 'REC-001',
+        receiptNumber: 'REC-001',
         date: new Date().toISOString(),
-        items: [{ id: 'p1', name: 'Ürün 1', price: 100, quantity: 2, barcode: '123', taxRate: 18 }],
+        items: saleItems,
         subtotal: 200,
         discount: 0,
         tax: 36,
         total: 236,
         paymentMethod: 'cash',
         customerName: 'Test Customer',
-        customerId: 'cust-1'
-      }
+        customerId: 'cust-1',
+        cashier: 'Test',
+      },
     ];
 
     mockProducts = [
@@ -38,9 +50,11 @@ describe('ExportService', () => {
         name: 'Ürün 1',
         category: 'Kategori 1',
         price: 100,
+        cost: 60,
         stock: 50,
-        taxRate: 18
-      }
+        taxRate: 18,
+        unit: 'Adet',
+      },
     ];
   });
 
@@ -73,35 +87,44 @@ describe('ChartDataService', () => {
   beforeEach(() => {
     service = new ChartDataService();
 
+    const items1: SaleItem[] = [
+      { productId: 'p1', productName: 'Ürün 1', quantity: 2, price: 100, discount: 0, total: 200 },
+    ];
+    const items2: SaleItem[] = [
+      { productId: 'p2', productName: 'Ürün 2', quantity: 1, price: 50, discount: 0, total: 50 },
+    ];
+
     mockSales = [
       {
         id: 'sale-1',
-        receiptNo: 'REC-001',
+        receiptNumber: 'REC-001',
         date: new Date().toISOString(),
-        items: [{ id: 'p1', name: 'Ürün 1', price: 100, quantity: 2, barcode: '123', taxRate: 18 }],
+        items: items1,
         subtotal: 200,
         discount: 0,
         tax: 36,
         total: 236,
-        paymentMethod: 'cash'
+        paymentMethod: 'cash',
+        cashier: 'Test',
       },
       {
         id: 'sale-2',
-        receiptNo: 'REC-002',
+        receiptNumber: 'REC-002',
         date: new Date().toISOString(),
-        items: [{ id: 'p2', name: 'Ürün 2', price: 50, quantity: 1, barcode: '456', taxRate: 18 }],
+        items: items2,
         subtotal: 50,
         discount: 0,
         tax: 9,
         total: 59,
-        paymentMethod: 'credit'
-      }
+        paymentMethod: 'credit',
+        cashier: 'Test',
+      },
     ];
 
     mockProducts = [
-      { id: 'p1', code: 'P001', barcode: '123', name: 'Ürün 1', category: 'Kategori A', price: 100, stock: 50, taxRate: 18 },
-      { id: 'p2', code: 'P002', barcode: '456', name: 'Ürün 2', category: 'Kategori A', price: 50, stock: 30, taxRate: 18 },
-      { id: 'p3', code: 'P003', barcode: '789', name: 'Ürün 3', category: 'Kategori B', price: 75, stock: 20, taxRate: 18 }
+      { id: 'p1', code: 'P001', barcode: '123', name: 'Ürün 1', category: 'Kategori A', price: 100, cost: 50, stock: 50, taxRate: 18, unit: 'Adet' },
+      { id: 'p2', code: 'P002', barcode: '456', name: 'Ürün 2', category: 'Kategori A', price: 50, cost: 25, stock: 30, taxRate: 18, unit: 'Adet' },
+      { id: 'p3', code: 'P003', barcode: '789', name: 'Ürün 3', category: 'Kategori B', price: 75, cost: 40, stock: 20, taxRate: 18, unit: 'Adet' },
     ];
   });
 

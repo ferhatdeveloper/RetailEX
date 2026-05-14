@@ -18,7 +18,7 @@ export const salesAPI = {
   async create(sale: Omit<Sale, 'id'>): Promise<Sale | null> {
     try {
       if (import.meta.env.DEV) {
-        console.log('[SalesAPI] Creating sale via invoicesAPI...', sale?.receiptNumber ?? sale?.id);
+        console.log('[SalesAPI] Creating sale via invoicesAPI...', sale?.receiptNumber);
       }
 
       const firmNr = sale.firmNr || ERP_SETTINGS.firmNr;

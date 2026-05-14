@@ -133,19 +133,20 @@ export function CustomerProfitabilityReport() {
   });
 
   // Summary
+  const totalCustomers = filteredData.length;
+  const totalTransactions = filteredData.reduce((sum, c) => sum + c.transactionCount, 0);
+  const totalRevenue = filteredData.reduce((sum, c) => sum + c.totalRevenue, 0);
+  const totalCost = filteredData.reduce((sum, c) => sum + c.totalCost, 0);
+  const totalProfit = filteredData.reduce((sum, c) => sum + c.grossProfit, 0);
   const summary = {
-    totalCustomers: filteredData.length,
-    totalTransactions: filteredData.reduce((sum, c) => sum + c.transactionCount, 0),
-    totalRevenue: filteredData.reduce((sum, c) => sum + c.totalRevenue, 0),
-    totalCost: filteredData.reduce((sum, c) => sum + c.totalCost, 0),
-    totalProfit: filteredData.reduce((sum, c) => sum + c.grossProfit, 0)
+    totalCustomers,
+    totalTransactions,
+    totalRevenue,
+    totalCost,
+    totalProfit,
+    profitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
+    avgTransactionValue: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
   };
-  summary.profitMargin = summary.totalRevenue > 0 
-    ? (summary.totalProfit / summary.totalRevenue) * 100 
-    : 0;
-  summary.avgTransactionValue = summary.totalTransactions > 0
-    ? summary.totalRevenue / summary.totalTransactions
-    : 0;
 
   const exportToExcel = () => {
     let csv = 'Müşteri Kodu,Müşteri Adı,İşlem Sayısı,Satış Tutarı,Maliyet,Brüt Kar,Kar Marjı %,Ort. İşlem Değeri\n';

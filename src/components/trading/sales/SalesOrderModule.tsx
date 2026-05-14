@@ -56,7 +56,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" />
-            <h2 className="text-sm font-semibold">{t.menu?.salesOrders || tm('salesOrders') || 'Satış Siparişleri'}</h2>
+            <h2 className="text-sm font-semibold">{t.menu?.salesOrder || tm('salesOrders') || 'Satış Siparişleri'}</h2>
             <span className="text-blue-100 text-[10px] ml-2">• {salesOrders.length} sipariş</span>
           </div>
           <button
@@ -143,7 +143,6 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
                 ),
                 size: 140,
                 enableColumnFilter: true,
-                filterFn: 'custom'
               }),
             ]}
             pageSize={10}

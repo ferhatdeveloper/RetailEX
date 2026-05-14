@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { Printer, Save, RefreshCw, CheckCircle, XCircle, Wifi, Usb } from 'lucide-react';
 import { useElectron } from '../../hooks/useElectron';
 
+/** Electron preload ile genişletilmiş API (yazıcı / barkod / store) */
+type ExtendedElectronApi = NonNullable<ReturnType<typeof useElectron>['api']> & {
+  store?: { set: (key: string, value: unknown) => void | Promise<void> };
+  barcode?: { listPorts: () => Promise<{ success: boolean; ports?: unknown[] }> };
+  printer?: NonNullable<ReturnType<typeof useElectron>['api']>['printer'] & {
+    listPrinters?: () => Promise<{ success: boolean; printers?: unknown[] }>;
+  };
+};
+
 interface PrinterConfig {
   enabled: boolean;
   type: 'thermal' | 'standard';
@@ -25,7 +34,8 @@ interface PrinterConfig {
 }
 
 export function PrinterSettings() {
-  const { isElectron, api } = useElectron();
+  const { isElectron, api: rawApi } = useElectron();
+  const api = rawApi as ExtendedElectronApi | undefined;
   
   const [config, setConfig] = useState<PrinterConfig>({
     enabled: true,
@@ -102,8 +112,8 @@ export function PrinterSettings() {
   };
   
   const loadAvailablePrinters = async () => {
-    if (!api?.printer) return;
-    
+    if (!api?.printer?.listPrinters) return;
+
     try {
       const result = await api.printer.listPrinters();
       if (result.success) {
@@ -173,7 +183,7 @@ export function PrinterSettings() {
         }
       };
       
-      const result = await api.printer.print(testData);
+      const result = await api.printer.print(testData) as { success: boolean; error?: string };
       
       if (result.success) {
         setTestStatus('success');

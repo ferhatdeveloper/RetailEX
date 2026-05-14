@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import { Languages } from 'lucide-react';
-import { useLanguage, Language } from '../utils/i18n/LanguageContext';
+import type { Language } from '../utils/i18n/translations';
+import { useLanguage } from '../utils/i18n/LanguageContext';
 
 interface LanguageSelectorProps {
   darkMode?: boolean;

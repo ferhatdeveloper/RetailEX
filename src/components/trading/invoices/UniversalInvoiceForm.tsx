@@ -260,7 +260,12 @@ function buildLocalCatalogFifoCostMap(
       storeProducts.find((p) => p.id === productId);
     /** PostgREST/SQL satırı: `purchase_price`; `mapDatabaseProductToProduct` öncelikle `cost` doldurur. */
     const unitPurchase = Number(
-      (pr as any)?.purchase_price ?? (pr as any)?.purchasePrice ?? pr.cost ?? 0
+      pr
+        ? ((pr as { purchase_price?: number; purchasePrice?: number; cost?: number }).purchase_price ??
+            (pr as { purchase_price?: number; purchasePrice?: number; cost?: number }).purchasePrice ??
+            (pr as { cost?: number }).cost ??
+            0)
+        : 0
     );
     const baseQty = item.baseQuantity ?? item.quantity * (item.multiplier || 1);
     const totalCost = baseQty * unitPurchase;
@@ -2075,7 +2080,8 @@ export function UniversalInvoiceForm({
 
     if (dropdownForThisRow && selectedProductIndex >= 0 && filtered[selectedProductIndex]) {
       const selected = filtered[selectedProductIndex];
-      if (selected.type === 'Hizmet') {
+      const selType = 'type' in selected ? (selected as { type?: string }).type : undefined;
+      if (selType === 'Hizmet') {
         selectService(selected, rowIndex);
       } else {
         selectProduct(selected, rowIndex);
@@ -2085,6 +2091,7 @@ export function UniversalInvoiceForm({
 
     if (dropdownForThisRow && filtered.length === 1) {
       const only = filtered[0];
+      const onlyType = 'type' in only ? (only as { type?: string }).type : undefined;
       const attempts = barcodeLookupAttempts(inputVal);
       const exact = attempts.some(
         key =>
@@ -2092,7 +2099,7 @@ export function UniversalInvoiceForm({
           (only.barcode && only.barcode.trim() === key)
       );
       if (exact) {
-        if (only.type === 'Hizmet') {
+        if (onlyType === 'Hizmet') {
           selectService(only, rowIndex);
         } else {
           selectProduct(only, rowIndex);

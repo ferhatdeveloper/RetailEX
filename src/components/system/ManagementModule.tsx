@@ -10,7 +10,27 @@ import {
   Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
   Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft, Loader2
 } from 'lucide-react';
-const DevExDataGrid = lazy(() => import('../shared/DevExDataGrid').then(m => ({ default: m.DevExDataGrid })));
+
+/** Dinamik menüde `icon_name` çözümü — her menü satırında yeni nesne oluşturulmaz */
+const DYNAMIC_MENU_ICON_MAP: Record<string, any> = {
+  PieChart,
+  Store: StoreIcon,
+  Map: MapIcon,
+  StoreIcon,
+  MapIcon,
+  Settings,
+  Zap,
+  FileSpreadsheet,
+  FileText, FileCheck, RefreshCw, FileMinus, Send, Truck, Archive,
+  ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
+  Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
+  Briefcase, GitBranch, Calendar, Award, Wallet, CreditCard, Database,
+  Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
+  PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
+  Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
+  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft,
+};
+
 const RestaurantMainLazy = lazy(() => import('../restaurant/index'));
 const BeautyMainLazy = lazy(() => import('../beauty/index'));
 import { APP_VERSION } from '../../core/version';
@@ -132,8 +152,6 @@ import { StorePerformanceAnalysis } from '../sales/reports/StorePerformanceAnaly
 import { InventoryAgingReport } from '../inventory/reports/InventoryAgingReport';
 import { UniversalReportHub } from '../analytics/UniversalReportHub';
 import { NebimMigrationWizard } from './NebimMigrationWizard';
-import { menuService } from '../../services/api/menuService';
-
 // Custom Report Designer
 import { ReportDesignerModule } from '../reports/ReportDesignerModule';
 
@@ -187,7 +205,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
   'MalzemeSiniflari' | 'Birimsetleri' | 'varyant' | 'ozelkodlar' | 'markatanim' | 'groupkodları' |
-  'malzemeler' | 'materials-intake' | 'smart-material-add' | 'hareketler' | 'material-list' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
+  'malzemeler' | 'materials-intake' | 'smart-material-add' | 'hareketler' | 'material-list' | 'material-definitions' | 'material-classes' | 'unit-sets' | 'variants' | 'group-codes' | 'product-categories' | 'special-codes' | 'brand-definitions' |
   'suppliers_def' | 'warehousetransfer_def' | 'warehousetransfer_mv' | 'warehousetransfer_v' | 'storetransfer_mv' | 'storetransfer_v' | 'stockcount_store' | 'material-transfers' |
   'stockreports_bal' | 'stockreports_tr' | 'stockreports_list' | 'stockreports_sum' | 'stockreports_trans' |
   'report-material-extract' | 'report-material-value' | 'inventory' | 'cost' | 'report-in-out-totals' | 'report-warehouse-status' | 'report-transaction-breakdown' | 'report-slip-list' | 'report-min-max' |
@@ -538,23 +556,10 @@ export function ManagementModule({
       // Get icon component from icon_name
       let IconComponent: any = null;
 
-      // Icon map creation
-      const iconMap: Record<string, any> = {
-        PieChart, StoreIcon, MapIcon, Settings, Zap, FileSpreadsheet,
-        FileText, FileCheck, RefreshCw, FileMinus, Send, Truck, Archive,
-        ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
-        Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
-        Briefcase, GitBranch, Calendar, Award, Wallet, CreditCard, Database,
-        Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
-        PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
-        Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-        Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft
-      };
-
       if (item.icon_name) {
-        IconComponent = iconMap[item.icon_name] || null;
+        IconComponent = DYNAMIC_MENU_ICON_MAP[item.icon_name] || null;
         if (!IconComponent) {
-          console.warn(`Icon ${item.icon_name} not found in iconMap`);
+          console.warn(`Icon ${item.icon_name} not found in DYNAMIC_MENU_ICON_MAP`);
         }
       }
 
@@ -667,16 +672,6 @@ export function ManagementModule({
     fetchConfig();
   }, []);
 
-  // MenuManagementPanel gibi bileşenlerin statik menü yapısına erişebilmesi için event listener
-  useEffect(() => {
-    const handleRequest = () => {
-      window.dispatchEvent(new CustomEvent('staticMenuRequested', { detail: staticMenuSections }));
-    };
-    window.addEventListener('requestStaticMenu', handleRequest);
-    return () => window.removeEventListener('requestStaticMenu', handleRequest);
-  }, [staticMenuSections]);
-
-
   const languages = [
     { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
     { code: 'en' as const, name: 'English', flag: '????' },
@@ -684,13 +679,11 @@ export function ManagementModule({
     { code: 'ku' as const, name: '????? (??????)', flag: '??????', expenseAnalysis: '?????? ??????????', reporting: '??????????' }
   ];
 
-  const toggleSection = (title: string) => {
-    if (expandedSections.includes(title)) {
-      setExpandedSections(expandedSections.filter(s => s !== title));
-    } else {
-      setExpandedSections([...expandedSections, title]);
-    }
-  };
+  const toggleSection = useCallback((title: string) => {
+    setExpandedSections((prev) =>
+      prev.includes(title) ? prev.filter((s) => s !== title) : [...prev, title]
+    );
+  }, []);
 
   const handleSearchItemClick = useCallback((item: any) => {
     if (item?.id == null || item.id === '') return;
@@ -966,7 +959,6 @@ export function ManagementModule({
       ];
     };
 
-    console.log('?? Render edilen ekran:', currentScreen);
     try {
       switch (currentScreen) {
         case 'dashboard':

@@ -234,7 +234,8 @@ function deriveFicheTypeFromTrcode(trcode: number): string {
 }
 
 function resolveTrcodeFromInvoice(inv: Invoice): number {
-  const t = Number(inv.invoice_type ?? inv.trcode ?? 0);
+  const tr = (inv as Invoice & { trcode?: number }).trcode;
+  const t = Number(inv.invoice_type ?? tr ?? 0);
   if (t) return t;
   switch (inv.invoice_category) {
     case 'Alis':

@@ -1,19 +1,16 @@
 ﻿import React, { useState, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { Send, Radio, CheckCircle, XCircle, Clock, RefreshCw, Trash2, Monitor } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Select } from '../ui/select';
-import { Input } from '../ui/input';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { centralBroadcast, BroadcastMessage, DeviceStatus } from '../../utils/centralDataBroadcast';
 import { logger } from '../../utils/logger';
 
 export function CentralDataBroadcastPanel() {
-  const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { darkMode } = useTheme();
   
   const [queue, setQueue] = useState<BroadcastMessage[]>([]);
   const [devices, setDevices] = useState<DeviceStatus[]>([]);
@@ -93,26 +90,39 @@ export function CentralDataBroadcastPanel() {
 
   const getStatusColor = (status: BroadcastMessage['status']) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-500';
+      case 'pending':
+      case 'scheduled':
+        return 'bg-yellow-500';
       case 'sending': return 'bg-blue-500 animate-pulse';
       case 'delivered': return 'bg-green-500';
+      case 'partial': return 'bg-emerald-500 animate-pulse';
       case 'failed': return 'bg-red-500';
       case 'expired': return 'bg-gray-500';
+      case 'cancelled': return 'bg-gray-500';
+      default:
+        return 'bg-gray-500';
     }
   };
 
-  const getStatusIcon = (status: BroadcastMessage['status']) => {
+  const getStatusIcon = (status: BroadcastMessage['status']): LucideIcon => {
     switch (status) {
-      case 'pending': return Clock;
+      case 'pending':
+      case 'scheduled':
+        return Clock;
       case 'sending': return RefreshCw;
       case 'delivered': return CheckCircle;
-      case 'failed': return XCircle;
-      case 'expired': return XCircle;
+      case 'partial': return RefreshCw;
+      case 'failed':
+      case 'expired':
+      case 'cancelled':
+        return XCircle;
+      default:
+        return Clock;
     }
   };
 
   return (
-    <div className={`h-full p-6 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`h-full p-6 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -142,7 +152,7 @@ export function CentralDataBroadcastPanel() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-4 gap-4">
-          <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+          <Card className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Toplam Cihaz</p>
@@ -152,7 +162,7 @@ export function CentralDataBroadcastPanel() {
             </div>
           </Card>
 
-          <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+          <Card className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Çevrimiçi</p>
@@ -162,7 +172,7 @@ export function CentralDataBroadcastPanel() {
             </div>
           </Card>
 
-          <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+          <Card className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Bekleyen</p>
@@ -172,7 +182,7 @@ export function CentralDataBroadcastPanel() {
             </div>
           </Card>
 
-          <Card className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+          <Card className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Teslim Edildi</p>
@@ -193,7 +203,7 @@ export function CentralDataBroadcastPanel() {
 
           {/* Send Tab */}
           <TabsContent value="send" className="space-y-4">
-            <Card className={`p-6 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+            <Card className={`p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
               <h3 className="text-lg font-semibold mb-4">Yeni Broadcast Gönder</h3>
               
               <div className="space-y-4">
@@ -204,7 +214,7 @@ export function CentralDataBroadcastPanel() {
                       value={broadcastType}
                       onChange={(e) => setBroadcastType(e.target.value as any)}
                       className={`w-full p-2 rounded border ${
-                        theme === 'dark'
+                        darkMode
                           ? 'bg-gray-700 border-gray-600'
                           : 'bg-white border-gray-300'
                       }`}
@@ -224,7 +234,7 @@ export function CentralDataBroadcastPanel() {
                       value={broadcastAction}
                       onChange={(e) => setBroadcastAction(e.target.value as any)}
                       className={`w-full p-2 rounded border ${
-                        theme === 'dark'
+                        darkMode
                           ? 'bg-gray-700 border-gray-600'
                           : 'bg-white border-gray-300'
                       }`}
@@ -243,7 +253,7 @@ export function CentralDataBroadcastPanel() {
                     value={targetDevices[0]}
                     onChange={(e) => setTargetDevices([e.target.value])}
                     className={`w-full p-2 rounded border ${
-                      theme === 'dark'
+                      darkMode
                         ? 'bg-gray-700 border-gray-600'
                         : 'bg-white border-gray-300'
                     }`}
@@ -265,7 +275,7 @@ export function CentralDataBroadcastPanel() {
                     placeholder='{"productId": "123", "name": "Ürün Adı", "price": 100}'
                     rows={6}
                     className={`w-full p-3 rounded border font-mono text-sm ${
-                      theme === 'dark'
+                      darkMode
                         ? 'bg-gray-700 border-gray-600'
                         : 'bg-white border-gray-300'
                     }`}
@@ -297,7 +307,7 @@ export function CentralDataBroadcastPanel() {
 
             <div className="space-y-2">
               {queue.length === 0 ? (
-                <Card className={`p-8 text-center ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+                <Card className={`p-8 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                   <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
                   <p className="text-gray-500">Kuyrukta bekleyen mesaj yok</p>
                 </Card>
@@ -307,7 +317,7 @@ export function CentralDataBroadcastPanel() {
                   return (
                     <Card
                       key={message.id}
-                      className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}
+                      className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3 flex-1">
@@ -378,7 +388,7 @@ export function CentralDataBroadcastPanel() {
               {devices.map(device => (
                 <Card
                   key={device.deviceId}
-                  className={`p-4 ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}
+                  className={`p-4 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -420,7 +430,7 @@ export function CentralDataBroadcastPanel() {
               ))}
 
               {devices.length === 0 && (
-                <Card className={`p-8 text-center ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+                <Card className={`p-8 text-center ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                   <Monitor className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                   <p className="text-gray-500">Henüz kayıtlı cihaz yok</p>
                 </Card>

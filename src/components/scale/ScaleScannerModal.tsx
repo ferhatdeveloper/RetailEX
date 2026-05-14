@@ -1,7 +1,7 @@
 ﻿import { useState } from 'react';
 import { X, Search, Wifi, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
-import type { ScannedDevice } from '../../utils/scaleScanner';
+import type { ScanProgress, ScannedDevice } from '../../utils/scaleScanner';
 import { scanNetwork, validateIPRange, getDefaultIPRange } from '../../utils/scaleScanner';
 
 interface ScaleScannerModalProps {
@@ -15,7 +15,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
   const [startIP, setStartIP] = useState(defaultRange.startIP);
   const [endIP, setEndIP] = useState(defaultRange.endIP);
   const [scanning, setScanning] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, currentIP: '' });
+  const [progress, setProgress] = useState<ScanProgress>({ current: 0, total: 0 });
   const [foundDevices, setFoundDevices] = useState<ScannedDevice[]>([]);
   const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export function ScaleScannerModal({ onDevicesFound, onClose }: ScaleScannerModal
     setScanning(true);
     setFoundDevices([]);
     setSelectedDevices(new Set());
-    setProgress({ current: 0, total: 0, currentIP: '' });
+    setProgress({ current: 0, total: 0 });
 
     try {
       const devices = await scanNetwork(startIP, endIP, (prog) => {

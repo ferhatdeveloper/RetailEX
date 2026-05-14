@@ -3,6 +3,7 @@ import { X, RotateCcw, Info, Merge, ArrowRightLeft, FileText } from 'lucide-reac
 import { cn } from '../../ui/utils';
 import { Table } from '../types';
 import { translate } from '../../../shared/i18n';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export type MoveOrMergeMode = 'move' | 'merge' | 'moveItem' | 'moveItems';
 /** Taşıma kapsamı: tümü veya işlem numarasına göre (belirli sipariş) */
@@ -35,6 +36,9 @@ export function RestaurantMoveTableModal({
     moveItemIds,
     fullScreen = false
 }: RestaurantMoveTableModalProps) {
+    const { language } = useLanguage();
+    const tx = (key: string) => translate(key as any, language);
+
     const hasMultipleItems = Array.isArray(moveItemIds) && moveItemIds.length > 0;
     const [mode, setMode] = React.useState<MoveOrMergeMode>(hasMultipleItems ? 'moveItems' : moveSingleItem ? 'moveItem' : 'move');
     const [moveScope, setMoveScope] = React.useState<MoveScope>('all');
@@ -70,18 +74,19 @@ export function RestaurantMoveTableModal({
 
     return (
         <div className={cn(
-            "fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300",
-            fullScreen ? "z-[5010] p-4" : "z-[5000] p-6"
+            "fixed inset-0 bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300",
+            fullScreen ? "z-[5010]" : "z-[5000]"
         )}>
-            <div
-                className={cn(
-                    "bg-white shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col",
-                    fullScreen ? "rounded-2xl w-full h-full max-w-5xl max-h-[90vh] border-slate-200" : "rounded-[32px] w-full max-w-lg"
-                )}
-                onClick={e => e.stopPropagation()}
-            >
+            <div className={cn("flex min-h-[100dvh] min-h-screen w-full items-center justify-center py-6", fullScreen ? "p-4" : "p-4 sm:p-6")}>
+                <div
+                    className={cn(
+                        "bg-white shadow-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col w-full min-h-0 max-h-[min(90vh,100dvh)]",
+                        fullScreen ? "rounded-2xl max-w-5xl border-slate-200" : "rounded-[32px] max-w-lg"
+                    )}
+                    onClick={e => e.stopPropagation()}
+                >
                 {/* Header with Amber Gradient */}
-                <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-8 py-8 text-white relative overflow-hidden">
+                <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 sm:px-8 py-6 sm:py-8 text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="flex items-center justify-between relative z-10 transition-all">
@@ -94,7 +99,7 @@ export function RestaurantMoveTableModal({
                                     {isMoveItems ? 'Ürünleri başka masaya taşı' : isMoveItem ? 'Ürünü başka masaya taşı' : 'Masa taşı / birleştir'}
                                 </h3>
                                 <p className="text-[10px] text-amber-100 font-bold uppercase tracking-widest mt-0.5">
-                                    {isMoveItems ? `${moveItemIds!.length} ürün seçilen masaya taşınacak` : isMoveItem ? (moveSingleItem?.itemName ?? '') : translate('selectTargetTable')}
+                                    {isMoveItems ? `${moveItemIds!.length} ürün seçilen masaya taşınacak` : isMoveItem ? (moveSingleItem?.itemName ?? '') : tx('selectTargetTable')}
                                 </p>
                             </div>
                         </div>
@@ -192,7 +197,7 @@ export function RestaurantMoveTableModal({
                                             ? `Seçilen işlem (${ordersList.find(o => o.tableId === moveScope.tableId)?.faturaNo}) seçilen masaya taşınacak.`
                                             : `Masa ${currentTable.number} siparişi seçilen masaya taşınacak.`)
                                         : `Masa ${currentTable.number} siparişi seçilen masa ile birleştirilecek.`)
-                                    : translate('selectTargetTable')}
+                                    : tx('selectTargetTable')}
                         </p>
                     </div>
 
@@ -200,23 +205,23 @@ export function RestaurantMoveTableModal({
                         "grid gap-3 overflow-y-auto pr-2 custom-scrollbar",
                         fullScreen ? "grid-cols-6 sm:grid-cols-8 flex-1 min-h-0 max-h-[50vh]" : "grid-cols-4 max-h-[280px]"
                     )}>
-                        {tables.filter(t => t.id !== currentTable?.id).map(t => (
+                        {tables.filter(tbl => tbl.id !== currentTable?.id).map(tbl => (
                             <button
-                                key={t.id}
-                                onClick={() => onTargetSelect(t.id)}
+                                key={tbl.id}
+                                onClick={() => onTargetSelect(tbl.id)}
                                 className={cn(
                                     "aspect-square rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-sm",
-                                    targetTableId === t.id
+                                    targetTableId === tbl.id
                                         ? "bg-amber-50 border-amber-500 text-amber-600 shadow-lg shadow-amber-500/10"
                                         : "bg-slate-50 border-slate-100 text-slate-400 hover:border-amber-200 hover:text-slate-600 hover:bg-white"
                                 )}
                             >
-                                <span className="text-[9px] font-black opacity-50 uppercase tracking-widest">{translate('product')}</span>
-                                <span className="text-xl font-black">{t.number}</span>
-                                {t.status !== 'empty' && (
+                                <span className="text-[9px] font-black opacity-50 uppercase tracking-widest">{tx('product')}</span>
+                                <span className="text-xl font-black">{tbl.number}</span>
+                                {tbl.status !== 'empty' && (
                                     <div className="flex items-center gap-1 mt-0.5">
                                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                                        <span className="text-[8px] font-black text-red-500 uppercase">{translate('tableOccupied')}</span>
+                                        <span className="text-[8px] font-black text-red-500 uppercase">{tx('tableOccupied')}</span>
                                     </div>
                                 )}
                             </button>
@@ -229,7 +234,7 @@ export function RestaurantMoveTableModal({
                         onClick={onClose}
                         className="flex-1 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] transition-all hover:bg-slate-100 active:scale-95 shadow-sm"
                     >
-                        {translate('cancel')}
+                        {tx('cancel')}
                     </button>
                     <button
                         disabled={!targetTableId || (!isMoveItem && !isMoveItems && isMove && hasMultipleOrders && moveScope !== 'all' && (!(typeof moveScope === 'object') || !moveScope.tableId))}
@@ -237,8 +242,9 @@ export function RestaurantMoveTableModal({
                         className="flex-1 py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl font-black uppercase text-[12px] transition-all shadow-xl shadow-amber-200 disabled:opacity-50 disabled:shadow-none active:scale-95 flex items-center justify-center gap-2"
                     >
                         {isMoveItems || isMoveItem ? <ArrowRightLeft className="w-4 h-4" /> : isMove ? <ArrowRightLeft className="w-4 h-4" /> : <Merge className="w-4 h-4" />}
-                        {isMoveItems || isMoveItem ? 'Taşı' : isMove ? translate('confirmMove') : 'Birleştir'}
+                        {isMoveItems || isMoveItem ? 'Taşı' : isMove ? tx('confirmMove') : 'Birleştir'}
                     </button>
+                </div>
                 </div>
             </div>
         </div>

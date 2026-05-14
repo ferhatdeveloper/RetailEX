@@ -662,7 +662,7 @@ export function AdvancedReceivingForm({
                         <div>
                           <div className="text-sm text-gray-600 dark:text-gray-400">Adet/Palet</div>
                           <div className={`text-xl font-bold ${textClass}`}>
-                            {formData.pallet_count > 0 ? Math.round(formData.received_quantity / formData.pallet_count) : 0}
+                            {formData.pallet_count != null && formData.pallet_count > 0 ? Math.round(formData.received_quantity / formData.pallet_count) : 0}
                           </div>
                         </div>
                         <div>

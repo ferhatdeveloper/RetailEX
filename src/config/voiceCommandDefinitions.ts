@@ -418,6 +418,8 @@ export const VOICE_COMMAND_DEFINITIONS: CommandDefinition[] = [
                 'Print invoice',
                 'Print receipt',
             ],
+            ar: ['طباعة الفاتورة', 'طباعة الإيصال'],
+            ckb: ['چاپکردنی پسوڵە', 'چاپکردنی وەسڵ'],
         },
         description: {
             tr: 'Belge yazdırır',

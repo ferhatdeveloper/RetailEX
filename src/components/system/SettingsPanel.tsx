@@ -80,7 +80,10 @@ export function SettingsPanel() {
                 </label>
                 <select
                   value={selectedBranch?.nr || ''}
-                  onChange={handleBranchChange}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    handleBranchChange(raw === '' ? '' : Number(raw));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   {branches.map(branch => (
@@ -97,7 +100,10 @@ export function SettingsPanel() {
                 </label>
                 <select
                   value={selectedWarehouse?.nr || ''}
-                  onChange={handleWarehouseChange}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    handleWarehouseChange(raw === '' ? '' : Number(raw));
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   {warehouses.map(warehouse => (

@@ -1492,7 +1492,7 @@ export function SmartScheduler() {
             )}
 
             {/* ── CALENDAR BODY ─────────────────────────────────────── */}
-            <div style={{ flex: 1, overflow: 'auto', padding: 16 }} className="custom-scrollbar">
+            <div style={{ flex: 1, overflow: 'auto', padding: isMobile ? 8 : 16 }} className="custom-scrollbar">
                 {isLoading ? (
                     <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <p style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af' }}>{tm('bLoading')}</p>
@@ -1506,6 +1506,7 @@ export function SmartScheduler() {
                                 appointments={visibleAppointments}
                                 queueMode={beautyQueueMode}
                                 queueSnapMinutes={schedulerSlotMin}
+                                pixelsPerHour={isMobile ? 44 : 56}
                                 renderAppointment={renderAptCard}
                                 onEmptySlotClick={(timeHHmm, dateYmd) => {
                                     if (dateYmd) {
@@ -1985,94 +1986,116 @@ export function SmartScheduler() {
                         {/* ── LIST VIEW ─────────────────────────────────── */}
                         {view === 'list' && (
                             <div style={{ background: '#fff', border: '1px solid #e8e4f0', borderRadius: 8, overflow: 'hidden' }}>
-                                {/* Header */}
-                                <div style={{ display: 'grid', gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '10px 16px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
-                                    {(beautyQueueMode
-                                        ? [tm('bOrderIndexHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
-                                        : [tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
-                                    ).map((h, i) => (
-                                        <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
-                                    ))}
-                                </div>
-                                {visibleAppointments.length === 0 ? (
-                                    <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#d1d5db', gap: 8 }}>
-                                        <List size={32} />
-                                        <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointments')}</p>
+                                <div style={{ overflowX: 'auto' }} className="custom-scrollbar">
+                                    {/* Header */}
+                                    <div
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px',
+                                            minWidth: 760,
+                                            gap: 8,
+                                            padding: '10px 16px',
+                                            borderBottom: '1px solid #e5e7eb',
+                                            background: '#f9fafb',
+                                        }}
+                                    >
+                                        {(beautyQueueMode
+                                            ? [tm('bOrderIndexHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
+                                            : [tm('bTimeHeader'), '', tm('bCustomerServiceHeader'), tm('bSpecialist'), tm('bDurationHeader'), tm('bStatus'), tm('bPriceHeader')]
+                                        ).map((h, i) => (
+                                            <span key={i} style={{ fontSize: 10, fontWeight: 800, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{h}</span>
+                                        ))}
                                     </div>
-                                ) : [...visibleAppointments]
-                                    .sort((a, b) =>
-                                        beautyQueueMode
-                                            ? compareBeautyQueueOrder(a, b)
-                                            : (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '')
-                                    )
-                                    .map((apt, rowIdx) => {
-                                        const cfg = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
-                                        const rowDone = isBeautyAppointmentDone(apt);
-                                        return (
-                                            <div
-                                                key={apt.id}
-                                                onClick={() => handleAppointmentPrimaryClick(apt)}
-                                                style={{ display: 'grid', gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px', gap: 8, padding: '11px 16px', borderBottom: '1px solid #f3f4f6', alignItems: 'center', cursor: 'pointer', transition: 'background 0.08s' }}
-                                                onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
-                                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                                            >
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: beautyQueueMode ? 'inherit' : 'monospace' }}>
-                                                    {beautyQueueMode ? rowIdx + 1 : (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}
-                                                </span>
-                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
-                                                <div>
-                                                    <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{apt.customer_name ?? '—'}</p>
-                                                    <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>{resolveServiceName(apt)}</p>
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={e => openAppointmentDetailPanel(apt, e)}
-                                                            style={{
-                                                                border: 'none',
-                                                                background: 'transparent',
-                                                                padding: 0,
-                                                                fontSize: 10,
-                                                                fontWeight: 700,
-                                                                color: '#4f46e5',
-                                                                cursor: 'pointer',
-                                                                textDecoration: 'underline',
-                                                            }}
-                                                        >
-                                                            {tm('bCardDetailView')}
-                                                        </button>
-                                                        {rowDone ? (
+                                    {visibleAppointments.length === 0 ? (
+                                        <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#d1d5db', gap: 8 }}>
+                                            <List size={32} />
+                                            <p style={{ fontSize: 12, fontWeight: 600 }}>{tm('bNoAppointments')}</p>
+                                        </div>
+                                    ) : [...visibleAppointments]
+                                        .sort((a, b) =>
+                                            beautyQueueMode
+                                                ? compareBeautyQueueOrder(a, b)
+                                                : (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '')
+                                        )
+                                        .map((apt, rowIdx) => {
+                                            const cfg = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
+                                            const rowDone = isBeautyAppointmentDone(apt);
+                                            return (
+                                                <div
+                                                    key={apt.id}
+                                                    onClick={() => handleAppointmentPrimaryClick(apt)}
+                                                    style={{
+                                                        display: 'grid',
+                                                        gridTemplateColumns: beautyQueueMode ? '40px 10px 1fr 120px 64px 88px 80px' : '52px 10px 1fr 120px 64px 88px 80px',
+                                                        minWidth: 760,
+                                                        gap: 8,
+                                                        padding: '11px 16px',
+                                                        borderBottom: '1px solid #f3f4f6',
+                                                        alignItems: 'center',
+                                                        cursor: 'pointer',
+                                                        transition: 'background 0.08s',
+                                                    }}
+                                                    onMouseEnter={e => (e.currentTarget.style.background = '#faf9fd')}
+                                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                >
+                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: beautyQueueMode ? 'inherit' : 'monospace', whiteSpace: 'nowrap' }}>
+                                                        {beautyQueueMode ? rowIdx + 1 : (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}
+                                                    </span>
+                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.customer_name ?? '—'}</p>
+                                                        <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveServiceName(apt)}</p>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                                                             <button
                                                                 type="button"
-                                                                onClick={e => {
-                                                                    e.stopPropagation();
-                                                                    openExistingAptInPos(apt);
-                                                                }}
+                                                                onClick={e => openAppointmentDetailPanel(apt, e)}
                                                                 style={{
                                                                     border: 'none',
                                                                     background: 'transparent',
                                                                     padding: 0,
                                                                     fontSize: 10,
-                                                                    fontWeight: 600,
-                                                                    color: '#6b7280',
+                                                                    fontWeight: 700,
+                                                                    color: '#4f46e5',
                                                                     cursor: 'pointer',
                                                                     textDecoration: 'underline',
                                                                 }}
                                                             >
-                                                                {tm('bCardOpenInPos')}
+                                                                {tm('bCardDetailView')}
                                                             </button>
-                                                        ) : null}
+                                                            {rowDone ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={e => {
+                                                                        e.stopPropagation();
+                                                                        openExistingAptInPos(apt);
+                                                                    }}
+                                                                    style={{
+                                                                        border: 'none',
+                                                                        background: 'transparent',
+                                                                        padding: 0,
+                                                                        fontSize: 10,
+                                                                        fontWeight: 600,
+                                                                        color: '#6b7280',
+                                                                        cursor: 'pointer',
+                                                                        textDecoration: 'underline',
+                                                                    }}
+                                                                >
+                                                                    {tm('bCardOpenInPos')}
+                                                                </button>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
+                                                    <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{apt.specialist_name ?? '—'}</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                                                        <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}{tm('bDkSuffix')}</span>
+                                                    </div>
+                                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>{cfg.label}</span>
+                                                    <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right', whiteSpace: 'nowrap' }}>{(apt.total_price ?? 0) > 0 ? formatMoneyAmount(apt.total_price ?? 0, { minFrac: 0, maxFrac: 0 }) : '—'}</span>
                                                 </div>
-                                                <span style={{ fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{apt.specialist_name ?? '—'}</span>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#9ca3af' }}>
-                                                    <Clock size={10} /><span style={{ fontSize: 11, fontWeight: 600 }}>{apt.duration}{tm('bDkSuffix')}</span>
-                                                </div>
-                                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                                                <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', textAlign: 'right' }}>{(apt.total_price ?? 0) > 0 ? formatMoneyAmount(apt.total_price ?? 0, { minFrac: 0, maxFrac: 0 }) : '—'}</span>
-                                            </div>
-                                        );
-                                    })
-                                }
+                                            );
+                                        })
+                                    }
+                                </div>
                             </div>
                         )}
                     </>
@@ -2145,7 +2168,7 @@ export function SmartScheduler() {
                             ) : (
                                 <>
                             <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelOperationDetails')}</p>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginBottom: 14 }}>
                                 {(() => {
                                     const dk = beautyAppointmentDateKey(selectedApt);
                                     let dateShown = '—';
@@ -2204,7 +2227,7 @@ export function SmartScheduler() {
                                     );
                                 })()}
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginBottom: 14 }}>
                                 {[
                                     { label: tm('bSpecialist'),    value: selectedApt.specialist_name ?? selectedApt.staff_name ?? '—' },
                                     { label: tm('bDuration'),      value: `${selectedApt.duration ?? 30}${tm('bDkSuffix')}` },
@@ -2246,7 +2269,7 @@ export function SmartScheduler() {
                                             }}
                                         />
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                         <div>
                                             <label htmlFor="beauty-panel-treatment-degree" style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>{tm('bReceiptTreatmentDegree')}</label>
                                             <input

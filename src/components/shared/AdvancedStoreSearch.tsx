@@ -1,6 +1,7 @@
 ﻿// Advanced search and filtering for unlimited stores
 
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Search, 
   Filter, 
@@ -10,9 +11,8 @@ import {
   TrendingUp,
   Store as StoreIcon
 } from 'lucide-react';
-import { useSearchStores } from '../hooks/useInfiniteStores';
-import { storeApiService, type SearchFilters } from '../../services/storeApiService';
-import type { Store } from '../../services/storeApiService';
+import { useSearchStores } from '@/hooks/useInfiniteStores';
+import { storeApiService, type SearchFilters, type Store } from '@/services/storeApiService';
 
 interface AdvancedStoreSearchProps {
   onSearch: (filters: SearchFilters) => void;
@@ -25,11 +25,15 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
   const [filters, setFilters] = useState<SearchFilters>({});
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  const regions = storeApiService.getRegions();
-  
-  // Calculate total stores dynamically
+  const { data: regions = [] } = useQuery({
+    queryKey: ['stores', 'regions'],
+    queryFn: () => storeApiService.getRegions(),
+    staleTime: 60_000,
+  });
+
   const totalStores = regions.reduce((total, region) => {
-    return total + (region.subRegions.length * 312);
+    const subs = region.subRegions?.length ?? 0;
+    return total + (subs > 0 ? subs : 1) * 50;
   }, 0);
 
   // Debounce search
@@ -123,7 +127,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
                 <div className="p-3 border-b bg-gray-50 text-sm text-gray-600">
                   {searchResults.data.length} sonuç bulundu
                 </div>
-                {searchResults.data.map((store) => (
+                {searchResults.data.map((store: Store) => (
                   <button
                     key={store.id}
                     onClick={() => {
@@ -225,7 +229,7 @@ export function AdvancedStoreSearch({ onSearch, onStoreSelect }: AdvancedStoreSe
                 Ciro Aralığı
               </label>
               <select
-                value={filters.revenue}
+                value={filters.revenue ?? ''}
                 onChange={(e) => setFilters({ ...filters, revenue: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               >

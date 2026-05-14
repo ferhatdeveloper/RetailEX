@@ -151,23 +151,15 @@ export class ZainCashPaymentProvider {
             // Use Tauri's HTTP client to bypass CORS
             console.log('[ZainCash] Preparing tauriFetch request to:', `${this.apiUrl}/init`);
 
-            let tauriFetch, Body;
-            try {
-                const httpModule = await import('@tauri-apps/plugin-http');
-                tauriFetch = httpModule.fetch;
-                Body = httpModule.Body;
-                console.log('[ZainCash] Tauri HTTP module imported');
-            } catch (importError: any) {
-                console.error('[ZainCash] Failed to import Tauri HTTP module:', importError);
-                throw new Error(`Tauri HTTP Modülü yüklenemedi: ${importError.message || importError}`);
-            }
+            const httpModule = await import('@tauri-apps/plugin-http');
+            const tauriFetch = httpModule.fetch;
 
-            const response = await tauriFetch<any>(`${this.apiUrl}/init`, {
+            const response = await tauriFetch(`${this.apiUrl}/init`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: Body.json({
+                body: JSON.stringify({
                     token: token,
                     merchantId: this.merchantId,
                     lang: 'en'
@@ -176,13 +168,14 @@ export class ZainCashPaymentProvider {
 
             console.log('[ZainCash] Response received:', { status: response.status, ok: response.ok });
 
+            const result = await response.json().catch(() => null) as Record<string, unknown> | null;
+
             if (!response.ok) {
-                console.error('[ZainCash] API Error Response:', response.data);
-                const apiError = response.data && typeof response.data === 'object' ? JSON.stringify(response.data) : response.data;
+                console.error('[ZainCash] API Error Response:', result);
+                const apiError = result && typeof result === 'object' ? JSON.stringify(result) : String(result);
                 throw new Error(`ZainCash API Hatası (${response.status}): ${apiError}`);
             }
 
-            const result = response.data;
             console.log('[ZainCash] API Success Data:', result);
 
             // Sandbox/Production URL logic
@@ -195,11 +188,20 @@ export class ZainCashPaymentProvider {
                     : 'https://api.zaincash.iq/transaction/pay?id=';
             }
 
-            if (result && result.id) {
+            if (result && result.id != null && result.id !== '') {
+                const rawId = result.id;
+                const tid =
+                    typeof rawId === 'string' || typeof rawId === 'number'
+                        ? String(rawId)
+                        : '';
+                if (!tid) {
+                    console.error('[ZainCash] Transaction ID missing or invalid in response');
+                    throw new Error('ZainCash işlem ID\'si dönmedi (Response: ' + JSON.stringify(result) + ')');
+                }
                 return {
                     success: true,
-                    transactionId: result.id,
-                    paymentUrl: redirectBase + result.id
+                    transactionId: tid,
+                    paymentUrl: redirectBase + tid
                 };
             } else {
                 console.error('[ZainCash] Transaction ID missing in response');

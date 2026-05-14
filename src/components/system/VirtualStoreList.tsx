@@ -13,7 +13,9 @@ import {
   Calendar
 } from 'lucide-react';
 import { useInfiniteStores } from '../../hooks/useInfiniteStores';
-import type { Store as StoreType, SearchFilters } from '../../services/storeApiService';
+import type { Store as StoreType, SearchFilters, PaginatedResponse } from '../../services/storeApiService';
+
+type StoresListPage = PaginatedResponse<StoreType>;
 
 interface VirtualStoreListProps {
   filters?: SearchFilters;
@@ -30,8 +32,8 @@ export function VirtualStoreList({ filters, onStoreSelect }: VirtualStoreListPro
     isError
   } = useInfiniteStores(filters, 50);
 
-  const allStores = data?.pages.flatMap(page => page.data) ?? [];
-  const totalCount = data?.pages[0]?.pagination.total ?? 0;
+  const allStores = data?.pages.flatMap((page) => (page as StoresListPage).data) ?? [];
+  const totalCount = (data?.pages[0] as StoresListPage | undefined)?.pagination.total ?? 0;
 
   const loadMore = () => {
     if (hasNextPage && !isFetchingNextPage) {

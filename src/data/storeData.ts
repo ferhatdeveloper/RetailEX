@@ -54,8 +54,10 @@ const managers = [
 ];
 
 // Generate 50 stores
+type RegionKey = keyof typeof cities;
+
 export const stores: Store[] = Array.from({ length: 50 }, (_, i) => {
-  const region = regions[i % regions.length];
+  const region = regions[i % regions.length] as RegionKey;
   const cityList = cities[region];
   const city = cityList[Math.floor(Math.random() * cityList.length)];
   

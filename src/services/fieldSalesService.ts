@@ -739,10 +739,3 @@ export const fieldSalesService = new FieldSalesService();
 // Export utilities
 export { DistanceCalculator };
 
-// Export types
-export type { 
-  GeoLocation, SalesRoute, PlannedVisit, Visit, LocationTrack, 
-  Salesperson, VisitOutcome, RouteOptimizationRequest 
-};
-
-

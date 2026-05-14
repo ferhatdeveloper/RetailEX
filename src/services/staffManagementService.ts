@@ -388,7 +388,7 @@ export class StaffManagementService {
 
       if (rule.applies_to === 'SPECIFIC_PRODUCTS' && rule.product_ids) {
         applicableSales = periodSales.filter(s => 
-          s.items.some(item => rule.product_ids!.includes(item.id))
+          s.items.some(item => rule.product_ids!.includes(item.productId))
         );
       }
 
@@ -566,10 +566,4 @@ export class StaffManagementService {
 
 // Singleton instance
 export const staffManagementService = new StaffManagementService();
-
-// Export types
-export type { 
-  Shift, ShiftAssignment, CommissionRule, CommissionCalculation, 
-  StaffPerformance, AttendanceRecord 
-};
 

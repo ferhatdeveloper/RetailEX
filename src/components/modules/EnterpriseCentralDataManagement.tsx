@@ -555,14 +555,11 @@ export function EnterpriseCentralDataManagement() {
             </Button>
 
             <label className="cursor-pointer">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                as="span"
-              >
-                <Upload className="w-4 h-4" />
-                İçe Aktar
+              <Button asChild variant="outline" size="sm" className="gap-2">
+                <span>
+                  <Upload className="w-4 h-4" />
+                  İçe Aktar
+                </span>
               </Button>
               <input
                 type="file"

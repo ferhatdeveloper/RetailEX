@@ -31,7 +31,8 @@
         "src"
     ],
     "exclude": [
-        "src/vitest.config.ts"
+        "src/vitest.config.ts",
+        "src/supabase/functions/server"
     ],
     "references": [
         {

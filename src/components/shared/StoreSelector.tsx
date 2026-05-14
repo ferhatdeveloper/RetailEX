@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { 
-  Store, 
+  Store as StoreIcon,
   Check, 
   ChevronDown,
   Wifi,
@@ -17,8 +17,10 @@ import {
   Activity
 } from 'lucide-react';
 import { storeSyncService, type SelectedStore } from '../../services/storeSyncService';
-import { useOnlineOffline } from '../hooks/useOnlineOffline';
-import { useInfiniteStores } from '../hooks/useInfiniteStores';
+import type { PaginatedResponse, Store as StoreEntity } from '@/services/storeApiService';
+import type { InfiniteData } from '@tanstack/react-query';
+import { useOnlineOffline } from '@/hooks/useOnlineOffline';
+import { useInfiniteStores } from '@/hooks/useInfiniteStores';
 
 export function StoreSelector() {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -29,7 +31,8 @@ export function StoreSelector() {
 
   const { isOnline, syncStatus, forceSync } = useOnlineOffline();
   const { data: storesData } = useInfiniteStores({}, 50);
-  const stores = storesData?.pages[0]?.data || [];
+  const stores: StoreEntity[] =
+    (storesData as InfiniteData<PaginatedResponse<StoreEntity>> | undefined)?.pages?.[0]?.data ?? [];
 
   const handleStoreSelect = async (storeId: string) => {
     try {
@@ -98,7 +101,7 @@ export function StoreSelector() {
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-3 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
       >
-        <Store className="h-5 w-5 text-blue-600" />
+        <StoreIcon className="h-5 w-5 text-blue-600" />
         <div className="flex-1 text-left">
           {selectedStore ? (
             <>
@@ -165,7 +168,7 @@ export function StoreSelector() {
 
           {/* Store List */}
           <div className="max-h-64 overflow-auto">
-            {stores.map((store) => (
+            {stores.map((store: StoreEntity) => (
               <button
                 key={store.id}
                 onClick={() => handleStoreSelect(store.id)}

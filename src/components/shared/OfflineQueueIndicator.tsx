@@ -1,15 +1,17 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Cloud, CloudOff, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
-import { useTheme } from '../contexts/ThemeContext';
-import { useLanguage } from '../contexts/LanguageContext';
-import { offlineQueue, QueuedTransaction } from '../../utils/offlineQueue';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { offlineQueue, QueuedTransaction } from '@/utils/offlineQueue';
 
 export function OfflineQueueIndicator() {
-  const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { darkMode } = useTheme();
+  const { t: tr } = useLanguage();
+  const tx = tr as unknown as Record<string, string | undefined>;
+  const pick = (key: string, fallback: string) => tx[key] ?? fallback;
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [queueSize, setQueueSize] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -79,10 +81,10 @@ export function OfflineQueueIndicator() {
 
   const getStatusText = (status: QueuedTransaction['status']) => {
     switch (status) {
-      case 'pending': return t('pending') || 'Bekliyor';
-      case 'syncing': return t('syncing') || 'Senkronize Ediliyor';
-      case 'failed': return t('failed') || 'Başarısız';
-      case 'completed': return t('completed') || 'Tamamlandı';
+      case 'pending': return pick('pending', 'Bekliyor');
+      case 'syncing': return pick('syncing', 'Senkronize Ediliyor');
+      case 'failed': return pick('failed', 'Başarısız');
+      case 'completed': return pick('completed', 'Tamamlandı');
     }
   };
 
@@ -95,7 +97,7 @@ export function OfflineQueueIndicator() {
       <button
         onClick={() => setShowQueueModal(true)}
         className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-all ${
-          theme === 'dark'
+          darkMode
             ? 'bg-gray-800 hover:bg-gray-700 text-white'
             : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
         }`}
@@ -107,7 +109,7 @@ export function OfflineQueueIndicator() {
         )}
         
         <span className="text-sm">
-          {isOnline ? t('online') || 'Çevrimiçi' : t('offline') || 'Çevrimdışı'}
+          {isOnline ? pick('online', 'Çevrimiçi') : pick('offline', 'Çevrimdışı')}
         </span>
 
         {queueSize > 0 && (
@@ -131,15 +133,15 @@ export function OfflineQueueIndicator() {
               ) : (
                 <CloudOff className="w-5 h-5 text-orange-500" />
               )}
-              {t('offlineQueue') || 'Çevrimdışı Kuyruk'}
+              {pick('offlineQueue', 'Çevrimdışı Kuyruk')}
               {queueSize > 0 && (
-                <Badge variant="secondary">{queueSize} {t('items') || 'öğe'}</Badge>
+                <Badge variant="secondary">{queueSize} {pick('items', 'öğe')}</Badge>
               )}
             </DialogTitle>
             <DialogDescription>
               {isOnline 
-                ? t('queueWillBeSynced') || 'Bekleyen işlemler otomatik olarak senkronize edilecek'
-                : t('transactionsWillBeSaved') || 'İşlemleriniz bağlantı sağlandığında gönderilecek'
+                ? pick('queueWillBeSynced', 'Bekleyen işlemler otomatik olarak senkronize edilecek')
+                : pick('transactionsWillBeSaved', 'İşlemleriniz bağlantı sağlandığında gönderilecek')
               }
             </DialogDescription>
           </DialogHeader>
@@ -147,7 +149,7 @@ export function OfflineQueueIndicator() {
           <div className="space-y-4">
             {/* Status */}
             <div className={`p-4 rounded-lg ${
-              theme === 'dark' ? 'bg-gray-800' : 'bg-gray-50'
+              darkMode ? 'bg-gray-800' : 'bg-gray-50'
             }`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -156,8 +158,8 @@ export function OfflineQueueIndicator() {
                   }`} />
                   <span className="text-sm font-medium">
                     {isOnline 
-                      ? t('connectionRestored') || 'Bağlantı Sağlandı'
-                      : t('workingOffline') || 'Çevrimdışı Çalışılıyor'
+                      ? pick('connectionRestored', 'Bağlantı Sağlandı')
+                      : pick('workingOffline', 'Çevrimdışı Çalışılıyor')
                     }
                   </span>
                 </div>
@@ -171,7 +173,7 @@ export function OfflineQueueIndicator() {
                     className="gap-2"
                   >
                     <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                    {t('syncNow') || 'Şimdi Senkronize Et'}
+                    {pick('syncNow', 'Şimdi Senkronize Et')}
                   </Button>
                 )}
               </div>
@@ -181,7 +183,7 @@ export function OfflineQueueIndicator() {
             {queue.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
-                <p>{t('noQueuedItems') || 'Bekleyen işlem yok'}</p>
+                <p>{pick('noQueuedItems', 'Bekleyen işlem yok')}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -189,7 +191,7 @@ export function OfflineQueueIndicator() {
                   <div
                     key={transaction.id}
                     className={`p-3 rounded-lg border ${
-                      theme === 'dark'
+                      darkMode
                         ? 'bg-gray-800 border-gray-700'
                         : 'bg-white border-gray-200'
                     }`}
@@ -211,7 +213,7 @@ export function OfflineQueueIndicator() {
                       <div>{formatTimestamp(transaction.timestamp)}</div>
                       {transaction.retryCount > 0 && (
                         <div className="text-orange-500">
-                          {t('retries') || 'Yeniden Deneme'}: {transaction.retryCount}/3
+                          {pick('retries', 'Yeniden Deneme')}: {transaction.retryCount}/3
                         </div>
                       )}
                       {transaction.error && (
@@ -234,11 +236,11 @@ export function OfflineQueueIndicator() {
                 variant="outline"
                 size="sm"
               >
-                {t('clearCompleted') || 'Tamamlananları Temizle'}
+                {pick('clearCompleted', 'Tamamlananları Temizle')}
               </Button>
             )}
             <Button onClick={() => setShowQueueModal(false)} variant="outline">
-              {t('close') || 'Kapat'}
+              {pick('close', 'Kapat')}
             </Button>
           </div>
         </DialogContent>

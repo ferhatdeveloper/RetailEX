@@ -75,7 +75,8 @@ async function lookupStockFields(barcode: string): Promise<{ name: string; varia
       return { name: p.name, variant: unitLabel, salePrice: Number(salePrice) || 0 };
     }
   } catch (err) {
-    console.warn('[MaterialsIntake] lookupStockFields:', err?.message || err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[MaterialsIntake] lookupStockFields:', msg);
   }
   return null;
 }

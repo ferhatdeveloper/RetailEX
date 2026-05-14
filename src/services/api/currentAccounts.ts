@@ -221,7 +221,7 @@ export async function updateCurrentAccount(id: string, updates: any): Promise<Cu
 export async function deleteCurrentAccount(id: string) {
   // Try delete from both (soft delete)
   await customerAPI.delete(id);
-  await supplierAPI.delete(id);
+  await supplierAPI.delete(id, 'supplier');
   return { success: true };
 }
 

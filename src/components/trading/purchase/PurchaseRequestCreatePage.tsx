@@ -9,7 +9,6 @@ import { APP_VERSION } from '../../../core/version';
 import type { Product, PurchaseRequestItem } from '../../../core/types/models';
 import { supplierAPI, Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
-import { ProductSearchModal } from './ProductSearchModal';
 import { SupplierHistoryModal } from '../contacts/SupplierHistoryModal';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
@@ -774,9 +773,9 @@ export function PurchaseRequestCreatePage({
                         requestedDeliveryDate: new Date().toISOString().split('T')[0],
                         projectCode: '',
                         costCenter: '',
-                        status: 'draft',
+                        status: 'draft' as RequestItem['status'],
                     }));
-                    setItems([...items, ...newItems]);
+                    setItems((prev) => [...prev, ...newItems]);
                 }}
             />
         </FullscreenBodyPortal>

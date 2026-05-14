@@ -58,8 +58,8 @@ export function InvoiceLineWithProfit({ lines, isSalesInvoice }: InvoiceLineWith
         
         const costs = await batchCalculateFIFOCost({
           items,
-          firmaId: selectedFirma.id,
-          donemId: selectedDonem.id
+          firmaId: selectedFirma.id ?? '',
+          donemId: selectedDonem.id ?? '',
         });
         
         if (!cancelled) {

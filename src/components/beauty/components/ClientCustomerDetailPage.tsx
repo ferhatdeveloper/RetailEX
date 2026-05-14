@@ -916,6 +916,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                   loading={pkgLoading}
                                   columns={pkgColumns}
                                   dataSource={customerPackages}
+                                  scroll={{ x: 'max-content' }}
                                   pagination={false}
                                   locale={{ emptyText: tm('bNoPackagesForCustomer') }}
                               />
@@ -955,6 +956,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                               loading={histLoading || pkgLoading}
                               columns={historyKindFilter === 'service_fee' ? serviceFeeQuickColumns : historyColumns}
                               dataSource={filteredUnifiedHistory}
+                              scroll={{ x: 'max-content' }}
                               pagination={{ pageSize: 10, showSizeChanger: true }}
                               locale={{ emptyText: tm('bEmptyHistorySection') }}
                           />
@@ -977,6 +979,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                               loading={histLoading}
                               columns={leadColumns}
                               dataSource={leadRecords}
+                              scroll={{ x: 'max-content' }}
                               pagination={{ pageSize: 10, showSizeChanger: true }}
                               locale={{ emptyText: tm('bEmptyHistorySection') }}
                           />
@@ -1074,6 +1077,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                               loading={histLoading}
                               columns={paymentColumns}
                               dataSource={salesHistory}
+                              scroll={{ x: 'max-content' }}
                               pagination={{ pageSize: 10, showSizeChanger: true }}
                               expandable={{
                                   expandedRowRender: sale =>
@@ -1084,6 +1088,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                               pagination={false}
                                               rowKey={(item, idx) => String(item.id ?? idx)}
                                               dataSource={sale.items}
+                                              scroll={{ x: 'max-content' }}
                                               columns={[
                                                   {
                                                       title: tm('bHistoryColDescription'),

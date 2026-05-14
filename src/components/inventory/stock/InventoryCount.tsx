@@ -50,7 +50,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
     try {
       const { rows } = await postgres.query('SELECT id, name FROM stores WHERE is_active = true');
       setWarehouses(rows);
-      if (rows.length > 0) setSelectedWarehouseId(rows[0].id);
+      if (rows.length > 0) setSelectedWarehouseId(String(rows[0].id));
     } catch (error) {
       console.error('Error loading warehouses:', error);
     }
@@ -164,7 +164,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
 
     setSaving(true);
     try {
-      const warehouseName = warehouses.find(w => w.id === selectedWarehouseId)?.name || 'Depo';
+      const warehouseName = warehouses.find((w) => String(w.id) === selectedWarehouseId)?.name || 'Depo';
 
       await stockCountAPI.create({
         count_no: `CNT-${Date.now().toString().slice(-6)}`,
@@ -302,7 +302,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
           </div>
 
           <div className="mt-8 p-4 bg-blue-50 rounded-xl">
-            <p className="text-sm text-blue-900 font-medium mb-2">ğŸ’¡ İpuçları:</p>
+            <p className="text-sm text-blue-900 font-medium mb-2">💡 İpuçları:</p>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Tam Sayım: Tüm depo stok kontrolü</li>
               <li>• Devirli: Günlük/haftalık rutin sayım</li>
@@ -339,17 +339,17 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
               <button
                 key={w.id}
                 onClick={() => {
-                  setSelectedWarehouseId(w.id);
+                  setSelectedWarehouseId(String(w.id));
                   if (countType === 'location') setStep('location-scan');
                   else setStep('item-count');
                 }}
-                className={`p-6 rounded-2xl border-2 text-left transition-all ${selectedWarehouseId === w.id
+                className={`p-6 rounded-2xl border-2 text-left transition-all ${selectedWarehouseId === String(w.id)
                   ? 'border-purple-600 bg-purple-50 shadow-md'
                   : 'border-white bg-white hover:border-purple-200 shadow-sm'
                   }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${selectedWarehouseId === w.id ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-600'
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${selectedWarehouseId === String(w.id) ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-600'
                     }`}>
                     <Building className="w-6 h-6" />
                   </div>

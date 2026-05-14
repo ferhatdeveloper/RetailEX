@@ -48,10 +48,8 @@ interface ElectronAPI {
   isElectron: boolean;
 }
 
-declare global {
-  interface Window {
-    electronAPI?: ElectronAPI;
-  }
+function getElectronAPI(): ElectronAPI | undefined {
+  return (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 }
 
 export function useElectron() {
@@ -61,12 +59,13 @@ export function useElectron() {
 
   useEffect(() => {
     const checkElectron = async () => {
-      if (window.electronAPI?.isElectron) {
+      const api = getElectronAPI();
+      if (api?.isElectron) {
         setIsElectron(true);
         
         try {
-          const appVersion = await window.electronAPI.app.getVersion();
-          const appPlatform = await window.electronAPI.app.getPlatform();
+          const appVersion = await api.app?.getVersion?.() ?? '';
+          const appPlatform = await api.app?.getPlatform?.() ?? '';
           setVersion(appVersion);
           setPlatform(appPlatform);
         } catch (error) {
@@ -82,7 +81,7 @@ export function useElectron() {
     isElectron,
     version,
     platform,
-    api: window.electronAPI
+    api: getElectronAPI()
   };
 }
 

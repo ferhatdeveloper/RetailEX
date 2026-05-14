@@ -211,8 +211,8 @@ export function CategoryGroupSalesProfitReport() {
   }
 
   const grand = rows.reduce(
-    (a, r) => ({ q: a.q + r.quantity, rev: a.rev + r.revenue, pr: a.pr + r.grossProfit }),
-    { q: 0, rev: 0, pr: 0 }
+    (a, r) => ({ qty: a.qty + r.quantity, rev: a.rev + r.revenue, pr: a.pr + r.grossProfit }),
+    { qty: 0, rev: 0, pr: 0 }
   );
 
   return (
@@ -274,7 +274,7 @@ export function CategoryGroupSalesProfitReport() {
             <Package className="h-4 w-4" />
             Toplam adet
           </div>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{fmt(grand.q)}</div>
+          <div className="mt-1 text-2xl font-bold text-slate-900">{fmt(grand.qty)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-sm text-slate-500">

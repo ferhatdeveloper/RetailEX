@@ -4239,7 +4239,6 @@ const SetupWizard: React.FC = () => {
                         nextDisabled={loading || step === (config.skip_integration ? 8 : 10)}
                         nextLabel={step === (config.skip_integration ? 7 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
-                        forceShowStatus={true}
                     />
                 </div>
             </div>

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
-import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, createCurrentAccount, Store as StoreType, Warehouse as WarehouseType, Period as PeriodType } from '../../services/api';
+import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, createCurrentAccount, Store as StoreType, Warehouse as WarehouseType } from '../../services/api';
 import { logger } from '../../services/loggingService';
 import { getReceiptSettings, saveReceiptSettings, type ReceiptSettings } from '../../services/receiptSettingsService';
 import { eTransformService } from '../../services/eTransformService';
@@ -320,7 +320,7 @@ export function CompanySetup() {
 
       // 1. Fetch Companies
       const compData = await organizationAPI.getFirms();
-      setCompanies(compData || []);
+      setCompanies((compData || []) as unknown as Company[]);
 
       // 2. Fetch Stores
       const storesRes = await storeApiService.fetchStores(0, 500);
@@ -336,8 +336,8 @@ export function CompanySetup() {
         for (const comp of compData) {
           try {
             const pData = await organizationAPI.getPeriods(comp.id);
-            if (pData) allPeriods = [...allPeriods, ...pData];
-          } catch (e) { console.warn('Failed to load periods for ' + comp.firma_adi); }
+            if (pData) allPeriods = [...allPeriods, ...(pData as unknown as Period[])];
+          } catch (e) { console.warn('Failed to load periods for ' + comp.name); }
         }
         setPeriods(allPeriods);
       }

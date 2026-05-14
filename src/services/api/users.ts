@@ -48,7 +48,9 @@ export const userAPI = {
          ORDER BY u.username ASC`,
                 [ERP_SETTINGS.firmNr]
             );
-            return (rows || []).map((r: any) => this.mapRow(r));
+            return (rows || [])
+                .map((r: any) => this.mapRow(r))
+                .filter((u): u is User => u != null);
         } catch (error) {
             console.error('[UserAPI] getAll failed:', error);
             return [];

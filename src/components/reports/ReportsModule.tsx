@@ -1775,7 +1775,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   };
 
   // Category Analysis
-  const getCategoryAnalysis = () => {
+  type CategoryAnalysisItem = { product_name: string; quantity: number; subtotal: number };
+  type CategoryAnalysis = {
+    name: string;
+    totalRevenue: number;
+    totalQuantity: number;
+    productCount: number;
+    avgPrice: number;
+    items?: CategoryAnalysisItem[];
+  };
+
+  const getCategoryAnalysis = (): CategoryAnalysis[] => {
     if (businessType === 'restaurant') {
       const categoryMap = new Map<string, {
         name: string;
@@ -1783,7 +1793,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         totalQuantity: number;
         productCount: number;
         avgPrice: number;
-        items?: any[];
+        items?: CategoryAnalysisItem[];
       }>();
 
       restOrders.forEach(order => {
@@ -1795,7 +1805,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
             existing.totalQuantity += Number(item.quantity || 0);
             existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
             if (!existing.items) existing.items = [];
-            existing.items.push(item);
+            existing.items.push({
+              product_name: String(item.product_name ?? item.productName ?? '—'),
+              quantity: Number(item.quantity ?? 0),
+              subtotal: Number(item.subtotal ?? 0),
+            });
           } else {
             categoryMap.set(categoryName, {
               name: categoryName,
@@ -1803,7 +1817,13 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
               totalQuantity: Number(item.quantity || 0),
               productCount: 1,
               avgPrice: Number(item.unit_price || 0),
-              items: [item]
+              items: [
+                {
+                  product_name: String(item.product_name ?? item.productName ?? '—'),
+                  quantity: Number(item.quantity ?? 0),
+                  subtotal: Number(item.subtotal ?? 0),
+                },
+              ],
             });
           }
         });
@@ -1812,13 +1832,17 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
 
     if (!sales || !Array.isArray(sales) || !products || !Array.isArray(products)) return [];
-    const categoryMap = new Map<string, {
-      name: string;
-      totalRevenue: number;
-      totalQuantity: number;
-      productCount: number;
-      avgPrice: number;
-    }>();
+    const categoryMap = new Map<
+      string,
+      {
+        name: string;
+        totalRevenue: number;
+        totalQuantity: number;
+        avgPrice: number;
+        productIds: Set<string>;
+        items: CategoryAnalysisItem[];
+      }
+    >();
 
     sales.forEach(sale => {
       const sk = localCalendarDateKey(sale.date);
@@ -1826,25 +1850,49 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       sale.items.forEach(item => {
         const product = products.find(p => p.id === item.productId);
         if (product) {
-          const existing = categoryMap.get(product.category);
+          const categoryName = String(product.category || 'Diğer');
+          const existing = categoryMap.get(categoryName);
+          const qty = Number(item.quantity || 0);
+          const subtotal = Number(item.total || 0);
+          const productName = String(product.name || (item as any).productName || '—');
+
           if (existing) {
-            existing.totalRevenue += item.total;
-            existing.totalQuantity += item.quantity;
-            existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
+            existing.totalRevenue += subtotal;
+            existing.totalQuantity += qty;
+            existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
+            existing.productIds.add(String(product.id));
+
+            const idx = existing.items.findIndex((i) => i.product_name === productName);
+            if (idx >= 0) {
+              existing.items[idx].quantity += qty;
+              existing.items[idx].subtotal += subtotal;
+            } else {
+              existing.items.push({ product_name: productName, quantity: qty, subtotal });
+            }
           } else {
-            categoryMap.set(product.category, {
-              name: product.category,
-              totalRevenue: item.total,
-              totalQuantity: item.quantity,
-              productCount: 1,
-              avgPrice: item.price
+            categoryMap.set(categoryName, {
+              name: categoryName,
+              totalRevenue: subtotal,
+              totalQuantity: qty,
+              avgPrice: qty > 0 ? subtotal / qty : 0,
+              productIds: new Set([String(product.id)]),
+              items: [{ product_name: productName, quantity: qty, subtotal }],
             });
           }
         }
       });
     });
 
-    return Array.from(categoryMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    return Array.from(categoryMap.values())
+      .map((c) => ({
+        name: c.name,
+        totalRevenue: c.totalRevenue,
+        totalQuantity: c.totalQuantity,
+        productCount: c.productIds.size,
+        avgPrice: c.avgPrice,
+        items: c.items.sort((a, b) => b.subtotal - a.subtotal),
+      }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
   };
 
   // Hourly Analysis — seçili güne göre (restoranda günlük birleşik satır saatleri)
@@ -6395,7 +6443,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           : tm('resTicketWalkIn');
                       const statusClosed = order.status === 'closed';
                       const statusLabel = statusClosed ? tm('closed') : tm('active');
-                      const rows = visibleItems.map((it: any) => ({
+                      type DetailedSaleRow = {
+                        open: string;
+                        close: string;
+                        table: string;
+                        product: string;
+                        cari: string;
+                        qty: number;
+                        price: number;
+                        total: number;
+                        status: string;
+                        statusClosed: boolean;
+                      };
+
+                      const rows: DetailedSaleRow[] = visibleItems.map((it: any): DetailedSaleRow => ({
                         open,
                         close,
                         table: tableLabel,
@@ -6528,7 +6589,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           {group.items.length === 0 ? (
                             <div className="p-3 text-slate-400 italic border-b border-slate-50">{tm('reportsNoLineItems')}</div>
                           ) : (
-                            group.items.map((item: any, i) => (
+                            group.items.map((item: any, i: number) => (
                               <div
                                 key={i}
                                 className="grid grid-cols-12 gap-2 p-2 hover:bg-red-50/10 text-slate-600 transition-colors border-b border-slate-50 last:border-0"

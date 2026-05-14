@@ -613,9 +613,10 @@ export const useRestaurantStore = create<RestaurantState>()(
                         const wasEmpty = hadEmpty.has(t.id);
                         const nowEmpty = (row.status ?? 'empty') === 'empty';
                         if (wasEmpty && !nowEmpty) needsFullLoad = true;
+                        const nextStatus = (row.status ?? t.status) as Table['status'];
                         return {
                             ...t,
-                            status: row.status ?? t.status,
+                            status: nextStatus,
                             waiter: row.waiter ?? t.waiter,
                             total: Number(row.total ?? 0),
                             startTime: row.start_time ?? t.startTime
@@ -634,14 +635,22 @@ export const useRestaurantStore = create<RestaurantState>()(
                 if (!table) return;
                 const activeOrder = await RestaurantService.getActiveOrder(tableId);
                 const mainTableNum = (activeOrder as any)?.table_number ?? table.number;
-                const orders = (activeOrder?.items || []).map((i: any) => ({
-                    id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
-                    quantity: Number(i.quantity), price: Number(i.unit_price),
-                    status: i.status || 'cooking', course: i.course, options: i.note,
-                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
-                    sourceTableId: table.id, sourceTableNumber: mainTableNum
+                const orders: OrderItem[] = (activeOrder?.items || []).map((i: any): OrderItem => ({
+                    id: i.id,
+                    menuItemId: String(i.product_id ?? ''),
+                    name: i.product_name,
+                    quantity: Number(i.quantity),
+                    price: Number(i.unit_price),
+                    status: (i.status as OrderItem['status']) || 'cooking',
+                    course: i.course,
+                    options: i.note,
+                    isVoid: i.is_void,
+                    voidReason: i.void_reason,
+                    isComplementary: i.is_complementary,
+                    sourceTableId: table.id,
+                    sourceTableNumber: mainTableNum,
                 }));
-                const total = orders.filter(o => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0);
+                const total = orders.filter((o) => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0);
                 const orderDiscountPct = Number((activeOrder as any)?.order_discount_pct ?? 0);
                 set(state => ({
                     tables: state.tables.map(t =>

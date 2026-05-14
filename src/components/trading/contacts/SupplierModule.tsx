@@ -468,7 +468,7 @@ export function SupplierModule() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <h2 className="text-sm font-semibold">{t.menu?.currentAccountPersonel || 'Cari Hesap / Personel'}</h2>
+            <h2 className="text-sm font-semibold">{t.menu?.currentAccounts || 'Cari Hesap / Personel'}</h2>
             <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} {tm('account')}</span>
           </div>
           <div className="flex gap-1.5">
@@ -762,13 +762,13 @@ export function SupplierModule() {
 }
 
 // Small helper to reduce input boilerplate
-function Field({ label, children }: { label: string; children: React.ReactElement }) {
+function Field({ label, children }: { label: string; children: React.ReactElement<React.HTMLAttributes<HTMLElement>> }) {
   return (
     <div>
       <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{label}</label>
       {React.cloneElement(children, {
-        className: 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
-      })}
+        className: 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
+      } satisfies React.HTMLAttributes<HTMLElement>)}
     </div>
   );
 }

@@ -161,7 +161,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: string) => 
 // Standalone toast functions (for use without context)
 let toastQueue: ((type: ToastType, message: string, duration?: number) => void) | null = null;
 
-export function setToastHandler(handler: (type: ToastType, message: string, duration?: number) => void) {
+export function setToastHandler(handler: ((type: ToastType, message: string, duration?: number) => void) | null) {
   toastQueue = handler;
 }
 

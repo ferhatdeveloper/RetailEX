@@ -3,6 +3,7 @@ import { TrendingUp } from 'lucide-react';
 import type { Sale } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import type { TooltipProps } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface SalesTrendReportProps {
@@ -100,6 +101,14 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
     trendData[0] || { revenue: 0, label: '' }
   );
 
+  const tooltipFormatter: TooltipProps<number, string>['formatter'] = (value, _name, item) => {
+    const dataKey = item?.dataKey;
+    if (String(dataKey) === 'revenue') {
+      return `${formatNumber(Number(value), 2, false)} IQD`;
+    }
+    return value;
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg border p-4">
@@ -168,11 +177,7 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
             <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
             <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
             <Tooltip
-              formatter={(value: number, _name: string, item: { dataKey?: string } | undefined) =>
-                (item as { dataKey?: string } | undefined)?.dataKey === 'revenue'
-                  ? formatNumber(value, 2, false) + ' IQD'
-                  : value
-              }
+              formatter={tooltipFormatter}
             />
             <Legend />
             <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} name={legendRevenue} />

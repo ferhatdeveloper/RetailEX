@@ -71,8 +71,8 @@ export function ClinicOperationsHub() {
     }, [refresh]);
 
     return (
-        <div className="flex flex-col h-full min-h-0 gap-3 p-4 overflow-auto" style={{ background: '#f7f6fb' }}>
-            <div className="flex flex-wrap gap-2 shrink-0">
+        <div className="flex flex-col h-full min-h-0 gap-3 p-3 sm:p-4 overflow-auto min-w-0" style={{ background: '#f7f6fb' }}>
+            <div className="flex gap-2 shrink-0 min-w-0 overflow-x-auto overflow-y-hidden pb-1 -mx-1 px-1 overscroll-x-contain touch-pan-x">
                 {TABS.map(t => {
                     const Icon = t.icon;
                     const active = tab === t.id;
@@ -81,7 +81,7 @@ export function ClinicOperationsHub() {
                             key={t.id}
                             type="button"
                             onClick={() => setTab(t.id as HubTabId)}
-                            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors"
+                            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2.5 min-h-[44px] text-sm font-semibold transition-colors"
                             style={{
                                 background: active ? '#7c3aed' : '#fff',
                                 color: active ? '#fff' : '#475569',

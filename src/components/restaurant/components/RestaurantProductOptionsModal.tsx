@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingBag, Plus, StickyNote, ChefHat, Gift, Trash2, Info, Pencil } from 'lucide-react';
 import { cn } from '../../ui/utils';
-import { Product } from '../types';
+import type { Product } from '../../../core/types';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 interface RestaurantProductOptionsModalProps {
@@ -63,13 +63,14 @@ export function RestaurantProductOptionsModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+            <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
             <div
-                className="bg-white rounded-[32px] w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
+                className="bg-white rounded-[32px] w-full max-w-sm max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header with Blue Gradient */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-8 flex items-center justify-between text-white relative overflow-hidden">
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 sm:p-8 flex items-center justify-between text-white relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="flex items-center gap-4 relative z-10">
@@ -110,7 +111,7 @@ export function RestaurantProductOptionsModal({
                     </div>
                 </div>
 
-                <div className="p-8 space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 space-y-4">
                     <div className="grid grid-cols-1 gap-3">
                         <div className="rounded-2xl border-2 border-blue-100 bg-blue-50/50 p-4 space-y-3">
                             <div className="text-[10px] font-black uppercase tracking-widest text-blue-800/80 flex items-center gap-2">
@@ -185,10 +186,11 @@ export function RestaurantProductOptionsModal({
                 {/* Optional: Simple close at bottom */}
                 <button
                     onClick={onClose}
-                    className="w-full py-5 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-slate-600 transition-all border-t border-slate-50 mt-auto"
+                    className="w-full py-5 text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-slate-600 transition-all border-t border-slate-50 mt-auto shrink-0"
                 >
                     {tm('resOptCancel')}
                 </button>
+            </div>
             </div>
         </div>
     );

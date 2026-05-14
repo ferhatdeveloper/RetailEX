@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, Mic, MicOff, Loader2 } from 'lucide-react';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { useTheme } from '../contexts/ThemeContext';
-import { useLanguage } from '../contexts/LanguageContext';
-import { useDebouncedSearch } from '../hooks/useDebouncedSearch';
-import { fuzzySearch, highlightMatches } from '../utils/fuzzySearch';
-import { logger } from '../utils/logger';
-import type { Product } from '../core/types';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useDebouncedSearch } from '@/hooks/useDebouncedSearch';
+import { fuzzySearch, highlightMatches } from '@/utils/fuzzySearch';
+import { logger } from '@/utils/logger';
+import type { Product } from '@/core/types';
 
 interface AdvancedSearchProps<T = Product> {
   items: T[];
@@ -30,25 +30,25 @@ export function AdvancedSearch<T = Product>({
   getSearchText,
   placeholder = 'Search...',
   autoFocus = false,
-  showSuggestions = true,
+  showSuggestions: enableSuggestions = true,
   voiceSearch = true,
   debounceMs = 300,
   fuzzyThreshold = 0.5,
   onItemSelect,
   renderSuggestion
 }: AdvancedSearchProps<T>) {
-  const { theme } = useTheme();
+  const { darkMode } = useTheme();
   const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   // Fuzzy search function
-  const searchFunction = (items: T[], query: string) => {
+  const searchFunction = (items: T[], query: string): T[] => {
     return fuzzySearch(items, query, getSearchText, fuzzyThreshold);
   };
 
@@ -58,7 +58,7 @@ export function AdvancedSearch<T = Product>({
     results,
     isSearching,
     clearSearch
-  } = useDebouncedSearch(items, searchFunction, debounceMs);
+  } = useDebouncedSearch<T>(items, searchFunction, debounceMs);
 
   // Update parent with results
   useEffect(() => {
@@ -67,12 +67,12 @@ export function AdvancedSearch<T = Product>({
 
   // Show/hide suggestions
   useEffect(() => {
-    setShowSuggestions(query.length > 0 && showSuggestions);
-  }, [query, showSuggestions]);
+    setSuggestionsOpen(query.length > 0 && enableSuggestions);
+  }, [query, enableSuggestions]);
 
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || results.length === 0) return;
+    if (!suggestionsOpen || results.length === 0) return;
 
     switch (e.key) {
       case 'ArrowDown':
@@ -96,7 +96,7 @@ export function AdvancedSearch<T = Product>({
         
       case 'Escape':
         e.preventDefault();
-        setShowSuggestions(false);
+        setSuggestionsOpen(false);
         setSelectedIndex(-1);
         break;
     }
@@ -107,7 +107,7 @@ export function AdvancedSearch<T = Product>({
     if (onItemSelect) {
       onItemSelect(item);
     }
-    setShowSuggestions(false);
+    setSuggestionsOpen(false);
     setSelectedIndex(-1);
     inputRef.current?.blur();
   };
@@ -170,20 +170,20 @@ export function AdvancedSearch<T = Product>({
       {/* Search Input */}
       <div className="relative">
         <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${
-          theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+          darkMode ? 'text-gray-400' : 'text-gray-500'
         }`} />
         
         <Input
           ref={inputRef}
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => query.length > 0 && setShowSuggestions(true)}
+          onFocus={() => query.length > 0 && setSuggestionsOpen(true)}
           placeholder={placeholder}
           autoFocus={autoFocus}
           className={`pl-10 pr-20 ${
-            theme === 'dark' 
+            darkMode 
               ? 'bg-gray-800 border-gray-700 text-white' 
               : 'bg-white border-gray-300 text-gray-900'
           }`}
@@ -213,7 +213,7 @@ export function AdvancedSearch<T = Product>({
               onClick={startVoiceSearch}
               disabled={isVoiceRecording}
               className={`h-7 w-7 p-0 ${isVoiceRecording ? 'text-red-500' : ''}`}
-              title={t('voiceSearch') || 'Voice Search'}
+              title={t.voiceSearch || 'Voice Search'}
             >
               {isVoiceRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </Button>
@@ -232,19 +232,19 @@ export function AdvancedSearch<T = Product>({
       {query && (
         <div className="mt-2 flex items-center justify-between">
           <Badge variant="outline" className={`${
-            theme === 'dark' ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'
+            darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'
           }`}>
-            {results.length} {t('results') || 'results'}
+            {results.length} {t.results || 'results'}
           </Badge>
         </div>
       )}
 
       {/* Autocomplete Suggestions */}
-      {showSuggestions && results.length > 0 && (
+      {suggestionsOpen && results.length > 0 && (
         <div
           ref={suggestionsRef}
           className={`absolute z-50 w-full mt-1 rounded-lg border shadow-lg max-h-96 overflow-y-auto ${
-            theme === 'dark'
+            darkMode
               ? 'bg-gray-800 border-gray-700'
               : 'bg-white border-gray-200'
           }`}
@@ -255,10 +255,10 @@ export function AdvancedSearch<T = Product>({
               onClick={() => handleSelectItem(item)}
               className={`w-full text-left px-4 py-3 transition-colors border-b last:border-b-0 ${
                 index === selectedIndex
-                  ? theme === 'dark'
+                  ? darkMode
                     ? 'bg-blue-900 text-white'
                     : 'bg-blue-50 text-blue-900'
-                  : theme === 'dark'
+                  : darkMode
                     ? 'hover:bg-gray-700 text-gray-200 border-gray-700'
                     : 'hover:bg-gray-50 text-gray-900 border-gray-100'
               }`}

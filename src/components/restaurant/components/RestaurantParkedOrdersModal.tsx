@@ -27,11 +27,12 @@ export function RestaurantParkedOrdersModal({
     fmt
 }: RestaurantParkedOrdersModalProps) {
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
-            <div
-                className="bg-white rounded-[32px] w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden"
-                onClick={e => e.stopPropagation()}
-            >
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+            <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
+                <div
+                    className="bg-white rounded-[32px] w-full max-w-2xl max-h-[min(85vh,100dvh)] min-h-0 flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
                 {/* Header with Gradient */}
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 pt-8 pb-6 shrink-0 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
@@ -141,6 +142,7 @@ export function RestaurantParkedOrdersModal({
                     >
                         Kapat
                     </button>
+                </div>
                 </div>
             </div>
         </div>

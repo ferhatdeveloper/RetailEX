@@ -393,6 +393,8 @@ export default function MarketPOS({
     setTimeout(() => setShowNotification(false), 3000);
   };
 
+  const safeTpl = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback);
+
   const [customer, setCustomer] = useState({
     name: selectedCustomer?.name || t.retailCustomer,
     cardNo: selectedCustomer?.code || '',
@@ -551,7 +553,10 @@ export default function MarketPOS({
       setInputValue('');
       setNumpadMode('barcode');
       barcodeInputRef.current?.focus();
-      showNotif(t.quantitySavedMessage.replace('{quantity}', quantity.toString()), 'info');
+      showNotif(
+        safeTpl(t.quantitySavedMessage, 'Adet kaydedildi: {quantity}').replace('{quantity}', quantity.toString()),
+        'info'
+      );
       return;
     }
 
@@ -872,7 +877,7 @@ export default function MarketPOS({
       }
       return item;
     }));
-    const rawUnitChanged = t.unitChanged;
+    const rawUnitChanged = (t as Record<string, unknown>)['unitChanged'];
     const unitChangedMsg =
       typeof rawUnitChanged === 'string'
         ? rawUnitChanged.replace('{unit}', unit)

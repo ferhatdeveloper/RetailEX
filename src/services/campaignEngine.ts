@@ -6,6 +6,10 @@
 
 import { CartItem } from '../components/pos/types';
 
+function lineUnitPrice(item: CartItem): number {
+  return item.price ?? item.product?.price ?? 0;
+}
+
 // Campaign Types
 export type CampaignType = 
   | 'PERCENTAGE_DISCOUNT'
@@ -222,7 +226,7 @@ class TimeValidator extends CampaignValidator {
 class BasketValidator extends CampaignValidator {
   protected async check(campaign: Campaign, cart: CartItem[]): Promise<{ valid: boolean; message?: string }> {
     if (campaign.minBasketAmount) {
-      const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const total = cart.reduce((sum, item) => sum + lineUnitPrice(item) * item.quantity, 0);
       
       if (total < campaign.minBasketAmount) {
         return { 
@@ -281,7 +285,7 @@ class UsageLimitValidator extends CampaignValidator {
     cart: CartItem[],
     customer?: any
   ): Promise<{ valid: boolean; message?: string }> {
-    if (campaign.maxTotalUsage && campaign.currentUsage >= campaign.maxTotalUsage) {
+    if (campaign.maxTotalUsage && (campaign.currentUsage ?? 0) >= campaign.maxTotalUsage) {
       return { valid: false, message: 'Kampanya kullanım limiti doldu' };
     }
 
@@ -307,7 +311,7 @@ class PercentageDiscountStrategy implements CampaignStrategy {
   calculate(campaign: Campaign, cart: CartItem[]): number {
     if (!campaign.discountRate) return 0;
     
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const subtotal = cart.reduce((sum, item) => sum + lineUnitPrice(item) * item.quantity, 0);
     return subtotal * (campaign.discountRate / 100);
   }
 }
@@ -327,8 +331,8 @@ class BuyXGetYStrategy implements CampaignStrategy {
     // Find qualifying products
     let qualifyingItems = cart;
     if (campaign.targetProducts && campaign.targetProducts.length > 0) {
-      qualifyingItems = cart.filter(item => 
-        campaign.targetProducts!.includes(item.id)
+      qualifyingItems = cart.filter(item =>
+        campaign.targetProducts!.includes(item.product.id)
       );
     }
 
@@ -338,7 +342,7 @@ class BuyXGetYStrategy implements CampaignStrategy {
     if (sets === 0) return 0;
 
     // Sort by price descending (free cheapest items)
-    const sortedItems = [...qualifyingItems].sort((a, b) => b.price - a.price);
+    const sortedItems = [...qualifyingItems].sort((a, b) => lineUnitPrice(b) - lineUnitPrice(a));
     
     // Calculate discount (free items)
     const freeItemsCount = sets * campaign.getQuantity;
@@ -349,7 +353,7 @@ class BuyXGetYStrategy implements CampaignStrategy {
       if (remaining === 0) break;
       
       const itemsToDiscount = Math.min(item.quantity, remaining);
-      discount += item.price * itemsToDiscount;
+      discount += lineUnitPrice(item) * itemsToDiscount;
       remaining -= itemsToDiscount;
     }
 
@@ -388,7 +392,8 @@ export class CampaignEngine {
       ['AMOUNT_DISCOUNT', new AmountDiscountStrategy()],
       ['BUY_X_GET_Y', new BuyXGetYStrategy()],
       ['BASKET_DISCOUNT', new PercentageDiscountStrategy()],
-      ['LOYALTY_POINTS', new LoyaltyPointsStrategy()]
+      ['LOYALTY_POINTS', new LoyaltyPointsStrategy()],
+      ['SEGMENT_BASED', new PercentageDiscountStrategy()],
     ]);
 
     // Build validator chain
@@ -418,10 +423,10 @@ export class CampaignEngine {
     const results: CampaignResult[] = [];
 
     // Sort by priority (highest first)
-    const sortedCampaigns = [...campaigns].sort((a, b) => b.priority - a.priority);
+    const sortedCampaigns = [...campaigns].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
     for (const campaign of sortedCampaigns) {
-      if (!campaign.is_active) continue;
+      if (!(campaign.is_active ?? campaign.active)) continue;
 
       // Validate campaign
       const validation = await this.validatorChain.validate(campaign, cart, customer);
@@ -438,7 +443,7 @@ export class CampaignEngine {
       }
 
       // Calculate discount
-      const strategy = this.strategies.get(campaign.type);
+      const strategy = this.strategies.get((campaign.type ?? 'PERCENTAGE_DISCOUNT') as CampaignType);
       if (!strategy) continue;
 
       const discount = strategy.calculate(campaign, cart, customer);
@@ -521,6 +526,11 @@ export const mockCampaigns: Campaign[] = [
     id: 'camp-001',
     code: 'SUMMER20',
     name: 'Yaz İndirimi %20',
+    description: 'Demo yaz indirimi',
+    discountType: 'percentage',
+    discountValue: 20,
+    active: true,
+    productIds: [],
     type: 'PERCENTAGE_DISCOUNT',
     trigger: 'AUTO',
     discountRate: 20,
@@ -536,6 +546,11 @@ export const mockCampaigns: Campaign[] = [
     id: 'camp-002',
     code: 'MORNING50',
     name: 'Sabah İndirimi 50',
+    description: 'Demo tutar indirimi',
+    discountType: 'fixed',
+    discountValue: 50,
+    active: true,
+    productIds: [],
     type: 'AMOUNT_DISCOUNT',
     trigger: 'AUTO',
     discountAmount: 50,
@@ -554,6 +569,11 @@ export const mockCampaigns: Campaign[] = [
     id: 'camp-003',
     code: '2AL1ALA',
     name: '2 Al 1 Öde',
+    description: 'Demo 2 al 1 öde',
+    discountType: 'buyXgetY',
+    discountValue: 0,
+    active: true,
+    productIds: [],
     type: 'BUY_X_GET_Y',
     trigger: 'AUTO',
     buyQuantity: 2,
@@ -569,6 +589,11 @@ export const mockCampaigns: Campaign[] = [
     id: 'camp-004',
     code: 'VIP10',
     name: 'VIP Müşteri %10',
+    description: 'Demo segment indirimi',
+    discountType: 'percentage',
+    discountValue: 10,
+    active: true,
+    productIds: [],
     type: 'SEGMENT_BASED',
     trigger: 'AUTO',
     discountRate: 10,

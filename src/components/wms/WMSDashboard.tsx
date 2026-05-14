@@ -3,6 +3,7 @@
  * 6 kategori kartı ve hızlı istatistikler
  */
 
+import React from 'react';
 import {
   Package,
   ArrowDown,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import type { Translations } from '../../locales/translations';
 import { WMSLayout } from './WMSLayout';
 
 interface WMSDashboardProps {
@@ -26,13 +28,20 @@ interface WMSDashboardProps {
 
 export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
   const { darkMode } = useTheme();
-  const { language, t } = useLanguage();
+  const { t } = useLanguage();
 
-  const categories = [
+  const categories: Array<{
+    id: string;
+    titleKey: keyof Translations;
+    descKey: keyof Translations;
+    icon: React.ReactNode;
+    color: string;
+    modules: number;
+  }> = [
     {
       id: 'entry',
       titleKey: 'entryOperations',
-      descKey: 'entryDesc',
+      descKey: 'goodsReceiving',
       icon: <ArrowDown className="w-8 h-8" />,
       color: 'from-green-500 to-emerald-600',
       modules: 3
@@ -40,38 +49,38 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
     {
       id: 'exit',
       titleKey: 'exitOperations',
-      descKey: 'exitDesc',
+      descKey: 'warehouseTransferWaybill',
       icon: <ArrowUp className="w-8 h-8" />,
       color: 'from-blue-500 to-cyan-600',
       modules: 3
     },
     {
       id: 'transfer',
-      titleKey: 'transferOperations',
-      descKey: 'transferDesc',
+      titleKey: 'warehouseTransfer',
+      descKey: 'transferMovement',
       icon: <ArrowRightLeft className="w-8 h-8" />,
       color: 'from-purple-500 to-pink-600',
       modules: 4
     },
     {
       id: 'counting',
-      titleKey: 'countingOperations',
-      descKey: 'countingDesc',
+      titleKey: 'stockCount',
+      descKey: 'countingControl',
       icon: <ClipboardCheck className="w-8 h-8" />,
       color: 'from-orange-500 to-red-600',
       modules: 4
     },
     {
       id: 'planning',
-      titleKey: 'planningOperations',
-      descKey: 'planningDesc',
+      titleKey: 'planningOptimization',
+      descKey: 'taskManagement',
       icon: <TrendingUp className="w-8 h-8" />,
       color: 'from-indigo-500 to-blue-600',
       modules: 6
     },
     {
       id: 'reports',
-      titleKey: 'reportingOperations',
+      titleKey: 'reportsAndAnalysis',
       descKey: 'reportingDesc',
       icon: <BarChart3 className="w-8 h-8" />,
       color: 'from-teal-500 to-cyan-600',
@@ -102,17 +111,17 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
                 ? 'from-blue-400 to-indigo-400 bg-clip-text text-transparent'
                 : 'from-blue-600 to-indigo-600 bg-clip-text text-transparent'
                 }`}>
-                {t('wmsTitle')}
+                {t.wmsModule}
               </h1>
               <p className={`text-lg ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                {t('wmsSubtitle')}
+                {t.inventoryManagement}
               </p>
             </div>
             <div className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-lg ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'
               }`}>
               <Activity className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
               <span className={`font-semibold ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
-                {t('live')}
+                {t.wsConnected}
               </span>
             </div>
           </div>
@@ -126,7 +135,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('totalStock')}
+                {t.totalStock}
               </div>
               <Package className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
             </div>
@@ -134,7 +143,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
               {stats.totalStock.toLocaleString()}
             </div>
             <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {t('product')}
+              {t.product}
             </div>
           </div>
 
@@ -144,7 +153,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('totalValue')}
+                {t.stockValue}
               </div>
               <TrendingUp className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
             </div>
@@ -162,7 +171,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('todayMovements')}
+                {t.historyMovements}
               </div>
               <Activity className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
             </div>
@@ -170,7 +179,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
               {stats.todayMovements}
             </div>
             <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {t('actionLabel')}
+              {t.actionLabel}
             </div>
           </div>
 
@@ -180,7 +189,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('pendingTasks')}
+                {t.taskManagement}
               </div>
               <ClipboardCheck className={`w-4 h-4 text-orange-500`} />
             </div>
@@ -198,7 +207,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
             }`}>
             <div className={`flex items-center justify-between mb-3`}>
               <div className={`text-xs font-semibold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                {t('activeAlerts')}
+                {t.alertCenter}
               </div>
               <AlertCircle className="w-4 h-4 text-red-500" />
             </div>
@@ -206,7 +215,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
               {stats.alerts}
             </div>
             <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-              {t('active')}
+              {t.activeStatus}
             </div>
           </div>
         </div>
@@ -230,13 +239,13 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
                   </div>
                 </div>
                 <h3 className="text-2xl font-bold mb-3 drop-shadow-md">
-                  {t(category.titleKey)}
+                  {String(t[category.titleKey as keyof typeof t] ?? '') as React.ReactNode}
                 </h3>
                 <p className="text-sm opacity-90 mb-6 leading-relaxed">
-                  {t(category.descKey)}
+                  {String(t[category.descKey as keyof typeof t] ?? '') as React.ReactNode}
                 </p>
                 <div className="flex items-center gap-3 text-sm font-semibold bg-white/20 px-4 py-2 rounded-lg group-hover:bg-white/30 transition-colors w-fit">
-                  <span>{t('viewDetails')}</span>
+                  <span>{t.viewDetails}</span>
                   <ArrowRightLeft className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
@@ -262,10 +271,10 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
               </div>
               <div>
                 <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  {t('recentActivities')}
+                  {t.historyMovements}
                 </h3>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  {t('wmsSubtitle')}
+                  {t.inventoryManagement}
                 </p>
               </div>
             </div>
@@ -273,7 +282,7 @@ export function WMSDashboard({ onModuleSelect, onBack }: WMSDashboardProps) {
               ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
               : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
               }`}>
-              {t('viewDetails')}
+              {t.viewDetails}
             </button>
           </div>
           <div className="space-y-3 max-h-[400px] overflow-y-auto" style={{

@@ -27,16 +27,24 @@ export function BroadcastChangesTimeline({ theme }: BroadcastChangesTimelineProp
       const history = centralBroadcast.getHistory({ limit: 50 });
       const timelineChanges: TimelineChange[] = history.map(item => {
         let type: TimelineChange['type'] = 'sent';
-        if (item.status === 'error') type = 'error';
-        else if (item.status === 'completed') type = 'received';
-        else if (item.status === 'pending') type = 'warning';
+        if (item.status === 'failed') type = 'error';
+        else if (item.status === 'delivered') type = 'received';
+        else if (
+          item.status === 'pending' ||
+          item.status === 'scheduled' ||
+          item.status === 'partial' ||
+          item.status === 'expired' ||
+          item.status === 'cancelled'
+        ) type = 'warning';
 
         return {
           id: item.id,
           type,
           title: `${item.type} - ${item.action}`,
-          description: `${item.deviceTargets.length} cihaza gönderildi`,
-          timestamp: item.createdAt,
+          description: item.targetDevices.includes('all')
+            ? 'Tüm cihazlara gönderildi'
+            : `${item.targetDevices.length} cihaza gönderildi`,
+          timestamp: new Date(item.createdAt),
           data: item.data
         };
       });
@@ -70,6 +78,8 @@ export function BroadcastChangesTimeline({ theme }: BroadcastChangesTimelineProp
         return <AlertTriangle className="w-4 h-4 text-red-600" />;
       case 'warning':
         return <Clock className="w-4 h-4 text-yellow-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-yellow-600" />;
     }
   };
 
@@ -82,6 +92,8 @@ export function BroadcastChangesTimeline({ theme }: BroadcastChangesTimelineProp
       case 'error':
         return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
       case 'warning':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+      default:
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
     }
   };

@@ -12,7 +12,7 @@ import {
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 
-const PX_PER_HOUR = 56;
+const DEFAULT_PX_PER_HOUR = 56;
 
 function parseTimeToMinutes(t: string | undefined): number | null {
     if (!t || !t.trim()) return null;
@@ -92,6 +92,8 @@ export interface DaySchedulerGridProps {
     queueMode?: boolean;
     /** Sıra modunda önerilen saat dilimi (toolbar dakika aralığı ile aynı) */
     queueSnapMinutes?: number;
+    /** Dar ekranda daha sıkı zaman ekseni (px/saat); varsayılan 56 */
+    pixelsPerHour?: number;
 }
 
 export function DaySchedulerGrid({
@@ -103,7 +105,9 @@ export function DaySchedulerGrid({
     onEmptySlotClick,
     queueMode = false,
     queueSnapMinutes = 5,
+    pixelsPerHour = DEFAULT_PX_PER_HOUR,
 }: DaySchedulerGridProps) {
+    const pxPerHour = Math.max(36, Math.min(72, pixelsPerHour));
     const dayStr = formatLocalYmd(currentDate);
     const dayApts = useMemo(
         () =>
@@ -114,7 +118,7 @@ export function DaySchedulerGrid({
     );
 
     const totalMinutes = (dayEndHour - dayStartHour) * 60;
-    const totalHeight = (dayEndHour - dayStartHour) * PX_PER_HOUR;
+    const totalHeight = (dayEndHour - dayStartHour) * pxPerHour;
 
     const layout = useMemo(() => {
         const startMin = dayStartHour * 60;
@@ -168,6 +172,7 @@ export function DaySchedulerGrid({
         return (
             <div
                 style={{
+                    width: '100%',
                     maxWidth: 900,
                     margin: '0 auto',
                     background: CLINIC.surface,
@@ -177,7 +182,7 @@ export function DaySchedulerGrid({
                     boxShadow: CLINIC.shadowSm,
                 }}
             >
-                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {groups.map(group => (
                         <div key={group[0].id}>{renderAppointment(mergeQueueGroupForCardDisplay(group))}</div>
                     ))}
@@ -217,6 +222,7 @@ export function DaySchedulerGrid({
     return (
         <div
             style={{
+                width: '100%',
                 maxWidth: 900,
                 margin: '0 auto',
                 background: CLINIC.surface,
@@ -229,7 +235,7 @@ export function DaySchedulerGrid({
             <div style={{ display: 'flex', minHeight: totalHeight + 24 }}>
                 <div
                     style={{
-                        width: 52,
+                        width: pxPerHour < 50 ? 44 : 52,
                         flexShrink: 0,
                         borderRight: `1px solid ${CLINIC.border}`,
                         background: CLINIC.surfaceMuted,
@@ -239,7 +245,7 @@ export function DaySchedulerGrid({
                         <div
                             key={h}
                             style={{
-                                height: PX_PER_HOUR,
+                                height: pxPerHour,
                                 paddingRight: 8,
                                 paddingTop: 4,
                                 textAlign: 'right',
@@ -260,7 +266,7 @@ export function DaySchedulerGrid({
                         <div
                             key={h}
                             style={{
-                                height: PX_PER_HOUR,
+                                height: pxPerHour,
                                 borderBottom: `1px solid ${CLINIC.gridLine}`,
                                 boxSizing: 'border-box',
                             }}

@@ -3,6 +3,7 @@ import { Calendar, Clock, Users, Search, Plus, X, Check, Phone, Mail, AlertCircl
 
 type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'noshow';
 type AppointmentType = 'in-person' | 'online' | 'phone';
+type AppointmentView = 'calendar' | 'list' | 'schedule';
 
 interface Appointment {
   id: string;
@@ -27,7 +28,7 @@ interface TimeSlot {
 }
 
 export function AppointmentModule() {
-  const [activeView, setActiveView] = useState<'calendar' | 'list' | 'schedule'>('calendar');
+  const [activeView, setActiveView] = useState<AppointmentView>('calendar');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -35,7 +36,7 @@ export function AppointmentModule() {
   const [filterStaff, setFilterStaff] = useState<string>('all');
 
   // Mock data
-  const services = [
+  const services: string[] = [
     'Saç Kesimi',
     'Saç Boyama',
     'Manikür',
@@ -48,14 +49,14 @@ export function AppointmentModule() {
     'Kaş Tasarımı'
   ];
 
-  const staff = [
+  const staff: Array<{ id: string; name: string; specialty: string; avatar: string }> = [
     { id: 's1', name: 'Aisha Al-Sadr', specialty: 'Kuaför', avatar: 'ğŸ‘©â€ğŸ¦°' },
     { id: 's2', name: 'Layla Hassan', specialty: 'Güzellik Uzmanı', avatar: 'ğŸ‘©' },
     { id: 's3', name: 'Fatima Al-Zaidi', specialty: 'Masöz', avatar: 'ğŸ‘©â€âš•ï¸' },
     { id: 's4', name: 'Noor Mohammed', specialty: 'Estetisyen', avatar: 'ğŸ‘±â€â™€ï¸' },
   ];
 
-  const appointments = [
+  const appointments: Appointment[] = [
     {
       id: 'a1',
       customerName: 'Layla Ibrahim',
@@ -215,7 +216,7 @@ export function AppointmentModule() {
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
 
-    const days = [];
+    const days: Array<{ day: number; isCurrentMonth: boolean; date: Date }> = [];
     
     // Previous month days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
@@ -323,14 +324,14 @@ export function AppointmentModule() {
       <div className="bg-white border-b border-gray-200 px-6">
         <div className="flex gap-1 items-center justify-between">
           <div className="flex gap-1">
-            {[
+            {([
               { id: 'calendar', label: 'Takvim Görünümü', icon: Calendar },
               { id: 'schedule', label: 'Saat Bazlı', icon: Clock },
               { id: 'list', label: 'Liste Görünümü', icon: Users },
-            ].map(view => (
+            ] as Array<{ id: AppointmentView; label: string; icon: typeof Calendar }>).map(view => (
               <button
                 key={view.id}
-                onClick={() => setActiveView(view.id as any)}
+                onClick={() => setActiveView(view.id)}
                 className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors ${
                   activeView === view.id
                     ? 'border-purple-600 text-purple-600 font-medium'
@@ -347,7 +348,7 @@ export function AppointmentModule() {
           <div className="flex gap-2 py-2">
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
+              onChange={(e) => setFilterStatus(e.target.value as AppointmentStatus | 'all')}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="all">Tüm Durumlar</option>

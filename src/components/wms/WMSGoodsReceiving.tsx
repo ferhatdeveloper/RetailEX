@@ -6,7 +6,6 @@
 import { useState } from 'react';
 import { Package, Search, Barcode, CheckCircle, X, Plus, Save } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useLanguage } from '../../contexts/LanguageContext';
 import { WMSLayout } from './WMSLayout';
 
 interface WMSGoodsReceivingProps {
@@ -15,7 +14,6 @@ interface WMSGoodsReceivingProps {
 
 export function WMSGoodsReceiving({ onBack }: WMSGoodsReceivingProps) {
   const { darkMode } = useTheme();
-  const { currentLanguage } = useLanguage();
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [receivingType, setReceivingType] = useState<'order' | 'free'>('order');
   const [items, setItems] = useState<any[]>([]);

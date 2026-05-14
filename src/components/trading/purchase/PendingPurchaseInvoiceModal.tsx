@@ -1,5 +1,5 @@
 import { X, Package, TrendingUp, Banknote } from 'lucide-react';
-import { usePendingPurchaseStore, type PurchaseInvoiceItem } from '../../store/usePendingPurchaseStore';
+import { usePendingPurchaseStore, type PurchaseInvoiceItem } from '../../../store/usePendingPurchaseStore';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
 

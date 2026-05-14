@@ -120,7 +120,9 @@ export function LotSerialManagement() {
   // Fetch lots on component mount
   useEffect(() => {
     if (selectedFirma) {
-      fetchLots(selectedFirma.id ?? String(selectedFirma.logicalref))
+      const firmId = String(selectedFirma.id ?? selectedFirma.logicalref ?? '').trim();
+      if (!firmId) return;
+      fetchLots(firmId)
         .then(data => setLots(data))
         .catch(error => toast.error('Lotlar yüklenirken hata oluştu'));
     }
@@ -142,11 +144,14 @@ export function LotSerialManagement() {
 
   // Filter lots
   const filteredLots = lots.filter(lot => {
-    const matchesSearch = 
-      lot.lot_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lot.serial_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lot.product_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lot.product_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
+    const matchesSearch =
+      q === '' ||
+      [lot.lot_no, lot.serial_no, lot.product_code, lot.product_name].some((v) =>
+        String(v ?? '')
+          .toLocaleLowerCase('tr-TR')
+          .includes(q)
+      );
     
     const matchesType = filterType === 'ALL' || lot.tracking_type === filterType;
     const matchesStatus = filterStatus === 'ALL' || lot.status === filterStatus;
@@ -280,7 +285,7 @@ export function LotSerialManagement() {
 
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value as any)}
+            onChange={(e) => setFilterType(e.target.value as 'ALL' | 'LOT' | 'SERIAL')}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="ALL">Tüm Tipler</option>
@@ -290,7 +295,7 @@ export function LotSerialManagement() {
 
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as any)}
+            onChange={(e) => setFilterStatus(e.target.value as LotStatus | 'ALL')}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="ALL">Tüm Durumlar</option>
@@ -302,7 +307,7 @@ export function LotSerialManagement() {
 
           <select
             value={filterExpiry}
-            onChange={(e) => setFilterExpiry(e.target.value as any)}
+            onChange={(e) => setFilterExpiry(e.target.value as 'ALL' | 'EXPIRING_SOON' | 'EXPIRED')}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="ALL">Tüm SKT Durumları</option>
@@ -331,6 +336,7 @@ export function LotSerialManagement() {
             <tbody className="divide-y divide-gray-200">
               {filteredLots.map(lot => {
                 const expiryStatus = getExpiryStatus(lot.expiry_date);
+                const lotOrSerialNo = lot.lot_no ?? lot.serial_no ?? '—';
                 
                 return (
                   <tr key={lot.id} className="hover:bg-gray-50">
@@ -347,7 +353,7 @@ export function LotSerialManagement() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-mono font-medium text-sm">
-                        {lot.lot_no || lot.serial_no}
+                        {lotOrSerialNo}
                       </div>
                       {lot.batch_no && (
                         <div className="text-xs text-gray-500">Batch: {lot.batch_no}</div>

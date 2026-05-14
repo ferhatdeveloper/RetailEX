@@ -11,6 +11,7 @@ import type { BeautyService, BeautyCustomer, BeautySpecialist } from '../../../t
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
@@ -57,6 +58,7 @@ export function BeautyPOS() {
         loadServices, loadPackages, loadSpecialists, loadCustomers,
     } = useBeautyStore();
     const { t, tm } = useLanguage();
+    const { isMobile } = useResponsive();
 
     const PAY_LABELS: Record<PayMethod, string> = {
         cash: tm('cash') || 'Nakit', card: tm('card') || 'Kart', transfer: tm('bankTransfer') || 'Havale',
@@ -236,10 +238,10 @@ export function BeautyPOS() {
     }
 
     return (
-        <div style={{ height: '100%', display: 'flex', overflow: 'hidden', background: '#f7f6fb' }}>
+        <div style={{ height: '100%', display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: isMobile ? 'auto' : 'hidden', background: '#f7f6fb', minHeight: 0 }}>
 
             {/* ── LEFT: Product Grid ──────────────────────────────────── */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid #e8e4f0' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: isMobile ? 'none' : '1px solid #e8e4f0', minHeight: 0 }}>
 
                 {/* Tab + Search */}
                 <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
@@ -354,7 +356,7 @@ export function BeautyPOS() {
                         <aside
                             className="custom-scrollbar"
                             style={{
-                                width: 200,
+                                width: isMobile ? 160 : 200,
                                 flexShrink: 0,
                                 background: '#f8fafc',
                                 borderRight: '1px solid #e2e8f0',
@@ -518,7 +520,17 @@ export function BeautyPOS() {
             </div>
 
             {/* ── RIGHT: Cart ─────────────────────────────────────────── */}
-            <div style={{ width: 380, display: 'flex', flexDirection: 'column', background: '#fff', flexShrink: 0 }}>
+            <div
+                style={{
+                    width: isMobile ? '100%' : 380,
+                    maxHeight: isMobile ? '55dvh' : undefined,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    background: '#fff',
+                    flexShrink: 0,
+                    borderTop: isMobile ? '1px solid #e5e7eb' : undefined,
+                }}
+            >
 
                 {/* Cart header */}
                 <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

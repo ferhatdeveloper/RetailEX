@@ -40,7 +40,7 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
                 {/* Header */}
                 <div className={`px-4 py-3 border-b flex items-center justify-between print:hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
                     <h3 className={`text-base font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        {String(t.receipt)}
+                        {t.receipt.title}
                     </h3>
                     <div className="flex items-center gap-2">
                         <button

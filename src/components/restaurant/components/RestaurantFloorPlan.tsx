@@ -187,7 +187,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
     const [bulkCount, setBulkCount] = useState(5);
     const searchInputRef = useRef<HTMLInputElement>(null);
 
-    const cols = width >= 1024 ? 10 : width >= 768 ? 8 : width >= 640 ? 6 : 3;
+    const cols = width >= 1024 ? 10 : width >= 768 ? 8 : width >= 640 ? 6 : width >= 400 ? 3 : 2;
 
     const activeFloorName = regions.find(r => r.id === activeFloor)?.name;
     const byFloor = activeFloor === RESTAURANT_FLOOR_ALL_ID
@@ -204,7 +204,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
     return (
         <div className="flex flex-col h-full" style={{ backgroundColor: '#f1f3f5' }}>
             <div
-                className="border-b px-6 py-4 flex items-center justify-between z-20 shrink-0 gap-8 shadow-2xl"
+                className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between z-20 shrink-0 gap-3 sm:gap-8 shadow-2xl"
                 style={{ backgroundColor: '#2563eb', borderColor: 'rgba(96,165,250,0.4)' }}
             >
                 <div className="flex items-center gap-4 flex-1">
@@ -236,7 +236,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     {currentStaff && (
                         <button
                             onClick={onRequestStaffChange ?? logout}
@@ -260,7 +260,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
             </div>
 
             <div
-                className="border-b flex items-center px-6 pr-4 z-10 shrink-0 overflow-x-auto no-scrollbar shadow-lg"
+                className="border-b flex items-center px-3 sm:px-6 pr-3 sm:pr-4 z-10 shrink-0 overflow-x-auto no-scrollbar shadow-lg"
                 style={{ backgroundColor: '#1d4ed8', borderColor: 'rgba(30,58,138,0.2)' }}
             >
                 <div className="flex items-center gap-1 flex-1 py-2">
@@ -1399,7 +1399,7 @@ function FloorSubTab({ icon, label, active, activeColor, onClick }: { icon: Reac
         <div
             onClick={onClick}
             className={cn(
-                "flex items-center gap-3 px-8 py-3 transition-all cursor-pointer group rounded-2xl my-auto",
+                "flex items-center gap-2 sm:gap-3 px-4 sm:px-8 py-2.5 sm:py-3 transition-all cursor-pointer group rounded-2xl my-auto",
                 active ? cn("border border-white/10 shadow-lg", activeColor) : "text-white/50 hover:text-white hover:bg-white/10"
             )}
         >

@@ -82,6 +82,22 @@
   letter-spacing: 0.05em;
 }
 
+@media (max-width: 419px) {
+  .res-stat-card {
+    height: auto;
+    min-height: 5.5rem;
+    padding: 0.875rem 1rem;
+  }
+
+  .res-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .res-stat-label {
+    font-size: 0.65rem;
+  }
+}
+
 /* Flat helpers */
 .res-flat {
   background: white;

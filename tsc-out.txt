@@ -1,36 +1,8 @@
-﻿src/components/modules/ExcelModule.tsx(943,34): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
-src/components/shared/AdvancedStoreSearch.tsx(13,33): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
-src/components/shared/AdvancedStoreSearch.tsx(31,31): error TS2339: Property 'reduce' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/AdvancedStoreSearch.tsx(31,39): error TS7006: Parameter 'total' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(31,46): error TS7006: Parameter 'region' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(126,42): error TS7006: Parameter 'store' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(173,26): error TS2339: Property 'map' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/AdvancedStoreSearch.tsx(173,31): error TS7006: Parameter 'region' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(195,22): error TS2339: Property 'find' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/AdvancedStoreSearch.tsx(195,27): error TS7006: Parameter 'r' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(196,39): error TS7006: Parameter 'subRegion' implicitly has an 'any' type.
-src/components/shared/AdvancedStoreSearch.tsx(228,32): error TS2339: Property 'revenue' does not exist on type 'SearchFilters'.
-src/components/shared/AdvancedStoreSearch.tsx(229,59): error TS2353: Object literal may only specify known properties, and 'revenue' does not exist in type 'SetStateAction<SearchFilters>'.
+﻿src/components/modules/ExcelModule.tsx(944,60): error TS2339: Property 'trim' does not exist on type 'never'.
 src/components/shared/DocumentManager.tsx(94,27): error TS2304: Cannot find name 'ScannedDocument'.
 src/components/shared/DocumentManager.tsx(102,13): error TS2304: Cannot find name 'setScannedDocuments'.
 src/components/shared/DocumentManager.tsx(102,33): error TS7006: Parameter 'prev' implicitly has an 'any' type.
 src/components/shared/DocumentManager.tsx(124,36): error TS2367: This comparison appears to be unintentional because the types '"disconnected"' and '"connected"' have no overlap.
-src/components/shared/HierarchicalStoreTree.tsx(15,35): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
-src/components/shared/HierarchicalStoreTree.tsx(39,31): error TS2339: Property 'reduce' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/HierarchicalStoreTree.tsx(39,39): error TS7006: Parameter 'total' implicitly has an 'any' type.
-src/components/shared/HierarchicalStoreTree.tsx(39,46): error TS7006: Parameter 'region' implicitly has an 'any' type.
-src/components/shared/HierarchicalStoreTree.tsx(92,20): error TS2339: Property 'length' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/HierarchicalStoreTree.tsx(98,18): error TS2339: Property 'map' does not exist on type 'Promise<{ id: any; name: any; subRegions: never[]; }[]>'.
-src/components/shared/HierarchicalStoreTree.tsx(98,23): error TS7006: Parameter 'region' implicitly has an 'any' type.
-src/components/shared/HierarchicalStoreTree.tsx(130,43): error TS7006: Parameter 'subRegion' implicitly has an 'any' type.
-src/components/shared/OfflineQueueIndicator.tsx(3,23): error TS2307: Cannot find module './ui/badge' or its corresponding type declarations.
-src/components/shared/OfflineQueueIndicator.tsx(4,24): error TS2307: Cannot find module './ui/button' or its corresponding type declarations.
-src/components/shared/OfflineQueueIndicator.tsx(5,85): error TS2307: Cannot find module './ui/dialog' or its corresponding type declarations.
-src/components/shared/OfflineQueueIndicator.tsx(6,26): error TS2307: Cannot find module '../contexts/ThemeContext' or its corresponding type declarations.
-src/components/shared/OfflineQueueIndicator.tsx(7,29): error TS2307: Cannot find module '../contexts/LanguageContext' or its corresponding type declarations.
-src/components/shared/StoreSelector.tsx(20,34): error TS2307: Cannot find module '../hooks/useOnlineOffline' or its corresponding type declarations.
-src/components/shared/StoreSelector.tsx(21,35): error TS2307: Cannot find module '../hooks/useInfiniteStores' or its corresponding type declarations.
-src/components/shared/StoreSelector.tsx(168,26): error TS7006: Parameter 'store' implicitly has an 'any' type.
 src/components/system/CompanySetup.tsx(323,20): error TS2345: Argument of type 'Firm[]' is not assignable to parameter of type 'SetStateAction<Company[]>'.
   Type 'Firm[]' is not assignable to type 'Company[]'.
     Type 'Firm' is missing the following properties from type 'Company': firma_adi, firma_kodu, vergi_no, vergi_dairesi, and 8 more.
@@ -70,13 +42,13 @@ src/components/system/PrinterSettings.tsx(108,40): error TS2339: Property 'listP
 src/components/system/PrinterSettings.tsx(118,15): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
 src/components/system/PrinterSettings.tsx(121,32): error TS2339: Property 'barcode' does not exist on type '{ printer?: { print: (data: any) => Promise<{ success: boolean; }>; } | undefined; isElectron?: boolean | undefined; app?: { getVersion: () => Promise<string>; getPlatform: () => Promise<...>; } | undefined; }'.
 src/components/system/PrinterSettings.tsx(183,31): error TS2339: Property 'error' does not exist on type '{ success: boolean; }'.
-src/components/system/SentMessagesList.tsx(35,12): error TS2678: Type '"completed"' is not comparable to type '"pending" | "cancelled" | "scheduled" | "failed" | "expired" | "sending" | "delivered" | "partial"'.
-src/components/system/SentMessagesList.tsx(39,12): error TS2678: Type '"broadcasting"' is not comparable to type '"pending" | "cancelled" | "scheduled" | "failed" | "expired" | "sending" | "delivered" | "partial"'.
-src/components/system/SentMessagesList.tsx(41,12): error TS2678: Type '"error"' is not comparable to type '"pending" | "cancelled" | "scheduled" | "failed" | "expired" | "sending" | "delivered" | "partial"'.
-src/components/system/SentMessagesList.tsx(62,36): error TS7053: Element implicitly has an 'any' type because expression of type '"pending" | "cancelled" | "scheduled" | "failed" | "expired" | "sending" | "delivered" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
-  Property 'cancelled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
-src/components/system/SentMessagesList.tsx(63,10): error TS7053: Element implicitly has an 'any' type because expression of type '"pending" | "cancelled" | "scheduled" | "failed" | "expired" | "sending" | "delivered" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
-  Property 'cancelled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+src/components/system/SentMessagesList.tsx(35,12): error TS2678: Type '"completed"' is not comparable to type '"scheduled" | "pending" | "cancelled" | "failed" | "sending" | "delivered" | "expired" | "partial"'.
+src/components/system/SentMessagesList.tsx(39,12): error TS2678: Type '"broadcasting"' is not comparable to type '"scheduled" | "pending" | "cancelled" | "failed" | "sending" | "delivered" | "expired" | "partial"'.
+src/components/system/SentMessagesList.tsx(41,12): error TS2678: Type '"error"' is not comparable to type '"scheduled" | "pending" | "cancelled" | "failed" | "sending" | "delivered" | "expired" | "partial"'.
+src/components/system/SentMessagesList.tsx(62,36): error TS7053: Element implicitly has an 'any' type because expression of type '"scheduled" | "pending" | "cancelled" | "failed" | "sending" | "delivered" | "expired" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+  Property 'scheduled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+src/components/system/SentMessagesList.tsx(63,10): error TS7053: Element implicitly has an 'any' type because expression of type '"scheduled" | "pending" | "cancelled" | "failed" | "sending" | "delivered" | "expired" | "partial"' can't be used to index type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
+  Property 'scheduled' does not exist on type '{ completed: string; pending: string; broadcasting: string; error: string; }'.
 src/components/system/SentMessagesList.tsx(199,41): error TS2345: Argument of type 'number' is not assignable to parameter of type 'Date'.
 src/components/system/SentMessagesList.tsx(200,38): error TS2339: Property 'deviceTargets' does not exist on type 'BroadcastMessage'.
 src/components/system/SentMessagesList.tsx(228,28): error TS2339: Property 'scheduledFor' does not exist on type 'BroadcastMessage'.
@@ -137,7 +109,7 @@ src/components/trading/purchase/PurchaseRequestCreatePage.tsx(779,30): error TS2
     Type 'RequestItem | { id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; }' is not assignable to type 'RequestItem'.
       Type '{ id: string; productCode: string; productName: any; variantCode: string; quantity: any; unit: any; price: any; total: any; supplierId: string; paymentPlan: string; requestedDeliveryDate: string; projectCode: string; costCenter: string; status: string; }' is not assignable to type 'RequestItem'.
         Types of property 'status' are incompatible.
-          Type 'string' is not assignable to type '"pending" | "cancelled" | "completed" | "draft" | "approved" | "transferred" | "purchased" | "partially_fulfilled"'.
+          Type 'string' is not assignable to type '"draft" | "pending" | "cancelled" | "completed" | "approved" | "transferred" | "purchased" | "partially_fulfilled"'.
 src/components/trading/sales/QuotationModule.tsx(135,21): error TS2345: Argument of type 'Invoice[]' is not assignable to parameter of type 'SetStateAction<Quotation[]>'.
   Type 'Invoice[]' is not assignable to type 'Quotation[]'.
     Type 'Invoice' is missing the following properties from type 'Quotation': quotation_no, quotation_type, version, quotation_date, and 5 more.
@@ -600,9 +572,9 @@ src/tests/services/costAccountingService.test.ts(20,50): error TS2339: Property 
 src/tests/services/costAccountingService.test.ts(34,31): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
 src/tests/services/costAccountingService.test.ts(45,50): error TS2339: Property 'calculateFIFOCost' does not exist on type 'typeof CostAccountingService'.
 src/tests/services/costAccountingService.test.ts(59,70): error TS2345: Argument of type '{ product_code: string; product_name: string; quantity: number; movement_type: "IN"; unit_cost: number; firma_id: string; donem_id: string; }' is not assignable to parameter of type 'Omit<StockMovement, "id" | "created_at">'.
-  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "IN"; unit_cost: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': document_no, movement_date, product_id, total_cost, document_type
+  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "IN"; unit_cost: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': product_id, total_cost, document_no, movement_date, document_type
 src/tests/services/costAccountingService.test.ts(74,70): error TS2345: Argument of type '{ product_code: string; product_name: string; quantity: number; movement_type: "OUT"; unit_price: number; firma_id: string; donem_id: string; }' is not assignable to parameter of type 'Omit<StockMovement, "id" | "created_at">'.
-  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "OUT"; unit_price: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': document_no, movement_date, product_id, total_cost, and 2 more.
+  Type '{ product_code: string; product_name: string; quantity: number; movement_type: "OUT"; unit_price: number; firma_id: string; donem_id: string; }' is missing the following properties from type 'Omit<StockMovement, "id" | "created_at">': product_id, total_cost, document_no, unit_cost, and 2 more.
 src/tests/services/costAccountingService.test.ts(85,21): error TS2339: Property 'total_cost' does not exist on type '{ success: boolean; movement_id?: string | undefined; error?: string | undefined; }'.
 src/tests/services/costAccountingService.test.ts(86,21): error TS2339: Property 'gross_profit' does not exist on type '{ success: boolean; movement_id?: string | undefined; error?: string | undefined; }'.
 src/tests/services/costAccountingService.test.ts(92,50): error TS2551: Property 'getProductProfitability' does not exist on type 'typeof CostAccountingService'. Did you mean 'getDocumentProfitability'?

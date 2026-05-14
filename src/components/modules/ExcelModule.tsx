@@ -71,7 +71,9 @@ function isTauriExcelRuntime(): boolean {
 
 /** Tarayıcı / web görünümünde .xlsx indirme (Tauri save yok) */
 function triggerBrowserXlsxDownload(fileName: string, buf: Uint8Array): void {
-  const blob = new Blob([buf], {
+  const buffer = buf.buffer as ArrayBuffer;
+  const bytes = buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const blob = new Blob([bytes], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   const url = URL.createObjectURL(blob);
@@ -930,15 +932,18 @@ async function exportBeautyAppointments(): Promise<void> {
     { code: string; follow_up_reminder_days: number | null; default_sessions: number }
   >();
   for (const s of services) {
-    const r = s as Record<string, unknown>;
+    const r = s as unknown as Record<string, unknown>;
     const code =
       r.code != null
         ? String(r.code).trim()
         : r.product_code != null
           ? String(r.product_code).trim()
           : '';
-    const fuRaw = s.follow_up_reminder_days;
-    const fuN = fuRaw == null || fuRaw === '' ? NaN : Math.round(Number(fuRaw));
+    const fuRaw = s.follow_up_reminder_days as string | number | null | undefined;
+    const fuN =
+      fuRaw == null || (typeof fuRaw === 'string' && fuRaw.trim() === '')
+        ? NaN
+        : Math.round(Number(fuRaw));
     const follow_up_reminder_days =
       Number.isFinite(fuN) && fuN > 0 ? Math.min(3650, fuN) : null;
     const dsN = Math.round(Number(s.default_sessions ?? 1));
@@ -1677,7 +1682,7 @@ async function importBeautyAppointments(rows: any[]): Promise<ImportResult> {
   const byServiceName = new Map<string, string>();
   const byServiceCode = new Map<string, string>();
   for (const s of serviceSnapshot) {
-    const r = s as Record<string, unknown>;
+    const r = s as unknown as Record<string, unknown>;
     const nm = String(s.name || '').trim().toLowerCase();
     if (nm && !byServiceName.has(nm)) byServiceName.set(nm, String(s.id));
     const cd = String(r.code ?? r.product_code ?? '').trim().toUpperCase();

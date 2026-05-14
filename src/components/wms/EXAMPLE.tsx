@@ -36,14 +36,7 @@ export function Example1_StandaloneWMS() {
       </button>
 
       {/* WMS Modülü */}
-      <WarehouseManagement
-        darkMode={darkMode}
-        language="tr"
-        onLogout={() => {
-          alert('Çıkış yapıldı!');
-          window.location.href = '/login';
-        }}
-      />
+      <WarehouseManagement />
     </div>
   );
 }
@@ -51,27 +44,9 @@ export function Example1_StandaloneWMS() {
 // ============================================================================
 // ÖRNEK 2: ExRetailOS Context Entegrasyonu
 // ============================================================================
-import { useTheme } from '../contexts/ThemeContext';
-import { useLanguage } from '../contexts/LanguageContext';
-
 export function Example2_WithContexts() {
-  const { darkMode } = useTheme();
-  const { currentLanguage } = useLanguage();
-
-  const handleLogout = () => {
-    // Logout işlemleri
-    localStorage.removeItem('exretail_user');
-    localStorage.removeItem('exretail_selected_firma_id');
-    localStorage.removeItem('exretail_selected_donem_id');
-    window.location.reload();
-  };
-
   return (
-    <WarehouseManagement
-      darkMode={darkMode}
-      language={currentLanguage as 'tr' | 'en' | 'ar'}
-      onLogout={handleLogout}
-    />
+    <WarehouseManagement />
   );
 }
 
@@ -86,11 +61,7 @@ export function Example3_MultiModuleSystem() {
     switch (currentModule) {
       case 'warehouse':
         return (
-          <WarehouseManagement
-            darkMode={darkMode}
-            language="tr"
-            onLogout={() => setCurrentModule('pos')}
-          />
+          <WarehouseManagement />
         );
 
       case 'pos':
@@ -230,12 +201,7 @@ export function Example4_WithRouter() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/pos" element={<POSPage />} />
-        <Route path="/warehouse" element={
-          <WarehouseManagement
-            darkMode={darkMode}
-            language="tr"
-          />
-        } />
+        <Route path="/warehouse" element={<WarehouseManagement />} />
         <Route path="/inventory" element={<InventoryPage />} />
       </Routes>
     </BrowserRouter>
@@ -299,11 +265,7 @@ export function Example5_LazyLoading() {
             <div>Depo Yönetim Sistemi Yükleniyor...</div>
           </div>
         }>
-          <LazyWMS
-            darkMode={darkMode}
-            language="tr"
-            onLogout={() => setShowWMS(false)}
-          />
+          <LazyWMS />
         </Suspense>
       )}
     </div>
@@ -315,7 +277,7 @@ export function Example5_LazyLoading() {
 // ============================================================================
 export function Example6_CustomAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [, setUser] = useState<any>(null);
   const [darkMode, setDarkMode] = useState(false);
 
   // Custom login
@@ -334,14 +296,6 @@ export function Example6_CustomAuth() {
       localStorage.setItem('exretail_user', JSON.stringify(userData));
       localStorage.setItem('exretail_selected_firma_id', '1');
     }
-  };
-
-  // Custom logout
-  const handleLogout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem('exretail_user');
-    localStorage.removeItem('exretail_selected_firma_id');
   };
 
   if (!isAuthenticated) {
@@ -381,11 +335,7 @@ export function Example6_CustomAuth() {
   }
 
   return (
-    <WarehouseManagement
-      darkMode={darkMode}
-      language="tr"
-      onLogout={handleLogout}
-    />
+    <WarehouseManagement />
   );
 }
 

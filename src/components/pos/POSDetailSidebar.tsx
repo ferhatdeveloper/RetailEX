@@ -18,6 +18,12 @@ export function POSDetailSidebar({
 }: POSDetailSidebarProps) {
   if (!selectedItem) return null;
 
+  const itemId = selectedItem.productId ?? selectedItem.product_id;
+  if (!itemId) return null;
+
+  const productName = selectedItem.product_name ?? selectedItem.productName;
+  const variantName = selectedItem.variant_name ?? selectedItem.variant?.code;
+
   const subtotal = selectedItem.price * selectedItem.quantity;
   const discountAmount = selectedItem.discount_amount || 0;
   const total = subtotal - discountAmount;
@@ -29,7 +35,7 @@ export function POSDetailSidebar({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => onRemoveItem(selectedItem.product_id)}
+              onClick={() => onRemoveItem(itemId)}
               className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 transition-colors"
               title="Sil"
             >
@@ -69,11 +75,11 @@ export function POSDetailSidebar({
       {/* Product Name */}
       <div className={`px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          {selectedItem.product_name}
+          {productName}
         </h3>
-        {selectedItem.variant_name && (
+        {variantName && (
           <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            {selectedItem.variant_name}
+            {variantName}
           </p>
         )}
       </div>
@@ -84,7 +90,7 @@ export function POSDetailSidebar({
           <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Miktar</span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => onUpdateQuantity(selectedItem.product_id, Math.max(1, selectedItem.quantity - 1))}
+              onClick={() => onUpdateQuantity(itemId, Math.max(1, selectedItem.quantity - 1))}
               className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                 darkMode 
                   ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' 
@@ -97,7 +103,7 @@ export function POSDetailSidebar({
               {selectedItem.quantity}
             </span>
             <button
-              onClick={() => onUpdateQuantity(selectedItem.product_id, selectedItem.quantity + 1)}
+              onClick={() => onUpdateQuantity(itemId, selectedItem.quantity + 1)}
               className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                 darkMode 
                   ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' 

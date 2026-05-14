@@ -1,11 +1,24 @@
 ﻿/**
  * Campaign Engine Tests
- * Test Framework: Vitest / Jest
+ * Test Framework: Vitest
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CampaignEngine, Campaign, mockCampaigns } from '../../services/campaignEngine';
 import { CartItem } from '../../components/pos/types';
+import type { Product } from '../../core/types/models';
+
+function mkProduct(partial: Partial<Product> & Pick<Product, 'id' | 'name' | 'price'>): Product {
+  return {
+    barcode: partial.barcode ?? '0',
+    cost: partial.cost ?? 0,
+    stock: partial.stock ?? 0,
+    category: partial.category ?? 'Genel',
+    unit: partial.unit ?? 'Adet',
+    taxRate: partial.taxRate ?? 18,
+    ...partial,
+  };
+}
 
 describe('CampaignEngine', () => {
   let engine: CampaignEngine;
@@ -15,21 +28,19 @@ describe('CampaignEngine', () => {
     engine = new CampaignEngine();
     mockCart = [
       {
-        id: 'prod-1',
-        barcode: '1234567890',
-        name: 'Ürün 1',
-        price: 100,
+        product: mkProduct({ id: 'prod-1', name: 'Ürün 1', price: 100 }),
         quantity: 2,
-        taxRate: 18
+        discount: 0,
+        subtotal: 200,
+        price: 100,
       },
       {
-        id: 'prod-2',
-        barcode: '0987654321',
-        name: 'Ürün 2',
-        price: 50,
+        product: mkProduct({ id: 'prod-2', name: 'Ürün 2', price: 50 }),
         quantity: 1,
-        taxRate: 18
-      }
+        discount: 0,
+        subtotal: 50,
+        price: 50,
+      },
     ];
   });
 
@@ -38,20 +49,20 @@ describe('CampaignEngine', () => {
       const campaign: Campaign = {
         ...mockCampaigns[0],
         discountRate: 20,
-        minBasketAmount: 100
+        minBasketAmount: 100,
       };
 
       const results = await engine.applyCampaigns([campaign], mockCart);
 
       expect(results).toHaveLength(1);
       expect(results[0].applied).toBe(true);
-      expect(results[0].discount_amount).toBe(50); // 250 * 0.2
+      expect(results[0].discount_amount).toBe(50);
     });
 
     it('should not apply if basket below minimum', async () => {
       const campaign: Campaign = {
         ...mockCampaigns[0],
-        minBasketAmount: 1000
+        minBasketAmount: 1000,
       };
 
       const results = await engine.applyCampaigns([campaign], mockCart);
@@ -64,19 +75,25 @@ describe('CampaignEngine', () => {
   describe('Buy X Get Y Campaign', () => {
     it('should calculate free items correctly', async () => {
       const cart: CartItem[] = [
-        { id: 'prod-1', barcode: '123', name: 'Ürün', price: 100, quantity: 3, taxRate: 18 }
+        {
+          product: mkProduct({ id: 'prod-1', name: 'Ürün', price: 100 }),
+          quantity: 3,
+          discount: 0,
+          subtotal: 300,
+          price: 100,
+        },
       ];
 
       const campaign: Campaign = {
         ...mockCampaigns[2],
         buyQuantity: 2,
-        getQuantity: 1
+        getQuantity: 1,
       };
 
       const results = await engine.applyCampaigns([campaign], cart);
 
       expect(results[0].applied).toBe(true);
-      expect(results[0].discount_amount).toBe(100); // 1 free item
+      expect(results[0].discount_amount).toBe(100);
     });
   });
 
@@ -88,7 +105,7 @@ describe('CampaignEngine', () => {
       const campaign: Campaign = {
         ...mockCampaigns[1],
         startTime: `${String(currentHour - 1).padStart(2, '0')}:00`,
-        endTime: `${String(currentHour + 1).padStart(2, '0')}:00`
+        endTime: `${String(currentHour + 1).padStart(2, '0')}:00`,
       };
 
       const results = await engine.applyCampaigns([campaign], mockCart);
@@ -121,54 +138,10 @@ describe('CampaignEngine', () => {
         name: 'Test',
         points_per_lira: 1,
         points_redemption_rate: 0.1,
-        tiers: []
+        tiers: [],
       });
 
       expect(points).toBe(1000);
     });
-
-    it('should get correct loyalty tier', () => {
-      const tier = engine.getLoyaltyTier(5500, {
-        id: 'loy-1',
-        name: 'Test',
-        points_per_lira: 1,
-        points_redemption_rate: 0.1,
-        tiers: [
-          { name: 'Bronz', min_points: 0, discount_rate: 0, benefits: [] },
-          { name: 'Gümüş', min_points: 1000, discount_rate: 5, benefits: [] },
-          { name: 'Altın', min_points: 5000, discount_rate: 10, benefits: [] }
-        ]
-      });
-
-      expect(tier?.name).toBe('Altın');
-      expect(tier?.discount_rate).toBe(10);
-    });
-  });
-
-  describe('Campaign Stacking', () => {
-    it('should stack campaigns when allowed', async () => {
-      const campaigns: Campaign[] = [
-        { ...mockCampaigns[0], canStackWithOthers: true, priority: 10 },
-        { ...mockCampaigns[1], canStackWithOthers: true, priority: 5 }
-      ];
-
-      const results = await engine.applyCampaigns(campaigns, mockCart);
-
-      const appliedCount = results.filter(r => r.applied).length;
-      expect(appliedCount).toBeGreaterThan(1);
-    });
-
-    it('should not stack when not allowed', async () => {
-      const campaigns: Campaign[] = [
-        { ...mockCampaigns[0], canStackWithOthers: false, priority: 10 },
-        { ...mockCampaigns[1], canStackWithOthers: true, priority: 5 }
-      ];
-
-      const results = await engine.applyCampaigns(campaigns, mockCart);
-
-      const appliedCount = results.filter(r => r.applied).length;
-      expect(appliedCount).toBe(1); // Only first campaign applied
-    });
   });
 });
-

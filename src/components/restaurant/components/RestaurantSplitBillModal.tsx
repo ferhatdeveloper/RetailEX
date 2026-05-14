@@ -20,13 +20,14 @@ export function RestaurantSplitBillModal({
     fmt
 }: RestaurantSplitBillModalProps) {
     return (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-            <div
-                className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col"
-                onClick={e => e.stopPropagation()}
-            >
+        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+            <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 sm:p-6 py-6">
+                <div
+                    className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col"
+                    onClick={e => e.stopPropagation()}
+                >
                 {/* Header with Indigo Gradient */}
-                <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-8 py-8 text-white flex justify-between items-center relative overflow-hidden">
+                <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 sm:px-8 py-6 sm:py-8 text-white flex justify-between items-center relative overflow-hidden shrink-0">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl" />
 
                     <div className="relative z-10 flex items-center gap-4">
@@ -45,7 +46,7 @@ export function RestaurantSplitBillModal({
                     </div>
                 </div>
 
-                <div className="p-8 space-y-6 flex-1 flex flex-col min-h-0">
+                <div className="p-6 sm:p-8 space-y-6 flex-1 flex flex-col min-h-0 overflow-hidden">
                     <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-center gap-3">
                         <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-indigo-600 shadow-sm">
                             <Info className="w-4 h-4" />
@@ -87,7 +88,7 @@ export function RestaurantSplitBillModal({
                     </div>
                 </div>
 
-                <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
+                <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-4 shrink-0">
                     <button
                         onClick={onClose}
                         className="flex-1 py-4 bg-white border border-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[12px] transition-all hover:bg-slate-100 active:scale-95 shadow-sm"
@@ -101,6 +102,7 @@ export function RestaurantSplitBillModal({
                     >
                         <CheckCircle className="w-5 h-5" /> SEÇİLENLERİ AYIR
                     </button>
+                </div>
                 </div>
             </div>
         </div>

@@ -11,17 +11,26 @@ interface SentMessagesListProps {
 export function SentMessagesList({ theme }: SentMessagesListProps) {
   const [messages, setMessages] = useState<BroadcastMessage[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'completed' | 'pending' | 'error'>('all');
+  type UiFilter = 'all' | 'completed' | 'pending' | 'error';
+  const [filter, setFilter] = useState<UiFilter>('all');
+
+  const messageMatchesFilter = (m: BroadcastMessage, f: UiFilter): boolean => {
+    if (f === 'all') return true;
+    if (f === 'completed') return m.status === 'delivered' || m.status === 'partial';
+    if (f === 'pending') return m.status === 'pending' || m.status === 'scheduled' || m.status === 'sending';
+    if (f === 'error') return m.status === 'failed' || m.status === 'expired' || m.status === 'cancelled';
+    return true;
+  };
 
   useEffect(() => {
     const updateMessages = () => {
       const history = centralBroadcast.getHistory({ limit: 20 });
-      
+
       let filtered = history;
       if (filter !== 'all') {
-        filtered = history.filter(m => m.status === filter);
+        filtered = history.filter((m) => messageMatchesFilter(m, filter));
       }
-      
+
       setMessages(filtered);
     };
 
@@ -32,30 +41,44 @@ export function SentMessagesList({ theme }: SentMessagesListProps) {
 
   const getStatusIcon = (status: BroadcastMessage['status']) => {
     switch (status) {
-      case 'completed':
+      case 'delivered':
+      case 'partial':
         return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'pending':
+      case 'scheduled':
         return <Clock className="w-4 h-4 text-yellow-600" />;
-      case 'broadcasting':
+      case 'sending':
         return <Send className="w-4 h-4 text-blue-600 animate-pulse" />;
-      case 'error':
+      case 'failed':
+      case 'expired':
+      case 'cancelled':
         return <AlertTriangle className="w-4 h-4 text-red-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-500" />;
     }
   };
 
   const getStatusBadge = (status: BroadcastMessage['status']) => {
-    const colors = {
-      completed: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+    const colors: Record<BroadcastMessage['status'], string> = {
+      delivered: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+      partial: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
       pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
-      broadcasting: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-      error: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+      scheduled: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+      sending: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+      failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+      expired: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+      cancelled: 'bg-gray-200 text-gray-800 dark:bg-gray-700/50 dark:text-gray-300',
     };
 
-    const labels = {
-      completed: 'Tamamlandı',
+    const labels: Record<BroadcastMessage['status'], string> = {
+      delivered: 'Tamamlandı',
+      partial: 'Kısmen teslim',
       pending: 'Bekliyor',
-      broadcasting: 'Gönderiliyor',
-      error: 'Hata'
+      scheduled: 'Zamanlandı',
+      sending: 'Gönderiliyor',
+      failed: 'Hata',
+      expired: 'Süresi doldu',
+      cancelled: 'İptal',
     };
 
     return (
@@ -65,14 +88,15 @@ export function SentMessagesList({ theme }: SentMessagesListProps) {
     );
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (value: Date | number) => {
+    const date = value instanceof Date ? value : new Date(value);
     return new Intl.DateTimeFormat('tr-TR', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     }).format(date);
   };
 
@@ -197,7 +221,7 @@ export function SentMessagesList({ theme }: SentMessagesListProps) {
                     
                     <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                       <span>{formatDate(message.createdAt)}</span>
-                      <span>{message.deviceTargets.length} cihaz</span>
+                      <span>{message.targetDevices.length} cihaz</span>
                       <span className="capitalize">{message.priority} öncelik</span>
                     </div>
                   </div>
@@ -225,10 +249,10 @@ export function SentMessagesList({ theme }: SentMessagesListProps) {
                     </div>
                   </div>
 
-                  {message.scheduledFor && (
+                  {message.scheduledAt != null && (
                     <div className="mb-3">
                       <p className="text-xs text-gray-500 mb-1">Zamanlanmış Gönderim</p>
-                      <p className="text-sm">{formatDate(message.scheduledFor)}</p>
+                      <p className="text-sm">{formatDate(message.scheduledAt)}</p>
                     </div>
                   )}
 

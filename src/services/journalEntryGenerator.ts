@@ -8,7 +8,7 @@
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 // Types
-interface JournalLine {
+export interface JournalLine {
   hesap_kodu: string;
   hesap_adi?: string;
   borc: number;
@@ -16,7 +16,7 @@ interface JournalLine {
   aciklama?: string;
 }
 
-interface JournalEntry {
+export interface JournalEntry {
   id?: string;
   firma_id: string;
   donem_id: string;
@@ -92,10 +92,12 @@ interface Payment {
   payment_method: 'cash' | 'bank' | 'check' | 'credit_card';
   customer_id?: string;
   supplier_id?: string;
+  /** Açıklama / fiş metninde kullanım (isteğe bağlı) */
+  supplier_name?: string;
   description?: string;
 }
 
-interface FirmaDonemContext {
+export interface FirmaDonemContext {
   firma_id: string;
   donem_id: string;
 }
@@ -336,7 +338,7 @@ export class JournalEntryGenerator {
           alacak: 0,
           aciklama: payment.description || 'Tahsilat',
         });
-      } else if (payment.payment_method === 'bank') {
+      } else if (payment.payment_method === 'bank' || payment.payment_method === 'credit_card') {
         lines.push({
           hesap_kodu: '102',
           hesap_adi: 'Banka',
@@ -373,7 +375,7 @@ export class JournalEntryGenerator {
           alacak: payment.amount,
           aciklama: payment.description || 'Ödeme',
         });
-      } else if (payment.payment_method === 'bank') {
+      } else if (payment.payment_method === 'bank' || payment.payment_method === 'credit_card') {
         lines.push({
           hesap_kodu: '102',
           hesap_adi: 'Banka',

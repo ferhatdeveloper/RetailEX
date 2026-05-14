@@ -53,6 +53,7 @@ export let REMOTE_CONFIG = {
   database: 'retailex_local',
   user: 'postgres',
   password: 'Yq7xwQpt6c',
+  isConfigured: false,
 };
 
 // Local PostgreSQL (Branch/Local Offline Server)

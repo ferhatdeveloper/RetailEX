@@ -349,8 +349,8 @@ export class ChartDataService {
 
     sales.forEach(sale => {
       sale.items.forEach(item => {
-        const existing = productMap.get(item.name) || { quantity: 0, revenue: 0 };
-        productMap.set(item.name, {
+        const existing = productMap.get(item.productName) || { quantity: 0, revenue: 0 };
+        productMap.set(item.productName, {
           quantity: existing.quantity + item.quantity,
           revenue: existing.revenue + (item.price * item.quantity)
         });

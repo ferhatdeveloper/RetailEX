@@ -1,6 +1,7 @@
 ﻿// Hierarchical tree view for unlimited stores with lazy loading
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -12,8 +13,7 @@ import {
   Users,
   Loader2
 } from 'lucide-react';
-import { useInfiniteStores } from '../hooks/useInfiniteStores';
-import { storeApiService, type SearchFilters } from '../../services/storeApiService';
+import { storeApiService, type SearchFilters } from '@/services/storeApiService';
 
 interface TreeNode {
   id: string;
@@ -33,17 +33,11 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
   const [loadingNodes, setLoadingNodes] = useState<Set<string>>(new Set());
   const [storesByRegion, setStoresByRegion] = useState<Map<string, any[]>>(new Map());
 
-  const regions = storeApiService.getRegions();
-  
-  // Calculate total stores dynamically
-  const totalStores = regions.reduce((total, region) => {
-    return total + (region.subRegions.length * 312); // ~312 stores per sub-region average
-  }, 0);
-  
-  // Calculate stores per region
-  const getRegionStoreCount = (region: any) => {
-    return region.subRegions.length * 312; // ~312 stores per sub-region
-  };
+  const { data: regions = [] } = useQuery({
+    queryKey: ['stores', 'regions'],
+    queryFn: () => storeApiService.getRegions(),
+    staleTime: 60_000,
+  });
 
   const toggleNode = async (nodeId: string, type: 'region' | 'subRegion', regionName?: string, subRegionName?: string) => {
     const newExpanded = new Set(expandedNodes);
@@ -119,7 +113,7 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-gray-900">{region.name}</div>
                   <div className="text-sm text-gray-600">
-                    {region.subRegions.length} alt bölge
+                    {region.subRegions?.length ?? 0} alt bölge
                   </div>
                 </div>
               </button>
@@ -127,7 +121,7 @@ export function HierarchicalStoreTree({ onStoreSelect }: HierarchicalStoreTreePr
               {/* Sub-Regions */}
               {isRegionExpanded && (
                 <div className="ml-7 mt-1 space-y-1">
-                  {region.subRegions.map((subRegion) => {
+                  {(region.subRegions ?? []).map((subRegion) => {
                     const subRegionNodeId = `subregion-${region.id}-${subRegion}`;
                     const isSubRegionExpanded = expandedNodes.has(subRegionNodeId);
                     const isLoading = loadingNodes.has(subRegionNodeId);
