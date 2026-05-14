@@ -13,6 +13,7 @@ import { formatCurrency } from '../../../utils/currency';
 import { toast } from 'sonner';
 import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon, Printer } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { usePermission } from '../../../shared/hooks/usePermission';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
 import { BulkProductLabelPrint } from './BulkProductLabelPrint';
@@ -172,6 +173,8 @@ const PRODUCT_STOCK_REFRESH_MS = 120000;
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
+  const { canViewPurchasePricing } = usePermission();
+  const showPurchasePricing = canViewPurchasePricing();
   const { isMobile } = useResponsive();
   const addProduct = useProductStore((state) => state.addProduct);
   const updateProduct = useProductStore((state) => state.updateProduct);
@@ -450,11 +453,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       },
       size: 110
     }),
-    columnHelper.accessor('cost', {
-      header: tm('cost').toUpperCase(),
-      cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
-      size: 120
-    }),
+    ...(showPurchasePricing
+      ? [
+          columnHelper.accessor('cost', {
+            header: tm('cost').toUpperCase(),
+            cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
+            size: 120
+          }),
+        ]
+      : []),
     columnHelper.accessor('price', {
       header: tm('unitPrice').toUpperCase(),
       cell: info => info.getValue() != null && info.getValue() !== '' ? formatCurrency(Number(info.getValue()), 2, false) : '-',
@@ -465,11 +472,15 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
       size: 120
     }),
-    columnHelper.accessor('purchasePriceUSD' as any, {
-      header: 'ALIŞ (USD)',
-      cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
-      size: 120
-    }),
+    ...(showPurchasePricing
+      ? [
+          columnHelper.accessor('purchasePriceUSD' as any, {
+            header: 'ALIŞ (USD)',
+            cell: info => info.getValue() != null && info.getValue() !== '' ? formatAmountWithCode(Number(info.getValue()), 'USD', 2) : '-',
+            size: 120
+          }),
+        ]
+      : []),
     columnHelper.accessor('taxRate', {
       header: tm('tax').toUpperCase(),
       cell: info => `%${info.getValue()}`,
@@ -484,15 +495,19 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       ),
       size: 120
     }),
-    columnHelper.accessor('totalPurchased', {
-      header: tm('purchaseTotal').toUpperCase(),
-      cell: info => (
-        <span className="text-blue-600 font-medium font-bold">
-          {info.getValue() || 0}
-        </span>
-      ),
-      size: 120
-    }),
+    ...(showPurchasePricing
+      ? [
+          columnHelper.accessor('totalPurchased', {
+            header: tm('purchaseTotal').toUpperCase(),
+            cell: info => (
+              <span className="text-blue-600 font-medium font-bold">
+                {info.getValue() || 0}
+              </span>
+            ),
+            size: 120
+          }),
+        ]
+      : []),
     columnHelper.accessor('stock', {
       header: tm('stock').toUpperCase(),
       cell: info => (
@@ -507,7 +522,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue(),
       size: 100
     }),
-  ], [tm]);
+  ], [tm, showPurchasePricing]);
 
   return (
     <div className="h-full flex flex-col">
@@ -835,13 +850,23 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 [tm('barcode').toUpperCase(), mobileActionProduct.barcode || '—'],
                 [tm('productName').toUpperCase(), mobileActionProduct.name || '—'],
                 [tm('category').toUpperCase(), mobileActionProduct.category || '—'],
-                [tm('cost').toUpperCase(), mobileActionProduct.cost != null && mobileActionProduct.cost !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'],
+                ...(showPurchasePricing
+                  ? [
+                      [tm('cost').toUpperCase(), mobileActionProduct.cost != null && mobileActionProduct.cost !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'] as [string, string],
+                    ]
+                  : []),
                 [tm('unitPrice').toUpperCase(), formatCurrency(Number(mobileActionProduct.price) || 0, 2, false)],
                 ['FİYAT (USD)', (mobileActionProduct as any).salePriceUSD != null && (mobileActionProduct as any).salePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).salePriceUSD), 'USD', 2) : '—'],
-                ['ALIŞ (USD)', (mobileActionProduct as any).purchasePriceUSD != null && (mobileActionProduct as any).purchasePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).purchasePriceUSD), 'USD', 2) : '—'],
+                ...(showPurchasePricing
+                  ? [
+                      ['ALIŞ (USD)', (mobileActionProduct as any).purchasePriceUSD != null && (mobileActionProduct as any).purchasePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).purchasePriceUSD), 'USD', 2) : '—'] as [string, string],
+                    ]
+                  : []),
                 [tm('tax').toUpperCase(), `%${mobileActionProduct.taxRate ?? 0}`],
                 [tm('salesTotal').toUpperCase(), String(mobileActionProduct.totalSales ?? 0)],
-                [tm('purchaseTotal').toUpperCase(), String(mobileActionProduct.totalPurchased ?? 0)],
+                ...(showPurchasePricing
+                  ? [[tm('purchaseTotal').toUpperCase(), String(mobileActionProduct.totalPurchased ?? 0)] as [string, string]]
+                  : []),
                 [tm('stock').toUpperCase(), String(mobileActionProduct.stock ?? 0)],
                 [tm('unit').toUpperCase(), mobileActionProduct.unit || '—'],
               ].map(([label, val]) => (

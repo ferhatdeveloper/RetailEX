@@ -55,6 +55,12 @@ export const usePermission = () => {
   const isManager = useCallback(() => isRole(USER_ROLES.MANAGER), [isRole]);
   const isAdmin = useCallback(() => isRole(USER_ROLES.ADMIN), [isRole]);
 
+  /** Alış maliyeti, birim alış, satır kârı / marj (ürün listesi maliyet sütunu dahil) */
+  const canViewPurchasePricing = useCallback(
+    () => hasPermission('purchase-pricing', 'READ'),
+    [hasPermission]
+  );
+
   const needsManagerAuth = useCallback((discountPercentage: number): boolean => {
     if (!user) return true;
     const userMaxDiscount = getMaxDiscount();
@@ -71,6 +77,7 @@ export const usePermission = () => {
     isCashier,
     isManager,
     isAdmin,
+    canViewPurchasePricing,
     needsManagerAuth,
   }), [
     user,
@@ -81,6 +88,7 @@ export const usePermission = () => {
     isCashier,
     isManager,
     isAdmin,
+    canViewPurchasePricing,
     needsManagerAuth
   ]);
 };

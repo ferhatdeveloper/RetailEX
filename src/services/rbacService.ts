@@ -89,6 +89,7 @@ export const SYSTEM_ROLES: Role[] = [
       { module: 'suppliers', actions: ['READ'] },
       { module: 'sales-invoices', actions: ['READ'] },
       { module: 'purchase-invoices', actions: ['READ'] },
+      { module: 'purchase-pricing', actions: ['READ'] },
       { module: 'reports', actions: ['READ', 'EXECUTE'] },
       { module: 'multi-currency', actions: ['READ', 'UPDATE'] }
     ],
@@ -177,6 +178,7 @@ export const SYSTEM_ROLES: Role[] = [
       { module: 'finance', actions: ['READ'] },
       { module: 'sales-orders', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE'] },
       { module: 'sales-invoices', actions: ['READ', 'DELETE'] },
+      { module: 'purchase-pricing', actions: ['READ'] },
       { module: 'returns', actions: ['CREATE', 'READ', 'UPDATE', 'EXECUTE'] },
       { module: 'campaigns', actions: ['CREATE', 'READ', 'UPDATE', 'DELETE'] },
       { module: 'reports', actions: ['READ', 'EXECUTE'] },

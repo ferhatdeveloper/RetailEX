@@ -4,6 +4,7 @@ import { FULLSCREEN_BODY_PORTAL_Z } from '../../shared/FullscreenBodyPortal';
 import { FileText, Plus, Search, X, Save, User, MoreVertical, AlertCircle, CheckCircle2, Calendar, Truck, Package, Clock, ChevronDown, ChevronRight, History, TrendingUp, TrendingDown, Percent, MoreHorizontal, Trash2, Settings, Minus, Square, Filter, ChevronUp, Check, Printer, PlusCircle, ArrowRight, ArrowLeft, RefreshCw, BarChart2, Edit3, Clipboard, ExternalLink, Camera, FileSpreadsheet, Upload } from 'lucide-react';
 import { moduleTranslations, type Language } from '../../../locales/module-translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { usePermission } from '../../../shared/hooks/usePermission';
 import { InvoiceItemsGrid } from './InvoiceItemsGrid';
 import { InvoiceHeader } from './InvoiceHeader';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -347,6 +348,7 @@ export function UniversalInvoiceForm({
   createSaveOptions,
 }: UniversalInvoiceFormProps) {
   const { language, tm } = useLanguage();
+  const { canViewPurchasePricing } = usePermission();
 
   const { selectedFirm, selectedPeriod, selectedBranch, selectedWarehouse } = useFirmaDonem();
   // Alias for backward compatibility with existing code
@@ -985,9 +987,17 @@ export function UniversalInvoiceForm({
     }
   }, [supplierCode, suppliers]);
 
-  const isColumnVisible = (columnId: string) => {
-    return itemColumnVisibility[columnId] !== false;
-  };
+  const isColumnVisible = useCallback(
+    (columnId: string) => {
+      if (itemColumnVisibility[columnId] === false) return false;
+      if (!canViewPurchasePricing()) {
+        if (invoiceType.category === 'Satis' && columnId === 'profit') return false;
+        if (invoiceType.category === 'Alis' && columnId === 'profitMarginPercent') return false;
+      }
+      return true;
+    },
+    [itemColumnVisibility, canViewPurchasePricing, invoiceType.category]
+  );
 
   const itemColumns = useMemo(() => [
     { id: 'type', label: tm('type'), visible: isColumnVisible('type') },
@@ -1005,7 +1015,17 @@ export function UniversalInvoiceForm({
     ...(invoiceType.category === 'Irsaliye' ? [{ id: 'batchNo', label: tm('batchNo'), visible: isColumnVisible('batchNo') }] : []),
     ...(invoiceType.category === 'Satis' ? [{ id: 'profit', label: tm('profit'), visible: isColumnVisible('profit') }] : []),
     { id: 'netAmount', label: tm('net'), visible: isColumnVisible('netAmount') },
-  ], [itemColumnVisibility, invoiceType, tm]);
+  ], [itemColumnVisibility, invoiceType.category, invoiceType.code, tm, isColumnVisible]);
+
+  /** Grid yalnızca `itemColumnVisibility` okuduğu için RBAC ile zorunlu gizlemeyi burada birleştiriyoruz */
+  const effectiveItemColumnVisibility = useMemo(() => {
+    const merged: Record<string, boolean> = { ...itemColumnVisibility };
+    if (!canViewPurchasePricing()) {
+      if (invoiceType.category === 'Satis') merged.profit = false;
+      if (invoiceType.category === 'Alis') merged.profitMarginPercent = false;
+    }
+    return merged;
+  }, [itemColumnVisibility, canViewPurchasePricing, invoiceType.category]);
 
   const handleToggleColumn = (columnId: string) => {
     setItemColumnVisibility((prev: any) => ({
@@ -3218,7 +3238,7 @@ export function UniversalInvoiceForm({
                   <InvoiceItemsGrid
                     items={items}
                     invoiceType={invoiceType}
-                    itemColumnVisibility={itemColumnVisibility}
+                    itemColumnVisibility={effectiveItemColumnVisibility}
                     filteredProducts={filteredProducts}
                     currentRowIndex={currentRowIndex}
                     setCurrentRowIndex={setCurrentRowIndex}
@@ -3316,7 +3336,7 @@ export function UniversalInvoiceForm({
                       <span className="text-gray-600">{tm('discountTotal')}</span>
                       <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.totalDiscountIQD : totals.totalDiscount, 2, false)}</span>
                     </div>
-                    {invoiceType.category === 'Satis' && totalCost > 0 && (
+                    {invoiceType.category === 'Satis' && totalCost > 0 && canViewPurchasePricing() && (
                       <>
                         <div className="flex justify-between border-t border-gray-100 pt-2 mt-2">
                           <span className="text-gray-600">{tm('costPurchase')}</span>

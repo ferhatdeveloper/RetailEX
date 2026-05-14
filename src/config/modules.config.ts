@@ -9,7 +9,7 @@ export type ModuleId =
   | 'dashboard' | 'unlimitedDashboard' | 'profitDashboard'
   | 'products' | 'stock' | 'customers' | 'suppliers'
   | 'finance' | 'accounting' | 'mizan' | 'income-statement' | 'balance-sheet'
-  | 'purchase' | 'sales-orders' | 'sales-invoices' | 'purchase-invoices'
+  | 'purchase' | 'sales-orders' | 'sales-invoices' | 'purchase-invoices' | 'purchase-pricing'
   | 'etransform' | 'returns' | 'production' | 'assets' | 'budget'
   | 'contracts' | 'quality' | 'service' | 'projects'
   | 'integrations' | 'reports' | 'excel' | 'scale'

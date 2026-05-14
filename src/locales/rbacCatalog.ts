@@ -95,6 +95,8 @@ export function buildRbacModuleGroups(tm: (k: string) => string): RbacModuleGrou
         m('customers', ['READ', 'CREATE', 'UPDATE', 'DELETE']),
         m('suppliers', ['READ', 'CREATE', 'UPDATE', 'DELETE']),
         m('invoices', ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE']),
+        /** Alış fiyatı, maliyet, satır kârı / marj (ürün kartı maliyeti dahil) */
+        m('purchase-pricing', ['READ']),
         m('mizan', ['READ', 'EXECUTE']),
       ],
     },

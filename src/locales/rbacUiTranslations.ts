@@ -176,6 +176,9 @@ const mods: Record<string, { n: Entry }> = {
   customers: { n: M('Müşteri (Cari) Hesapları', 'Customer accounts', 'حسابات العملاء') },
   suppliers: { n: M('Tedarikçi Hesapları', 'Supplier accounts', 'حسابات الموردين') },
   invoices: { n: M('Fatura Yönetimi', 'Invoicing', 'الفواتير') },
+  'purchase-pricing': {
+    n: M('Alış maliyeti ve kâr bilgisi', 'Purchase cost & margin visibility', 'رؤية تكلفة الشراء والهامش'),
+  },
   mizan: { n: M('Mali Tablolar', 'Financial statements', 'القوائم المالية') },
   dashboard: { n: M('Yönetici Dashboard', 'Executive dashboard', 'لوحة المدير') },
   management: { n: M('Backoffice Ana Giriş', 'Backoffice home', 'الواجهة الإدارية') },
@@ -210,6 +213,11 @@ const descs: Record<string, Entry> = {
   customers: M('Müşteri bakiyeleri ve ekstreleri', 'Customer balances & statements', 'أرصدة العملاء'),
   suppliers: M('Tedarikçi borç takibi ve ödemeler', 'Supplier AP', 'موردون'),
   invoices: M('E-Fatura, E-Arşiv ve kağıt fatura takibi', 'E-invoice tracking', 'الفوترة الإلكترونية'),
+  'purchase-pricing': M(
+    'Ürün alış maliyeti, alış faturasında kâr/marj ve satış satırı kârının gösterilmesi',
+    'Shows product cost, purchase margin columns, and sales line profit',
+    'عرض تكلفة المنتج وأعمدة هامش الشراء وربح سطر البيع'
+  ),
   mizan: M('Mizan, bilanço ve kâr-zarar raporları', 'Trial balance & P&L', 'التقارير المالية'),
   dashboard: M('KPI göstergeleri ve canlı istatistikler', 'KPIs & live stats', 'مؤشرات الأداء'),
   management: M('Yönetim modülüne genel erişim', 'Backoffice access', 'الوصول الإداري'),
