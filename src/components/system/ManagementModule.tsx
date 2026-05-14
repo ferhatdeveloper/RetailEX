@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import {
   PieChart, Store as StoreIcon, Map as MapIcon, Settings, Zap, FileSpreadsheet,
   FileText, FileCheck, RefreshCw, FileMinus, Send, Truck, Archive,
@@ -31,8 +31,10 @@ const DYNAMIC_MENU_ICON_MAP: Record<string, any> = {
   Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft,
 };
 
-const RestaurantMainLazy = lazy(() => import('../restaurant/index'));
-const BeautyMainLazy = lazy(() => import('../beauty/index'));
+import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
+
+const RestaurantMainLazy = lazyWithChunkRecovery(() => import('../restaurant/index'));
+const BeautyMainLazy = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { APP_VERSION } from '../../core/version';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { LanguageSelectionModal } from './LanguageSelectionModal';

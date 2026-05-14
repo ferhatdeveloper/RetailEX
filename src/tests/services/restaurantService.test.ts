@@ -36,7 +36,7 @@ describe('RestaurantService', () => {
 
       expect(mockQuery).toHaveBeenCalledTimes(1);
       expect(mockQuery.mock.calls[0][0]).toContain('rest.floors');
-      expect(mockQuery.mock.calls[0][0]).toContain('is_active = true');
+      expect(mockQuery.mock.calls[0][0]).toContain('ORDER BY display_order');
       expect(result).toEqual(fakeFloors);
     });
 
@@ -79,13 +79,13 @@ describe('RestaurantService', () => {
       expect(result).toEqual(existing);
     });
 
-    it('deleteFloor: soft delete (is_active=false)', async () => {
+    it('deleteFloor: satırı siler (DELETE)', async () => {
       mockQuery.mockResolvedValueOnce({ rowCount: 1 });
 
       await RestaurantService.deleteFloor('f1');
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('is_active=false'),
+        expect.stringMatching(/DELETE FROM rest\.floors WHERE id=\$1/),
         ['f1']
       );
     });
@@ -324,10 +324,11 @@ describe('RestaurantService', () => {
         { id: 's1', name: 'Ali', role: 'Waiter', pin: '1234', is_active: true },
       ];
       mockQuery.mockResolvedValueOnce({ rows: staff });
+      mockQuery.mockResolvedValueOnce({ rows: [] });
 
       const result = await RestaurantService.getStaffList('001');
 
-      expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(mockQuery).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Ali');
       expect(result[0].pin).toBe('1234');

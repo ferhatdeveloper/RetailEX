@@ -103,6 +103,7 @@ describe('WarehouseService', () => {
     });
 
     it('should process transfer', async () => {
+      // wh-001 require_approval_above: 10000 → toplam > 10000 olunca PENDING; işlem approve + process ile
       const createResult = await service.createTransfer(
         'wh-001',
         'wh-002',
@@ -111,19 +112,22 @@ describe('WarehouseService', () => {
             product_id: 'prod-1',
             product_code: 'P001',
             product_name: 'Ürün 1',
-            quantity: 3,
+            quantity: 120,
             unit_price: 100,
-            line_total: 300
-          }
+            line_total: 12000,
+          },
         ],
         'user-1'
       );
 
-      if (createResult.transfer) {
-        const result = await service.processTransfer(createResult.transfer.id);
+      expect(createResult.transfer?.status).toBe('PENDING_APPROVAL');
 
-        expect(result.success).toBe(true);
-      }
+      const approveResult = await service.approveTransfer(createResult.transfer!.id, 'manager-1');
+      expect(approveResult.success).toBe(true);
+
+      const result = await service.processTransfer(createResult.transfer!.id);
+
+      expect(result.success).toBe(true);
     });
   });
 

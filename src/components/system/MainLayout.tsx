@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { MobilePOS } from '../pos/MobilePOS';
 import { LogOut, User, ShoppingCart, LayoutGrid, Clock, Calendar, Lock, Users, X, Languages, Server, Receipt, Building2, Warehouse, RefreshCw, ChevronDown, AlertCircle, ChevronRight, Check, UtensilsCrossed, Sparkles, Loader2, Smartphone, Menu, MoreVertical, ZoomIn, ZoomOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
@@ -28,16 +28,17 @@ import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNoti
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
 import { Capacitor } from '@capacitor/core';
+import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
 
-const MarketPOS = lazy(() => import('../pos/MarketPOS'));
-const ManagementModule = lazy(() =>
+const MarketPOS = lazyWithChunkRecovery(() => import('../pos/MarketPOS'));
+const ManagementModule = lazyWithChunkRecovery(() =>
   import('./ManagementModule').then((m) => ({ default: m.ManagementModule }))
 );
 // Lazy load WMS
-const WarehouseManagement = lazy(() => import('../wms')) as any;
+const WarehouseManagement = lazyWithChunkRecovery(() => import('../wms')) as any;
 // Lazy load Restaurant & Beauty
-const RestaurantMain = lazy(() => import('../restaurant/index'));
-const BeautyMain = lazy(() => import('../beauty/index'));
+const RestaurantMain = lazyWithChunkRecovery(() => import('../restaurant/index'));
+const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { FirmSelector } from './FirmSelector';
 import { cn } from '../ui/utils';
 import {
@@ -53,20 +54,48 @@ function ModuleLazySplash({
   productLine,
   accent,
   subtitle,
+  darkMode = true,
 }: {
   productLine: NeonLogoProductLine;
   accent: 'blue' | 'orange' | 'violet';
   subtitle: string;
+  /** Açık temada üst çubukla uyumlu açık gri splash (sonsuz bekleme hissi azalır) */
+  darkMode?: boolean;
 }) {
   const spin = accent === 'orange' ? 'text-orange-400' : accent === 'violet' ? 'text-violet-400' : 'text-blue-400';
-  const sub = accent === 'orange' ? 'text-orange-300' : accent === 'violet' ? 'text-violet-300' : 'text-blue-300';
+  const sub = accent === 'orange' ? 'text-orange-600' : accent === 'violet' ? 'text-violet-600' : 'text-blue-600';
+  const subDark = accent === 'orange' ? 'text-orange-300' : accent === 'violet' ? 'text-violet-300' : 'text-blue-300';
+  const [stall, setStall] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setStall(true), 28000);
+    return () => clearTimeout(t);
+  }, []);
+  const shell = darkMode
+    ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900'
+    : 'bg-gradient-to-br from-slate-200 via-slate-100 to-slate-300';
+  const hint = darkMode ? 'text-slate-400' : 'text-slate-500';
   return (
-    <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 animate-in fade-in duration-200">
-      <div className="text-center flex flex-col items-center gap-6 px-4">
+    <div className={`h-screen flex items-center justify-center ${shell} animate-in fade-in duration-200`}>
+      <div className="text-center flex flex-col items-center gap-6 px-4 max-w-md">
         <NeonLogo variant="full" size="lg" productLine={productLine} className="justify-center" />
         <Loader2 className={`w-10 h-10 animate-spin ${spin}`} />
-        <p className={`text-sm font-medium ${sub}`}>{subtitle}</p>
-        <p className="text-slate-400 text-sm">Yükleniyor...</p>
+        <p className={`text-sm font-medium ${darkMode ? subDark : sub}`}>{subtitle}</p>
+        <p className={`${hint} text-sm`}>Yükleniyor...</p>
+        {stall && (
+          <div className={`flex flex-col items-center gap-3 mt-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+            <p className="text-xs leading-relaxed px-2">
+              Bağlantı yavaşsa veya uygulama az önce güncellendiyse sayfayı yenileyin; sorun sürerse önbelleği
+              temizleyerek yenileyin.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="text-xs font-bold uppercase tracking-wide px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+            >
+              Yenile
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1525,7 +1554,7 @@ export function MainLayout({
         {currentModule === 'pos' ? (
           // POS ekranında sadece MarketPOS göster (mobil otomatik geçiş yok)
           <Suspense fallback={
-            <ModuleLazySplash productLine="retail" accent="blue" subtitle="Mağaza POS yükleniyor..." />
+            <ModuleLazySplash darkMode={darkMode} productLine="retail" accent="blue" subtitle="Mağaza POS yükleniyor..." />
           }>
             <MarketPOS
               products={products}
@@ -1550,7 +1579,7 @@ export function MainLayout({
           </Suspense>
         ) : currentModule === 'wms' ? (
           <Suspense fallback={
-            <ModuleLazySplash productLine="retail" accent="blue" subtitle="Depo (WMS) yükleniyor..." />
+            <ModuleLazySplash darkMode={darkMode} productLine="retail" accent="blue" subtitle="Depo (WMS) yükleniyor..." />
           }>
             <WarehouseManagement
               onNavigateToModule={(module: 'pos' | 'management') => {
@@ -1573,7 +1602,7 @@ export function MainLayout({
           />
         ) : currentModule === 'restaurant' ? (
           <Suspense fallback={
-            <ModuleLazySplash productLine="restaurant" accent="orange" subtitle="Restoran modülü yükleniyor..." />
+            <ModuleLazySplash darkMode={darkMode} productLine="restaurant" accent="orange" subtitle="Restoran modülü yükleniyor..." />
           }>
             <RestaurantMain
               products={products}
@@ -1583,7 +1612,7 @@ export function MainLayout({
               currentUser={currentUser}
               onSaleComplete={onSaleComplete}
               onLogout={onLogout}
-              setActiveModule={(m) => setCurrentModule(m as Module)}
+              setActiveModule={(m: Module) => setCurrentModule(m)}
               zoomLevel={zoomLevel}
               setZoomLevel={setZoomLevel}
               rtlMode={rtlMode}
@@ -1592,7 +1621,7 @@ export function MainLayout({
           </Suspense>
         ) : currentModule === 'beauty' ? (
           <Suspense fallback={
-            <ModuleLazySplash productLine="clinic" accent="violet" subtitle={tm('bBeautyLoadingMain')} />
+            <ModuleLazySplash darkMode={darkMode} productLine="clinic" accent="violet" subtitle={tm('bBeautyLoadingMain')} />
           }>
             <BeautyMain
               sales={sales}
@@ -1608,6 +1637,7 @@ export function MainLayout({
           <Suspense
             fallback={
               <ModuleLazySplash
+                darkMode={darkMode}
                 productLine="retail"
                 accent="blue"
                 subtitle="Yönetim paneli yükleniyor..."

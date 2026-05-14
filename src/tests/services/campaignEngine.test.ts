@@ -3,7 +3,7 @@
  * Test Framework: Vitest
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CampaignEngine, Campaign, mockCampaigns } from '../../services/campaignEngine';
 import { CartItem } from '../../components/pos/types';
 import type { Product } from '../../core/types/models';
@@ -23,6 +23,10 @@ function mkProduct(partial: Partial<Product> & Pick<Product, 'id' | 'name' | 'pr
 describe('CampaignEngine', () => {
   let engine: CampaignEngine;
   let mockCart: CartItem[];
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     engine = new CampaignEngine();
@@ -99,13 +103,14 @@ describe('CampaignEngine', () => {
 
   describe('Time-based Campaign', () => {
     it('should validate time correctly', async () => {
-      const now = new Date();
-      const currentHour = now.getHours();
+      vi.useFakeTimers();
+      // Pazartesi 10:30 — validDays [1..5] ve 09:00–11:00 aralığı içinde
+      vi.setSystemTime(new Date('2026-05-18T10:30:00'));
 
       const campaign: Campaign = {
         ...mockCampaigns[1],
-        startTime: `${String(currentHour - 1).padStart(2, '0')}:00`,
-        endTime: `${String(currentHour + 1).padStart(2, '0')}:00`,
+        startTime: '09:00',
+        endTime: '11:00',
       };
 
       const results = await engine.applyCampaigns([campaign], mockCart);

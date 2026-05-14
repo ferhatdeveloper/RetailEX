@@ -1,7 +1,7 @@
-﻿// RetailOS Service Worker - v1.0.0
-const CACHE_NAME = 'retailos-v1.0.0';
-const RUNTIME_CACHE = 'retailos-runtime-v1.0.0';
-const IMAGE_CACHE = 'retailos-images-v1.0.0';
+﻿// RetailEX PWA — v2: HTML ve Vite chunk'ları için network-first (dağıtım sonrası eski chunk 404 önlenir)
+const CACHE_NAME = 'retailex-sw-v2';
+const RUNTIME_CACHE = 'retailex-runtime-v2';
+const IMAGE_CACHE = 'retailex-images-v2';
 
 // Önbelleğe alınacak statik dosyalar
 const STATIC_ASSETS = [
@@ -64,6 +64,9 @@ self.addEventListener('activate', (event) => {
 // Fetch olaylarını dinle
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  if (request.method !== 'GET') {
+    return;
+  }
   const url = new URL(request.url);
 
   // Sadece aynı origin için önbellekleme
@@ -71,21 +74,59 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const path = url.pathname;
+  const isNavigate = request.mode === 'navigate';
+  const isShellDocument =
+    isNavigate || path === '/' || path.endsWith('.html') || path.endsWith('.htm');
+  const isViteChunk = /^\/assets\/.*\.(js|mjs|css)$/i.test(path);
+
   // Cache-First stratejisi (resimler, fontlar)
-  if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
+  if (CACHE_FIRST_PATTERNS.some(pattern => pattern.test(path))) {
     event.respondWith(cacheFirst(request, IMAGE_CACHE));
     return;
   }
 
   // Network-First stratejisi (API, JSON)
-  if (NETWORK_FIRST_PATTERNS.some(pattern => pattern.test(url.pathname))) {
+  if (NETWORK_FIRST_PATTERNS.some(pattern => pattern.test(path))) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
   }
 
-  // Stale-While-Revalidate stratejisi (diğer dosyalar)
+  // Ana belge ve Vite üretimi chunk'lar — önce ağ (eski SW + yeni sürüm uyumsuzluğu azalır)
+  if (isShellDocument) {
+    event.respondWith(networkFirstDocument(request));
+    return;
+  }
+  if (isViteChunk) {
+    event.respondWith(networkFirst(request, RUNTIME_CACHE));
+    return;
+  }
+
+  // Diğer GET istekleri — stale-while-revalidate
   event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE));
 });
+
+// Ana HTML / SPA kabuğu — önce ağ; önbelleğe yazmıyoruz (eski index ↔ yeni chunk uyumsuzluğu engeli)
+async function networkFirstDocument(request) {
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse && networkResponse.ok) {
+      return networkResponse;
+    }
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    return networkResponse;
+  } catch (error) {
+    console.log('[SW] Document network failed, cache fallback', error);
+    const cachedResponse = await caches.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+  }
+}
 
 // Cache-First stratejisi
 async function cacheFirst(request, cacheName) {

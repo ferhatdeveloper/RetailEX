@@ -16,6 +16,12 @@ async function registerServiceWorker() {
 
     console.log('[PWA] Service Worker registered successfully:', registration.scope);
 
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        registration.update().catch(() => {});
+      }
+    });
+
     // Güncelleme kontrolü
     registration.addEventListener('updatefound', () => {
       const newWorker = registration.installing;
@@ -64,7 +70,7 @@ function showUpdateNotification() {
     ">
       <div style="flex: 1;">
         <div style="font-weight: 600; margin-bottom: 4px;">
-          ğŸš€ Yeni Versiyon Mevcut!
+          Yeni sürüm hazır
         </div>
         <div style="font-size: 14px; opacity: 0.9;">
           RetailOS güncellemesi hazır. Yenilemek için tıklayın.

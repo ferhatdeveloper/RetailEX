@@ -1,6 +1,7 @@
 ﻿import { Component, ReactNode, ErrorInfo } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { LanguageContext } from '../../contexts/LanguageContext';
+import { hardReloadClearingAppCaches, isChunkLoadFailure } from '../../utils/chunkLoadRecovery';
 
 interface Props {
   children: ReactNode;
@@ -50,6 +51,10 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.reload();
   };
 
+  handleHardReset = () => {
+    void hardReloadClearingAppCaches();
+  };
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -69,6 +74,8 @@ export class ErrorBoundary extends Component<Props, State> {
               helpMessage: 'Sorun devam ederse lütfen sistem yöneticinizle iletişime geçin.'
             };
 
+            const chunkFail = isChunkLoadFailure(this.state.error);
+
             return (
               <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-red-100 p-4">
                 <div className="max-w-2xl w-full bg-white rounded-xl shadow-2xl p-8">
@@ -82,11 +89,18 @@ export class ErrorBoundary extends Component<Props, State> {
                     </div>
                   </div>
 
+                  {chunkFail && (
+                    <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-950 leading-relaxed">
+                      Uygulama güncellendiyse tarayıcı eski dosya parçalarını kullanıyor olabilir. Aşağıdaki{' '}
+                      <strong>Önbelleği temizle ve yenile</strong> düğmesi genelde sorunu giderir.
+                    </div>
+                  )}
+
                   <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                     <p className="text-sm text-red-900 mb-2">
                       <strong>{t.errorMessage}:</strong>
                     </p>
-                    <p className="text-sm text-red-800 font-mono">
+                    <p className="text-sm text-red-800 font-mono break-words">
                       {this.state.error?.toString()}
                     </p>
                   </div>
@@ -104,17 +118,29 @@ export class ErrorBoundary extends Component<Props, State> {
                     </details>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {chunkFail && (
+                      <button
+                        type="button"
+                        onClick={this.handleHardReset}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-semibold"
+                      >
+                        <Trash2 className="w-4 h-4 shrink-0" />
+                        Önbelleği temizle ve yenile
+                      </button>
+                    )}
                     <button
+                      type="button"
                       onClick={this.handleReset}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
-                      <RefreshCw className="w-4 h-4" />
+                      <RefreshCw className="w-4 h-4 shrink-0" />
                       {t.refreshPage}
                     </button>
                     <button
+                      type="button"
                       onClick={() => window.history.back()}
-                      className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                      className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors shrink-0"
                     >
                       {t.goBack}
                     </button>

@@ -232,6 +232,10 @@ class WarehouseRepository {
     ];
 
     mockWarehouses.forEach(wh => this.warehouses.set(wh.id, wh));
+
+    // Demo stok (transfer / availability testleri ve in-memory kullanım)
+    this.updateStock('wh-001', 'prod-1', 100_000);
+    this.updateStock('wh-001', 'prod-2', 50_000);
   }
 
   getWarehouses(): Warehouse[] {
@@ -434,12 +438,12 @@ export class WarehouseService {
       created_at: new Date().toISOString()
     };
 
-    // If auto-approved, process immediately
+    this.repository.saveTransfer(transfer);
+
+    // İşlem deposunda kayıt olmadan processTransfer çalışmaz
     if (status === 'APPROVED') {
       await this.processTransfer(transfer.id);
     }
-
-    this.repository.saveTransfer(transfer);
 
     return { success: true, transfer };
   }
