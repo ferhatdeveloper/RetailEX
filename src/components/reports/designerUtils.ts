@@ -176,6 +176,45 @@ function inlineSubtreeComputedStyles(origRoot: HTMLElement, cloneRoot: HTMLEleme
     }
 }
 
+/**
+ * html2canvas iframe içinde `parseTree` ile klon üzerinde çalışır; klon oluşturulurken
+ * `copyCSSStyles` ana belgedeki computed değerleri (oklch dâhil) inline’a kopyalar.
+ * Bu adım iframe `getComputedStyle` ile kalan modern renkleri tekrar normalize eder.
+ */
+function scrubCloneSubtreeIframeComputedColors(clonedDoc: Document, cloneRoot: HTMLElement) {
+    const win = clonedDoc.defaultView;
+    if (!win) return;
+
+    const scrubOne = (el: HTMLElement) => {
+        if (el.tagName === 'CANVAS') return;
+        const cs = win.getComputedStyle(el);
+        for (let j = 0; j < cs.length; j++) {
+            const name = cs[j];
+            try {
+                const raw = cs.getPropertyValue(name);
+                if (!raw || !MODERN_COLOR_QUICK_RE.test(raw)) continue;
+                const value = normalizeCssValue(raw);
+                if (cs.getPropertyPriority(name) === 'important') {
+                    el.style.setProperty(name, value, 'important');
+                } else {
+                    el.style.setProperty(name, value);
+                }
+            } catch {
+                /* ignore */
+            }
+        }
+    };
+
+    let p: HTMLElement | null = cloneRoot;
+    while (p) {
+        scrubOne(p);
+        p = p.parentElement;
+    }
+    cloneRoot.querySelectorAll<HTMLElement>('*').forEach((el) => {
+        if (el.tagName !== 'CANVAS') scrubOne(el);
+    });
+}
+
 function withPdfCaptureRoot<T>(element: HTMLElement, fn: (tempId: string) => Promise<T>): Promise<T> {
     const tempId = `${H2C_TEMP_ID_PREFIX}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
     const prevId = element.id;
@@ -200,6 +239,7 @@ function onCloneStripOklchAndInline(orig: HTMLElement, tempId: string) {
         const cloneRoot = clonedDoc.getElementById(tempId);
         if (cloneRoot instanceof HTMLElement) {
             inlineSubtreeComputedStyles(orig, cloneRoot);
+            scrubCloneSubtreeIframeComputedColors(clonedDoc, cloneRoot);
         }
     };
 }
