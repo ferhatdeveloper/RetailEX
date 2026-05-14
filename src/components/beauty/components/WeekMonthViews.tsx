@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, CalendarDays, List, X } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { AppointmentStatus, BeautyAppointment } from '../../../types/beauty';
+import { AppointmentStatus, appointmentStatusMatches, BeautyAppointment } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { CLINIC } from '../clinicDesignTokens';
@@ -111,7 +111,7 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                                                 {dayGroups.map((group, ord) => {
                                                     const apt = mergeQueueGroupForCardDisplay(group);
                                                     const primary = group[0];
-                                                    const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                    const done = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
                                                     const accent = apt.service_color || primary.service_color || '#9333ea';
                                                     return (
                                                         <div
@@ -167,7 +167,7 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                                             {dayAppointments.length > 0 ? (
                                                 <div className="space-y-1">
                                                     {dayAppointments.map(apt => {
-                                                        const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                        const done = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
                                                         const accent = apt.service_color || '#9333ea';
                                                         return (
                                                         <div

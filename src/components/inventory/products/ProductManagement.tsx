@@ -11,8 +11,26 @@ import { ContextMenu } from '../../shared/ContextMenu';
 import { formatNumber, formatCurrency as formatAmountWithCode } from '../../../utils/formatNumber';
 import { formatCurrency } from '../../../utils/currency';
 import { toast } from 'sonner';
-import { Package, Edit, Barcode, TrendingUp, Trash2, RefreshCw, Download, Upload, Plus, Search, X, FileText, ImageIcon, Printer } from 'lucide-react';
+import {
+  Package,
+  Edit,
+  Barcode,
+  TrendingUp,
+  Trash2,
+  RefreshCw,
+  Download,
+  Upload,
+  Plus,
+  Search,
+  X,
+  FileText,
+  ImageIcon,
+  Printer,
+  ShoppingCart,
+  Loader2,
+} from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
@@ -22,6 +40,17 @@ import { ReportTemplate } from '../../reports/designerUtils';
 import { DEMO_PRODUCT_CODES } from '../../../utils/demoSeedCodes';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
+import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
+import {
+  buildPurchaseEditDataFromProductsForPurchaseWithStock,
+  productNeedPurchaseDraftMaxLines,
+} from '../../../utils/productNeedPurchaseDraft';
+
+const NEW_PRODUCT_PURCHASE_DRAFT_DAYS = 30;
+
+function isMaterialProductRow(p: Product): boolean {
+  return !(p.materialType === 'service' || p.isService === true);
+}
 
 /** Malzeme listesi hızlı etiket — referans mağaza düzeni: marka, kod+ad, fiyat (sol) | stok+birim (sağ), barkod. */
 function buildQuickRetailProductLabelTemplate(product: Product, size: { w: number; h: number }): ReportTemplate {
@@ -173,6 +202,7 @@ const PRODUCT_STOCK_REFRESH_MS = 120000;
 
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
   const { canViewPurchasePricing } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
   const { isMobile } = useResponsive();
@@ -226,6 +256,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [showBulkLabelPrint, setShowBulkLabelPrint] = useState(false);
   const [bulkLabelModalKey, setBulkLabelModalKey] = useState(0);
   const [bulkLabelInitial, setBulkLabelInitial] = useState<Product[] | undefined>(undefined);
+  const [purchaseDraftBusy, setPurchaseDraftBusy] = useState(false);
   const [bulkRate, setBulkRate] = useState(1530); // Default common rate
   const [roundTo, setRoundTo] = useState(250); // Default rounding for IQD
   const [mobilePage, setMobilePage] = useState(0);
@@ -403,6 +434,125 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     });
   }, []);
 
+  const openPurchaseDraftForProducts = useCallback(
+    (eligibleInput: Product[], notesIntro: string, supplierLabel: string) => {
+      if (!selectedFirm) {
+        toast.error(tm('countPurchaseFromSurplusNeedFirm'));
+        return;
+      }
+      const eligible = eligibleInput.filter((p) => p?.id && isMaterialProductRow(p));
+      if (!eligible.length) {
+        toast.error(tm('productPurchaseDraftNoEligible'));
+        return;
+      }
+      const maxL = productNeedPurchaseDraftMaxLines();
+      if (eligible.length > maxL) {
+        toast.message(
+          tm('productPurchaseDraftTruncated')
+            .replace(/\{max\}/g, String(maxL))
+            .replace(/\{total\}/g, String(eligible.length))
+        );
+      }
+      const draft = buildPurchaseEditDataFromProductsForPurchaseWithStock(eligible, {
+        supplierLabel,
+        notesIntro,
+      });
+      if (!draft) {
+        toast.error(tm('productPurchaseDraftNoEligible'));
+        return;
+      }
+      try {
+        sessionStorage.setItem(
+          PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY,
+          JSON.stringify({
+            editData: draft,
+            skipProductStockUpdate: false,
+          })
+        );
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(
+        new CustomEvent('navigateToScreen', {
+          detail: {
+            screen: 'purchase-invoice-standard',
+            countPurchaseDraft: {
+              editData: draft,
+              skipProductStockUpdate: false,
+            },
+          },
+        })
+      );
+      toast.success(tm('countPurchaseOpeningInvoiceForm'));
+    },
+    [selectedFirm, tm]
+  );
+
+  const handlePurchaseDraftFromSelection = useCallback(() => {
+    if (selectedProducts.length === 0) {
+      toast.error(tm('productPurchaseDraftNoSelection'));
+      return;
+    }
+    openPurchaseDraftForProducts(
+      selectedProducts,
+      tm('productPurchaseDraftNotesSelection'),
+      tm('productPurchaseDraftSupplier')
+    );
+  }, [openPurchaseDraftForProducts, selectedProducts, tm]);
+
+  const handlePurchaseDraftNoPurchaseHistory = useCallback(async () => {
+    if (!selectedFirm) {
+      toast.error(tm('countPurchaseFromSurplusNeedFirm'));
+      return;
+    }
+    const materials = filteredProducts.filter((p) => p?.id && isMaterialProductRow(p));
+    if (!materials.length) {
+      toast.error(tm('productPurchaseDraftNoEligible'));
+      return;
+    }
+    setPurchaseDraftBusy(true);
+    const toastId = 'product-purchase-draft-scan';
+    try {
+      toast.loading(tm('productPurchaseDraftScanning'), { id: toastId });
+      const ids = materials.map((p) => p.id);
+      const withoutIds = await productAPI.filterIdsWithoutPurchaseHistory(ids);
+      toast.dismiss(toastId);
+      const allow = new Set(withoutIds);
+      const list = materials.filter((p) => allow.has(p.id));
+      if (!list.length) {
+        toast.error(tm('productPurchaseDraftNoEligible'));
+        return;
+      }
+      openPurchaseDraftForProducts(
+        list,
+        tm('productPurchaseDraftNotesNoHistory'),
+        tm('productPurchaseDraftSupplier')
+      );
+    } catch (err: unknown) {
+      toast.dismiss(toastId);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg);
+    } finally {
+      setPurchaseDraftBusy(false);
+    }
+  }, [filteredProducts, openPurchaseDraftForProducts, selectedFirm, tm]);
+
+  const handlePurchaseDraftNewProducts = useCallback(() => {
+    const cutoff = Date.now() - NEW_PRODUCT_PURCHASE_DRAFT_DAYS * 86400000;
+    const list = filteredProducts.filter((p) => {
+      if (!p?.id || !isMaterialProductRow(p)) return false;
+      const raw = p.created_at;
+      if (raw == null || String(raw).trim() === '') return false;
+      const t = new Date(raw).getTime();
+      return Number.isFinite(t) && t >= cutoff;
+    });
+    openPurchaseDraftForProducts(
+      list,
+      tm('productPurchaseDraftNotesNewProducts'),
+      tm('productPurchaseDraftSupplier')
+    );
+  }, [filteredProducts, openPurchaseDraftForProducts, tm]);
+
   /** Listede bulunan demo ürünler — sağ tık menüsünde "Demo ürünleri toplu sil" sadece bunlar varken gösterilir */
   const demoProductsInList = useMemo(() => {
     return displayProducts.filter(p => p.code && DEMO_PRODUCT_CODES.has(String(p.code).trim()));
@@ -543,6 +693,43 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             >
               <RefreshCw className="w-3 h-3" />
               <span>{tm('refresh')}</span>
+            </button>
+            <button
+              type="button"
+              disabled={purchaseDraftBusy}
+              onClick={handlePurchaseDraftFromSelection}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] disabled:opacity-50"
+              title={tm('productPurchaseDraftNotesSelection')}
+            >
+              <ShoppingCart className="w-3 h-3 shrink-0" />
+              <span className="hidden sm:inline">{tm('productPurchaseDraftFromSelectionBtn')}</span>
+              <span className="sm:hidden">Seç→Alış</span>
+            </button>
+            <button
+              type="button"
+              disabled={purchaseDraftBusy}
+              onClick={() => void handlePurchaseDraftNoPurchaseHistory()}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] disabled:opacity-50"
+              title={tm('productPurchaseDraftNotesNoHistory')}
+            >
+              {purchaseDraftBusy ? (
+                <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+              ) : (
+                <ShoppingCart className="w-3 h-3 shrink-0" />
+              )}
+              <span className="hidden sm:inline">{tm('productPurchaseDraftFromNoHistoryBtn')}</span>
+              <span className="sm:hidden">Alışsız</span>
+            </button>
+            <button
+              type="button"
+              disabled={purchaseDraftBusy}
+              onClick={handlePurchaseDraftNewProducts}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] disabled:opacity-50"
+              title={tm('productPurchaseDraftNotesNewProducts')}
+            >
+              <ShoppingCart className="w-3 h-3 shrink-0" />
+              <span className="hidden sm:inline">{tm('productPurchaseDraftFromNewBtn')}</span>
+              <span className="sm:hidden">Yeni</span>
             </button>
             <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
               <Download className="w-3 h-3" />

@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Camera, ArrowRight, Check, Clock, Package } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { warehouseService, type Warehouse } from '../../services/warehouseService';
 
 // System parameters

@@ -354,7 +354,9 @@ export function KasaIslemModal({
                 onChange={(e) => setFormData(prev => ({ ...prev, target_register_id: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               >
-                <option value="">{t['select']}...</option>
+                <option value="">
+                  {typeof t['select'] === 'string' ? `${t['select']}...` : 'Seçin...'}
+                </option>
                 {digerKasalar.map(k => (
                   <option key={k.id} value={k.id}>
                     {k.kasa_kodu} - {k.kasa_adi} ({formatCurrency(k.bakiye)} {k.id_doviz_kodu})
@@ -373,7 +375,9 @@ export function KasaIslemModal({
                 onChange={(e) => setFormData(prev => ({ ...prev, bank_id: e.target.value }))}
                 className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none"
               >
-                <option value="">{t['select']}...</option>
+                <option value="">
+                  {typeof t['select'] === 'string' ? `${t['select']}...` : 'Seçin...'}
+                </option>
                 {bankalar.map(b => (
                   <option key={b.id} value={b.id}>
                     {b.banka_kodu} - {b.banka_adi} / {b.sube_adi} ({b.hesap_no}) - {formatCurrency(b.bakiye)} {b.id_doviz_kodu}

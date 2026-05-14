@@ -20,6 +20,16 @@ export enum AppointmentStatus {
     NO_SHOW = 'no_show'
 }
 
+/** API/legacy düz string; enum ile karşılaştırma (TS2367 daraltması önlemi) */
+export function appointmentStatusMatches(
+    value: AppointmentStatus | string | null | undefined,
+    target: AppointmentStatus
+): boolean {
+    if (value == null) return false;
+    if (value === target) return true;
+    return String(value) === String(target);
+}
+
 /**
  * Clinic ERP uzmanlık modu — varsayılan güzellik; klinik operasyon ekranından değiştirilir.
  * Firma bazlı `localStorage` ile saklanır (sunucu şeması sonraki adımda genişletilebilir).
@@ -524,7 +534,7 @@ export interface BeautySaleItem {
     unit_price: number;
     discount: number;
     total: number;
-    staff_id?: string;
+    staff_id?: string | null;
     commission_amount: number;
 }
 

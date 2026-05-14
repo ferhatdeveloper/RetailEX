@@ -203,7 +203,7 @@ export function BeautyPOS() {
                 commission_amount: 0,
             }));
             await beautyService.createSale({
-                customer_id:      customer?.id ?? null,
+                customer_id:      customer?.id ?? undefined,
                 customer_name:    customer?.name,
                 subtotal,
                 discount:         discAmt,

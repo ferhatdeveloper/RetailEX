@@ -3,7 +3,7 @@
  */
 import React, { useMemo, useRef } from 'react';
 import { Plus } from 'lucide-react';
-import { AppointmentStatus, BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
+import { AppointmentStatus, appointmentStatusMatches, BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import {
     compareBeautyQueueOrder,
@@ -852,7 +852,7 @@ export function ResourceGroupedWeekMatrix({
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                             {shownGroups.map((group, gi) => {
                                                 const apt = mergeQueueGroupForCardDisplay(group);
-                                                const done = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+                                                const done = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
                                                 return (
                                                 <button
                                                     key={group[0].id}

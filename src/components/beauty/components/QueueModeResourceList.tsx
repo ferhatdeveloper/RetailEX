@@ -4,7 +4,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import type { BeautyAppointment } from '../../../types/beauty';
-import { AppointmentStatus } from '../../../types/beauty';
+import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
 import {
     groupBeautyQueueByCustomer,
     mergeQueueGroupForCardDisplay,
@@ -51,7 +51,7 @@ export function QueueModeResourceList({
                 const timeLabel = (display.appointment_time ?? display.time ?? '').trim().slice(0, 5);
                 const done =
                     useStatusTint &&
-                    group.every(a => a.status === AppointmentStatus.COMPLETED || a.status === 'completed');
+                    group.every(a => appointmentStatusMatches(a.status, AppointmentStatus.COMPLETED));
                 const bar = done ? '#059669' : (display.service_color ?? primary.service_color ?? accent);
                 const bg = done ? '#ecfdf5' : '#faf9fd';
                 const cardStyle: React.CSSProperties = {

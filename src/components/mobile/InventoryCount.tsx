@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Camera, Check, X, Upload, Download, Wifi, WifiOff, Package, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface CountItem {
   id: string;

@@ -3,6 +3,7 @@ import { X, Save, Wallet, Info } from 'lucide-react';
 import { createKasa, updateKasa, type Kasa } from '../../../services/api/kasa';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 
 interface KasaDefinitionModalProps {
     kasa?: Kasa | null;
@@ -12,6 +13,7 @@ interface KasaDefinitionModalProps {
 
 export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinitionModalProps) {
     const { t, tm } = useLanguage();
+    const { selectedFirma } = useFirmaDonem();
     const [loading, setLoading] = useState(false);
     const [formData, setFormData] = useState<Partial<Kasa>>(
         kasa || {
@@ -35,7 +37,24 @@ export function KasaDefinitionModal({ kasa, onClose, onSuccess }: KasaDefinition
                 await updateKasa(kasa.id, formData);
                 toast.success(tm('success'));
             } else {
-                await createKasa(formData);
+                const firmaId =
+                    formData.firma_id ??
+                    selectedFirma?.id ??
+                    (selectedFirma?.firm_nr ? String(selectedFirma.firm_nr) : undefined) ??
+                    String(selectedFirma?.logicalref ?? '');
+                const payload: Omit<Kasa, 'id'> = {
+                    firma_id: firmaId || '001',
+                    kasa_kodu: formData.kasa_kodu ?? '',
+                    kasa_adi: formData.kasa_adi ?? '',
+                    aciklama: formData.aciklama,
+                    bakiye: formData.bakiye ?? 0,
+                    id_bakiye: formData.id_bakiye ?? formData.bakiye ?? 0,
+                    id_doviz_kodu: formData.id_doviz_kodu ?? 'IQD',
+                    aktif: formData.aktif ?? true,
+                    olusturma_tarihi: formData.olusturma_tarihi ?? new Date().toISOString(),
+                    guncelleme_tarihi: formData.guncelleme_tarihi ?? new Date().toISOString(),
+                };
+                await createKasa(payload);
                 toast.success(tm('success'));
             }
             onSuccess();

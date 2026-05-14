@@ -208,7 +208,7 @@ export function BulkProductLabelPrint({
               width: qrSize,
               margin: 1,
               errorCorrectionLevel: 'M',
-            }).catch((err) => console.error('QR kod hatası:', err));
+            }).catch((err: unknown) => console.error('QR kod hatası:', err));
           }
         }
       });

@@ -1824,7 +1824,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         </div>
         <div className="flex items-center gap-2 max-lg:self-end">
           <button
-            onClick={handleSave}
+            type="button"
+            onClick={() => void handleSave()}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
           >
             <Save className="w-3.5 h-3.5" />

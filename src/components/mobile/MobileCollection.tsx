@@ -5,7 +5,7 @@
 
 import { useState } from 'react';
 import { Banknote, Camera, CreditCard, Check } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface Payment {
   method: 'CASH' | 'CREDIT_CARD' | 'CHECK' | 'TRANSFER';

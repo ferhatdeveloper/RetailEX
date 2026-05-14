@@ -12,19 +12,19 @@ import {
   Download,
   Printer
 } from 'lucide-react';
-import { stores, todayStats } from '../data/storeData';
+import { stores, todayStats } from './data/storeData';
 
 export function FinancialControlCenter() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Calculate totals
-  const totalRevenue = todayStats.reduce((sum, stat) => sum + stat.revenue, 0);
-  const totalCash = todayStats.reduce((sum, stat) => sum + stat.cashBalance, 0);
-  const totalTransactions = todayStats.reduce((sum, stat) => sum + stat.transactionCount, 0);
+  const totalRevenue = todayStats.reduce((sum: number, stat: (typeof todayStats)[number]) => sum + stat.revenue, 0);
+  const totalCash = todayStats.reduce((sum: number, stat: (typeof todayStats)[number]) => sum + stat.cashBalance, 0);
+  const totalTransactions = todayStats.reduce((sum: number, stat: (typeof todayStats)[number]) => sum + stat.transactionCount, 0);
 
   // Z raporu stores
-  const zReportStores = todayStats.map(stat => {
-    const store = stores.find(s => s.id === stat.storeId)!;
+  const zReportStores = todayStats.map((stat: (typeof todayStats)[number]) => {
+    const store = stores.find((s: (typeof stores)[number]) => s.id === stat.storeId)!;
     return {
       store,
       stat,
@@ -33,7 +33,7 @@ export function FinancialControlCenter() {
     };
   });
 
-  const pendingZReports = zReportStores.filter(s => !s.zReportGenerated);
+  const pendingZReports = zReportStores.filter((s: (typeof zReportStores)[number]) => !s.zReportGenerated);
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -100,7 +100,7 @@ export function FinancialControlCenter() {
                 <CheckCircle className="w-5 h-5 text-green-600" />
               </div>
               <div className="text-2xl text-gray-900 mb-1">
-                {zReportStores.filter(s => s.zReportGenerated).length}/{stores.length}
+                {zReportStores.filter((s: (typeof zReportStores)[number]) => s.zReportGenerated).length}/{stores.length}
               </div>
               <div className="text-sm text-gray-600">Z Raporu Oluşturuldu</div>
             </div>
@@ -154,7 +154,7 @@ export function FinancialControlCenter() {
                   </tr>
                 </thead>
                 <tbody>
-                  {zReportStores.map(item => {
+                  {zReportStores.map((item: (typeof zReportStores)[number]) => {
                     const cashPayment = Math.round(item.stat.revenue * 0.4);
                     const cardPayment = Math.round(item.stat.revenue * 0.6);
                     const highCash = item.stat.cashBalance > 50000;

@@ -133,7 +133,7 @@ export function BankAccountManagement() {
   // Fetch bank accounts
   useEffect(() => {
     if (selectedFirma) {
-      fetchBankAccounts(selectedFirma.id)
+      fetchBankAccounts(selectedFirma.id ?? String(selectedFirma.logicalref))
         .then(data => setAccounts(data))
         .catch(error => toast.error('Banka hesapları yüklenirken hata oluştu.'));
     }

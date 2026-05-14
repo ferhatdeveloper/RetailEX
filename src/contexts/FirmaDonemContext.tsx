@@ -36,6 +36,8 @@ export interface Firm {
   id?: string; // Modern UUID
   firm_nr?: string; // Standard Logo Firm No
   firma_kodu?: string; // Alias for backward compatibility
+  /** Rapor başlıkları için görünen ad */
+  firma_adi?: string;
   ana_para_birimi?: string;
   raporlama_para_birimi?: string;
   /** firms.regulatory_region — e-belge mevzuatı */
@@ -51,6 +53,11 @@ export interface Period {
   firma_id?: string; // Modern Parent UUID
   beg_date: string;
   end_date: string;
+  /** Rapor bileşenleri için Türkçe takma adlar */
+  baslangic_tarihi?: string;
+  bitis_tarihi?: string;
+  /** Trial balance vb. — `donem_adi` yoksa kullanılır */
+  name?: string;
   active: boolean;
   donem_adi?: string;
   donem_no?: number; // Alias for backward compatibility

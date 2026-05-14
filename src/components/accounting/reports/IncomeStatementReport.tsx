@@ -33,8 +33,8 @@ export function IncomeStatementReport() {
 
     try {
       const result = await FinancialReportsService.generateIncomeStatement({
-        firma_id: selectedFirma.id,
-        donem_id: selectedDonem.id,
+        firma_id: selectedFirma.id ?? String(selectedFirma.logicalref),
+        donem_id: selectedDonem.id ?? String(selectedDonem.logicalref),
         baslangic_tarihi: baslangicTarihi || undefined,
         bitis_tarihi: bitisTarihi || undefined
       });

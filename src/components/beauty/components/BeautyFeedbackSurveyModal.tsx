@@ -133,7 +133,7 @@ export function BeautyFeedbackSurveyModal({
                     staff_rating: r2,
                     cleanliness_rating: r3,
                     overall_rating: avg,
-                    comment: feedbackComment || null,
+                    comment: feedbackComment || undefined,
                     would_recommend: avg >= 4,
                     survey_id: activeSurvey.id,
                     survey_answers: answers,
@@ -146,7 +146,7 @@ export function BeautyFeedbackSurveyModal({
                     staff_rating: feedbackRatings.staff,
                     cleanliness_rating: 5,
                     overall_rating: feedbackRatings.overall,
-                    comment: feedbackComment || null,
+                    comment: feedbackComment || undefined,
                     would_recommend: feedbackRatings.overall >= 4,
                 };
             }

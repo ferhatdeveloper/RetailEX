@@ -2,7 +2,7 @@
 import { FileText, Plus, Edit, Trash2, Copy, Download, Upload, Eye, LayoutTemplate, Tag } from 'lucide-react';
 import type { Template, TemplateType, TemplateFormat } from '../../core/types/templates';
 import { TEMPLATE_FORMATS } from '../../core/types/templates';
-import { useTemplateStore } from '../store';
+import { useTemplateStore } from '../../store';
 import { TemplateDesigner } from './TemplateDesigner';
 
 export function TemplateManager() {

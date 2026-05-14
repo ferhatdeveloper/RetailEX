@@ -18,7 +18,7 @@ import {
     PanelLeft, Repeat,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { AppointmentStatus } from '../../../types/beauty';
+import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
@@ -600,7 +600,7 @@ export function AppointmentPOS({
                         } as BeautyCustomer))
                 );
             } catch (e) {
-                logger.error('fetchCurrentAccounts failed in AppointmentPOS', e);
+                logger.error('AppointmentPOS', 'fetchCurrentAccounts failed', e);
             }
         })();
         // eslint-disable-next-line react-hooks/exhaustive-deps -- mount sync
@@ -1003,7 +1003,7 @@ export function AppointmentPOS({
             setNewCust(emptyQuickAddCustomer());
             toast.success(tm('bSaveCustomerOk'));
         } catch (e: unknown) {
-            logger.error('createCustomer failed', e);
+            logger.error('AppointmentPOS', 'createCustomer failed', e);
             const msg = e instanceof Error ? e.message : String(e);
             toast.error(tm('bSaveCustomerFailed'), {
                 description: msg,
@@ -1097,8 +1097,8 @@ export function AppointmentPOS({
             if (!target?.id) return;
 
             await updateAppointment(target.id, {
-                staff_id: nextStaffId || null,
-                specialist_id: nextStaffId || null,
+                staff_id: nextStaffId || undefined,
+                specialist_id: nextStaffId || undefined,
             });
 
             const selectedSpecialist =
@@ -1239,15 +1239,11 @@ export function AppointmentPOS({
         if (!existingAppointment?.id) return false;
         const uiTerminal =
             aptStatus === AppointmentStatus.CANCELLED ||
-            aptStatus === AppointmentStatus.NO_SHOW ||
-            aptStatus === 'cancelled' ||
-            aptStatus === 'no_show';
+            aptStatus === AppointmentStatus.NO_SHOW;
         if (uiTerminal) return false;
         return (
-            existingAppointment.status === AppointmentStatus.COMPLETED ||
-            existingAppointment.status === 'completed' ||
-            aptStatus === AppointmentStatus.COMPLETED ||
-            aptStatus === 'completed'
+            appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED) ||
+            aptStatus === AppointmentStatus.COMPLETED
         );
     }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
 
@@ -1256,17 +1252,13 @@ export function AppointmentPOS({
         if (!existingAppointment?.id) return false;
         if (
             aptStatus === AppointmentStatus.CANCELLED ||
-            aptStatus === AppointmentStatus.NO_SHOW ||
-            aptStatus === 'cancelled' ||
-            aptStatus === 'no_show'
+            aptStatus === AppointmentStatus.NO_SHOW
         ) {
             return false;
         }
         return (
-            existingAppointment.status === AppointmentStatus.COMPLETED ||
-            existingAppointment.status === 'completed' ||
-            aptStatus === AppointmentStatus.COMPLETED ||
-            aptStatus === 'completed'
+            appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED) ||
+            aptStatus === AppointmentStatus.COMPLETED
         );
     }, [existingAppointment?.id, existingAppointment?.status, aptStatus]);
     const serviceLines = useMemo(() => cart.filter(l => l.type === 'service'), [cart]);
@@ -1834,9 +1826,10 @@ export function AppointmentPOS({
 
         const wantsTerminal =
             aptStatus === AppointmentStatus.CANCELLED || aptStatus === AppointmentStatus.NO_SHOW;
-        const dbCompleted =
-            existingAppointment.status === AppointmentStatus.COMPLETED ||
-            existingAppointment.status === 'completed';
+        const dbCompleted = appointmentStatusMatches(
+            existingAppointment.status,
+            AppointmentStatus.COMPLETED,
+        );
         if (wantsTerminal && dbCompleted && customer) {
             const prevSt = String(existingAppointment.status ?? '');
             if (prevSt !== String(aptStatus)) {
@@ -1852,7 +1845,7 @@ export function AppointmentPOS({
                 try {
                     await updateAppointment(existingAppointment.id, {
                         status: aptStatus,
-                        notes: aptNotes?.trim() ? aptNotes : null,
+                        notes: aptNotes?.trim() ? aptNotes : undefined,
                         treatment_degree: receiptTreatmentDegree.trim() || null,
                         treatment_shots: receiptTreatmentShots.trim() || null,
                     });
@@ -1899,8 +1892,8 @@ export function AppointmentPOS({
                 appointment_time: safeTimeHHmm(aptTime),
                 date: safeDateYmd(aptDate),
                 time: safeTimeHHmm(aptTime),
-                device_id: aptDevice || null,
-                notes: aptNotes || null,
+                device_id: aptDevice || undefined,
+                notes: aptNotes || undefined,
                 status: aptStatus,
                 total_price: firstSvcTotal,
                 duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
@@ -1953,7 +1946,7 @@ export function AppointmentPOS({
                 if (!sib?.id) continue;
                 await updateAppointment(sib.id, {
                     status: AppointmentStatus.CANCELLED,
-                    notes: aptNotes?.trim() ? aptNotes : null,
+                    notes: aptNotes?.trim() ? aptNotes : undefined,
                 });
             }
             setAptStatus(AppointmentStatus.CANCELLED);
@@ -2094,8 +2087,7 @@ export function AppointmentPOS({
         if (!existingAppointment?.id) return;
         const terminalFromCompleted =
             (aptStatus === AppointmentStatus.CANCELLED || aptStatus === AppointmentStatus.NO_SHOW) &&
-            (existingAppointment.status === AppointmentStatus.COMPLETED ||
-                existingAppointment.status === 'completed') &&
+            appointmentStatusMatches(existingAppointment.status, AppointmentStatus.COMPLETED) &&
             String(existingAppointment.status ?? '') !== String(aptStatus);
         if (isExistingPaidComplete && !terminalFromCompleted) return;
         if (!existingEditDirty && !terminalFromCompleted) return;
@@ -2235,8 +2227,8 @@ export function AppointmentPOS({
                     appointment_time: safeTimeHHmm(aptTime),
                     date: safeDateYmd(aptDate),
                     time: safeTimeHHmm(aptTime),
-                    device_id: aptDevice || null,
-                    notes: aptNotes || null,
+                    device_id: aptDevice || undefined,
+                    notes: aptNotes || undefined,
                     status: AppointmentStatus.COMPLETED,
                     total_price: firstSvcTotal,
                     duration: Math.max(1, Math.round(aptActualDurationMin || totalDur || Number(existingAppointment.duration) || 30)),
@@ -2256,7 +2248,7 @@ export function AppointmentPOS({
                     );
                     for (const sib of siblings) {
                         if (!sib?.id || sib.id === existingAppointment.id) continue;
-                        if (sib.status === AppointmentStatus.COMPLETED || sib.status === 'completed') continue;
+                        if (appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED)) continue;
                         await updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED });
                     }
                 } catch (syncErr) {
@@ -2646,8 +2638,7 @@ export function AppointmentPOS({
                         </div>
                     </div>
                     {existingAppointment?.id &&
-                        aptStatus !== AppointmentStatus.CANCELLED &&
-                        aptStatus !== 'cancelled' && (
+                        aptStatus !== AppointmentStatus.CANCELLED && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'flex-end' }}>
                             <Label>{'\u00a0'}</Label>
                             <button

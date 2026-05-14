@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Printer, Search, X, Plus, Minus, Check, Grid3x3, Download } from 'lucide-react';
 import type { Product } from '../../../App';
 import type { Template } from '../../../core/types/templates';
-import { useProductStore, useTemplateStore } from '../store';
+import { useProductStore, useTemplateStore } from '../../../store';
 import JsBarcode from 'jsbarcode';
 
 interface BulkLabelPrintProps {

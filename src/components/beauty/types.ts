@@ -1,5 +1,3 @@
-import { AppointmentStatus, AppointmentType } from './types';
-
 export interface Service {
     id: string;
     name: string;

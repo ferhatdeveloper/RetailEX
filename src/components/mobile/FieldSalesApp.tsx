@@ -9,7 +9,7 @@ import {
   MapPin, Navigation, CheckCircle, Clock, Camera, Phone, 
   Package, Banknote, MessageSquare, AlertCircle, User, Menu
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { 
   fieldSalesService, 
   type SalesRoute, 

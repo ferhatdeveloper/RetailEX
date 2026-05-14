@@ -170,7 +170,13 @@ export function KasaIslemDetayModal({
                 {islem.nakit_indirimli && (
                   <div>
                     <span className="text-gray-600">Nakit (İndirimli):</span>
-                    <span className="ml-2 font-medium">{formatCurrency(islem.nakit_indirimli)}</span>
+                    <span className="ml-2 font-medium">
+                      {formatCurrency(
+                        typeof islem.nakit_indirimli === 'number'
+                          ? islem.nakit_indirimli
+                          : Number(islem.nakit_indirimli) || 0
+                      )}
+                    </span>
                   </div>
                 )}
               </div>

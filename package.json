@@ -117,6 +117,7 @@
             "vite": "6.3.5"
       },
       "scripts": {
+            "typecheck": "node ./node_modules/typescript/lib/tsc.js --noEmit --pretty false",
             "dev": "vite",
             "start": "vite",
             "prebuild": "node scripts/sync-app-version.mjs && node scripts/sync-pg-expose.mjs && node scripts/build-postgres-remote-enable.mjs",

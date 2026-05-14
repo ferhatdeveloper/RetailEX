@@ -66,7 +66,7 @@ export function JournalEntryList() {
       } catch (e: any) {
         console.error(e);
         if (!cancelled) {
-          toast.error(t('common.loadError') || 'Liste yüklenemedi');
+          toast.error(String(t.anErrorOccurred ?? 'Liste yüklenemedi'));
           setRows([]);
         }
       } finally {

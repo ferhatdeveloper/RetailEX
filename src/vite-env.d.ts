@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare module 'qrcode';
+
 interface ImportMetaEnv {
   readonly VITE_REGULATORY_REGION?: string;
   /** Varsayılan true: GİB’e gerçek istek yok; false iken iskelet mod (henüz üretim yok) */

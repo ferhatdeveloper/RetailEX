@@ -166,6 +166,8 @@ export interface SidebarTranslations {
 }
 
 export interface Translations {
+  /** Dinamik `t['anahtar']` erişimleri ve kademeli i18n tamamlama */
+  [key: string]: unknown;
   locale: string;
   transaction: string;
   welcomeDashboard: string;

@@ -10,7 +10,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days';
+  'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 
 /** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
@@ -227,6 +227,30 @@ export const productAPI = {
       purchaseRefs,
     };
   },
+
+  /**
+   * Dönem stok hareketlerinde (in / purchase) kaydı olmayan ürün id'leri.
+   * `getDeleteImpact` ile parça parça taranır (PostgREST / PG uyumlu).
+   */
+  async filterIdsWithoutPurchaseHistory(productIds: string[]): Promise<string[]> {
+    const ids = [...new Set((productIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
+    if (!ids.length) return [];
+    const withPurchase = new Set<string>();
+    const CHUNK = 40;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK);
+      try {
+        const impact = await this.getDeleteImpact(chunk);
+        for (const r of impact.purchaseRefs) {
+          withPurchase.add(String(r.productId));
+        }
+      } catch {
+        /* devam */
+      }
+    }
+    return ids.filter((id) => !withPurchase.has(id));
+  },
+
   /**
    * Get all products
    */
@@ -1288,6 +1312,8 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     autoCalculateUSD: dbProduct.auto_calculate_usd === true,
     unitsetId: dbProduct.unitset_id || dbProduct.unit_set_id,
     followUpReminderDays: normalizeProductFollowUpReminderDaysForProduct(dbProduct.follow_up_reminder_days),
+    created_at: dbProduct.created_at != null ? String(dbProduct.created_at) : undefined,
+    updated_at: dbProduct.updated_at != null ? String(dbProduct.updated_at) : undefined,
   };
 }
 

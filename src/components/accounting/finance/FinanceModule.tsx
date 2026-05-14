@@ -40,7 +40,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
   // Calculate totals
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const totalDiscount = filteredSales.reduce((sum, sale) => sum + sale.discount, 0);
-  const totalTax = filteredSales.reduce((sum, sale) => sum + sale.tax, 0);
+  const totalTax = filteredSales.reduce((sum, sale) => sum + (sale.tax ?? 0), 0);
   const netRevenue = filteredSales.reduce((sum, sale) => sum + sale.subtotal, 0);
   const grossRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
 

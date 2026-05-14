@@ -32,8 +32,8 @@ export function BalanceSheetReport() {
     
     try {
       const result = await FinancialReportsService.generateBalanceSheet({
-        firma_id: selectedFirma.id,
-        donem_id: selectedDonem.id,
+        firma_id: selectedFirma.id ?? String(selectedFirma.logicalref),
+        donem_id: selectedDonem.id ?? String(selectedDonem.logicalref),
         bitis_tarihi: bitisTarihi || undefined
       });
       
@@ -66,6 +66,8 @@ export function BalanceSheetReport() {
     if (selectedFirma && selectedDonem) {
       if (selectedDonem.bitis_tarihi) {
         setBitisTarihi(selectedDonem.bitis_tarihi);
+      } else if (selectedDonem.end_date) {
+        setBitisTarihi(selectedDonem.end_date);
       }
       
       loadReport();

@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from 'react';
 import { Database, Check, AlertCircle, Loader2, Download, Upload, RefreshCw, Server, Package, Users, ShoppingCart, CheckCircle, XCircle, Play, FileText, Send, Wifi, WifiOff, CloudUpload } from 'lucide-react';
-import type { Product, Customer } from '../../../App';
+import type { Product, Customer } from '../../App';
 import { LogoIntegration } from '../integrations/LogoIntegration';
 import * as XLSX from 'xlsx';
 
@@ -332,7 +332,17 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
           customers: 523,
           categories: 18,
           variants: 3421,
-          totalValue: 2850000
+          totalValue: 2850000,
+          users: 15,
+          roles: 5,
+          warehouses: 3,
+          productSample: [],
+          customerSample: [],
+          variantSample: [],
+          companySample: null,
+          userSample: [],
+          roleSample: [],
+          warehouseSample: [],
         });
       }, 1500);
     }

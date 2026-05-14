@@ -96,6 +96,10 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
         }
         setSaving(true);
         try {
+            if (!selectedFirm || !selectedPeriod) {
+                toast.error('Firma ve dönem seçin.');
+                return;
+            }
             const routingContext = {
                 firmNr: selectedFirm.nr,
                 periodNr: selectedPeriod.nr
@@ -190,7 +194,9 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
                             <Calendar
                                 mode="single"
                                 selected={date}
-                                onSelect={(d) => d && setDate(d)}
+                                onSelect={(d: Date | undefined) => {
+                                    if (d) setDate(d);
+                                }}
                                 initialFocus
                             />
                         </PopoverContent>

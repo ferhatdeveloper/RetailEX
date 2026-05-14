@@ -19,6 +19,7 @@ out/
 
 # Misc
 .DS_Store
+*.tsbuildinfo
 *.pem
 .vercel
 .env*.local
@@ -85,6 +86,9 @@ Thumbs.db
 
 # Electron
 dist-electron/
+
+# TypeScript compiler error dumps (yerel)
+tsc-errors*.txt
 
 # Temporary files
 *.tmp

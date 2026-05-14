@@ -10,6 +10,7 @@ import { useBeautyStore } from '../store/useBeautyStore';
 import {
     BeautyAppointment,
     AppointmentStatus,
+    appointmentStatusMatches,
     type BeautyFollowUpReminder,
 } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
@@ -580,7 +581,7 @@ export function SmartScheduler() {
     };
 
     const isBeautyAppointmentDone = (apt: BeautyAppointment) =>
-        apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+        appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
 
     /** Takvim kartı: her durumda yan detay paneli (POS panelden açılır) */
     const handleAppointmentPrimaryClick = (apt: BeautyAppointment) => {
@@ -707,7 +708,7 @@ export function SmartScheduler() {
             if (!canDistributeGroupDuration) {
                 await updateAppointment(selectedApt.id, {
                     ...basePatch,
-                    duration: normalizedDuration,
+                    ...(normalizedDuration != null ? { duration: normalizedDuration } : {}),
                 });
                 return;
             }
@@ -786,7 +787,7 @@ export function SmartScheduler() {
     const openRevertConfirmModal = () => {
         if (!selectedApt) return;
         const done =
-            selectedApt.status === AppointmentStatus.COMPLETED || selectedApt.status === 'completed';
+            appointmentStatusMatches(selectedApt.status, AppointmentStatus.COMPLETED);
         if (!done) return;
         setRevertModalApt(selectedApt);
     };
@@ -903,7 +904,7 @@ export function SmartScheduler() {
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
-        const done  = apt.status === AppointmentStatus.COMPLETED || apt.status === 'completed';
+        const done  = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
         return (
             <div
                 key={apt.id}
@@ -1830,10 +1831,10 @@ export function SmartScheduler() {
                                                                                         boxSizing: 'border-box',
                                                                                         padding: '6px 8px',
                                                                                         borderRadius: 4,
-                                                                                        background: (p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed')
+                                                                                        background: (appointmentStatusMatches(p.apt.status, AppointmentStatus.COMPLETED))
                                                                                             ? (STATUS_CFG.completed?.bg ?? '#d1fae5')
                                                                                             : '#ede9fe',
-                                                                                        borderLeft: `3px solid ${(p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed')
+                                                                                        borderLeft: `3px solid ${(appointmentStatusMatches(p.apt.status, AppointmentStatus.COMPLETED))
                                                                                             ? (STATUS_CFG.completed?.color ?? '#059669')
                                                                                             : (p.apt.service_color ?? '#7c3aed')}`,
                                                                                         fontSize: 11,
@@ -1874,7 +1875,7 @@ export function SmartScheduler() {
                                                                                         >
                                                                                             {tm('bCardDetailView')}
                                                                                         </button>
-                                                                                        {(p.apt.status === AppointmentStatus.COMPLETED || p.apt.status === 'completed') ? (
+                                                                                        {(appointmentStatusMatches(p.apt.status, AppointmentStatus.COMPLETED)) ? (
                                                                                             <button
                                                                                                 type="button"
                                                                                                 onClick={e => {
@@ -2382,7 +2383,7 @@ export function SmartScheduler() {
                         ) : null}
                         {(() => {
                             const done =
-                                selectedApt.status === AppointmentStatus.COMPLETED || selectedApt.status === 'completed';
+                                appointmentStatusMatches(selectedApt.status, AppointmentStatus.COMPLETED);
                             if (!done) return null;
                             const hasCustomer = !!(selectedApt.customer_id ?? selectedApt.client_id);
                             return (

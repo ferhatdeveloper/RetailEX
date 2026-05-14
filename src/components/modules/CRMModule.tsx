@@ -1,5 +1,5 @@
 ﻿import { Target, TrendingUp, Users } from 'lucide-react';
-import type { Customer } from '../App';
+import type { Customer } from '../../App';
 
 interface CRMModuleProps {
   customers: Customer[];

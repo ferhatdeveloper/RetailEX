@@ -40,8 +40,8 @@ export function MizanReportModule() {
     
     try {
       const result = await MizanService.generateMizan({
-        firma_id: selectedFirma.id,
-        donem_id: selectedDonem.id,
+        firma_id: selectedFirma.id ?? String(selectedFirma.logicalref),
+        donem_id: selectedDonem.id ?? String(selectedDonem.logicalref),
         baslangic_tarihi: baslangicTarihi || undefined,
         bitis_tarihi: bitisTarihi || undefined,
         hesap_kodu_filtre: hesapKoduFiltre || undefined,

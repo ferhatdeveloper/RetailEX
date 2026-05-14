@@ -3,7 +3,7 @@ import {
   Search, User, Grid3x3, ArrowLeft, Camera, ShoppingBag, Plus, Minus, 
   X, CreditCard, Banknote, Tag, Trash2, Package, Check
 } from 'lucide-react';
-import type { Product, Customer, Sale, SaleItem, Campaign } from '../core/types';
+import type { Product, Customer, Sale, SaleItem, Campaign } from '../../core/types';
 
 interface MobileSalesScreenProps {
   products: Product[];

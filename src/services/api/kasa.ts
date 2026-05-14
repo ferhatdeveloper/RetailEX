@@ -48,6 +48,20 @@ export interface KasaIslemi {
   olusturma_tarihi?: string;
   guncelleme_tarihi?: string;
   ozel_kod?: string;
+  /** Detay modalında gösterilen ek alanlar (Logo/ERP uyumluluğu) */
+  makbuz_no?: string;
+  durumu?: string;
+  ticari_islem_grubu?: string;
+  kullanilacak_para_birimi?: string;
+  nakit_indirimli?: boolean | string | number;
+  teminat_riskini_etkileyecek?: boolean | string;
+  riski_etkileyecek?: boolean | string;
+  isyeri_adi?: string;
+  isyeri_kodu?: string;
+  satis_elemani_kodu?: string;
+  yetki_kodu?: string;
+  kasa_aciklamasi?: string;
+  muhasebe_fis_no?: string;
   // New fields for Virman / Bank / Expense
   target_register_id?: string;
   target_register_name?: string; // Add this line

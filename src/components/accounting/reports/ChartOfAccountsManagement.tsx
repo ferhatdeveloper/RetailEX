@@ -139,7 +139,7 @@ export function ChartOfAccountsManagement() {
   // Fetch accounts on component mount
   useEffect(() => {
     if (selectedFirma) {
-      fetchChartOfAccounts(selectedFirma.id)
+      fetchChartOfAccounts(selectedFirma.id ?? String(selectedFirma.logicalref))
         .then(data => setAccounts(data))
         .catch(error => toast.error('Hesap planı yüklenirken hata oluştu'));
     }

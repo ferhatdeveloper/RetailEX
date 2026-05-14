@@ -1,7 +1,13 @@
-import { memo } from 'react';
-import { FixedSizeGrid as Grid } from 'react-window';
+import { memo, useMemo } from 'react';
+import { Grid } from 'react-window';
 import { Package } from 'lucide-react';
 import type { Product } from '../../App';
+
+type GridCellExtraProps = {
+  products: Product[];
+  gridColumns: number;
+  onProductClick: (product: Product) => void;
+};
 
 interface VirtualProductGridProps {
   products: Product[];
@@ -60,6 +66,36 @@ const ProductCard = memo(({
 
 ProductCard.displayName = 'ProductCard';
 
+function ProductGridCell({
+  ariaAttributes,
+  columnIndex,
+  rowIndex,
+  style,
+  products,
+  gridColumns,
+  onProductClick,
+}: {
+  ariaAttributes: { 'aria-colindex': number; role: 'gridcell' };
+  columnIndex: number;
+  rowIndex: number;
+  style: React.CSSProperties;
+} & GridCellExtraProps) {
+  const index = rowIndex * gridColumns + columnIndex;
+  if (index >= products.length) {
+    return <div {...ariaAttributes} style={style} />;
+  }
+  const product = products[index];
+  return (
+    <div {...ariaAttributes} style={style}>
+      <ProductCard
+        product={product}
+        onClick={() => onProductClick(product)}
+        style={{ width: '100%', height: '100%' }}
+      />
+    </div>
+  );
+}
+
 export const VirtualProductGrid = memo(({
   products,
   onProductClick,
@@ -71,32 +107,22 @@ export const VirtualProductGrid = memo(({
   const rowHeight = 120;
   const rowCount = Math.ceil(products.length / gridColumns);
 
-  const Cell = ({ columnIndex, rowIndex, style }: any) => {
-    const index = rowIndex * gridColumns + columnIndex;
-    if (index >= products.length) return null;
-    
-    const product = products[index];
-    return (
-      <ProductCard
-        product={product}
-        onClick={() => onProductClick(product)}
-        style={style}
-      />
-    );
-  };
+  const cellProps = useMemo<GridCellExtraProps>(
+    () => ({ products, gridColumns, onProductClick }),
+    [products, gridColumns, onProductClick],
+  );
 
   return (
     <Grid
       columnCount={gridColumns}
       columnWidth={columnWidth}
-      height={containerHeight}
       rowCount={rowCount}
       rowHeight={rowHeight}
-      width={containerWidth}
-      overscanRowCount={2}
-    >
-      {Cell}
-    </Grid>
+      overscanCount={2}
+      style={{ height: containerHeight, width: containerWidth }}
+      cellProps={cellProps}
+      cellComponent={ProductGridCell}
+    />
   );
 });
 
