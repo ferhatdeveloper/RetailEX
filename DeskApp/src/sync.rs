@@ -39,7 +39,6 @@ pub struct BackgroundSyncService {
     input_manager: Arc<RemoteInputManager>,
     screen_capture: Arc<ScreenCaptureService>,
     security_service: Arc<SecurityService>,
-    vpn_manager: Arc<crate::vpn::VpnManager>,
 }
 
 impl BackgroundSyncService {
@@ -52,7 +51,6 @@ impl BackgroundSyncService {
                 input_manager: Arc::new(RemoteInputManager::new()),
                 screen_capture: Arc::new(ScreenCaptureService::new()),
                 security_service: Arc::new(SecurityService::new()),
-                vpn_manager: Arc::new(crate::vpn::VpnManager::new()),
             },
             rx
         )
@@ -90,10 +88,9 @@ impl BackgroundSyncService {
         let input_mgr = self.input_manager.clone();
         let screen_cap = self.screen_capture.clone();
         let security_svc = self.security_service.clone();
-        let vpn_mgr = self.vpn_manager.clone();
         
         tauri::async_runtime::spawn(async move {
-            start_websocket_listener(ws_token, ws_handle, rx, input_mgr, screen_cap, security_svc, vpn_mgr).await;
+            start_websocket_listener(ws_token, ws_handle, rx, input_mgr, screen_cap, security_svc).await;
         });
     }
 
@@ -119,17 +116,13 @@ pub async fn process_sync_queue_internal() -> Result<(), String> {
     if !config.is_configured || config.skip_integration { return Ok(()); }
     
     let api_url = if config.central_api_url.is_empty() || config.central_api_url == "https://api.retailex.app/sync" { 
-        if config.enable_mesh {
-            "http://localhost:8000/api/v1/sync".to_string() 
-        } else {
-            "http://localhost:8000/api/v1/sync".to_string()
-        }
+        "http://localhost:8000/api/v1/sync".to_string() 
     } else { 
         config.central_api_url.clone() 
     };
 
-    if !config.enable_mesh && api_url.contains("10.8.0.") {
-        eprintln!("⚠️ WARNING: Standard mode active but API URL points to Mesh range (10.8.0.x). Connection might fail.");
+    if api_url.contains("10.8.0.") {
+        eprintln!("⚠️ WARNING: API URL Mesh aralığına (10.8.0.x) işaret ediyor; bağlantı başarısız olabilir.");
     }
 
     // 2. Connect to Local DB - Use Configured Credentials
@@ -253,7 +246,6 @@ async fn start_websocket_listener(
     input_manager: Arc<RemoteInputManager>,
     screen_capture: Arc<ScreenCaptureService>,
     security_service: Arc<SecurityService>,
-    vpn_manager: Arc<crate::vpn::VpnManager>
 ) {
     let config = match crate::config::get_app_config_internal() {
         Ok(c) => c,
@@ -272,11 +264,7 @@ async fn start_websocket_listener(
     }
 
     let url_str = if config.central_ws_url.is_empty() || config.central_ws_url == "wss://api.retailex.app/ws" { 
-        if config.enable_mesh {
-            "ws://localhost:8000/api/v1/ws".to_string() 
-        } else {
-            "ws://localhost:8000/api/v1/ws".to_string()
-        }
+        "ws://localhost:8000/api/v1/ws".to_string() 
     } else { 
         config.central_ws_url.clone() 
     };
@@ -376,22 +364,7 @@ async fn start_websocket_listener(
                                                 }
                                             },
                                             "UPDATE_PEERS" => {
-                                                if let Some(payload) = parsed.payload {
-                                                    if let Some(peers) = payload.get("peers").and_then(|v| v.as_array()) {
-                                                        for peer_val in peers {
-                                                            let v_ip = peer_val.get("virtual_ip").and_then(|v| v.as_str());
-                                                            let ep = peer_val.get("endpoint").and_then(|v| v.as_str());
-                                                            
-                                                            if let (Some(vip), Some(endpoint)) = (v_ip, ep) {
-                                                                if let Ok(addr) = endpoint.parse::<std::net::SocketAddr>() {
-                                                                    let mut eps = vpn_manager.peer_endpoints.lock().unwrap();
-                                                                    eps.insert(vip.to_string(), addr);
-                                                                    println!("📡 Mesh Discovery: Endpoint for {} updated to {}", vip, endpoint);
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                                // Eski merkez mesajları: artık yerel mesh/VPN yok; yoksay.
                                             },
                                             _ => {}
                                         }
@@ -427,13 +400,15 @@ async fn start_websocket_listener(
                         }
                         // 3. Periodic Heartbeat
                         _ = heartbeat_interval.tick() => {
-                            let v_ip = vpn_manager.tunnel.lock().unwrap().as_ref()
-                                .map(|s| s.config.virtual_ip.clone())
-                                .unwrap_or_else(|| {
-                                    config.vpn_config.as_ref()
-                                        .map(|c| c.virtual_ip.clone())
-                                        .unwrap_or_else(|| "N/A".to_string())
-                                });
+                            let v_ip = if config.device_id.trim().is_empty() {
+                                if config.terminal_name.trim().is_empty() {
+                                    "local".to_string()
+                                } else {
+                                    config.terminal_name.clone()
+                                }
+                            } else {
+                                config.device_id.clone()
+                            };
 
                             let hb = Heartbeat {
                                 msg_type: "HEARTBEAT".to_string(),
@@ -468,38 +443,9 @@ async fn start_websocket_listener(
 }
 
 #[tauri::command]
-pub async fn enable_remote_support(app: tauri::AppHandle) -> Result<String, String> {
-    println!("🔧 P2P Uzaktan Destek talebi alınıyor...");
-    
-    // 1. Get current config
-    let mut config = crate::config::get_app_config(app.clone()).map_err(|e| e.to_string())?;
-    
-    // 2. Force mesh enable for support
-    config.enable_mesh = true;
-    
-    // 3. Generate VPN keys if missing
-    if config.vpn_config.is_none() {
-        println!("🔑 VPN Anahtarları eksik, otomatik oluşturuluyor...");
-        let keys_json = crate::vpn::generate_vpn_keys().map_err(|e: String| e.to_string())?;
-        let priv_key = keys_json["private_key"].as_str().ok_or("Missing private key")?.to_string();
-        let pub_key = keys_json["public_key"].as_str().ok_or("Missing public key")?.to_string();
-        config.vpn_config = Some(crate::vpn::VpnConfig::from_keys(priv_key, pub_key));
-    }
-    
-    // 4. Save updated config
-    crate::config::save_app_config(app.clone(), config.clone()).map_err(|e| e.to_string())?;
-    
-    // 5. Trigger VPN Mesh Start (if not already running)
-    let vpn_state: tauri::State<crate::vpn::VpnManager> = app.state();
-    if let Some(vpn_config) = config.vpn_config {
-        let _ = crate::vpn::start_vpn_mesh(app.clone(), vpn_state, vpn_config).await;
-    }
-
-    // 6. Signal the WebSocket listener to reconnect (by stopping existing if we had a non-mesh one)
-    // Actually, the listener loops on failure. We might need a more robust way to force reconnect, 
-    // but for now, simple config update + VPN start is the priority.
-    
-    Ok("P2P Altyapısı Aktif Edildi. Bağlantı bekliyor...".to_string())
+pub async fn enable_remote_support(_app: tauri::AppHandle) -> Result<String, String> {
+    println!("🔧 Uzaktan destek: WebSocket merkez URL üzerinden kullanılır (VPN kaldırıldı).");
+    Ok("Uzak destek için merkez WebSocket URL\'sini (central_ws_url) yapılandırın.".to_string())
 }
 
 #[tauri::command]

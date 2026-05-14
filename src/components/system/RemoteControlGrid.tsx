@@ -20,7 +20,7 @@ export function RemoteControlGrid({ onConnect }: { onConnect: (peer: Peer) => vo
             setLoading(true);
             if (isTauri) {
                 const { invoke } = await import('@tauri-apps/api/core');
-                const list = await invoke<Peer[]>('get_mesh_peers');
+                const list: Peer[] = [];
                 setPeers(list);
             } else {
                 // Mock peers for web demo
@@ -74,7 +74,7 @@ export function RemoteControlGrid({ onConnect }: { onConnect: (peer: Peer) => vo
                 <div className="p-20 text-center border border-dashed border-gray-800 bg-gray-900/50">
                     <Wifi className="w-10 h-10 text-gray-700 mx-auto mb-4" />
                     <p className="text-gray-500 text-sm uppercase tracking-widest">Aktif terminal bulunamadı</p>
-                    <p className="text-gray-600 text-[10px] mt-2 italic">Mesh ağı taranıyor...</p>
+                    <p className="text-gray-600 text-[10px] mt-2 italic">Uzak cihaz listesi (mesh) kaldırıldı; merkez WebSocket ile bağlanın.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

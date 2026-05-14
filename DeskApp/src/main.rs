@@ -13,10 +13,7 @@ mod security;
 mod logger;
 mod config;
 mod db;
-mod vpn;
 mod backup_service;
-mod device_fingerprint;
-mod vpn_keys;
 mod bank_ops;
 mod license;
 mod caller_id_serial;
@@ -1827,9 +1824,6 @@ fn check_bootstrap_config(app: &tauri::AppHandle) {
                     if let Some(l_active) = bootstrap_config.get("logo_objects_active").and_then(|v| v.as_bool()) {
                         config.logo_objects_active = l_active;
                     }
-                    if let Some(v_fixed) = bootstrap_config.get("use_fixed_vpn_ip").and_then(|v| v.as_bool()) {
-                        config.use_fixed_vpn_ip = v_fixed;
-                    }
                     let _ = config::save_app_config(app.clone(), config);
                     let _ = std::fs::remove_file(bootstrap_path);
                 }
@@ -1863,7 +1857,6 @@ fn main() {
 
         let (sync_service, rx) = BackgroundSyncService::new();
         app.manage(sync::SyncSender(sync_service.get_sender()));
-        app.manage(vpn::VpnManager::new());
         sync_service.start(Some(handle.clone()), rx);
 
         let app_handle = handle.clone();
@@ -1880,12 +1873,7 @@ fn main() {
                     
                 }
 
-                config.enable_mesh = true;
                 let _ = config::save_app_config(app_handle.clone(), config.clone());
-                if let Some(vpn_cfg) = config.vpn_config {
-                    let vpn_state: tauri::State<vpn::VpnManager> = app_handle.state();
-                    let _ = vpn::start_vpn_mesh(app_handle.clone(), vpn_state, vpn_cfg).await;
-                }
             }
         });
         Ok(())
@@ -1901,8 +1889,6 @@ fn main() {
         sync::send_websocket_message, sync::announce_node, sync::get_last_sync_info,
         verify_license, check_update_status,
 
-        vpn::get_vpn_status, vpn::get_mesh_peers, vpn::generate_vpn_keys, vpn::start_vpn_mesh, vpn::stop_vpn, vpn::update_peer_endpoint,
-        vpn_keys::generate_device_bound_vpn_keys, vpn_keys::verify_device_and_decrypt_key,
         maintenance::compact_database, security::verify_token,
         logger::log_from_frontend, logger::log_crud_error,
         config::get_app_config, config::save_app_config,
@@ -1982,7 +1968,6 @@ fn remove_retailex_windows_services() -> Result<String, String> {
 
         let pairs: &[(&str, &str)] = &[
             ("RetailEX_Service.exe", "RetailEX_Service"),
-            ("RetailEX_VPN.exe", "RetailEX_VPN"),
             ("RetailEX_SQL_Bridge.exe", "RetailEX_SQL_Bridge"),
             ("RetailEX_Logo.exe", "RetailEX_Logo"),
             ("RetailEX_Logo_Connector.exe", "RetailEXLogoConnector"),

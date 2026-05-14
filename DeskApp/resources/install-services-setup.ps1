@@ -75,14 +75,11 @@ function Start-RetailExService {
 }
 
 $serviceExe = Join-Path $Prefix "RetailEX_Service.exe"
-$vpnExe = Join-Path $Prefix "RetailEX_VPN.exe"
 $bridgeExe = Join-Path $Prefix "RetailEX_SQL_Bridge.exe"
 $npmScript = Join-Path $Prefix "install-bridge-npm.ps1"
 
 Invoke-ServiceInstall -ExePath $serviceExe -Label "RetailEX_Service"
-Invoke-ServiceInstall -ExePath $vpnExe -Label "RetailEX_VPN"
 Start-RetailExService -Name "RetailEX_Service"
-Start-RetailExService -Name "RetailEX_VPN"
 
 if (Test-Path -LiteralPath $npmScript) {
     Write-Host "[RetailEX] SQL Bridge npm bagimliliklari..."

@@ -1,15 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { APP_VERSION } from '../../core/version';
 import {
-    Wifi, WifiOff, Database, Clock, Globe, CheckCircle2, XCircle, Loader2,
+    Wifi, WifiOff, Database, Clock, CheckCircle2, Loader2,
     ArrowLeft, ArrowRight
 } from 'lucide-react';
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
-
-interface VpnStatus {
-    is_running: boolean;
-    virtual_ip: string;
-}
 
 interface LastSyncInfo {
     last_sync_date?: string;
@@ -34,26 +29,10 @@ export const AppFooter: React.FC<AppFooterProps> = ({
     nextLabel = "DEVAM ET",
     prevLabel = "GERİ DÖN"
 }) => {
-    const [vpnStatus, setVpnStatus] = useState<VpnStatus>({ is_running: false, virtual_ip: 'N/A' });
     const [isOnline, setIsOnline] = useState<boolean>(true);
     const [dbConnected, setDbConnected] = useState<boolean>(true);
     const [lastSyncTime, setLastSyncTime] = useState<string>('--:--');
     const [currentTime, setCurrentTime] = useState<string>('');
-
-    // Update VPN status
-    const updateVpnStatus = async () => {
-        try {
-            if (isTauri) {
-                const { invoke } = await import('@tauri-apps/api/core');
-                const status: VpnStatus = await invoke('get_vpn_status');
-                setVpnStatus(status);
-            } else {
-                setVpnStatus({ is_running: false, virtual_ip: 'WEB' });
-            }
-        } catch (err) {
-            console.error('Failed to fetch VPN status:', err);
-        }
-    };
 
     // Fetch last sync time
     const fetchLastSync = async () => {
@@ -102,14 +81,10 @@ export const AppFooter: React.FC<AppFooterProps> = ({
 
     // Initial data fetch
     useEffect(() => {
-        updateVpnStatus();
         fetchLastSync();
-
-        const vpnInterval = setInterval(updateVpnStatus, 10000); // Every 10 seconds
         const syncInterval = setInterval(fetchLastSync, 30000); // Every 30 seconds
 
         return () => {
-            clearInterval(vpnInterval);
             clearInterval(syncInterval);
         };
     }, []);
@@ -151,14 +126,6 @@ export const AppFooter: React.FC<AppFooterProps> = ({
                         DB {dbConnected ? 'Connected' : 'Disconnected'}
                     </span>
                 </div>
-
-                {/* VPN Status */}
-                {vpnStatus.is_running && (
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                        <Globe className="w-3 h-3 text-emerald-500" />
-                        <span className="font-medium text-emerald-400 text-[9px]">{vpnStatus.virtual_ip}</span>
-                    </div>
-                )}
             </div>
 
             {/* Center Section: Navigation Button */}
@@ -208,5 +175,4 @@ export const AppFooter: React.FC<AppFooterProps> = ({
         </div>
     );
 };
-
 

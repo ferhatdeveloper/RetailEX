@@ -24,9 +24,6 @@ use std::env;
 #[path = "license.rs"]
 mod license;
 
-#[path = "vpn.rs"]
-mod vpn;
-
 #[path = "config.rs"]
 mod config;
 

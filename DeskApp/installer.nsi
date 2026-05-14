@@ -941,7 +941,6 @@ Section Install
 
   ; Copy external binaries
     File /a "/oname=RetailEX_Service.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Service.exe"
-    File /a "/oname=RetailEX_VPN.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_VPN.exe"
     File /a "/oname=RetailEX_Logo.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Logo.exe"
     File /a "/oname=RetailEX_SQL_Bridge.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_SQL_Bridge.exe"
     File /a "/oname=RetailEX_Config.exe" "D:\RetailEX\DeskApp\target\release\RetailEX_Config.exe"
@@ -977,7 +976,7 @@ Section Install
   ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$INSTDIR\install-services-setup.ps1"' $0
   ${If} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nGerekirse UAC penceresinde İzin Ver seçin; kurulum yönetici olmadan çalışıyorsa tekrar deneyin.$\r$\n$\r$\nTeknik ayrıntılar (varsa):$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_VPN_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n$\r$\nKurulumdan sonra: install-services-manual.cmd dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nGerekirse UAC penceresinde İzin Ver seçin; kurulum yönetici olmadan çalışıyorsa tekrar deneyin.$\r$\n$\r$\nTeknik ayrıntılar (varsa):$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\n$\r$\nKurulumdan sonra: install-services-manual.cmd dosyasına sağ tıklayıp Yönetici olarak çalıştırın."
   ${EndIf}
 
   ; Write bootstrap config for the backend to consume on first run
@@ -1008,7 +1007,6 @@ Section Install
   ${EndIf}
   FileWrite $9 "$\r$\nServis Durumları:$\r$\n"
   FileWrite $9 "- RetailEX Sync Service: KURULDU & ÇALIŞIYOR$\r$\n"
-  FileWrite $9 "- RetailEX VPN (Wintun): KURULDU & ÇALIŞIYOR$\r$\n"
   FileWrite $9 "- RetailEX SQL Bridge (Port 3001): KURULDU (Native Windows Service EXE)$\r$\n"
   ${If} $InstallRole == 1
     FileWrite $9 "- Redis (Memory Cache): KURULDU$\r$\n"
@@ -1025,7 +1023,7 @@ Section Install
   FileWrite $9 "$\r$\nÖnemli Notlar:$\r$\n"
   FileWrite $9 "1. Eğer Logo bağlantısı aktifse, LObjects.dll yolunun doğruluğunu kontrol edin.$\r$\n"
   FileWrite $9 "2. Güvenlik duvarından (Firewall) 8000, 5432 ve 6379 portlarına izin verildiğinden emin olun.$\r$\n"
-  FileWrite $9 "3. Wintun VPN IP adresi ($WSUrl) üzerinden terminaller merkeze bağlanabilir.$\r$\n"
+  FileWrite $9 "3. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "4. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
   FileWrite $9 "5. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "6. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
@@ -1163,18 +1161,15 @@ Section Uninstall
 
   ; Stop and Uninstall Services
   ExecWait 'net stop RetailEX_Service'
-  ExecWait 'net stop RetailEX_VPN'
   ExecWait 'net stop RetailEX_SQL_Bridge'
   ExecWait 'net stop RetailEXLogoConnector'
   ExecWait '"$INSTDIR\RetailEX_Service.exe" --uninstall'
-  ExecWait '"$INSTDIR\RetailEX_VPN.exe" --uninstall'
   ExecWait '"$INSTDIR\RetailEX_SQL_Bridge.exe" --uninstall'
   IfFileExists "$INSTDIR\RetailEX_Logo_Connector.exe" 0 +2
     ExecWait '"$INSTDIR\RetailEX_Logo_Connector.exe" --uninstall'
 
   ; Delete external binaries
     Delete "$INSTDIR\RetailEX_Service.exe"
-    Delete "$INSTDIR\RetailEX_VPN.exe"
     Delete "$INSTDIR\RetailEX_SQL_Bridge.exe"
     Delete "$INSTDIR\RetailEX_Config.exe"
     Delete "$INSTDIR\RetailEX_Logo_Connector.exe"

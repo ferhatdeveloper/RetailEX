@@ -1,20 +1,6 @@
 #[path = "config.rs"]
 mod config;
 
-// Mock vpn module for config to satisfy imports when built as standalone
-mod vpn {
-    use serde::{Serialize, Deserialize};
-    #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-    pub struct VpnConfig {
-        pub private_key: String,
-        pub public_key: String,
-        pub listen_port: u16,
-        pub virtual_ip: String,
-        pub endpoint: Option<String>,
-        pub enable_discovery: bool,
-    }
-}
-
 use rusqlite::{params, Connection};
 use std::path::{PathBuf, Path};
 use native_dialog::{MessageDialog, FileDialog};
@@ -241,17 +227,12 @@ fn install_services_nearby() -> anyhow::Result<String> {
     let exe = std::env::current_exe()?;
     let base = exe.parent().ok_or_else(|| anyhow::anyhow!("Install dir not found"))?;
     let svc = base.join("RetailEX_Service.exe");
-    let vpn = base.join("RetailEX_VPN.exe");
     let bridge_exe = base.join("RetailEX_SQL_Bridge.exe");
     let bridge = base.join("install-bridge.ps1");
 
     if svc.exists() {
         let _ = std::process::Command::new(&svc).arg("--install").status();
         let _ = std::process::Command::new("sc").args(["start", "RetailEX_Service"]).status();
-    }
-    if vpn.exists() {
-        let _ = std::process::Command::new(&vpn).arg("--install").status();
-        let _ = std::process::Command::new("sc").args(["start", "RetailEX_VPN"]).status();
     }
     if bridge_exe.exists() {
         let _ = std::process::Command::new(&bridge_exe).arg("--install").status();
@@ -265,7 +246,7 @@ fn install_services_nearby() -> anyhow::Result<String> {
 }
 
 fn get_services_health() -> anyhow::Result<String> {
-    let script = "Get-Service -Name RetailEX_Service,RetailEX_VPN,RetailEX_SQL_Bridge -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
+    let script = "Get-Service -Name RetailEX_Service,RetailEX_SQL_Bridge -ErrorAction SilentlyContinue | Select-Object Name,Status | Format-Table -HideTableHeaders";
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-Command", script])
         .output()?;

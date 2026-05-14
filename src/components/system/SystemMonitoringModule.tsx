@@ -3,7 +3,6 @@ import { Activity, Shield, Cpu, Network, Terminal, RefreshCw, Radio, HardDrive }
 const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
 export function SystemMonitoringModule() {
-    const [vpnStatus, setVpnStatus] = useState<any>(null);
     const [hwId, setHwId] = useState('...');
     const [logs, setLogs] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
@@ -16,15 +15,9 @@ export function SystemMonitoringModule() {
         try {
             if (isTauri) {
                 const { invoke } = await import('@tauri-apps/api/core');
-                const status: any = await invoke('get_vpn_status');
                 const id: any = await invoke('get_system_id');
-                setVpnStatus(status);
                 setHwId(id);
-                if (status.is_running) {
-                    addLog(`📡 Mesh IP: ${status.virtual_ip} aktif.`);
-                }
             } else {
-                setVpnStatus({ is_running: false, virtual_ip: '127.0.0.1 (Web)' });
                 setHwId('WEB-CLIENT-ID-MOCK');
             }
             setLoading(false);
@@ -53,23 +46,18 @@ export function SystemMonitoringModule() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* VPN Stat */}
-                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl shadow-inner group hover:border-blue-500/50 transition-all">
+                {/* Yerleşik VPN kaldırıldı — merkez WebSocket / HTTP ile bağlantı */}
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl shadow-inner group hover:border-blue-500/50 transition-all md:col-span-2">
                     <div className="flex items-center justify-between mb-3">
                         <Shield className="w-4 h-4 text-blue-400" />
-                        <Activity className={`w-3 h-3 ${vpnStatus?.is_running ? 'text-green-500 animate-pulse' : 'text-gray-600'}`} />
+                        <Network className="w-4 h-4 text-slate-500" />
                     </div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">P2P Mesh Durumu</p>
-                    <p className="text-lg font-black text-blue-100">{vpnStatus?.is_running ? 'AKTİF / READY' : 'DEVRE DIŞI'}</p>
-                </div>
-
-                {/* Virtual IP */}
-                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl shadow-inner group hover:border-blue-500/50 transition-all">
-                    <div className="flex items-center justify-between mb-3">
-                        <Network className="w-4 h-4 text-purple-400" />
-                    </div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Mesh Sanal IP (Internal)</p>
-                    <p className="text-lg font-mono font-black text-purple-100">{vpnStatus?.virtual_ip || '---.---.---.---'}</p>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Ağ katmanı</p>
+                    <p className="text-sm font-black text-blue-100 mt-1">Yerleşik VPN / mesh kaldırıldı</p>
+                    <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
+                        Şube–merkez iletişimi için yapılandırmada <span className="text-slate-400">central_api_url</span> ve{' '}
+                        <span className="text-slate-400">central_ws_url</span> kullanılır.
+                    </p>
                 </div>
 
                 {/* HWID */}
@@ -107,7 +95,7 @@ export function SystemMonitoringModule() {
                             <span className="text-[10px] uppercase font-bold text-gray-500">WebSocket Status</span>
                             <span className="text-[10px] uppercase font-bold text-green-400 flex items-center gap-2">
                                 <span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>
-                                Connected to 10.8.0.1
+                                Standby (merkez WS)
                             </span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-black/40 border border-gray-800 rounded-lg">
@@ -115,8 +103,8 @@ export function SystemMonitoringModule() {
                             <span className="text-[10px] uppercase font-mono font-bold text-blue-400">14ms</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-black/40 border border-gray-800 rounded-lg">
-                            <span className="text-[10px] uppercase font-bold text-gray-500">Encrypted Tunnel</span>
-                            <span className="text-[10px] uppercase font-bold text-amber-400">ChaCha20-Poly1305 Active</span>
+                            <span className="text-[10px] uppercase font-bold text-gray-500">Şifreli tünel (VPN)</span>
+                            <span className="text-[10px] uppercase font-bold text-slate-500">Kullanılmıyor</span>
                         </div>
                     </div>
                 </div>

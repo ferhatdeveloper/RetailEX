@@ -5,7 +5,7 @@ param(
     [switch]$Menu
 )
 
-$Script:ServiceNames = @("RetailEX_Service", "RetailEX_VPN", "RetailEX_SQL_Bridge")
+$Script:ServiceNames = @("RetailEX_Service", "RetailEX_SQL_Bridge")
 $Script:PassFields = @("erp_pass", "pg_remote_pass", "pg_local_pass", "logo_objects_pass")
 $Script:LogPath = Join-Path $env:TEMP "retailex_admin.log"
 
@@ -79,9 +79,6 @@ function Get-AppConfig {
             $cfg.$f = ConvertFrom-Base64 $cfg.$f
         }
     }
-    if ($cfg.vpn_config -and $cfg.vpn_config.private_key) {
-        $cfg.vpn_config.private_key = ConvertFrom-Base64 $cfg.vpn_config.private_key
-    }
     return $cfg
 }
 
@@ -90,9 +87,6 @@ function Save-AppConfig($cfg) {
         if ($cfg.PSObject.Properties.Name -contains $f) {
             $cfg.$f = ConvertTo-Base64 ([string]$cfg.$f)
         }
-    }
-    if ($cfg.vpn_config -and $cfg.vpn_config.private_key) {
-        $cfg.vpn_config.private_key = ConvertTo-Base64 ([string]$cfg.vpn_config.private_key)
     }
     $json = $cfg | ConvertTo-Json -Depth 20 -Compress
     Save-ConfigJsonRaw -JsonText $json
@@ -145,22 +139,15 @@ function Set-LogoConfig {
 function Install-CoreServices {
     $baseDir = Split-Path -Parent $PSCommandPath
     $svcExe = Join-Path $baseDir "RetailEX_Service.exe"
-    $vpnExe = Join-Path $baseDir "RetailEX_VPN.exe"
     $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
     $bridgePs = Join-Path $baseDir "install-bridge.ps1"
 
     if (-not (Test-Path $svcExe)) { throw "RetailEX_Service.exe bulunamadi: $svcExe" }
-    if (-not (Test-Path $vpnExe)) { throw "RetailEX_VPN.exe bulunamadi: $vpnExe" }
 
     Write-Info "RetailEX_Service kuruluyor..."
     & $svcExe --install
     Start-Sleep -Seconds 1
     Start-Service -Name "RetailEX_Service" -ErrorAction SilentlyContinue
-
-    Write-Info "RetailEX_VPN kuruluyor..."
-    & $vpnExe --install
-    Start-Sleep -Seconds 1
-    Start-Service -Name "RetailEX_VPN" -ErrorAction SilentlyContinue
 
     if (Test-Path $bridgeExe) {
         Write-Info "RetailEX_SQL_Bridge kuruluyor..."

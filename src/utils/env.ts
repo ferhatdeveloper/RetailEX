@@ -63,7 +63,7 @@ export async function safeInvoke<T>(command: string, args?: any, fallback?: T): 
   throw new Error(`Tauri command "${command}" is not available in browser mode.`);
 }
 
-/** Windows Tauri: RetailEX arka plan / VPN / SQL Bridge / Logo Windows hizmetlerini durdurur ve kaldırır. */
+/** Windows Tauri: RetailEX arka plan / SQL Bridge / Logo Windows hizmetlerini durdurur ve kaldırır. */
 export async function removeRetailexWindowsServicesIfTauri(): Promise<{ ok: boolean; detail?: string }> {
   if (!IS_TAURI) return { ok: true };
   try {

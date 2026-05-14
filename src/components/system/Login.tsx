@@ -86,7 +86,7 @@ export function Login({ onLogin }: LoginProps) {
     'custom_url',
   );
   const [tenantPostgrestSlug, setTenantPostgrestSlug] = useState('');
-  /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya VPN) */
+  /** Tauri: online = uzak PG, offline/hybrid = bu formdaki host (yerel veya LAN) */
   const [dbConnectionMode, setDbConnectionMode] = useState<ConnectionMode>('hybrid');
   const [hybridReadPreference, setHybridReadPreference] = useState<HybridReadPreference>('local_first');
   const [hybridSyncDirection, setHybridSyncDirection] = useState<HybridSyncDirection>('local_to_remote');
@@ -530,11 +530,7 @@ export function Login({ onLogin }: LoginProps) {
         central_api_url: "https://api.retailex.com/sync",
         central_ws_url: "wss://api.retailex.com/ws",
         role: "terminal",
-        enable_mesh: false,
         device_id: "",
-        private_key: "",
-        public_key: "",
-        vpn_config: null,
         backup_config: {
           enabled: false,
           daily_backup: false,
@@ -1341,7 +1337,7 @@ export function Login({ onLogin }: LoginProps) {
                     <div className="space-y-4 p-4 bg-black/5 rounded-sm border border-white/5">
                       <div className="grid grid-cols-4 gap-2">
                         <div className="col-span-3 space-y-1">
-                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host (sunucu / VPN IP)</label>
+                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-500">Host (sunucu / LAN IP)</label>
                           <input
                             type="text"
                             value={dbConfig.host}
@@ -2147,11 +2143,11 @@ export function Login({ onLogin }: LoginProps) {
                         className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-700 bg-gray-800 text-blue-200' : 'border-gray-200 bg-white text-gray-900'}`}
                       >
                         <option value="online">Online — merkezi (uzak) sunucu</option>
-                        <option value="hybrid">Hybrid — yerel/VPN host + senkron</option>
+                        <option value="hybrid">Hybrid — yerel/LAN host + senkron</option>
                         <option value="offline">Offline — yalnızca bu ekrandaki host</option>
                       </select>
                       <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                        <strong>Online</strong> seçiliyken SQL, Yönetim → Veritabanı’ndaki <strong>uzak sunucu</strong> bilgisine gider. VPN’li şube için genelde <strong>Hybrid</strong> veya <strong>Offline</strong> + aşağıdaki host.
+                        <strong>Online</strong> seçiliyken SQL, Yönetim → Veritabanı’ndaki <strong>uzak sunucu</strong> bilgisine gider. Uzak şube için genelde <strong>Hybrid</strong> veya <strong>Offline</strong> + aşağıdaki host.
                       </p>
                       {dbConnectionMode === 'online' && connectionProvider === 'db' && (
                         <div
@@ -2159,7 +2155,7 @@ export function Login({ onLogin }: LoginProps) {
                         >
                           <strong>Merkeze bağlanmak için:</strong> Aşağıdaki HOST alanı <em>online modda oturum sırasında kullanılmaz</em> (sorgular kayıtlı uzak sunucuya gider).{' '}
                           <strong>Bağlantıyı test et</strong> her zaman <em>bu formdaki</em> adresi dener. Merkez adresini kalıcı yapmak için{' '}
-                          <strong>Yönetim → Veritabanı → uzak (Ana sunucu)</strong> satırına yazıp kaydedin veya modu <strong>Hybrid / Offline</strong> yapıp HOST’a merkez VPN IP’sini girin.
+                          <strong>Yönetim → Veritabanı → uzak (Ana sunucu)</strong> satırına yazıp kaydedin veya modu <strong>Hybrid / Offline</strong> yapıp HOST’a merkez sunucu IP’sini girin.
                         </div>
                       )}
                       {dbConnectionMode === 'hybrid' && connectionProvider === 'db' && (
@@ -2312,7 +2308,7 @@ export function Login({ onLogin }: LoginProps) {
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <h3 className={`text-[10px] font-black uppercase tracking-wider ${darkMode ? 'text-sky-200' : 'text-sky-900'}`}>
-                              2. Uzak PostgreSQL (aynı LAN / VPN)
+                              2. Uzak PostgreSQL (aynı LAN veya internet üzerinden erişilebilir adres)
                             </h3>
                             <button
                               type="button"
@@ -2421,7 +2417,7 @@ export function Login({ onLogin }: LoginProps) {
                             type="text"
                             value={dbConfig.host}
                             onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
-                            placeholder="127.0.0.1 veya VPN/LAN sunucu IP"
+                            placeholder="127.0.0.1 veya LAN / internet sunucu IP"
                             className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
                           />
                         </div>
@@ -2468,7 +2464,7 @@ export function Login({ onLogin }: LoginProps) {
                         </div>
                       </div>
                       <p className={`px-1 text-[9px] font-bold ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                        VPN veya uzak sunucu: PostgreSQL’in kurulu olduğu makinenin adresini girin. PG bu bilgisayardaysa 127.0.0.1 kullanın.
+                        Uzak sunucu: PostgreSQL’in kurulu olduğu makinenin adresini girin. PG bu bilgisayardaysa 127.0.0.1 kullanın.
                       </p>
                     </div>
                   )}

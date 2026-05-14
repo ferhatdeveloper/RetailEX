@@ -6,7 +6,7 @@ use windows_service::service::{ServiceAccess, ServiceInfo};
 use windows_service::service_manager::ServiceManager;
 use windows_service::Error as WsError;
 
-/// NSIS / el ile çağrıda argüman sırası değişse bile ilk tanınan komut (vpn_tray: --console dahil).
+/// NSIS / el ile çağrıda argüman sırası değişse bile ilk tanınan komut (--console dahil).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootstrapServiceCmd {
     Install,

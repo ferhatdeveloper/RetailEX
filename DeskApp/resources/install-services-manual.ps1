@@ -59,12 +59,10 @@ try {
 
     $baseDir = Split-Path -Parent $PSCommandPath
     $serviceExe = Join-Path $baseDir "RetailEX_Service.exe"
-    $vpnExe = Join-Path $baseDir "RetailEX_VPN.exe"
     $bridgeExe = Join-Path $baseDir "RetailEX_SQL_Bridge.exe"
     $bridgeScript = Join-Path $baseDir "install-bridge.ps1"
 
     Install-AppService -exePath $serviceExe -serviceName "RetailEX_Service"
-    Install-AppService -exePath $vpnExe -serviceName "RetailEX_VPN"
 
     if (Test-Path $bridgeExe) {
         Install-AppService -exePath $bridgeExe -serviceName "RetailEX_SQL_Bridge"

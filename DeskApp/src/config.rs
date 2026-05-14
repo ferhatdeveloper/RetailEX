@@ -3,26 +3,6 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
-#[cfg(not(feature = "no-vpn"))]
-use crate::vpn::VpnConfig;
-
-#[cfg(feature = "no-vpn")]
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct VpnConfig {
-    pub private_key: String,
-    pub public_key: String,
-    #[serde(default = "default_vpn_port")]
-    pub listen_port: u16,
-    #[serde(default = "default_vpn_ip")]
-    pub virtual_ip: String,
-    pub endpoint: Option<String>,
-    #[serde(default = "default_true")]
-    pub enable_discovery: bool,
-}
-
-fn default_vpn_ip() -> String { "10.8.0.5".to_string() }
-
-fn default_vpn_port() -> u16 { 51820 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
@@ -66,15 +46,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub role: String,
     #[serde(default)]
-    pub enable_mesh: bool,
-    #[serde(default)]
-    pub device_id: String, // Hardware fingerprint
-    #[serde(default)]
-    pub private_key: String, // VPN mesh network private key (encrypted)
-    #[serde(default)]
-    pub public_key: String, // VPN mesh network public key
-    #[serde(default)]
-    pub vpn_config: Option<VpnConfig>,
+    pub device_id: String, // Hardware fingerprint / terminal kimligi
     #[serde(default)]
     pub backup_config: Option<BackupConfig>,
     #[serde(default = "default_menu_mode")]
@@ -87,8 +59,6 @@ pub struct AppConfig {
     pub logo_objects_path: String,
     #[serde(default)]
     pub logo_objects_active: bool,
-    #[serde(default = "default_true")]
-    pub use_fixed_vpn_ip: bool,
     #[serde(default = "default_update_source")]
     pub update_source: String, // "central" or "github"
     #[serde(default = "default_hidden_modules")]
@@ -206,18 +176,13 @@ impl Default for AppConfig {
             central_ws_url: "ws://localhost:8000/api/v1/ws".to_string(),
             amqp_url: "amqp://guest:guest@localhost:5672".to_string(),
             role: "terminal".to_string(),
-            enable_mesh: false,
             device_id: "".to_string(),
-            private_key: "".to_string(),
-            public_key: "".to_string(),
-            vpn_config: None,
             backup_config: Some(BackupConfig::default()),
             menu_mode: 1,
             logo_objects_user: "".to_string(),
             logo_objects_pass: "".to_string(),
             logo_objects_path: "C:\\LOGO\\LObjects.dll".to_string(),
             logo_objects_active: false,
-            use_fixed_vpn_ip: true,
             update_source: "central".to_string(),
             hidden_modules: default_hidden_modules(),
             regulatory_region: default_regulatory_region(),
@@ -286,10 +251,6 @@ pub fn get_app_config(_app_handle: AppHandle) -> Result<AppConfig, String> {
             config.pg_remote_pass = decode_base64(&config.pg_remote_pass);
             config.pg_local_pass = decode_base64(&config.pg_local_pass);
             config.logo_objects_pass = decode_base64(&config.logo_objects_pass);
-            
-            if let Some(ref mut vpn) = config.vpn_config {
-                vpn.private_key = decode_base64(&vpn.private_key);
-            }
 
             // Ensure requested material management modules are NOT hidden
             let show_always = vec![
@@ -321,9 +282,6 @@ pub fn get_app_config_internal() -> Result<AppConfig, String> {
             config.pg_remote_pass = decode_base64(&config.pg_remote_pass);
             config.pg_local_pass = decode_base64(&config.pg_local_pass);
             config.logo_objects_pass = decode_base64(&config.logo_objects_pass);
-            if let Some(ref mut vpn) = config.vpn_config {
-                vpn.private_key = decode_base64(&vpn.private_key);
-            }
 
             // Ensure requested material management modules are NOT hidden
             let show_always = vec![
@@ -349,10 +307,6 @@ pub fn save_app_config(_app_handle: AppHandle, mut config: AppConfig) -> Result<
     config.pg_remote_pass = encode_base64(&config.pg_remote_pass);
     config.pg_local_pass = encode_base64(&config.pg_local_pass);
     config.logo_objects_pass = encode_base64(&config.logo_objects_pass);
-
-    if let Some(ref mut vpn) = config.vpn_config {
-        vpn.private_key = encode_base64(&vpn.private_key);
-    }
 
     let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
 
@@ -391,9 +345,6 @@ pub fn save_app_config_internal(mut config: AppConfig) -> Result<(), String> {
     config.pg_remote_pass = encode_base64(&config.pg_remote_pass);
     config.pg_local_pass = encode_base64(&config.pg_local_pass);
     config.logo_objects_pass = encode_base64(&config.logo_objects_pass);
-    if let Some(ref mut vpn) = config.vpn_config {
-        vpn.private_key = encode_base64(&vpn.private_key);
-    }
 
     let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
 

@@ -22,7 +22,7 @@ export function RemoteViewer({ peer, onClose }: RemoteViewerProps) {
                 setConnecting(true);
                 if (isTauri) {
                     const { invoke } = await import('@tauri-apps/api/core');
-                    await invoke('enable_remote_support', { targetHwid: peer.public_key });
+                    await invoke('enable_remote_support');
                 } else {
                     console.log('Web Modu: Uzak destek simüle ediliyor...');
                 }

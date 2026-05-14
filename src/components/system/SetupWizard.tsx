@@ -47,18 +47,13 @@ interface AppConfig {
     system_type: 'retail' | 'market' | 'wms' | 'restaurant' | 'beauty' | 'bayi';
     role: 'center' | 'client'; // Simplified Role Field
     selected_firms: string[];
-    enable_mesh: boolean;
     device_id?: string; // Hardware fingerprint
-    private_key?: string; // VPN mesh network private key (encrypted)
-    public_key?: string; // VPN mesh network public key
-    vpn_config?: any;
     central_api_url?: string;
     central_ws_url?: string;
     logo_objects_user?: string;
     logo_objects_pass?: string;
     logo_objects_path?: string;
     logo_objects_active: boolean;
-    use_fixed_vpn_ip: boolean;
     selected_cash_registers: string[];
     backup_config?: BackupConfig;
     is_nebim_migration?: boolean;
@@ -188,15 +183,11 @@ const SetupWizard: React.FC = () => {
         central_api_url: '',
         central_ws_url: '',
         selected_firms: [],
-        enable_mesh: false,
         device_id: '', // Hardware fingerprint
-        private_key: '', // VPN mesh network private key (encrypted)
-        public_key: '', // VPN mesh network public key
         logo_objects_user: '',
         logo_objects_pass: '',
         logo_objects_path: 'C:\\LOGO\\LObjects.dll',
         logo_objects_active: false,
-        use_fixed_vpn_ip: true,
         backup_config: {
             enabled: true,
             daily_backup: true,
@@ -207,14 +198,6 @@ const SetupWizard: React.FC = () => {
         },
         selected_cash_registers: [],
         is_nebim_migration: false,
-        vpn_config: {
-            private_key: '',
-            public_key: '',
-            listen_port: 51820,
-            virtual_ip: '10.8.0.5',
-            peers: [],
-            enable_discovery: true
-        },
         enabled_modules: ['pos', 'wms'], // Only default retail modules
         bayi_seti: false,
         default_currency: 'IQD',
@@ -672,12 +655,6 @@ const SetupWizard: React.FC = () => {
             }
         }
 
-        // Summary to Terminal Log transition
-        if (step === (config.skip_integration ? 5 : 8)) { // VPN/Security is now the last step before summary
-            setStep(config.skip_integration ? 6 : 9);
-            return;
-        }
-
         // Entegrasyondan sonra firma adımı yerine doğrudan merkez veritabanı ayarları
         if (step === 2 && skipStandaloneFirmStep) {
             setStep(4);
@@ -698,7 +675,7 @@ const SetupWizard: React.FC = () => {
 
     useEffect(() => {
         // Auto-trigger handleSave when reaching the final step
-        const isFinalStep = step === (config.skip_integration ? 7 : 10);
+        const isFinalStep = step === (config.skip_integration ? 7 : 9);
         if (isFinalStep && installationStep === 'PENDING') {
             handleSave();
         }
@@ -713,7 +690,7 @@ const SetupWizard: React.FC = () => {
                     // 1. Get HWID
                     const sysId = await safeInvoke<string>('get_system_id');
                     console.log('System ID:', sysId);
-                    setConfig(prev => ({ ...prev, terminal_name: sysId }));
+                    setConfig(prev => ({ ...prev, terminal_name: sysId, device_id: sysId }));
 
                     // 2. Check existing config
                     const existing: any = await safeInvoke('get_app_config');
@@ -997,50 +974,6 @@ const SetupWizard: React.FC = () => {
             toast.error(`Tablo oluşturma hatası: ${err}`);
         } finally {
             setLoading(false);
-        }
-    };
-
-    const generateVpnConfig = async () => {
-        try {
-            if (isTauri) {
-                
-                const keys = await safeInvoke<any>('generate_vpn_keys');
-                setConfig({ ...config, vpn_config: keys });
-                toast.success('VPN Anahtarları Güvenli Bir Şekilde Üretildi.');
-            } else {
-                toast.success('Web Modu: VPN anahtarları simüle edildi.');
-            }
-        } catch (err: any) {
-            toast.error(`Anahtar üretimi başarısız: ${err}`);
-        }
-    };
-
-    const generateHardwareBoundVpnKeys = async () => {
-        try {
-            toast.info('🔐 Donanım kimliği tespit ediliyor...');
-
-            if (isTauri) {
-                
-                const keys = await safeInvoke<{
-                    device_id: string;
-                    encrypted_private_key: string;
-                    public_key: string;
-                }>('generate_device_bound_vpn_keys');
-
-                setConfig({
-                    ...config,
-                    device_id: keys.device_id,
-                    private_key: keys.encrypted_private_key,
-                    public_key: keys.public_key,
-                });
-
-                toast.success('🔒 VPN anahtarları donanıma bağlı olarak oluşturuldu!', { duration: 5000 });
-                toast.info(`Device ID: ${keys.device_id.substring(0, 16)}...`, { duration: 3000 });
-            } else {
-                toast.success('Web Modu: VPN anahtarları simüle edildi.');
-            }
-        } catch (err: any) {
-            toast.error(`❌ Anahtar oluşturma hatası: ${err}`);
         }
     };
 
@@ -1710,18 +1643,16 @@ const SetupWizard: React.FC = () => {
                             { id: 5, label: 'Kasa Seçimi', icon: Database },
                             { id: 6, label: 'Sistem Veritabanı', icon: Database },
                             { id: 7, label: 'Cihaz Kaydı', icon: Cpu },
-                            { id: 8, label: 'Private Mesh (VPN)', icon: Shield },
-                            { id: 9, label: 'Özet ve Onay', icon: CheckCircle },
-                            { id: 10, label: 'Sistem Kurulumu', icon: Activity },
+                            { id: 8, label: 'Özet ve Onay', icon: CheckCircle },
+                            { id: 9, label: 'Sistem Kurulumu', icon: Activity },
                         ] : [
                             { id: 1, label: 'Altyapı Seçimi', icon: Server },
                             { id: 2, label: 'Entegrasyon Tercihi', icon: Layout },
                             { id: 3, label: 'Firma & Dönem', icon: Globe },
                             { id: 4, label: 'Sistem Veritabanı', icon: Database },
                             { id: 5, label: 'Cihaz Kaydı', icon: Cpu },
-                            { id: 6, label: 'Private Mesh (VPN)', icon: Shield },
-                            { id: 7, label: 'Özet ve Onay', icon: CheckCircle },
-                            { id: 8, label: 'Sistem Kurulumu', icon: Activity },
+                            { id: 6, label: 'Özet ve Onay', icon: CheckCircle },
+                            { id: 7, label: 'Sistem Kurulumu', icon: Activity },
                         ]).map((s) => (
                             <div
                                 key={s.id}
@@ -1787,7 +1718,7 @@ const SetupWizard: React.FC = () => {
                                                 <button
                                                     onClick={() => {
                                                         setIsUpdateMode(true);
-                                                        setStep(config.skip_integration ? 7 : 9); // Jump to Summary/Özet
+                                                        setStep(config.skip_integration ? 6 : 8); // Jump to Summary/Özet
                                                     }}
                                                     className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20 flex items-center gap-3 active:scale-95 group"
                                                 >
@@ -3930,107 +3861,6 @@ const SetupWizard: React.FC = () => {
                         )}
 
                         {((step === 8 && !config.skip_integration) || (step === 6 && config.skip_integration)) && (
-                            <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-                                <div className="text-center space-y-3">
-                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black tracking-widest uppercase mb-4">
-                                        <Shield className="w-3.5 h-3.5" /> Networking & Private Mesh
-                                    </div>
-                                    <h2 className="text-4xl font-black text-white tracking-tight">Özel Ağ ve Bağlantı Güvenliği</h2>
-                                    <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
-                                        Cihazlar arasındaki veri trafiğini şifrelemek ve statik IP gereksinimini ortadan kaldırmak için Mesh katmanını yapılandırın.
-                                    </p>
-                                </div>
-
-                                <div className="max-w-2xl mx-auto space-y-6">
-                                    <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-[60px] rounded-full" />
-                                        <div className="flex items-center gap-4 mb-8">
-                                            <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 flex items-center justify-center">
-                                                <Globe className="w-7 h-7 text-indigo-400" />
-                                            </div>
-                                            <div>
-                                                <div className="text-lg font-bold text-white">Bağlantı Stratejisi</div>
-                                                <div className="text-[10px] text-indigo-400/60 font-black uppercase tracking-widest">Connectivity Method</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <div className="flex gap-4">
-                                                <button onClick={() => setConfig({ ...config, enable_mesh: true })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${config.enable_mesh ? 'bg-indigo-600/10 border-indigo-500' : 'bg-white/5 border-white/5'}`}>
-                                                    <div className="text-xs font-bold text-white">Private Mesh</div>
-                                                    <div className="text-[9px] text-slate-500">Statik IP Gerektirmez</div>
-                                                </button>
-                                                <button onClick={() => setConfig({ ...config, enable_mesh: false })} className={`flex-1 p-4 rounded-2xl border-2 transition-all text-left ${!config.enable_mesh ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
-                                                    <div className="text-xs font-bold text-white">Standart IP</div>
-                                                    <div className="text-[9px] text-slate-500">Sabit IP Zorunludur</div>
-                                                </button>
-                                            </div>
-
-                                            {config.enable_mesh ? (
-                                                <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                                                    <div className="p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
-                                                        <div className="text-[10px] text-indigo-200/50 font-medium leading-relaxed">
-                                                            Zero-configuration networking protokolü. Port yönlendirme yapmadan şubeler arası güvenli tünel oluşturur.
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 font-mono">Mesh Public Key</label>
-                                                        <input
-                                                            type="text"
-                                                            value={config.vpn_config?.public_key || 'Üretiliyor...'}
-                                                            readOnly
-                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-mono text-emerald-400/80"
-                                                        />
-                                                    </div>
-                                                    <button onClick={generateVpnConfig} className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded-xl font-black text-[9px] tracking-widest border border-indigo-500/20 transition-all flex items-center justify-center gap-2">
-                                                        <RefreshCw className="w-3 h-3" /> MESH ANAHTARLARI ÜRET
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-4 animate-in zoom-in-95 duration-300">
-                                                    {config.role === 'client' && config.db_mode === 'online' && (
-                                                        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                                                            <p className="text-[9px] text-emerald-200/80 font-medium">Terminal merkez veritabanına bağlanacak. Adresi 1. adımda girdiyseniz aşağıdan kontrol edin veya güncelleyin.</p>
-                                                        </div>
-                                                    )}
-                                                    <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10">
-                                                        <p className="text-[9px] text-blue-200/50 font-medium">Klasik TCP/IP bağlantısı. Merkez sunucunun sabit bir IP adresi olmalıdır.</p>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez IP / Domain</label>
-                                                        <input
-                                                            type="text"
-                                                            value={config.central_api_url || ''}
-                                                            placeholder="https://1.2.3.4 veya https://merkez.domain.com"
-                                                            onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
-                                                            className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-[32px] flex items-start gap-5">
-                                        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
-                                            <Activity className="w-6 h-6 text-white" />
-                                        </div>
-                                        <div>
-                                            <div className="text-sm font-bold text-white mb-1">
-                                                {config.enable_mesh ? 'Mesh Güvenlik Katmanı Aktif' : 'Standart Bağlantı Katmanı Aktif'}
-                                            </div>
-                                            <div className="text-[11px] text-blue-200/60 leading-relaxed font-medium">
-                                                {config.enable_mesh
-                                                    ? 'Cihazlar WireGuard tabanlı uçtan uca şifreleme ile haberleşir. Dışarıdan erişim tamamen kapalıdır.'
-                                                    : 'Sistem doğrudan merkez sunucu ile konuşur. Şirket hattınızda statik IP ve 5432-3001 portları açık olmalıdır.'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {((step === 9 && !config.skip_integration) || (step === 7 && config.skip_integration)) && (
                             <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                                 <div>
                                     <h2 className="text-4xl font-black mb-2 text-white tracking-tight">
@@ -4101,7 +3931,7 @@ const SetupWizard: React.FC = () => {
                             </div>
                         )}
 
-                        {((step === 10 && !config.skip_integration) || (step === 8 && config.skip_integration)) && (
+                        {((step === 9 && !config.skip_integration) || (step === 7 && config.skip_integration)) && (
                             <div className="fixed inset-0 z-[60] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700">
                                 <div className="absolute inset-0 overflow-hidden">
                                     <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
@@ -4234,10 +4064,10 @@ const SetupWizard: React.FC = () => {
                             console.log("Navigating back from step:", step);
                             prevStep();
                         }}
-                        onNext={step < (config.skip_integration ? 8 : 10) ? nextStep : undefined}
-                        prevDisabled={step === 1 || loading || (step === (config.skip_integration ? 8 : 10) && installationStep !== 'COMPLETED')}
-                        nextDisabled={loading || step === (config.skip_integration ? 8 : 10)}
-                        nextLabel={step === (config.skip_integration ? 7 : 9) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
+                        onNext={step < (config.skip_integration ? 7 : 9) ? nextStep : undefined}
+                        prevDisabled={step === 1 || loading || (step === (config.skip_integration ? 7 : 9) && installationStep !== 'COMPLETED')}
+                        nextDisabled={loading || step === (config.skip_integration ? 7 : 9)}
+                        nextLabel={step === (config.skip_integration ? 6 : 8) ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
                         prevLabel="GERİ DÖN"
                     />
                 </div>
@@ -4255,7 +4085,7 @@ const SetupWizard: React.FC = () => {
                             Yeniden kurulum
                         </h3>
                         <p className="text-sm text-slate-300 leading-relaxed mb-4">
-                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows RetailEX hizmetleri (arka plan, VPN, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
+                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows RetailEX hizmetleri (arka plan, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
                         </p>
                         <label className="flex items-start gap-3 cursor-pointer text-sm text-slate-200">
                             <input

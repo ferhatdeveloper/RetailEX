@@ -16,8 +16,6 @@ import SetupWizard from './components/system/SetupWizard';
 import { NeonLogo } from './components/ui/NeonLogo';
 import { readNeonProductLineFromStorage } from './utils/neonProductLine';
 import { supabase } from './utils/supabase/client';
-import { AdminElevationPrompt } from './components/system/AdminElevationPrompt';
-import { listen } from '@tauri-apps/api/event';
 import { IS_TAURI, safeInvoke } from './utils/env';
 import { mergeRustIntoStoredWebConfig } from './utils/retailexWebConfigMerge';
 import { APP_VERSION } from './core/version';
@@ -40,8 +38,6 @@ function App() {
   const [installingPg, setInstallingPg] = useState(false);
   const [version, setVersion] = useState<string>(() => APP_VERSION.full);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const [showElevationPrompt, setShowElevationPrompt] = useState(false);
-  const [elevationReason, setElevationReason] = useState('');
   const recentSaleReceiptsRef = useRef<Map<string, number>>(new Map());
   /** Acil zamanlayıcı closure’da `isInitialized` hep eski kalır; yalnızca ref ile gerçek tamamlanmayı izleyin. */
   const startupCompleteRef = useRef(false);
@@ -202,26 +198,6 @@ function App() {
     return () => clearTimeout(emergencyTimer);
   }, [IS_TAURI]);
 
-  // VPN Permission Error Listener
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    const setupListener = async () => {
-      if (IS_TAURI) {
-        unlisten = await listen('vpn-permission-error', (event) => {
-          console.error('[VPN] Permission Error:', event.payload);
-          setElevationReason(String(event.payload));
-          setShowElevationPrompt(true);
-        });
-      }
-    };
-
-    setupListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [IS_TAURI]);
-
   // Remove loader when app is ready
   useEffect(() => {
     if (isConfigured !== null && isPgReady && !installingPg) {
@@ -344,11 +320,6 @@ function App() {
     <FirmaDonemProvider>
       <VersionProvider>
         <ErrorBoundary>
-          <AdminElevationPrompt 
-            isOpen={showElevationPrompt} 
-            onClose={() => setShowElevationPrompt(false)} 
-            reason={elevationReason}
-          />
           {/* Global Loading / Setup Wizard Check */}
           {isConfigured === null || authLoading ? (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
