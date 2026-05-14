@@ -207,6 +207,20 @@ function invoiceEditLineToFormAmounts(
     );
   }
 
+  /** Taslak satırlarda (sayım → alış) total alanları boş/0 olabilir; brüt = miktar × birim fiyat */
+  const qty = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
+  if (!Number.isFinite(amount)) amount = 0;
+  if (!Number.isFinite(netAmount)) netAmount = 0;
+  if (Math.abs(amount) < 1e-9 && qty > 0 && unitPrice > 0) {
+    amount = qty * unitPrice;
+  }
+  if (Math.abs(netAmount) < 1e-9 && amount > 0) {
+    const discPct = parseFloat(String(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0)) || 0;
+    const discFix = parseFloat(String(item.discount_amount ?? item.discountAmount ?? 0)) || 0;
+    const d = discFix > 0 ? discFix : amount * (discPct / 100);
+    netAmount = amount - d;
+  }
+
   return { unitPrice, amount, netAmount };
 }
 
@@ -577,9 +591,10 @@ export function UniversalInvoiceForm({
           unit: item.unit || 'Adet',
           unitPrice: fc.unitPrice,
           discountPercent: item.discountPercent || item.discount || 0,
-          discountAmount: item.discountAmount || 0,
-          amount: Number.isFinite(fc.amount) ? fc.amount : ((item.quantity || 0) * fc.unitPrice) || 0,
-          netAmount: Number.isFinite(fc.netAmount) ? fc.netAmount : 0,
+          discountAmount:
+            fc.amount > 1e-9 ? Math.max(0, fc.amount - fc.netAmount) : Number(item.discountAmount || 0) || 0,
+          amount: fc.amount,
+          netAmount: fc.netAmount,
           lastPurchasePrice: item.lastPurchasePrice,
           priceDifference: item.priceDifference,
           priceDifferencePercent: item.priceDifferencePercent,
@@ -2115,6 +2130,14 @@ export function UniversalInvoiceForm({
     if (editData) {
       console.log('[UniversalInvoiceForm] editData received:', editData);
 
+      /* Yeni taslak: sayım/alış ön doldurma notları → Açıklama (kayıtta notes olarak gider) */
+      if (!(editData as any).id) {
+        const draftNotes = (editData as any).notes;
+        if (draftNotes != null && String(draftNotes).trim() !== '') {
+          setDescription((prev) => (prev.trim() ? prev : String(draftNotes)));
+        }
+      }
+
       // Farklı field isimlerini kontrol et: items, invoice_items, lines, sale_items
       const itemsData = editData.items || editData.invoice_items || editData.lines || editData.sale_items || [];
 
@@ -2160,9 +2183,10 @@ export function UniversalInvoiceForm({
             unit: item.unit || 'Adet',
             unitPrice: fc.unitPrice,
             discountPercent: item.discountPercent || item.discount || item.discount_percent || 0,
-            discountAmount: item.discountAmount || item.discount_amount || 0,
-            amount: Number.isFinite(fc.amount) ? fc.amount : (q * fc.unitPrice) || 0,
-            netAmount: Number.isFinite(fc.netAmount) ? fc.netAmount : 0,
+            discountAmount:
+              fc.amount > 1e-9 ? Math.max(0, fc.amount - fc.netAmount) : Number(item.discountAmount || item.discount_amount || 0) || 0,
+            amount: fc.amount,
+            netAmount: fc.netAmount,
             lastPurchasePrice: item.lastPurchasePrice || item.last_purchase_price,
             priceDifference: item.priceDifference || item.price_difference,
             priceDifferencePercent: item.priceDifferencePercent || item.price_difference_percent,
@@ -2732,7 +2756,11 @@ export function UniversalInvoiceForm({
 
       if (!savedInvoice) throw new Error(tm('invoiceSaveError'));
 
-      toast.success('✅ ' + tm('invoiceSaved'));
+      if (createSaveOptions?.skipProductStockUpdate && !editData?.id) {
+        toast.success(`✅ ${tm('countPurchaseInvoiceSavedToast')}`);
+      } else {
+        toast.success('✅ ' + tm('invoiceSaved'));
+      }
 
       // Stok DB'de güncellendi; ürün store'unu tazele (liste / katalog / POS stok etiketi)
       void useProductStore.getState().loadProducts(true);
@@ -3025,6 +3053,20 @@ export function UniversalInvoiceForm({
                   cariBorderColor={cariBorderColor}
                   cariTextColor={cariTextColor}
                 />
+
+                {invoiceType.category === 'Alis' && createSaveOptions?.skipProductStockUpdate && (
+                  <div
+                    className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-950 shadow-sm dark:border-cyan-800/80 dark:bg-cyan-950/35 dark:text-cyan-100"
+                    role="status"
+                  >
+                    <p className="font-semibold">{tm('countPurchaseInvoiceFormBannerTitle')}</p>
+                    <ul className="mt-2 list-disc space-y-1.5 pl-5 leading-relaxed">
+                      <li>{tm('countPurchaseInvoiceFormBannerPoint1')}</li>
+                      <li>{tm('countPurchaseInvoiceFormBannerPoint2')}</li>
+                      <li>{tm('countPurchaseInvoiceFormBannerPoint3')}</li>
+                    </ul>
+                  </div>
+                )}
 
                 <div
                   className={

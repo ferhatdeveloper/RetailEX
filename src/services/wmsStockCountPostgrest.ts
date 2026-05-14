@@ -564,23 +564,25 @@ export async function restApplyStockCount(slipId: string): Promise<{
         const mvId = mov?.id;
         if (!mvId) throw new Error('Stok fişi oluşturulamadı (PostgREST yanıtında id yok)');
 
-        for (const line of linesWithQty) {
+        const itemRows = linesWithQty.map((line) => {
             const qty = qtyFn(line);
-            await postgrest.post(
-                itemsPath,
-                {
-                    movement_id: mvId,
-                    product_id: line.product_id,
-                    quantity: qty,
-                    unit_price: 0,
-                    cost_price: 0,
-                    exchange_rate: 1,
-                    unit_name: line.unit || 'Adet',
-                    convert_factor: Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1,
-                    notes: `Sayım: ${line.product_name || ''}`,
-                },
-                { ...PUB, prefer: 'return=minimal' }
-            );
+            return {
+                movement_id: mvId,
+                product_id: line.product_id,
+                quantity: qty,
+                unit_price: 0,
+                cost_price: 0,
+                exchange_rate: 1,
+                unit_name: line.unit || 'Adet',
+                convert_factor: Number(line.unit_multiplier) > 0 ? Number(line.unit_multiplier) : 1,
+                notes: `Sayım: ${line.product_name || ''}`,
+            };
+        });
+        /** Tek tek POST yerine toplu gövde — yüzlerce satırda süre kısalır */
+        const ITEM_BATCH = 120;
+        for (let i = 0; i < itemRows.length; i += ITEM_BATCH) {
+            const slice = itemRows.slice(i, i + ITEM_BATCH);
+            await postgrest.post(itemsPath, slice, { ...PUB, prefer: 'return=minimal' });
         }
     };
 
@@ -603,12 +605,19 @@ export async function restApplyStockCount(slipId: string): Promise<{
     );
 
     const table = productsTable();
-    for (const line of relevant) {
-        const newStock = restLineCountedBase(line);
-        await postgrest.patch(
-            `/${table}?id=eq.${encodeURIComponent(String(line.product_id))}`,
-            { stock: newStock },
-            { ...PUB, prefer: 'return=minimal' }
+    /** Ürün stok PATCH: sıralı 1×1 yerine sınırlı paralellik (tarayıcı köprüsü RTT azalır) */
+    const PATCH_CONCURRENCY = 14;
+    for (let i = 0; i < relevant.length; i += PATCH_CONCURRENCY) {
+        const slice = relevant.slice(i, i + PATCH_CONCURRENCY);
+        await Promise.all(
+            slice.map((line) => {
+                const newStock = restLineCountedBase(line);
+                return postgrest.patch(
+                    `/${table}?id=eq.${encodeURIComponent(String(line.product_id))}`,
+                    { stock: newStock },
+                    { ...PUB, prefer: 'return=minimal' }
+                );
+            })
         );
     }
 

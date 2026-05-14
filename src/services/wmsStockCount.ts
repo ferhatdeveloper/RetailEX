@@ -803,16 +803,20 @@ class WMSStockCountService {
                 ]
             );
             const mvId = mvRows[0].id;
+            const params: unknown[] = [mvId];
+            const tuples: string[] = [];
+            let ph = 2;
             for (const line of surplusLines) {
                 const qty = countedBase(line) - (Number(line.expected_qty) || 0);
                 if (qty <= 1e-9) continue;
+                tuples.push(`($1,$${ph},$${ph + 1},$${ph + 2},$${ph + 3},$${ph + 4})`);
+                params.push(line.product_id, qty, line.unit || 'Adet', line.unit_multiplier || 1, `Sayım: ${line.product_name || ''}`);
+                ph += 5;
+            }
+            if (tuples.length > 0) {
                 await this.conn.query(
-                    `INSERT INTO stock_movement_items
-                        (movement_id, product_id, quantity, unit_name, convert_factor, notes)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [mvId, line.product_id, qty,
-                     line.unit || 'Adet', line.unit_multiplier || 1,
-                     `Sayım: ${line.product_name}`]
+                    `INSERT INTO stock_movement_items (movement_id, product_id, quantity, unit_name, convert_factor, notes) VALUES ${tuples.join(',')}`,
+                    params
                 );
             }
         }
@@ -832,26 +836,37 @@ class WMSStockCountService {
                 ]
             );
             const mvId = mvRows[0].id;
+            const params: unknown[] = [mvId];
+            const tuples: string[] = [];
+            let ph = 2;
             for (const line of shortageLines) {
                 const qty = (Number(line.expected_qty) || 0) - countedBase(line);
                 if (qty <= 1e-9) continue;
+                tuples.push(`($1,$${ph},$${ph + 1},$${ph + 2},$${ph + 3},$${ph + 4})`);
+                params.push(line.product_id, qty, line.unit || 'Adet', line.unit_multiplier || 1, `Sayım: ${line.product_name || ''}`);
+                ph += 5;
+            }
+            if (tuples.length > 0) {
                 await this.conn.query(
-                    `INSERT INTO stock_movement_items
-                        (movement_id, product_id, quantity, unit_name, convert_factor, notes)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [mvId, line.product_id, qty,
-                     line.unit || 'Adet', line.unit_multiplier || 1,
-                     `Sayım: ${line.product_name}`]
+                    `INSERT INTO stock_movement_items (movement_id, product_id, quantity, unit_name, convert_factor, notes) VALUES ${tuples.join(',')}`,
+                    params
                 );
             }
         }
 
-        // 5. Adjust product stocks to counted values
-        for (const line of lines) {
-            const newStock = countedBase(line);
+        // 5. Adjust product stocks to counted values (tek UPDATE — satır başına UPDATE yok)
+        if (lines.length > 0) {
+            const ids = lines.map((l: any) => String(l.product_id));
+            const stocks = lines.map((l: any) => countedBase(l));
             await this.conn.query(
-                `UPDATE products SET stock = $1 WHERE id::text = $2`,
-                [newStock, String(line.product_id)]
+                `UPDATE products AS p
+                 SET stock = d.new_stock
+                 FROM (
+                   SELECT unnest($1::uuid[]) AS id,
+                          unnest($2::numeric[]) AS new_stock
+                 ) AS d
+                 WHERE p.id = d.id`,
+                [ids, stocks]
             );
         }
 

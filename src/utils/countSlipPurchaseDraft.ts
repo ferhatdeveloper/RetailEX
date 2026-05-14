@@ -86,7 +86,7 @@ export function buildPurchaseEditDataFromCountSlip(
         supplier_code: '',
         supplier_id: '',
         customer_name: supplierLabel,
-        notes: `Sayım fişi: ${slip.fiche_no} (${slip.id})`,
+        notes: `Kaynak: Sayım fazlası alış taslağı. Sayım fişi: ${slip.fiche_no} (id: ${slip.id}). Kayıtta ürün stoğu bu belgeyle artırılmaz (stok sayım onayında güncellenmiştir).`,
         items,
     };
 }

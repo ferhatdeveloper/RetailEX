@@ -4123,6 +4123,36 @@ export const wmsModuleTranslations = {
     ar: 'اكتمل هذا الجرد. افتح مسودة فاتورة شراء من بنود الفائض.',
     ku: 'ئەم ژماردنە تەواو بووە. لە ڕیزی زێدە وەسڵی کڕینی ڕەشنووس بکەرەوە.',
   },
+  countPurchaseInvoiceFormBannerTitle: {
+    tr: 'Sayım fazlası için açılan alış faturası',
+    en: 'Purchase invoice opened from count surplus',
+    ar: 'فاتورة شراء مفتوحة من فائض الجرد',
+    ku: 'وەسڵی کڕین لە زێدەی ژماردنەوە کرایەوە',
+  },
+  countPurchaseInvoiceFormBannerPoint1: {
+    tr: 'Kaydettiğinizde fatura ve satırlar muhasebede saklanır; ürün stoğu bu kayıtla tekrar artırılmaz (sayım onayında zaten güncellenmiştir).',
+    en: 'When you save, the invoice and lines are stored in accounting; product stock is not increased again by this document (it was already updated at count approval).',
+    ar: 'عند الحفظ تُخزَّن الفاتورة والبنود في المحاسبة؛ لا يزيد مخزون المنتج مرة أخرى بهذا المستند (تم تحديثه عند اعتماد الجرد).',
+    ku: 'کاتێک پاشەکەوت دەکەیت وەسڵ و ڕیزەکان لە ژمێریاریدا هەڵدەگیرێن؛ کۆگای بەرهەم بەم بەڵگەنامەیە دووبارە زیاد ناکرێت (پێشتر لە دڵنیاکردنەوەی ژماردن نوێکراوەتەوە).',
+  },
+  countPurchaseInvoiceFormBannerPoint2: {
+    tr: 'Açıklama alanındaki sayım fişi bilgisini silmeyin; sonra hangi sayıma bağlı olduğunu bulmak için kullanılır.',
+    en: 'Do not delete the count slip text in the Description field; it is needed later to trace which count this invoice came from.',
+    ar: 'لا تحذف نص سند الجرد في حقل الوصف؛ مطلوب لاحقًا لتتبع الجرد المرتبط.',
+    ku: 'دەقەکانی پسوڵەی ژماردن لە خانەی ڕوونکردنەوە مەسڕەوە؛ بۆ دۆزینەوەی ژماردنی پەیوەندیدار پێویستە.',
+  },
+  countPurchaseInvoiceFormBannerPoint3: {
+    tr: 'Tedarikçi ve fiyatlar öneridir; kayıt öncesi işletme kurallarınıza göre son kontrol sizdedir.',
+    en: 'Supplier and prices are suggestions; you must perform the final check per your company rules before saving.',
+    ar: 'البائع والأسعار اقتراحات؛ يجب إجراء المراجعة النهائية وفق قواعد شركتك قبل الحفظ.',
+    ku: 'دابینکەر و نرخەکان پێشنیارن؛ پشکنینی کۆتایی بەپێی یاساکانی کۆمپانیاکەت پێویستە.',
+  },
+  countPurchaseInvoiceSavedToast: {
+    tr: 'Fatura kaydedildi. Stok bu belgeyle artırılmadı; açıklamadaki sayım fişi referansı korundu.',
+    en: 'Invoice saved. Stock was not increased by this document; the count slip reference in the description was kept.',
+    ar: 'تم حفظ الفاتورة. لم يزد المخزون بهذا المستند؛ تم الإبقاء على مرجع سند الجرد في الوصف.',
+    ku: 'وەسڵ پاشەکەوت کرا. کۆگا بەم بەڵگەنامەیە زیاد نەکرا؛ ئاماژەی پسوڵەی ژماردن لە ڕوونکردنەوە هێشتەوە.',
+  },
   invoiceTypeCountSurplus: { tr: 'Sayım fazlası', en: 'Count surplus', ar: 'فائض الجرد', ku: 'زێدەی ژماردن' },
   invoiceBulkPurchaseFromSayimBtn: {
     tr: 'Seçilenlerden alış taslağı',
