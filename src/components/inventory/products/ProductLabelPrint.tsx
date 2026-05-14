@@ -1230,9 +1230,19 @@ export function RotatedLabel({
   children: ReactNode;
 }) {
   if (rotation === 0) {
-    // 0°: overflow-hidden önizleme ızgarasında etiket mm genişliği hücreden büyükse
-    // sol yarı kesilip “boş sağ yarı” gibi görünür; ekranda taşmayı göstermek için visible.
-    return <div className="rotated-label-wrapper overflow-visible">{children}</div>;
+    // Grid hücresi etiketten geniş olduğunda (perRow>1) sarmalayıcı sütuna yayılır; html2canvas
+    // PDF kırpması boş sağ alanı da alır — sabit mm genişlik + hizalama ile kutu = etiket boyutu.
+    return (
+      <div
+        className="rotated-label-wrapper overflow-visible justify-self-center self-start"
+        style={{
+          width: `${size.width}mm`,
+          boxSizing: 'border-box',
+        }}
+      >
+        {children}
+      </div>
+    );
   }
 
   const sideways = rotation === 90 || rotation === 270;

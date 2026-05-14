@@ -279,7 +279,22 @@ export async function exportLabelGridToPdfPages(
         sctx.imageSmoothingEnabled = true;
         sctx.imageSmoothingQuality = 'high';
         sctx.drawImage(fullCanvas, x0, y0, sw, sh, 0, 0, sw, sh);
-        pdf.addImage(slice.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH);
+        const sliceAr = sw / sh;
+        const pageAr = pageW / pageH;
+        let imgW = pageW;
+        let imgH = pageH;
+        let imgX = 0;
+        let imgY = 0;
+        if (sliceAr > pageAr) {
+            imgW = pageW;
+            imgH = pageW / sliceAr;
+            imgY = (pageH - imgH) / 2;
+        } else if (sliceAr < pageAr) {
+            imgH = pageH;
+            imgW = pageH * sliceAr;
+            imgX = (pageW - imgW) / 2;
+        }
+        pdf.addImage(slice.toDataURL('image/png'), 'PNG', imgX, imgY, imgW, imgH);
     }
     pdf.save(fileName);
 }
