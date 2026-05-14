@@ -1,6 +1,6 @@
-﻿import { useEffect, useRef, useState, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw, LayoutGrid, ListChecks } from 'lucide-react';
+import { X, Printer, Tag, Plus, Minus, Download, Sparkles, RotateCw, LayoutGrid, ListChecks, ArrowLeftRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
@@ -13,6 +13,17 @@ import {
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
 } from '../../../services/labelPrintFieldSettingsService';
+import {
+  LS_LABEL_CUSTOM_HEIGHT_MM,
+  LS_LABEL_CUSTOM_MM_ENABLED,
+  LS_LABEL_CUSTOM_WIDTH_MM,
+  LABEL_MM_MAX,
+  LABEL_MM_MIN,
+  buildActiveLabelSize,
+  readLabelCustomHeightMm,
+  readLabelCustomMmEnabled,
+  readLabelCustomWidthMm,
+} from './labelPrintDimensions';
 
 export type PrintRotation = 0 | 90 | 180 | 270;
 
@@ -369,10 +380,44 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
     }
   }, [printRotation]);
 
+  const presetDefault = LABEL_SIZES[5];
+  const [useCustomMm, setUseCustomMm] = useState(() => readLabelCustomMmEnabled());
+  const [customWidthMm, setCustomWidthMm] = useState(() => readLabelCustomWidthMm(presetDefault.width));
+  const [customHeightMm, setCustomHeightMm] = useState(() => readLabelCustomHeightMm(presetDefault.height));
+  const prevPresetSizeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_LABEL_CUSTOM_MM_ENABLED, useCustomMm ? '1' : '0');
+      localStorage.setItem(LS_LABEL_CUSTOM_WIDTH_MM, String(customWidthMm));
+      localStorage.setItem(LS_LABEL_CUSTOM_HEIGHT_MM, String(customHeightMm));
+    } catch {
+      /* sessizce yoksay */
+    }
+  }, [useCustomMm, customWidthMm, customHeightMm]);
+
+  useEffect(() => {
+    if (!useCustomMm) {
+      prevPresetSizeIdRef.current = selectedSize.id;
+      return;
+    }
+    const prev = prevPresetSizeIdRef.current;
+    if (prev !== null && prev !== selectedSize.id) {
+      setCustomWidthMm(selectedSize.width);
+      setCustomHeightMm(selectedSize.height);
+    }
+    prevPresetSizeIdRef.current = selectedSize.id;
+  }, [selectedSize.id, selectedSize.width, selectedSize.height, useCustomMm]);
+
+  const activePrintSize = useMemo(
+    () => buildActiveLabelSize(selectedSize, useCustomMm, customWidthMm, customHeightMm),
+    [selectedSize, useCustomMm, customWidthMm, customHeightMm]
+  );
+
   // 90°/270° için fiziksel sayfa boyutu (kağıt yatay beslenirse w/h yer değişir)
   const isSideways = printRotation === 90 || printRotation === 270;
-  const pageWidthMm = isSideways ? selectedSize.height : selectedSize.width;
-  const pageHeightMm = isSideways ? selectedSize.width : selectedSize.height;
+  const pageWidthMm = isSideways ? activePrintSize.height : activePrintSize.width;
+  const pageHeightMm = isSideways ? activePrintSize.width : activePrintSize.height;
 
   // Barkodları ve QR kodları otomatik oluştur
   useEffect(() => {
@@ -391,8 +436,8 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
           if (canvas && cell.barcode) {
             try {
               const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
-                width: selectedSize.width,
-                height: selectedSize.height,
+                width: activePrintSize.width,
+                height: activePrintSize.height,
               });
               JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
             } catch (err) {
@@ -404,7 +449,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
         if (selectedDesign.id === 'qr') {
           const qrCanvas = document.getElementById(cell.qrId) as HTMLCanvasElement;
           if (qrCanvas && cell.barcode) {
-            const qrSize = Math.min(selectedSize.width * 3, selectedSize.height * 3);
+            const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
             QRCode.toCanvas(qrCanvas, cell.barcode, {
               width: qrSize,
               margin: 1,
@@ -416,7 +461,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [selectedVariants, selectedSize, selectedDesign, fieldSettings]);
+  }, [selectedVariants, activePrintSize, selectedDesign, fieldSettings]);
 
   // Varyant seç/kaldır
   const toggleVariant = (variant: LabelPrintVariant) => {
@@ -542,7 +587,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
             <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
             {/* Tasarım Seçimi */}
             <div className="p-4 border-b border-gray-200 bg-white">
-              <label className="text-sm font-medium text-gray-900 mb-2 block">ğŸ¨ Etiket Tasarımı</label>
+              <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelDesign')}</label>
               <div className="grid grid-cols-2 gap-2">
                 {LABEL_DESIGNS.map(design => (
                   <button
@@ -563,14 +608,14 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
 
             {/* Boyut Filtresi */}
             <div className="p-4 border-b border-gray-200 bg-white">
-              <label className="text-sm font-medium text-gray-900 mb-2 block">ğŸ“ Etiket Kategorisi</label>
+              <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelCategory')}</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => setSizeFilter('termal')}
                   className={`flex-1 px-3 py-2 text-xs rounded-lg transition-all ${sizeFilter === 'termal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
-                  ğŸ–¨ï¸ Termal
+                  {tm('thermal')}
                 </button>
                 <button
                   onClick={() => setSizeFilter('a4')}
@@ -584,14 +629,14 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                   className={`flex-1 px-3 py-2 text-xs rounded-lg transition-all ${sizeFilter === 'raf' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                 >
-                  ğŸ·ï¸ Raf
+                  {tm('shelfLabelShort')}
                 </button>
               </div>
             </div>
 
             {/* Etiket Boyutu */}
             <div className="p-4 border-b border-gray-200 bg-white">
-              <label className="text-sm font-medium text-gray-900 mb-2 block">ğŸ“ Etiket Boyutu</label>
+              <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelSize')}</label>
               <select
                 value={selectedSize.id}
                 onChange={(e) => {
@@ -607,8 +652,75 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                 ))}
               </select>
               <div className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded">
-                {tm('size')}: {selectedSize.width}×{selectedSize.height}mm
-                {selectedSize.perRow > 1 && ` • ${selectedSize.perRow}×${selectedSize.perColumn} = ${selectedSize.perRow * selectedSize.perColumn} ${tm('labelCount')}`}
+                {tm('size')}: {activePrintSize.width}×{activePrintSize.height}mm
+                {selectedSize.perRow > 1 &&
+                  ` • ${selectedSize.perRow}×${selectedSize.perColumn} = ${selectedSize.perRow * selectedSize.perColumn} ${tm('labelCount')}`}
+                {useCustomMm && (
+                  <span className="block mt-1 text-purple-700 font-medium">
+                    {tm('labelPreset')}: {selectedSize.name}
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useCustomMm}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setUseCustomMm(on);
+                      if (on) {
+                        setCustomWidthMm(selectedSize.width);
+                        setCustomHeightMm(selectedSize.height);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  {tm('labelCustomMmEnabled')}
+                </label>
+                {useCustomMm && (
+                  <>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{tm('labelCustomMmHint')}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-600 block mb-1">{tm('labelWidthMmHorizontal')}</label>
+                        <input
+                          type="number"
+                          min={LABEL_MM_MIN}
+                          max={LABEL_MM_MAX}
+                          step={1}
+                          value={customWidthMm}
+                          onChange={(e) => setCustomWidthMm(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-600 block mb-1">{tm('labelHeightMmVertical')}</label>
+                        <input
+                          type="number"
+                          min={LABEL_MM_MIN}
+                          max={LABEL_MM_MAX}
+                          step={1}
+                          value={customHeightMm}
+                          onChange={(e) => setCustomHeightMm(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const w = customWidthMm;
+                        setCustomWidthMm(customHeightMm);
+                        setCustomHeightMm(w);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-2 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      {tm('labelSwapWidthHeight')}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -695,7 +807,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
             {/* Raf Konumu */}
             {selectedDesign.id === 'shelf' && (
               <div className="p-4 border-b border-gray-200 bg-white">
-                <label className="text-sm font-medium text-gray-900 mb-2 block">ğŸ“ Raf Konumu</label>
+                <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('shelfLocation')}</label>
                 <input
                   type="text"
                   value={shelfLocation}
@@ -941,7 +1053,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                         <RotatedLabel
                           key={`${svIdx}-${qIdx}`}
                           rotation={printRotation}
-                          size={selectedSize}
+                          size={activePrintSize}
                         >
                           <LabelContent
                             variant={sv.variant}
@@ -950,7 +1062,7 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                             category={category}
                             barcodeId={`barcode-${svIdx}-${qIdx}`}
                             qrId={`qrcode-${svIdx}-${qIdx}`}
-                            size={selectedSize}
+                            size={activePrintSize}
                             design={selectedDesign}
                             showDiscount={showDiscount}
                             discountPercent={discountPercent}
@@ -1433,7 +1545,7 @@ export function LabelContent({
           <div>
             {shelfLocation && (
               <div className="bg-blue-600 text-white px-4 py-2 rounded text-[18px] font-bold mb-3 text-center">
-                ğŸ“ {shelfLocation}
+                {shelfLocation}
               </div>
             )}
             {f.showProductName && <div className="text-[24px] font-bold mb-2">{productName}</div>}

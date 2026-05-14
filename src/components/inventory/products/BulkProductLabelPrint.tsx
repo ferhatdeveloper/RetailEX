@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download } from 'lucide-react';
+import { X, Printer, Tag, Plus, Minus, Search, RotateCw, LayoutGrid, ListChecks, Download, ArrowLeftRight } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import type { Product } from '../../../core/types';
@@ -30,6 +30,17 @@ import {
   addProductsToBulkQueue,
   type BulkLabelQueueItem,
 } from './bulkLabelPrintFromProduct';
+import {
+  LS_LABEL_CUSTOM_HEIGHT_MM,
+  LS_LABEL_CUSTOM_MM_ENABLED,
+  LS_LABEL_CUSTOM_WIDTH_MM,
+  LABEL_MM_MAX,
+  LABEL_MM_MIN,
+  buildActiveLabelSize,
+  readLabelCustomHeightMm,
+  readLabelCustomMmEnabled,
+  readLabelCustomWidthMm,
+} from './labelPrintDimensions';
 import { DEFAULT_A4, exportElementsToPdfPages, exportToPDF } from '../../reports/designerUtils';
 
 export interface BulkProductLabelPrintProps {
@@ -126,9 +137,43 @@ export function BulkProductLabelPrint({
     setQueue((prev) => addProductsToBulkQueue(prev, init));
   }, [initialQueueProducts]);
 
+  const presetDefault = LABEL_SIZES[5];
+  const [useCustomMm, setUseCustomMm] = useState(() => readLabelCustomMmEnabled());
+  const [customWidthMm, setCustomWidthMm] = useState(() => readLabelCustomWidthMm(presetDefault.width));
+  const [customHeightMm, setCustomHeightMm] = useState(() => readLabelCustomHeightMm(presetDefault.height));
+  const prevPresetSizeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_LABEL_CUSTOM_MM_ENABLED, useCustomMm ? '1' : '0');
+      localStorage.setItem(LS_LABEL_CUSTOM_WIDTH_MM, String(customWidthMm));
+      localStorage.setItem(LS_LABEL_CUSTOM_HEIGHT_MM, String(customHeightMm));
+    } catch {
+      /* ignore */
+    }
+  }, [useCustomMm, customWidthMm, customHeightMm]);
+
+  useEffect(() => {
+    if (!useCustomMm) {
+      prevPresetSizeIdRef.current = selectedSize.id;
+      return;
+    }
+    const prev = prevPresetSizeIdRef.current;
+    if (prev !== null && prev !== selectedSize.id) {
+      setCustomWidthMm(selectedSize.width);
+      setCustomHeightMm(selectedSize.height);
+    }
+    prevPresetSizeIdRef.current = selectedSize.id;
+  }, [selectedSize.id, selectedSize.width, selectedSize.height, useCustomMm]);
+
+  const activePrintSize = useMemo(
+    () => buildActiveLabelSize(selectedSize, useCustomMm, customWidthMm, customHeightMm),
+    [selectedSize, useCustomMm, customWidthMm, customHeightMm]
+  );
+
   const isSideways = printRotation === 90 || printRotation === 270;
-  const pageWidthMm = isSideways ? selectedSize.height : selectedSize.width;
-  const pageHeightMm = isSideways ? selectedSize.width : selectedSize.height;
+  const pageWidthMm = isSideways ? activePrintSize.height : activePrintSize.width;
+  const pageHeightMm = isSideways ? activePrintSize.width : activePrintSize.height;
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -146,8 +191,8 @@ export function BulkProductLabelPrint({
           if (canvas && cell.barcode) {
             try {
               const opts = buildJsBarcodeOptions(cell.barcode, cell.variantCode, fieldSettings.barcodeCaptionMode, {
-                width: selectedSize.width,
-                height: selectedSize.height,
+                width: activePrintSize.width,
+                height: activePrintSize.height,
               });
               JsBarcode(canvas, cell.barcode, opts as Parameters<typeof JsBarcode>[2]);
             } catch (err) {
@@ -158,7 +203,7 @@ export function BulkProductLabelPrint({
         if (selectedDesign.id === 'qr') {
           const qrCanvas = document.getElementById(cell.qrId) as HTMLCanvasElement | null;
           if (qrCanvas && cell.barcode) {
-            const qrSize = Math.min(selectedSize.width * 3, selectedSize.height * 3);
+            const qrSize = Math.min(activePrintSize.width * 3, activePrintSize.height * 3);
             QRCode.toCanvas(qrCanvas, cell.barcode, {
               width: qrSize,
               margin: 1,
@@ -169,7 +214,7 @@ export function BulkProductLabelPrint({
       });
     }, 120);
     return () => clearTimeout(timer);
-  }, [queue, selectedSize, selectedDesign, fieldSettings]);
+  }, [queue, activePrintSize, selectedDesign, fieldSettings]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);
@@ -403,9 +448,75 @@ export function BulkProductLabelPrint({
                 ))}
               </select>
               <div className="mt-2 text-xs text-gray-500 bg-gray-100 p-2 rounded">
-                {tm('size')}: {selectedSize.width}×{selectedSize.height}mm
+                {tm('size')}: {activePrintSize.width}×{activePrintSize.height}mm
                 {selectedSize.perRow > 1 &&
                   ` • ${selectedSize.perRow}×${selectedSize.perColumn} = ${selectedSize.perRow * selectedSize.perColumn} ${tm('labelCount')}`}
+                {useCustomMm && (
+                  <span className="block mt-1 text-purple-700 font-medium">
+                    {tm('labelPreset')}: {selectedSize.name}
+                  </span>
+                )}
+              </div>
+              <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
+                <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useCustomMm}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setUseCustomMm(on);
+                      if (on) {
+                        setCustomWidthMm(selectedSize.width);
+                        setCustomHeightMm(selectedSize.height);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  {tm('labelCustomMmEnabled')}
+                </label>
+                {useCustomMm && (
+                  <>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{tm('labelCustomMmHint')}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-600 block mb-1">{tm('labelWidthMmHorizontal')}</label>
+                        <input
+                          type="number"
+                          min={LABEL_MM_MIN}
+                          max={LABEL_MM_MAX}
+                          step={1}
+                          value={customWidthMm}
+                          onChange={(e) => setCustomWidthMm(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-gray-600 block mb-1">{tm('labelHeightMmVertical')}</label>
+                        <input
+                          type="number"
+                          min={LABEL_MM_MIN}
+                          max={LABEL_MM_MAX}
+                          step={1}
+                          value={customHeightMm}
+                          onChange={(e) => setCustomHeightMm(Number(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const w = customWidthMm;
+                        setCustomWidthMm(customHeightMm);
+                        setCustomHeightMm(w);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-2 py-2 text-xs font-semibold border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      {tm('labelSwapWidthHeight')}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -744,7 +855,7 @@ export function BulkProductLabelPrint({
                     >
                       {queue.flatMap((row, rowIdx) =>
                         Array.from({ length: row.quantity }, (_, qIdx) => (
-                          <RotatedLabel key={`${row.queueKey}-${qIdx}`} rotation={printRotation} size={selectedSize}>
+                          <RotatedLabel key={`${row.queueKey}-${qIdx}`} rotation={printRotation} size={activePrintSize}>
                             <LabelContent
                               variant={row.variant}
                               productName={row.productName}
@@ -752,7 +863,7 @@ export function BulkProductLabelPrint({
                               category={row.category}
                               barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
                               qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
-                              size={selectedSize}
+                              size={activePrintSize}
                               design={selectedDesign}
                               showDiscount={showDiscount}
                               discountPercent={discountPercent}
