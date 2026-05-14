@@ -79,6 +79,31 @@ export function crossRateDocumentToLedgerFromLatest(
     return vD / denom;
 }
 
+/**
+ * Firma ana para birimindeki tutarı raporlama dövizine çevirir.
+ * `exchange_rates` satırları fatura formu ile aynı pivotta olmalı (crossRate ile uyumlu).
+ */
+export function convertAmountMainToReporting(
+    amountMain: number,
+    mainCurrency: string,
+    reportingCurrency: string,
+    latestRates: ExchangeRate[],
+    rateType = 'Satış'
+): number | null {
+    const m = (mainCurrency || '').trim().toUpperCase();
+    const r = (reportingCurrency || '').trim().toUpperCase();
+    if (!m || !r || m === r) return amountMain;
+    const oneReportingInMain = crossRateDocumentToLedgerFromLatest(r, m, latestRates, rateType);
+    if (oneReportingInMain != null && oneReportingInMain > 0) {
+        return amountMain / oneReportingInMain;
+    }
+    const oneMainInReporting = crossRateDocumentToLedgerFromLatest(m, r, latestRates, rateType);
+    if (oneMainInReporting != null && oneMainInReporting > 0) {
+        return amountMain * oneMainInReporting;
+    }
+    return null;
+}
+
 // ============================================================================
 // CURRENCY API
 // ============================================================================

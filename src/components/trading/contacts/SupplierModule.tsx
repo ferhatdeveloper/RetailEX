@@ -11,33 +11,54 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getAppDefaultCurrency } from '../../../services/postgres';
+import {
+  exchangeRateAPI,
+  convertAmountMainToReporting,
+  type ExchangeRate,
+} from '../../../services/api/masterData';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
 
+/** Sıfır ondalıkla gösterilen yaygın ana para kodları */
+function preferIntegerAmountDisplay(code: string): boolean {
+  const c = (code || '').trim().toUpperCase();
+  return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
+}
+
 export function SupplierModule() {
   const { t, tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const mainCurrency = useMemo(
+    () => String(selectedFirm?.ana_para_birimi || getAppDefaultCurrency()).trim().toUpperCase().slice(0, 10) || 'IQD',
+    [selectedFirm?.ana_para_birimi]
+  );
+  const reportingCurrency = useMemo(() => {
+    const r = String(selectedFirm?.raporlama_para_birimi || mainCurrency).trim().toUpperCase().slice(0, 10);
+    return r || mainCurrency;
+  }, [selectedFirm?.raporlama_para_birimi, mainCurrency]);
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
-  const [exchangeRate, setExchangeRate] = useState<number>(1310);
-  const [showUSD, setShowUSD] = useState(false);
+  const [latestRates, setLatestRates] = useState<ExchangeRate[]>([]);
+  /** Ekstre tablosunda birincil sütunları raporlama dövizinde göster */
+  const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
 
   useEffect(() => {
-    const fetchRate = async () => {
+    const fetchRates = async () => {
       try {
-        const { exchangeRateAPI } = await import('../../../services/api/masterData');
-        const rates = await exchangeRateAPI.getLatestRates();
-        const usdRate = rates.find(r => r.currency_code === 'USD');
-        if (usdRate) setExchangeRate(usdRate.sell_rate);
+        setLatestRates(await exchangeRateAPI.getLatestRates());
       } catch (e) {
         console.error('Exchange rate fetch failed:', e);
       }
     };
-    fetchRate();
-  }, []);
+    void fetchRates();
+  }, [selectedFirm?.logicalref, mainCurrency, reportingCurrency]);
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; supplier: Supplier | null } | null>(null);
@@ -252,6 +273,38 @@ export function SupplierModule() {
     if (deletedCount < n) toast.error('Bazı kayıtlar silinemedi.');
   };
 
+  const mainDec = preferIntegerAmountDisplay(mainCurrency) ? 0 : 2;
+  const mainShowDec = !preferIntegerAmountDisplay(mainCurrency);
+  const repDec = preferIntegerAmountDisplay(reportingCurrency) ? 0 : 2;
+  const repShowDec = !preferIntegerAmountDisplay(reportingCurrency);
+
+  const toReporting = (amountMain: number) =>
+    convertAmountMainToReporting(amountMain, mainCurrency, reportingCurrency, latestRates);
+
+  /** Ekstre: varsayılan ana para; isteğe raporlama birimine geçiş */
+  const fmtEkstreAmount = (amountMain: number) => {
+    const rep = reportingCurrency !== mainCurrency ? toReporting(amountMain) : null;
+    if (rep == null || reportingCurrency === mainCurrency) {
+      return {
+        primary: formatNumber(amountMain, mainDec, mainShowDec),
+        code: mainCurrency,
+        secondary: null as string | null,
+      };
+    }
+    if (showReportingPrimary) {
+      return {
+        primary: formatNumber(rep, repDec, repShowDec),
+        code: reportingCurrency,
+        secondary: `${formatNumber(amountMain, mainDec, mainShowDec)} ${mainCurrency}`,
+      };
+    }
+    return {
+      primary: formatNumber(amountMain, mainDec, mainShowDec),
+      code: mainCurrency,
+      secondary: `${formatNumber(rep, repDec, repShowDec)} ${reportingCurrency}`,
+    };
+  };
+
   const columnHelper = createColumnHelper<Supplier>();
   const columns: any[] = [
     columnHelper.accessor('code', {
@@ -295,17 +348,23 @@ export function SupplierModule() {
       header: tm('crmBalance'),
       cell: info => {
         const val = info.getValue() || 0;
-        const valUSD = val / exchangeRate;
+        const rep = reportingCurrency !== mainCurrency ? toReporting(Math.abs(val)) : null;
         const label = val === 0 ? '' : val > 0 ? 'B' : 'A';
         const colorClass = label === 'B' ? 'text-red-600' : 'text-orange-600';
         const badgeClass = label === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
         return (
           <div className="flex flex-col items-end gap-0.5 font-bold">
             <div className="flex items-center gap-1.5">
-              <span className={colorClass}>{formatNumber(Math.abs(val), 0, false)} IQD</span>
+              <span className={colorClass}>
+                {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
+              </span>
               {label && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-black ${badgeClass}`}>{label}</span>}
             </div>
-            <span className="text-[10px] text-gray-400 font-medium">({formatNumber(Math.abs(valUSD), 2, true)} USD)</span>
+            {rep != null && reportingCurrency !== mainCurrency && (
+              <span className="text-[10px] text-gray-400 font-medium">
+                ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
+              </span>
+            )}
           </div>
         );
       },
@@ -366,7 +425,41 @@ export function SupplierModule() {
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
   const netBalance = totalBorc - totalAlacak;
 
+  const fmtEkstreSignedNet = () => {
+    if (reportingCurrency === mainCurrency) {
+      return {
+        primary: formatNumber(Math.abs(netBalance), mainDec, mainShowDec),
+        code: mainCurrency,
+        secondary: null as string | null,
+      };
+    }
+    const rep = toReporting(netBalance);
+    if (rep == null) {
+      return {
+        primary: formatNumber(Math.abs(netBalance), mainDec, mainShowDec),
+        code: mainCurrency,
+        secondary: null as string | null,
+      };
+    }
+    if (showReportingPrimary) {
+      return {
+        primary: formatNumber(Math.abs(rep), repDec, repShowDec),
+        code: reportingCurrency,
+        secondary: `${formatNumber(Math.abs(netBalance), mainDec, mainShowDec)} ${mainCurrency}`,
+      };
+    }
+    return {
+      primary: formatNumber(Math.abs(netBalance), mainDec, mainShowDec),
+      code: mainCurrency,
+      secondary: `${formatNumber(Math.abs(rep), repDec, repShowDec)} ${reportingCurrency}`,
+    };
+  };
+
   const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode));
+
+  const borcHdr = fmtEkstreAmount(totalBorc);
+  const alacHdr = fmtEkstreAmount(totalAlacak);
+  const netHdr = fmtEkstreSignedNet();
 
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
@@ -466,26 +559,27 @@ export function SupplierModule() {
                   {tm('bring')}
                 </button>
                 <div className="hidden sm:flex flex-wrap items-center gap-1.5">
-                  <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(showUSD ? totalBorc / exchangeRate : totalBorc, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
-                  <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(showUSD ? totalAlacak / exchangeRate : totalAlacak, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
+                  <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {borcHdr.primary} {borcHdr.code}</span>
+                  <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {alacHdr.primary} {alacHdr.code}</span>
                   {(() => {
                     const netLabel = netBalance > 0 ? 'B' : netBalance < 0 ? 'A' : '';
                     const netCls = netBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : netBalance < 0 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-gray-50 border-gray-200 text-gray-500';
-                    const amount = showUSD ? Math.abs(netBalance) / exchangeRate : Math.abs(netBalance);
                     return (
                       <span className={`border text-xs font-black px-2 py-0.5 rounded ${netCls}`}>
-                        {tm('netAmount')}: {formatNumber(amount, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : 'IQD'} {netLabel}
+                        {tm('netAmount')}: {netHdr.primary} {netHdr.code} {netLabel}
                       </span>
                     );
                   })()}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowUSD(!showUSD)}
-                  className={`px-2 py-1.5 rounded text-[10px] font-black uppercase transition-all ${showUSD ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}
-                >
-                  {showUSD ? 'USD' : 'IQD'}
-                </button>
+                {reportingCurrency !== mainCurrency && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReportingPrimary(!showReportingPrimary)}
+                    className={`px-2 py-1.5 rounded text-[10px] font-black uppercase transition-all ${showReportingPrimary ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}
+                  >
+                    {showReportingPrimary ? reportingCurrency : mainCurrency}
+                  </button>
+                )}
                 <button type="button" onClick={() => window.print()} className="p-2 hover:bg-gray-200 rounded-lg border border-transparent hover:border-gray-300" title={tm('print')}><Printer className="w-4 h-4 text-gray-600" /></button>
                 <button
                   type="button"
@@ -499,8 +593,8 @@ export function SupplierModule() {
               </div>
             </div>
             <div className="sm:hidden px-3 pb-3 flex flex-wrap gap-1.5">
-              <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {formatNumber(showUSD ? totalBorc / exchangeRate : totalBorc, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
-              <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {formatNumber(showUSD ? totalAlacak / exchangeRate : totalAlacak, showUSD ? 2 : 0, showUSD)} {showUSD ? '$' : ''}</span>
+              <span className="bg-red-50 border border-red-200 text-red-600 text-xs font-black px-2 py-0.5 rounded">B: {borcHdr.primary} {borcHdr.code}</span>
+              <span className="bg-orange-50 border border-orange-200 text-orange-600 text-xs font-black px-2 py-0.5 rounded">A: {alacHdr.primary} {alacHdr.code}</span>
             </div>
           </div>
 
@@ -527,6 +621,9 @@ export function SupplierModule() {
                 <tbody>
                   {ekstresiRows.map((row, idx) => {
                     const { label, color } = typeInfo(row);
+                    const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
+                    const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
+                    const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance)) : null;
                     return (
                       <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
                         <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
@@ -534,25 +631,31 @@ export function SupplierModule() {
                         <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${color}`}>{label}</span></td>
                         <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">{row.notes || ''}</td>
                         <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">
-                          {row.borcAmount > 0 ? (
+                          {borcD ? (
                             <div className="flex flex-col items-end">
-                              <span>{formatNumber(showUSD ? row.borcAmount / exchangeRate : row.borcAmount, showUSD ? 2 : 0, showUSD)}</span>
-                              {showUSD && <span className="text-[10px] opacity-50 font-normal">{(row.borcAmount).toLocaleString()} IQD</span>}
+                              <span>{borcD.primary} {borcD.code}</span>
+                              {borcD.secondary ? <span className="text-[10px] opacity-50 font-normal">{borcD.secondary}</span> : null}
                             </div>
                           ) : ''}
                         </td>
                         <td className="px-4 py-2 text-right font-bold text-green-600 whitespace-nowrap">
-                          {row.alacakAmount > 0 ? (
+                          {alacD ? (
                             <div className="flex flex-col items-end">
-                              <span>{formatNumber(showUSD ? row.alacakAmount / exchangeRate : row.alacakAmount, showUSD ? 2 : 0, showUSD)}</span>
-                              {showUSD && <span className="text-[10px] opacity-50 font-normal">{(row.alacakAmount).toLocaleString()} IQD</span>}
+                              <span>{alacD.primary} {alacD.code}</span>
+                              {alacD.secondary ? <span className="text-[10px] opacity-50 font-normal">{alacD.secondary}</span> : null}
                             </div>
                           ) : ''}
                         </td>
                         <td className={`px-4 py-2 text-right font-black whitespace-nowrap ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
                           <div className="flex flex-col items-end">
-                            <span>{formatNumber(showUSD ? Math.abs(row.balance) / exchangeRate : Math.abs(row.balance), showUSD ? 2 : 0, showUSD)} {row.balance !== 0 && <span className="ml-0.5 text-[10px]">{row.balance > 0 ? 'B' : 'A'}</span>}</span>
-                            {showUSD && row.balance !== 0 && <span className="text-[10px] opacity-50 font-normal">{Math.abs(row.balance).toLocaleString()} IQD</span>}
+                            {balD ? (
+                              <>
+                                <span>{balD.primary} {balD.code}{row.balance !== 0 ? <span className="ml-0.5 text-[10px]">{row.balance > 0 ? 'B' : 'A'}</span> : null}</span>
+                                {balD.secondary ? <span className="text-[10px] opacity-50 font-normal">{balD.secondary}</span> : null}
+                              </>
+                            ) : (
+                              <span className="text-gray-400">{formatNumber(0, mainDec, mainShowDec)} {mainCurrency}</span>
+                            )}
                           </div>
                         </td>
                       </tr>
