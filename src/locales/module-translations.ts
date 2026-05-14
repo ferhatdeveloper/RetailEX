@@ -4040,6 +4040,12 @@ export const wmsModuleTranslations = {
   statusCounting: { tr: 'Sayım Devam Ediyor', en: 'Counting in Progress', ar: 'الجرد قيد التقدم', ku: 'ژماردن لە ئارادایە' },
   statusCancelled: { tr: 'İptal Edildi', en: 'Cancelled', ar: 'ملغى', ku: 'هەڵوەشاوەتەوە' },
   noCountSlips: { tr: 'Henüz sayım fişi bulunmuyor', en: 'No count slips found yet', ar: 'لا توجد قسائم جرد بعد', ku: 'هێشتا هیچ پسوڵەیەکی ژماردن نەکراوە' },
+  countFilterNoResults: {
+    tr: 'Bu filtreye uygun sayım fişi yok. Tümünü seçerek veya başka bir durum filtresi ile görüntüleyebilirsiniz.',
+    en: 'No slips match this filter. Choose All or another status to see more.',
+    ar: 'لا توجد قسائم تطابق هذا التصفية.',
+    ku: 'هیچ پسوڵەیەک لەگەڵ ئەم فلتەرە ناگونجێت.',
+  },
   startCountSession: { tr: 'Sayım Seansı Başlat', en: 'Start Count Session', ar: 'بدء جلسة جرد', ku: 'دەستپێکردنی خولی ژماردن' },
   createNewCount: { tr: 'Yeni Sayım Oluştur', en: 'Create New Count', ar: 'إنشاء جرد جديد', ku: 'دروستکردنی ژماردنی نوێ' },
   countEntry: { tr: 'Sayım Girişi', en: 'Count Entry', ar: 'إدخال الجرد', ku: 'داخلکردنی ژماردن' },

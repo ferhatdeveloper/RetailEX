@@ -1472,9 +1472,10 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
 }) {
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
-    const [slips, setSlips] = useState<CountingSlip[]>([]);
+    const [allSlips, setAllSlips] = useState<CountingSlip[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filterStatus, setFilterStatus] = useState<string>('');
+    /** İlk açılışta “Sayım Devam Ediyor” (devam eden sayımlar) seçili gelsin. */
+    const [filterStatus, setFilterStatus] = useState<string>('counting');
     const [purchaseModalSlip, setPurchaseModalSlip] = useState<CountingSlip | null>(null);
     const [purchaseModalBusy, setPurchaseModalBusy] = useState(false);
     /** Tamamlanan fişlerde fazla satırı var mı (satır bazlı sorgu — taslak boş kalmasın) */
@@ -1483,19 +1484,24 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     const loadSlips = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await wmsStockCount.getSlips(filterStatus || undefined);
-            setSlips(data);
+            const data = await wmsStockCount.getSlips();
+            setAllSlips(data);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    }, [filterStatus]);
+    }, []);
 
     useEffect(() => { loadSlips(); }, [loadSlips]);
 
+    const filteredSlips = useMemo(() => {
+        if (!filterStatus) return allSlips;
+        return allSlips.filter(s => normSlipStatus(s.status) === filterStatus);
+    }, [allSlips, filterStatus]);
+
     useEffect(() => {
-        const completed = slips.filter(s => normSlipStatus(s.status) === 'completed');
+        const completed = filteredSlips.filter(s => normSlipStatus(s.status) === 'completed');
         if (completed.length === 0) {
             setSurplusEligibleBySlip({});
             return;
@@ -1520,7 +1526,7 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
         return () => {
             cancelled = true;
         };
-    }, [slips]);
+    }, [filteredSlips]);
 
     /** Tamamlanmayan / iptal edilmemiş sayımlar her zaman üstte (aynı grupta yeniden eskiye). */
     const sortedSlips = useMemo(() => {
@@ -1545,13 +1551,13 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
         };
         const t = (s: CountingSlip) =>
             new Date(s.date || s.created_at || 0).getTime();
-        return [...slips].sort((a, b) => {
+        return [...filteredSlips].sort((a, b) => {
             const oa = order(a.status);
             const ob = order(b.status);
             if (oa !== ob) return oa - ob;
             return t(b) - t(a);
         });
-    }, [slips]);
+    }, [filteredSlips]);
 
     const handleCancel = async (slip: CountingSlip) => {
         if (!confirm(`"${slip.fiche_no}" ${tm('confirmCancelCount')}`)) return;
@@ -1574,13 +1580,13 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
     const textClass = darkMode ? 'text-gray-100' : 'text-gray-900';
 
     const stats = {
-        draft: slips.filter(s => normSlipStatus(s.status) === 'draft').length,
-        active: slips.filter(s => {
+        draft: allSlips.filter(s => normSlipStatus(s.status) === 'draft').length,
+        active: allSlips.filter(s => {
             const st = normSlipStatus(s.status);
             return st === 'active' || st === 'counting';
         }).length,
-        reconciliation: slips.filter(s => normSlipStatus(s.status) === 'reconciliation').length,
-        completed: slips.filter(s => normSlipStatus(s.status) === 'completed').length,
+        reconciliation: allSlips.filter(s => normSlipStatus(s.status) === 'reconciliation').length,
+        completed: allSlips.filter(s => normSlipStatus(s.status) === 'completed').length,
     };
 
     return (
@@ -1647,17 +1653,32 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                     <div className="flex items-center justify-center py-16">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                     </div>
-                ) : slips.length === 0 ? (
+                ) : filteredSlips.length === 0 ? (
                     <div className={`${cardClass} border rounded-2xl p-12 text-center`}>
                         <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                        <p className={`${textClass} font-medium mb-1`}>{tm('noCountSlips')}</p>
-                        <p className="text-sm text-gray-500 mb-4">{tm('startCountSession')}</p>
-                        <button
-                            onClick={onNewSlip}
-                            className="px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
-                        >
-                            {tm('createNewCount')}
-                        </button>
+                        {allSlips.length > 0 ? (
+                            <>
+                                <p className={`${textClass} font-medium mb-1`}>{tm('countFilterNoResults')}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => setFilterStatus('')}
+                                    className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    {tm('filterAll')}
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <p className={`${textClass} font-medium mb-1`}>{tm('noCountSlips')}</p>
+                                <p className="text-sm text-gray-500 mb-4">{tm('startCountSession')}</p>
+                                <button
+                                    onClick={onNewSlip}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    {tm('createNewCount')}
+                                </button>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-3">
