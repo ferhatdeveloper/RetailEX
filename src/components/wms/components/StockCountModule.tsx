@@ -4,7 +4,7 @@
  * Design inspired by ExWhms modern UI patterns
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     ArrowLeft, Plus, Scan, Package,
     Minus, ClipboardList, MapPin, User, RefreshCw,
@@ -1522,6 +1522,37 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
         };
     }, [slips]);
 
+    /** Tamamlanmayan / iptal edilmemiş sayımlar her zaman üstte (aynı grupta yeniden eskiye). */
+    const sortedSlips = useMemo(() => {
+        const order = (raw: string | undefined): number => {
+            const n = normSlipStatus(raw);
+            switch (n) {
+                case 'draft':
+                    return 0;
+                case 'active':
+                    return 1;
+                case 'counting':
+                    return 2;
+                case 'reconciliation':
+                    return 3;
+                case 'completed':
+                    return 4;
+                case 'cancelled':
+                    return 5;
+                default:
+                    return 6;
+            }
+        };
+        const t = (s: CountingSlip) =>
+            new Date(s.date || s.created_at || 0).getTime();
+        return [...slips].sort((a, b) => {
+            const oa = order(a.status);
+            const ob = order(b.status);
+            if (oa !== ob) return oa - ob;
+            return t(b) - t(a);
+        });
+    }, [slips]);
+
     const handleCancel = async (slip: CountingSlip) => {
         if (!confirm(`"${slip.fiche_no}" ${tm('confirmCancelCount')}`)) return;
         await wmsStockCount.cancelSlip(slip.id);
@@ -1630,8 +1661,11 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {slips.map(slip => {
+                        {sortedSlips.map(slip => {
                             const st = normSlipStatus(slip.status);
+                            const cancelBtnClass = darkMode
+                                ? 'shrink-0 rounded-lg border-2 border-red-500/60 bg-gray-800 px-3 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-950/40'
+                                : 'shrink-0 rounded-lg border-2 border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50';
                             return (
                             <div key={slip.id} className={`${cardClass} border rounded-xl shadow-sm`}>
                                 <div className="p-4">
@@ -1665,33 +1699,59 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                         <p className="text-xs text-gray-500 mb-3">{slip.description}</p>
                                     )}
 
-                                    {/* Action Buttons — overflow-hidden yok; uzun metinlerde sağ buton kırpılmasın */}
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                    {/* Aksiyonlar: birincil + İptal yan yana; tamamlananlarda İncele + alış yan yana */}
+                                    <div className="flex flex-col gap-2">
                                         {(st === 'draft' || st === 'active' || st === 'counting') && (
-                                            <button
-                                                onClick={() => onEntry(slip)}
-                                                className="w-full sm:flex-1 sm:min-w-[140px] py-2 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-colors"
-                                            >
-                                                <Scan className="w-4 h-4" /> {tm('countEntry')}
-                                            </button>
+                                            <div className="flex w-full flex-row gap-2 items-stretch">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onEntry(slip)}
+                                                    className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                                                >
+                                                    <Scan className="h-4 w-4 shrink-0" aria-hidden />
+                                                    <span className="truncate">{tm('countEntry')}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCancel(slip)}
+                                                    aria-label={tm('countSlipCancelBtn')}
+                                                    className={`inline-flex items-center justify-center gap-1.5 ${cancelBtnClass}`}
+                                                >
+                                                    <XCircle className="h-4 w-4 shrink-0" aria-hidden />
+                                                    <span className="hidden min-[380px]:inline">{tm('countSlipCancelBtn')}</span>
+                                                </button>
+                                            </div>
                                         )}
                                         {st === 'reconciliation' && (
-                                            <button
-                                                onClick={() => onReconciliation(slip)}
-                                                className="w-full sm:flex-1 sm:min-w-[140px] py-2 bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-purple-700 transition-colors"
-                                            >
-                                                <BarChart3 className="w-4 h-4" /> {tm('countReconciliation')}
-                                            </button>
-                                        )}
-                                        {st === 'completed' && (
-                                            <div className="flex w-full flex-col gap-2">
+                                            <div className="flex w-full flex-row gap-2 items-stretch">
                                                 <button
                                                     type="button"
                                                     onClick={() => onReconciliation(slip)}
-                                                    className="w-full py-3 px-3 bg-gray-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-600 transition-colors"
+                                                    className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-purple-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700"
                                                 >
-                                                    <Eye className="w-4 h-4 shrink-0" aria-hidden />
-                                                    <span>{tm('viewLabel')}</span>
+                                                    <BarChart3 className="h-4 w-4 shrink-0" aria-hidden />
+                                                    <span className="truncate">{tm('countReconciliation')}</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCancel(slip)}
+                                                    aria-label={tm('countSlipCancelBtn')}
+                                                    className={`inline-flex items-center justify-center gap-1.5 ${cancelBtnClass}`}
+                                                >
+                                                    <XCircle className="h-4 w-4 shrink-0" aria-hidden />
+                                                    <span className="hidden min-[380px]:inline">{tm('countSlipCancelBtn')}</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                        {st === 'completed' && (
+                                            <div className="flex w-full flex-row gap-2 items-stretch">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onReconciliation(slip)}
+                                                    className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 py-2.5 px-2 text-sm font-semibold text-white transition-colors hover:bg-gray-600"
+                                                >
+                                                    <Eye className="h-4 w-4 shrink-0" aria-hidden />
+                                                    <span className="truncate text-center">{tm('viewLabel')}</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1702,7 +1762,7 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                                         || (purchaseModalSlip !== null && purchaseModalSlip.id !== slip.id)
                                                         || (purchaseModalSlip?.id === slip.id && purchaseModalBusy)
                                                     }
-                                                    className="w-full py-3 px-3 bg-teal-600 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 hover:bg-teal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 py-2.5 px-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
                                                     title={
                                                         surplusEligibleBySlip[slip.id] === false
                                                             ? tm('countPurchaseFromSurplusNoLines')
@@ -1710,21 +1770,13 @@ function OrdersView({ darkMode, onBack, onNewSlip, onEntry, onReconciliation }: 
                                                     }
                                                 >
                                                     {surplusEligibleBySlip[slip.id] === undefined ? (
-                                                        <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+                                                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                                                     ) : (
-                                                        <ShoppingCart className="w-4 h-4 shrink-0" aria-hidden />
+                                                        <ShoppingCart className="h-4 w-4 shrink-0" aria-hidden />
                                                     )}
-                                                    <span className="text-center leading-tight">{tm('countPurchaseFromSurplusBtn')}</span>
+                                                    <span className="line-clamp-2 text-center leading-tight">{tm('countPurchaseFromSurplusBtn')}</span>
                                                 </button>
                                             </div>
-                                        )}
-                                        {(st === 'draft' || st === 'active') && (
-                                            <button
-                                                onClick={() => handleCancel(slip)}
-                                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors sm:shrink-0"
-                                            >
-                                                <XCircle className="w-5 h-5" />
-                                            </button>
                                         )}
                                     </div>
                                 </div>

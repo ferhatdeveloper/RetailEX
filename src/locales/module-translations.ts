@@ -4045,6 +4045,7 @@ export const wmsModuleTranslations = {
   countEntry: { tr: 'Sayım Girişi', en: 'Count Entry', ar: 'إدخال الجرد', ku: 'داخلکردنی ژماردن' },
   viewLabel: { tr: 'İncele', en: 'Review', ar: 'مراجعة', ku: 'پێداچوونەوە' },
   confirmCancelCount: { tr: 'Sayımı iptal etmek istediğinizden emin misiniz?', en: 'Are you sure you want to cancel the count?', ar: 'هل أنت متأكد أنك تريد إلغاء الجرد؟', ku: 'ئایا دڵنیایت دەتەوێت ژماردنەکە هەڵوەشێنیتەوە؟' },
+  countSlipCancelBtn: { tr: 'İptal et', en: 'Cancel', ar: 'إلغاء', ku: 'هەڵوەشاندنەوە' },
   countTypeFull: { tr: 'Tam Sayım', en: 'Full Count', ar: 'جرد كامل', ku: 'ژماردنی تەواو' },
   countTypeCycle: { tr: 'Döngüsel (Kısmi) Sayım', en: 'Cycle (Partial) Count', ar: 'جرد دوري (جزئي)', ku: 'ژماردنی خولی (بەشەکی)' },
   countTypeLocation: { tr: 'Lokasyon Bazlı Sayım', en: 'Location-Based Count', ar: 'جرد على أساس الموقع', ku: 'ژماردن لەسەر بنەمای شوێن' },
