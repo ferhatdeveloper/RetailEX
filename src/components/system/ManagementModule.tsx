@@ -8,9 +8,11 @@ import {
   Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent,
   PackageSearch, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
   Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
-  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft
+  Search, X, Languages, Radio, ArrowRightLeft, MoreVertical, Printer, Menu, ChevronLeft, Loader2
 } from 'lucide-react';
 const DevExDataGrid = lazy(() => import('../shared/DevExDataGrid').then(m => ({ default: m.DevExDataGrid })));
+const RestaurantMainLazy = lazy(() => import('../restaurant/index'));
+const BeautyMainLazy = lazy(() => import('../beauty/index'));
 import { APP_VERSION } from '../../core/version';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { LanguageSelectionModal } from './LanguageSelectionModal';
@@ -67,8 +69,6 @@ import { CurrencyManagement } from '../accounting/finance/CurrencyManagement';
 import { CommissionModule } from '../modules/CommissionModule';
 import { UserManagementModule } from './UserManagementModule';
 import { WhatsAppIntegrationModule } from '../modules/WhatsAppIntegrationModule';
-import RestaurantMain from '../restaurant/index';
-import BeautyMain from '../beauty/index';
 import { AppointmentModule } from '../modules/AppointmentModule';
 import { BIDashboardModule } from '../modules/BIDashboardModule';
 import { EcommerceModule } from '../modules/EcommerceModule';
@@ -1360,17 +1360,39 @@ export function ManagementModule({
         case 'whatsapp':
           return <WhatsAppIntegrationModule />;
         case 'restaurant':
-          return <RestaurantMain
-            products={products}
-            sales={sales}
-            customers={customers}
-            campaigns={campaigns}
-            currentUser={user as any}
-            onSaleComplete={() => { }}
-            setActiveModule={() => { }}
-          />;
+          return (
+            <Suspense
+              fallback={
+                <div className="flex h-[50vh] items-center justify-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  <span>Restoran modülü yükleniyor…</span>
+                </div>
+              }
+            >
+              <RestaurantMainLazy
+                products={products}
+                sales={sales}
+                customers={customers}
+                campaigns={campaigns}
+                currentUser={user as any}
+                onSaleComplete={() => { }}
+                setActiveModule={() => { }}
+              />
+            </Suspense>
+          );
         case 'beauty':
-          return <BeautyMain />;
+          return (
+            <Suspense
+              fallback={
+                <div className="flex h-[50vh] items-center justify-center gap-2 text-sm text-gray-500">
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  <span>Güzellik modülü yükleniyor…</span>
+                </div>
+              }
+            >
+              <BeautyMainLazy />
+            </Suspense>
+          );
         case 'appointment':
           return <AppointmentModule />;
         case 'bi-dashboard':

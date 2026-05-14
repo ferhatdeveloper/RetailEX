@@ -19,6 +19,7 @@ import { ImageSearchModal } from '../../shared/ImageSearchModal';
 import { CdnGalleryModal } from '../../shared/CdnGalleryModal';
 import { translate, type Language } from '../../../shared/i18n/translations';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { usePermission } from '../../../shared/hooks/usePermission';
 import { toast } from 'sonner';
 import type { Product, ProductVariant, Invoice } from '../../../core/types';
 import { ProductLabelPrint } from './ProductLabelPrint';
@@ -1792,6 +1793,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   }, [formData, barcodes, variants, hasVariants]);
 
   const { tm } = useLanguage();
+  const { canViewPurchasePricing } = usePermission();
+  const showPurchasePricing = canViewPurchasePricing();
 
   const tabs = [
     { id: 'genel' as TabType, label: tm('general'), icon: Package },
@@ -2301,29 +2304,33 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     </select>
                   </div>
 
-                  {/* Row 2: Alış Fiyatı & TAX % */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700 font-bold">{tm('purchasePrice')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.purchasePrice || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePrice', Number(e.target.value))}
-                      readOnly={formData.autoCalculateUSD}
-                      className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50 cursor-not-allowed text-blue-700' : ''}`}
-                    />
-                    {formData.autoCalculateUSD && (
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
-                        <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                  {/* Row 2: Alış Fiyatı (yetkiye bağlı) & TAX % */}
+                  {showPurchasePricing ? (
+                    <>
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                        <label className="text-xs text-gray-700 font-bold">{tm('purchasePrice')}</label>
+                      </div>
+                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 relative">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.purchasePrice || 0}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePrice', Number(e.target.value))}
+                          readOnly={formData.autoCalculateUSD}
+                          className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50 cursor-not-allowed text-blue-700' : ''}`}
+                        />
+                        {formData.autoCalculateUSD && (
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-blue-500 font-bold flex items-center gap-1 bg-blue-50/50 px-1 rounded">
+                            <Banknote className="w-2.5 h-2.5" /> {tm('auto')}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+                  <div className={`col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center ${!showPurchasePricing ? 'max-lg:col-start-1' : ''}`}>
                     <label className="text-xs text-gray-700 italic">TAX %</label>
                   </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                  <div className={`col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5 ${!showPurchasePricing ? 'max-lg:col-span-1' : ''}`}>
                     <input
                       type="number"
                       value={formData.taxRate || 0}
@@ -2364,23 +2371,27 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
 
-                  {/* Row 4: Kâr Marjı */}
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
-                    <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-50 px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={formData.purchasePrice > 0
-                        ? ((formData.salePrice - formData.purchasePrice) / formData.purchasePrice * 100).toFixed(2)
-                        : '0.00'}
-                      readOnly
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-gray-100 text-gray-600 font-medium"
-                    />
-                  </div>
-                  <div className="col-span-6 max-lg:col-span-1 bg-gray-50 flex items-center px-4">
-                    <span className="text-[10px] text-gray-400 italic">{tm('profitMarginNote')}</span>
-                  </div>
+                  {showPurchasePricing ? (
+                    <>
+                      {/* Row 4: Kâr Marjı */}
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
+                        <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
+                      </div>
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-50 px-2 py-1.5">
+                        <input
+                          type="text"
+                          value={formData.purchasePrice > 0
+                            ? ((formData.salePrice - formData.purchasePrice) / formData.purchasePrice * 100).toFixed(2)
+                            : '0.00'}
+                          readOnly
+                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-gray-100 text-gray-600 font-medium"
+                        />
+                      </div>
+                      <div className="col-span-6 max-lg:col-span-1 bg-gray-50 flex items-center px-4">
+                        <span className="text-[10px] text-gray-400 italic">{tm('profitMarginNote')}</span>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </div>
 
@@ -2390,30 +2401,36 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                   <span className="text-xs text-gray-700">{tm('foreignCurrencyPrices')}</span>
                 </div>
                 <div className="grid grid-cols-12 gap-px bg-gray-300 max-lg:grid-cols-1">
-                   <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
-                    <label className="text-xs text-gray-700">{tm('purchasePrice')} (USD)</label>
-                    <button
-                      onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
-                      className={`p-1 rounded transition-colors ${formData.autoCalculateUSD ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-gray-500'}`}
-                      title="Otomatik Kur Hesapla"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.purchasePriceUSD || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePriceUSD', Number(e.target.value))}
-                      className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50' : ''}`}
-                    />
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                  {showPurchasePricing ? (
+                    <>
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between">
+                        <label className="text-xs text-gray-700">{tm('purchasePrice')} (USD)</label>
+                        <button
+                          type="button"
+                          onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
+                          className={`p-1 rounded transition-colors ${formData.autoCalculateUSD ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-gray-500'}`}
+                          title="Otomatik Kur Hesapla"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.purchasePriceUSD || 0}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePriceUSD', Number(e.target.value))}
+                          className={`w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 ${formData.autoCalculateUSD ? 'bg-blue-50' : ''}`}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className={`col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center justify-between ${!showPurchasePricing ? 'max-lg:col-start-1' : ''}`}>
                     <label className="text-xs text-gray-700">{tm('salePrice')} (USD)</label>
                     <div className="flex items-center gap-1">
                       <span className="text-[10px] text-gray-400">Rate: {usdExchangeRate}</span>
                       <button
+                        type="button"
                         onClick={() => handleInputChange('autoCalculateUSD', !formData.autoCalculateUSD)}
                         className={`p-1 rounded transition-colors ${formData.autoCalculateUSD ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-gray-500'}`}
                         title="Otomatik Kur Hesapla"
@@ -2450,19 +2467,23 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     <span className="text-[10px] text-gray-400 italic">Boş veya 0 ise sistem kuru ({usdExchangeRate}) baz alınır. MarketPOS ve Faturalarda dinamik hesaplanır.</span>
                   </div>
 
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
-                    <label className="text-xs text-gray-700">{tm('purchasePrice')} (EUR)</label>
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={formData.purchasePriceEUR || 0}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePriceEUR', Number(e.target.value))}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                  {showPurchasePricing ? (
+                    <>
+                      <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5">
+                        <label className="text-xs text-gray-700">{tm('purchasePrice')} (EUR)</label>
+                      </div>
+                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.purchasePriceEUR || 0}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('purchasePriceEUR', Number(e.target.value))}
+                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className={`col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 ${!showPurchasePricing ? 'max-lg:col-start-1' : ''}`}>
                     <label className="text-xs text-gray-700">{tm('salePrice')} (EUR)</label>
                   </div>
                   <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
@@ -3223,36 +3244,39 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                             {/* Ayırıcı */}
                             <div className="h-6 w-px bg-gray-300" />
 
-                            {/* Fiyat ve Adet */}
-                            <button
-                              onClick={applyPriceToAll}
-                              className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
-                            >
-                              <Tag className="w-3.5 h-3.5" />
-                              {tm('bulkPurchasePrice')}
-                            </button>
-                            <button
-                              onClick={applyQuantityToAll}
-                              className="px-3 py-1.5 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 flex items-center gap-1"
-                            >
-                              <Calculator className="w-3.5 h-3.5" />
-                              {tm('bulkQuantity')}
-                            </button>
+                            {showPurchasePricing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={applyPriceToAll}
+                                  className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 flex items-center gap-1"
+                                >
+                                  <Tag className="w-3.5 h-3.5" />
+                                  {tm('bulkPurchasePrice')}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={applyQuantityToAll}
+                                  className="px-3 py-1.5 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 flex items-center gap-1"
+                                >
+                                  <Calculator className="w-3.5 h-3.5" />
+                                  {tm('bulkQuantity')}
+                                </button>
 
-                            {/* Ayırıcı */}
-                            <div className="h-6 w-px bg-gray-300" />
+                                <div className="h-6 w-px bg-gray-300" />
 
-                            {/* Alış Faturası */}
-                            <button
-                              onClick={handleCreatePurchaseInvoice}
-                              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
-                            >
-                              <Package className="w-3.5 h-3.5" />
-                              {tm('createPurchaseInvoice')}
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCreatePurchaseInvoice}
+                                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1"
+                                >
+                                  <Package className="w-3.5 h-3.5" />
+                                  {tm('createPurchaseInvoice')}
+                                </button>
 
-                            {/* Ayırıcı */}
-                            <div className="h-6 w-px bg-gray-300" />
+                                <div className="h-6 w-px bg-gray-300" />
+                              </>
+                            ) : null}
 
                             {/* Diğer İşlemler */}
                             <button
@@ -3384,10 +3408,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                             <th className="px-2 py-1.5 text-left text-gray-600">{tm('variantCode')}</th>
                                             <th className="px-2 py-1.5 text-left text-gray-600">{tm('variantAttributes')}</th>
                                             <th className="px-2 py-1.5 text-left text-gray-600">{tm('barcode')} *</th>
-                                            <th className="px-2 py-1.5 text-right text-gray-600">{tm('purchasePrice')}</th>
+                                            {showPurchasePricing ? (
+                                              <th className="px-2 py-1.5 text-right text-gray-600">{tm('purchasePrice')}</th>
+                                            ) : null}
 
                                             <th className="px-2 py-1.5 text-right text-gray-600">{tm('salePrice')}</th>
-                                            <th className="px-2 py-1.5 text-right text-gray-600 bg-orange-50">{tm('purchaseQuantity')}</th>
+                                            {showPurchasePricing ? (
+                                              <th className="px-2 py-1.5 text-right text-gray-600 bg-orange-50">{tm('purchaseQuantity')}</th>
+                                            ) : null}
                                             <th className="px-2 py-1.5 text-right text-gray-600">{tm('stock')}</th>
                                             <th className="px-2 py-1.5"></th>
                                           </tr>
@@ -3433,15 +3461,17 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                                   placeholder={barcodeType === 'EAN13' ? tm('13Digits') : tm('alphanumeric')}
                                                 />
                                               </td>
-                                              <td className="px-2 py-1.5">
-                                                <input
-                                                  type="number"
-                                                  step="0.01"
-                                                  value={variant.purchasePrice}
-                                                  onChange={(e) => updateVariantPurchasePrice(variant.id, Number(e.target.value))}
-                                                  className="w-20 px-1.5 py-0.5 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                />
-                                              </td>
+                                              {showPurchasePricing ? (
+                                                <td className="px-2 py-1.5">
+                                                  <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={variant.purchasePrice}
+                                                    onChange={(e) => updateVariantPurchasePrice(variant.id, Number(e.target.value))}
+                                                    className="w-20 px-1.5 py-0.5 border border-gray-300 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                  />
+                                                </td>
+                                              ) : null}
 
                                               <td className="px-2 py-1.5">
                                                 <input
@@ -3452,16 +3482,18 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                                                   className="w-20 px-1.5 py-0.5 border border-gray-300 text-xs text-right bg-green-50 focus:outline-none focus:ring-1 focus:ring-green-500"
                                                 />
                                               </td>
-                                              <td className="px-2 py-1.5 bg-orange-50">
-                                                <input
-                                                  type="number"
-                                                  min="0"
-                                                  value={variant.purchaseQuantity || 0}
-                                                  onChange={(e) => updateVariant(variant.id, 'purchaseQuantity', Number(e.target.value))}
-                                                  className="w-16 px-1.5 py-0.5 border border-orange-300 text-xs text-right bg-white focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                                  placeholder="0"
-                                                />
-                                              </td>
+                                              {showPurchasePricing ? (
+                                                <td className="px-2 py-1.5 bg-orange-50">
+                                                  <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={variant.purchaseQuantity || 0}
+                                                    onChange={(e) => updateVariant(variant.id, 'purchaseQuantity', Number(e.target.value))}
+                                                    className="w-16 px-1.5 py-0.5 border border-orange-300 text-xs text-right bg-white focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    placeholder="0"
+                                                  />
+                                                </td>
+                                              ) : null}
                                               <td className="px-2 py-1.5">
                                                 <input
                                                   type="number"
