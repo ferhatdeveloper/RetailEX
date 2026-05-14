@@ -175,7 +175,9 @@ function invoiceEditLineToFormAmounts(
       ? parseFloat(String(uFCraw))
       : NaN;
   const uLoc = parseFloat(String(item.unitPrice ?? item.unit_price ?? item.price ?? 0));
-  const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
+  /** Döviz satırında `unit_price_fc` bazen 0 kayıtlı; yerel `unit_price` doluysa FC sıfırını yok say. */
+  const useFc =
+    Number.isFinite(uFC) && rowCur !== 'IQD' && !(uFC === 0 && uLoc > 0);
   const unitPrice = useFc ? uFC : uLoc;
 
   const hasLedgerGross =
@@ -1165,7 +1167,9 @@ export function UniversalInvoiceForm({
         } else {
           resolvedPrice = (unitInfo.purchase_price > 0) ? unitInfo.purchase_price : 0;
           if (resolvedPrice === 0) {
-            resolvedPrice = ((product as any).cost || (product as any).lastPurchasePrice || product.price || 0) * unitMult;
+            const pp = Number((product as any).purchase_price ?? (product as any).purchasePrice ?? 0);
+            resolvedPrice =
+              ((product as any).cost || pp || (product as any).lastPurchasePrice || product.price || 0) * unitMult;
           }
         }
       } else {
@@ -1188,7 +1192,9 @@ export function UniversalInvoiceForm({
           resolvedPrice = usdFieldToInvoiceUnitPrice(usdPurchaseCard, 1, currency, finalRate);
         }
         if (resolvedPrice === 0) {
-          resolvedPrice = (product as any).cost || (product as any).lastPurchasePrice || product.price || 0;
+          const pp = Number((product as any).purchase_price ?? (product as any).purchasePrice ?? 0);
+          resolvedPrice =
+            (product as any).cost || pp || (product as any).lastPurchasePrice || product.price || 0;
         }
       } else {
         if (useUsdSale) {
@@ -1215,8 +1221,17 @@ export function UniversalInvoiceForm({
       }
     }
 
+    /** Sayım taslağı / kartta maliyet 0: satıra zaten yazılmış birim fiyat korunur */
+    if (isPurchase && (item.unitPrice || 0) <= 0 && (baseItem.unitPrice || 0) > 0) {
+      item.unitPrice = Number(baseItem.unitPrice) || 0;
+    }
+
     if (isPurchase) {
-      const cost = (product as any).lastPurchasePrice ?? (product as any).cost ?? 0;
+      const cost =
+        Number((product as any).lastPurchasePrice) ||
+        Number((product as any).cost) ||
+        Number((product as any).purchase_price ?? (product as any).purchasePrice ?? 0) ||
+        0;
       if (docUsd && usdPurchaseCard > 0) {
         item.lastPurchasePrice = usdPurchaseCard;
         item.priceDifference = item.unitPrice - usdPurchaseCard;

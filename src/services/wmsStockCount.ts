@@ -369,9 +369,13 @@ class WMSStockCountService {
             `COALESCE(price, 0)::float as sale`,
             `0::float as sale`,
         ];
+        /** Alış: kartta `purchase_price` boş/0 iken çoğu kurulumda maliyet `cost` kolonundadır. */
         const purchaseCols = [
-            `COALESCE(purchase_price, 0)::float as purchase`,
-            `0::float as purchase`,
+            `COALESCE(NULLIF(purchase_price, 0), cost, 0)::float AS purchase`,
+            `COALESCE(purchase_price, cost, 0)::float AS purchase`,
+            `COALESCE(cost, 0)::float AS purchase`,
+            `COALESCE(purchase_price, 0)::float AS purchase`,
+            `0::float AS purchase`,
         ];
         for (const saleCol of saleCols) {
             for (const purchaseCol of purchaseCols) {
@@ -381,15 +385,21 @@ class WMSStockCountService {
                          FROM products WHERE id::text = ANY($1)`,
                         [ids]
                     );
+                    const uuidRe =
+                        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
                     return Object.fromEntries(
-                        rows.map((r: any) => [
-                            r.id,
-                            {
-                                purchase: r.purchase || 0,
-                                sale: r.sale || 0,
-                                ...(r.code ? { code: String(r.code) } : {}),
-                            },
-                        ])
+                        rows.map((r: any) => {
+                            const idRaw = String(r.id ?? '');
+                            const k = uuidRe.test(idRaw) ? idRaw.toLowerCase() : idRaw;
+                            return [
+                                k,
+                                {
+                                    purchase: r.purchase || 0,
+                                    sale: r.sale || 0,
+                                    ...(r.code ? { code: String(r.code) } : {}),
+                                },
+                            ] as const;
+                        })
                     );
                 } catch {
                     continue;

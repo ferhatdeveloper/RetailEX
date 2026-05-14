@@ -1236,7 +1236,12 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     barcode: dbProduct.barcode,
     category: dbProduct.category || dbProduct.category_code || '',
     price: parseFloat(dbProduct.price || 0),
-    cost: parseFloat(dbProduct.cost || 0),
+    /** Kart maliyeti: `cost` boş/0 iken çoğu kurulumda alış `purchase_price` kolonundadır */
+    cost: (() => {
+      const c = parseFloat(String(dbProduct.cost ?? 0)) || 0;
+      if (c !== 0) return c;
+      return parseFloat(String(dbProduct.purchase_price ?? 0)) || 0;
+    })(),
     stock: parseFloat(dbProduct.stock || 0),
     minStock: parseFloat(dbProduct.min_stock || 0),
     min_stock: parseFloat(dbProduct.min_stock || 0),

@@ -403,7 +403,9 @@ export async function restGetLinesPrices(
     const table = productsTable();
     const inList = ids.map((id) => encodeURIComponent(id)).join(',');
     const selectAttempts = [
+        'id,code,price_list_1,price,purchase_price,cost',
         'id,code,price_list_1,price,purchase_price',
+        'id,code,price_list_1,price,cost',
         'id,code,price_list_1,price',
         'id,code,price_list_1',
         'id,code',
@@ -416,10 +418,19 @@ export async function restGetLinesPrices(
                 PUB
             );
             const out: Record<string, { purchase: number; sale: number; code?: string }> = {};
+            const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             for (const r of Array.isArray(rows) ? rows : []) {
-                const id = String(r.id);
+                const idRaw = String(r.id ?? '');
+                const id = uuidRe.test(idRaw) ? idRaw.toLowerCase() : idRaw;
                 const sale = Number(r.price_list_1 ?? r.price ?? 0) || 0;
-                const purchase = Number(r.purchase_price ?? 0) || 0;
+                const pp = Number(r.purchase_price);
+                const cst = Number(r.cost);
+                const purchase =
+                    (Number.isFinite(pp) && pp !== 0 ? pp : 0) ||
+                    (Number.isFinite(cst) && cst !== 0 ? cst : 0) ||
+                    (Number.isFinite(pp) ? pp : 0) ||
+                    (Number.isFinite(cst) ? cst : 0) ||
+                    0;
                 const code = r.code != null && String(r.code).trim() ? String(r.code).trim() : undefined;
                 out[id] = { purchase, sale, ...(code ? { code } : {}) };
             }

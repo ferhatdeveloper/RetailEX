@@ -745,7 +745,8 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   const uLoc = parseFloat(item.unit_price || 0);
   const grossIQD = parseFloat(item.total_amount || 0);
   const netIQD = parseFloat(item.net_amount || 0);
-  const useFc = Number.isFinite(uFC) && rowCur !== 'IQD';
+  const useFc =
+    Number.isFinite(uFC) && rowCur !== 'IQD' && !(uFC === 0 && uLoc > 0);
   const unitPrice = useFc ? uFC : uLoc;
   const netAmount = useFc ? netIQD / rate : netIQD;
   const total = useFc ? grossIQD / rate : grossIQD;

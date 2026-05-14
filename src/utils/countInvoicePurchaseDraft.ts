@@ -36,7 +36,17 @@ function rawLineToDraft(item: Record<string, unknown>): DraftLine | null {
     const productId = pidRaw != null && String(pidRaw).trim() !== '' ? String(pidRaw).trim() : '';
     const code = String(item.item_code ?? item.code ?? item.product_code ?? '').trim();
     if (!productId && !code) return null;
-    const unitPrice = parseFloat(String(item.unit_price ?? item.price ?? item.unitPrice ?? 0)) || 0;
+    const unitPrice =
+        parseFloat(
+            String(
+                item.unit_price ??
+                    item.price ??
+                    item.unitPrice ??
+                    item.unit_cost ??
+                    item.cost ??
+                    0
+            )
+        ) || 0;
     const description = String(
         item.item_name ?? item.description ?? item.product_name ?? item.productName ?? ''
     ).trim();

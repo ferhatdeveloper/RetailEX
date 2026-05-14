@@ -5,6 +5,12 @@ export const PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY = 'retailex_purchase_invoic
 
 export type ProductPriceRow = { purchase: number; sale: number; code?: string };
 
+/** PostgREST / PG `id::text` ile sayım satırı `product_id` arasında büyük/küçük harf farkını giderir */
+function productIdLookupKey(id: string): string {
+    const s = String(id || '').trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) ? s.toLowerCase() : s;
+}
+
 /** Sayılan miktar (baz birim): base_counted_qty varsa o; yoksa counted × çarpan. */
 function countedBaseQty(line: CountingLine): number {
     const q = Number(line.counted_qty);
@@ -54,7 +60,8 @@ export function buildPurchaseEditDataFromCountSlip(
         const delta = signedVariance(l);
         if (delta <= 0.000001) continue;
         const pid = String(l.product_id);
-        const pr = priceMap[pid];
+        const pk = productIdLookupKey(pid);
+        const pr = priceMap[pk] ?? priceMap[pid];
         const unitPrice = Number(l.purchase_price) || pr?.purchase || 0;
         const code = (pr?.code && String(pr.code).trim()) || (l.barcode && String(l.barcode).trim()) || '';
         items.push({
