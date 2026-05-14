@@ -739,7 +739,10 @@ function BackupRestoreView() {
           <p className="text-sm text-gray-600 mt-2 max-w-3xl">
             <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> ile şema ve verilerin tamamı düz SQL
             dosyası olarak alınır. Çevrimiçi modda uzak sunucu, çevrimdışı veya hibritte yerel şube veritabanı
-            yedeklenir.
+            yedeklenir. Sunucuda PostgREST (HTTPS) kullanılıyorsa yedek, köprü üzerinden PostgREST ile{' '}
+            <strong>aynı Docker içi PostgreSQL</strong> bağlantısıyla alınır (<code className="text-xs bg-gray-100 px-1 rounded">/api/pg_dump_internal</code>
+            ); tarayıcıdaki <code className="text-xs bg-gray-100 px-1 rounded">api…:443</code> adresi doğrudan{' '}
+            <code className="text-xs bg-gray-100 px-1 rounded">pg_dump</code> için kullanılmaz.
           </p>
         </div>
         <div className="p-6 space-y-4">

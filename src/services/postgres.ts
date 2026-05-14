@@ -100,6 +100,29 @@ export function getPrimarySqlConnectionString(): string {
   return `postgresql://${u}:${p}@${effectiveHost}:${config.port}/${d}`;
 }
 
+/** Aktif uçtaki PostgreSQL veritabanı adı (köprü iç yedek için). */
+export function getPrimaryDatabaseName(): string {
+  return getDbSqlTargetChain()[0].database;
+}
+
+/**
+ * Tarayıcıda tam yedek: api.*:443 veya PostgREST modunda harici connStr ile pg_dump başarısız olur;
+ * köprü `/api/pg_dump_internal` (PostgREST ile aynı Docker postgres) kullanılmalı.
+ * VITE_PG_DUMP_INTERNAL: 1 = yalnız iç yol, 0 = yalnız harici connStr, boş = otomatik (443 / rest_api / api.retailex → iç).
+ */
+export function shouldPreferBridgeInternalPgDump(): boolean {
+  if (typeof window === 'undefined') return false;
+  const v = String((import.meta as any).env?.VITE_PG_DUMP_INTERNAL || '').trim();
+  if (v === '0') return false;
+  if (v === '1') return true;
+  const cfg = getDbSqlTargetChain()[0];
+  if (DB_SETTINGS.connectionProvider === 'rest_api') return true;
+  if (Number(cfg.port) === 443) return true;
+  const h = String(cfg.host || '').toLowerCase();
+  if (h === 'api.retailex.app' || h.includes('api.retailex')) return true;
+  return false;
+}
+
 async function executePgQueryRows(
   resolvedSql: string,
   normalizedParams: any[],

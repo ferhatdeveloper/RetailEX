@@ -11,6 +11,9 @@ version: "3.9"
 #   2) retailex_frontend build: VITE_PG_DUMP_TOKEN — PG_DUMP_TOKEN ile AYNI olmalı (Dokploy’da
 #      frontend image build arg / secret olarak aynı değeri verin).
 #   3) İsteğe bağlı: PG_DUMP_PATH (Alpine’da genelde boş; pg_dump zaten client paketinde).
+#   4) SaaS / PostgREST: tarayıcı api.*:443 ile pg_dump yapılamaz. Köprüde PG_DUMP_INTERNAL_URI
+#      (örn. postgres://postgres:PAROLA@postgres:5432) + isteğe PG_DUMP_ALLOWED_DBS — uygulama otomatik
+#      /api/pg_dump_internal kullanır (VITE_PG_DUMP_INTERNAL=0 ile kapatılabilir).
 #
 # Örnek isimler: kökte .env.example ve docker/dokploy.env.example
 #
@@ -27,6 +30,10 @@ x-bridge-env: &bridge-env
   CALLER_ID_PUSH_TOKEN: ${CALLER_ID_PUSH_TOKEN:-}
   # Paket servis push (isteğe bağlı)
   DELIVERY_PUSH_TOKEN: ${DELIVERY_PUSH_TOKEN:-}
+  # PostgREST ile aynı Docker postgres — /api/pg_dump_internal (tarayıcıdan api:443 TLS hatasını önler)
+  PG_DUMP_INTERNAL_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432
+  # İsteğe bağlı: yalnız listelenen DB adlarına izin (virgülle). Boş = güvenli isim kalıbı yeterli.
+  PG_DUMP_ALLOWED_DBS: ${PG_DUMP_ALLOWED_DBS:-}
 
 x-postgrest-env: &postgrest-env
   PGRST_DB_ANON_ROLE: anon
@@ -114,8 +121,8 @@ services:
       args:
         VITE_BRIDGE_URL: ""
         VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
-        # PG_DUMP_TOKEN ile aynı olmalı (yalnızca token kullanıyorsanız)
-        VITE_PG_DUMP_TOKEN: ${VITE_PG_DUMP_TOKEN:-}
+        # 1 = yalnız köprü iç pg_dump; 0 = yalnız harici connStr; boş = otomatik (api:443 / PostgREST → iç)
+        VITE_PG_DUMP_INTERNAL: ${VITE_PG_DUMP_INTERNAL:-}
     image: retailex-web:latest
     container_name: retailex_frontend
     restart: always

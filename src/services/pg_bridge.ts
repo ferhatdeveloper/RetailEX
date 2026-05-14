@@ -87,6 +87,75 @@ function resolvePgDumpBinary(): string {
     return 'pg_dump';
 }
 
+/** pg_dump çıktısını geçici dosyaya yazar; başarılıysa dosya yolunu döner. */
+async function runPgDumpToTempFile(connStr: string): Promise<string> {
+    const tmpFile = path.join(os.tmpdir(), `retailex_pg_dump_${Date.now()}.sql`);
+    const pgDumpBin = resolvePgDumpBinary();
+    const args = ['-d', connStr, '-F', 'p', '--no-owner', '--no-acl', '-f', tmpFile];
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn(pgDumpBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+        let stderr = '';
+        child.stderr?.on('data', (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.on('error', (err: Error) => reject(err));
+        child.on('close', (code: number | null) => {
+            if (code === 0) resolve();
+            else reject(new Error(stderr.trim() || `pg_dump çıkış kodu ${code}`));
+        });
+    });
+    return tmpFile;
+}
+
+function streamTmpSqlFileAsDownload(tmpFile: string): Response {
+    const downloadName = `retailex_full_${Date.now()}.sql`;
+    const nodeStream = fs.createReadStream(tmpFile);
+    const cleanup = () => {
+        fs.unlink(tmpFile, () => {});
+    };
+    nodeStream.on('close', cleanup);
+    nodeStream.on('error', cleanup);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
+    return new Response(webStream, {
+        headers: {
+            'Content-Type': 'application/sql; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${downloadName}"`,
+        },
+    });
+}
+
+/**
+ * PostgREST / SaaS: tarayıcıdaki host (api.*:443) PostgreSQL kablo protokolü değildir.
+ * Köprü konteynerinden aynı Docker ağındaki postgres:5432 ile pg_dump (PGRST_DB_URI ile aynı mantık).
+ * PG_DUMP_INTERNAL_URI: veritabanı adı OLMADAN, örn. postgres://postgres:PAROLA@postgres:5432
+ * İsteğe bağlı: PG_DUMP_ALLOWED_DBS=db1,db2 (virgülle); boşsa yalnızca güvenli isim kalıbı.
+ */
+function resolveInternalDumpConnStr(databaseRaw: string): string | null {
+    const database = databaseRaw.trim();
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(database)) {
+        return null;
+    }
+    const allow = process.env.PG_DUMP_ALLOWED_DBS?.trim();
+    if (allow) {
+        const ok = new Set(allow.split(',').map((s) => s.trim()).filter(Boolean));
+        if (!ok.has(database)) {
+            return null;
+        }
+    }
+    const rawBase = process.env.PG_DUMP_INTERNAL_URI?.trim();
+    if (!rawBase) {
+        return null;
+    }
+    const conn = rawBase.replace(/\/+$/, '');
+    try {
+        const u = new URL(conn.includes('://') ? conn : `postgres://${conn}`);
+        u.pathname = `/${database}`;
+        return u.href;
+    } catch {
+        return null;
+    }
+}
+
 function callerIdTokenOk(
     c: { req: { header: (n: string) => string | undefined; query: (n: string) => string | undefined } },
     bodyToken?: string
@@ -319,6 +388,48 @@ app.post('/api/delivery_order/push', async (c) => {
 });
 
 /**
+ * Tam veritabanı yedeği — köprü iç PostgreSQL (PostgREST ile aynı örnek).
+ * Body: { database: "berzin_com", token? }
+ */
+app.post('/api/pg_dump_internal', async (c) => {
+    let tmpFile: string | null = null;
+    try {
+        const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+        const bodyTok = typeof body.token === 'string' ? body.token : undefined;
+        if (!pgDumpTokenOk(c, bodyTok)) {
+            return c.json({ error: 'Unauthorized' }, 401);
+        }
+
+        const database = typeof body.database === 'string' ? body.database.trim() : '';
+        const connStr = resolveInternalDumpConnStr(database);
+        if (!connStr) {
+            return c.json(
+                {
+                    error:
+                        'İç pg_dump kullanılamıyor: geçersiz veritabanı adı veya PG_DUMP_INTERNAL_URI tanımlı değil. ' +
+                        'Docker’da köprüye örn. PG_DUMP_INTERNAL_URI=postgres://postgres:PAROLA@postgres:5432 verin (PostgREST PGRST_DB_URI ile aynı host/port).',
+                },
+                400
+            );
+        }
+
+        tmpFile = await runPgDumpToTempFile(connStr);
+        return streamTmpSqlFileAsDownload(tmpFile);
+    } catch (error: unknown) {
+        if (tmpFile) {
+            try {
+                fs.unlinkSync(tmpFile);
+            } catch {
+                /* yok */
+            }
+        }
+        const err = error as { message?: string };
+        console.error('[PG Bridge pg_dump_internal]', error);
+        return c.json({ error: err?.message || 'pg_dump_internal başarısız' }, 500);
+    }
+});
+
+/**
  * Tam veritabanı yedeği (pg_dump düz SQL). Sunucuda `pg_dump` gerekir.
  * Güvenlik: `PG_DUMP_TOKEN` tanımlıysa Authorization: Bearer, ?token= veya body.token zorunlu.
  */
@@ -336,38 +447,8 @@ app.post('/api/pg_dump', async (c) => {
             return c.json({ error: 'postgresql:// ile başlayan connStr gerekli' }, 400);
         }
 
-        tmpFile = path.join(os.tmpdir(), `retailex_pg_dump_${Date.now()}.sql`);
-        const pgDumpBin = resolvePgDumpBinary();
-        const args = ['-d', connStr, '-F', 'p', '--no-owner', '--no-acl', '-f', tmpFile];
-
-        await new Promise<void>((resolve, reject) => {
-            const child = spawn(pgDumpBin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-            let stderr = '';
-            child.stderr?.on('data', (chunk: Buffer) => {
-                stderr += chunk.toString();
-            });
-            child.on('error', (err) => reject(err));
-            child.on('close', (code) => {
-                if (code === 0) resolve();
-                else reject(new Error(stderr.trim() || `pg_dump çıkış kodu ${code}`));
-            });
-        });
-
-        const downloadName = `retailex_full_${Date.now()}.sql`;
-        const nodeStream = fs.createReadStream(tmpFile);
-        const cleanup = () => {
-            if (tmpFile) fs.unlink(tmpFile, () => {});
-        };
-        nodeStream.on('close', cleanup);
-        nodeStream.on('error', cleanup);
-
-        const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-        return new Response(webStream, {
-            headers: {
-                'Content-Type': 'application/sql; charset=utf-8',
-                'Content-Disposition': `attachment; filename="${downloadName}"`,
-            },
-        });
+        tmpFile = await runPgDumpToTempFile(connStr);
+        return streamTmpSqlFileAsDownload(tmpFile);
     } catch (error: unknown) {
         if (tmpFile) {
             try {
