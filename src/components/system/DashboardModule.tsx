@@ -57,56 +57,37 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Tüm mevcut modüller
-  const baseActions = [
-    // Satış & POS
-    { id: 'newsale', icon: ShoppingCart, label: t.newSale, color: 'from-blue-500 to-blue-600', category: t.salesOperations },
-    { id: 'salesorder', icon: ClipboardList, label: t.salesOrders, color: 'from-blue-400 to-blue-500', category: t.salesOperations },
-    { id: 'salesinvoice', icon: FileText, label: t.salesInvoices, color: 'from-blue-600 to-blue-700', category: t.salesOperations },
-
-    // Ürün & Stok
-    { id: 'addproduct', icon: PackagePlus, label: t.addProduct, color: 'from-green-500 to-green-600', category: t.stockWarehouse },
-    { id: 'products', icon: Package, label: t.productManagement, color: 'from-green-400 to-green-500', category: t.stockWarehouse },
-    { id: 'stock', icon: Layers, label: t.stockManagement, color: 'from-green-600 to-green-700', category: t.stockWarehouse },
-
-    // Müşteri & CRM
-    { id: 'addcustomer', icon: UserPlus, label: t.addCustomer, color: 'from-purple-500 to-purple-600', category: t.customerCards },
-    { id: 'customers', icon: Users, label: t.customerManagement, color: 'from-purple-400 to-purple-500', category: t.customerCards },
-    { id: 'crm', icon: Target, label: t.crmModule, color: 'from-purple-600 to-purple-700', category: t.customerCards },
-
-    // Finans & Muhasebe
-    { id: 'finance', icon: Banknote, label: t.cashBank, color: 'from-orange-500 to-orange-600', category: t.financeAccounting },
-    { id: 'accounting', icon: Calculator, label: t.accounting, color: 'from-orange-400 to-orange-500', category: t.financeAccounting },
-    { id: 'budget', icon: Wallet, label: t.budget, color: 'from-orange-600 to-orange-700', category: t.financeAccounting },
-
-    // Faturalar
-    { id: 'invoices', icon: Receipt, label: t.invoices, color: 'from-pink-500 to-pink-600', category: t.invoice },
-    { id: 'purchaseinvoice', icon: FileText, label: t.purchaseInvoices, color: 'from-pink-400 to-pink-500', category: t.invoice },
-    { id: 'etransform', icon: Send, label: t.eInvoiceArchive, color: 'from-pink-600 to-pink-700', category: t.invoice },
-
-    // Raporlar
-    { id: 'reports', icon: BarChart3, label: t.reportsAnalysis, color: 'from-indigo-500 to-indigo-600', category: t.reportsAnalysis },
-    { id: 'dashboard', icon: TrendingUpDown, label: t.dashboard, color: 'from-indigo-400 to-indigo-500', category: t.reportsAnalysis },
-
-    // Satın Alma & Tedarik
-    { id: 'purchase', icon: ShoppingCart, label: t.purchasing, color: 'from-teal-500 to-teal-600', category: t.purchasing },
-    { id: 'suppliers', icon: Truck, label: t.supplierCards, color: 'from-teal-400 to-teal-500', category: t.purchasing },
-
-    // Lojistik
-    { id: 'logistics', icon: Truck, label: t.logistics, color: 'from-cyan-500 to-cyan-600', category: t.logistics },
-
-    // Üretim
-    { id: 'production', icon: GitBranch, label: t.production, color: 'from-amber-500 to-amber-600', category: t.production },
-    { id: 'quality', icon: Award, label: t.qualityControl, color: 'from-amber-400 to-amber-500', category: t.production },
-
-    // İnsan Kaynakları
-    { id: 'hr', icon: UserCog, label: t.humanResources, color: 'from-rose-500 to-rose-600', category: t.humanResources },
-
-    // Diğer
-    { id: 'settings', icon: Settings, label: t.settings, color: 'from-gray-500 to-gray-600', category: t.systemSettings },
-    { id: 'integrations', icon: Zap, label: t.integrations, color: 'from-yellow-500 to-yellow-600', category: t.systemSettings },
-    { id: 'excel', icon: FileSpreadsheet, label: t.excelImportExport || 'Excel İçe/Dışa Aktar', color: 'from-emerald-500 to-emerald-600', category: t.systemSettings },
-  ];
+  const baseActions = useMemo(() => {
+    const m = t.menu;
+    return [
+      { id: 'newsale', icon: ShoppingCart, label: tLabel(t.posModule, 'Satış (POS)'), color: 'from-blue-500 to-blue-600', category: tLabel(m.retailSales, 'Satış') },
+      { id: 'salesorder', icon: ClipboardList, label: tLabel(m.salesOrder, 'Satış siparişi'), color: 'from-blue-400 to-blue-500', category: tLabel(m.orders, 'Siparişler') },
+      { id: 'salesinvoice', icon: FileText, label: tLabel(m.salesInvoices, 'Satış faturaları'), color: 'from-blue-600 to-blue-700', category: tLabel(m.invoices, 'Faturalar') },
+      { id: 'addproduct', icon: PackagePlus, label: tLabel(t.productManagement, 'Ürün yönetimi'), color: 'from-green-500 to-green-600', category: tLabel(m.materialManagement, 'Malzeme') },
+      { id: 'products', icon: Package, label: tLabel(m.materials, 'Malzemeler'), color: 'from-green-400 to-green-500', category: tLabel(m.materialManagement, 'Malzeme yönetimi') },
+      { id: 'stock', icon: Layers, label: tLabel(m.stockManagementPanel, 'Stok paneli'), color: 'from-green-600 to-green-700', category: tLabel(m.inventoryManagement, 'Stok işlemleri') },
+      { id: 'addcustomer', icon: UserPlus, label: tLabel(t.newCustomer, 'Yeni müşteri'), color: 'from-purple-500 to-purple-600', category: tLabel(m.currentAccounts, 'Cari hesaplar') },
+      { id: 'customers', icon: Users, label: tLabel(m.currentAccounts, 'Cari kartlar'), color: 'from-purple-400 to-purple-500', category: tLabel(m.cards, 'Kartlar') },
+      { id: 'crm', icon: Target, label: tLabel(m.customerAnalysis, 'Müşteri analizi'), color: 'from-purple-600 to-purple-700', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
+      { id: 'finance', icon: Banknote, label: tLabel(m.cashOperations, 'Kasa işlemleri'), color: 'from-orange-500 to-orange-600', category: tLabel(m.financeManagement, 'Finans') },
+      { id: 'accounting', icon: Calculator, label: tLabel(m.accountingManagement, 'Muhasebe'), color: 'from-orange-400 to-orange-500', category: tLabel(m.journalAndSlips, 'Yevmiye & fişler') },
+      { id: 'budget', icon: Wallet, label: tLabel(m.incomeStatement, 'Gelir tablosu'), color: 'from-orange-600 to-orange-700', category: tLabel(m.financeManagement, 'Finans') },
+      { id: 'invoices', icon: Receipt, label: tLabel(t.invoices, 'Faturalar'), color: 'from-pink-500 to-pink-600', category: tLabel(m.invoices, 'Faturalar') },
+      { id: 'purchaseinvoice', icon: FileText, label: tLabel(m.purchaseInvoice, 'Alış faturası'), color: 'from-pink-400 to-pink-500', category: tLabel(m.invoices, 'Faturalar') },
+      { id: 'etransform', icon: Send, label: tLabel(m.eInvoiceArchive, 'E-dönüşüm'), color: 'from-pink-600 to-pink-700', category: tLabel(m.invoices, 'Faturalar') },
+      { id: 'reports', icon: BarChart3, label: tLabel(m.reportsAndAnalysis, 'Raporlar'), color: 'from-indigo-500 to-indigo-600', category: tLabel(m.reports, 'Raporlar') },
+      { id: 'dashboard', icon: TrendingUpDown, label: tLabel(t.dashboard, 'Dashboard'), color: 'from-indigo-400 to-indigo-500', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
+      { id: 'purchase', icon: ShoppingCart, label: tLabel(t.purchasing, 'Satın alma'), color: 'from-teal-500 to-teal-600', category: tLabel(m.purchasing, 'Satın alma') },
+      { id: 'suppliers', icon: Truck, label: tLabel(m.supplierCards, 'Tedarikçi kartları'), color: 'from-teal-400 to-teal-500', category: tLabel(m.cards, 'Kartlar') },
+      { id: 'logistics', icon: Truck, label: tLabel(m.warehouseTransferWaybill, 'Lojistik'), color: 'from-cyan-500 to-cyan-600', category: tLabel(m.waybills, 'İrsaliyeler') },
+      { id: 'production', icon: GitBranch, label: tLabel(undefined, 'Üretim'), color: 'from-amber-500 to-amber-600', category: tLabel(m.movements, 'Hareketler') },
+      { id: 'quality', icon: Award, label: tLabel(undefined, 'Kalite'), color: 'from-amber-400 to-amber-500', category: tLabel(m.designCenter, 'Tasarım') },
+      { id: 'hr', icon: UserCog, label: tLabel(m.userManagement, 'İnsan kaynakları'), color: 'from-rose-500 to-rose-600', category: tLabel(m.roleAndAuthorization, 'Rol & yetki') },
+      { id: 'settings', icon: Settings, label: tLabel(m.generalSettings, 'Ayarlar'), color: 'from-gray-500 to-gray-600', category: tLabel(m.systemManagement, 'Sistem') },
+      { id: 'integrations', icon: Zap, label: tLabel(m.integrations, 'Entegrasyonlar'), color: 'from-yellow-500 to-yellow-600', category: tLabel(m.communicationAndNotifications, 'İletişim') },
+      { id: 'excel', icon: FileSpreadsheet, label: tLabel(m.excelOperations, 'Excel işlemleri'), color: 'from-emerald-500 to-emerald-600', category: tLabel(m.materialManagement, 'Malzeme') },
+    ];
+  }, [t]);
 
   // Filter actions based on menuMode + mevzuat (IQ: GİB e-belge kısayolu yok)
   const allAvailableActions = useMemo(() => {
@@ -114,16 +95,11 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
     const source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
     if (menuMode === 1) {
-      // Hide specific categories or IDs in simplified mode
       const hiddenIds = ['crm', 'logistics', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
-      const hiddenCategories = ['Lojistik', 'Üretim', 'İK', 'Sistem'];
-      return source.filter((a: any) =>
-        !hiddenIds.includes(a.id) &&
-        !hiddenCategories.includes(a.category)
-      );
+      return source.filter((a: any) => !hiddenIds.includes(a.id));
     }
     return source;
-  }, [menuMode, selectedFirm]);
+  }, [menuMode, selectedFirm, baseActions]);
 
   // Load shortcuts: Tauri → SQLite komutları; web → localStorage
   useEffect(() => {
