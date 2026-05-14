@@ -1230,9 +1230,9 @@ export function RotatedLabel({
   children: ReactNode;
 }) {
   if (rotation === 0) {
-    return (
-      <div className="rotated-label-wrapper overflow-hidden print:overflow-visible">{children}</div>
-    );
+    // 0°: overflow-hidden önizleme ızgarasında etiket mm genişliği hücreden büyükse
+    // sol yarı kesilip “boş sağ yarı” gibi görünür; ekranda taşmayı göstermek için visible.
+    return <div className="rotated-label-wrapper overflow-visible">{children}</div>;
   }
 
   const sideways = rotation === 90 || rotation === 270;
@@ -1346,7 +1346,6 @@ export function LabelContent({
     const qtyStr = `${stockN} ${unitStr}`;
     const priceStr = `${variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}`;
     const m = Math.max(0.5, Math.min(1.2, size.width * 0.028));
-    const innerW = size.width - 2 * m;
     const compact = size.height < 24;
 
     if (compact) {
@@ -1400,7 +1399,6 @@ export function LabelContent({
       );
     }
 
-    const half = innerW / 2 - 0.5;
     const usable = size.height - 2 * m;
     const hBrand = Math.max(3, Math.min(5, usable * 0.12));
     const hTitle = Math.max(4.5, Math.min(10, usable * 0.3));
@@ -1441,27 +1439,43 @@ export function LabelContent({
               {titleLine.slice(0, 160)}
             </div>
           )}
-          <div className="flex flex-row items-center justify-between w-full shrink-0" style={{ minHeight: `${hRow}mm` }}>
-            {f.showPrice ? (
+          <div
+            className="flex flex-row items-center w-full shrink-0"
+            style={{
+              minHeight: `${hRow}mm`,
+              justifyContent: f.showPrice && f.showStock ? 'space-between' : 'center',
+            }}
+          >
+            {f.showPrice && f.showStock ? (
+              <>
+                <div
+                  className="font-extrabold leading-none text-left min-w-0 flex-1 pr-1 break-words"
+                  style={{ fontSize: size.width < 50 ? '9px' : '11px' }}
+                >
+                  {priceStr}
+                </div>
+                <div
+                  className="font-bold text-right text-gray-800 leading-none min-w-0 flex-1 pl-1 break-words"
+                  style={{ fontSize: size.width < 50 ? '8px' : '10px' }}
+                >
+                  {qtyStr}
+                </div>
+              </>
+            ) : f.showPrice ? (
               <div
-                className="font-extrabold leading-none truncate pr-1"
-                style={{ fontSize: size.width < 50 ? '9px' : '11px', width: `${half}mm` }}
+                className="font-extrabold leading-none text-center w-full px-0.5 break-words"
+                style={{ fontSize: size.width < 50 ? '9px' : '11px' }}
               >
                 {priceStr}
               </div>
-            ) : (
-              <span />
-            )}
-            {f.showStock ? (
+            ) : f.showStock ? (
               <div
-                className="font-bold text-right text-gray-800 leading-none truncate pl-1"
-                style={{ fontSize: size.width < 50 ? '8px' : '10px', width: `${half}mm` }}
+                className="font-bold text-center text-gray-800 leading-none w-full px-0.5 break-words"
+                style={{ fontSize: size.width < 50 ? '8px' : '10px' }}
               >
                 {qtyStr}
               </div>
-            ) : (
-              <span />
-            )}
+            ) : null}
           </div>
           {variant.barcode && (
             <div className="flex flex-1 justify-center items-end min-h-0 w-full">
