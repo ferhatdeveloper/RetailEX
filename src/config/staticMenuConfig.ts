@@ -20,8 +20,7 @@ export const getStaticMenuSections = (t: Translations) => [
         id: 'main-menu',
         title: t.menu.mainMenu,
         items: [
-            { label: t.menu.homepage, screen: 'dashboard', icon: Sparkles },
-            { label: t.menu.dashboard, screen: 'Dashboard', icon: PieChart },
+            { label: t.menu.dashboard, screen: 'dashboard', icon: PieChart },
             {
                 label: t.menu.storeManagement,
                 screen: 'store-management-group',

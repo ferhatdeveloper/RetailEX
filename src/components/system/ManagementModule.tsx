@@ -340,6 +340,7 @@ export function ManagementModule({
       const savedScreen = localStorage.getItem(userKey);
 
       if (savedScreen) {
+        if (savedScreen === 'Dashboard') return 'dashboard';
         return savedScreen as ExtendedScreen;
       }
 
@@ -696,7 +697,8 @@ export function ManagementModule({
     ) {
       return;
     }
-    setCurrentScreen(item.id);
+    const rawId = String(item.id).trim();
+    setCurrentScreen(rawId === 'Dashboard' ? 'dashboard' : item.id);
     if (isMobile) effectiveSetSidebarOpen(false);
     setMenuSearchQuery('');
     setSearchResults([]);
@@ -712,7 +714,10 @@ export function ManagementModule({
       ) {
         return;
       }
-      setCurrentScreen(s);
+      const id = String(s ?? '').trim();
+      // Eski menü / dışa aktarım: "Dashboard" ile "dashboard" aynı ekran
+      const normalized = id === 'Dashboard' ? 'dashboard' : s;
+      setCurrentScreen(normalized);
       if (isMobile) effectiveSetSidebarOpen(false);
     },
     [isMobile, effectiveSetSidebarOpen, selectedFirm]
@@ -963,6 +968,7 @@ export function ManagementModule({
 
     try {
       switch (currentScreen) {
+        case 'Dashboard':
         case 'dashboard':
           return <DashboardModule
             products={products}

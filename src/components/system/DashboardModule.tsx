@@ -5,7 +5,7 @@ import {
   Truck, Receipt, Building, Target, Wrench, Calendar, Globe, RefreshCw,
   CreditCard, Shield, Database, Percent, Award, GitBranch, Calculator,
   ClipboardList, Send, Mail, Phone, Smartphone, Bell, Download, Tag, UserCog,
-  FileSpreadsheet
+  FileSpreadsheet, Store, Sparkles, LayoutDashboard
 } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { Product, Customer, Sale } from '../../core/types';
@@ -41,12 +41,18 @@ interface DashboardModuleProps {
 
 export function DashboardModule({ products, customers, sales, setCurrentScreen, menuMode = 0 }: DashboardModuleProps) {
   const { t } = useLanguage();
-  const { selectedFirm } = useFirmaDonem();
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
   /** Çeviri nesnesi bazen geniş JSON'dan `unknown`/`{}` gelebilir; metin çocuklarında güvenli metin */
   const tLabel = (v: unknown, fallback: string) =>
     typeof v === 'string' || typeof v === 'number' ? String(v) : fallback;
   // Aktif firmanın ana para birimi — fallback olarak çeviri kodu, en sonda IQD.
   const currency = selectedFirm?.ana_para_birimi || t.currencyCode || 'IQD';
+  const firmLabel =
+    (selectedFirm?.firma_adi || selectedFirm?.title || selectedFirm?.name || '').trim() || '';
+  const periodLabel =
+    selectedPeriod != null
+      ? (selectedPeriod.donem_adi || selectedPeriod.name || `Dönem ${selectedPeriod.nr}`).trim()
+      : '';
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -409,14 +415,31 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
+  const deepInsightPanels = useMemo(
+    () => [
+      { id: 'profit-dashboard', title: 'Kar panosu', blurb: 'Ciro, marj ve kârlılık özeti', Icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
+      { id: 'reports', title: 'Rapor merkezi', blurb: 'Satış, stok ve operasyon raporları', Icon: BarChart3, grad: 'from-indigo-500 to-violet-600' },
+      { id: 'new-modules', title: 'Modül vitrini', blurb: 'Yeni ve gelişmiş fonksiyonlar', Icon: Sparkles, grad: 'from-amber-500 to-orange-600' },
+      { id: 'accounting-mgmt', title: 'Muhasebe panosu', blurb: 'Mizan, bilanço, gelir tablosu', Icon: Calculator, grad: 'from-slate-600 to-slate-800' },
+      { id: 'product-analytics', title: 'Ürün analitiği', blurb: 'SKU, kategori ve fiyat performansı', Icon: Target, grad: 'from-pink-500 to-rose-600' },
+      { id: 'store-management', title: 'Mağaza paneli', blurb: 'Şube ve mağaza operasyonları', Icon: Store, grad: 'from-cyan-500 to-blue-600' },
+    ],
+    []
+  );
+
   return (
     <div className="h-full overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 scrollbar-thin scrollbar-thumb-gray-300">
       {/* Modern Minimal Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
             <h2 className="text-lg text-white">{tLabel(t.dashboard, 'Dashboard')}</h2>
             <p className="text-blue-100 text-[10px] mt-0.5">{tLabel(t.welcomeDashboard, 'Hoş geldiniz, işletme performansınızı takip edin')}</p>
+            {(firmLabel || periodLabel) ? (
+              <p className="text-blue-200/95 text-[10px] mt-1 truncate max-w-[min(100%,28rem)]">
+                {[firmLabel, periodLabel].filter(Boolean).join(' · ')}
+              </p>
+            ) : null}
           </div>
           <div className="text-right">
             <p className="text-blue-100 text-[10px]">{new Date().toLocaleDateString(t.locale || 'tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
@@ -463,6 +486,41 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
             >
               {tLabel(t.editQuickAccess, 'Hızlı Erişimleri Düzenle')}
             </button>
+          </div>
+        </div>
+
+        {/* Analiz ve derin panolar — ana giriş tek menüde toplandı */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="px-3 py-2 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-blue-50/60 flex items-center gap-2">
+            <LayoutDashboard className="w-4 h-4 text-blue-600 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-800">Analiz ve panolar</h3>
+              <p className="text-[10px] text-gray-500">Kâr, rapor, muhasebe ve mağaza ekranlarına tek tıkla gidin</p>
+            </div>
+          </div>
+          <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            {deepInsightPanels.map((p) => {
+              const Icon = p.Icon;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setCurrentScreen(p.id)}
+                  className={`text-left rounded-lg border border-white/10 bg-gradient-to-br ${p.grad} p-3 text-white shadow-sm hover:shadow-md hover:brightness-105 active:scale-[0.99] transition-all`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="shrink-0 w-9 h-9 rounded-lg bg-white/20 flex items-center justify-center">
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold leading-tight">{p.title}</p>
+                      <p className="text-[10px] text-white/90 mt-0.5 leading-snug">{p.blurb}</p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 shrink-0 opacity-90 mt-0.5" aria-hidden />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
