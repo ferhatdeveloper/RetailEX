@@ -5,6 +5,8 @@ export interface BulkLabelQueueItem {
   queueKey: string;
   productName: string;
   category?: string;
+  brand?: string;
+  unit?: string;
   variant: LabelPrintVariant;
   quantity: number;
 }
@@ -24,6 +26,7 @@ export function productToLabelPrintVariants(p: Product): LabelPrintVariant[] {
       enabled: true,
       stock: v.stock,
       cost: v.cost,
+      unit: (p.unit || 'Adet').toString().trim() || 'Adet',
     }));
   }
   return [
@@ -36,6 +39,7 @@ export function productToLabelPrintVariants(p: Product): LabelPrintVariant[] {
       enabled: true,
       stock: p.stock,
       cost: p.cost,
+      unit: (p.unit || 'Adet').toString().trim() || 'Adet',
     },
   ];
 }
@@ -56,6 +60,8 @@ export function addProductToBulkQueue(prev: BulkLabelQueueItem[], p: Product): B
         queueKey,
         productName: p.name,
         category: p.category,
+        brand: (p.brand || '').trim() || undefined,
+        unit: (p.unit || 'Adet').toString().trim() || 'Adet',
         variant,
         quantity: 1,
       });

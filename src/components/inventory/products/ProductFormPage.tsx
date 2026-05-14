@@ -4053,10 +4053,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               salePrice: v.salePrice,
               enabled: v.enabled,
               stock: v.stock,
-              cost: v.purchasePrice
+              cost: v.purchasePrice,
+              unit: formData.unit || 'Adet',
             }))}
             currency={formData.currency}
             category={formData.category}
+            productBrand={formData.brand}
+            productUnit={formData.unit}
             onClose={() => setShowLabelPrint(false)}
           />
         )

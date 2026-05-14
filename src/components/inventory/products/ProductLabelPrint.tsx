@@ -36,6 +36,8 @@ export interface LabelPrintVariant {
   enabled: boolean;
   stock?: number;
   cost?: number;
+  /** Birim (örn. Adet) — fiyat satırı sağında gösterim */
+  unit?: string;
 }
 
 interface ProductLabelPrintProps {
@@ -43,6 +45,10 @@ interface ProductLabelPrintProps {
   variants: LabelPrintVariant[];
   currency: string;
   category?: string;
+  /** Mağaza etiketi marka satırı (yoksa kategori kökü kullanılır) */
+  productBrand?: string;
+  /** Birim etiket metni (örn. formdaki satış birimi) */
+  productUnit?: string;
   onClose: () => void;
 }
 
@@ -332,7 +338,15 @@ export const LABEL_DESIGNS: LabelDesign[] = [
   }
 ];
 
-export function ProductLabelPrint({ productName, variants, currency, category, onClose }: ProductLabelPrintProps) {
+export function ProductLabelPrint({
+  productName,
+  variants,
+  currency,
+  category,
+  productBrand,
+  productUnit,
+  onClose,
+}: ProductLabelPrintProps) {
   const { tm } = useLanguage();
   const [selectedSize, setSelectedSize] = useState<LabelSize>(LABEL_SIZES[5]); // 60x40 default
   const [selectedDesign, setSelectedDesign] = useState<LabelDesign>(LABEL_DESIGNS[1]); // Standard default
@@ -1038,7 +1052,8 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                 </div>
               ) : (
                 <div ref={printRef} className="print-area">
-                  <div className={`grid gap-3 ${selectedSize.perRow === 1
+                  <div
+                    className={`thermal-print-label-grid grid gap-3 ${selectedSize.perRow === 1
                     ? 'grid-cols-1'
                     : selectedSize.perRow === 2
                       ? 'grid-cols-2'
@@ -1060,6 +1075,8 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
                             productName={productName}
                             currency={currency}
                             category={category}
+                            productBrand={productBrand}
+                            productUnit={productUnit}
                             barcodeId={`barcode-${svIdx}-${qIdx}`}
                             qrId={`qrcode-${svIdx}-${qIdx}`}
                             size={activePrintSize}
@@ -1084,27 +1101,67 @@ export function ProductLabelPrint({ productName, variants, currency, category, o
         category: selectedSize.category,
         pageWidthMm,
         pageHeightMm,
+        thermalOneLabelPerPage: selectedSize.category === 'termal',
       })}</style>
     </div>
   );
 }
 
-/** Ortak @media print — barkod/rakam netliği, termal mm sınırı, döndürmede kırpma önleme */
+/** Ortak @media print — barkod/rakam netliği, termal mm @page, çoklu etikette sayfa başına bir adet */
 export function buildLabelPrintStyleBlock(p: {
   category: 'termal' | 'a4' | 'raf';
   pageWidthMm: number;
   pageHeightMm: number;
+  /** Termalde her `.rotated-label-wrapper` ayrı fiziksel sayfa (modal boyutu = @page) */
+  thermalOneLabelPerPage?: boolean;
 }): string {
   const thermal = p.category === 'termal';
   const w = p.pageWidthMm;
   const h = p.pageHeightMm;
-  const labelBody = thermal
-    ? `width: ${w}mm !important;
+  const onePer = thermal && p.thermalOneLabelPerPage !== false;
+  const htmlBodySizing =
+    thermal && onePer
+      ? `width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;`
+      : thermal && !onePer
+        ? `width: ${w}mm !important;
     height: ${h}mm !important;
     max-width: ${w}mm !important;
     max-height: ${h}mm !important;
     overflow: hidden !important;`
-    : '';
+        : '';
+
+  const thermalPrintFlowOverrides = onePer
+      ? `
+  .print-area {
+    position: static !important;
+    top: auto !important;
+    left: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .thermal-print-label-grid {
+    display: block !important;
+    width: auto !important;
+  }
+  .thermal-print-label-grid > .rotated-label-wrapper {
+    page-break-after: always !important;
+    break-after: page !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin: 0 auto !important;
+  }
+  .thermal-print-label-grid > .rotated-label-wrapper:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+`
+      : '';
 
   return `
 @media print {
@@ -1114,7 +1171,7 @@ export function buildLabelPrintStyleBlock(p: {
     background: #fff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-    ${labelBody}
+    ${htmlBodySizing}
   }
   body * {
     visibility: hidden;
@@ -1132,6 +1189,7 @@ export function buildLabelPrintStyleBlock(p: {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+  ${thermalPrintFlowOverrides}
   .print-area canvas {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
@@ -1210,6 +1268,8 @@ interface LabelContentProps {
   productName: string;
   currency: string;
   category?: string;
+  productBrand?: string;
+  productUnit?: string;
   barcodeId?: string;
   qrId?: string;
   size: LabelSize;
@@ -1226,6 +1286,8 @@ export function LabelContent({
   productName,
   currency,
   category,
+  productBrand,
+  productUnit,
   barcodeId,
   qrId,
   size,
@@ -1274,48 +1336,143 @@ export function LabelContent({
     );
   }
 
-  // STANDARD DESIGN
+  // STANDARD DESIGN — mağaza / hızlı etiket düzeni: marka, kod+ad, fiyat | stok+birim, barkod
   if (design.id === 'standard') {
+    const catFirst = (category || '').split(/[>/|]/)[0]?.trim() || '';
+    const brandLine = ((productBrand || '').trim() || catFirst || '—').toLocaleUpperCase('tr-TR');
+    const titleLine = `${variant.variantCode} ${productName}`.replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
+    const unitStr = (productUnit || variant.unit || 'Adet').trim() || 'Adet';
+    const stockN = Math.round(Number(variant.stock) || 0);
+    const qtyStr = `${stockN} ${unitStr}`;
+    const priceStr = `${variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}`;
+    const m = Math.max(0.5, Math.min(1.2, size.width * 0.028));
+    const innerW = size.width - 2 * m;
+    const compact = size.height < 24;
+
+    if (compact) {
+      const nameH = Math.min(7, Math.max(4, size.height * 0.35));
+      const priceH = Math.min(6, Math.max(4, size.height * 0.28));
+      const barH = Math.max(5, size.height - m * 2 - nameH - priceH - 1);
+      return (
+        <div
+          className="border border-gray-300 bg-white rounded overflow-hidden text-black"
+          style={{
+            width: `${size.width}mm`,
+            height: `${size.height}mm`,
+            padding: `${m}mm`,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div className="h-full flex flex-col items-stretch" style={{ gap: '0.35mm' }}>
+            {f.showProductName && (
+              <div
+                className="font-bold text-center leading-tight"
+                style={{
+                  fontSize: size.width < 50 ? '7px' : '8px',
+                  maxHeight: `${nameH}mm`,
+                  overflow: 'hidden',
+                }}
+              >
+                {titleLine.slice(0, 120)}
+              </div>
+            )}
+            {f.showPrice && (
+              <div
+                className="font-extrabold text-center leading-none"
+                style={{ fontSize: size.width < 50 ? '10px' : '12px', maxHeight: `${priceH}mm` }}
+              >
+                {priceStr}
+              </div>
+            )}
+            {variant.barcode && (
+              <div className="flex flex-1 justify-center items-end min-h-0">
+                <canvas
+                  id={barcodeId}
+                  style={{
+                    maxWidth: '95%',
+                    height: `${barH}mm`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const half = innerW / 2 - 0.5;
+    const usable = size.height - 2 * m;
+    const hBrand = Math.max(3, Math.min(5, usable * 0.12));
+    const hTitle = Math.max(4.5, Math.min(10, usable * 0.3));
+    const hRow = Math.max(3.2, Math.min(5, usable * 0.12));
+    const gap = Math.max(0.35, usable * 0.02);
+    const yAfterTop = m + hBrand + gap + hTitle + gap + hRow + gap;
+    const barH = Math.max(6, size.height - yAfterTop - m);
+
     return (
       <div
-        className="border border-gray-300 bg-white rounded overflow-hidden"
+        className="border border-gray-300 bg-white rounded overflow-hidden text-black"
         style={{
           width: `${size.width}mm`,
           height: `${size.height}mm`,
-          padding: '2mm'
+          padding: `${m}mm`,
+          boxSizing: 'border-box',
         }}
       >
-        <div className="h-full flex flex-col justify-between text-black">
-          {f.showProductName && (
-          <div className={`${isSmall ? 'text-[7px]' : isMedium ? 'text-[9px]' : 'text-[11px]'} font-bold truncate`}>
-            {productName}
-          </div>
-          )}
-
-          {!isSmall && f.showVariantAttributes && (
-            <div className={`${isSmall ? 'text-[6px]' : 'text-[8px]'} text-gray-700`}>
-              {Object.entries(variant.attributes).slice(0, 2).map(([key, value]) => (
-                <div key={key}>{key}: {value}</div>
-              ))}
+        <div className="flex flex-col h-full" style={{ gap: `${gap}mm` }}>
+          {(f.showCategory || !!(productBrand && productBrand.trim())) && (
+            <div
+              className="font-extrabold text-center leading-none truncate"
+              style={{ fontSize: size.width < 50 ? '7px' : '9px', minHeight: `${hBrand}mm` }}
+            >
+              {brandLine}
             </div>
           )}
-
+          {f.showProductName && (
+            <div
+              className="font-semibold text-center leading-tight"
+              style={{
+                fontSize: size.width < 50 ? '6px' : '7px',
+                minHeight: `${hTitle}mm`,
+                maxHeight: `${hTitle}mm`,
+                overflow: 'hidden',
+              }}
+            >
+              {titleLine.slice(0, 160)}
+            </div>
+          )}
+          <div className="flex flex-row items-center justify-between w-full shrink-0" style={{ minHeight: `${hRow}mm` }}>
+            {f.showPrice ? (
+              <div
+                className="font-extrabold leading-none truncate pr-1"
+                style={{ fontSize: size.width < 50 ? '9px' : '11px', width: `${half}mm` }}
+              >
+                {priceStr}
+              </div>
+            ) : (
+              <span />
+            )}
+            {f.showStock ? (
+              <div
+                className="font-bold text-right text-gray-800 leading-none truncate pl-1"
+                style={{ fontSize: size.width < 50 ? '8px' : '10px', width: `${half}mm` }}
+              >
+                {qtyStr}
+              </div>
+            ) : (
+              <span />
+            )}
+          </div>
           {variant.barcode && (
-            <div className="flex justify-center my-1">
+            <div className="flex flex-1 justify-center items-end min-h-0 w-full">
               <canvas
                 id={barcodeId}
                 style={{
-                  maxWidth: '95%',
-                  height: isSmall ? '15mm' : isMedium ? '20mm' : '25mm'
+                  maxWidth: '92%',
+                  height: `${barH}mm`,
                 }}
               />
             </div>
-          )}
-
-          {f.showPrice && (
-          <div className={`${isSmall ? 'text-[9px]' : isMedium ? 'text-[12px]' : 'text-[14px]'} font-bold text-center`}>
-            {variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {currency}
-          </div>
           )}
         </div>
       </div>

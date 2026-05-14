@@ -841,7 +841,7 @@ export function BulkProductLabelPrint({
 
                   <div ref={printRef} className="print-area">
                     <div
-                      className={`grid gap-3 ${
+                      className={`thermal-print-label-grid grid gap-3 ${
                         selectedSize.perRow === 1
                           ? 'grid-cols-1'
                           : selectedSize.perRow === 2
@@ -861,6 +861,8 @@ export function BulkProductLabelPrint({
                               productName={row.productName}
                               currency={currency}
                               category={row.category}
+                              productBrand={row.brand}
+                              productUnit={row.unit}
                               barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
                               qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
                               size={activePrintSize}
@@ -868,6 +870,7 @@ export function BulkProductLabelPrint({
                               showDiscount={showDiscount}
                               discountPercent={discountPercent}
                               shelfLocation={shelfLocation}
+                              fieldSettings={fieldSettings}
                             />
                           </RotatedLabel>
                         ))
@@ -885,6 +888,7 @@ export function BulkProductLabelPrint({
         category: selectedSize.category,
         pageWidthMm,
         pageHeightMm,
+        thermalOneLabelPerPage: selectedSize.category === 'termal',
       })}</style>
     </div>
   );
