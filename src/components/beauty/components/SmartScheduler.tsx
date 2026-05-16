@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CalendarDays, Banknote, Undo2,
+    CalendarDays, Banknote, Undo2, Phone,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -901,10 +901,14 @@ export function SmartScheduler() {
         }
     }, [isAdmin, priceEditApt, priceEditDraft, updateAppointment]);
 
+    const customerPhoneLine = (apt: BeautyAppointment) =>
+        String(apt.customer_phone ?? '').trim();
+
     const renderAptCard = (apt: BeautyAppointment) => {
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
         const done  = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
+        const phone = customerPhoneLine(apt);
         return (
             <div
                 key={apt.id}
@@ -925,6 +929,12 @@ export function SmartScheduler() {
                         <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
                     )}
                 </div>
+                {phone ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, minWidth: 0 }}>
+                        <Phone size={10} style={{ flexShrink: 0, color: '#9ca3af' }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{phone}</span>
+                    </div>
+                ) : null}
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
@@ -1847,6 +1857,9 @@ export function SmartScheduler() {
                                                                                     }}
                                                                                 >
                                                                                     <p style={{ fontWeight: 700, color: '#111827', margin: 0 }}>{p.apt.customer_name ?? '—'}</p>
+                                                                                    {customerPhoneLine(p.apt) ? (
+                                                                                        <p style={{ color: '#6b7280', margin: '2px 0 0', fontSize: 10, fontWeight: 600 }}>{customerPhoneLine(p.apt)}</p>
+                                                                                    ) : null}
                                                                                     <p style={{ color: '#6b7280', margin: 0, flex: 1, minHeight: 0 }}>{p.apt.service_name ?? '—'}</p>
                                                                                     <div
                                                                                         style={{
@@ -2044,6 +2057,9 @@ export function SmartScheduler() {
                                                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
                                                     <div style={{ minWidth: 0 }}>
                                                         <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.customer_name ?? '—'}</p>
+                                                        {customerPhoneLine(apt) ? (
+                                                            <p style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customerPhoneLine(apt)}</p>
+                                                        ) : null}
                                                         <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveServiceName(apt)}</p>
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
                                                             <button

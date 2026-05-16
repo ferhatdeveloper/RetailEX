@@ -187,6 +187,13 @@ function normalizeAppointmentTimeCell(v: unknown): string {
     return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
 }
 
+function pickCustomerPhoneFromRow(r: Record<string, unknown>): string | undefined {
+    const primary = String(r.customer_phone ?? r.phone ?? '').trim();
+    if (primary) return primary;
+    const secondary = String(r.phone2 ?? r.customer_phone2 ?? '').trim();
+    return secondary || undefined;
+}
+
 function normalizeAppointmentRow(
     r: Record<string, unknown> & { clinical_data?: unknown },
 ): BeautyAppointment {
@@ -200,6 +207,7 @@ function normalizeAppointmentRow(
         time: hhmm || undefined,
         appointment_time: hhmm || undefined,
         service_name: String(r.service_name ?? '').trim() || undefined,
+        customer_phone: pickCustomerPhoneFromRow(r),
         clinical_data: parseClinicalDataRow(r.clinical_data) ?? undefined,
     } as BeautyAppointment;
 }
@@ -635,8 +643,15 @@ async function getAppointmentsInRangePostgrestBranch(
             custIds,
             'public'
         );
-        const mapCust = new Map<string, string>();
-        for (const c of custRows) mapCust.set(String(c.id), String(c.name ?? ''));
+        const mapCust = new Map<string, { name: string; phone: string }>();
+        for (const c of custRows) {
+            const phone =
+                String(c.phone ?? '').trim() || String(c.phone2 ?? '').trim();
+            mapCust.set(String(c.id), {
+                name: String(c.name ?? ''),
+                phone,
+            });
+        }
 
         const devRows = await postgrestGetByIds<Record<string, unknown>>(
             `/rex_${fn}_beauty_devices`,
@@ -660,13 +675,15 @@ async function getAppointmentsInRangePostgrestBranch(
                 (spid && mapUserSp.get(spid)) ||
                 '';
             const cid = a.client_id ? String(a.client_id) : '';
+            const cust = cid ? mapCust.get(cid) : undefined;
             const did = a.device_id ? String(a.device_id) : '';
             const row: Record<string, unknown> & { clinical_data?: unknown } = {
                 ...a,
                 service_name: svcName,
                 service_color: bs?.color ?? '#6366f1',
                 specialist_name: specName,
-                customer_name: cid ? mapCust.get(cid) ?? '' : '',
+                customer_name: cust?.name ?? '',
+                customer_phone: cust?.phone || undefined,
                 device_name: did ? mapDev.get(did) ?? '' : '',
             };
             return normalizeAppointmentRow(row);
@@ -1580,6 +1597,7 @@ export const beautyService = {
                 COALESCE(s.color, '#6366f1') AS service_color,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
                 c.name   AS customer_name,
+                COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
                 d.name   AS device_name
             FROM ${table} a
             LEFT JOIN ${svcBeauty} s ON a.service_id = s.id
@@ -2040,7 +2058,8 @@ export const beautyService = {
                     pr.name
                 ) AS service_name,
                 COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
-                c.name AS customer_name
+                c.name AS customer_name,
+                COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone
             FROM ${table} a
             LEFT JOIN ${postgres.getCardTableName('beauty_services', 'beauty')} s ON a.service_id = s.id
             LEFT JOIN ${postgres.getCardTableName('services')} rs ON a.service_id = rs.id AND rs.firm_nr = $2

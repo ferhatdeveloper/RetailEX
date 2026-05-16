@@ -196,6 +196,8 @@ export interface BeautyAppointment {
     client_id?: string;
     customer_id?: string;
     customer_name?: string;
+    /** Müşteri kartı (customers.phone / phone2) */
+    customer_phone?: string;
     service_id?: string;
     service_name?: string;
     service_color?: string;
