@@ -37,16 +37,16 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
             const { postgres, ERP_SETTINGS } = await import('../../../services/postgres');
             const invoiceNo = `ALF-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
             
+            const totalAmount = pendingInvoice.items.reduce((sum: number, item: PurchaseInvoiceItem) =>
+                sum + (item.purchasePrice * item.quantity), 0);
+            
             await postgres.query(
-                `INSERT INTO invoices (invoice_no, invoice_type, invoice_date, supplier_id, total_amount, currency, status, notes, created_by)
-                 VALUES ($1, $2, NOW(), $3, $4, $5, 'draft', $6, $7)`,
+                `INSERT INTO invoices (invoice_no, invoice_type, invoice_date, total_amount, status, notes, created_by)
+                 VALUES ($1, $2, NOW(), $3, 'draft', $4, $5)`,
                 [
                     invoiceNo,
                     'purchase',
-                    pendingInvoice.supplierId || null,
-                    pendingInvoice.items.reduce((sum: number, item: PurchaseInvoiceItem) =>
-                        sum + (item.unitPrice * item.quantity), 0),
-                    ERP_SETTINGS.currency || 'TRY',
+                    totalAmount,
                     `Sayımdan otomatik oluşturuldu (${pendingInvoice.items.length} kalem)`,
                     'system',
                 ]
