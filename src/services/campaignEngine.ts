@@ -289,10 +289,21 @@ class UsageLimitValidator extends CampaignValidator {
       return { valid: false, message: 'Kampanya kullanım limiti doldu' };
     }
 
-    // Check per-customer limit (requires database check in production)
     if (campaign.maxUsagePerCustomer && customer) {
-      // TODO: Check database for customer usage count
-      // For now, assume it's valid
+      try {
+        const { postgres } = await import('./postgres');
+        const result = await postgres.query(
+          `SELECT COUNT(*) as usage_count FROM campaign_usage 
+           WHERE campaign_id = $1 AND customer_id = $2`,
+          [campaign.id, customer.id]
+        );
+        const usageCount = parseInt(result.rows?.[0]?.usage_count || '0', 10);
+        if (usageCount >= campaign.maxUsagePerCustomer) {
+          return { valid: false, message: 'Bu kampanyayı daha fazla kullanamazsınız' };
+        }
+      } catch {
+        if (import.meta.env.DEV) console.warn('campaign_usage tablosu sorgulanamadı, kontrol atlandı');
+      }
     }
 
     return { valid: true };

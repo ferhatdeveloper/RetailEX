@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 import { FileText, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Plus, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { SalesInvoiceModule } from '../sales/SalesInvoiceModule';
 import { PurchaseInvoiceModule } from '../purchase/PurchaseInvoiceModule';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
@@ -184,14 +185,26 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
       }
       setSelectedInvoiceForAction(null);
     },
-    delete: (invoice: any) => {
-      // Silme - TODO: API çağrısı
-      console.log('Delete invoice:', invoice);
+    delete: async (invoice: any) => {
+      if (!confirm('Bu faturayı silmek istediğinize emin misiniz?')) {
+        setSelectedInvoiceForAction(null);
+        return;
+      }
+      try {
+        const { postgres } = await import('../../../services/postgres');
+        await postgres.query(
+          `UPDATE invoices SET is_deleted = true, updated_at = NOW() WHERE id = $1`,
+          [invoice.id]
+        );
+        toast.success('Fatura başarıyla silindi');
+      } catch (err: any) {
+        toast.error(`Fatura silinemedi: ${err?.message || String(err)}`);
+      }
       setSelectedInvoiceForAction(null);
     },
     print: async (invoice: any) => {
-      // Yazdırma
-      console.log('Print invoice:', invoice);
+      if (import.meta.env.DEV) console.log('Print invoice:', invoice);
+      window.print();
     }
   };
 

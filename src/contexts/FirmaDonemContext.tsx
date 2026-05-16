@@ -161,7 +161,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
       // Sync ERP_SETTINGS — cari/stok rex_{firmNr}_* tabloları için normalize kod gerekli
       if (selectedFirm.firm_nr) {
         ERP_SETTINGS.firmNr = normalizeFirmNr(selectedFirm.firm_nr) || String(selectedFirm.firm_nr);
-        console.log('[FirmaDonemContext] ERP_SETTINGS.firmNr updated to:', ERP_SETTINGS.firmNr);
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] ERP_SETTINGS.firmNr updated to:', ERP_SETTINGS.firmNr);
       }
     } else {
       setPeriods([]);
@@ -181,7 +181,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     if (selectedPeriod) {
       ERP_SETTINGS.periodNr = selectedPeriod.nr.toString().padStart(2, '0');
-      console.log('[FirmaDonemContext] ERP_SETTINGS.periodNr synced to:', ERP_SETTINGS.periodNr);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] ERP_SETTINGS.periodNr synced to:', ERP_SETTINGS.periodNr);
     }
   }, [selectedPeriod]);
 
@@ -230,7 +230,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   const fetchFirms = async () => {
     try {
       setLoading(true);
-      console.log('[FirmaDonemContext] Fetching all firms...');
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Fetching all firms...');
       let rows: any[] = [];
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -252,7 +252,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         rows = result.rows || [];
       }
 
-      console.log('[FirmaDonemContext] Raw firms rows:', rows);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Raw firms rows:', rows);
 
       let mappedFirms = (rows || []).map((f: any) => ({
         ...f,
@@ -326,8 +326,8 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const fetchPeriods = async (firmIdOrNr: string) => {
     try {
-      console.log('[FirmaDonemContext] ========== FETCHING PERIODS ==========');
-      console.log('[FirmaDonemContext] firmIdOrNr parameter:', firmIdOrNr);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] ========== FETCHING PERIODS ==========');
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] firmIdOrNr parameter:', firmIdOrNr);
 
       let rows: any[] = [];
 
@@ -381,14 +381,14 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         rows = result.rows || [];
       }
 
-      console.log('[FirmaDonemContext] ========== PERIOD DEBUG ==========');
-      console.log('[FirmaDonemContext] Raw periods from DB:', rows);
-      console.log('[FirmaDonemContext] Row count:', rows?.length);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] ========== PERIOD DEBUG ==========');
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Raw periods from DB:', rows);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Row count:', rows?.length);
 
       if (rows && rows.length > 0) {
-        console.log('[FirmaDonemContext] First period raw data:', rows[0]);
-        console.log('[FirmaDonemContext] is_active value:', rows[0].is_active);
-        console.log('[FirmaDonemContext] is_active type:', typeof rows[0].is_active);
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] First period raw data:', rows[0]);
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] is_active value:', rows[0].is_active);
+        if (import.meta.env.DEV) console.log('[FirmaDonemContext] is_active type:', typeof rows[0].is_active);
       }
 
       let mappedPeriods = (rows || []).map((p: any) => {
@@ -437,8 +437,8 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         }
       } catch (_) { /* ignore */ }
 
-      console.log('[FirmaDonemContext] Total mapped periods:', mappedPeriods.length);
-      console.log('[FirmaDonemContext] ========== END DEBUG ==========');
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Total mapped periods:', mappedPeriods.length);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] ========== END DEBUG ==========');
 
       setPeriods(mappedPeriods);
 
@@ -449,8 +449,8 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
           mappedPeriods[0];
 
         if (active) {
-          console.log('[FirmaDonemContext] Selected period:', active);
-          console.log('[FirmaDonemContext] Period active status:', active.active);
+          if (import.meta.env.DEV) console.log('[FirmaDonemContext] Selected period:', active);
+          if (import.meta.env.DEV) console.log('[FirmaDonemContext] Period active status:', active.active);
           setSelectedPeriod(active);
         }
       }
@@ -571,11 +571,11 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const selectFirm = (id: string | number) => {
-    console.log('[FirmaDonemContext] selectFirm called with:', id);
+    if (import.meta.env.DEV) console.log('[FirmaDonemContext] selectFirm called with:', id);
     const idStr = id.toString();
     const found = firms.find(f => f.firm_nr === idStr || f.nr.toString() === idStr || f.logicalref.toString() === idStr || f.id === idStr);
     if (found) {
-      console.log('[FirmaDonemContext] Found firm:', found);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Found firm:', found);
       setSelectedFirm(found);
 
       // Immediate sync
@@ -590,17 +590,17 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const selectPeriod = (id: string | number) => {
-    console.log('[FirmaDonemContext] selectPeriod called with:', id);
+    if (import.meta.env.DEV) console.log('[FirmaDonemContext] selectPeriod called with:', id);
     const idStr = id.toString();
     const found = periods.find(p => p.nr.toString() === idStr || p.logicalref?.toString() === idStr || p.id === idStr);
     if (found) {
-      console.log('[FirmaDonemContext] Found period:', found);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] Found period:', found);
       setSelectedPeriod(found);
       localStorage.setItem('exretail_selected_donem_id', found.nr.toString());
 
       // Immediate sync
       ERP_SETTINGS.periodNr = found.nr.toString().padStart(2, '0');
-      console.log('[FirmaDonemContext] ERP_SETTINGS.periodNr updated to:', ERP_SETTINGS.periodNr);
+      if (import.meta.env.DEV) console.log('[FirmaDonemContext] ERP_SETTINGS.periodNr updated to:', ERP_SETTINGS.periodNr);
     }
   };
 
