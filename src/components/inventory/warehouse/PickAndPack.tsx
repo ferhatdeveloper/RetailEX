@@ -215,7 +215,7 @@ export function PickAndPack({ onBack }: PickAndPackProps) {
           </div>
 
           <div className="mt-8 p-4 bg-blue-50 rounded-xl max-w-md">
-            <p className="text-sm text-blue-900 font-medium mb-2">ğŸ“¦ Pick & Pack:</p>
+            <p className="text-sm text-blue-900 font-medium mb-2">📦 Pick & Pack:</p>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Sipariş okut → Pick list göster</li>
               <li>• Konum bilgisi ile ürün topla</li>

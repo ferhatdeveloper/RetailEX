@@ -1,4 +1,4 @@
-﻿// ğŸ“¦ Advanced Receiving Form - Gelişmiş Mal Kabul Formu
+﻿// 📦 Advanced Receiving Form - Gelişmiş Mal Kabul Formu
 // Şartlı kabul, SKT, Parti, Palet seçimi
 
 import { useState, useEffect } from 'react';

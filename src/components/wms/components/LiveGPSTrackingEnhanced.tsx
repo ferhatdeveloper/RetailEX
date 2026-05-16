@@ -1,4 +1,4 @@
-﻿// ğŸ—ºï¸ğŸš›ğŸ“¹ ENTERPRISE GPS TRACKING - Full Featured Fleet Management
+﻿// 🗺ï¸🚛📹 ENTERPRISE GPS TRACKING - Full Featured Fleet Management
 // Features: Real map, historical data, live camera, route optimization, vehicle consolidation
 
 import { useState, useEffect, useMemo } from 'react';

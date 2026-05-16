@@ -48,14 +48,14 @@ interface ExchangeRate {
 
 // Iraq-focused currencies
 const CURRENCIES: Currency[] = [
-  { code: 'IQD', name: 'Iraqi Dinar', symbol: 'IQD', flagEmoji: 'ğŸ‡®ğŸ‡¶', isBaseCurrency: true, isActive: true },
-  { code: 'USD', name: 'US Dollar', symbol: '$', flagEmoji: 'ğŸ‡ºğŸ‡¸', isBaseCurrency: false, isActive: true },
-  { code: 'EUR', name: 'Euro', symbol: '€', flagEmoji: 'ğŸ‡ªğŸ‡º', isBaseCurrency: false, isActive: true },
-  { code: 'GBP', name: 'British Pound', symbol: '£', flagEmoji: 'ğŸ‡¬ğŸ‡§', isBaseCurrency: false, isActive: true },
-  { code: 'SAR', name: 'Saudi Riyal', symbol: 'SAR', flagEmoji: 'ğŸ‡¸ğŸ‡¦', isBaseCurrency: false, isActive: true },
-  { code: 'AED', name: 'UAE Dirham', symbol: 'AED', flagEmoji: 'ğŸ‡¦ğŸ‡ª', isBaseCurrency: false, isActive: true },
-  { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'KWD', flagEmoji: 'ğŸ‡°ğŸ‡¼', isBaseCurrency: false, isActive: false },
-  { code: 'BHD', name: 'Bahraini Dinar', symbol: 'BHD', flagEmoji: 'ğŸ‡§ğŸ‡­', isBaseCurrency: false, isActive: false },
+  { code: 'IQD', name: 'Iraqi Dinar', symbol: 'IQD', flagEmoji: '🇮🇶', isBaseCurrency: true, isActive: true },
+  { code: 'USD', name: 'US Dollar', symbol: '$', flagEmoji: '🇺🇸', isBaseCurrency: false, isActive: true },
+  { code: 'EUR', name: 'Euro', symbol: '€', flagEmoji: '🇪🇺', isBaseCurrency: false, isActive: true },
+  { code: 'GBP', name: 'British Pound', symbol: '£', flagEmoji: '🇬🇧', isBaseCurrency: false, isActive: true },
+  { code: 'SAR', name: 'Saudi Riyal', symbol: 'SAR', flagEmoji: '🇸🇦', isBaseCurrency: false, isActive: true },
+  { code: 'AED', name: 'UAE Dirham', symbol: 'AED', flagEmoji: '🇦🇪', isBaseCurrency: false, isActive: true },
+  { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'KWD', flagEmoji: '🇰🇼', isBaseCurrency: false, isActive: false },
+  { code: 'BHD', name: 'Bahraini Dinar', symbol: 'BHD', flagEmoji: '🇧🇭', isBaseCurrency: false, isActive: false },
 ];
 
 export function MultiCurrencyModule() {

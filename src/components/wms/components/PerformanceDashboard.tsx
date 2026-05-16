@@ -1,4 +1,4 @@
-﻿// ğŸ“Š Performance Dashboard - Kullanıcı Performans Değerlendirmesi
+﻿// 📊 Performance Dashboard - Kullanıcı Performans Değerlendirmesi
 // Real-time performance tracking for all warehouse users
 
 import { useState, useEffect } from 'react';

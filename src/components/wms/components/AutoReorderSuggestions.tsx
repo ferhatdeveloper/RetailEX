@@ -1,4 +1,4 @@
-// ğŸ”„ Auto Reorder Suggestions - Otomatik Sipariş Önerileri
+// 🔄 Auto Reorder Suggestions - Otomatik Sipariş Önerileri
 // Min-Max stock levels, reorder point, automatic suggestions
 
 import { useState, useEffect } from 'react';

@@ -105,7 +105,7 @@ export function MarketplaceIntegrationModule() {
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-semibold text-blue-900 mb-2">ğŸ’¡ Pazar Yeri Entegrasyonu</h4>
+        <h4 className="font-semibold text-blue-900 mb-2">💡 Pazar Yeri Entegrasyonu</h4>
         <p className="text-sm text-blue-800">
           Tüm pazar yerlerindeki ürünlerinizi tek panelden yönetin. Stok, fiyat ve sipariş senkronizasyonu otomatiktir.
         </p>

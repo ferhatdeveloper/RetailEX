@@ -31,7 +31,7 @@ const initialNodes: Node[] = [
     id: '1',
     type: 'input',
     data: { 
-      label: 'ğŸ¯ Trigger: Customer Exit',
+      label: '�¯ Trigger: Customer Exit',
       description: 'Müşteri mağazadan çıktı'
     },
     position: { x: 250, y: 0 },
@@ -61,7 +61,7 @@ const initialNodes: Node[] = [
   {
     id: '3',
     data: { 
-      label: 'ğŸŒ Check Nationality',
+      label: '�Œ Check Nationality',
       description: 'Müşteri uyruğu kontrol et'
     },
     position: { x: 250, y: 200 },
@@ -76,7 +76,7 @@ const initialNodes: Node[] = [
   {
     id: '4a',
     data: { 
-      label: 'ğŸ“ Call (Turkish)',
+      label: '�“ Call (Turkish)',
       description: 'Türkçe sesli arama'
     },
     position: { x: 50, y: 300 },
@@ -91,7 +91,7 @@ const initialNodes: Node[] = [
   {
     id: '4b',
     data: { 
-      label: 'ğŸ“ Call (Arabic)',
+      label: '�“ Call (Arabic)',
       description: 'Arapça sesli arama'
     },
     position: { x: 250, y: 300 },
@@ -106,7 +106,7 @@ const initialNodes: Node[] = [
   {
     id: '4c',
     data: { 
-      label: 'ğŸ“ Call (Sorani)',
+      label: '�“ Call (Sorani)',
       description: 'Sorani Kürtçesi arama'
     },
     position: { x: 450, y: 300 },
@@ -136,7 +136,7 @@ const initialNodes: Node[] = [
   {
     id: '6',
     data: { 
-      label: 'ğŸ’¬ WhatsApp Survey',
+      label: '💬 WhatsApp Survey',
       description: 'WhatsApp anketi gönder'
     },
     position: { x: 450, y: 520 },
@@ -151,7 +151,7 @@ const initialNodes: Node[] = [
   {
     id: '7',
     data: { 
-      label: 'ğŸ’¾ Save Feedback',
+      label: '💾 Save Feedback',
       description: 'Feedback kaydet'
     },
     position: { x: 50, y: 520 },
@@ -315,7 +315,7 @@ export function WorkflowBuilder() {
     <div className="h-screen flex">
       {/* Sidebar - Node Palette */}
       <div className="w-64 bg-gray-100 border-r border-gray-300 p-4 overflow-y-auto">
-        <h2 className="text-lg font-bold mb-4">ğŸ“¦ Nodes</h2>
+        <h2 className="text-lg font-bold mb-4">📦 Nodes</h2>
         
         <div className="space-y-2">
           {Object.entries(nodeTypes).map(([key, label]) => (
@@ -334,7 +334,7 @@ export function WorkflowBuilder() {
             onClick={saveWorkflow}
             className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold"
           >
-            ğŸ’¾ Save Workflow
+            💾 Save Workflow
           </button>
           <button
             onClick={testWorkflow}
@@ -358,7 +358,7 @@ export function WorkflowBuilder() {
       {/* Main Canvas */}
       <div className="flex-1 relative">
         <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 z-10">
-          <h1 className="text-xl font-bold">ğŸ¤– Customer Feedback Automation</h1>
+          <h1 className="text-xl font-bold">🤖 Customer Feedback Automation</h1>
           <p className="text-sm text-gray-600">Drag nodes to create your workflow</p>
         </div>
 
@@ -497,7 +497,7 @@ export function WorkflowBuilder() {
               }}
               className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
-              ğŸ—‘ï¸ Delete Node
+              🗑ï¸ Delete Node
             </button>
           </div>
         </div>

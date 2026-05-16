@@ -8,10 +8,10 @@ interface LanguageSelectorProps {
 }
 
 const languageOptions: { value: Language; label: string; flag: string }[] = [
-  { value: 'tr', label: 'Türkçe', flag: 'ğŸ‡¹ğŸ‡·' },
-  { value: 'en', label: 'English', flag: 'ğŸ‡¬ğŸ‡§' },
-  { value: 'ar', label: 'العربية', flag: 'ğŸ‡®ğŸ‡¶' },
-  { value: 'ckb', label: 'کوردی', flag: 'ğŸŸ¥ğŸŸ©' },
+  { value: 'tr', label: 'Türkçe', flag: '🇹🇷' },
+  { value: 'en', label: 'English', flag: '🇬🇧' },
+  { value: 'ar', label: 'العربية', flag: '🇮🇶' },
+  { value: 'ckb', label: 'کوردی', flag: '🟥🟩' },
 ];
 
 export function LanguageSelector({ darkMode = false }: LanguageSelectorProps) {

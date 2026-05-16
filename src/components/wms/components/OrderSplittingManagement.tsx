@@ -1,4 +1,4 @@
-﻿// ğŸ“¦ Order Splitting Management - Sipariş Bölme Sistemi
+﻿// 📦 Order Splitting Management - Sipariş Bölme Sistemi
 // Category-based splitting + Multi-picker assignment
 
 import { useState, useEffect } from 'react';

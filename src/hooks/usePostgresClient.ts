@@ -113,7 +113,7 @@ export function usePostgresClient() {
     try {
       // Burada gerçek SQL query çalıştırılacak
       // Şimdilik mock data dönelim
-      console.log('ğŸ” SQL Query:', sql, params);
+      console.log('�” SQL Query:', sql, params);
       
       // Mock response
       return {

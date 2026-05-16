@@ -36,7 +36,7 @@ export function DevelopmentProgressWidget() {
         >
           <CheckCircle className="w-5 h-5" />
           <div className="text-left">
-            <div className="text-xs opacity-90">ğŸ‰ Tamamlandı!</div>
+            <div className="text-xs opacity-90">�‰ Tamamlandı!</div>
             <div className="font-bold">{totalPercentage}% Hazır</div>
           </div>
           <ChevronUp className="w-4 h-4" />
@@ -135,7 +135,7 @@ export function DevelopmentProgressWidget() {
       {/* Success Message */}
       <div className="border-t px-4 py-3 bg-gradient-to-r from-green-50 to-blue-50 rounded-b-lg">
         <div className="text-center space-y-2">
-          <div className="text-2xl">ğŸ‰</div>
+          <div className="text-2xl">�‰</div>
           <p className="text-sm font-bold text-green-900">%100 Tamamlandı!</p>
           <p className="text-xs text-gray-600">
             29/29 modül kullanıma hazır<br />
@@ -148,7 +148,7 @@ export function DevelopmentProgressWidget() {
           target="_blank"
           className="mt-3 block text-center text-xs bg-green-600 hover:bg-green-700 text-white py-2 rounded transition-colors font-medium"
         >
-          ğŸ“Š Final Raporu Görüntüle →
+          📊 Final Raporu Görüntüle →
         </a>
       </div>
     </div>

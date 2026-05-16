@@ -50,10 +50,10 @@ export function AppointmentModule() {
   ];
 
   const staff: Array<{ id: string; name: string; specialty: string; avatar: string }> = [
-    { id: 's1', name: 'Aisha Al-Sadr', specialty: 'Kuaför', avatar: 'ğŸ‘©â€ğŸ¦°' },
-    { id: 's2', name: 'Layla Hassan', specialty: 'Güzellik Uzmanı', avatar: 'ğŸ‘©' },
-    { id: 's3', name: 'Fatima Al-Zaidi', specialty: 'Masöz', avatar: 'ğŸ‘©â€âš•ï¸' },
-    { id: 's4', name: 'Noor Mohammed', specialty: 'Estetisyen', avatar: 'ğŸ‘±â€â™€ï¸' },
+    { id: 's1', name: 'Aisha Al-Sadr', specialty: 'Kuaför', avatar: '👩â€🦰' },
+    { id: 's2', name: 'Layla Hassan', specialty: 'Güzellik Uzmanı', avatar: '👩' },
+    { id: 's3', name: 'Fatima Al-Zaidi', specialty: 'Masöz', avatar: '👩â€âš•ï¸' },
+    { id: 's4', name: 'Noor Mohammed', specialty: 'Estetisyen', avatar: '👱â€â™€ï¸' },
   ];
 
   const appointments: Appointment[] = [

@@ -1,4 +1,4 @@
-﻿// ğŸ“· Barcode Scanner Component
+﻿// 📷 Barcode Scanner Component
 // Camera + USB Scanner Support with jsQR
 
 import { useState, useRef, useEffect } from 'react';

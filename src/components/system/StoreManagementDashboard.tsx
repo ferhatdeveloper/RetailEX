@@ -245,13 +245,13 @@ export function StoreManagementDashboard() {
                         <h3 className="font-medium text-sm text-gray-500 uppercase tracking-widest">Hızlı İşlemler</h3>
                         <div className="grid grid-cols-2 gap-3">
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                ğŸ“Š Satış Raporları
+                                📊 Satış Raporları
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                ğŸ“¦ Stok Transferi
+                                📦 Stok Transferi
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                ğŸ‘¥ Personel Planlama
+                                👥 Personel Planlama
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
                                 ⚙️ Bölge Ayarları

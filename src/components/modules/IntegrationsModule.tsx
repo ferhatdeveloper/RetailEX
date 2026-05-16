@@ -405,25 +405,25 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       }
     } else {
       // Mock import for web demo
-      addLog('ğŸš€ Nebim V3 geçiş işlemi başlatıldı...');
-      addLog('ğŸ“Š Veri analizi yapılıyor...');
+      addLog('🚀 Nebim V3 geçiş işlemi başlatıldı...');
+      addLog('📊 Veri analizi yapılıyor...');
 
       const steps = [
-        { progress: 5, message: 'ğŸ¢ Firma bilgileri okunuyor...' },
+        { progress: 5, message: '�¢ Firma bilgileri okunuyor...' },
         { progress: 10, message: '✅ Firma bilgileri aktarıldı.' },
-        { progress: 15, message: 'ğŸ“¦ Kategoriler yükleniyor...' },
+        { progress: 15, message: '📦 Kategoriler yükleniyor...' },
         { progress: 25, message: '✅ 18 kategori aktarıldı.' },
-        { progress: 30, message: 'ğŸ·ï¸ Ürünler yükleniyor...' },
+        { progress: 30, message: '�·ï¸ Ürünler yükleniyor...' },
         { progress: 50, message: '✅ 1,247 ürün aktarıldı.' },
-        { progress: 55, message: 'ğŸ¨ Varyantlar (beden/renk) yükleniyor...' },
+        { progress: 55, message: '�¨ Varyantlar (beden/renk) yükleniyor...' },
         { progress: 65, message: '✅ 3,421 varyant aktarıldı.' },
-        { progress: 70, message: 'ğŸ‘¥ Müşteriler yükleniyor...' },
+        { progress: 70, message: '👥 Müşteriler yükleniyor...' },
         { progress: 78, message: '✅ 523 müşteri aktarıldı.' },
-        { progress: 82, message: 'ğŸª Depo/şube bilgileri yükleniyor...' },
+        { progress: 82, message: '�ª Depo/şube bilgileri yükleniyor...' },
         { progress: 86, message: '✅ 3 depo aktarıldı.' },
-        { progress: 88, message: 'ğŸ‘¤ Kullanıcılar yükleniyor...' },
+        { progress: 88, message: '👤 Kullanıcılar yükleniyor...' },
         { progress: 92, message: '✅ 15 kullanıcı aktarıldı.' },
-        { progress: 95, message: 'ğŸ” Roller ve yetkiler aktarılıyor...' },
+        { progress: 95, message: '�” Roller ve yetkiler aktarılıyor...' },
         { progress: 98, message: '✅ 5 rol ve yetki seti aktarıldı.' },
         { progress: 100, message: '✨ İçe aktarma tamamlandı!' }
       ];
@@ -436,7 +436,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
 
       setImportStatus('success');
       addLog('');
-      addLog('ğŸ“Š ÖZET RAPOR:');
+      addLog('📊 ÖZET RAPOR:');
       addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       addLog('✅ Firma Bilgileri: 1 firma');
       addLog('✅ Ürünler: 1,247 kayıt');
@@ -447,7 +447,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
       addLog('✅ Kullanıcılar: 15 kayıt');
       addLog('✅ Roller: 5 kayıt');
       addLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      addLog('ğŸ‰ TOPLAM: 5,232 kayıt başarıyla aktarıldı!');
+      addLog('�‰ TOPLAM: 5,232 kayıt başarıyla aktarıldı!');
       addLog('');
       addLog('✨ ExRetailOS sistemini kullanmaya hazırsınız!');
     }
@@ -1050,7 +1050,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     <div className="pl-10 space-y-4">
                       {/* Ürün & Stok Verileri */}
                       <div>
-                        <h4 className="text-sm text-gray-900 mb-2">ğŸ“¦ Ürün & Stok Verileri</h4>
+                        <h4 className="text-sm text-gray-900 mb-2">📦 Ürün & Stok Verileri</h4>
                         <div className="grid grid-cols-2 gap-3">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -1106,7 +1106,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
 
                       {/* Müşteri Verileri */}
                       <div>
-                        <h4 className="text-sm text-gray-900 mb-2">ğŸ‘¥ Müşteri Verileri</h4>
+                        <h4 className="text-sm text-gray-900 mb-2">👥 Müşteri Verileri</h4>
                         <div className="grid grid-cols-2 gap-3">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -1122,7 +1122,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
 
                       {/* Firma & Sistem Ayarları - NEW */}
                       <div>
-                        <h4 className="text-sm text-gray-900 mb-2">ğŸ¢ Firma & Sistem Ayarları</h4>
+                        <h4 className="text-sm text-gray-900 mb-2">�¢ Firma & Sistem Ayarları</h4>
                         <div className="grid grid-cols-2 gap-3">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -1256,11 +1256,11 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
               <div className="flex items-start gap-3">
                 <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <h4 className="text-green-900 mb-3">ğŸ¯ Tam Kapsamlı Nebim V3 Geçiş Sistemi</h4>
+                  <h4 className="text-green-900 mb-3">�¯ Tam Kapsamlı Nebim V3 Geçiş Sistemi</h4>
 
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="bg-white rounded-lg p-3 border border-green-200">
-                      <h5 className="text-sm text-green-900 mb-2">ğŸ“¦ Ürün & Stok Verileri</h5>
+                      <h5 className="text-sm text-green-900 mb-2">📦 Ürün & Stok Verileri</h5>
                       <ul className="text-xs text-green-800 space-y-1">
                         <li>✓ Tüm ürünler ve kategoriler</li>
                         <li>✓ Varyantlar (beden/renk)</li>
@@ -1271,7 +1271,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     </div>
 
                     <div className="bg-white rounded-lg p-3 border border-blue-200">
-                      <h5 className="text-sm text-blue-900 mb-2">ğŸ‘¥ Müşteri Verileri</h5>
+                      <h5 className="text-sm text-blue-900 mb-2">👥 Müşteri Verileri</h5>
                       <ul className="text-xs text-blue-800 space-y-1">
                         <li>✓ Tüm müşteri bilgileri</li>
                         <li>✓ İletişim bilgileri</li>
@@ -1281,7 +1281,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     </div>
 
                     <div className="bg-white rounded-lg p-3 border border-purple-200">
-                      <h5 className="text-sm text-purple-900 mb-2">ğŸ¢ Firma & Sistem</h5>
+                      <h5 className="text-sm text-purple-900 mb-2">�¢ Firma & Sistem</h5>
                       <ul className="text-xs text-purple-800 space-y-1">
                         <li>✓ Firma bilgileri (vergi no, adres)</li>
                         <li>✓ Depo/şube tanımları</li>
@@ -1290,7 +1290,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
                     </div>
 
                     <div className="bg-white rounded-lg p-3 border border-orange-200">
-                      <h5 className="text-sm text-orange-900 mb-2">ğŸ” Kullanıcı & Yetkiler</h5>
+                      <h5 className="text-sm text-orange-900 mb-2">�” Kullanıcı & Yetkiler</h5>
                       <ul className="text-xs text-orange-800 space-y-1">
                         <li>✓ Tüm kullanıcı hesapları</li>
                         <li>✓ Rol tanımları (5 farklı rol)</li>
@@ -1313,7 +1313,7 @@ export function IntegrationsModule({ products, setProducts, customers, setCustom
 
                   <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                     <p className="text-xs text-amber-900">
-                      <strong>ğŸ’¡ Not:</strong> Bu özellik Electron masaüstü uygulamasında tam çalışır. SQL Server bağlantı izinlerine sahip olmalısınız.
+                      <strong>💡 Not:</strong> Bu özellik Electron masaüstü uygulamasında tam çalışır. SQL Server bağlantı izinlerine sahip olmalısınız.
                       Büyük veri setlerinde (1000+ ürün) işlem 2-5 dakika sürebilir.
                     </p>
                   </div>

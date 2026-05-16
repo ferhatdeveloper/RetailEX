@@ -603,10 +603,10 @@ export function PricingCostManagement({ darkMode, onBack }: PricingCostManagemen
                     <div>
                       <div className={`font-bold ${textClass} mb-1`}>{rule.name}</div>
                       <div className="text-sm text-gray-500">
-                        {rule.type === 'rent' && 'ğŸ¢ Kira İndirimi'}
-                        {rule.type === 'target' && 'ğŸ¯ Hedef İndirimi'}
-                        {rule.type === 'campaign' && 'ğŸ Kampanya'}
-                        {rule.type === 'seasonal' && 'ğŸŒŸ Sezonluk'}
+                        {rule.type === 'rent' && '�¢ Kira İndirimi'}
+                        {rule.type === 'target' && '�¯ Hedef İndirimi'}
+                        {rule.type === 'campaign' && '� Kampanya'}
+                        {rule.type === 'seasonal' && '🌟 Sezonluk'}
                       </div>
                     </div>
                     <div className="text-right">
@@ -617,7 +617,7 @@ export function PricingCostManagement({ darkMode, onBack }: PricingCostManagemen
                     </div>
                   </div>
                   <div className="text-sm text-gray-500">
-                    ğŸ“… {new Date(rule.start_date).toLocaleDateString('tr-TR')} - {new Date(rule.end_date).toLocaleDateString('tr-TR')}
+                    📅 {new Date(rule.start_date).toLocaleDateString('tr-TR')} - {new Date(rule.end_date).toLocaleDateString('tr-TR')}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
                     Kategoriler: {rule.applicable_categories.join(', ')}

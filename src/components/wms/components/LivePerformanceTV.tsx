@@ -1,4 +1,4 @@
-﻿// ğŸ“º Live Performance TV - Anlık Performans Ekranı
+﻿// 📺 Live Performance TV - Anlık Performans Ekranı
 // Full-screen live performance dashboard for warehouse TV displays
 
 import { useState, useEffect } from 'react';

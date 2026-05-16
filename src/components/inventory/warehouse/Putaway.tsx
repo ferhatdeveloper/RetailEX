@@ -170,7 +170,7 @@ export function Putaway({ onBack }: PutawayProps) {
           </div>
 
           <div className="mt-8 p-4 bg-blue-50 rounded-xl max-w-md">
-            <p className="text-sm text-blue-900 font-medium mb-2">ğŸ¯ Smart Putaway:</p>
+            <p className="text-sm text-blue-900 font-medium mb-2">�¯ Smart Putaway:</p>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Akıllı konum önerisi</li>
               <li>• ABC analizi bazlı yerleştirme</li>

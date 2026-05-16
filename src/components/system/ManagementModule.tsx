@@ -503,7 +503,7 @@ export function ManagementModule({
   // Cache'i temizle
   const clearMenuCache = useCallback(() => {
     localStorage.removeItem(MENU_CACHE_KEY);
-    console.log('ğŸ—‘ï¸ Menü cache temizlendi');
+    console.log('🗑ï¸ Menü cache temizlendi');
   }, []);
 
   // Listen for navigation events from other components

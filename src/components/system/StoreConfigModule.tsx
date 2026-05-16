@@ -384,12 +384,12 @@ function LayoutSettings() {
 // Integration Settings
 function IntegrationSettings() {
   const integrations = [
-    { name: 'Logo Tiger', status: 'disconnected', icon: 'ğŸ…', description: 'Muhasebe ve stok yönetimi entegrasyonu' },
-    { name: 'Talabat', status: 'disconnected', icon: 'ğŸ”', description: 'Online yemek ve market sipariş platformu' },
-    { name: 'Lezoo', status: 'disconnected', icon: 'ğŸ›µ', description: 'Yemek teslimat ve sipariş platformu' },
-    { name: 'Zuu', status: 'disconnected', icon: 'ğŸ“¦', description: 'E-ticaret ve alışveriş platformu' },
-    { name: 'Careem', status: 'disconnected', icon: 'ğŸš—', description: 'Teslimat ve lojistik entegrasyonu' },
-    { name: 'HungerStation', status: 'disconnected', icon: 'ğŸ•', description: 'Yemek sipariş ve teslimat platformu' },
+    { name: 'Logo Tiger', status: 'disconnected', icon: '�…', description: 'Muhasebe ve stok yönetimi entegrasyonu' },
+    { name: 'Talabat', status: 'disconnected', icon: '�”', description: 'Online yemek ve market sipariş platformu' },
+    { name: 'Lezoo', status: 'disconnected', icon: '🛵', description: 'Yemek teslimat ve sipariş platformu' },
+    { name: 'Zuu', status: 'disconnected', icon: '📦', description: 'E-ticaret ve alışveriş platformu' },
+    { name: 'Careem', status: 'disconnected', icon: '🚗', description: 'Teslimat ve lojistik entegrasyonu' },
+    { name: 'HungerStation', status: 'disconnected', icon: '�•', description: 'Yemek sipariş ve teslimat platformu' },
   ];
 
   return (

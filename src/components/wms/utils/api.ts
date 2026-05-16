@@ -1,4 +1,4 @@
-﻿// ğŸ”Œ API Helper - Centralized API Communication
+﻿// 🔌 API Helper - Centralized API Communication
 // Error handling, retry logic, loading states
 
 import { projectId, publicAnonKey } from './supabase/info';

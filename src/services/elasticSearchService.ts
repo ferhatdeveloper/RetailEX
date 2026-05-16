@@ -62,7 +62,7 @@ class ElasticSearchService {
    */
   private async init() {
     if (this.simulationMode) {
-      console.log('ğŸ” ElasticSearch Service (Simulation Mode)');
+      console.log('�” ElasticSearch Service (Simulation Mode)');
       this.isConnected = true;
       return;
     }
@@ -72,7 +72,7 @@ class ElasticSearchService {
       // const response = await fetch(`${this.config.endpoint}/_cluster/health`);
       // this.isConnected = response.ok;
 
-      console.log('ğŸ” ElasticSearch connected:', this.config.endpoint);
+      console.log('�” ElasticSearch connected:', this.config.endpoint);
     } catch (error) {
       console.error('❌ ElasticSearch connection failed:', error);
       this.isConnected = false;
@@ -222,7 +222,7 @@ class ElasticSearchService {
    */
   async deleteDocument(index: 'stores' | 'products' | 'customers' | 'sales', id: string): Promise<void> {
     if (this.simulationMode) {
-      console.log('ğŸ—‘ï¸ Deleted (simulation):', index, id);
+      console.log('🗑ï¸ Deleted (simulation):', index, id);
       return;
     }
 

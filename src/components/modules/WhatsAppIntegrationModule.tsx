@@ -98,7 +98,7 @@ export function WhatsAppIntegrationModule() {
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-semibold text-blue-900 mb-2">ğŸ’¡ WhatsApp Business API</h4>
+        <h4 className="font-semibold text-blue-900 mb-2">💡 WhatsApp Business API</h4>
         <p className="text-sm text-blue-800">
           WhatsApp Business API entegrasyonu ile müşterilerinize sipariş onayı, kargo takibi, 
           kampanya bildirimleri ve daha fazlasını otomatik olarak gönderebilirsiniz.

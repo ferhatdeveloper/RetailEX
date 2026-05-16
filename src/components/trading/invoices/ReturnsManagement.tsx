@@ -37,24 +37,24 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
 
   const customerReturnReasons = [
     { id: 'wrong-product', label: 'Yanlış Ürün', icon: '❌', severity: 'low' },
-    { id: 'damaged', label: 'Hasarlı Geldi', icon: 'ğŸ“¦', severity: 'high' },
+    { id: 'damaged', label: 'Hasarlı Geldi', icon: '📦', severity: 'high' },
     { id: 'defective', label: 'Arızalı', icon: '⚠️', severity: 'high' },
-    { id: 'not-as-described', label: 'Açıklamaya Uygun Değil', icon: 'ğŸ“', severity: 'medium' },
-    { id: 'changed-mind', label: 'Fikir Değişikliği', icon: 'ğŸ¤”', severity: 'low' },
+    { id: 'not-as-described', label: 'Açıklamaya Uygun Değil', icon: '�“', severity: 'medium' },
+    { id: 'changed-mind', label: 'Fikir Değişikliği', icon: '🤔', severity: 'low' },
     { id: 'late-delivery', label: 'Geç Teslimat', icon: '⏰', severity: 'medium' },
-    { id: 'duplicate', label: 'Mükerrer Sipariş', icon: 'ğŸ”„', severity: 'low' },
+    { id: 'duplicate', label: 'Mükerrer Sipariş', icon: '🔄', severity: 'low' },
     { id: 'quality-issue', label: 'Kalite Sorunu', icon: '⭐', severity: 'high' },
-    { id: 'other', label: 'Diğer', icon: 'ğŸ’¬', severity: 'low' },
+    { id: 'other', label: 'Diğer', icon: '💬', severity: 'low' },
   ];
 
   const supplierReturnReasons = [
     { id: 'quality-issue', label: 'Kalite Problemi', icon: '⚠️', severity: 'high' },
     { id: 'wrong-product', label: 'Yanlış Ürün Gönderildi', icon: '❌', severity: 'high' },
-    { id: 'damaged-in-transit', label: 'Taşımada Hasar', icon: 'ğŸ“¦', severity: 'medium' },
-    { id: 'expired', label: 'Süresi Dolmuş/Yaklaşmış', icon: 'ğŸ“…', severity: 'high' },
-    { id: 'excess-stock', label: 'Fazla Stok', icon: 'ğŸ“Š', severity: 'low' },
-    { id: 'defective', label: 'Arızalı/Defolu', icon: 'ğŸ”§', severity: 'high' },
-    { id: 'recall', label: 'Geri Çağırma', icon: 'ğŸš¨', severity: 'critical' },
+    { id: 'damaged-in-transit', label: 'Taşımada Hasar', icon: '📦', severity: 'medium' },
+    { id: 'expired', label: 'Süresi Dolmuş/Yaklaşmış', icon: '📅', severity: 'high' },
+    { id: 'excess-stock', label: 'Fazla Stok', icon: '📊', severity: 'low' },
+    { id: 'defective', label: 'Arızalı/Defolu', icon: '🔧', severity: 'high' },
+    { id: 'recall', label: 'Geri Çağırma', icon: '🚨', severity: 'critical' },
     { id: 'price-dispute', label: 'Fiyat Uyuşmazlığı', icon: '💰', severity: 'medium' },
   ];
 
@@ -217,7 +217,7 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
           </button>
 
           <div className="mt-8 p-4 bg-blue-50 rounded-xl">
-            <p className="text-sm text-blue-900 font-medium mb-2">ğŸ“¦ İade İşlemleri:</p>
+            <p className="text-sm text-blue-900 font-medium mb-2">📦 İade İşlemleri:</p>
             <ul className="text-xs text-blue-800 space-y-1">
               <li>• Müşteri: Satış iadesi → Stok geri alımı</li>
               <li>• Tedarikçi: RMA oluştur → Sevkiyat</li>
@@ -374,7 +374,7 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
                       <div className="font-medium text-gray-900">{item.productName}</div>
                       <div className={`px-3 py-1 rounded-full text-xs font-medium border ${getConditionColor(item.condition)}`}>
                         {item.condition === 'good' && '✅ Sağlam'}
-                        {item.condition === 'opened' && 'ğŸ“¦ Açılmış'}
+                        {item.condition === 'opened' && '📦 Açılmış'}
                         {item.condition === 'damaged' && '⚠️ Hasarlı'}
                         {item.condition === 'defective' && '❌ Arızalı'}
                       </div>
@@ -455,7 +455,7 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
                       <div className="text-xs text-red-600 mt-1">⚠️ Yüksek öncelik</div>
                     )}
                     {reason.severity === 'critical' && (
-                      <div className="text-xs text-red-700 font-bold mt-1">ğŸš¨ Kritik</div>
+                      <div className="text-xs text-red-700 font-bold mt-1">🚨 Kritik</div>
                     )}
                   </div>
                   {selectedReason === reason.id && (
@@ -471,7 +471,7 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
           <div className="grid grid-cols-2 gap-3 mb-6">
             {[
               { value: 'good', label: 'Sağlam', icon: '✅', color: 'green' },
-              { value: 'opened', label: 'Açılmış', icon: 'ğŸ“¦', color: 'blue' },
+              { value: 'opened', label: 'Açılmış', icon: '📦', color: 'blue' },
               { value: 'damaged', label: 'Hasarlı', icon: '⚠️', color: 'orange' },
               { value: 'defective', label: 'Arızalı', icon: '❌', color: 'red' },
             ].map((cond) => (
@@ -597,7 +597,7 @@ export function ReturnsManagement({ onBack }: ReturnsManagementProps) {
                   </div>
                   <div className={`px-3 py-1 rounded-full text-xs font-medium border ${getConditionColor(item.condition)}`}>
                     {item.condition === 'good' && '✅ Sağlam'}
-                    {item.condition === 'opened' && 'ğŸ“¦ Açılmış'}
+                    {item.condition === 'opened' && '📦 Açılmış'}
                     {item.condition === 'damaged' && '⚠️ Hasarlı'}
                     {item.condition === 'defective' && '❌ Arızalı'}
                   </div>
