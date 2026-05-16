@@ -223,14 +223,11 @@ function syncRemoteConfigFromRestUrl(restUrl: unknown): void {
   const raw = String(restUrl ?? '').trim();
   if (!raw) return;
   try {
-    const u = new URL(raw);
-    // Rest API URL'sindeki host/port (çoğunlukla 443) PostgreSQL soketi için geçerli değildir.
-    // Bu yüzden yalnızca tenant/database slug'ını eşitliyoruz; host/port kayıtlı PG ayarında kalır.
-    const parts = u.pathname.split('/').filter(Boolean);
-    const slug = parts.length ? parts[parts.length - 1] : '';
-    if (slug && /^[a-zA-Z0-9_.-]+$/.test(slug)) {
-      REMOTE_CONFIG.database = slug;
-    }
+    // Rest API URL'sindeki yol parçası (örn. `/aqua`) PostgreSQL veritabanı adı olmak zorunda değildir.
+    // Özellikle SaaS kurulumunda slug ve gerçek database_name farklı olabildiğinden burada
+    // REMOTE_CONFIG.database alanını URL'den türetmeyiz.
+    // Bu alan yalnızca config.remote_db / tenant registry database_name üzerinden set edilmelidir.
+    void new URL(raw);
   } catch {
     /* ignore invalid URL */
   }

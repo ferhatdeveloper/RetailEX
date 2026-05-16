@@ -93,11 +93,11 @@ export function buildDirectPostgrestTenantPatch(input: {
     enabled_modules: ['pos', 'wms'],
     connection_provider: 'rest_api',
     remote_rest_url: u,
-    // Direct URL akışında da legacy SQL çağrıları eski tenant DB'sine sapmasın diye
-    // uzak DB kimliğini URL slug'ından türetip açıkça üzerine yaz.
+    // Direct URL akışında URL slug'ı (örn. `/aqua`) gerçek PostgreSQL database_name olmayabilir.
+    // Bu yüzden remote_db alanını slug'dan türetmiyoruz.
     remote_host: parsedHost || undefined,
     remote_port: parsedPort,
-    remote_db: codeFromSlug || undefined,
+    remote_db: undefined,
     merkez_tenant_code: codeFromSlug || undefined,
     merkez_tenant_id: idFromSlug || undefined,
     merkez_display_name: codeFromSlug || idFromSlug || u,
