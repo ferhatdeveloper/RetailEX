@@ -150,6 +150,30 @@ function erpFirmNrForRow(): string {
     return String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
 }
 
+function erpPeriodNrForRow(): string {
+    return String(ERP_SETTINGS.periodNr ?? '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+function stripUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
+    const out: Partial<T> = {};
+    for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined) {
+            (out as Record<string, unknown>)[k] = v;
+        }
+    }
+    return out;
+}
+
+async function postgrestRowExists(path: string, schema: 'public' | 'beauty', id: string): Promise<boolean> {
+    const { postgrest } = await import('./api/postgrestClient');
+    const rows = await postgrest.get<Record<string, unknown>[]>(
+        path,
+        { select: 'id', id: `eq.${id}`, limit: 1 },
+        { schema }
+    );
+    return Array.isArray(rows) && rows.length > 0;
+}
+
 function normalizeFollowUpReminderDays(v: unknown): number | null {
     if (v === null || v === undefined || v === '') return null;
     const n = Math.round(Number(v));
@@ -1140,6 +1164,34 @@ export const beautyService = {
         const genderVal = g === 'female' || g === 'male' || g === 'other' ? g : null;
         const tierRaw = String(data.customer_tier ?? 'normal').trim().toLowerCase();
         const tierVal = tierRaw === 'vip' ? 'vip' : 'normal';
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const path = `/rex_${fn}_customers`;
+            await postgrest.post(
+                path,
+                {
+                    id,
+                    firm_nr: fn,
+                    code,
+                    name: data.name,
+                    phone: data.phone ?? null,
+                    phone2: data.phone2?.trim() || null,
+                    email: data.email ?? null,
+                    address: data.address ?? null,
+                    city: data.city ?? null,
+                    notes: data.notes?.trim() || null,
+                    age: ageVal,
+                    file_id: fileIdVal,
+                    occupation: data.occupation?.trim() || null,
+                    gender: genderVal,
+                    customer_tier: tierVal,
+                    heard_from: data.heard_from?.trim() || null,
+                    is_active: true,
+                },
+                { schema: 'public', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO ${t} (
                id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, file_id, occupation,
@@ -1171,6 +1223,55 @@ export const beautyService = {
     async updateCustomer(id: string, data: Partial<BeautyCustomer>): Promise<void> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const patchBody = stripUndefinedFields({
+                name: data.name,
+                phone: data.phone === undefined ? undefined : data.phone ?? null,
+                phone2: data.phone2 === undefined ? undefined : data.phone2?.trim() || null,
+                email: data.email === undefined ? undefined : data.email ?? null,
+                address: data.address === undefined ? undefined : data.address ?? null,
+                city: data.city === undefined ? undefined : data.city ?? null,
+                notes: data.notes === undefined ? undefined : data.notes ?? null,
+                file_id:
+                    data.file_id === undefined
+                        ? undefined
+                        : data.file_id != null && String(data.file_id).trim() !== ''
+                            ? String(data.file_id).trim()
+                            : null,
+                occupation: data.occupation === undefined ? undefined : data.occupation?.trim() || null,
+                gender:
+                    data.gender === undefined
+                        ? undefined
+                        : (() => {
+                            const g = String(data.gender ?? '').trim().toLowerCase();
+                            return g === 'female' || g === 'male' || g === 'other' ? g : null;
+                        })(),
+                customer_tier:
+                    data.customer_tier === undefined
+                        ? undefined
+                        : String(data.customer_tier ?? 'normal').trim().toLowerCase() === 'vip'
+                            ? 'vip'
+                            : 'normal',
+                heard_from: data.heard_from === undefined ? undefined : data.heard_from?.trim() || null,
+                age:
+                    data.age === undefined
+                        ? undefined
+                        : data.age === null
+                            ? null
+                            : (() => {
+                                const n = Number(data.age);
+                                return Number.isFinite(n) ? Math.round(n) : null;
+                            })(),
+            });
+            if (Object.keys(patchBody).length === 0) return;
+            await postgrest.patch(
+                `/rex_${fn}_customers?id=eq.${encodeURIComponent(id)}`,
+                patchBody,
+                { schema: 'public', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const sets: string[] = [];
         const vals: unknown[] = [];
         let i = 1;
@@ -1297,7 +1398,28 @@ export const beautyService = {
 
     async createSpecialist(data: Partial<BeautySpecialist>): Promise<string> {
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_beauty_specialists`,
+                {
+                    id,
+                    name: data.name,
+                    phone: data.phone ?? null,
+                    email: data.email ?? null,
+                    specialty: data.specialty ?? null,
+                    color: data.color ?? '#9333ea',
+                    commission_rate: data.commission_rate ?? 0,
+                    product_unit_commission: data.product_unit_commission ?? 0,
+                    avatar_url: data.avatar_url ?? null,
+                    is_active: data.is_active !== false,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, phone, email, specialty, color, commission_rate, product_unit_commission, avatar_url, is_active, created_at, updated_at)
@@ -1311,7 +1433,34 @@ export const beautyService = {
 
     async updateSpecialist(id: string, data: Partial<BeautySpecialist>): Promise<void> {
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const fn = erpFirmNrForRow();
         const active = data.is_active !== false;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const path = `/rex_${fn}_beauty_specialists`;
+            const row = {
+                id,
+                name: data.name ?? '',
+                phone: data.phone ?? null,
+                email: data.email ?? null,
+                specialty: data.specialty ?? null,
+                color: data.color ?? '#9333ea',
+                commission_rate: data.commission_rate ?? 0,
+                product_unit_commission: data.product_unit_commission ?? 0,
+                avatar_url: data.avatar_url ?? null,
+                is_active: active,
+            };
+            if (await postgrestRowExists(path, 'beauty', id)) {
+                await postgrest.patch(
+                    `${path}?id=eq.${encodeURIComponent(id)}`,
+                    stripUndefinedFields(row),
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(path, row, { schema: 'beauty', prefer: 'return=minimal' });
+            }
+            return;
+        }
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, phone, email, specialty, color, commission_rate, product_unit_commission, avatar_url, is_active, created_at, updated_at)
@@ -1344,6 +1493,43 @@ export const beautyService = {
 
     async toggleSpecialist(id: string, active: boolean): Promise<void> {
         const t = postgres.getCardTableName('beauty_specialists', 'beauty');
+        const fn = erpFirmNrForRow();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const path = `/rex_${fn}_beauty_specialists`;
+            if (await postgrestRowExists(path, 'beauty', id)) {
+                await postgrest.patch(
+                    `${path}?id=eq.${encodeURIComponent(id)}`,
+                    { is_active: active, updated_at: new Date().toISOString() },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+                return;
+            }
+            const users = await postgrest.get<Record<string, unknown>[]>(
+                '/users',
+                { select: 'full_name,username,phone,email', id: `eq.${id}`, limit: 1 },
+                { schema: 'public' }
+            );
+            const u = Array.isArray(users) ? users[0] : undefined;
+            if (!u) return;
+            await postgrest.post(
+                path,
+                {
+                    id,
+                    name: (String(u.full_name ?? u.username ?? '').trim() || String(u.username ?? '')).trim(),
+                    phone: u.phone ?? null,
+                    email: u.email ?? null,
+                    specialty: null,
+                    color: '#9333ea',
+                    commission_rate: 0,
+                    product_unit_commission: 0,
+                    avatar_url: null,
+                    is_active: active,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const res = await postgres.query(
             `UPDATE ${t} SET is_active=$2, updated_at=NOW() WHERE id=$1`,
             [id, active]
@@ -1452,7 +1638,33 @@ export const beautyService = {
 
     async createService(data: Partial<BeautyService>): Promise<string> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_beauty_services`,
+                {
+                    id,
+                    name: data.name,
+                    category: data.category ?? 'beauty',
+                    parent_category: normalizeParentCategory(data.parent_category),
+                    duration_min: data.duration_min ?? 30,
+                    price: data.price ?? 0,
+                    cost_price: data.cost_price ?? 0,
+                    color: data.color ?? '#9333ea',
+                    commission_rate: data.commission_rate ?? 0,
+                    description: data.description ?? null,
+                    requires_device: data.requires_device ?? false,
+                    expected_shots: data.expected_shots ?? 0,
+                    default_sessions: Math.max(1, Math.round(Number(data.default_sessions ?? 1))),
+                    follow_up_reminder_days: normalizeFollowUpReminderDays(data.follow_up_reminder_days),
+                    is_active: true,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, category, parent_category, duration_min, price, cost_price, color, commission_rate,
@@ -1471,7 +1683,50 @@ export const beautyService = {
 
     async updateService(id: string, data: Partial<BeautyService>): Promise<void> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
+        const fn = erpFirmNrForRow();
         const active = data.is_active !== false;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const beautyPath = `/rex_${fn}_beauty_services`;
+            const row = {
+                id,
+                name: data.name,
+                category: data.category ?? 'beauty',
+                parent_category: normalizeParentCategory(data.parent_category),
+                duration_min: data.duration_min ?? 30,
+                price: data.price ?? 0,
+                cost_price: data.cost_price ?? 0,
+                color: data.color ?? '#9333ea',
+                commission_rate: data.commission_rate ?? 0,
+                description: data.description ?? null,
+                requires_device: data.requires_device ?? false,
+                expected_shots: data.expected_shots ?? 0,
+                default_sessions: Math.max(1, Math.round(Number(data.default_sessions ?? 1))),
+                follow_up_reminder_days: normalizeFollowUpReminderDays(data.follow_up_reminder_days),
+                is_active: active,
+            };
+            if (await postgrestRowExists(beautyPath, 'beauty', id)) {
+                await postgrest.patch(
+                    `${beautyPath}?id=eq.${encodeURIComponent(id)}`,
+                    stripUndefinedFields(row),
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(beautyPath, row, { schema: 'beauty', prefer: 'return=minimal' });
+            }
+            await postgrest.patch(
+                `/rex_${fn}_services?id=eq.${encodeURIComponent(id)}`,
+                {
+                    name: data.name,
+                    category: data.category ?? 'beauty',
+                    unit_price: data.price ?? 0,
+                    purchase_price: data.cost_price ?? 0,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'public', prefer: 'return=minimal' }
+            );
+            return;
+        }
         // Yalnızca UPDATE: kayıt sadece public.rex_*_services içindeyse (ERP hizmet kartı) güzellik
         // tablosunda satır olmaz; follow_up_reminder_days vb. alanlar hiç yazılmazdı. UPSERT ile aynı
         // id üzerinden beauty_services satırı oluşturulur / güncellenir; liste getServices() önce bu
@@ -1530,6 +1785,16 @@ export const beautyService = {
 
     async deleteService(id: string): Promise<void> {
         const t = postgres.getCardTableName('beauty_services', 'beauty');
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_services?id=eq.${encodeURIComponent(id)}`,
+                { is_active: false, updated_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(
             `UPDATE ${t} SET is_active=false, updated_at=NOW() WHERE id=$1`, [id]
         );
@@ -1779,6 +2044,8 @@ export const beautyService = {
     async createAppointment(appointment: Partial<BeautyAppointment>): Promise<string> {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const id = uuidv4();
+        const fn = erpFirmNrForRow();
+        const pn = erpPeriodNrForRow();
         const rawStatus = appointment.status;
         const statusStr =
             typeof rawStatus === 'string' ? rawStatus : rawStatus != null ? String(rawStatus) : 'scheduled';
@@ -1788,6 +2055,47 @@ export const beautyService = {
         const dur = Math.max(1, Math.round(Number(appointment.duration ?? 30)) || 30);
         const totalPrice = Number(appointment.total_price ?? 0);
         const comm = Number(appointment.commission_amount ?? 0);
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_appointments`,
+                {
+                    id,
+                    client_id: pgUuidOrNull(appointment.customer_id ?? appointment.client_id),
+                    service_id: pgUuidOrNull(appointment.service_id),
+                    specialist_id: pgUuidOrNull(appointment.staff_id ?? appointment.specialist_id),
+                    device_id: pgUuidOrNull(appointment.device_id),
+                    body_region_id: pgUuidOrNull(appointment.body_region_id),
+                    appointment_date: pgDateOrNull(appointment.date ?? appointment.appointment_date),
+                    appointment_time: normalizeAppointmentTimeForPg(appointment.time ?? appointment.appointment_time),
+                    duration: dur,
+                    status: statusStr,
+                    type: typeStr,
+                    notes: appointment.notes ?? null,
+                    total_price: totalPrice,
+                    commission_amount: comm,
+                    is_package_session: appointment.is_package_session ?? false,
+                    package_purchase_id: pgUuidOrNull(appointment.package_purchase_id),
+                    branch_id: pgUuidOrNull(appointment.branch_id),
+                    room_id: pgUuidOrNull(appointment.room_id),
+                    tele_meeting_url: appointment.tele_meeting_url ?? null,
+                    booking_channel: appointment.booking_channel ?? 'staff',
+                    corporate_account_id: pgUuidOrNull(appointment.corporate_account_id),
+                    session_series_id: pgUuidOrNull(appointment.session_series_id),
+                    treatment_degree:
+                        appointment.treatment_degree != null && String(appointment.treatment_degree).trim() !== ''
+                            ? String(appointment.treatment_degree).trim()
+                            : null,
+                    treatment_shots:
+                        appointment.treatment_shots != null && String(appointment.treatment_shots).trim() !== ''
+                            ? String(appointment.treatment_shots).trim()
+                            : null,
+                    clinical_data: clinicalDataForPgInput(appointment),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(`
             INSERT INTO ${table} (
                 id, client_id, service_id, specialist_id, device_id, body_region_id,
@@ -2000,10 +2308,21 @@ export const beautyService = {
 
     async updateAppointmentStatus(id: string, status: string): Promise<void> {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(id)}`,
+                { status, updated_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
         await postgres.query(
             `UPDATE ${table} SET status=$1, updated_at=NOW() WHERE id=$2`,
             [status, id]
         );
+        }
         if (status === 'completed') {
             try {
                 await beautyService.applyConsumableDeductionForAppointment(id);
@@ -2133,7 +2452,33 @@ export const beautyService = {
 
     async createDevice(data: Partial<BeautyDevice>): Promise<string> {
         const t = postgres.getCardTableName('beauty_devices', 'beauty');
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_beauty_devices`,
+                {
+                    id,
+                    name: data.name,
+                    device_type: data.device_type ?? 'laser',
+                    serial_number: data.serial_number ?? null,
+                    manufacturer: data.manufacturer ?? null,
+                    model: data.model ?? null,
+                    total_shots: data.total_shots ?? 0,
+                    max_shots: data.max_shots ?? 500000,
+                    maintenance_due: data.maintenance_due ?? null,
+                    last_maintenance: data.last_maintenance ?? null,
+                    purchase_date: data.purchase_date ?? null,
+                    warranty_expiry: data.warranty_expiry ?? null,
+                    status: data.status ?? 'active',
+                    notes: data.notes ?? null,
+                    is_active: true,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO ${t}
                 (id, name, device_type, serial_number, manufacturer, model,
@@ -2152,6 +2497,29 @@ export const beautyService = {
 
     async updateDevice(id: string, data: Partial<BeautyDevice>): Promise<void> {
         const t = postgres.getCardTableName('beauty_devices', 'beauty');
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_devices?id=eq.${encodeURIComponent(id)}`,
+                {
+                    name: data.name,
+                    device_type: data.device_type ?? 'laser',
+                    serial_number: data.serial_number ?? null,
+                    manufacturer: data.manufacturer ?? null,
+                    model: data.model ?? null,
+                    max_shots: data.max_shots ?? 500000,
+                    maintenance_due: data.maintenance_due ?? null,
+                    last_maintenance: data.last_maintenance ?? null,
+                    warranty_expiry: data.warranty_expiry ?? null,
+                    status: data.status ?? 'active',
+                    notes: data.notes ?? null,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(
             `UPDATE ${t}
              SET name=$2, device_type=$3, serial_number=$4, manufacturer=$5, model=$6,
@@ -2255,7 +2623,29 @@ export const beautyService = {
     },
 
     async createPackage(data: Partial<BeautyPackage>): Promise<string> {
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_beauty_packages`,
+                {
+                    id,
+                    name: data.name,
+                    description: data.description ?? null,
+                    service_id: data.service_id ?? null,
+                    total_sessions: data.total_sessions ?? 1,
+                    price: data.price ?? 0,
+                    cost_price: data.cost_price ?? 0,
+                    discount_pct: data.discount_pct ?? 0,
+                    validity_days: data.validity_days ?? 365,
+                    color: data.color ?? '#6366f1',
+                    is_active: true,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO beauty_packages
                 (id, name, description, service_id, total_sessions, price, cost_price,
@@ -2269,6 +2659,26 @@ export const beautyService = {
     },
 
     async updatePackage(id: string, data: Partial<BeautyPackage>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_packages?id=eq.${encodeURIComponent(id)}`,
+                {
+                    name: data.name,
+                    description: data.description ?? null,
+                    service_id: data.service_id ?? null,
+                    total_sessions: data.total_sessions ?? 1,
+                    price: data.price ?? 0,
+                    discount_pct: data.discount_pct ?? 0,
+                    validity_days: data.validity_days ?? 365,
+                    color: data.color ?? '#6366f1',
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(
             `UPDATE beauty_packages
              SET name=$2, description=$3, service_id=$4, total_sessions=$5, price=$6,
@@ -2281,6 +2691,16 @@ export const beautyService = {
     },
 
     async deletePackage(id: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_packages?id=eq.${encodeURIComponent(id)}`,
+                { is_active: false, updated_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(
             'UPDATE beauty_packages SET is_active=false, updated_at=NOW() WHERE id=$1', [id]
         );
@@ -2603,7 +3023,27 @@ export const beautyService = {
 
     async createLead(data: Partial<BeautyLead>): Promise<string> {
         const lt = postgres.getCardTableName('beauty_leads', 'beauty');
+        const fn = erpFirmNrForRow();
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_beauty_leads`,
+                {
+                    id,
+                    name: data.name,
+                    phone: data.phone ?? null,
+                    email: data.email ?? null,
+                    source: data.source ?? 'other',
+                    status: data.status ?? 'new',
+                    notes: data.notes ?? null,
+                    assigned_to: data.assigned_to ?? null,
+                    first_contact_date: new Date().toISOString().slice(0, 10),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         await postgres.query(
             `INSERT INTO ${lt}
                 (id, name, phone, email, source, status, notes, assigned_to,
@@ -2618,6 +3058,26 @@ export const beautyService = {
 
     async updateLead(id: string, data: Partial<BeautyLead>): Promise<void> {
         const lt = postgres.getCardTableName('beauty_leads', 'beauty');
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_leads?id=eq.${encodeURIComponent(id)}`,
+                {
+                    name: data.name,
+                    phone: data.phone ?? null,
+                    email: data.email ?? null,
+                    source: data.source ?? 'other',
+                    status: data.status ?? 'new',
+                    notes: data.notes ?? null,
+                    last_contact_date: new Date().toISOString().slice(0, 10),
+                    lost_reason: data.lost_reason ?? null,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         await postgres.query(
             `UPDATE ${lt}
              SET name=$2, phone=$3, email=$4, source=$5, status=$6, notes=$7,
