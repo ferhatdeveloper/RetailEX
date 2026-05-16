@@ -1627,7 +1627,9 @@ export function Login({ onLogin }: LoginProps) {
                       parseTenantConnectionLine,
                       buildDirectPostgrestTenantPatch,
                       fetchTenantRegistryRow,
+                      resolveTenantRegistryForDirectPostgrest,
                       tenantRowToAppConfigPatch,
+                      preferredShellModuleForTenantModule,
                     } = merkezMod;
 
                     let parsed;
@@ -1665,11 +1667,20 @@ export function Login({ onLogin }: LoginProps) {
                     if (parsed.kind === 'direct_postgrest') {
                       setIsMerkezTenantLoading(true);
                       try {
-                        const patch = buildDirectPostgrestTenantPatch({
+                        const { prev, preserve } = await loadPrevAndPreserve();
+                        const registryRow = await resolveTenantRegistryForDirectPostgrest({
                           url: parsed.url,
                           pathSlug: parsed.pathSlug,
                         });
-                        const { prev } = await loadPrevAndPreserve();
+                        const patch = registryRow
+                          ? tenantRowToAppConfigPatch(registryRow, {
+                              preserveDbPassword: preserve,
+                              forTauri: isTauri,
+                            })
+                          : buildDirectPostgrestTenantPatch({
+                              url: parsed.url,
+                              pathSlug: parsed.pathSlug,
+                            });
                         const merged: Record<string, unknown> = { ...prev, ...patch, is_configured: true, db_mode: 'online' };
                         if (isTauri) {
                           const { invoke } = await import('@tauri-apps/api/core');
@@ -1688,10 +1699,23 @@ export function Login({ onLogin }: LoginProps) {
                         setRemoteRestUrl(String(merged.remote_rest_url || ''));
                         applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
                         setDbConnectionMode('online');
-                        const tag = parsed.pathSlug || String(merged.remote_rest_url || '');
+                        const tag =
+                          registryRow?.code ||
+                          parsed.pathSlug ||
+                          String(merged.remote_rest_url || '');
                         localStorage.setItem('exretail_selected_tenant', tag);
+                        const preferredModule = registryRow
+                          ? preferredShellModuleForTenantModule(registryRow.module)
+                          : '';
+                        if (preferredModule) {
+                          localStorage.setItem('retailex_active_module', preferredModule);
+                        }
                         setShowTenantFirmIdModal(false);
-                        toast.success(`PostgREST bağlandı: ${merged.remote_rest_url}`);
+                        toast.success(
+                          registryRow
+                            ? `Kiracı uygulandı: ${registryRow.display_name} (${registryRow.code})`
+                            : `PostgREST bağlandı: ${merged.remote_rest_url}`
+                        );
                         void loadFirms();
                         void loadUsers();
                       } catch (e: any) {
@@ -1743,14 +1767,7 @@ export function Login({ onLogin }: LoginProps) {
                       applyRemoteRestUrlToTenantInputs(String(merged.remote_rest_url || ''));
                       setDbConnectionMode('online');
                       localStorage.setItem('exretail_selected_tenant', row.code || row.id);
-                      const preferredModule =
-                        row.module === 'clinic' ? 'beauty' :
-                        row.module === 'restaurant' ? 'restaurant' :
-                        row.module === 'retail' ? 'management' :
-                        row.module === 'pdks' || row.module === 'hrm' ? 'management' :
-                        row.module === 'tenant_registry' ? 'management' :
-                        row.module === 'wms' ? 'wms' :
-                        '';
+                      const preferredModule = preferredShellModuleForTenantModule(row.module);
                       if (preferredModule) {
                         localStorage.setItem('retailex_active_module', preferredModule);
                       }

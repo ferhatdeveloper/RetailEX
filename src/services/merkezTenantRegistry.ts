@@ -232,6 +232,103 @@ function moduleToSystemType(module: string): 'retail' | 'market' | 'wms' | 'rest
  * `retailex_enabled_modules` / web_config.enabled_modules ile uyumlu id'ler: pos, management, wms, mobile-pos, restaurant, beauty.
  * Yönetim sekmesi `isMainModuleVisible` ile her zaman görünür; burada listelemek isteğe bağlı (sıra için).
  */
+/** tenant_registry.module → MainLayout başlangıç kabuğu */
+export function preferredShellModuleForTenantModule(module: string): string {
+  const m = String(module || '').toLowerCase();
+  if (m === 'clinic') return 'beauty';
+  if (m === 'restaurant') return 'restaurant';
+  if (m === 'retail') return 'management';
+  if (m === 'pdks' || m === 'hrm' || m === 'tenant_registry') return 'management';
+  if (m === 'wms') return 'wms';
+  return '';
+}
+
+async function queryTenantRegistryRows(filter: string): Promise<TenantRegistryRow[]> {
+  const base = normalizeBaseUrl(getMerkezRestBaseUrl());
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(base)) {
+    throw new Error(
+      `HTTPS sayfada HTTP merkez adresi kullanılamaz: ${base}. HTTPS bir API domaini kullanın veya geçici test için HTTP web adresinden açın.`
+    );
+  }
+
+  const url = `${base}/tenant_registry?${filter}&select=*`;
+  let res: Response;
+  try {
+    res = await fetchRetailexAware(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const hint =
+      'Adres: ' +
+      base +
+      ' — Ağ/CORS: tarayıcıda localhost + Vite `__retailex-api` proxy; masaüstünde Tauri HTTP. Merkez URL https://api.../merkez; .env ile VITE_MERKEZ_REST_URL tanımlanabilir.';
+    throw new Error(`Merkeze erişilemedi (${msg}). ${hint}`);
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Merkez sorgusu başarısız (${res.status}): ${text || res.statusText}`);
+  }
+
+  const rows = (await res.json()) as TenantRegistryRow[];
+  return Array.isArray(rows) ? rows : [];
+}
+
+function validateTenantRegistryRow(row: TenantRegistryRow): TenantRegistryRow {
+  if (row.is_active === false) {
+    throw new Error('Bu kiracı kaydı pasif (is_active = false).');
+  }
+
+  const provider = row.connection_provider === 'db' ? 'db' : 'rest_api';
+  if (provider === 'rest_api') {
+    const ru = (row.rest_base_url || '').trim();
+    if (!ru) {
+      throw new Error(
+        'Kiracı için rest_base_url tanımlı değil. merkez_db.tenant_registry satırında rest_base_url doldurun.'
+      );
+    }
+  } else if (!row.db_host?.trim() || !row.database_name?.trim()) {
+    throw new Error('db modu için db_host ve database_name zorunludur.');
+  }
+
+  return { ...row, connection_provider: provider };
+}
+
+/**
+ * Doğrudan PostgREST URL (/aqua) ile bağlanırken merkez kaydından modül çözümle.
+ * Örn. aqua_beauty: module=clinic — aksi halde buildDirectPostgrestTenantPatch retail varsayar.
+ */
+export async function resolveTenantRegistryForDirectPostgrest(input: {
+  url: string;
+  pathSlug?: string | null;
+}): Promise<TenantRegistryRow | null> {
+  const normalizedUrl = normalizeBaseUrl(input.url);
+  const slug = (input.pathSlug || '').trim();
+
+  const attempts: string[] = [];
+  if (normalizedUrl) {
+    attempts.push(`rest_base_url=eq.${encodeURIComponent(normalizedUrl)}`);
+  }
+  if (slug) {
+    if (UUID_RE.test(slug)) {
+      attempts.push(`id=eq.${encodeURIComponent(slug)}`);
+    } else {
+      attempts.push(`code=eq.${encodeURIComponent(slug)}`);
+      attempts.push(`database_name=eq.${encodeURIComponent(slug)}`);
+    }
+  }
+
+  for (const filter of attempts) {
+    const rows = await queryTenantRegistryRows(filter);
+    const active = rows.find((r) => r.is_active !== false);
+    if (active) return validateTenantRegistryRow(active);
+  }
+
+  return null;
+}
+
 export function shellEnabledModulesForTenantRegistryModule(module: string): string[] {
   const m = String(module || '').toLowerCase();
   switch (m) {
@@ -255,67 +352,16 @@ export function shellEnabledModulesForTenantRegistryModule(module: string): stri
 }
 
 export async function fetchTenantRegistryRow(tenantInput: string): Promise<TenantRegistryRow> {
-  const base = normalizeBaseUrl(getMerkezRestBaseUrl());
   const q = tenantInput.trim();
   if (!q) throw new Error('Kiracı kodu veya ID boş olamaz.');
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && /^http:\/\//i.test(base)) {
-    throw new Error(
-      `HTTPS sayfada HTTP merkez adresi kullanılamaz: ${base}. HTTPS bir API domaini kullanın veya geçici test için HTTP web adresinden açın.`
-    );
-  }
 
   const filter = UUID_RE.test(q) ? `id=eq.${encodeURIComponent(q)}` : `code=eq.${encodeURIComponent(q)}`;
-  const url = `${base}/tenant_registry?${filter}&select=*`;
-
-  let res: Response;
-  try {
-    // Accept-Profile göndermeyin: tarayıcı preflight'ta PostgREST CORS listesinde olmayınca
-    // (retailex.app → api.retailex.app) istek bloklanır. tenant_registry public şemada.
-    res = await fetchRetailexAware(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const hint =
-      'Adres: ' +
-      base +
-      ' — Ağ/CORS: tarayıcıda localhost + Vite `__retailex-api` proxy; masaüstünde Tauri HTTP. Merkez URL https://api.../merkez; .env ile VITE_MERKEZ_REST_URL tanımlanabilir.';
-    throw new Error(`Merkeze erişilemedi (${msg}). ${hint}`);
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Merkez sorgusu başarısız (${res.status}): ${text || res.statusText}`);
-  }
-
-  const rows = (await res.json()) as TenantRegistryRow[];
-  if (!Array.isArray(rows) || rows.length === 0) {
+  const rows = await queryTenantRegistryRows(filter);
+  if (rows.length === 0) {
     throw new Error('Kiracı bulunamadı (tenant_registry). Kod veya UUID kontrol edin.');
   }
 
-  const row = rows[0];
-  if (row.is_active === false) {
-    throw new Error('Bu kiracı kaydı pasif (is_active = false).');
-  }
-
-  const provider = row.connection_provider === 'db' ? 'db' : 'rest_api';
-  if (provider === 'rest_api') {
-    const ru = (row.rest_base_url || '').trim();
-    if (!ru) {
-      throw new Error(
-        'Kiracı için rest_base_url tanımlı değil. merkez_db.tenant_registry satırında rest_base_url doldurun.'
-      );
-    }
-  } else {
-    if (!row.db_host?.trim() || !row.database_name?.trim()) {
-      throw new Error('db modu için db_host ve database_name zorunludur.');
-    }
-  }
-
-  return { ...row, connection_provider: provider };
+  return validateTenantRegistryRow(rows[0]!);
 }
 
 /** Tauri + web localStorage ile uyumlu tam config parçası */
