@@ -2151,6 +2151,74 @@ export const beautyService = {
     },
 
     async updateAppointment(id: string, data: Partial<BeautyAppointment>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const hasDatePatch = data.date !== undefined || data.appointment_date !== undefined;
+            const hasTimePatch = data.time !== undefined || data.appointment_time !== undefined;
+            const statusStr =
+                data.status === undefined
+                    ? undefined
+                    : (typeof data.status === 'string'
+                        ? data.status
+                        : data.status != null
+                            ? String(data.status)
+                            : 'scheduled');
+            const degRaw = data.treatment_degree;
+            const shotsRaw = data.treatment_shots;
+            const treatmentDegree =
+                degRaw === undefined
+                    ? undefined
+                    : (degRaw === null || String(degRaw).trim() === '' ? null : String(degRaw).trim());
+            const treatmentShots =
+                shotsRaw === undefined
+                    ? undefined
+                    : (shotsRaw === null || String(shotsRaw).trim() === '' ? null : String(shotsRaw).trim());
+            const hasClinicalDataPatch = data.clinical_data !== undefined;
+            const patchBody = stripUndefinedFields({
+                client_id:
+                    data.customer_id !== undefined || data.client_id !== undefined
+                        ? pgUuidOrNull(data.customer_id ?? data.client_id)
+                        : undefined,
+                service_id: data.service_id !== undefined ? pgUuidOrNull(data.service_id) : undefined,
+                specialist_id:
+                    data.staff_id !== undefined || data.specialist_id !== undefined
+                        ? pgUuidOrNull(data.staff_id ?? data.specialist_id)
+                        : undefined,
+                device_id: data.device_id !== undefined ? pgUuidOrNull(data.device_id) : undefined,
+                body_region_id: data.body_region_id !== undefined ? pgUuidOrNull(data.body_region_id) : undefined,
+                appointment_date: hasDatePatch ? pgDateOrNull(data.date ?? data.appointment_date) : undefined,
+                appointment_time: hasTimePatch ? normalizeAppointmentTimeForPg(data.time ?? data.appointment_time) : undefined,
+                duration: data.duration !== undefined ? Math.max(1, Math.round(Number(data.duration ?? 30)) || 30) : undefined,
+                status: statusStr,
+                notes: data.notes !== undefined ? data.notes ?? null : undefined,
+                total_price: data.total_price !== undefined ? Number(data.total_price ?? 0) : undefined,
+                branch_id: data.branch_id !== undefined ? pgUuidOrNull(data.branch_id) : undefined,
+                room_id: data.room_id !== undefined ? pgUuidOrNull(data.room_id) : undefined,
+                tele_meeting_url: data.tele_meeting_url !== undefined ? data.tele_meeting_url ?? null : undefined,
+                booking_channel: data.booking_channel !== undefined ? data.booking_channel ?? null : undefined,
+                corporate_account_id:
+                    data.corporate_account_id !== undefined ? pgUuidOrNull(data.corporate_account_id) : undefined,
+                confirmation_call_at:
+                    data.confirmation_call_at !== undefined ? pgTimestamptzOrNull(data.confirmation_call_at) : undefined,
+                pre_visit_activity_at:
+                    data.pre_visit_activity_at !== undefined ? pgTimestamptzOrNull(data.pre_visit_activity_at) : undefined,
+                treatment_degree: treatmentDegree,
+                treatment_shots: treatmentShots,
+                clinical_data: hasClinicalDataPatch ? clinicalDataForPgInput(data) : undefined,
+                updated_at: new Date().toISOString(),
+            });
+            await postgrest.patch(
+                `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(id)}`,
+                patchBody,
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            if (statusStr === 'cancelled') {
+                await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+            }
+            return;
+        }
         const current = await beautyService.getAppointmentById(id);
         if (!current) {
             throw new Error(`beauty appointment not found: ${id}`);
@@ -3614,33 +3682,78 @@ export const beautyService = {
         items: Partial<BeautySaleItem>[],
         opts?: { skipErpAndLoyalty?: boolean },
     ): Promise<string> {
-        const st = postgres.getMovementTableName('beauty_sales', 'beauty');
-        const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
-
-        await postgres.query(`
-            INSERT INTO ${st}
-                (id, invoice_number, customer_id, subtotal, discount, tax, total,
-                 payment_method, payment_status, paid_amount, remaining_amount, notes)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        `, [id, invoiceNumber, pgUuidOrNull(sale.customer_id),
-            sale.subtotal ?? 0, sale.discount ?? 0, sale.tax ?? 0, sale.total ?? 0,
-            sale.payment_method ?? 'cash', sale.payment_status ?? 'paid',
-            sale.paid_amount ?? sale.total ?? 0,
-            sale.remaining_amount ?? 0, sale.notes ?? null]);
-
-        for (const item of items) {
-            const itemId = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_sales`,
+                [
+                    {
+                        id,
+                        invoice_number: invoiceNumber,
+                        customer_id: pgUuidOrNull(sale.customer_id),
+                        subtotal: sale.subtotal ?? 0,
+                        discount: sale.discount ?? 0,
+                        tax: sale.tax ?? 0,
+                        total: sale.total ?? 0,
+                        payment_method: sale.payment_method ?? 'cash',
+                        payment_status: sale.payment_status ?? 'paid',
+                        paid_amount: sale.paid_amount ?? sale.total ?? 0,
+                        remaining_amount: sale.remaining_amount ?? 0,
+                        notes: sale.notes ?? null,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            if (items.length > 0) {
+                const payload = items.map((item) => ({
+                    id: uuidv4(),
+                    sale_id: id,
+                    item_type: item.item_type ?? 'service',
+                    item_id: pgUuidOrNull(item.item_id),
+                    name: item.name ?? 'Kalem',
+                    quantity: item.quantity ?? 1,
+                    unit_price: item.unit_price ?? 0,
+                    discount: item.discount ?? 0,
+                    total: item.total ?? 0,
+                    staff_id: pgUuidOrNull(item.staff_id),
+                    commission_amount: item.commission_amount ?? 0,
+                }));
+                await postgrest.post(
+                    `/rex_${fn}_${pn}_beauty_sale_items`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+        } else {
+            const st = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const it = postgres.getMovementTableName('beauty_sale_items', 'beauty');
             await postgres.query(`
-                INSERT INTO ${it}
-                    (id, sale_id, item_type, item_id, name, quantity, unit_price,
-                     discount, total, staff_id, commission_amount)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            `, [itemId, id, item.item_type ?? 'service', pgUuidOrNull(item.item_id),
-                item.name, item.quantity ?? 1, item.unit_price ?? 0,
-                item.discount ?? 0, item.total ?? 0,
-                pgUuidOrNull(item.staff_id), item.commission_amount ?? 0]);
+                INSERT INTO ${st}
+                    (id, invoice_number, customer_id, subtotal, discount, tax, total,
+                     payment_method, payment_status, paid_amount, remaining_amount, notes)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            `, [id, invoiceNumber, pgUuidOrNull(sale.customer_id),
+                sale.subtotal ?? 0, sale.discount ?? 0, sale.tax ?? 0, sale.total ?? 0,
+                sale.payment_method ?? 'cash', sale.payment_status ?? 'paid',
+                sale.paid_amount ?? sale.total ?? 0,
+                sale.remaining_amount ?? 0, sale.notes ?? null]);
+
+            for (const item of items) {
+                const itemId = uuidv4();
+                await postgres.query(`
+                    INSERT INTO ${it}
+                        (id, sale_id, item_type, item_id, name, quantity, unit_price,
+                         discount, total, staff_id, commission_amount)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                `, [itemId, id, item.item_type ?? 'service', pgUuidOrNull(item.item_id),
+                    item.name, item.quantity ?? 1, item.unit_price ?? 0,
+                    item.discount ?? 0, item.total ?? 0,
+                    pgUuidOrNull(item.staff_id), item.commission_amount ?? 0]);
+            }
         }
 
         if (!opts?.skipErpAndLoyalty) {
