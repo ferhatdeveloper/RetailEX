@@ -983,6 +983,7 @@ BEGIN
       pricelist4        DECIMAL(15,2),
       pricelist5        DECIMAL(15,2),
       pricelist6        DECIMAL(15,2),
+      purchase_price    DECIMAL(15,4) DEFAULT 0,
       purchase_price_usd DECIMAL(15,2) DEFAULT 0,
       purchase_price_eur DECIMAL(15,2) DEFAULT 0,
       sale_price_usd    DECIMAL(15,2) DEFAULT 0,
