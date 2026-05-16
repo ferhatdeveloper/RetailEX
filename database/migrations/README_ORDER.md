@@ -9,6 +9,7 @@
 5. **004_roles_landing_route.sql** – `roles` tablosuna `landing_route` (giriş sonrası yönlendirme); garson rolü ve restoran yönlendirmesi.
 6. **006_supabase_firm_and_product_cdn.sql** – `firms.supabase_firm_id` ve ürün CDN alanları (yalnızca 000’da ALTER yoksa gerekir; 000 güncel sürümde `ALTER TABLE firms ADD COLUMN IF NOT EXISTS supabase_firm_id` içerir).
 7. **007_postgrest_anon_role.sql** – PostgREST için `anon` rolü ve şema izinleri (PostgREST kullanacaksanız çalıştırın; ayrıntı: `database/README_POSTGREST.md`).
+7b. **008_postgrest_verify_login_rpc.sql** – PostgREST RPC: `logic.verify_login()` fonksiyonu (PostgREST ile login doğrulaması).
 8. **009_firms_regulatory_region.sql** – `firms.regulatory_region` (TR/IQ; e-belge mevzuatı).
 9. **010_system_settings.sql** – `system_settings` (web açılış: varsayılan para, birincil firma/dönem).
 10. **011_gib_edocument_queue.sql** – `gib_edocument_queue` (E-Dönüşüm kuyruğu; GİB mock test).
@@ -27,6 +28,7 @@
 23. **033_beauty_service_follow_up_reminder_days.sql** – `beauty_services.follow_up_reminder_days`: tamamlanan randevudan X gün sonra hatırlatma (Hizmet & tarih panosu + giriş toast).
 24. **034_beauty_service_parent_category.sql** – `beauty_services.parent_category`: ana kategori; `category` alt kategori (Hizmet tanımları + POS hiyerarşik filtre).
 25. **035_rex_products_follow_up_reminder_days.sql** – `rex_*_products.follow_up_reminder_days`: seçilen ürünlerde tamamlanan randevu + sarf loguna göre güzellik takip hatırlatması.
+26. **036_rex_tax_rates_special_codes.sql** – `rex_{firm}_tax_rates` ve `rex_{firm}_special_codes` tabloları (PostgREST / masterData.ts API uyumu).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

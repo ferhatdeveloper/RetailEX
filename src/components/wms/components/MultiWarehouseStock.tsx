@@ -1,4 +1,4 @@
-﻿// ğŸ­ Multi-Warehouse Stock Management
+﻿// �­ Multi-Warehouse Stock Management
 // Depo 1 (Normal), Depo 2 (İade/Fire), Depo 3 (Hayali)
 
 import { useState, useEffect } from 'react';

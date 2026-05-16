@@ -44,25 +44,25 @@ export function DamageRecording({ onBack }: DamageRecordingProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const damageTypes = [
-    { id: 'broken', label: 'Kırık/Çatlak', icon: 'ğŸ’”', severity: 'high' },
+    { id: 'broken', label: 'Kırık/Çatlak', icon: '💔', severity: 'high' },
     { id: 'scratched', label: 'Çizik/Ezik', icon: '✏️', severity: 'medium' },
-    { id: 'wet', label: 'Islak/Nemli', icon: 'ğŸ’§', severity: 'high' },
-    { id: 'expired', label: 'SKT Geçmiş', icon: 'ğŸ“…', severity: 'high' },
+    { id: 'wet', label: 'Islak/Nemli', icon: '💧', severity: 'high' },
+    { id: 'expired', label: 'SKT Geçmiş', icon: '📅', severity: 'high' },
     { id: 'deformed', label: 'Deforme/Bozuk', icon: '⚠️', severity: 'high' },
-    { id: 'torn', label: 'Yırtık/Açık', icon: 'ğŸ“¦', severity: 'medium' },
-    { id: 'faded', label: 'Soluk/Renkli', icon: 'ğŸ¨', severity: 'low' },
-    { id: 'other', label: 'Diğer', icon: 'ğŸ’¬', severity: 'medium' },
+    { id: 'torn', label: 'Yırtık/Açık', icon: '📦', severity: 'medium' },
+    { id: 'faded', label: 'Soluk/Renkli', icon: '�¨', severity: 'low' },
+    { id: 'other', label: 'Diğer', icon: '💬', severity: 'medium' },
   ];
 
   const damageReasons = [
-    { id: 'transport', label: 'Taşıma Sırasında', icon: 'ğŸšš' },
-    { id: 'storage', label: 'Depolama Hatası', icon: 'ğŸ“¦' },
+    { id: 'transport', label: 'Taşıma Sırasında', icon: '🚚' },
+    { id: 'storage', label: 'Depolama Hatası', icon: '📦' },
     { id: 'handling', label: 'Elleçleme Hatası', icon: '✋' },
-    { id: 'supplier', label: 'Tedarikçi Hatası', icon: 'ğŸ­' },
-    { id: 'weather', label: 'Hava Koşulları', icon: 'ğŸŒ§ï¸' },
-    { id: 'equipment', label: 'Ekipman Arızası', icon: 'ğŸ”§' },
-    { id: 'theft', label: 'Hırsızlık/Kayıp', icon: 'ğŸš¨' },
-    { id: 'natural', label: 'Doğal Bozulma', icon: 'ğŸ‚' },
+    { id: 'supplier', label: 'Tedarikçi Hatası', icon: '�­' },
+    { id: 'weather', label: 'Hava Koşulları', icon: '🌧ï¸' },
+    { id: 'equipment', label: 'Ekipman Arızası', icon: '🔧' },
+    { id: 'theft', label: 'Hırsızlık/Kayıp', icon: '🚨' },
+    { id: 'natural', label: 'Doğal Bozulma', icon: '�‚' },
     { id: 'unknown', label: 'Bilinmiyor', icon: '❓' },
   ];
 

@@ -102,12 +102,12 @@ export function InvoiceActionsModal({
               printWindow.print();
             }
           }
-          toast.success('ğŸ–¨ï¸ Fatura yazdırılıyor...');
+          toast.success('🖨ï¸ Fatura yazdırılıyor...');
           break;
           
         case 'pdf':
           // PDF oluşturma (ileride PDF.js veya jsPDF kullanılabilir)
-          toast.info('ğŸ“„ PDF oluşturuluyor...', {
+          toast.info('📄 PDF oluşturuluyor...', {
             description: 'PDF indirme yakında eklenecek',
             duration: 3000
           });
@@ -118,19 +118,19 @@ export function InvoiceActionsModal({
           const message = `Fatura No: ${invoice.invoice_no}\nTarih: ${formatDate(invoice.invoice_date)}\nTutar: ${formatMoney(invoice.total_amount)} IQD`;
           const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
           window.open(whatsappUrl, '_blank');
-          toast.success('ğŸ’¬ WhatsApp açılıyor...');
+          toast.success('💬 WhatsApp açılıyor...');
           break;
           
         case 'email':
           // Email gönder (ileride)
-          toast.info('ğŸ“§ Email gönderimi yakında eklenecek');
+          toast.info('📧 Email gönderimi yakında eklenecek');
           break;
           
         case 'delete':
           if (confirm('Bu faturayı silmek istediğinizden emin misiniz?')) {
             if (onDelete) {
               onDelete(invoice);
-              toast.success('ğŸ—‘ï¸ Fatura silindi');
+              toast.success('🗑ï¸ Fatura silindi');
               onClose();
             }
           }

@@ -101,7 +101,7 @@ export function CargoIntegrationModule() {
       id: '1',
       name: 'Iraq Express Cargo',
       code: 'aras',
-      logo: 'ğŸ”´',
+      logo: '🔴',
       color: 'red',
       isActive: true,
       apiCredentials: {
@@ -125,7 +125,7 @@ export function CargoIntegrationModule() {
       id: '2',
       name: 'Baghdad Logistics',
       code: 'yurtici',
-      logo: 'ğŸŸ¡',
+      logo: '🟡',
       color: 'yellow',
       isActive: true,
       apiCredentials: {
@@ -149,7 +149,7 @@ export function CargoIntegrationModule() {
       id: '3',
       name: 'Mesopotamia Cargo',
       code: 'mng',
-      logo: 'ğŸŸ¢',
+      logo: '🟢',
       color: 'green',
       isActive: true,
       apiCredentials: {
@@ -173,7 +173,7 @@ export function CargoIntegrationModule() {
       id: '4',
       name: 'Basra Shipping Co.',
       code: 'ptt',
-      logo: 'ğŸ”µ',
+      logo: '🔵',
       color: 'blue',
       isActive: true,
       apiCredentials: {

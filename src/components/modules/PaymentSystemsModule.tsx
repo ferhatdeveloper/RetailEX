@@ -18,10 +18,10 @@ interface PaymentProvider {
 
 export function PaymentSystemsModule() {
   const [providers] = useState<PaymentProvider[]>([
-    { id: 'iyzico', name: 'İyzico', logo: 'ğŸ’³', status: 'active', totalTransactions: 1250, totalAmount: 45680000, commission: 2.5 },
+    { id: 'iyzico', name: 'İyzico', logo: '💳', status: 'active', totalTransactions: 1250, totalAmount: 45680000, commission: 2.5 },
     { id: 'paytr', name: 'PayTR', logo: '💰', status: 'active', totalTransactions: 890, totalAmount: 32150000, commission: 2.8 },
-    { id: 'stripe', name: 'Stripe', logo: 'ğŸŒ', status: 'inactive', totalTransactions: 0, totalAmount: 0, commission: 2.9 },
-    { id: 'payu', name: 'PayU', logo: 'ğŸ¦', status: 'inactive', totalTransactions: 0, totalAmount: 0, commission: 3.0 },
+    { id: 'stripe', name: 'Stripe', logo: '�', status: 'inactive', totalTransactions: 0, totalAmount: 0, commission: 2.9 },
+    { id: 'payu', name: 'PayU', logo: '�¦', status: 'inactive', totalTransactions: 0, totalAmount: 0, commission: 3.0 },
   ]);
 
   return (

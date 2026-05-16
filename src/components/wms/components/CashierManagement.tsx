@@ -1,4 +1,4 @@
-// ğŸ‘¤ Personnel Management - Personel Yönetim Sistemi
+// 👤 Personnel Management - Personel Yönetim Sistemi
 // Employee accounts, performance tracking, daily reports, shift management
 
 import { useState, useEffect } from 'react';
@@ -329,19 +329,19 @@ export function CashierManagement({ darkMode, onBack }: CashierManagementProps) 
                   <div className="text-xs text-gray-500 mb-2">Ödeme Yöntemleri</div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="flex justify-between">
-                      <span>ğŸ’µ Nakit:</span>
+                      <span>💵 Nakit:</span>
                       <span className={textClass}>{(cashier.cash_total / 1000).toFixed(0)}K</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>ğŸ’³ Kart:</span>
+                      <span>💳 Kart:</span>
                       <span className={textClass}>{(cashier.card_total / 1000).toFixed(0)}K</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>ğŸ“± QR:</span>
+                      <span>📱 QR:</span>
                       <span className={textClass}>{(cashier.qr_total / 1000).toFixed(0)}K</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>ğŸ‘› E-Wallet:</span>
+                      <span>👛 E-Wallet:</span>
                       <span className={textClass}>{(cashier.ewallet_total / 1000).toFixed(0)}K</span>
                     </div>
                   </div>

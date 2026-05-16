@@ -58,7 +58,7 @@ export function VersionProvider({ children }: { children: React.ReactNode }) {
     setVersionHistory(newHistory);
     localStorage.setItem('retailos_version_history', JSON.stringify(newHistory));
     
-    console.log(`ğŸ”„ Version updated to ${newBuild} - ${reason || 'No reason provided'}`);
+    console.log(`🔄 Version updated to ${newBuild} - ${reason || 'No reason provided'}`);
   }, [buildNumber, versionHistory]);
 
   // Auto-increment on major operations (listen to custom events)

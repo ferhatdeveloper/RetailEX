@@ -144,7 +144,7 @@ export function SystemStatusModal({ open, onOpenChange }: SystemStatusModalProps
           {/* %100 Tamamlandı Celebration */}
           <div className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-b border-gray-200">
             <div className="text-center">
-              <div className="text-6xl mb-3">ğŸ‰</div>
+              <div className="text-6xl mb-3">�‰</div>
               <h4 className="text-xl font-bold text-green-700 mb-2">%100 Tamamlandı!</h4>
               <p className="text-sm text-green-600 mb-1">
                 {systemStatus.modules.completed}/{systemStatus.modules.total} modül kullanıma hazır

@@ -64,7 +64,7 @@ export class VoiceCommandRouter {
             // Fetch proactive insights for this path
             const insight = await this.getProactiveInsight(result.navigation_path);
             if (insight) {
-                result.response_text = `${result.response_text}\n\nğŸ’¡ Not: ${insight}`;
+                result.response_text = `${result.response_text}\n\n💡 Not: ${insight}`;
                 // Small delay before speaking the insight if speech is already happening
                 setTimeout(() => {
                     const voiceService = (window as any).voiceService;

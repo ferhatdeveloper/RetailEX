@@ -1,4 +1,4 @@
-﻿// ğŸ“ˆ Sales Velocity Analysis - Satış Hızı Analizi
+﻿// 📈 Sales Velocity Analysis - Satış Hızı Analizi
 // ABC Analysis, Fast/Slow Moving, Campaign Performance
 
 import { useState, useEffect } from 'react';

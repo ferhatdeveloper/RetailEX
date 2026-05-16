@@ -102,7 +102,7 @@ export function MizanReportModule() {
    * PDF Export
    */
   const handleExportPDF = () => {
-    toast.info('ğŸ“„ PDF export yakında...');
+    toast.info('📄 PDF export yakında...');
     MizanService.exportToPDF(filteredLines, summary!);
   };
   
@@ -110,7 +110,7 @@ export function MizanReportModule() {
    * Excel Export
    */
   const handleExportExcel = () => {
-    toast.info('ğŸ“Š Excel export yakında...');
+    toast.info('📊 Excel export yakında...');
     MizanService.exportToExcel(filteredLines, summary!);
   };
   

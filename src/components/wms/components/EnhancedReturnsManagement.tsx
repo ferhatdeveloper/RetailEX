@@ -1,4 +1,4 @@
-﻿// ğŸ”„ Enhanced Returns Management - Tam/Eksik İade + Geri Dönüşüm
+﻿// 🔄 Enhanced Returns Management - Tam/Eksik İade + Geri Dönüşüm
 // Advanced return processing with full/partial/damaged options
 
 import { useState, useEffect } from 'react';

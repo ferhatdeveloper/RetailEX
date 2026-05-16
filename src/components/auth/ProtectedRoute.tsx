@@ -43,7 +43,7 @@ export function ProtectedRoute({ children, requiredPermission }: ProtectedRouteP
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <div className="text-6xl mb-4">ğŸ”’</div>
+            <div className="text-6xl mb-4">🔒</div>
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">Erişim Reddedildi</h2>
             <p className="text-gray-600 mb-4">Bu sayfaya erişim yetkiniz bulunmamaktadır.</p>
             <button

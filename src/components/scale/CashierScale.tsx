@@ -26,11 +26,11 @@ export function CashierScale({ onBack }: { onBack: () => void }) {
     const [loading, setLoading] = useState(false);
 
     const mockProducts: Product[] = [
-        { code: 'DOMATES', name: 'Domates', price_per_kg: 45.00, category: 'Sebze', icon: 'ğŸ…' },
-        { code: 'ELMA', name: 'Elma', price_per_kg: 35.00, category: 'Meyve', icon: 'ğŸ' },
-        { code: 'PEYNIR', name: 'Kaşar Peyniri', price_per_kg: 280.00, category: 'Şarküteri', icon: 'ğŸ§€' },
-        { code: 'ZEYTIN', name: 'Siyah Zeytin', price_per_kg: 120.00, category: 'Şarküteri', icon: 'ğŸ«’' },
-        { code: 'ALTIN', name: '22 Ayar Bilezik', price_per_kg: 2850000.50, category: 'Kuyumcu', icon: 'ğŸ’' },
+        { code: 'DOMATES', name: 'Domates', price_per_kg: 45.00, category: 'Sebze', icon: '�…' },
+        { code: 'ELMA', name: 'Elma', price_per_kg: 35.00, category: 'Meyve', icon: '�' },
+        { code: 'PEYNIR', name: 'Kaşar Peyniri', price_per_kg: 280.00, category: 'Şarküteri', icon: '🧀' },
+        { code: 'ZEYTIN', name: 'Siyah Zeytin', price_per_kg: 120.00, category: 'Şarküteri', icon: '🫒' },
+        { code: 'ALTIN', name: '22 Ayar Bilezik', price_per_kg: 2850000.50, category: 'Kuyumcu', icon: '🍎' },
     ];
 
     useEffect(() => {

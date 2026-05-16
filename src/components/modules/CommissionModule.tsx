@@ -104,7 +104,7 @@ export function CommissionModule() {
       </div>
 
       <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-        <h4 className="font-semibold text-green-900 mb-2">ğŸ’¡ Komisyon Hesaplama</h4>
+        <h4 className="font-semibold text-green-900 mb-2">💡 Komisyon Hesaplama</h4>
         <p className="text-sm text-green-800">
           Komisyonlar her ay otomatik hesaplanır ve personel performansına göre farklı oranlar uygulanabilir.
         </p>

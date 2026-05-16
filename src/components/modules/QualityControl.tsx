@@ -170,10 +170,10 @@ export function QualityControl({ onBack }: QualityControlProps) {
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'appearance': return 'ğŸ‘ï¸';
+      case 'appearance': return '�‘ï¸';
       case 'function': return '⚙️';
-      case 'packaging': return 'ğŸ“¦';
-      case 'documentation': return 'ğŸ“„';
+      case 'packaging': return '📦';
+      case 'documentation': return '📄';
       default: return '✓';
     }
   };
@@ -273,7 +273,7 @@ export function QualityControl({ onBack }: QualityControlProps) {
           </div>
 
           <div className="mt-8 p-4 bg-amber-50 rounded-xl max-w-md">
-            <p className="text-sm text-amber-900 font-medium mb-2">ğŸ¯ QC Süreci:</p>
+            <p className="text-sm text-amber-900 font-medium mb-2">�¯ QC Süreci:</p>
             <ul className="text-xs text-amber-800 space-y-1">
               <li>• Fiş okut → Ürün seç</li>
               <li>• Checklist kontrol et</li>

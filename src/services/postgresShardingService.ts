@@ -83,7 +83,7 @@ class PostgresShardingService {
       this.shards.set(config.shardId, config);
     });
 
-    console.log('ğŸ—„ï¸ PostgreSQL Sharding initialized:', this.shards.size, 'shards');
+    console.log('🗄ï¸ PostgreSQL Sharding initialized:', this.shards.size, 'shards');
   }
 
   /**
@@ -151,7 +151,7 @@ class PostgresShardingService {
     // return result.rows;
 
     // Simulation
-    console.log(`ğŸ” Query on ${shardId}:`, query);
+    console.log(`�” Query on ${shardId}:`, query);
     return this.simulateQuery(query, params);
   }
 
@@ -221,7 +221,7 @@ class PostgresShardingService {
       shardOps.get(shard.shardId)!.push(op);
     });
 
-    console.log('ğŸ”„ Cross-shard transaction: Phase 1 (Prepare)');
+    console.log('🔄 Cross-shard transaction: Phase 1 (Prepare)');
     
     // In real implementation:
     // - BEGIN on all shards
@@ -230,7 +230,7 @@ class PostgresShardingService {
 
     // Phase 2: Commit
     try {
-      console.log('ğŸ”„ Cross-shard transaction: Phase 2 (Commit)');
+      console.log('🔄 Cross-shard transaction: Phase 2 (Commit)');
       // COMMIT PREPARED on all shards
       
       console.log('✅ Cross-shard transaction completed');
@@ -245,7 +245,7 @@ class PostgresShardingService {
    * Rebalance shards (for adding new shards)
    */
   async rebalanceShards(newShardConfigs: ShardConfig[]): Promise<void> {
-    console.log('ğŸ”„ Rebalancing shards...');
+    console.log('🔄 Rebalancing shards...');
 
     // In real implementation:
     // 1. Create new shard
@@ -351,7 +351,7 @@ CREATE TABLE ${tableName}_p4 PARTITION OF ${tableName}
   setStrategy(strategy: ShardingStrategy) {
     this.strategy = strategy;
     this.routingCache.clear();
-    console.log('ğŸ”„ Sharding strategy updated:', strategy.type);
+    console.log('🔄 Sharding strategy updated:', strategy.type);
   }
 }
 
@@ -380,7 +380,7 @@ export class ShardConnectionPool {
       // });
       // this.pools.set(poolKey, pool);
 
-      console.log('ğŸ“¦ Created connection pool for', shard.shardId);
+      console.log('📦 Created connection pool for', shard.shardId);
     }
 
     // return await this.pools.get(poolKey).connect();
@@ -392,7 +392,7 @@ export class ShardConnectionPool {
       // await pool.end();
     }
     this.pools.clear();
-    console.log('ğŸ”Œ All connection pools closed');
+    console.log('🔌 All connection pools closed');
   }
 }
 

@@ -504,7 +504,7 @@ function CreateInvoiceFormComplete({
             });
           }
           console.log('[UniversalInvoice] ✅ FIFO layers created for purchase invoice');
-          toast.success('ğŸ“¦ Stok girişi kaydedildi!', {
+          toast.success('📦 Stok girişi kaydedildi!', {
             description: `${validLines.length} ürün FIFO sistemine eklendi`,
             duration: 3000
           });

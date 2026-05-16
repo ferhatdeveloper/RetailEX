@@ -1,4 +1,4 @@
-// ğŸ“Š Profit & Loss Reports - Kar-Zarar Raporları
+// 📊 Profit & Loss Reports - Kar-Zarar Raporları
 // Detailed financial reports with discounts, returns, damages
 
 import { useState, useEffect } from 'react';

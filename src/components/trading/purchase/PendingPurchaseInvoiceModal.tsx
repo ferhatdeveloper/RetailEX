@@ -33,10 +33,31 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
     }
 
     const handleSaveInvoice = async () => {
-        // TODO: Implement actual invoice saving logic
-        toast.success('Alış faturası kaydedildi (Demo)');
-        clearInvoice();
-        onClose();
+        try {
+            const { postgres, ERP_SETTINGS } = await import('../../../services/postgres');
+            const invoiceNo = `ALF-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+            
+            const totalAmount = pendingInvoice.items.reduce((sum: number, item: PurchaseInvoiceItem) =>
+                sum + (item.purchasePrice * item.quantity), 0);
+            
+            await postgres.query(
+                `INSERT INTO invoices (invoice_no, invoice_type, invoice_date, total_amount, status, notes, created_by)
+                 VALUES ($1, $2, NOW(), $3, 'draft', $4, $5)`,
+                [
+                    invoiceNo,
+                    'purchase',
+                    totalAmount,
+                    `Sayımdan otomatik oluşturuldu (${pendingInvoice.items.length} kalem)`,
+                    'system',
+                ]
+            );
+            
+            toast.success(`Alış faturası ${invoiceNo} olarak kaydedildi`);
+            clearInvoice();
+            onClose();
+        } catch (err: any) {
+            toast.error(`Fatura kaydedilemedi: ${err?.message || String(err)}`);
+        }
     };
 
     const handleClearInvoice = () => {

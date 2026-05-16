@@ -176,7 +176,7 @@ export function FirmaDonemSelector({ onComplete }: FirmaDonemSelectorProps) {
             <h2 className="text-xl font-bold text-gray-900">Database Hatası</h2>
             <p className="text-gray-600 text-center text-sm">{error}</p>
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg w-full">
-              <p className="text-sm text-yellow-800 font-medium mb-2">ğŸ“‹ Çözüm:</p>
+              <p className="text-sm text-yellow-800 font-medium mb-2">📋 Çözüm:</p>
               <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
                 <li>Supabase Dashboard'u açın</li>
                 <li>SQL Editor'e gidin</li>

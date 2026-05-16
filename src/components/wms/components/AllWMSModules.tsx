@@ -1,4 +1,4 @@
-// ğŸ¯ ALL WMS MODULES - Compact Implementation
+// �¯ ALL WMS MODULES - Compact Implementation
 // Issue Center, Transfer, Returns, Counting, Alerts, QC, Reports, Tasks
 
 import { useState } from 'react';
@@ -323,13 +323,13 @@ export function CountingModule({ darkMode, onBack }: ModuleProps) {
           <h3 className={`text-lg font-bold ${textClass} mb-4`}>Hızlı Eylemler</h3>
           <div className="space-y-3">
             <button className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg text-left">
-              ğŸ“‹ Tam Fiziksel Sayım Başlat
+              📋 Tam Fiziksel Sayım Başlat
             </button>
             <button className="w-full px-4 py-3 bg-green-500 text-white rounded-lg text-left">
-              ğŸ”„ Döngüsel Sayım Oluştur
+              🔄 Döngüsel Sayım Oluştur
             </button>
             <button className="w-full px-4 py-3 bg-orange-500 text-white rounded-lg text-left">
-              ğŸ¯ Spot Sayım (Tekli)
+              �¯ Spot Sayım (Tekli)
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-﻿// ğŸš¨ Error Boundary Component - Catch React errors
+﻿// 🚨 Error Boundary Component - Catch React errors
 
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle, RefreshCcw } from 'lucide-react';

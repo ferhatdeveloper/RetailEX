@@ -138,7 +138,7 @@ export function useAutoUpdate() {
 
     api.update.onAvailable(() => {
       setUpdateAvailable(true);
-      console.log('ğŸ”” Yeni güncelleme mevcut!');
+      console.log('🔔 Yeni güncelleme mevcut!');
     });
 
     api.update.onDownloaded(() => {

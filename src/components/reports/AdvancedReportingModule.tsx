@@ -17,11 +17,11 @@ export function AdvancedReportingModule() {
   const [downloadingReport, setDownloadingReport] = useState<string | null>(null);
 
   const [categories] = useState([
-    { id: 'sales', name: 'Satış Raporları', count: 28, icon: 'ğŸ“Š' },
-    { id: 'stock', name: 'Stok Raporları', count: 18, icon: 'ğŸ“¦' },
+    { id: 'sales', name: 'Satış Raporları', count: 28, icon: '📊' },
+    { id: 'stock', name: 'Stok Raporları', count: 18, icon: '📦' },
     { id: 'finance', name: 'Finans Raporları', count: 24, icon: '💰' },
-    { id: 'customer', name: 'Müşteri Raporları', count: 15, icon: 'ğŸ‘¥' },
-    { id: 'hr', name: 'İnsan Kaynakları', count: 12, icon: 'ğŸ‘”' },
+    { id: 'customer', name: 'Müşteri Raporları', count: 15, icon: '👥' },
+    { id: 'hr', name: 'İnsan Kaynakları', count: 12, icon: '👔' },
     { id: 'custom', name: 'Özel Raporlar', count: 8, icon: '⚙️' },
   ]);
 

@@ -29,7 +29,7 @@ export function SlottingOptimization({ onBack }: { onBack: () => void }) {
           </div>
         </div>
         <div className="bg-blue-50 rounded-xl p-4">
-          <p className="text-sm text-blue-900 font-medium mb-2">ğŸ’¡ Optimizasyon Önerileri:</p>
+          <p className="text-sm text-blue-900 font-medium mb-2">💡 Optimizasyon Önerileri:</p>
           <ul className="text-xs text-blue-800 space-y-1">
             <li>• A sınıfı ürünleri giriş yakınına yerleştir</li>
             <li>• Ağır ürünleri alt raflara koy</li>
@@ -55,7 +55,7 @@ export function YardManagement({ onBack }: { onBack: () => void }) {
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <div className="bg-green-100 p-2 rounded">A1 ✅</div>
             <div className="bg-green-100 p-2 rounded">A2 ✅</div>
-            <div className="bg-red-100 p-2 rounded">A3 ğŸš›</div>
+            <div className="bg-red-100 p-2 rounded">A3 🚛</div>
           </div>
         </div>
       </div>
@@ -150,7 +150,7 @@ export function VoicePicking({ onBack }: { onBack: () => void }) {
       </div>
       <div className="p-6">
         <div className="bg-white rounded-xl p-6 text-center">
-          <div className="text-5xl mb-3">ğŸ¤</div>
+          <div className="text-5xl mb-3">�¤</div>
           <div className="font-bold text-lg mb-2">Hands-Free Picking</div>
           <div className="text-sm text-gray-600 mb-4">"A-01-05'e git"</div>
           <button className="px-6 py-2 bg-yellow-600 text-white rounded-lg">
@@ -195,7 +195,7 @@ export function ARNavigation({ onBack }: { onBack: () => void }) {
       </div>
       <div className="p-6">
         <div className="bg-white rounded-xl p-6 text-center">
-          <div className="text-5xl mb-3">ğŸ¥½</div>
+          <div className="text-5xl mb-3">🥽</div>
           <div className="font-bold text-lg mb-2">Artırılmış Gerçeklik</div>
           <div className="text-sm text-gray-600 mb-4">Kameradan rafa yön bulma</div>
           <button className="px-6 py-2 bg-indigo-600 text-white rounded-lg">
@@ -217,12 +217,12 @@ export function IoTIntegration({ onBack }: { onBack: () => void }) {
       </div>
       <div className="p-6 space-y-3">
         <div className="bg-white rounded-xl p-4">
-          <div className="font-bold mb-2">ğŸŒ¡ï¸ Sıcaklık Sensörü</div>
+          <div className="font-bold mb-2">🌡ï¸ Sıcaklık Sensörü</div>
           <div className="text-2xl font-bold text-teal-600">22°C</div>
           <div className="text-xs text-gray-600">Normal aralık</div>
         </div>
         <div className="bg-white rounded-xl p-4">
-          <div className="font-bold mb-2">ğŸ’§ Nem Sensörü</div>
+          <div className="font-bold mb-2">💧 Nem Sensörü</div>
           <div className="text-2xl font-bold text-blue-600">45%</div>
           <div className="text-xs text-gray-600">Optimal seviye</div>
         </div>
@@ -241,7 +241,7 @@ export function AIMLFeatures({ onBack }: { onBack: () => void }) {
       </div>
       <div className="p-6 space-y-3">
         <div className="bg-white rounded-xl p-4">
-          <div className="font-bold mb-2">ğŸ¤– Talep Tahmini</div>
+          <div className="font-bold mb-2">🤖 Talep Tahmini</div>
           <div className="text-sm text-gray-600">Yarın beklenen satış:</div>
           <div className="text-2xl font-bold text-purple-600">+15%</div>
         </div>
@@ -250,7 +250,7 @@ export function AIMLFeatures({ onBack }: { onBack: () => void }) {
           <div className="text-sm text-green-600">✅ Sistem normal çalışıyor</div>
         </div>
         <div className="bg-white rounded-xl p-4">
-          <div className="font-bold mb-2">ğŸ¯ Otomatik Optimizasyon</div>
+          <div className="font-bold mb-2">�¯ Otomatik Optimizasyon</div>
           <div className="text-sm text-gray-600">Rota optimizasyonu aktif</div>
           <div className="text-xs text-green-600">%18 verimlilik artışı</div>
         </div>

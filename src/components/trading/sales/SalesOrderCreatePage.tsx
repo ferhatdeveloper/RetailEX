@@ -76,7 +76,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
 
     try {
       // Mock Mode - Store data locally
-      console.log('ğŸ“¦ Sipariş oluşturuldu:', {
+      console.log('📦 Sipariş oluşturuldu:', {
         customer: customers.find(c => c.id === selectedCustomer)?.name,
         items: orderItems,
         total: calculateTotal(),

@@ -41,7 +41,7 @@ export function PaymentProviderSettings({ onClose }: PaymentProviderSettingsProp
       fib: {
         id: 'fib',
         name: 'FIB (First Iraqi Bank)',
-        logo: 'ğŸ¦',
+        logo: '�¦',
         enabled: false,
         config: {
           apiUrl: 'https://fib.iq/api/v1',

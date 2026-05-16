@@ -1,5 +1,5 @@
 ﻿/**
- * ğŸ­ ExRetailOS WMS - Kullanım Örnekleri
+ * �­ ExRetailOS WMS - Kullanım Örnekleri
  * 
  * Bu dosya, WMS modülünü farklı senaryolarda nasıl kullanabileceğinizi gösterir.
  * Kendi projenize göre özelleştirebilirsiniz.
@@ -32,7 +32,7 @@ export function Example1_StandaloneWMS() {
           cursor: 'pointer'
         }}
       >
-        {darkMode ? '☀️ Light' : 'ğŸŒ™ Dark'}
+        {darkMode ? '☀️ Light' : '🌙 Dark'}
       </button>
 
       {/* WMS Modülü */}
@@ -125,7 +125,7 @@ export function Example3_MultiModuleSystem() {
             cursor: 'pointer'
           }}
         >
-          ğŸ­ Depo
+          �­ Depo
         </button>
 
         <button
@@ -139,7 +139,7 @@ export function Example3_MultiModuleSystem() {
             cursor: 'pointer'
           }}
         >
-          ğŸ“¦ Stok
+          📦 Stok
         </button>
 
         <button
@@ -155,7 +155,7 @@ export function Example3_MultiModuleSystem() {
             cursor: 'pointer'
           }}
         >
-          {darkMode ? '☀️' : 'ğŸŒ™'}
+          {darkMode ? '☀️' : '🌙'}
         </button>
       </div>
 
@@ -193,7 +193,7 @@ export function Example4_WithRouter() {
           onClick={() => setDarkMode(!darkMode)}
           style={{ marginLeft: 'auto' }}
         >
-          {darkMode ? '☀️ Light' : 'ğŸŒ™ Dark'}
+          {darkMode ? '☀️ Light' : '🌙 Dark'}
         </button>
       </nav>
 
@@ -406,7 +406,7 @@ export default function WMSExamples() {
         color: '#fff',
         borderBottom: '2px solid #3B82F6'
       }}>
-        <h1>ğŸ­ WMS Kullanım Örnekleri</h1>
+        <h1>�­ WMS Kullanım Örnekleri</h1>
         <p>Farklı senaryolarda WMS kullanımı</p>
 
         <div style={{

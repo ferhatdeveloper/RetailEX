@@ -178,7 +178,7 @@ class LoyaltyTierManager {
       discount_rate: 0,
       benefits: ['Puan kazanma', 'Özel kampanyalar'],
       color: '#CD7F32',
-      icon: 'ğŸ¥‰'
+      icon: '🥉'
     },
     {
       tier: 'SILVER',
@@ -186,7 +186,7 @@ class LoyaltyTierManager {
       discount_rate: 5,
       benefits: ['%5 indirim', 'Doğum günü hediyesi', 'Erken erişim'],
       color: '#C0C0C0',
-      icon: 'ğŸ¥ˆ'
+      icon: '🥈'
     },
     {
       tier: 'GOLD',
@@ -194,7 +194,7 @@ class LoyaltyTierManager {
       discount_rate: 10,
       benefits: ['%10 indirim', 'Ücretsiz kargo', 'Öncelikli destek', 'Özel etkinlikler'],
       color: '#FFD700',
-      icon: 'ğŸ¥‡'
+      icon: '🥇'
     },
     {
       tier: 'PLATINUM',
@@ -202,7 +202,7 @@ class LoyaltyTierManager {
       discount_rate: 15,
       benefits: ['%15 indirim', 'Kişisel danışman', 'VIP lounge', 'Yıllık hediye'],
       color: '#E5E4E2',
-      icon: 'ğŸ’'
+      icon: '🍎'
     },
     {
       tier: 'DIAMOND',
@@ -210,7 +210,7 @@ class LoyaltyTierManager {
       discount_rate: 20,
       benefits: ['%20 indirim', 'Limitsiz avantajlar', 'Özel deneyimler', 'Concierge hizmet'],
       color: '#B9F2FF',
-      icon: 'ğŸ’ '
+      icon: '💠'
     }
   ];
 

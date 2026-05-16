@@ -103,7 +103,7 @@ export function DocumentManager() {
             setDocuments((prev: Document[]) => [...prev, newDoc]);
             setIsScanning(false);
           } else if (data.type === 'scan_progress') {
-            console.log(`ğŸ“Š Tarama ilerliyor: ${data.progress}%`);
+            console.log(`📊 Tarama ilerliyor: ${data.progress}%`);
           }
         } catch (error) {
           // Sessizce yakala
@@ -113,7 +113,7 @@ export function DocumentManager() {
       websocket.onerror = () => {
         clearTimeout(connectionTimeout);
         // Sessizce yakala - UI'da zaten gösteriliyor
-        console.log('ğŸ“¡ Tarayıcı servisine bağlanılamıyor (localhost:9999)');
+        console.log('📡 Tarayıcı servisine bağlanılamıyor (localhost:9999)');
         setWsConnected(false);
         setWsStatus('disconnected');
       };
@@ -123,7 +123,7 @@ export function DocumentManager() {
         
         // Sadece beklenmedik kapanmalarda log bas
         if (event.code !== 1000 && wasConnectedRef.current) {
-          console.log(`ğŸ“¡ Bağlantı kesildi (kod: ${event.code})`);
+          console.log(`📡 Bağlantı kesildi (kod: ${event.code})`);
         }
         wasConnectedRef.current = false;
         
@@ -134,7 +134,7 @@ export function DocumentManager() {
         if (event.code !== 1000 && event.code !== 1001) {
           setTimeout(() => {
             if (wsStatus === 'disconnected') {
-              console.log('ğŸ”„ Yeniden bağlanılıyor...');
+              console.log('🔄 Yeniden bağlanılıyor...');
               connectToScanService();
             }
           }, 5000);
@@ -144,7 +144,7 @@ export function DocumentManager() {
       setWs(websocket);
     } catch (error) {
       clearTimeout(connectionTimeout!);
-      console.log('ğŸ“¡ WebSocket başlatılamadı (localhost:9999 erişilebilir değil)');
+      console.log('📡 WebSocket başlatılamadı (localhost:9999 erişilebilir değil)');
       setWsConnected(false);
       setWsStatus('disconnected');
     }

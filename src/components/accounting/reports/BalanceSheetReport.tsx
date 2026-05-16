@@ -114,7 +114,7 @@ export function BalanceSheetReport() {
           </button>
           
           <button
-            onClick={() => toast.info('ğŸ“Š Excel export yakında...')}
+            onClick={() => toast.info('📊 Excel export yakında...')}
             className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
           >
             <Download className="w-4 h-4" />

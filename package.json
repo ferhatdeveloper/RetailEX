@@ -119,6 +119,9 @@
             "vite": "6.3.5"
       },
       "scripts": {
+            "test": "vitest --config src/vitest.config.ts",
+            "test:run": "vitest run --config src/vitest.config.ts",
+            "test:coverage": "vitest run --config src/vitest.config.ts --coverage",
             "typecheck": "node ./node_modules/typescript/lib/tsc.js --noEmit --pretty false",
             "dev": "vite",
             "start": "vite",

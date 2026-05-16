@@ -52,8 +52,8 @@ export function LocationManagement({ onBack }: LocationManagementProps) {
     switch (type) {
       case 'cold': return '❄️';
       case 'hazmat': return '⚠️';
-      case 'high-value': return 'ğŸ’';
-      default: return 'ğŸ“¦';
+      case 'high-value': return '�’';
+      default: return '📦';
     }
   };
 
@@ -184,10 +184,10 @@ export function LocationManagement({ onBack }: LocationManagementProps) {
               <label className="block text-sm font-medium text-gray-700 mb-2">Tip</label>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { value: 'normal', label: 'ğŸ“¦ Normal', color: 'border-gray-300' },
+                  { value: 'normal', label: '📦 Normal', color: 'border-gray-300' },
                   { value: 'cold', label: '❄️ Soğuk', color: 'border-blue-300' },
                   { value: 'hazmat', label: '⚠️ Tehlikeli', color: 'border-red-300' },
-                  { value: 'high-value', label: 'ğŸ’ Yüksek Değer', color: 'border-yellow-300' },
+                  { value: 'high-value', label: '�’ Yüksek Değer', color: 'border-yellow-300' },
                 ].map(type => (
                   <button
                     key={type.value}
