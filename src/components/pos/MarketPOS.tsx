@@ -62,7 +62,7 @@ import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/Keyboar
 import { salesAPI } from '../../services/api/sales';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
-import { useSaleStore } from '../../store';
+import { useProductStore, useSaleStore } from '../../store';
 import { productAPI } from '../../services/api/products';
 import { postgres } from '../../services/postgres';
 
@@ -122,6 +122,7 @@ export default function MarketPOS({
   const { selectedFirma } = useFirmaDonem();
   // Get sales from store
   const sales = useSaleStore((state) => state.sales);
+  const refreshProducts = useProductStore((state) => state.loadProducts);
 
   // Language support
   const { t } = useLanguage();
@@ -1022,6 +1023,7 @@ export default function MarketPOS({
 
     try {
       await onSaleComplete(sale);
+      await refreshProducts(true);
 
       // Store sale and payment data for receipt
       setCompletedSale(sale);
@@ -1379,6 +1381,12 @@ export default function MarketPOS({
     window.addEventListener('openLastReceipt', handleOpenLastReceipt);
     return () => window.removeEventListener('openLastReceipt', handleOpenLastReceipt);
   }, [sales]);
+
+  // Ürün sorgu ekranı açıldığında stokları sessiz yenile (hard refresh ihtiyacını kaldırır)
+  useEffect(() => {
+    if (!showProductCatalogModal) return;
+    void refreshProducts(true);
+  }, [showProductCatalogModal, refreshProducts]);
 
   return (
     <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>

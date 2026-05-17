@@ -24,6 +24,8 @@ import { initRetailexDataSync } from './services/retailexDataSync';
 // Import WebSocket patch FIRST to suppress all WebSocket errors globally
 import './services/websocketPatch';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type Module = 'pos' | 'management' | 'wms' | 'mobile-pos' | 'restaurant' | 'beauty';
 export type ManagementScreen = 'dashboard' | 'products' | 'customers' | 'reports' | 'settings' | 'integrations';
 
@@ -254,20 +256,23 @@ function App() {
         logger.warn('[App] Could not get restaurantStore recipes', e);
       }
 
+      // Not: Normal ürün stokları satış kaydı sırasında backend'de güncellenir.
+      // Burada yalnızca reçete bağlı malzeme tüketimini düşüyoruz.
       for (const item of sale.items || []) {
         const pid = item.productId;
         const qty = Number(item.quantity || 0);
-        if (!pid) continue;
+        if (!pid || !UUID_RE.test(String(pid))) continue;
+        if (!Number.isFinite(qty) || qty <= 0) continue;
         const recipe = recipes.find((r: any) => r.menuItemId === pid);
         if (recipe?.ingredients?.length) {
           for (const ingredient of recipe.ingredients) {
             const mid = ingredient.materialId;
             if (!mid || !stockMap.has(mid)) continue;
-            const usedAmount = Number(ingredient.quantity || 0) * qty;
+            const ingredientQty = Number(ingredient.quantity || 0);
+            if (!Number.isFinite(ingredientQty) || ingredientQty <= 0) continue;
+            const usedAmount = ingredientQty * qty;
             stockMap.set(mid, stockMap.get(mid)! - usedAmount);
           }
-        } else if (stockMap.has(pid)) {
-          stockMap.set(pid, stockMap.get(pid)! - qty);
         }
       }
 
@@ -275,12 +280,24 @@ function App() {
       for (const p of prods) {
         const newStock = stockMap.get(p.id);
         if (newStock === undefined) continue;
-        if (newStock !== Number(p.stock ?? 0)) {
-          stockUpdates.push({ id: p.id, quantity: newStock });
+        const normalizedStock = Math.max(0, Number(newStock));
+        if (!Number.isFinite(normalizedStock)) {
+          logger.warn('[App] Geçersiz stok değeri atlandı', { productId: p.id, rawStock: newStock });
+          continue;
+        }
+        if (!UUID_RE.test(String(p.id || ''))) continue;
+        if (normalizedStock !== Number(p.stock ?? 0)) {
+          stockUpdates.push({ id: p.id, quantity: normalizedStock });
         }
       }
       if (stockUpdates.length > 0) {
-        await updateStocksBatch(stockUpdates);
+        try {
+          await updateStocksBatch(stockUpdates);
+        } catch (stockError) {
+          console.error('[App] Stock update failed after sale save:', stockError);
+          logger.warn('Satış kaydedildi ancak stok güncellemesinde hata oluştu', stockError);
+          alert('Satış kaydedildi, ancak bazı stoklar güncellenemedi. Lütfen stokları kontrol edin.');
+        }
       }
 
       if (sale.customerId) {
