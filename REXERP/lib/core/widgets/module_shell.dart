@@ -8,6 +8,7 @@ import '../../features/pos/presentation/pos_screen.dart';
 import '../../features/restaurant/presentation/restaurant_screen.dart';
 import '../../features/wms/presentation/wms_screen.dart';
 import '../navigation/module_key.dart';
+import 'flat_panel.dart';
 
 class ModuleShell extends StatefulWidget {
   const ModuleShell({super.key});
@@ -52,28 +53,47 @@ class _ModuleShellState extends State<ModuleShell> {
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 980;
     final selectedIndex = _items.indexWhere((item) => item.key == _selected);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text('REXERP - ${_items[selectedIndex].title}'),
       ),
       drawer: isMobile
           ? Drawer(
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
               child: SafeArea(
                 child: ListView(
+                  padding: const EdgeInsets.all(12),
                   children: [
-                    const ListTile(
-                      title: Text(
-                        'REXERP',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    FlatPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'REXERP',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Flat desktop UI skeleton',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
-                      subtitle: Text('RetailEX tabanli UI yapisi'),
                     ),
-                    const Divider(height: 1),
+                    const SizedBox(height: 12),
                     ..._items.map(
                       (item) => ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(
+                            color: _selected == item.key ? scheme.primary : scheme.outlineVariant,
+                          ),
+                        ),
                         leading: Icon(item.icon),
                         title: Text(item.title),
                         selected: _selected == item.key,
+                        selectedTileColor: scheme.surface,
                         onTap: () {
                           setState(() => _selected = item.key);
                           Navigator.of(context).pop();
@@ -88,24 +108,55 @@ class _ModuleShellState extends State<ModuleShell> {
       body: Row(
         children: [
           if (!isMobile)
-            NavigationRail(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) {
-                setState(() => _selected = _items[index].key);
-              },
-              labelType: NavigationRailLabelType.all,
-              minWidth: 88,
-              destinations: [
-                for (final item in _items)
-                  NavigationRailDestination(
-                    icon: Icon(item.icon),
-                    label: Text(item.title),
-                  ),
-              ],
+            Container(
+              width: 260,
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+              child: FlatPanel(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'REXERP',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'RetailEX base UI',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final item = _items[index];
+                          final isSelected = item.key == _selected;
+                          return ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              side: BorderSide(
+                                color: isSelected ? scheme.primary : scheme.outlineVariant,
+                              ),
+                            ),
+                            tileColor: isSelected ? scheme.primaryContainer : scheme.surface,
+                            leading: Icon(item.icon),
+                            title: Text(item.title),
+                            onTap: () {
+                              setState(() => _selected = item.key);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.all(20),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 16, 16),
               child: _buildContent(),
             ),
           ),

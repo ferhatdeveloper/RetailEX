@@ -6,6 +6,7 @@ Bu klasor, RetailEX projesi referans alinarak olusturulmus Flutter tabanli bir *
 
 - Sadece arayuz yapisi ve modul navigasyonu
 - Is mantigi, API, veritabani ve auth entegrasyonu **yok**
+- Flat UI (duz, cizgisel, elevasyonsuz) tasarim dili
 - RetailEX modullerine paralel ekran iskeleti:
   - Dashboard
   - POS
