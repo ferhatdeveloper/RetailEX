@@ -125,6 +125,9 @@ export function Receipt80mm({
   const resolvedPaperFormat: PosReceiptPrintFormat =
     isPosReceiptPrintFormat(printPaperFormat) ? printPaperFormat : '80mm';
   const isThermalFormat = resolvedPaperFormat === '80mm';
+  const isA5Format = resolvedPaperFormat === 'A5';
+  const isA4Format = resolvedPaperFormat === 'A4';
+  const receiptVariantClassName = isA4Format ? 'receipt-a4' : isA5Format ? 'receipt-a5' : 'receipt-80mm';
   const receiptWidthMm = resolvedPaperFormat === 'A4' ? 210 : resolvedPaperFormat === 'A5' ? 148 : 80;
   const printPageSize = isThermalFormat ? '80mm auto' : `${resolvedPaperFormat} portrait`;
   const printPageMargin = isThermalFormat ? '0' : '6mm';
@@ -137,6 +140,94 @@ export function Receipt80mm({
       : 'min(97vw, 1100px)';
   const previewModalHeight = isThermalFormat ? 'min(90vh, 800px)' : 'min(92vh, 920px)';
   const logoMaxWidth = isThermalFormat ? '60mm' : resolvedPaperFormat === 'A5' ? '100mm' : '130mm';
+  const receiptVariantCss = `
+      .receipt-a4 #receipt-content {
+        font-family: Inter, "Segoe UI", Arial, sans-serif;
+        background: #ffffff;
+        border: 1px solid #d8e2f3;
+        border-radius: 14px;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+        padding: 8mm 9mm;
+      }
+      .receipt-a4 .receipt-divider {
+        border-top-style: solid !important;
+        border-top-width: 2px !important;
+        border-top-color: #1e3a8a !important;
+        opacity: 0.75;
+      }
+      .receipt-a4 [data-section="header"] {
+        border-bottom-style: solid !important;
+        border-bottom-width: 2px !important;
+        border-bottom-color: #1d4ed8 !important;
+        margin-bottom: 4mm !important;
+        padding-bottom: 3.5mm !important;
+      }
+      .receipt-a4 [data-section="meta"],
+      .receipt-a4 [data-section="totals"],
+      .receipt-a4 [data-section="payments"] {
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        padding: 3mm 3.2mm;
+        margin-bottom: 3.5mm;
+        background: #f8fafc;
+      }
+      .receipt-a4 [data-section="items"] thead tr {
+        border-bottom: 2px solid #1e3a8a !important;
+      }
+      .receipt-a4 [data-section="items"] tbody tr {
+        border-bottom: 1px solid #cbd5e1 !important;
+      }
+      .receipt-a4 [data-section="footer"] {
+        margin-top: 3mm !important;
+        font-size: 12px !important;
+      }
+
+      .receipt-a5 #receipt-content {
+        font-family: "SF Pro Text", "Segoe UI", Arial, sans-serif;
+        background: #ffffff;
+        border: 2px solid #0f172a;
+        border-radius: 12px;
+        padding: 6mm;
+      }
+      .receipt-a5 .receipt-divider {
+        border-top-style: solid !important;
+        border-top-width: 1px !important;
+        border-top-color: #334155 !important;
+        opacity: 0.85;
+      }
+      .receipt-a5 [data-section="header"] {
+        border-bottom-style: solid !important;
+        border-bottom-width: 1px !important;
+        border-bottom-color: #334155 !important;
+        margin-bottom: 3mm !important;
+      }
+      .receipt-a5 [data-section="meta"] {
+        font-size: 12px !important;
+        line-height: 1.35 !important;
+      }
+      .receipt-a5 [data-section="items"] {
+        font-size: 11px !important;
+      }
+      .receipt-a5 [data-section="items"] thead tr {
+        border-bottom: 1px solid #0f172a !important;
+      }
+      .receipt-a5 [data-section="items"] tbody tr {
+        border-bottom: 1px dashed #64748b !important;
+      }
+      .receipt-a5 [data-section="totals"] {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        padding: 2.5mm;
+      }
+      .receipt-a5 [data-section="payments"] {
+        font-size: 11px !important;
+        margin-top: 2.5mm !important;
+      }
+      .receipt-a5 [data-section="footer"] {
+        font-size: 11px !important;
+      }
+  `;
 
   // Add null/undefined checks
   if (!sale || !paymentData) {
@@ -157,7 +248,7 @@ export function Receipt80mm({
 
   /** Tauri Edge PDF + tarayıcı yazdır: innerHTML sarmalayıcıyı atladığı için 80mm kayboluyordu — tam fiş DOM'u kullan */
   const getReceiptPrintFragmentHtml = (): string => {
-    const block = document.querySelector('.receipt-80mm') as HTMLElement | null;
+    const block = document.querySelector(`.${receiptVariantClassName}`) as HTMLElement | null;
     const inner = document.getElementById('receipt-content');
     if (block?.outerHTML) return block.outerHTML;
     if (inner?.outerHTML) return inner.outerHTML;
@@ -181,7 +272,8 @@ export function Receipt80mm({
       ${documentBaseCss}
       @page { size: ${printPageSize}; margin: ${printPageMargin}; }
       body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
-      .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+      .receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+      ${receiptVariantCss}
       * { box-sizing: border-box; }
       .flex { display: flex; }
       .justify-between { justify-content: space-between; }
@@ -267,7 +359,8 @@ export function Receipt80mm({
                 ${documentBaseCss}
                 @page { size: ${printPageSize}; margin: ${printPageMargin}; }
                 body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
-                .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+                .receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
+                ${receiptVariantCss}
                 * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-sizing: border-box; }
                 .flex { display: flex; }
                 .justify-between { justify-content: space-between; }
@@ -393,7 +486,7 @@ export function Receipt80mm({
           }}
         >
           <div
-            className="receipt-80mm mx-auto font-mono origin-top text-[14px] font-bold leading-snug text-gray-950 antialiased print:text-[11px] print:font-bold print:leading-tight"
+            className={`${receiptVariantClassName} mx-auto origin-top text-gray-950 antialiased ${isThermalFormat ? 'font-mono text-[14px] font-bold leading-snug print:text-[11px] print:font-bold print:leading-tight' : isA4Format ? 'font-sans text-[13px] font-semibold leading-relaxed print:text-[12px] print:leading-snug' : 'font-sans text-[12px] font-semibold leading-snug print:text-[11px] print:leading-tight'}`}
             style={{ transformOrigin: 'top center', direction: isRTL ? 'rtl' : 'ltr' }}
           >
           <div
@@ -402,7 +495,7 @@ export function Receipt80mm({
             style={{ width: `${receiptWidthMm}mm`, maxWidth: `${receiptWidthMm}mm`, direction: isRTL ? 'rtl' : 'ltr' }}
           >
             {/* Store Header - fiş ayarlarından logo ve firma bilgisi */}
-            <div className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
+            <div data-section="header" className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
               {receiptSettings?.logoDataUrl && (
                 <div className="flex justify-center mb-1">
                   <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto object-contain" style={{ maxWidth: logoMaxWidth }} />
@@ -430,7 +523,7 @@ export function Receipt80mm({
             )}
 
             {/* Receipt Info - yazdırmada koyu */}
-            <div className="text-[14px] mb-2 space-y-0.5 text-gray-950 font-bold print:text-[11px]">
+            <div data-section="meta" className="text-[14px] mb-2 space-y-0.5 text-gray-950 font-bold print:text-[11px]">
               <div className="flex justify-between">
                 <span className="font-extrabold">{t.receipt.receiptNo}:</span>
                 <span className="font-black">{sale.receiptNumber}</span>
@@ -499,10 +592,10 @@ export function Receipt80mm({
               })()}
             </div>
 
-            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
+            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Ürün / Adet / Tutar — tablo: yazdırma motorlarında flex bazen tek satıra yapıştırıyordu */}
-            <table className="receipt-items-table w-full table-fixed text-[12px] mb-2 font-bold text-gray-950 print:text-[11px] border-collapse">
+            <table data-section="items" className="receipt-items-table w-full table-fixed text-[12px] mb-2 font-bold text-gray-950 print:text-[11px] border-collapse">
               <colgroup>
                 <col style={{ width: '58%' }} />
                 <col style={{ width: '14%' }} />
@@ -574,10 +667,10 @@ export function Receipt80mm({
               </tbody>
             </table>
 
-            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
+            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Totals */}
-            <div className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
+            <div data-section="totals" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
               <div className="flex justify-between">
                 <span className="font-extrabold">{t.receipt.subtotal}:</span>
                 <span className="font-extrabold tabular-nums">{formatNumber(sale.subtotal, 0, true)} IQD</span>
@@ -616,10 +709,10 @@ export function Receipt80mm({
               </div>
             </div>
 
-            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
+            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Payment Details */}
-            <div className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
+            <div data-section="payments" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
               <div className="font-black mb-2 text-gray-950 print:font-black">{t.receipt.paymentDetails}:</div>
               {paymentData.payments?.map((payment: any, index: number) => (
                 <div key={index} className={`flex justify-between ${isRTL ? 'mr-2' : 'ml-2'}`}>
@@ -653,7 +746,7 @@ export function Receipt80mm({
               )}
             </div>
 
-            <div className="border-t-[3px] border-dashed border-gray-900 my-3"></div>
+            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
 
             {/* Barcode */}
             <div className="text-center my-2">
@@ -675,13 +768,13 @@ export function Receipt80mm({
             </div>
 
             {/* Footer — iade uyarısı yazdırılmıyor; alt boşluk minimum */}
-            <div className="text-center text-[12px] text-gray-950 mt-2 font-bold print:text-[11px] print:mt-1 print:mb-0">
+            <div data-section="footer" className="text-center text-[12px] text-gray-950 mt-2 font-bold print:text-[11px] print:mt-1 print:mb-0">
               <div className="flex items-center justify-center gap-1 font-black text-gray-950 print:font-black">
                 <span>*** {t.receipt.thanks} ***</span>
               </div>
             </div>
 
-            <div className="border-t-[3px] border-dashed border-gray-900 mt-2 print:mt-1 print:mb-0"></div>
+            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 mt-2 print:mt-1 print:mb-0"></div>
           </div>
           </div>
         </div>
@@ -738,6 +831,7 @@ export function Receipt80mm({
         .receipt-modal-scroll::-webkit-scrollbar-thumb:hover {
           background: #475569;
         }
+        ${receiptVariantCss}
         @media print {
           body * {
             visibility: hidden;
@@ -763,7 +857,7 @@ export function Receipt80mm({
             page-break-after: avoid;
           }
           @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-          .receipt-80mm { width: 100% !important; max-width: 100% !important; transform: none !important; }
+          .receipt-80mm, .receipt-a5, .receipt-a4 { width: 100% !important; max-width: 100% !important; transform: none !important; }
           #receipt-content .receipt-items-table {
             width: 100% !important;
             table-layout: fixed !important;

@@ -251,9 +251,12 @@ export function POSPaymentModal({
     const amount = parseFormattedNumber(currentAmount);
     if (!amount || amount <= 0) return;
 
+    const normalizedAmount = Number.isFinite(amount) ? amount : 0;
+    if (normalizedAmount <= 0) return;
+
     const newPayment: Payment = {
       method: currentMethod,
-      amount: amount,
+      amount: normalizedAmount,
       currency: currentCurrency,
       ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
     };
@@ -282,7 +285,7 @@ export function POSPaymentModal({
       }
     }
 
-    setPayments([...payments, newPayment]);
+    setPayments((prev) => [...prev, newPayment]);
     setCurrentAmount('');
   };
 
@@ -744,9 +747,46 @@ export function POSPaymentModal({
               {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => {
-                    setCurrentAmount(remaining > 0 ? remaining.toString() : finalTotal.toString());
-                    setTimeout(() => handleAddPayment(), 100);
+                  onClick={async () => {
+                    const rate = exchangeRates[currentCurrency] ?? 1;
+                    const remainingInSelectedCurrency = currentCurrency === 'IQD'
+                      ? Math.max(0, remaining)
+                      : Math.max(0, remaining) / rate;
+                    const amountToAdd = Number(
+                      (currentCurrency === 'IQD'
+                        ? Math.round(remainingInSelectedCurrency)
+                        : remainingInSelectedCurrency.toFixed(2))
+                    );
+                    if (!Number.isFinite(amountToAdd) || amountToAdd <= 0) return;
+                    setCurrentAmount(formatNumberInput(amountToAdd.toString()));
+                    const newPayment: Payment = {
+                      method: currentMethod,
+                      amount: amountToAdd,
+                      currency: currentCurrency,
+                      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
+                    };
+                    if (currentMethod === 'gateway' && selectedGateway) {
+                      const result = await paymentGateway.initiatePayment(
+                        selectedGateway,
+                        {
+                          amount: amountToAdd,
+                          currency: currentCurrency,
+                          orderId: `ORDER-${Date.now()}`,
+                          description: 'POS Satış Ödemesi'
+                        }
+                      );
+                      if (result.success) {
+                        newPayment.transactionId = result.transactionId;
+                        setShowQRCode(true);
+                        setQrGatewayName(result.providerName || '');
+                        setTimeout(() => setShowQRCode(false), 3000);
+                      } else {
+                        alert(`Ödeme başlatılamadı: ${result.error}`);
+                        return;
+                      }
+                    }
+                    setPayments((prev) => [...prev, newPayment]);
+                    setCurrentAmount('');
                   }}
                   className={`py-3 text-sm font-medium transition-colors ${darkMode
                     ? 'bg-orange-900/30 hover:bg-orange-900/50 text-orange-400 border border-orange-700'
@@ -882,7 +922,7 @@ export function POSPaymentModal({
 
                   <button
                     onClick={handleAddPayment}
-                    disabled={!currentAmount || parseFloat(currentAmount) <= 0}
+                    disabled={!currentAmount || parseFormattedNumber(currentAmount) <= 0}
                     className={`row-span-2 p-4 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${darkMode
                       ? 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
                       : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'

@@ -23,6 +23,8 @@ interface ProductState {
   syncWithServer: () => Promise<void>;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const useProductStore = create<ProductState>()(
   persist(
     (set, get) => ({
@@ -131,16 +133,48 @@ export const useProductStore = create<ProductState>()(
       updateStocksBatch: async (updates) => {
         if (!updates.length) return;
         set({ isLoading: true, error: null });
+        const normalizedById = new Map<string, number>();
+        for (const update of updates) {
+          const id = String(update.id || '').trim();
+          const qty = Number(update.quantity);
+          if (!UUID_RE.test(id) || !Number.isFinite(qty)) continue;
+          normalizedById.set(id, Math.max(0, qty));
+        }
+        const safeUpdates = Array.from(normalizedById.entries()).map(([id, quantity]) => ({ id, quantity }));
+        if (!safeUpdates.length) {
+          set({ isLoading: false });
+          return;
+        }
+        const existingIds = await productAPI.filterExistingProductIds(safeUpdates.map((u) => u.id));
+        const existingUpdates = safeUpdates.filter((u) => existingIds.has(u.id));
+        if (!existingUpdates.length) {
+          set({ isLoading: false });
+          return;
+        }
         try {
           const results = await Promise.all(
-            updates.map((u) => productAPI.updateStock(u.id, u.quantity))
+            existingUpdates.map((u) => productAPI.updateStock(u.id, u.quantity))
           );
-          if (results.some((ok) => !ok)) {
-            throw new Error('Bir veya daha fazla stok güncellenemedi');
+          let failedIds = existingUpdates
+            .map((u, idx) => (!results[idx] ? u.id : null))
+            .filter((x): x is string => typeof x === 'string');
+
+          if (failedIds.length > 0) {
+            const retryResults = await Promise.all(
+              failedIds.map((id) => {
+                const qty = normalizedById.get(id);
+                return qty == null ? Promise.resolve(false) : productAPI.updateStock(id, qty);
+              })
+            );
+            failedIds = failedIds.filter((_, idx) => !retryResults[idx]);
+          }
+
+          if (failedIds.length > 0) {
+            throw new Error(`Bir veya daha fazla stok güncellenemedi (ürün: ${failedIds.slice(0, 3).join(', ')})`);
           }
           set((state) => ({
             products: state.products.map((p) => {
-              const u = updates.find((x) => x.id === p.id);
+              const u = existingUpdates.find((x) => x.id === p.id);
               return u ? { ...p, stock: u.quantity } : p;
             }),
             isLoading: false,

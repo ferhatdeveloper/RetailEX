@@ -7,6 +7,7 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { format } from 'date-fns';
 import { formatNumber } from '../../../utils/formatNumber';
 
@@ -28,6 +29,7 @@ export function InOutTotalsReport() {
     const [rows, setRows] = useState<InOutRow[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
+    const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const today = useMemo(() => new Date(), []);
     const monthStart = useMemo(() => {
         const d = new Date(today);
@@ -43,11 +45,11 @@ export function InOutTotalsReport() {
             setLoading(true);
             try {
                 const [products, invRes, slipMovements] = await Promise.all([
-                    productAPI.getAllForReports(),
+                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
                     // Hem satış hem alış faturaları
                     Promise.all([
-                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'sales' }),
-                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'purchase' }),
+                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'Satis', firmNr: selectedFirm?.firm_nr, periodNr: selectedPeriod?.nr }),
+                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'Alis', firmNr: selectedFirm?.firm_nr, periodNr: selectedPeriod?.nr }),
                     ]),
                     stockMovementAPI.getAll(),
                 ]);
@@ -77,8 +79,13 @@ export function InOutTotalsReport() {
 
                 const allInvoices = invRes.flatMap(r => r.data);
                 for (const inv of allInvoices) {
-                    const cat = (inv as any).invoiceCategory || (inv as any).fiche_type || '';
-                    const isIn = String(cat).includes('purchase');
+                    const cat = String(
+                        (inv as any).invoiceCategory ||
+                        (inv as any).invoice_category ||
+                        (inv as any).fiche_type ||
+                        ''
+                    ).toLowerCase();
+                    const isIn = cat.includes('purchase') || cat.includes('alis');
                     const items: any[] = (inv as any).items || (inv as any).sale_items || [];
                     for (const it of items) {
                         const code = it.item_code || it.product_code || '';
@@ -122,7 +129,7 @@ export function InOutTotalsReport() {
         }
         load();
         return () => { cancelled = true; };
-    }, [startDate, endDate]);
+    }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
     const columnHelper = createColumnHelper<InOutRow>();
     const columns = useMemo<ColumnDef<InOutRow, any>[]>(() => [

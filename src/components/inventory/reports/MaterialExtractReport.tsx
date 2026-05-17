@@ -54,7 +54,7 @@ export function MaterialExtractReport() {
         let cancelled = false;
         async function load() {
             try {
-                const list = await productAPI.getAllForReports();
+                const list = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
                 if (!cancelled) setProducts(list);
             } catch (err) {
                 console.error('[MaterialExtractReport] products load failed', err);
@@ -62,7 +62,7 @@ export function MaterialExtractReport() {
         }
         load();
         return () => { cancelled = true; };
-    }, []);
+    }, [selectedFirm?.firm_nr]);
 
     // Dış tıklamada dropdown kapansın
     useEffect(() => {
