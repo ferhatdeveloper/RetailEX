@@ -658,6 +658,12 @@ export function SmartScheduler() {
         setSvcRangeDraftEnd(b);
     };
 
+    const openSurveyForCompletedAppointment = (apt: BeautyAppointment) => {
+        const customerId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+        if (!customerId) return;
+        setFeedbackApt(apt);
+    };
+
     const handleStatusChange = async (apt: BeautyAppointment, newStatus: AppointmentStatus) => {
         if (newStatus === AppointmentStatus.CANCELLED) {
             const dayYmd = beautyAppointmentDateKey(apt);
@@ -677,7 +683,10 @@ export function SmartScheduler() {
             await updateAppointmentStatus(apt.id, newStatus);
         }
         if (newStatus === AppointmentStatus.COMPLETED) {
-            setSelectedApt({ ...apt, status: newStatus });
+            const completedApt: BeautyAppointment = { ...apt, status: newStatus };
+            setSelectedApt(completedApt);
+            // Her tamamlanan randevuda, randevuya bağlı müşteri kartı varsa anketi otomatik aç.
+            openSurveyForCompletedAppointment(completedApt);
         } else {
             setSelectedApt(null);
         }
@@ -685,9 +694,7 @@ export function SmartScheduler() {
 
     const openSurveyFromDetailPanel = () => {
         if (!selectedApt) return;
-        const cid = selectedApt.customer_id ?? selectedApt.client_id;
-        if (!cid) return;
-        setFeedbackApt(selectedApt);
+        openSurveyForCompletedAppointment(selectedApt);
         setSelectedApt(null);
     };
 
