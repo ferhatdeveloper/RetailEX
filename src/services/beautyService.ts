@@ -4082,17 +4082,35 @@ export const beautyService = {
                 sale.paid_amount ?? sale.total ?? 0,
                 sale.remaining_amount ?? 0, sale.notes ?? null]);
 
-            for (const item of items) {
-                const itemId = uuidv4();
-                await postgres.query(`
-                    INSERT INTO ${it}
+            if (items.length > 0) {
+                const values: unknown[] = [];
+                const tuples: string[] = [];
+                for (const item of items) {
+                    const base = values.length;
+                    values.push(
+                        uuidv4(),
+                        id,
+                        item.item_type ?? 'service',
+                        pgUuidOrNull(item.item_id),
+                        item.name ?? 'Kalem',
+                        item.quantity ?? 1,
+                        item.unit_price ?? 0,
+                        item.discount ?? 0,
+                        item.total ?? 0,
+                        pgUuidOrNull(item.staff_id),
+                        item.commission_amount ?? 0,
+                    );
+                    tuples.push(
+                        `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11})`,
+                    );
+                }
+                await postgres.query(
+                    `INSERT INTO ${it}
                         (id, sale_id, item_type, item_id, name, quantity, unit_price,
                          discount, total, staff_id, commission_amount)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                `, [itemId, id, item.item_type ?? 'service', pgUuidOrNull(item.item_id),
-                    item.name, item.quantity ?? 1, item.unit_price ?? 0,
-                    item.discount ?? 0, item.total ?? 0,
-                    pgUuidOrNull(item.staff_id), item.commission_amount ?? 0]);
+                     VALUES ${tuples.join(', ')}`,
+                    values,
+                );
             }
         }
 

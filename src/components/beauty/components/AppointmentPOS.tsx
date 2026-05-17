@@ -2248,10 +2248,15 @@ export function AppointmentPOS({
                         existingAppointment,
                         pool.length > 0 ? pool : [existingAppointment],
                     );
-                    for (const sib of siblings) {
-                        if (!sib?.id || sib.id === existingAppointment.id) continue;
-                        if (appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED)) continue;
-                        await updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED });
+                    const siblingUpdates = siblings
+                        .filter((sib) =>
+                            !!sib?.id
+                            && sib.id !== existingAppointment.id
+                            && !appointmentStatusMatches(sib.status, AppointmentStatus.COMPLETED),
+                        )
+                        .map((sib) => updateAppointment(sib.id, { status: AppointmentStatus.COMPLETED }));
+                    if (siblingUpdates.length > 0) {
+                        await Promise.allSettled(siblingUpdates);
                     }
                 } catch (syncErr) {
                     logger.error('AppointmentPOS', 'payComplete: sibling completion sync failed', syncErr);
@@ -2260,8 +2265,8 @@ export function AppointmentPOS({
                 // Direkt ödeme ile açılan işlemde randevu da kapalı (completed) oluşturulmalı.
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                 await ensureAppointmentSlotOk(planned);
-                for (const p of planned) {
-                    await createAppointment(p);
+                if (planned.length > 0) {
+                    await Promise.all(planned.map((p) => createAppointment(p)));
                 }
             }
 
@@ -2343,12 +2348,11 @@ export function AppointmentPOS({
             );
 
             if (separateLineInvoices && cart.length > 1) {
-                for (let idx = 0; idx < cart.length; idx++) {
-                    const line = cart[idx];
+                const splitSaleTasks = cart.map((line, idx) => {
                     const gross = line.unit_price * line.qty;
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
-                    await beautyService.createSale(
+                    return beautyService.createSale(
                         {
                             customer_id: customer!.id,
                             customer_name: customer?.name,
@@ -2377,7 +2381,8 @@ export function AppointmentPOS({
                         ],
                         { skipErpAndLoyalty: true },
                     );
-                }
+                });
+                await Promise.all(splitSaleTasks);
                 await beautyService.syncBeautyCheckoutToErp(
                     {
                         customer_id: customer!.id,
@@ -2413,10 +2418,22 @@ export function AppointmentPOS({
             const splitInvoiceCount =
                 separateLineInvoices && cart.length > 1 ? cart.length : 0;
 
+            const productQtyMap = new Map<string, number>();
             for (const line of cart) {
                 if (line.type !== 'product') continue;
-                const p = useProductStore.getState().products.find(x => x.id === line.item_id);
-                if (p) await updateStock(p.id, Math.max(0, (p.stock ?? 0) - line.qty));
+                const pid = String(line.item_id ?? '').trim();
+                if (!pid) continue;
+                productQtyMap.set(pid, (productQtyMap.get(pid) ?? 0) + Math.max(0, Number(line.qty ?? 0)));
+            }
+            if (productQtyMap.size > 0) {
+                const currentProducts = useProductStore.getState().products;
+                await Promise.all(
+                    Array.from(productQtyMap.entries()).map(async ([pid, qty]) => {
+                        const product = currentProducts.find((x) => x.id === pid);
+                        if (!product) return;
+                        await updateStock(product.id, Math.max(0, (product.stock ?? 0) - qty));
+                    }),
+                );
             }
 
             const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
