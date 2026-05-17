@@ -100,7 +100,9 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
       const result = await invoicesAPI.getPaginated({
         page: 1,
         pageSize: 1000,
-        invoiceCategory: 'Alis'
+        invoiceCategory: 'Alis',
+        firmNr: selectedFirm.firm_nr || selectedFirm.id,
+        periodNr: selectedPeriod.nr || selectedPeriod.id,
       });
 
       console.log('[PurchaseInvoiceModule] Alış Faturaları yüklendi:', {

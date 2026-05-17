@@ -5,18 +5,20 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, AlertTriangle, Filter } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 
 export function MinMaxStockReport() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState<'all' | 'low' | 'out'>('all');
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
 
     useEffect(() => {
         async function loadData() {
             setLoading(true);
             try {
-                const allData = await productAPI.getAllForReports();
+                const allData = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
                 let filteredData = allData;
 
                 if (filterType === 'low') {
@@ -33,7 +35,7 @@ export function MinMaxStockReport() {
             }
         }
         loadData();
-    }, [filterType]);
+    }, [filterType, selectedFirm?.firm_nr]);
 
     const columnHelper = createColumnHelper<Product>();
     const columns = useMemo<ColumnDef<Product, any>[]>(() => [

@@ -4,8 +4,14 @@ import {
   Type, Image, Maximize2, Minus, BarChart3, Grid3x3, AlignLeft,
   AlignCenter, AlignRight, Bold, Move, ZoomIn, ZoomOut
 } from 'lucide-react';
-import type { Template, TemplateElement, TemplateFormat } from '../../core/types/templates';
-import { TEMPLATE_FORMATS, INVOICE_FIELDS, LABEL_FIELDS } from '../../core/types/templates';
+import type { Template, TemplateElement, TemplateUsageScope } from '../../core/types/templates';
+import {
+  TEMPLATE_FORMATS,
+  INVOICE_FIELDS,
+  LABEL_FIELDS,
+  TEMPLATE_USAGE_SCOPES,
+  TEMPLATE_USAGE_SCOPE_LABELS,
+} from '../../core/types/templates';
 import { useTemplateStore } from '../../store/useTemplateStore';
 
 interface TemplateDesignerProps {
@@ -14,7 +20,15 @@ interface TemplateDesignerProps {
 }
 
 export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
-  const { templates, activeTemplate, setActiveTemplate, updateTemplate, addTemplate } = useTemplateStore();
+  const {
+    templates,
+    activeTemplate,
+    setActiveTemplate,
+    updateTemplate,
+    addTemplate,
+    loadTemplatesFromDatabase,
+    persistTemplatesToDatabase,
+  } = useTemplateStore();
   
   const [selectedElement, setSelectedElement] = useState<TemplateElement | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -26,13 +40,40 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
   
   // Load active template or create new
   useEffect(() => {
+    void loadTemplatesFromDatabase();
+  }, [loadTemplatesFromDatabase]);
+
+  useEffect(() => {
     if (!activeTemplate) {
       const defaultTemplate = templates.find(t => t.type === type && t.isDefault);
       if (defaultTemplate) {
         setActiveTemplate({ ...defaultTemplate });
+        return;
       }
+      const defaultFormat = type === 'invoice' ? 'A4' : 'label-medium';
+      const size = TEMPLATE_FORMATS[defaultFormat];
+      const created: Template = {
+        id: `template-${Date.now()}`,
+        name: type === 'invoice' ? 'Yeni Fatura Şablonu' : 'Yeni Etiket Şablonu',
+        description: '',
+        type,
+        format: defaultFormat,
+        width: size.width,
+        height: size.height,
+        orientation: type === 'label' ? 'landscape' : 'portrait',
+        engine: 'fastreport-like',
+        usageScopes: ['global'],
+        defaultScopes: [],
+        margin: { top: 10, right: 10, bottom: 10, left: 10 },
+        isDefault: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        elements: [],
+      };
+      addTemplate(created);
+      setActiveTemplate(created);
     }
-  }, [type]);
+  }, [type, activeTemplate, templates, setActiveTemplate, addTemplate]);
   
   if (!activeTemplate) {
     return <div className="p-6">Yükleniyor...</div>;
@@ -105,8 +146,9 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
     setIsDragging(false);
   };
   
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     updateTemplate(activeTemplate.id, activeTemplate);
+    await persistTemplatesToDatabase();
     alert('Şablon kaydedildi!');
   };
   
@@ -122,6 +164,27 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
   };
   
   const availableFields = type === 'invoice' ? INVOICE_FIELDS : LABEL_FIELDS;
+  const selectedScopes: TemplateUsageScope[] = activeTemplate.usageScopes?.length
+    ? activeTemplate.usageScopes
+    : ['global'];
+
+  const toggleScope = (scope: TemplateUsageScope) => {
+    const current = new Set(selectedScopes);
+    if (scope === 'global') {
+      updateTemplate(activeTemplate.id, { usageScopes: ['global'] });
+      return;
+    }
+    current.delete('global');
+    if (current.has(scope)) {
+      current.delete(scope);
+    } else {
+      current.add(scope);
+    }
+    const nextScopes = Array.from(current);
+    updateTemplate(activeTemplate.id, {
+      usageScopes: nextScopes.length > 0 ? nextScopes : ['global'],
+    });
+  };
   
   // Convert mm to pixels (assuming 96 DPI)
   const mmToPx = (mm: number) => (mm * 96) / 25.4;
@@ -133,7 +196,11 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl">{type === 'invoice' ? 'Fatura' : 'Etiket'} Tasarım Editörü</h2>
-            <p className="text-sm text-gray-600">{activeTemplate.name} - {TEMPLATE_FORMATS[activeTemplate.format].name}</p>
+            <p className="text-sm text-gray-600">
+              {activeTemplate.name} - {TEMPLATE_FORMATS[activeTemplate.format].name}
+              {' · '}
+              {(activeTemplate.engine ?? 'fastreport-like') === 'fastreport-like' ? 'FastReport benzeri motor' : 'Basit motor'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -462,6 +529,42 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
                 <p className="text-sm">Düzenlemek için bir öğe seçin</p>
               </div>
             )}
+
+            <div className="mt-6 pt-4 border-t border-gray-200 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Tasarım Motoru</label>
+                <select
+                  value={activeTemplate.engine ?? 'fastreport-like'}
+                  onChange={(e) =>
+                    updateTemplate(activeTemplate.id, { engine: e.target.value as Template['engine'] })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="fastreport-like">FastReport benzeri gelişmiş</option>
+                  <option value="simple">Basit motor</option>
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Gelişmiş motor seçildiğinde bu şablon farklı modüllerde yeniden kullanılabilir.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-600 mb-2">Kullanım Alanları</label>
+                <div className="grid grid-cols-1 gap-2">
+                  {TEMPLATE_USAGE_SCOPES.map((scope) => (
+                    <label key={scope} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedScopes.includes(scope)}
+                        onChange={() => toggleScope(scope)}
+                        className="rounded"
+                      />
+                      <span>{TEMPLATE_USAGE_SCOPE_LABELS[scope]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

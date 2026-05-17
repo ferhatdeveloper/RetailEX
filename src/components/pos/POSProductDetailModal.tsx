@@ -31,7 +31,7 @@ export function POSProductDetailModal({ product, onClose }: POSProductDetailModa
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[2147483647]">
       <div className="bg-white w-full max-w-5xl h-[80vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between flex-shrink-0">

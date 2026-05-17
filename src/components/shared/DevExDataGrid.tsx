@@ -214,9 +214,29 @@ export function DevExDataGrid<T>({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
+  const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
+
+  useEffect(() => {
+    if (columnVisibility) {
+      setInternalColumnVisibility(columnVisibility);
+    }
+  }, [columnVisibility]);
+
+  const resolvedColumnVisibility = columnVisibility ?? internalColumnVisibility;
+
+  const handleColumnVisibilityChange = (updater: any) => {
+    const nextVisibility =
+      typeof updater === 'function'
+        ? updater(resolvedColumnVisibility)
+        : updater;
+    if (!columnVisibility) {
+      setInternalColumnVisibility(nextVisibility);
+    }
+    onColumnVisibilityChange?.(nextVisibility);
+  };
 
   // Sync internal selection with prop if provided
   useEffect(() => {
@@ -311,10 +331,12 @@ export function DevExDataGrid<T>({
       sorting,
       columnFilters,
       rowSelection,
+      columnVisibility: resolvedColumnVisibility,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: handleColumnVisibilityChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),

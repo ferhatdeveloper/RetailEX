@@ -30,7 +30,7 @@ export function CostReport() {
     const [rows, setRows] = useState<CostRow[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
-    const { selectedFirm } = useFirmaDonem();
+    const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = selectedFirm?.ana_para_birimi || 'IQD';
 
     const today = useMemo(() => new Date(), []);
@@ -52,9 +52,11 @@ export function CostReport() {
                         pageSize: 5000,
                         startDate,
                         endDate,
-                        invoiceCategory: 'sales',
+                        invoiceCategory: 'Satis',
+                        firmNr: selectedFirm?.firm_nr,
+                        periodNr: selectedPeriod?.nr,
                     }),
-                    productAPI.getAllForReports(),
+                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
                 ]);
                 const productByCode = new Map<string, Product>();
                 const productById = new Map<string, Product>();
@@ -111,7 +113,7 @@ export function CostReport() {
         }
         load();
         return () => { cancelled = true; };
-    }, [startDate, endDate]);
+    }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
     const totals = useMemo(() => {
         const tot = rows.reduce(

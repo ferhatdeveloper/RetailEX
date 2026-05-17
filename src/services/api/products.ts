@@ -259,28 +259,44 @@ export const productAPI = {
   /**
    * Get all products
    */
-  async getAll(): Promise<Product[]> {
+  async getAll(context?: { firmNr?: string | number }): Promise<Product[]> {
     try {
-      const tableName = `rex_${firmNrPadded()}_products`;
-      const firmEq = firmNrPadded();
+      const contextFirmRaw = String(context?.firmNr ?? ERP_SETTINGS.firmNr ?? '').trim();
+      const firmEq = (contextFirmRaw || firmNrPadded()).padStart(3, '0').slice(0, 10);
+      const tableName = `rex_${firmEq}_products`;
+      const firmRaw = contextFirmRaw;
+      const firmCandidates = Array.from(new Set([firmEq, firmRaw].filter(Boolean)));
       if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
+        const query: Record<string, string | number> = {
+          select: PRODUCT_LIST_SELECT,
+          order: 'name.asc',
+          limit: 15000,
+        };
+        if (firmCandidates.length === 1) {
+          query.firm_nr = `eq.${firmCandidates[0]}`;
+        } else if (firmCandidates.length > 1) {
+          query.or = `(${firmCandidates.map((f) => `firm_nr.eq.${f}`).join(',')})`;
+        }
         const rows = await postgrest.get<any[]>(
           `/${tableName}`,
-          {
-            select: PRODUCT_LIST_SELECT,
-            firm_nr: `eq.${firmEq}`,
-            is_active: 'eq.true',
-            order: 'name.asc',
-            limit: 15000,
-          },
+          query,
           { schema: 'public' }
         );
-        return (Array.isArray(rows) ? rows : []).map(mapDatabaseProductToProduct);
+        return (Array.isArray(rows) ? rows : [])
+          .filter((r: any) => !(r?.is_active === false || r?.is_active === 0 || String(r?.is_active).toLowerCase() === 'false'))
+          .map(mapDatabaseProductToProduct);
       }
       const { rows } = await postgres.query(
-        `SELECT ${PRODUCT_LIST_SELECT_SQL} FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
-        [firmEq]
+        `SELECT ${PRODUCT_LIST_SELECT_SQL}
+         FROM ${tableName}
+         WHERE COALESCE(is_active, true) = true
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+             OR TRIM(COALESCE(firm_nr, '')) = $2
+           )
+         ORDER BY name ASC`,
+        [firmEq, firmRaw || firmEq]
       );
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
@@ -292,28 +308,45 @@ export const productAPI = {
   /**
    * Aktif ürünler — rapor ekranları için hafif kolon seti (`getAll` yerine tercih edin).
    */
-  async getAllForReports(): Promise<Product[]> {
+  async getAllForReports(context?: { firmNr?: string | number }): Promise<Product[]> {
     try {
-      const tableName = `rex_${firmNrPadded()}_products`;
-      const firmEq = firmNrPadded();
+      const contextFirmRaw = String(context?.firmNr ?? ERP_SETTINGS.firmNr ?? '').trim();
+      const firmEq = (contextFirmRaw || firmNrPadded()).padStart(3, '0').slice(0, 10);
+      const tableName = `rex_${firmEq}_products`;
+      const firmRaw = contextFirmRaw;
+      const firmCandidates = Array.from(new Set([firmEq, firmRaw].filter(Boolean)));
       if (shouldUseTenantPostgrestApi()) {
         const { postgrest } = await import('./postgrestClient');
+        const query: Record<string, string | number> = {
+          select: PRODUCT_REPORT_LIST_SELECT,
+          order: 'name.asc',
+          limit: 15000,
+        };
+        if (firmCandidates.length === 1) {
+          query.firm_nr = `eq.${firmCandidates[0]}`;
+        } else if (firmCandidates.length > 1) {
+          query.or = `(${firmCandidates.map((f) => `firm_nr.eq.${f}`).join(',')})`;
+        }
         const rows = await postgrest.get<any[]>(
           `/${tableName}`,
-          {
-            select: PRODUCT_REPORT_LIST_SELECT,
-            firm_nr: `eq.${firmEq}`,
-            is_active: 'eq.true',
-            order: 'name.asc',
-            limit: 15000,
-          },
+          query,
           { schema: 'public' }
         );
-        return (Array.isArray(rows) ? rows : []).map(mapDatabaseProductToProduct);
+        return (Array.isArray(rows) ? rows : [])
+          .filter((r: any) => !(r?.is_active === false || r?.is_active === 0 || String(r?.is_active).toLowerCase() === 'false'))
+          .map(mapDatabaseProductToProduct);
       }
       const { rows } = await postgres.query(
-        `SELECT ${PRODUCT_REPORT_LIST_SELECT_SQL} FROM ${tableName} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC LIMIT 25000`,
-        [firmEq]
+        `SELECT ${PRODUCT_REPORT_LIST_SELECT_SQL}
+         FROM ${tableName}
+         WHERE COALESCE(is_active, true) = true
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+             OR TRIM(COALESCE(firm_nr, '')) = $2
+           )
+         ORDER BY name ASC
+         LIMIT 25000`,
+        [firmEq, firmRaw || firmEq]
       );
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
@@ -1174,23 +1207,98 @@ export const productAPI = {
     try {
       const tableName = `rex_${firmNrPadded()}_products`;
       const firmEq = firmNrPadded();
+      const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
+      const normalizedQuantity = Number.isFinite(quantity) ? Math.max(0, quantity) : 0;
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const patched = await postgrest.patch<any[]>(
-          `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmEq)}`,
-          { stock: quantity },
+        const firmFilters = [...new Set([firmEq, firmRaw].filter(Boolean))];
+        for (const firmFilter of firmFilters) {
+          const patched = await postgrest.patch<any[]>(
+            `/${tableName}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmFilter)}`,
+            { stock: normalizedQuantity },
+            { schema: 'public', prefer: 'return=representation' }
+          );
+          if (Array.isArray(patched) ? patched.length > 0 : Boolean(patched)) {
+            return true;
+          }
+        }
+        // Bazı ortamlarda firm_nr formatı (1/001) tutmadığında id üzerinden son deneme.
+        const patchedByIdOnly = await postgrest.patch<any[]>(
+          `/${tableName}?id=eq.${encodeURIComponent(id)}`,
+          { stock: normalizedQuantity },
           { schema: 'public', prefer: 'return=representation' }
         );
-        return Array.isArray(patched) ? patched.length > 0 : Boolean(patched);
+        return Array.isArray(patchedByIdOnly) ? patchedByIdOnly.length > 0 : Boolean(patchedByIdOnly);
       }
       const { rowCount } = await postgres.query(
-        `UPDATE ${tableName} SET stock = $1::text::numeric WHERE id = $2 AND firm_nr = $3`,
-        [quantity.toString(), id, ERP_SETTINGS.firmNr]
+        `UPDATE ${tableName}
+         SET stock = $1::text::numeric
+         WHERE id = $2
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $3
+             OR TRIM(COALESCE(firm_nr, '')) = $4
+           )`,
+        [normalizedQuantity.toString(), id, firmEq, firmRaw || firmEq]
       );
-      return rowCount > 0;
+      if (rowCount > 0) return true;
+
+      // Eski/bozuk firm_nr verilerinde id üzerinden son fallback.
+      const byIdOnly = await postgres.query(
+        `UPDATE ${tableName} SET stock = $1::text::numeric WHERE id = $2`,
+        [normalizedQuantity.toString(), id]
+      );
+      return (byIdOnly.rowCount ?? 0) > 0;
     } catch (error) {
       console.error('[ProductAPI] updateStock failed:', error);
       return false;
+    }
+  },
+
+  async filterExistingProductIds(ids: string[]): Promise<Set<string>> {
+    const normalized = [...new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean))];
+    if (!normalized.length) return new Set<string>();
+    const tableName = `rex_${firmNrPadded()}_products`;
+    const firmEq = firmNrPadded();
+    const firmRaw = String(ERP_SETTINGS.firmNr ?? '').trim();
+    try {
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const inList = normalized.join(',');
+        const rows = await postgrest.get<any[]>(
+          `/${tableName}`,
+          {
+            select: 'id,firm_nr',
+            id: `in.(${inList})`,
+            limit: normalized.length + 5,
+          },
+          { schema: 'public' }
+        );
+        const set = new Set<string>();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const rowId = String(row?.id || '').trim();
+          const rowFirm = String(row?.firm_nr || '').trim();
+          if (!rowId) continue;
+          if (rowFirm === firmRaw || rowFirm === firmEq || rowFirm.padStart(3, '0') === firmEq) {
+            set.add(rowId);
+          }
+        }
+        return set;
+      }
+
+      const { rows } = await postgres.query<{ id: string }>(
+        `SELECT id::text AS id
+         FROM ${tableName}
+         WHERE id = ANY($1::uuid[])
+           AND (
+             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $2
+             OR TRIM(COALESCE(firm_nr, '')) = $3
+           )`,
+        [normalized, firmEq, firmRaw || firmEq]
+      );
+      return new Set(rows.map((r) => String(r.id)));
+    } catch (error) {
+      console.warn('[ProductAPI] filterExistingProductIds failed:', error);
+      return new Set<string>();
     }
   },
 

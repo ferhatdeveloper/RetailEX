@@ -7,6 +7,7 @@ import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Building2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 
 interface WarehouseStockRow {
     productCode: string;
@@ -25,6 +26,7 @@ export function WarehouseStatusReport() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
 
     useEffect(() => {
         let cancelled = false;
@@ -33,7 +35,7 @@ export function WarehouseStatusReport() {
             try {
                 const [whs, prods] = await Promise.all([
                     warehouseAPI.getActive(),
-                    productAPI.getAllForReports(),
+                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
                 ]);
                 if (cancelled) return;
                 setWarehouses(whs);
@@ -46,7 +48,7 @@ export function WarehouseStatusReport() {
         }
         load();
         return () => { cancelled = true; };
-    }, []);
+    }, [selectedFirm?.firm_nr]);
 
     const rows = useMemo<WarehouseStockRow[]>(() => {
         return products.map(p => {

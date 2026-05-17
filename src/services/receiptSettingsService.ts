@@ -5,11 +5,19 @@ import { postgres, ERP_SETTINGS } from './postgres';
 
 /** Fiş / önizleme dilleri — POS fişi ve çeviri anahtarları ile uyumlu */
 export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku';
+export type PosReceiptPrintFormat = '80mm' | 'A5' | 'A4';
 
 const RECEIPT_LANG_CODES: readonly ReceiptLangCode[] = ['tr', 'en', 'ar', 'ku'];
+const POS_RECEIPT_PRINT_FORMATS: readonly PosReceiptPrintFormat[] = ['80mm', 'A5', 'A4'];
 
 export function isReceiptLangCode(s: string | undefined | null): s is ReceiptLangCode {
   return !!s && (RECEIPT_LANG_CODES as readonly string[]).includes(s);
+}
+
+export function isPosReceiptPrintFormat(
+  s: string | undefined | null
+): s is PosReceiptPrintFormat {
+  return !!s && (POS_RECEIPT_PRINT_FORMATS as readonly string[]).includes(s);
 }
 
 /**
@@ -33,6 +41,23 @@ export function resolveDefaultReceiptLang(
   return 'tr';
 }
 
+/**
+ * POS satış sonrası varsayılan çıktı formatı:
+ * Fiş/Firma ayarı (`defaultPosReceiptPrintFormat`) → yazıcı yerel ayarı (`paperSize`) → 80mm.
+ */
+export function resolveDefaultPosReceiptPrintFormat(
+  receiptSettings: Pick<ReceiptSettings, 'defaultPosReceiptPrintFormat'>,
+  printerPaperSize?: string | null
+): PosReceiptPrintFormat {
+  if (isPosReceiptPrintFormat(receiptSettings.defaultPosReceiptPrintFormat)) {
+    return receiptSettings.defaultPosReceiptPrintFormat;
+  }
+  if (isPosReceiptPrintFormat(printerPaperSize)) {
+    return printerPaperSize;
+  }
+  return '80mm';
+}
+
 export interface ReceiptSettings {
   companyName?: string;
   companyAddress?: string;
@@ -52,6 +77,8 @@ export interface ReceiptSettings {
    * Anahtarlar `Product` üzerindeki alan adlarıyla aynı olmalıdır.
    */
   productNameFieldByLang?: Partial<Record<ReceiptLangCode, string>>;
+  /** POS satışta varsayılan çıktı kağıdı */
+  defaultPosReceiptPrintFormat?: PosReceiptPrintFormat;
 }
 
 const KEY_RECEIPT_SETTINGS = 'receipt_settings';
@@ -93,11 +120,25 @@ export async function getReceiptSettings(firmNr?: string): Promise<ReceiptSettin
 export async function saveReceiptSettings(data: ReceiptSettings, firmNr?: string): Promise<void> {
   const fn = firmNr || ERP_SETTINGS.firmNr || '001';
   try {
+    let existing: ReceiptSettings = {};
+    try {
+      const { rows } = await postgres.query<{ value: ReceiptSettings }>(
+        `SELECT value FROM app_settings WHERE key = $1 AND firm_nr = $2`,
+        [KEY_RECEIPT_SETTINGS, fn]
+      );
+      if (rows.length > 0 && rows[0].value) {
+        existing = rows[0].value as ReceiptSettings;
+      }
+    } catch {
+      // Okuma hatasında sadece gelen payload ile devam ederiz.
+    }
+
+    const merged: ReceiptSettings = { ...existing, ...data };
     await postgres.query(
       `INSERT INTO app_settings (key, value, firm_nr)
        VALUES ($1, $2::jsonb, $3)
        ON CONFLICT (key, firm_nr) DO UPDATE SET value = $2::jsonb`,
-      [KEY_RECEIPT_SETTINGS, JSON.stringify(data), fn]
+      [KEY_RECEIPT_SETTINGS, JSON.stringify(merged), fn]
     );
     invalidateReceiptSettingsCache();
   } catch (e) {

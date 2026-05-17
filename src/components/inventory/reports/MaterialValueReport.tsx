@@ -35,7 +35,7 @@ export function MaterialValueReport() {
         async function loadData() {
             setLoading(true);
             try {
-                const data = await productAPI.getAllForReports();
+                const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
                 if (!cancelled) setProducts(data);
             } catch (err) {
                 console.error('[MaterialValueReport] load failed', err);
@@ -45,7 +45,7 @@ export function MaterialValueReport() {
         }
         loadData();
         return () => { cancelled = true; };
-    }, []);
+    }, [selectedFirm?.firm_nr]);
 
     const rows = useMemo<ValuationRow[]>(() => {
         return products

@@ -4,7 +4,13 @@ import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
-import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/receiptSettingsService';
+import {
+  getReceiptSettings,
+  resolveDefaultPosReceiptPrintFormat,
+  resolveDefaultReceiptLang,
+  saveReceiptSettings,
+  type PosReceiptPrintFormat
+} from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { formatCurrency, formatNumber } from '../../utils/currency';
@@ -139,17 +145,20 @@ export function POSPaymentModal({
     return s || undefined;
   }, [selectedFirm]);
   const [receiptLanguage, setReceiptLanguage] = useState<string>(uiLanguage);
+  const [printFormat, setPrintFormat] = useState<PosReceiptPrintFormat>('80mm');
   const [showReceiptPreview, setShowReceiptPreview] = useState(defaultShowReceiptPreview);
 
   useEffect(() => {
     let cancelled = false;
     let printerDefault: string | undefined;
+    let printerPaperSize: string | undefined;
     try {
       const savedPrinter = localStorage.getItem('retailos-printer-settings');
       if (savedPrinter) {
         const config = JSON.parse(savedPrinter);
         if (config.autoPrint !== undefined) setAutoPrint(config.autoPrint);
         printerDefault = config.defaultLanguage;
+        printerPaperSize = config.paperSize;
       }
     } catch (err) {
       console.error('Failed to parse printer settings:', err);
@@ -163,11 +172,21 @@ export function POSPaymentModal({
       }
       if (cancelled) return;
       setReceiptLanguage(resolveDefaultReceiptLang(rs, uiLanguage, printerDefault));
+      setPrintFormat(resolveDefaultPosReceiptPrintFormat(rs, printerPaperSize));
     })();
     return () => {
       cancelled = true;
     };
   }, [receiptFirmNr, uiLanguage]);
+
+  const handlePrintFormatChange = async (nextFormat: PosReceiptPrintFormat) => {
+    setPrintFormat(nextFormat);
+    try {
+      await saveReceiptSettings({ defaultPosReceiptPrintFormat: nextFormat }, receiptFirmNr);
+    } catch (error) {
+      console.error('[POSPaymentModal] defaultPosReceiptPrintFormat save failed:', error);
+    }
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [draftPrintLoading, setDraftPrintLoading] = useState(false);
 
@@ -232,9 +251,12 @@ export function POSPaymentModal({
     const amount = parseFormattedNumber(currentAmount);
     if (!amount || amount <= 0) return;
 
+    const normalizedAmount = Number.isFinite(amount) ? amount : 0;
+    if (normalizedAmount <= 0) return;
+
     const newPayment: Payment = {
       method: currentMethod,
-      amount: amount,
+      amount: normalizedAmount,
       currency: currentCurrency,
       ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
     };
@@ -263,7 +285,7 @@ export function POSPaymentModal({
       }
     }
 
-    setPayments([...payments, newPayment]);
+    setPayments((prev) => [...prev, newPayment]);
     setCurrentAmount('');
   };
 
@@ -309,6 +331,7 @@ export function POSPaymentModal({
         finalTotal: finalTotal,
         autoPrint: showAutoPrintOption ? autoPrint : false,
         language: receiptLanguage,
+        printFormat,
         showReceiptPreview,
       });
     } catch (error) {
@@ -724,9 +747,46 @@ export function POSPaymentModal({
               {/* Action Buttons */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => {
-                    setCurrentAmount(remaining > 0 ? remaining.toString() : finalTotal.toString());
-                    setTimeout(() => handleAddPayment(), 100);
+                  onClick={async () => {
+                    const rate = exchangeRates[currentCurrency] ?? 1;
+                    const remainingInSelectedCurrency = currentCurrency === 'IQD'
+                      ? Math.max(0, remaining)
+                      : Math.max(0, remaining) / rate;
+                    const amountToAdd = Number(
+                      (currentCurrency === 'IQD'
+                        ? Math.round(remainingInSelectedCurrency)
+                        : remainingInSelectedCurrency.toFixed(2))
+                    );
+                    if (!Number.isFinite(amountToAdd) || amountToAdd <= 0) return;
+                    setCurrentAmount(formatNumberInput(amountToAdd.toString()));
+                    const newPayment: Payment = {
+                      method: currentMethod,
+                      amount: amountToAdd,
+                      currency: currentCurrency,
+                      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
+                    };
+                    if (currentMethod === 'gateway' && selectedGateway) {
+                      const result = await paymentGateway.initiatePayment(
+                        selectedGateway,
+                        {
+                          amount: amountToAdd,
+                          currency: currentCurrency,
+                          orderId: `ORDER-${Date.now()}`,
+                          description: 'POS Satış Ödemesi'
+                        }
+                      );
+                      if (result.success) {
+                        newPayment.transactionId = result.transactionId;
+                        setShowQRCode(true);
+                        setQrGatewayName(result.providerName || '');
+                        setTimeout(() => setShowQRCode(false), 3000);
+                      } else {
+                        alert(`Ödeme başlatılamadı: ${result.error}`);
+                        return;
+                      }
+                    }
+                    setPayments((prev) => [...prev, newPayment]);
+                    setCurrentAmount('');
                   }}
                   className={`py-3 text-sm font-medium transition-colors ${darkMode
                     ? 'bg-orange-900/30 hover:bg-orange-900/50 text-orange-400 border border-orange-700'
@@ -862,7 +922,7 @@ export function POSPaymentModal({
 
                   <button
                     onClick={handleAddPayment}
-                    disabled={!currentAmount || parseFloat(currentAmount) <= 0}
+                    disabled={!currentAmount || parseFormattedNumber(currentAmount) <= 0}
                     className={`row-span-2 p-4 text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${darkMode
                       ? 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
                       : 'bg-blue-600 hover:bg-blue-700 text-white active:bg-blue-800'
@@ -942,6 +1002,21 @@ export function POSPaymentModal({
                 <option value="en">English</option>
                 <option value="ar">العربية</option>
                 <option value="ku">Kurdî</option>
+              </select>
+            </div>
+
+            <div className={`h-6 w-px shrink-0 ${darkMode ? 'bg-gray-700' : 'bg-gray-300'}`} />
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Printer className={`w-4 h-4 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} />
+              <select
+                value={printFormat}
+                onChange={(e) => void handlePrintFormatChange(e.target.value as PosReceiptPrintFormat)}
+                className={`text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-medium p-0 ${darkMode ? 'text-gray-300 hover:text-white' : 'text-gray-700 hover:text-blue-600'}`}
+              >
+                <option value="80mm">80mm</option>
+                <option value="A5">A5</option>
+                <option value="A4">A4</option>
               </select>
             </div>
           </div>

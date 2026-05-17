@@ -84,7 +84,7 @@ export function POSProductCatalogModal({
   }, [products, selectedCategory, searchQuery]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md flex items-center justify-center">
       <div className="bg-white w-full h-full flex flex-col shadow-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between flex-shrink-0">

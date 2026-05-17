@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { printInvoice } from '../../../utils/printUtils';
-import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send, ClipboardList } from 'lucide-react';
+import { FileText, Search, Filter as FilterIcon, Download, Eye, Calendar, User, CreditCard, Banknote, X, Edit, Trash2, Tag, Plus, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Printer, Palette, RefreshCw, Send, ClipboardList, ChevronDown } from 'lucide-react';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
-import { ReportDesignerModule } from '../../reports/ReportDesignerModule';
 import { ReportTemplate } from '../../reports/designerUtils';
-import { salesAPI } from '../../../services/api/sales';
-import { supabase } from '../../../utils/supabase/client';
+import { TemplateManager } from '../../modules/TemplateManager';
 import type { Sale, Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -17,7 +15,11 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { enqueueSaleInvoice } from '../../../services/gibEdocumentQueueService';
-import { invoiceMatchesModuleCategory } from '../../../services/api/invoices';
+import { invoiceMatchesModuleCategory, invoicesAPI } from '../../../services/api/invoices';
+import type { TemplateUsageScope } from '../../../core/types/templates';
+import { TEMPLATE_USAGE_SCOPE_LABELS } from '../../../core/types/templates';
+import { useTemplateStore } from '../../../store';
+import { buildInvoicePrintContext, convertTemplateToReportTemplate, invoiceScopeFromTrcode } from '../../../services/templateRenderService';
 import { PREFILL_PURCHASE_FROM_COUNT_STORAGE_KEY } from '../../../utils/countSlipPurchaseDraft';
 import {
   buildPurchaseEditDataFromSayimInvoices,
@@ -105,6 +107,13 @@ export function InvoiceListModule({
     { code: 30, name: tm('salesQuote'), category: 'Teklif', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileSignature', translationKey: 'salesQuote' },
     { code: 31, name: tm('purchaseQuote'), category: 'Teklif', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileSignature', translationKey: 'purchaseQuote' },
   ];
+  const {
+    templates: designTemplates,
+    loadTemplatesFromDatabase,
+    getTemplatesForScope,
+    resolveTemplateForScope,
+    setTemplateDefaultForScope,
+  } = useTemplateStore();
   const [invoices, setInvoices] = useState<ListInvoice[]>([]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -138,6 +147,56 @@ export function InvoiceListModule({
     await printInvoice(invoice as Invoice, typeLabel);
   };
 
+  const openSpecialPrint = (invoice: ListInvoice) => {
+    const trcode = Number(invoice.invoice_type || invoice.trcode || 0);
+    const scope = invoiceScopeFromTrcode(trcode);
+    const scopedTemplates = getTemplatesForScope('invoice', scope);
+    const preferred = resolveTemplateForScope('invoice', scope) ?? scopedTemplates[0] ?? null;
+    if (!preferred) {
+      toast.error('Bu fatura türü için şablon bulunamadı. Önce Dizayn Merkezi üzerinden şablon ekleyin.');
+      return;
+    }
+    setSpecialPrintState({
+      invoice,
+      scope,
+      selectedTemplateId: preferred.id,
+      makeDefault: false,
+    });
+  };
+
+  const handleSpecialPrint = async () => {
+    if (!specialPrintState) return;
+    const selectedTemplate = designTemplates.find((t) => t.id === specialPrintState.selectedTemplateId);
+    if (!selectedTemplate) {
+      toast.error('Seçili şablon bulunamadı.');
+      return;
+    }
+    if (!specialPrintState.invoice.id) {
+      toast.error('Fatura kimliği bulunamadı.');
+      return;
+    }
+    setSpecialPrintLoading(true);
+    try {
+      const fullInvoice = await invoicesAPI.getById(specialPrintState.invoice.id);
+      const invoiceData = (fullInvoice ?? specialPrintState.invoice) as Invoice;
+      const reportTemplate = convertTemplateToReportTemplate(selectedTemplate);
+      const context = buildInvoicePrintContext(invoiceData);
+      if (specialPrintState.makeDefault) {
+        await setTemplateDefaultForScope(selectedTemplate.id, specialPrintState.scope);
+      }
+      setActiveTemplate(reportTemplate);
+      setViewerData(context);
+      setShowViewer(true);
+      setSpecialPrintState(null);
+      setContextMenu(null);
+    } catch (error) {
+      console.error('Özel yazdırma hazırlanırken hata:', error);
+      toast.error('Özel yazdırma hazırlanamadı.');
+    } finally {
+      setSpecialPrintLoading(false);
+    }
+  };
+
   const handleRowRightClick = (e: React.MouseEvent, invoice: ListInvoice) => {
     e.preventDefault();
     setContextMenu({
@@ -163,6 +222,14 @@ export function InvoiceListModule({
   const [showDesigner, setShowDesigner] = useState(false);
   const [showViewer, setShowViewer] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<ReportTemplate | null>(null);
+  const [viewerData, setViewerData] = useState<Record<string, unknown> | null>(null);
+  const [specialPrintState, setSpecialPrintState] = useState<{
+    invoice: ListInvoice;
+    scope: TemplateUsageScope;
+    selectedTemplateId: string;
+    makeDefault: boolean;
+  } | null>(null);
+  const [specialPrintLoading, setSpecialPrintLoading] = useState(false);
 
   // Sayfalama state
   const [currentPage, setCurrentPage] = useState(1);
@@ -225,6 +292,10 @@ export function InvoiceListModule({
   useEffect(() => {
     loadInvoices();
   }, [currentPage, pageSize, dateFilter, statusFilter, invoiceTypeFilter, defaultCategory]);
+
+  useEffect(() => {
+    void loadTemplatesFromDatabase();
+  }, [loadTemplatesFromDatabase]);
 
   useEffect(() => {
     setBulkSelectedInvoices([]);
@@ -593,6 +664,14 @@ export function InvoiceListModule({
     ? INVOICE_TYPES
     : INVOICE_TYPES.filter(t => t.category === selectedCategory);
 
+  const headerTotalsCurrency = useMemo(() => {
+    const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
+    const uniq = new Set(codes);
+    if (uniq.size === 1) return [...uniq][0];
+    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
+    return firm || 'IQD';
+  }, [invoices, selectedFirm]);
+
   // Fatura formu açıksa UniversalInvoiceForm'u göster
   if (selectedInvoiceType) {
     return (
@@ -616,14 +695,6 @@ export function InvoiceListModule({
     const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
     return firm || 'IQD';
   };
-
-  const headerTotalsCurrency = useMemo(() => {
-    const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
-    const uniq = new Set(codes);
-    if (uniq.size === 1) return [...uniq][0];
-    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
-    return firm || 'IQD';
-  }, [invoices, selectedFirm]);
 
   // Table columns
   const columnHelper = createColumnHelper<ListInvoice>();
@@ -1291,6 +1362,16 @@ export function InvoiceListModule({
                 }
               }
             },
+            {
+              id: 'special-print',
+              label: 'Özel Yazdır',
+              icon: Printer,
+              onClick: () => {
+                if (contextMenu.invoice) {
+                  openSpecialPrint(contextMenu.invoice);
+                }
+              }
+            },
             ...(showGibQueueAction
               ? [
                   {
@@ -1310,7 +1391,7 @@ export function InvoiceListModule({
               : []),
             {
               id: 'design',
-              label: tm('design'),
+              label: 'Dizayn Merkezi',
               icon: Palette,
               onClick: () => {
                 setShowDesigner(true);
@@ -1331,6 +1412,105 @@ export function InvoiceListModule({
             }
           ]}
         />
+      )}
+
+      {specialPrintState && (
+        <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col animate-in zoom-in-95 duration-200">
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-black uppercase tracking-tight">Özel Yazdır</h2>
+                    <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                      {specialPrintState.invoice.invoice_no || specialPrintState.invoice.id}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSpecialPrintState(null)}
+                    className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-8 space-y-5">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Belge Türü</div>
+                  <div className="text-base font-semibold text-slate-900">
+                    {TEMPLATE_USAGE_SCOPE_LABELS[specialPrintState.scope]}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                    Tasarım Seçimi
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={specialPrintState.selectedTemplateId}
+                      onChange={(e) =>
+                        setSpecialPrintState((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                selectedTemplateId: e.target.value,
+                              }
+                            : prev,
+                        )
+                      }
+                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none appearance-none bg-white text-slate-800 font-medium"
+                    >
+                      {getTemplatesForScope('invoice', specialPrintState.scope).map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
+                  </div>
+                </div>
+                <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-2xl bg-white">
+                  <input
+                    type="checkbox"
+                    checked={specialPrintState.makeDefault}
+                    onChange={(e) =>
+                      setSpecialPrintState((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              makeDefault: e.target.checked,
+                            }
+                          : prev,
+                      )
+                    }
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                  />
+                  <span className="text-sm text-slate-700 font-medium">
+                    Bu belge türü için varsayılan tasarım olarak kaydet
+                  </span>
+                </label>
+              </div>
+              <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSpecialPrintState(null)}
+                  className="flex-1 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
+                >
+                  İptal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSpecialPrint()}
+                  disabled={specialPrintLoading}
+                  className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
+                >
+                  {specialPrintLoading ? 'Hazırlanıyor...' : 'Özel Yazdır'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Detail Modal */}
@@ -1683,18 +1863,21 @@ export function InvoiceListModule({
               <button onClick={() => setShowDesigner(false)} className="px-3 py-1 bg-red-500 text-white rounded text-xs font-bold">{tm('close').toUpperCase()}</button>
             </div>
             <div className="flex-1">
-              <ReportDesignerModule />
+              <TemplateManager />
             </div>
           </div>
         </FullscreenBodyPortal>
       )}
 
       {/* Custom Report Viewer Overlay */}
-      {showViewer && activeTemplate && contextMenu?.invoice && (
+      {showViewer && activeTemplate && viewerData && (
         <ReportViewerModule
           template={activeTemplate}
-          data={{ invoice: contextMenu.invoice }}
-          onClose={() => setShowViewer(false)}
+          data={viewerData}
+          onClose={() => {
+            setShowViewer(false);
+            setViewerData(null);
+          }}
         />
       )}
     </div>

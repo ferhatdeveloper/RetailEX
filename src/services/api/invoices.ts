@@ -201,6 +201,20 @@ export const TRCODES_BY_INVOICE_CATEGORY: Record<string, readonly number[]> = {
   Hizmet: [4, 9, 21, 24]
 };
 
+function normalizeInvoiceCategoryKey(invoiceCategory?: string): string | undefined {
+  const raw = String(invoiceCategory || '').trim();
+  if (!raw) return undefined;
+  const key = raw.toLocaleLowerCase('tr');
+  if (['alis', 'alış', 'purchase', 'purchases', 'buy'].includes(key)) return 'Alis';
+  if (['satis', 'satış', 'sales', 'sale'].includes(key)) return 'Satis';
+  if (['iade', 'return', 'returns'].includes(key)) return 'Iade';
+  if (['irsaliye', 'waybill', 'dispatch'].includes(key)) return 'Irsaliye';
+  if (['siparis', 'sipariş', 'order', 'orders'].includes(key)) return 'Siparis';
+  if (['teklif', 'quote', 'quotation'].includes(key)) return 'Teklif';
+  if (['hizmet', 'service', 'services'].includes(key)) return 'Hizmet';
+  return raw;
+}
+
 function defaultFicheTypeByCategory(invoiceCategory?: string): string | null {
   switch (invoiceCategory) {
     case 'Alis':
@@ -1162,6 +1176,8 @@ export const invoicesAPI = {
     customerId?: string;
     invoiceCategory?: string;
     invoiceType?: number;
+    firmNr?: string | number;
+    periodNr?: string | number;
   }): Promise<{ data: Invoice[]; total: number; page: number; pageSize: number; totalPages: number }> {
     const {
       page = 1,
@@ -1176,8 +1192,9 @@ export const invoicesAPI = {
     } = options;
 
     try {
-      const firmNr = ERP_SETTINGS.firmNr;
-      const periodNr = ERP_SETTINGS.periodNr;
+      const firmNr = options.firmNr ?? ERP_SETTINGS.firmNr;
+      const periodNr = options.periodNr ?? ERP_SETTINGS.periodNr;
+      const categoryKey = normalizeInvoiceCategoryKey(invoiceCategory);
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -1190,9 +1207,9 @@ export const invoicesAPI = {
 
         if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
           baseFilters.trcode = `eq.${String(invoiceType)}`;
-        } else if (invoiceCategory) {
-          const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[invoiceCategory] || [])];
-          const fallbackFicheType = defaultFicheTypeByCategory(invoiceCategory);
+        } else if (categoryKey) {
+          const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
+          const fallbackFicheType = defaultFicheTypeByCategory(categoryKey);
           if (trcodes.length > 0 && fallbackFicheType) {
             baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.eq.${fallbackFicheType})`;
           } else if (trcodes.length > 0) {
@@ -1252,9 +1269,9 @@ export const invoicesAPI = {
         sql += ` AND trcode::text = $${paramIndex}::text`;
         params.push(String(invoiceType));
         paramIndex++;
-      } else if (invoiceCategory) {
-        const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[invoiceCategory] || [])];
-        const fallbackFicheType = defaultFicheTypeByCategory(invoiceCategory);
+      } else if (categoryKey) {
+        const trcodes = [...(TRCODES_BY_INVOICE_CATEGORY[categoryKey] || [])];
+        const fallbackFicheType = defaultFicheTypeByCategory(categoryKey);
 
         if (trcodes.length > 0) {
           // Legacy/taşınmış bazı kayıtlarda trcode boş/0 kalabiliyor.
@@ -1269,7 +1286,7 @@ export const invoicesAPI = {
         } else {
           // Fallback to fiche_type if unknown category
           let ficheType = 'sales_invoice';
-          if (invoiceCategory === 'Alis') ficheType = 'purchase_invoice';
+          if (categoryKey === 'Alis') ficheType = 'purchase_invoice';
           sql += ` AND fiche_type::text = $${paramIndex}::text`;
           params.push(ficheType);
           paramIndex++;
