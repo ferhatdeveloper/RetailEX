@@ -22,11 +22,18 @@ export function InventoryReport() {
         min_stock: true,
         brand: true,
         cost: true,
+        price: true,
         total_cost: true,
+        total_sales_value: true,
     });
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const t = (key: string, fallback: string) => {
+        const value = tm(key as any);
+        if (!value || value === key) return fallback;
+        return value;
+    };
 
     useEffect(() => {
         let cancelled = false;
@@ -54,6 +61,17 @@ export function InventoryReport() {
     }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
     const columnHelper = createColumnHelper<Product>();
+    const totals = useMemo(() => {
+        const totalStockUnits = products.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
+        const totalInventoryCostValue = products.reduce((acc, p) => acc + ((Number(p.cost) || 0) * (Number(p.stock) || 0)), 0);
+        const totalInventorySalesValue = products.reduce((acc, p) => acc + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
+        return {
+            totalStockUnits,
+            totalInventoryCostValue,
+            totalInventorySalesValue
+        };
+    }, [products]);
+
     const columns = useMemo<ColumnDef<Product, any>[]>(() => [
         columnHelper.accessor('code', {
             header: tm('materialCode'),
@@ -88,11 +106,22 @@ export function InventoryReport() {
             cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
             size: 140
         }),
+        columnHelper.accessor('price', {
+            header: t('salePrice', 'Satış Fiyatı'),
+            cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
+            size: 140
+        }),
         columnHelper.accessor(row => (row.cost || 0) * (row.stock || 0), {
             id: 'total_cost',
             header: tm('totalValue') || 'Toplam Değer',
             cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
             size: 160
+        }),
+        columnHelper.accessor(row => (row.price || 0) * (row.stock || 0), {
+            id: 'total_sales_value',
+            header: t('totalSalesValue', 'Toplam Satış Değeri'),
+            cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
+            size: 180
         }),
     ], [tm, currency]);
 
@@ -105,7 +134,9 @@ export function InventoryReport() {
         min_stock: tm('minStock') || 'Minimum Stok',
         brand: tm('brand') || 'Marka',
         cost: tm('purchasePrice') || 'Alış Fiyatı',
+        price: t('salePrice', 'Satış Fiyatı'),
         total_cost: tm('totalValue') || 'Toplam Değer',
+        total_sales_value: t('totalSalesValue', 'Toplam Satış Değeri'),
     };
 
     return (
@@ -182,7 +213,7 @@ export function InventoryReport() {
                         <div className="flex flex-col">
                             <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{tm('totalStockUnits') || 'Toplam Stok Adet'}</span>
                             <span className="text-lg font-black text-blue-900">
-                                {products.reduce((acc, p) => acc + (p.stock || 0), 0).toLocaleString()}
+                                {totals.totalStockUnits.toLocaleString()}
                             </span>
                         </div>
                         <div className="w-px h-8 bg-blue-200"></div>
@@ -196,7 +227,13 @@ export function InventoryReport() {
                     <div className="bg-white px-6 py-2 rounded-xl border border-blue-200 shadow-sm flex flex-col items-end">
                         <span className="text-xs text-blue-500 font-bold uppercase">{tm('totalInventoryValue') || 'Envanter Toplam Alış Değeri'}</span>
                         <span className="text-2xl font-black text-blue-700">
-                            {products.reduce((acc, p) => acc + ((p.cost || 0) * (p.stock || 0)), 0).toLocaleString()} <span className="text-sm font-bold opacity-70">{currency}</span>
+                            {totals.totalInventoryCostValue.toLocaleString()} <span className="text-sm font-bold opacity-70">{currency}</span>
+                        </span>
+                    </div>
+                    <div className="bg-white px-6 py-2 rounded-xl border border-green-200 shadow-sm flex flex-col items-end">
+                        <span className="text-xs text-green-600 font-bold uppercase">{t('totalInventorySalesValue', 'Envanter Toplam Satış Değeri')}</span>
+                        <span className="text-2xl font-black text-green-700">
+                            {totals.totalInventorySalesValue.toLocaleString()} <span className="text-sm font-bold opacity-70">{currency}</span>
                         </span>
                     </div>
                 </div>
