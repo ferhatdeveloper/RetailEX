@@ -1,6 +1,17 @@
 ﻿import { X, ZoomIn, ZoomOut, Monitor, Moon, Sun, ArrowLeftRight } from 'lucide-react';
 import { useState } from 'react';
 
+const ZOOM_MIN = 50;
+const ZOOM_MAX = 200;
+const ZOOM_STEP = 10;
+const ZOOM_DEFAULT = 100;
+
+function normalizeZoomLevel(rawValue: number): number {
+  if (!Number.isFinite(rawValue)) return ZOOM_DEFAULT;
+  const stepped = Math.round(rawValue / ZOOM_STEP) * ZOOM_STEP;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, stepped));
+}
+
 // Layout order types
 export type LayoutOrder =
   // 3 Kolonlu Klasik Düzenler
@@ -81,8 +92,7 @@ export function ScreenSettingsModal({
   const [layoutCategory, setLayoutCategory] = useState<'3col' | '2col' | 'vertical' | 'special'>('3col');
 
   const handleZoomChange = (newZoom: number) => {
-    setZoomLevel(newZoom);
-    localStorage.setItem('retailos_zoom_level', newZoom.toString());
+    setZoomLevel(normalizeZoomLevel(newZoom));
   };
 
   return (
@@ -270,8 +280,8 @@ export function ScreenSettingsModal({
 
                 <div className="flex items-center justify-center gap-3 mb-4">
                   <button
-                    onClick={() => handleZoomChange(Math.max(50, zoomLevel - 10))}
-                    disabled={zoomLevel <= 50}
+                    onClick={() => handleZoomChange(zoomLevel - ZOOM_STEP)}
+                    disabled={zoomLevel <= ZOOM_MIN}
                     className={`w-12 h-12 flex items-center justify-center rounded-lg transition-colors ${darkMode
                       ? 'bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed'
                       : 'bg-white hover:bg-gray-50 shadow disabled:opacity-30 disabled:cursor-not-allowed'
@@ -281,7 +291,7 @@ export function ScreenSettingsModal({
                   </button>
 
                   <button
-                    onClick={() => handleZoomChange(100)}
+                    onClick={() => handleZoomChange(ZOOM_DEFAULT)}
                     className={`px-6 py-2.5 rounded-lg transition-colors font-medium ${darkMode
                       ? 'bg-blue-600 hover:bg-blue-700 text-white'
                       : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
@@ -291,8 +301,8 @@ export function ScreenSettingsModal({
                   </button>
 
                   <button
-                    onClick={() => handleZoomChange(Math.min(200, zoomLevel + 10))}
-                    disabled={zoomLevel >= 200}
+                    onClick={() => handleZoomChange(zoomLevel + ZOOM_STEP)}
+                    disabled={zoomLevel >= ZOOM_MAX}
                     className={`w-12 h-12 flex items-center justify-center rounded-lg transition-colors ${darkMode
                       ? 'bg-gray-700 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed'
                       : 'bg-white hover:bg-gray-50 shadow disabled:opacity-30 disabled:cursor-not-allowed'
@@ -304,18 +314,18 @@ export function ScreenSettingsModal({
 
                 <input
                   type="range"
-                  min="50"
-                  max="200"
-                  step="10"
+                  min={ZOOM_MIN}
+                  max={ZOOM_MAX}
+                  step={ZOOM_STEP}
                   value={zoomLevel}
                   onChange={(e) => handleZoomChange(parseInt(e.target.value))}
                   className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${darkMode ? 'bg-gray-700 accent-blue-500' : 'bg-gray-200 accent-blue-600'
                     }`}
                 />
                 <div className={`flex justify-between text-xs mt-2 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                  <span>50%</span>
-                  <span>100%</span>
-                  <span>200%</span>
+                  <span>{ZOOM_MIN}%</span>
+                  <span>{ZOOM_DEFAULT}%</span>
+                  <span>{ZOOM_MAX}%</span>
                 </div>
               </div>
 

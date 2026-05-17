@@ -49,6 +49,18 @@ import {
 import { NeonLogo } from '../ui/NeonLogo';
 import type { NeonLogoProductLine } from '../ui/NeonLogo';
 
+const ZOOM_MIN = 50;
+const ZOOM_MAX = 200;
+const ZOOM_STEP = 10;
+const ZOOM_DEFAULT = 100;
+
+function normalizeZoomLevel(rawValue: unknown): number {
+  const parsed = Number.parseInt(String(rawValue ?? ''), 10);
+  if (!Number.isFinite(parsed)) return ZOOM_DEFAULT;
+  const stepped = Math.round(parsed / ZOOM_STEP) * ZOOM_STEP;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, stepped));
+}
+
 /** Lazy chunk yüklenirken — modüle göre marka (RetailEx / RestEx / ClinicEx) */
 function ModuleLazySplash({
   productLine,
@@ -429,8 +441,13 @@ export function MainLayout({
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('retailos_zoom_level');
-    return saved ? parseInt(saved) : 100; // Varsayılan %100
+    return normalizeZoomLevel(saved);
   });
+  const applyZoomLevel = useCallback((value: number) => {
+    const normalized = normalizeZoomLevel(value);
+    setZoomLevel(normalized);
+    localStorage.setItem('retailos_zoom_level', String(normalized));
+  }, []);
 
   // Yönetim modülü sidebar açık/kapalı — ManagementModule'dan event ile gelir.
   // Doğrudan tetiklemiyoruz; sadece üst bar toggle butonunun ikonu için izliyoruz.
@@ -1286,11 +1303,9 @@ export function MainLayout({
                   <button
                     type="button"
                     onClick={() => {
-                      const next = Math.max(50, zoomLevel - 10);
-                      setZoomLevel(next);
-                      localStorage.setItem('retailos_zoom_level', String(next));
+                      applyZoomLevel(zoomLevel - ZOOM_STEP);
                     }}
-                    disabled={zoomLevel <= 50}
+                    disabled={zoomLevel <= ZOOM_MIN}
                     className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
                     title={tm('zoomOut') || 'Küçült'}
                     aria-label={tm('zoomOut') || 'Küçült'}
@@ -1300,8 +1315,7 @@ export function MainLayout({
                   <button
                     type="button"
                     onClick={() => {
-                      setZoomLevel(100);
-                      localStorage.setItem('retailos_zoom_level', '100');
+                      applyZoomLevel(ZOOM_DEFAULT);
                     }}
                     className="hidden sm:inline-block px-1.5 text-[10px] font-mono tabular-nums leading-none min-w-[40px] text-center hover:bg-white/15 transition-colors"
                     title={tm('zoomReset') || 'Sıfırla (%100)'}
@@ -1312,11 +1326,9 @@ export function MainLayout({
                   <button
                     type="button"
                     onClick={() => {
-                      const next = Math.min(200, zoomLevel + 10);
-                      setZoomLevel(next);
-                      localStorage.setItem('retailos_zoom_level', String(next));
+                      applyZoomLevel(zoomLevel + ZOOM_STEP);
                     }}
-                    disabled={zoomLevel >= 200}
+                    disabled={zoomLevel >= ZOOM_MAX}
                     className="px-2 py-1.5 sm:py-2 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors active:scale-95 min-h-[44px] min-w-[36px] flex items-center justify-center"
                     title={tm('zoomIn') || 'Büyüt'}
                     aria-label={tm('zoomIn') || 'Büyüt'}
@@ -1776,7 +1788,7 @@ export function MainLayout({
           fontWeight={fontWeight}
           setFontWeight={setFontWeight}
           zoomLevel={zoomLevel}
-          setZoomLevel={setZoomLevel}
+          setZoomLevel={applyZoomLevel}
           cartViewMode={cartViewMode}
           setCartViewMode={setCartViewMode}
           buttonColorStyle={buttonColorStyle}

@@ -585,6 +585,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue(),
       size: 140
     }),
+    columnHelper.accessor('code', {
+      header: tm('invThProductCode').toUpperCase(),
+      cell: info => {
+        const value = info.getValue();
+        return value != null && String(value).trim() !== '' ? String(value) : '—';
+      },
+      size: 130
+    }),
     columnHelper.accessor('name', {
       header: tm('productName').toUpperCase(),
       cell: info => info.getValue(),
@@ -1042,6 +1050,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 text-sm">
               {[
                 [tm('barcode').toUpperCase(), mobileActionProduct.barcode || '—'],
+                [tm('invThProductCode').toUpperCase(), mobileActionProduct.code || '—'],
                 [tm('productName').toUpperCase(), mobileActionProduct.name || '—'],
                 [tm('category').toUpperCase(), mobileActionProduct.category || '—'],
                 ...(showPurchasePricing
