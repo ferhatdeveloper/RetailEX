@@ -15,7 +15,7 @@ const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 
 /** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
 const PRODUCT_REPORT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,cost,purchase_price,unit,brand';
+  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active';
 const PRODUCT_REPORT_LIST_SELECT_SQL = PRODUCT_REPORT_LIST_SELECT.replace(/,/g, ', ');
 
 /** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
