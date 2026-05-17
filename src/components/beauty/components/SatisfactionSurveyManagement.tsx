@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Card,
     Button,
@@ -26,11 +26,14 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
 import type {
+    BeautyAppointment,
     BeautySatisfactionSurvey,
     BeautySatisfactionQuestion,
     BeautySatisfactionLabels,
     SatisfactionLangCode,
     SatisfactionQuestionType,
+    AppointmentStatus,
+    appointmentStatusMatches,
 } from '../../../types/beauty';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -39,6 +42,8 @@ import {
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
 import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { formatLocalYmd } from '../../../utils/dateLocal';
+import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 
 const LANGS: SatisfactionLangCode[] = ['tr', 'en', 'ar', 'ku'];
 
@@ -46,6 +51,7 @@ const EMPTY_LABELS = (): BeautySatisfactionLabels => ({ tr: '', en: '', ar: '', 
 
 export function SatisfactionSurveyManagement() {
     const { tm, t } = useLanguage();
+    const dateLocale = tm('localeCode');
     const [surveys, setSurveys] = useState<BeautySatisfactionSurvey[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,6 +61,9 @@ export function SatisfactionSurveyManagement() {
     const [questions, setQuestions] = useState<BeautySatisfactionQuestion[]>([]);
     const [savingSurvey, setSavingSurvey] = useState(false);
     const [savingQ, setSavingQ] = useState<string | null>(null);
+    const [pendingAppointments, setPendingAppointments] = useState<BeautyAppointment[]>([]);
+    const [pendingLoading, setPendingLoading] = useState(false);
+    const [surveyTarget, setSurveyTarget] = useState<BeautyAppointment | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -75,6 +84,41 @@ export function SatisfactionSurveyManagement() {
     useEffect(() => {
         void load();
     }, [load]);
+
+    const loadPendingAppointments = useCallback(async () => {
+        setPendingLoading(true);
+        try {
+            const today = formatLocalYmd(new Date());
+            const all = await beautyService.getAppointmentsInRange(today, today);
+            const completedWithCustomer = all
+                .filter(a => appointmentStatusMatches(a.status, AppointmentStatus.COMPLETED))
+                .filter(a => !!String(a.customer_id ?? a.client_id ?? '').trim());
+            if (!completedWithCustomer.length) {
+                setPendingAppointments([]);
+                return;
+            }
+            const feedbackAptIds = await beautyService.getFeedbackAppointmentIds(
+                completedWithCustomer.map(a => a.id),
+            );
+            const pending = completedWithCustomer
+                .filter(a => !feedbackAptIds.has(String(a.id)))
+                .sort((a, b) => {
+                    const ad = `${a.appointment_date ?? a.date ?? ''}T${(a.appointment_time ?? a.time ?? '00:00').slice(0, 5)}:00`;
+                    const bd = `${b.appointment_date ?? b.date ?? ''}T${(b.appointment_time ?? b.time ?? '00:00').slice(0, 5)}:00`;
+                    return new Date(bd).getTime() - new Date(ad).getTime();
+                });
+            setPendingAppointments(pending);
+        } catch (e) {
+            logger.crudError('SatisfactionSurveyManagement', 'loadPendingAppointments', e);
+            setPendingAppointments([]);
+        } finally {
+            setPendingLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadPendingAppointments();
+    }, [loadPendingAppointments]);
 
     useEffect(() => {
         if (!selectedId) {
@@ -223,6 +267,22 @@ export function SatisfactionSurveyManagement() {
         { value: 'yes_no' as const, label: tm('bSurveyTypeYesNo') },
     ];
 
+    const pendingSummaryText = useMemo(
+        () =>
+            tm('bSurveyPendingSummary')
+                .replace('{pending}', String(pendingAppointments.length)),
+        [pendingAppointments.length, tm],
+    );
+
+    const pendingItemLabel = (apt: BeautyAppointment) => {
+        const customer = String(apt.customer_name ?? tm('bCustomerFallbackName')).trim();
+        const service = String(apt.service_name ?? '—').trim();
+        const dateRaw = apt.appointment_date ?? apt.date;
+        const timeRaw = (apt.appointment_time ?? apt.time ?? '').slice(0, 5);
+        const when = dateRaw ? new Date(dateRaw).toLocaleDateString(dateLocale) : '—';
+        return `${customer} · ${service} · ${when}${timeRaw ? ` ${timeRaw}` : ''}`;
+    };
+
     return (
         <div className="flex min-h-0 w-full flex-col" style={{ backgroundColor: RETAILEX_PAGE_BG }}>
             <div className="w-full px-4 pb-4 pt-2">
@@ -259,6 +319,61 @@ export function SatisfactionSurveyManagement() {
                         <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
                             {tm('bSurveyNew')}
                         </Button>
+                    </div>
+
+                    <div className="border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
+                        <Card
+                            bordered
+                            size="small"
+                            className="!shadow-none"
+                            style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                            title={
+                                <Space size={8}>
+                                    <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
+                                        {tm('bSurveyPendingTitle')}
+                                    </Typography.Text>
+                                    <Tag color={pendingAppointments.length > 0 ? 'warning' : 'default'}>
+                                        {pendingAppointments.length}
+                                    </Tag>
+                                </Space>
+                            }
+                            extra={
+                                <Button size="small" onClick={() => void loadPendingAppointments()} loading={pendingLoading}>
+                                    {tm('refresh')}
+                                </Button>
+                            }
+                        >
+                            <Space direction="vertical" size={8} className="w-full">
+                                <Typography.Text type="secondary" className="text-xs">
+                                    {pendingSummaryText}
+                                </Typography.Text>
+                                {pendingAppointments.length === 0 ? (
+                                    <Typography.Text type="secondary">{tm('bSurveyPendingEmpty')}</Typography.Text>
+                                ) : (
+                                    <List
+                                        size="small"
+                                        dataSource={pendingAppointments}
+                                        rowKey={item => item.id}
+                                        renderItem={apt => (
+                                            <List.Item
+                                                actions={[
+                                                    <Button
+                                                        key={`ask-${apt.id}`}
+                                                        type="primary"
+                                                        size="small"
+                                                        onClick={() => setSurveyTarget(apt)}
+                                                    >
+                                                        {tm('bPanelRunSurvey')}
+                                                    </Button>,
+                                                ]}
+                                            >
+                                                <Typography.Text>{pendingItemLabel(apt)}</Typography.Text>
+                                            </List.Item>
+                                        )}
+                                    />
+                                )}
+                            </Space>
+                        </Card>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-12">
@@ -518,6 +633,22 @@ export function SatisfactionSurveyManagement() {
                     </div>
                 </Card>
             </div>
+            {surveyTarget ? (
+                <BeautyFeedbackSurveyModal
+                    open
+                    onClose={() => setSurveyTarget(null)}
+                    onSaved={() => {
+                        void loadPendingAppointments();
+                    }}
+                    customerId={String(surveyTarget.customer_id ?? surveyTarget.client_id ?? '')}
+                    customerName={surveyTarget.customer_name ?? undefined}
+                    appointmentId={surveyTarget.id}
+                    appointmentSubtitle={
+                        [surveyTarget.customer_name, surveyTarget.service_name].filter(Boolean).join(' — ') || null
+                    }
+                    variant="appointment_completed"
+                />
+            ) : null}
         </div>
     );
 }
