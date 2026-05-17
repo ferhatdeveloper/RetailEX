@@ -2287,6 +2287,30 @@ export const beautyService = {
     async voidPaidBeautySalesLinkedToAppointment(appointmentId: string): Promise<void> {
         const aid = String(appointmentId ?? '').trim();
         if (!aid) return;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const rows = await postgrest.get<{ id: string }[]>(
+                `/rex_${fn}_${pn}_beauty_sales`,
+                {
+                    select: 'id',
+                    payment_status: 'eq.paid',
+                    notes: `like.*rex_appt:${aid}*`,
+                    limit: 500,
+                },
+                { schema: 'beauty' }
+            );
+            for (const row of rows) {
+                if (!row?.id) continue;
+                await postgrest.patch(
+                    `/rex_${fn}_${pn}_beauty_sales?id=eq.${encodeURIComponent(String(row.id))}`,
+                    { payment_status: 'cancelled' },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return;
+        }
         const table = postgres.getMovementTableName('beauty_sales', 'beauty');
         const needle = `%rex_appt:${aid}%`;
         await postgres.query(
@@ -2367,6 +2391,21 @@ export const beautyService = {
 
     /** Yalnızca video / tele alanları — diğer sütunlara dokunmaz */
     async patchAppointmentTele(id: string, teleMeetingUrl: string | null, apptType = 'tele'): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(id)}`,
+                {
+                    tele_meeting_url: teleMeetingUrl,
+                    type: apptType,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         await postgres.query(
             `UPDATE ${table} SET tele_meeting_url = $2, type = $3, updated_at = NOW() WHERE id = $1`,
@@ -2611,10 +2650,63 @@ export const beautyService = {
         shots_used: number;
         expected_shots?: number;
     }): Promise<void> {
-        const usageTable = postgres.getMovementTableName('beauty_device_usage', 'beauty');
         const isExcessive = usage.expected_shots
             ? usage.shots_used > usage.expected_shots * 1.2
             : false;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_device_usage`,
+                [
+                    {
+                        device_id: usage.device_id,
+                        appointment_id: usage.appointment_id,
+                        customer_id: pgUuidOrNull(usage.customer_id),
+                        specialist_id: pgUuidOrNull(usage.specialist_id),
+                        body_region_id: pgUuidOrNull(usage.body_region_id),
+                        shots_used: usage.shots_used,
+                        expected_shots: usage.expected_shots ?? 0,
+                        is_excessive: isExcessive,
+                        usage_date: new Date().toISOString().slice(0, 10),
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            const deviceRows = await postgrest.get<{ id: string; total_shots?: number }[]>(
+                `/rex_${fn}_beauty_devices`,
+                { select: 'id,total_shots', id: `eq.${usage.device_id}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            const device = deviceRows[0];
+            if (device?.id) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_devices?id=eq.${encodeURIComponent(device.id)}`,
+                    {
+                        total_shots: Math.max(0, Number(device.total_shots ?? 0) + Number(usage.shots_used ?? 0)),
+                        updated_at: new Date().toISOString(),
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            if (isExcessive) {
+                await postgrest.post(
+                    `/rex_${fn}_${pn}_beauty_device_alerts`,
+                    [
+                        {
+                            device_id: usage.device_id,
+                            alert_type: 'excessive_shots',
+                            message: `Bölge için beklenen atım sayısı aşıldı: ${usage.shots_used} atım kullanıldı`,
+                            severity: 'warning',
+                        },
+                    ],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return;
+        }
+        const usageTable = postgres.getMovementTableName('beauty_device_usage', 'beauty');
 
         await postgres.query(`
             INSERT INTO ${usageTable}
@@ -2775,10 +2867,34 @@ export const beautyService = {
     },
 
     async purchasePackage(purchase: Partial<BeautyPackagePurchase>): Promise<string> {
-        const saleTable = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
         const id = uuidv4();
         const expiry = purchase.expiry_date ??
             new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_package_purchases`,
+                [
+                    {
+                        id,
+                        customer_id: pgUuidOrNull(purchase.customer_id),
+                        package_id: pgUuidOrNull(purchase.package_id),
+                        total_sessions: purchase.total_sessions ?? 1,
+                        used_sessions: 0,
+                        remaining_sessions: purchase.total_sessions ?? 1,
+                        sale_price: purchase.sale_price ?? 0,
+                        purchase_date: new Date().toISOString().slice(0, 10),
+                        expiry_date: expiry,
+                        status: 'active',
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
+        const saleTable = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
         await postgres.query(`
             INSERT INTO ${saleTable}
                 (id, customer_id, package_id, total_sessions, used_sessions, remaining_sessions,
@@ -3159,9 +3275,20 @@ export const beautyService = {
 
     async convertLeadToCustomer(leadId: string): Promise<string> {
         const lt = postgres.getCardTableName('beauty_leads', 'beauty');
-        const ct = postgres.getCardTableName('customers');
-        const leadRes = await postgres.query(`SELECT * FROM ${lt} WHERE id=$1`, [leadId]);
-        const lead = leadRes.rows[0] as BeautyLead;
+        let lead: BeautyLead | null = null;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<BeautyLead[]>(
+                `/rex_${fn}_beauty_leads`,
+                { select: '*', id: `eq.${leadId}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            lead = rows[0] ?? null;
+        } else {
+            const leadRes = await postgres.query(`SELECT * FROM ${lt} WHERE id=$1`, [leadId]);
+            lead = (leadRes.rows[0] as BeautyLead | undefined) ?? null;
+        }
         if (!lead) throw new Error('Lead bulunamadı');
 
         const customerId = await beautyService.createCustomer({
@@ -3171,10 +3298,24 @@ export const beautyService = {
             notes: lead.notes,
         });
 
-        await postgres.query(
-            `UPDATE ${lt} SET status='converted', converted_customer_id=$1, updated_at=NOW() WHERE id=$2`,
-            [customerId, leadId]
-        );
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_leads?id=eq.${encodeURIComponent(leadId)}`,
+                {
+                    status: 'converted',
+                    converted_customer_id: customerId,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
+            await postgres.query(
+                `UPDATE ${lt} SET status='converted', converted_customer_id=$1, updated_at=NOW() WHERE id=$2`,
+                [customerId, leadId]
+            );
+        }
         return customerId;
     },
 
@@ -3246,6 +3387,16 @@ export const beautyService = {
     },
 
     async deactivateOtherSatisfactionSurveys(exceptId: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_satisfaction_surveys?id=neq.${encodeURIComponent(exceptId)}&is_active=eq.true`,
+                { is_active: false, updated_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
         await postgres.query(
             `UPDATE ${t} SET is_active = false, updated_at = NOW() WHERE id <> $1 AND is_active = true`,
@@ -3254,17 +3405,57 @@ export const beautyService = {
     },
 
     async createSatisfactionSurvey(data: Partial<BeautySatisfactionSurvey>): Promise<string> {
-        const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
         const id = uuidv4();
-        await postgres.query(
-            `INSERT INTO ${t} (id, name, is_active, sort_order) VALUES ($1,$2,$3,$4)`,
-            [id, data.name ?? 'Anket', data.is_active ?? false, data.sort_order ?? 0]
-        );
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_beauty_satisfaction_surveys`,
+                [
+                    {
+                        id,
+                        name: data.name ?? 'Anket',
+                        is_active: data.is_active ?? false,
+                        sort_order: data.sort_order ?? 0,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
+            const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
+            await postgres.query(
+                `INSERT INTO ${t} (id, name, is_active, sort_order) VALUES ($1,$2,$3,$4)`,
+                [id, data.name ?? 'Anket', data.is_active ?? false, data.sort_order ?? 0]
+            );
+        }
         if (data.is_active) await beautyService.deactivateOtherSatisfactionSurveys(id);
         return id;
     },
 
     async updateSatisfactionSurvey(id: string, data: Partial<BeautySatisfactionSurvey>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<BeautySatisfactionSurvey[]>(
+                `/rex_${fn}_beauty_satisfaction_surveys`,
+                { select: '*', id: `eq.${id}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            const row = rows[0];
+            if (!row) return;
+            const merged = {
+                name: data.name !== undefined ? data.name : row.name,
+                is_active: data.is_active !== undefined ? data.is_active : row.is_active,
+                sort_order: data.sort_order !== undefined ? data.sort_order : row.sort_order,
+            };
+            await postgrest.patch(
+                `/rex_${fn}_beauty_satisfaction_surveys?id=eq.${encodeURIComponent(id)}`,
+                { ...merged, updated_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            if (merged.is_active) await beautyService.deactivateOtherSatisfactionSurveys(id);
+            return;
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
         const { rows } = await postgres.query(`SELECT * FROM ${t} WHERE id = $1`, [id]);
         const row = rows[0] as BeautySatisfactionSurvey | undefined;
@@ -3282,33 +3473,88 @@ export const beautyService = {
     },
 
     async deleteSatisfactionSurvey(id: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.delete(
+                `/rex_${fn}_beauty_satisfaction_surveys?id=eq.${encodeURIComponent(id)}`,
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_surveys', 'beauty');
         await postgres.query(`DELETE FROM ${t} WHERE id = $1`, [id]);
     },
 
     async createSatisfactionQuestion(data: Partial<BeautySatisfactionQuestion>): Promise<string> {
         if (!data.survey_id) throw new Error('createSatisfactionQuestion: survey_id gerekli');
-        const t = postgres.getCardTableName('beauty_satisfaction_questions', 'beauty');
         const id = uuidv4();
         const labels = data.labels_json ?? {};
-        await postgres.query(
-            `INSERT INTO ${t}
-                (id, survey_id, sort_order, question_type, scale_max, is_required, labels_json)
-             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-            [
-                id,
-                data.survey_id!,
-                data.sort_order ?? 0,
-                data.question_type ?? 'rating',
-                data.scale_max ?? 5,
-                data.is_required ?? true,
-                JSON.stringify(labels),
-            ]
-        );
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_beauty_satisfaction_questions`,
+                [
+                    {
+                        id,
+                        survey_id: data.survey_id!,
+                        sort_order: data.sort_order ?? 0,
+                        question_type: data.question_type ?? 'rating',
+                        scale_max: data.scale_max ?? 5,
+                        is_required: data.is_required ?? true,
+                        labels_json: labels,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
+            const t = postgres.getCardTableName('beauty_satisfaction_questions', 'beauty');
+            await postgres.query(
+                `INSERT INTO ${t}
+                    (id, survey_id, sort_order, question_type, scale_max, is_required, labels_json)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+                [
+                    id,
+                    data.survey_id!,
+                    data.sort_order ?? 0,
+                    data.question_type ?? 'rating',
+                    data.scale_max ?? 5,
+                    data.is_required ?? true,
+                    JSON.stringify(labels),
+                ]
+            );
+        }
         return id;
     },
 
     async updateSatisfactionQuestion(id: string, data: Partial<BeautySatisfactionQuestion>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<(BeautySatisfactionQuestion & { labels_json?: unknown })[]>(
+                `/rex_${fn}_beauty_satisfaction_questions`,
+                { select: '*', id: `eq.${id}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            const row = rows[0];
+            if (!row) return;
+            const curLabels = beautyService.parseSatisfactionLabels(row.labels_json);
+            const mergedLabels = data.labels_json !== undefined ? data.labels_json : curLabels;
+            await postgrest.patch(
+                `/rex_${fn}_beauty_satisfaction_questions?id=eq.${encodeURIComponent(id)}`,
+                {
+                    sort_order: data.sort_order !== undefined ? data.sort_order : row.sort_order,
+                    question_type: data.question_type !== undefined ? data.question_type : row.question_type,
+                    scale_max: data.scale_max !== undefined ? data.scale_max : row.scale_max,
+                    is_required: data.is_required !== undefined ? data.is_required : row.is_required,
+                    labels_json: mergedLabels,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_questions', 'beauty');
         const { rows } = await postgres.query(`SELECT * FROM ${t} WHERE id = $1`, [id]);
         const row = rows[0] as (BeautySatisfactionQuestion & { labels_json: unknown }) | undefined;
@@ -3332,6 +3578,15 @@ export const beautyService = {
     },
 
     async deleteSatisfactionQuestion(id: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.delete(
+                `/rex_${fn}_beauty_satisfaction_questions?id=eq.${encodeURIComponent(id)}`,
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_satisfaction_questions', 'beauty');
         await postgres.query(`DELETE FROM ${t} WHERE id = $1`, [id]);
     },
@@ -3352,12 +3607,37 @@ export const beautyService = {
     },
 
     async addFeedback(feedback: Partial<BeautyCustomerFeedback>): Promise<void> {
-        const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const id = uuidv4();
         const rawAnswers =
             feedback.survey_answers && feedback.survey_answers.length
                 ? feedback.survey_answers
                 : null;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_customer_feedback`,
+                [
+                    {
+                        id,
+                        appointment_id: pgUuidOrNull(feedback.appointment_id),
+                        customer_id: pgUuidOrNull(feedback.customer_id),
+                        service_rating: feedback.service_rating ?? 5,
+                        staff_rating: feedback.staff_rating ?? 5,
+                        cleanliness_rating: feedback.cleanliness_rating ?? 5,
+                        overall_rating: feedback.overall_rating ?? 5,
+                        comment: feedback.comment ?? null,
+                        would_recommend: feedback.would_recommend ?? true,
+                        survey_id: pgUuidOrNull(feedback.survey_id),
+                        survey_answers: rawAnswers,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
+        const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         await postgres.query(`
             INSERT INTO ${table}
                 (id, appointment_id, customer_id, service_rating, staff_rating,
@@ -3392,6 +3672,47 @@ export const beautyService = {
     async upsertFeedbackForAppointment(
         feedback: Partial<BeautyCustomerFeedback> & { appointment_id: string; customer_id: string }
     ): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const existingRows = await postgrest.get<BeautyCustomerFeedback[]>(
+                `/rex_${fn}_${pn}_beauty_customer_feedback`,
+                {
+                    select: '*',
+                    appointment_id: `eq.${feedback.appointment_id}`,
+                    order: 'created_at.desc',
+                    limit: 1,
+                },
+                { schema: 'beauty' }
+            );
+            const existing = existingRows[0];
+            const mergedAnswers =
+                feedback.survey_answers !== undefined
+                    ? feedback.survey_answers && feedback.survey_answers.length
+                        ? feedback.survey_answers
+                        : null
+                    : existing?.survey_answers ?? null;
+            if (existing?.id) {
+                await postgrest.patch(
+                    `/rex_${fn}_${pn}_beauty_customer_feedback?id=eq.${encodeURIComponent(existing.id)}`,
+                    {
+                        service_rating: feedback.service_rating ?? existing.service_rating ?? 5,
+                        staff_rating: feedback.staff_rating ?? existing.staff_rating ?? 5,
+                        cleanliness_rating: feedback.cleanliness_rating ?? existing.cleanliness_rating ?? 5,
+                        overall_rating: feedback.overall_rating ?? existing.overall_rating ?? 5,
+                        comment: feedback.comment ?? existing.comment ?? null,
+                        would_recommend: feedback.would_recommend ?? existing.would_recommend ?? true,
+                        survey_id: pgUuidOrNull(feedback.survey_id ?? existing.survey_id ?? null),
+                        survey_answers: mergedAnswers,
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await beautyService.addFeedback({ ...feedback, survey_answers: mergedAnswers ?? feedback.survey_answers });
+            }
+            return;
+        }
         const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const existing = await beautyService.getFeedbackForAppointment(feedback.appointment_id);
         const mergedAnswers =
@@ -3464,6 +3785,25 @@ export const beautyService = {
         const lt = postgres.getCardTableName('beauty_leads', 'beauty');
         const stamp = new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' });
         const block = `[${stamp}] ${line}`;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            for (const lead of leads) {
+                if (!lead?.id) continue;
+                const prev = (lead.notes != null ? String(lead.notes) : '').trim();
+                const next = prev ? `${prev}\n\n${block}` : block;
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_leads?id=eq.${encodeURIComponent(String(lead.id))}`,
+                    {
+                        notes: next,
+                        last_contact_date: new Date().toISOString().slice(0, 10),
+                        updated_at: new Date().toISOString(),
+                    },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return;
+        }
         for (const lead of leads) {
             const prev = (lead.notes != null ? String(lead.notes) : '').trim();
             const next = prev ? `${prev}\n\n${block}` : block;
@@ -4129,6 +4469,26 @@ export const beautyService = {
         userId: string | null,
         payload?: Record<string, unknown>
     ): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_audit_log`,
+                [
+                    {
+                        id: uuidv4(),
+                        table_name: tableName,
+                        record_id: pgUuidOrNull(recordId),
+                        action,
+                        user_id: pgUuidOrNull(userId),
+                        payload_json: payload ?? {},
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getMovementTableName('beauty_audit_log', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, table_name, record_id, action, user_id, payload_json)
@@ -4146,8 +4506,34 @@ export const beautyService = {
     },
 
     async upsertBranch(row: Partial<BeautyBranch> & { name: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_branches', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                name: row.name,
+                address: row.address ?? null,
+                phone: row.phone ?? null,
+                is_active: row.is_active ?? true,
+                sort_order: row.sort_order ?? 0,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_branches`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_branches?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_branches`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_branches', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, name, address, phone, is_active, sort_order, created_at)
              VALUES ($1,$2,$3,$4,COALESCE($5,true),COALESCE($6,0),NOW())
@@ -4166,8 +4552,34 @@ export const beautyService = {
     },
 
     async upsertRoom(row: Partial<BeautyRoom> & { name: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_rooms', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                branch_id: pgUuidOrNull(row.branch_id),
+                name: row.name,
+                capacity: row.capacity ?? 1,
+                is_active: row.is_active ?? true,
+                sort_order: row.sort_order ?? 0,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_rooms`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_rooms?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_rooms`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_rooms', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, branch_id, name, capacity, is_active, sort_order, created_at)
              VALUES ($1,$2,$3,COALESCE($4,1),COALESCE($5,true),COALESCE($6,0),NOW())
@@ -4180,6 +4592,35 @@ export const beautyService = {
     },
 
     async getPortalSettings(): Promise<BeautyPortalSettings | null> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<BeautyPortalSettings[]>(
+                `/rex_${fn}_beauty_portal_settings`,
+                { select: '*', order: 'created_at.asc', limit: 1 },
+                { schema: 'beauty' }
+            );
+            if (!rows[0]) {
+                const generatedToken = uuidv4().replace(/-/g, '').slice(0, 32);
+                await postgrest.post(
+                    `/rex_${fn}_beauty_portal_settings`,
+                    [{
+                        id: uuidv4(),
+                        online_booking_enabled: false,
+                        public_token: generatedToken,
+                        reminder_hours_before: 24,
+                    }],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+                const refreshed = await postgrest.get<BeautyPortalSettings[]>(
+                    `/rex_${fn}_beauty_portal_settings`,
+                    { select: '*', order: 'created_at.asc', limit: 1 },
+                    { schema: 'beauty' }
+                );
+                return refreshed[0] ?? null;
+            }
+            return rows[0] ?? null;
+        }
         const t = postgres.getCardTableName('beauty_portal_settings', 'beauty');
         const { rows } = await postgres.query(`SELECT * FROM ${t} ORDER BY created_at LIMIT 1`);
         if (!rows[0]) {
@@ -4195,11 +4636,39 @@ export const beautyService = {
     },
 
     async updatePortalSettings(data: Partial<BeautyPortalSettings>): Promise<void> {
-        const t = postgres.getCardTableName('beauty_portal_settings', 'beauty');
         const cur = await beautyService.getPortalSettings();
         const id = cur?.id;
         if (!id) return;
         const merged: BeautyPortalSettings = { ...cur, ...data } as BeautyPortalSettings;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_portal_settings?id=eq.${encodeURIComponent(id)}`,
+                {
+                    online_booking_enabled: merged.online_booking_enabled,
+                    public_slug: merged.public_slug ?? null,
+                    public_token: merged.public_token,
+                    reminder_hours_before: merged.reminder_hours_before ?? 24,
+                    sms_template: merged.sms_template ?? null,
+                    whatsapp_template: merged.whatsapp_template ?? null,
+                    sms_user: merged.sms_user ?? null,
+                    sms_password: merged.sms_password ?? null,
+                    sms_sender: merged.sms_sender ?? null,
+                    whatsapp_provider: (merged.whatsapp_provider || 'NONE').toString().toUpperCase(),
+                    whatsapp_base_url: merged.whatsapp_base_url ?? null,
+                    whatsapp_token: merged.whatsapp_token ?? null,
+                    whatsapp_instance_id: merged.whatsapp_instance_id ?? null,
+                    whatsapp_phone_id: merged.whatsapp_phone_id ?? null,
+                    default_reminder_channel: (merged.default_reminder_channel || 'sms').toString().toLowerCase(),
+                    allow_staff_slot_overlap: merged.allow_staff_slot_overlap ?? false,
+                    updated_at: new Date().toISOString(),
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
+        const t = postgres.getCardTableName('beauty_portal_settings', 'beauty');
         await postgres.query(
             `UPDATE ${t} SET
                online_booking_enabled = $2,
@@ -4279,13 +4748,122 @@ export const beautyService = {
      * Bildirim kuyruğundaki bekleyenleri Atak SMS veya Evolution/Meta ile gönderir (whatshapp akışı).
      */
     async processPendingNotifications(limit = 15): Promise<{ processed: number; errors: string[] }> {
+        const settings = (await beautyService.getPortalSettings()) as ClinicMessagingPortalConfig | null;
+        if (!settings) return { processed: 0, errors: ['Portal ayarı yok'] };
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const pending = await postgrest.get<Record<string, unknown>[]>(
+                `/rex_${fn}_${pn}_beauty_notification_queue`,
+                {
+                    select: '*',
+                    status: 'eq.pending',
+                    order: 'created_at.asc',
+                    limit,
+                },
+                { schema: 'beauty' }
+            );
+            const errors: string[] = [];
+            let processed = 0;
+            for (const row of pending) {
+                const qid = String(row.id ?? '');
+                const appointmentId = row.appointment_id ? String(row.appointment_id) : null;
+                const channel = String(row.channel || 'sms').toLowerCase();
+                if (!qid) continue;
+                if (!appointmentId) {
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_beauty_notification_queue?id=eq.${encodeURIComponent(qid)}`,
+                        { status: 'failed', error_text: 'appointment_id yok' },
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                    errors.push(`${qid}: appointment_id yok`);
+                    continue;
+                }
+                try {
+                    const apptRows = await postgrest.get<Record<string, unknown>[]>(
+                        `/rex_${fn}_${pn}_beauty_appointments`,
+                        {
+                            select: 'appointment_date,appointment_time,service_id,client_id',
+                            id: `eq.${appointmentId}`,
+                            limit: 1,
+                        },
+                        { schema: 'beauty' }
+                    );
+                    const appt = apptRows[0];
+                    if (!appt) throw new Error('Randevu bulunamadı');
+                    const customerId = String(appt.client_id ?? '').trim();
+                    let customerName = 'Musteri';
+                    let customerPhone = '';
+                    if (customerId) {
+                        const customerRows = await postgrest.get<Record<string, unknown>[]>(
+                            `/rex_${fn}_customers`,
+                            { select: 'name,phone', id: `eq.${customerId}`, limit: 1 },
+                            { schema: 'public' }
+                        );
+                        if (customerRows[0]) {
+                            customerName = customerRows[0].name != null ? String(customerRows[0].name) : 'Musteri';
+                            customerPhone = customerRows[0].phone != null ? String(customerRows[0].phone).trim() : '';
+                        }
+                    }
+                    if (!customerPhone) throw new Error('Müşteri telefonu yok');
+                    let serviceName = 'Hizmet';
+                    const serviceId = String(appt.service_id ?? '').trim();
+                    if (serviceId) {
+                        const serviceRows = await postgrest.get<Record<string, unknown>[]>(
+                            `/rex_${fn}_beauty_services`,
+                            { select: 'name', id: `eq.${serviceId}`, limit: 1 },
+                            { schema: 'beauty' }
+                        );
+                        if (serviceRows[0]?.name != null) {
+                            serviceName = String(serviceRows[0].name);
+                        }
+                    }
+                    const timeStr = appt.appointment_time != null ? String(appt.appointment_time).slice(0, 5) : '';
+                    const ctx = {
+                        name: customerName,
+                        date: appt.appointment_date != null ? String(appt.appointment_date) : '',
+                        time: timeStr,
+                        service: serviceName,
+                    };
+                    if (channel === 'sms') {
+                        const text = buildReminderText(settings.sms_template ?? undefined, 'sms', ctx);
+                        const r = await sendAtakSms(settings, customerPhone, text);
+                        if (!r.success) throw new Error(r.error || 'SMS gönderilemedi');
+                    } else if (channel === 'whatsapp') {
+                        const text = buildReminderText(
+                            (settings.whatsapp_template ?? settings.sms_template) ?? undefined,
+                            'whatsapp',
+                            ctx
+                        );
+                        const r = await sendWhatsAppText(settings, customerPhone, text);
+                        if (!r.success) throw new Error(r.error || 'WhatsApp gönderilemedi');
+                    } else {
+                        throw new Error(`Bilinmeyen kanal: ${channel}`);
+                    }
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_beauty_notification_queue?id=eq.${encodeURIComponent(qid)}`,
+                        { status: 'sent', sent_at: new Date().toISOString(), error_text: null },
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                    processed++;
+                } catch (e: unknown) {
+                    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 500);
+                    errors.push(msg);
+                    await postgrest.patch(
+                        `/rex_${fn}_${pn}_beauty_notification_queue?id=eq.${encodeURIComponent(qid)}`,
+                        { status: 'failed', error_text: msg },
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                }
+            }
+            return { processed, errors };
+        }
         const q = postgres.getMovementTableName('beauty_notification_queue', 'beauty');
         const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
         const ct = postgres.getCardTableName('customers');
         const svc = postgres.getCardTableName('beauty_services', 'beauty');
         const svcFirm = postgres.getCardTableName('services');
-        const settings = (await beautyService.getPortalSettings()) as ClinicMessagingPortalConfig | null;
-        if (!settings) return { processed: 0, errors: ['Portal ayarı yok'] };
 
         const { rows: pending } = await postgres.query(
             `SELECT * FROM ${q} WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1`,
@@ -4384,6 +4962,15 @@ export const beautyService = {
 
     async getPortalSettingsRaw(firmNr: string): Promise<BeautyPortalSettings | null> {
         const fn = firmNr.padStart(3, '0');
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const rows = await postgrest.get<BeautyPortalSettings[]>(
+                `/rex_${fn}_beauty_portal_settings`,
+                { select: '*', order: 'created_at.asc', limit: 1 },
+                { schema: 'beauty' }
+            );
+            return rows[0] ?? null;
+        }
         const full = `beauty.rex_${fn}_beauty_portal_settings`;
         const { rows } = await postgres.query(`SELECT * FROM ${full} ORDER BY created_at LIMIT 1`, [], { firmNr: fn });
         return rows[0] ?? null;
@@ -4403,15 +4990,39 @@ export const beautyService = {
             notes?: string;
         }
     ): Promise<void> {
+        const fn = firmNr.padStart(3, '0');
+        const pn = periodNr.padStart(2, '0');
         const settings = await beautyService.getPortalSettingsRaw(firmNr);
         if (!settings?.online_booking_enabled) throw new Error('Online randevu kapalı');
         if (!settings.public_token || settings.public_token !== token) throw new Error('Geçersiz bağlantı anahtarı');
-        const bt = `beauty.rex_${firmNr.padStart(3, '0')}_${periodNr.padStart(2, '0')}_beauty_booking_requests`;
         const timeVal = body.requested_time
             ? (String(body.requested_time).length === 5
                 ? `${body.requested_time}:00`
                 : String(body.requested_time))
             : null;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_booking_requests`,
+                [
+                    {
+                        id: uuidv4(),
+                        name: body.name,
+                        phone: body.phone,
+                        email: body.email ?? null,
+                        service_id: pgUuidOrNull(body.service_id),
+                        requested_date: body.requested_date,
+                        requested_time: timeVal,
+                        notes: body.notes ?? null,
+                        status: 'pending',
+                        public_token_used: token,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
+        const bt = `beauty.rex_${fn}_${pn}_beauty_booking_requests`;
         await postgres.query(
             `INSERT INTO ${bt}
              (id, name, phone, email, service_id, requested_date, requested_time, notes, status, public_token_used)
@@ -4432,6 +5043,17 @@ export const beautyService = {
     },
 
     async listBookingRequests(): Promise<BeautyBookingRequest[]> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const rows = await postgrest.get<BeautyBookingRequest[]>(
+                `/rex_${fn}_${pn}_beauty_booking_requests`,
+                { select: '*', status: 'eq.pending', order: 'created_at.desc', limit: 500 },
+                { schema: 'beauty' }
+            );
+            return rows;
+        }
         const t = postgres.getMovementTableName('beauty_booking_requests', 'beauty');
         const { rows } = await postgres.query(
             `SELECT * FROM ${t} WHERE status = 'pending' ORDER BY created_at DESC`
@@ -4444,25 +5066,61 @@ export const beautyService = {
         opts: { customerId?: string; specialistId?: string; userId?: string }
     ): Promise<string> {
         const bt = postgres.getMovementTableName('beauty_booking_requests', 'beauty');
-        const { rows } = await postgres.query(`SELECT * FROM ${bt} WHERE id = $1`, [requestId]);
-        const req = rows[0];
+        let req: BeautyBookingRequest | null = null;
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const rows = await postgrest.get<BeautyBookingRequest[]>(
+                `/rex_${fn}_${pn}_beauty_booking_requests`,
+                { select: '*', id: `eq.${requestId}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            req = rows[0] ?? null;
+        } else {
+            const { rows } = await postgres.query(`SELECT * FROM ${bt} WHERE id = $1`, [requestId]);
+            req = (rows[0] as BeautyBookingRequest | undefined) ?? null;
+        }
         if (!req) throw new Error('Talep bulunamadı');
 
         let customerId = opts.customerId ?? null;
         if (!customerId) {
-            const ct = postgres.getCardTableName('customers');
-            const found = await postgres.query(
-                `SELECT id FROM ${ct} WHERE phone = $1 LIMIT 1`,
-                [req.phone]
-            );
-            if (found.rows[0]) {
-                customerId = found.rows[0].id;
+            if (shouldUseTenantPostgrestApi()) {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = erpFirmNrForRow();
+                const found = await postgrest.get<{ id: string }[]>(
+                    `/rex_${fn}_customers`,
+                    {
+                        select: 'id',
+                        phone: `eq.${String(req.phone ?? '').trim()}`,
+                        limit: 1,
+                    },
+                    { schema: 'public' }
+                );
+                if (found[0]?.id) {
+                    customerId = found[0].id;
+                } else {
+                    customerId = await beautyService.createCustomer({
+                        name: req.name,
+                        phone: req.phone,
+                        email: req.email ?? undefined,
+                    });
+                }
             } else {
-                customerId = await beautyService.createCustomer({
-                    name: req.name,
-                    phone: req.phone,
-                    email: req.email ?? undefined,
-                });
+                const ct = postgres.getCardTableName('customers');
+                const found = await postgres.query(
+                    `SELECT id FROM ${ct} WHERE phone = $1 LIMIT 1`,
+                    [req.phone]
+                );
+                if (found.rows[0]) {
+                    customerId = found.rows[0].id;
+                } else {
+                    customerId = await beautyService.createCustomer({
+                        name: req.name,
+                        phone: req.phone,
+                        email: req.email ?? undefined,
+                    });
+                }
             }
         }
 
@@ -4516,10 +5174,24 @@ export const beautyService = {
             notes: req.notes ?? undefined,
         });
 
-        await postgres.query(
-            `UPDATE ${bt} SET status = 'approved', processed_appointment_id = $2 WHERE id = $1`,
-            [requestId, apptId]
-        );
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_${pn}_beauty_booking_requests?id=eq.${encodeURIComponent(requestId)}`,
+                {
+                    status: 'approved',
+                    processed_appointment_id: apptId,
+                },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
+            await postgres.query(
+                `UPDATE ${bt} SET status = 'approved', processed_appointment_id = $2 WHERE id = $1`,
+                [requestId, apptId]
+            );
+        }
         await beautyService.appendAuditLog('beauty_booking_requests', 'approve', requestId, opts.userId ?? null, {
             appointment_id: apptId,
         });
@@ -4535,8 +5207,30 @@ export const beautyService = {
     },
 
     async addWaitlistEntry(row: Partial<BeautyWaitlistEntry>): Promise<string> {
-        const t = postgres.getMovementTableName('beauty_waitlist', 'beauty');
         const id = uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_waitlist`,
+                [
+                    {
+                        id,
+                        customer_id: pgUuidOrNull(row.customer_id),
+                        service_id: pgUuidOrNull(row.service_id),
+                        specialist_id: pgUuidOrNull(row.specialist_id),
+                        preferred_date_from: pgDateOrNull(row.preferred_date_from),
+                        preferred_date_to: pgDateOrNull(row.preferred_date_to),
+                        notes: row.notes ?? null,
+                        status: 'active',
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
+        const t = postgres.getMovementTableName('beauty_waitlist', 'beauty');
         await postgres.query(
             `INSERT INTO ${t}
              (id, customer_id, service_id, specialist_id, preferred_date_from, preferred_date_to, notes, status)
@@ -4555,12 +5249,56 @@ export const beautyService = {
     },
 
     async enqueueAppointmentReminders(_hoursBefore: number): Promise<number> {
-        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const q = postgres.getMovementTableName('beauty_notification_queue', 'beauty');
         const ps = await beautyService.getPortalSettings();
         const ch = (ps?.default_reminder_channel || 'sms').toString().toLowerCase();
         const channels =
             ch === 'both' ? (['sms', 'whatsapp'] as const) : ch === 'whatsapp' ? (['whatsapp'] as const) : (['sms'] as const);
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const targetDate = new Date();
+            targetDate.setDate(targetDate.getDate() + 1);
+            const tomorrowYmd = targetDate.toISOString().slice(0, 10);
+            const rows = await postgrest.get<{ id: string }[]>(
+                `/rex_${fn}_${pn}_beauty_appointments`,
+                {
+                    select: 'id',
+                    status: 'in.(scheduled,confirmed)',
+                    appointment_date: `eq.${tomorrowYmd}`,
+                    reminder_sent_at: 'is.null',
+                    limit: 3000,
+                },
+                { schema: 'beauty' }
+            );
+            let n = 0;
+            for (const r of rows) {
+                if (!r?.id) continue;
+                for (const channel of channels) {
+                    await postgrest.post(
+                        `/rex_${fn}_${pn}_beauty_notification_queue`,
+                        [{
+                            id: uuidv4(),
+                            appointment_id: r.id,
+                            channel,
+                            status: 'pending',
+                            payload_json: {},
+                            scheduled_at: new Date().toISOString(),
+                        }],
+                        { schema: 'beauty', prefer: 'return=minimal' }
+                    );
+                    n++;
+                }
+                await postgrest.patch(
+                    `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(r.id)}`,
+                    { reminder_sent_at: new Date().toISOString() },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return n;
+        }
+        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const q = postgres.getMovementTableName('beauty_notification_queue', 'beauty');
 
         const { rows } = await postgres.query(`
             SELECT id FROM ${apt}
@@ -4596,6 +5334,17 @@ export const beautyService = {
     },
 
     async markNotificationSent(id: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_${pn}_beauty_notification_queue?id=eq.${encodeURIComponent(id)}`,
+                { status: 'sent', sent_at: new Date().toISOString() },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getMovementTableName('beauty_notification_queue', 'beauty');
         await postgres.query(
             `UPDATE ${t} SET status = 'sent', sent_at = NOW() WHERE id = $1`,
@@ -4610,8 +5359,33 @@ export const beautyService = {
     },
 
     async saveConsentTemplate(row: Partial<BeautyConsentTemplate> & { title: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_consent_templates', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                title: row.title,
+                body_html: row.body_html ?? null,
+                is_active: row.is_active ?? true,
+                sort_order: row.sort_order ?? 0,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_consent_templates`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_consent_templates?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_consent_templates`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_consent_templates', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, title, body_html, is_active, sort_order, created_at)
              VALUES ($1,$2,$3,COALESCE($4,true),COALESCE($5,0),NOW())
@@ -4629,8 +5403,34 @@ export const beautyService = {
     },
 
     async saveCorporateAccount(row: Partial<BeautyCorporateAccount> & { name: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_corporate_accounts', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                name: row.name,
+                tax_nr: row.tax_nr ?? null,
+                discount_pct: row.discount_pct ?? 0,
+                notes: row.notes ?? null,
+                is_active: row.is_active ?? true,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_corporate_accounts`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_corporate_accounts?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_corporate_accounts`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_corporate_accounts', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, name, tax_nr, discount_pct, notes, is_active, created_at)
              VALUES ($1,$2,$3,$4,$5,COALESCE($6,true),NOW())
@@ -4649,13 +5449,33 @@ export const beautyService = {
     },
 
     async createMembershipSubscription(customerId: string, membershipId: string): Promise<string> {
-        const t = postgres.getMovementTableName('beauty_membership_subscriptions', 'beauty');
         const id = uuidv4();
-        await postgres.query(
-            `INSERT INTO ${t} (id, customer_id, membership_id, start_date, status, auto_renew)
-             VALUES ($1,$2,$3,CURRENT_DATE,'active',false)`,
-            [id, customerId, membershipId]
-        );
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_membership_subscriptions`,
+                [
+                    {
+                        id,
+                        customer_id: customerId,
+                        membership_id: membershipId,
+                        start_date: new Date().toISOString().slice(0, 10),
+                        status: 'active',
+                        auto_renew: false,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+        } else {
+            const t = postgres.getMovementTableName('beauty_membership_subscriptions', 'beauty');
+            await postgres.query(
+                `INSERT INTO ${t} (id, customer_id, membership_id, start_date, status, auto_renew)
+                 VALUES ($1,$2,$3,CURRENT_DATE,'active',false)`,
+                [id, customerId, membershipId]
+            );
+        }
         await beautyService.appendAuditLog('beauty_membership_subscriptions', 'create', id, null, {
             customer_id: customerId,
             membership_id: membershipId,
@@ -4664,8 +5484,34 @@ export const beautyService = {
     },
 
     async saveMembership(row: Partial<BeautyMembership> & { name: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_memberships', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                name: row.name,
+                monthly_price: row.monthly_price ?? 0,
+                session_credit: row.session_credit ?? 0,
+                benefits_json: row.benefits_json ?? {},
+                is_active: row.is_active ?? true,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_memberships`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_memberships?id=eq.${encodeURIComponent(id)}`,
+                    { ...payload, updated_at: new Date().toISOString() },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_memberships`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_memberships', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, name, monthly_price, session_credit, benefits_json, is_active, created_at, updated_at)
              VALUES ($1,$2,$3,$4,$5::jsonb,COALESCE($6,true),NOW(),NOW())
@@ -4684,8 +5530,35 @@ export const beautyService = {
     },
 
     async saveMarketingCampaign(row: Partial<BeautyMarketingCampaign> & { name: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_marketing_campaigns', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                name: row.name,
+                channel: row.channel ?? 'sms',
+                segment_filter_json: row.segment_filter_json ?? {},
+                message_template: row.message_template ?? null,
+                scheduled_at: row.scheduled_at ?? null,
+                status: row.status ?? 'draft',
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_marketing_campaigns`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_marketing_campaigns?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_marketing_campaigns`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_marketing_campaigns', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, name, channel, segment_filter_json, message_template, scheduled_at, status, created_at)
              VALUES ($1,$2,$3,$4::jsonb,$5,$6,COALESCE($7,'draft'),NOW())
@@ -4712,6 +5585,41 @@ export const beautyService = {
     },
 
     async updateIntegrationSettings(data: Partial<BeautyIntegrationSettings>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const ext = data.external_calendar_json ?? {};
+            const rows = await postgrest.get<{ id: number }[]>(
+                `/rex_${fn}_beauty_integration_settings`,
+                { select: 'id', id: 'eq.1', limit: 1 },
+                { schema: 'beauty' }
+            );
+            if (!rows[0]) {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_integration_settings`,
+                    [
+                        {
+                            id: 1,
+                            google_calendar_id: data.google_calendar_id ?? null,
+                            external_calendar_json: ext,
+                        },
+                    ],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+                return;
+            }
+            const patchBody = stripUndefinedFields({
+                google_calendar_id: data.google_calendar_id,
+                external_calendar_json: data.external_calendar_json,
+                updated_at: new Date().toISOString(),
+            });
+            await postgrest.patch(
+                `/rex_${fn}_beauty_integration_settings?id=eq.1`,
+                patchBody,
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_integration_settings', 'beauty');
         const cur = await postgres.query(`SELECT id FROM ${t} WHERE id = 1`);
         const ext = JSON.stringify(data.external_calendar_json ?? {});
@@ -4740,6 +5648,38 @@ export const beautyService = {
     },
 
     async saveCustomerHealth(customerId: string, data: Partial<BeautyCustomerHealth>): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<{ customer_id: string }[]>(
+                `/rex_${fn}_beauty_customer_health`,
+                { select: 'customer_id', customer_id: `eq.${customerId}`, limit: 1 },
+                { schema: 'beauty' }
+            );
+            const payload = {
+                customer_id: customerId,
+                allergies: data.allergies ?? null,
+                medications: data.medications ?? null,
+                pregnancy: data.pregnancy ?? false,
+                chronic_notes: data.chronic_notes ?? null,
+                warnings_banner: data.warnings_banner ?? null,
+                kvkk_consent_at: data.kvkk_consent_at ?? null,
+            };
+            if (rows[0]) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_customer_health?customer_id=eq.${encodeURIComponent(customerId)}`,
+                    { ...payload, updated_at: new Date().toISOString() },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_customer_health`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return;
+        }
         const t = postgres.getCardTableName('beauty_customer_health', 'beauty');
         await postgres.query(
             `INSERT INTO ${t}
@@ -4783,6 +5723,40 @@ export const beautyService = {
     },
 
     async setServiceConsumable(row: { service_id: string; product_id: string; qty_per_service: number }): Promise<string> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const rows = await postgrest.get<{ id: string }[]>(
+                `/rex_${fn}_beauty_service_consumables`,
+                {
+                    select: 'id',
+                    service_id: `eq.${row.service_id}`,
+                    product_id: `eq.${row.product_id}`,
+                    limit: 1,
+                },
+                { schema: 'beauty' }
+            );
+            if (rows[0]?.id) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_service_consumables?id=eq.${encodeURIComponent(rows[0].id)}`,
+                    { qty_per_service: row.qty_per_service },
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+                return rows[0].id;
+            }
+            const id = uuidv4();
+            await postgrest.post(
+                `/rex_${fn}_beauty_service_consumables`,
+                [{
+                    id,
+                    service_id: row.service_id,
+                    product_id: row.product_id,
+                    qty_per_service: row.qty_per_service,
+                }],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
         const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
         const dup = await postgres.query(
             `SELECT id FROM ${t} WHERE service_id = $1 AND product_id = $2 LIMIT 1`,
@@ -4804,11 +5778,30 @@ export const beautyService = {
     },
 
     async updateServiceConsumable(id: string, qty_per_service: number): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.patch(
+                `/rex_${fn}_beauty_service_consumables?id=eq.${encodeURIComponent(id)}`,
+                { qty_per_service },
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
         await postgres.query(`UPDATE ${t} SET qty_per_service = $2 WHERE id = $1`, [id, qty_per_service]);
     },
 
     async deleteServiceConsumable(id: string): Promise<void> {
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            await postgrest.delete(
+                `/rex_${fn}_beauty_service_consumables?id=eq.${encodeURIComponent(id)}`,
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return;
+        }
         const t = postgres.getCardTableName('beauty_service_consumables', 'beauty');
         await postgres.query(`DELETE FROM ${t} WHERE id = $1`, [id]);
     },
@@ -4822,8 +5815,34 @@ export const beautyService = {
     },
 
     async saveProductBatch(row: Partial<BeautyProductBatch> & { product_id: string }): Promise<string> {
-        const t = postgres.getCardTableName('beauty_product_batches', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const payload = {
+                id,
+                product_id: row.product_id,
+                lot_code: row.lot_code ?? null,
+                expiry_date: row.expiry_date ?? null,
+                qty: row.qty ?? 0,
+                barcode: row.barcode ?? null,
+            };
+            if (await postgrestRowExists(`/rex_${fn}_beauty_product_batches`, 'beauty', id)) {
+                await postgrest.patch(
+                    `/rex_${fn}_beauty_product_batches?id=eq.${encodeURIComponent(id)}`,
+                    payload,
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            } else {
+                await postgrest.post(
+                    `/rex_${fn}_beauty_product_batches`,
+                    [payload],
+                    { schema: 'beauty', prefer: 'return=minimal' }
+                );
+            }
+            return id;
+        }
+        const t = postgres.getCardTableName('beauty_product_batches', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, product_id, lot_code, expiry_date, qty, barcode, created_at)
              VALUES ($1,$2,$3,$4,$5,$6,NOW())
@@ -4851,8 +5870,31 @@ export const beautyService = {
     },
 
     async saveClinicalNote(row: Partial<BeautyClinicalNote> & { appointment_id: string }): Promise<string> {
-        const t = postgres.getMovementTableName('beauty_clinical_notes', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_clinical_notes`,
+                [
+                    {
+                        id,
+                        appointment_id: row.appointment_id,
+                        customer_id: pgUuidOrNull(row.customer_id),
+                        subjective: row.subjective ?? null,
+                        objective: row.objective ?? null,
+                        assessment: row.assessment ?? null,
+                        plan: row.plan ?? null,
+                        extra_json: row.extra_json ?? {},
+                        created_by: pgUuidOrNull(row.created_by),
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
+        const t = postgres.getMovementTableName('beauty_clinical_notes', 'beauty');
         await postgres.query(
             `INSERT INTO ${t}
              (id, appointment_id, customer_id, subjective, objective, assessment, plan, extra_json, created_by, created_at)
@@ -4882,8 +5924,29 @@ export const beautyService = {
     },
 
     async addPatientPhoto(row: Partial<BeautyPatientPhoto> & { customer_id: string; storage_url: string }): Promise<string> {
-        const t = postgres.getMovementTableName('beauty_patient_photos', 'beauty');
         const id = row.id ?? uuidv4();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            await postgrest.post(
+                `/rex_${fn}_${pn}_beauty_patient_photos`,
+                [
+                    {
+                        id,
+                        customer_id: row.customer_id,
+                        appointment_id: pgUuidOrNull(row.appointment_id),
+                        kind: row.kind ?? 'before',
+                        storage_url: row.storage_url,
+                        caption: row.caption ?? null,
+                        taken_at: row.taken_at ?? null,
+                    },
+                ],
+                { schema: 'beauty', prefer: 'return=minimal' }
+            );
+            return id;
+        }
+        const t = postgres.getMovementTableName('beauty_patient_photos', 'beauty');
         await postgres.query(
             `INSERT INTO ${t} (id, customer_id, appointment_id, kind, storage_url, caption, taken_at, created_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())`,
