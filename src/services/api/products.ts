@@ -17,6 +17,10 @@ const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 const PRODUCT_REPORT_LIST_SELECT =
   'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active';
 const PRODUCT_REPORT_LIST_SELECT_SQL = PRODUCT_REPORT_LIST_SELECT.replace(/,/g, ', ');
+/** Eski tenant şemalarında eksik kolona takılmamak için güvenli fallback select listesi. */
+const PRODUCT_REPORT_LIST_SELECT_FALLBACK =
+  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand';
+const PRODUCT_REPORT_LIST_SELECT_FALLBACK_SQL = PRODUCT_REPORT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
 
 /** `rex_001_products` tablo eki — postgres rewriter ile uyumlu */
 function firmNrPadded(): string {
@@ -35,6 +39,11 @@ function sanitizePostgrestIlike(q: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+function isUndefinedColumnError(error: unknown): boolean {
+  const message = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
+  return message.includes('42703') || (message.includes('column') && message.includes('does not exist'));
 }
 
 async function fetchDeleteImpactViaPostgrest(productIds: string[]): Promise<{
@@ -327,27 +336,59 @@ export const productAPI = {
         } else if (firmCandidates.length > 1) {
           query.or = `(${firmCandidates.map((f) => `firm_nr.eq.${f}`).join(',')})`;
         }
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          query,
-          { schema: 'public' }
-        );
+        let rows: any[] = [];
+        try {
+          const reportRows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            query,
+            { schema: 'public' }
+          );
+          rows = Array.isArray(reportRows) ? reportRows : [];
+        } catch (error) {
+          if (!isUndefinedColumnError(error)) throw error;
+          console.warn('[ProductAPI] getAllForReports fallback select due to missing column:', error);
+          const fallbackRows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            { ...query, select: PRODUCT_REPORT_LIST_SELECT_FALLBACK },
+            { schema: 'public' }
+          );
+          rows = Array.isArray(fallbackRows) ? fallbackRows : [];
+        }
         return (Array.isArray(rows) ? rows : [])
           .filter((r: any) => !(r?.is_active === false || r?.is_active === 0 || String(r?.is_active).toLowerCase() === 'false'))
           .map(mapDatabaseProductToProduct);
       }
-      const { rows } = await postgres.query(
-        `SELECT ${PRODUCT_REPORT_LIST_SELECT_SQL}
-         FROM ${tableName}
-         WHERE COALESCE(is_active, true) = true
-           AND (
+      let rows: any[] = [];
+      try {
+        const result = await postgres.query(
+          `SELECT ${PRODUCT_REPORT_LIST_SELECT_SQL}
+           FROM ${tableName}
+           WHERE COALESCE(is_active, true) = true
+             AND (
+               LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+               OR TRIM(COALESCE(firm_nr, '')) = $2
+             )
+           ORDER BY name ASC
+           LIMIT 25000`,
+          [firmEq, firmRaw || firmEq]
+        );
+        rows = result.rows;
+      } catch (error) {
+        if (!isUndefinedColumnError(error)) throw error;
+        console.warn('[ProductAPI] getAllForReports SQL fallback select due to missing column:', error);
+        const fallbackResult = await postgres.query(
+          `SELECT ${PRODUCT_REPORT_LIST_SELECT_FALLBACK_SQL}
+           FROM ${tableName}
+           WHERE (
              LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
              OR TRIM(COALESCE(firm_nr, '')) = $2
            )
-         ORDER BY name ASC
-         LIMIT 25000`,
-        [firmEq, firmRaw || firmEq]
-      );
+           ORDER BY name ASC
+           LIMIT 25000`,
+          [firmEq, firmRaw || firmEq]
+        );
+        rows = fallbackResult.rows;
+      }
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
       console.error('[ProductAPI] getAllForReports failed:', error);
