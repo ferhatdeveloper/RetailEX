@@ -267,6 +267,7 @@ export function SmartScheduler() {
             return 'stack';
         }
     });
+    const currentDayYmd = useMemo(() => formatLocalYmd(currentDate), [currentDate]);
     /** Takvim kartından işlem tutarı düzenleme */
     const [priceEditApt, setPriceEditApt] = useState<BeautyAppointment | null>(null);
     const [priceEditDraft, setPriceEditDraft] = useState('');
@@ -288,6 +289,8 @@ export function SmartScheduler() {
 
     /** Sağ panelden “Anket yap” ile açılan memnuniyet anketi */
     const [feedbackApt, setFeedbackApt] = useState<BeautyAppointment | null>(null);
+    /** Otomatik anket modalı aynı randevu için aynı oturumda tekrar tetiklenmesin */
+    const autoSurveyPromptedAppointmentIdsRef = useRef<Set<string>>(new Set());
     /** Tamamlamayı geri al — onay modali için anlık randevu kopyası */
     const [revertModalApt, setRevertModalApt] = useState<BeautyAppointment | null>(null);
     const [revertSaving, setRevertSaving] = useState(false);
@@ -431,6 +434,47 @@ export function SmartScheduler() {
             document.body.style.overflow = prev;
         };
     }, [showNewPage]);
+
+    useEffect(() => {
+        autoSurveyPromptedAppointmentIdsRef.current.clear();
+    }, [currentDayYmd]);
+
+    useEffect(() => {
+        if (feedbackApt) return;
+        const sameDayCompleted = appointments
+            .filter(apt => beautyAppointmentDateKey(apt) === currentDayYmd)
+            .filter(apt => appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED))
+            .filter(apt => {
+                const customerId = String(apt.customer_id ?? apt.client_id ?? '').trim();
+                if (!customerId) return false;
+                if (autoSurveyPromptedAppointmentIdsRef.current.has(apt.id)) return false;
+                return true;
+            })
+            .sort((a, b) => {
+                const ad = `${a.appointment_date ?? a.date ?? ''}T${(a.appointment_time ?? a.time ?? '00:00').slice(0, 5)}:00`;
+                const bd = `${b.appointment_date ?? b.date ?? ''}T${(b.appointment_time ?? b.time ?? '00:00').slice(0, 5)}:00`;
+                return new Date(bd).getTime() - new Date(ad).getTime();
+            });
+        if (!sameDayCompleted.length) return;
+        let cancelled = false;
+        void (async () => {
+            try {
+                const existingFeedbackAptIds = await beautyService.getFeedbackAppointmentIds(
+                    sameDayCompleted.map(apt => apt.id),
+                );
+                if (cancelled) return;
+                const pending = sameDayCompleted.find(apt => !existingFeedbackAptIds.has(String(apt.id)));
+                if (!pending) return;
+                autoSurveyPromptedAppointmentIdsRef.current.add(pending.id);
+                setFeedbackApt(pending);
+            } catch (e) {
+                logger.error('SmartScheduler', 'autoSurveyCatchUp failed', e);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [appointments, currentDayYmd, feedbackApt]);
 
     const serviceNameById = useMemo(() => {
         const m = new Map<string, string>();
@@ -661,6 +705,7 @@ export function SmartScheduler() {
     const openSurveyForCompletedAppointment = (apt: BeautyAppointment) => {
         const customerId = String(apt.customer_id ?? apt.client_id ?? '').trim();
         if (!customerId) return;
+        autoSurveyPromptedAppointmentIdsRef.current.add(apt.id);
         setFeedbackApt(apt);
     };
 

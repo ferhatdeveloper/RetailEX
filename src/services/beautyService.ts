@@ -3669,6 +3669,24 @@ export const beautyService = {
         return row ? beautyService.parseFeedbackRow(row as BeautyCustomerFeedback & { survey_answers?: unknown }) : null;
     },
 
+    async getFeedbackAppointmentIds(appointmentIds: string[]): Promise<Set<string>> {
+        const validIds = filterUuidIds((appointmentIds ?? []).map(id => String(id))).slice(0, 500);
+        if (!validIds.length) return new Set<string>();
+        const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
+        const inList = validIds.map((_, i) => `$${i + 1}`).join(', ');
+        const { rows } = await postgres.query<{ appointment_id: string }>(
+            `SELECT DISTINCT appointment_id::text AS appointment_id
+             FROM ${table}
+             WHERE appointment_id IN (${inList})`,
+            validIds,
+        );
+        return new Set(
+            rows
+                .map(r => String(r.appointment_id ?? '').trim())
+                .filter(Boolean),
+        );
+    },
+
     async upsertFeedbackForAppointment(
         feedback: Partial<BeautyCustomerFeedback> & { appointment_id: string; customer_id: string }
     ): Promise<void> {
