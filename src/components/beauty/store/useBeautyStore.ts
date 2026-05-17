@@ -27,7 +27,7 @@ interface BeautyState {
     // Appointment actions
     loadAppointments:       (date: string) => Promise<void>;
     loadAppointmentsInRange:(start: string, end: string) => Promise<void>;
-    createAppointment:      (data: Partial<BeautyAppointment>) => Promise<void>;
+    createAppointment:      (data: Partial<BeautyAppointment>) => Promise<string>;
     updateAppointment:      (id: string, data: Partial<BeautyAppointment>) => Promise<void>;
     updateAppointmentStatus:(id: string, status: AppointmentStatus) => Promise<void>;
 
@@ -103,11 +103,12 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
 
     createAppointment: async (data) => {
         try {
-            await beautyService.createAppointment(data);
+            const createdId = await beautyService.createAppointment(data);
             const r = get().lastAppointmentRange;
             const fallback = data.date ?? data.appointment_date ?? formatLocalYmd(new Date());
             if (r) await get().loadAppointmentsInRange(r.start, r.end);
             else await get().loadAppointmentsInRange(fallback, fallback);
+            return createdId;
         } catch (e: any) {
             logger.crudError('BeautyStore', 'createAppointment', e);
             throw e;

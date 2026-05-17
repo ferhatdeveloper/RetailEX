@@ -1912,6 +1912,36 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'كل المنتجات',
     ku: 'هەموو بەرهەمەکان',
   },
+  beautyAppointmentProductDataQualityHint: {
+    tr: 'Bu aralıkta ödeme var; ancak randevu linki (rex_appt) veya ürün satırı olmayan kayıtlar rapora dahil edilmez.',
+    en: 'There are paid sales in this range, but rows without appointment link (rex_appt) or product lines are excluded.',
+    ar: 'توجد مبيعات مدفوعة في هذا النطاق، لكن السجلات بدون رابط موعد أو بدون بند منتج لا تُدرج.',
+    ku: 'لەو ماوەیەدا فرۆشتنی پارەدراو هەیە، بەڵام تۆمارەکانی بێ بەستەری چاوپێکەوتن یان بێ ڕیزی بەرهەم نایشاندرێن.',
+  },
+  beautyAppointmentProductStatPaidSales: {
+    tr: 'Ödenmiş satış',
+    en: 'Paid sales',
+    ar: 'المبيعات المدفوعة',
+    ku: 'فرۆشتنی پارەدراو',
+  },
+  beautyAppointmentProductStatMissingLink: {
+    tr: 'Randevu linki eksik',
+    en: 'Missing appointment link',
+    ar: 'رابط الموعد مفقود',
+    ku: 'بەستەری چاوپێکەوتن نییە',
+  },
+  beautyAppointmentProductStatNoProductLine: {
+    tr: 'Ürün satırı yok',
+    en: 'No product lines',
+    ar: 'لا يوجد بند منتج',
+    ku: 'ڕیزی بەرهەم نییە',
+  },
+  beautyAppointmentProductFilterNoMatch: {
+    tr: 'Seçili ürün filtresinde kayıt bulunamadı.',
+    en: 'No records match the selected product filter.',
+    ar: 'لا توجد سجلات تطابق تصفية المنتج المحددة.',
+    ku: 'هیچ تۆمارێک لەگەڵ فلتەری بەرهەمی هەڵبژێردراو ناگونجێت.',
+  },
   beautyCancelledAppointmentsSection: {
     tr: 'İptal edilen randevular',
     en: 'Cancelled appointments',

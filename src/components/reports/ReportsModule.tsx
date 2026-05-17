@@ -195,7 +195,7 @@ function extractCancelReason(notes: unknown): string {
 function extractBeautyAppointmentIdFromSaleNotes(notes: unknown): string {
   const text = String(notes ?? '');
   if (!text) return '';
-  const match = text.match(/rex_appt:([0-9a-fA-F-]+)/i);
+  const match = text.match(/rex_appt\s*[:=]\s*([0-9a-fA-F-]+)/i);
   return match?.[1]?.trim().toLowerCase() || '';
 }
 
@@ -1103,6 +1103,31 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       return row.productId === beautyProductFilterId;
     });
   }, [beautyAppointmentProductRowsRaw, beautyProductFilterId]);
+
+  const beautyAppointmentProductSourceInfo = useMemo(() => {
+    let paidSales = 0;
+    let missingAppointmentLink = 0;
+    let noProductLine = 0;
+    for (const sale of beautyServiceSales || []) {
+      const paymentStatus = String(sale.payment_status ?? '').trim().toLowerCase();
+      if (paymentStatus !== 'paid') continue;
+      paidSales += 1;
+      const appointmentId = extractBeautyAppointmentIdFromSaleNotes(sale.notes);
+      if (!appointmentId) {
+        missingAppointmentLink += 1;
+        continue;
+      }
+      const hasProductLine = (sale.items ?? []).some(
+        (item) => String(item.item_type ?? '').toLowerCase() === 'product'
+      );
+      if (!hasProductLine) noProductLine += 1;
+    }
+    return {
+      paidSales,
+      missingAppointmentLink,
+      noProductLine,
+    };
+  }, [beautyServiceSales]);
 
   const beautyAppointmentProductSummary = useMemo(() => {
     const transactionCount = new Set(
@@ -5663,8 +5688,25 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 {isBeautyAppointmentProductReportTab && (
                   <Spin spinning={loadingBeautyServiceReport}>
                     {beautyAppointmentProductRows.length === 0 ? (
-                      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
-                        {tm('noDataFound')}
+                      <div className="space-y-3">
+                        {beautyProductFilterId && beautyAppointmentProductRowsRaw.length > 0 && (
+                          <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-sm text-amber-900">
+                            {tm('beautyAppointmentProductFilterNoMatch')}
+                          </div>
+                        )}
+                        {!beautyProductFilterId && beautyAppointmentProductRowsRaw.length === 0 && beautyAppointmentProductSourceInfo.paidSales > 0 && (
+                          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-sm text-amber-900 space-y-1">
+                            <p className="font-semibold">{tm('beautyAppointmentProductDataQualityHint')}</p>
+                            <p>
+                              {tm('beautyAppointmentProductStatPaidSales')}: {formatNumber(beautyAppointmentProductSourceInfo.paidSales, 0, false)} ·{' '}
+                              {tm('beautyAppointmentProductStatMissingLink')}: {formatNumber(beautyAppointmentProductSourceInfo.missingAppointmentLink, 0, false)} ·{' '}
+                              {tm('beautyAppointmentProductStatNoProductLine')}: {formatNumber(beautyAppointmentProductSourceInfo.noProductLine, 0, false)}
+                            </p>
+                          </div>
+                        )}
+                        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                          {tm('noDataFound')}
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-4">

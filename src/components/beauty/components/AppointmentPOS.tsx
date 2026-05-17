@@ -2213,6 +2213,7 @@ export function AppointmentPOS({
             const ftRaw = Number(paymentData?.finalTotal);
             const finalTotalSale = Number.isFinite(ftRaw) ? ftRaw : total;
             const headerDiscount = discAmt + extraDiscount;
+            const createdAppointmentIds: string[] = [];
 
             if (!isStandaloneProductSales && existingAppointment?.id) {
                 const firstSvc = serviceLines[0];
@@ -2266,7 +2267,12 @@ export function AppointmentPOS({
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
                 await ensureAppointmentSlotOk(planned);
                 if (planned.length > 0) {
-                    await Promise.all(planned.map((p) => createAppointment(p)));
+                    const ids = await Promise.all(planned.map((p) => createAppointment(p)));
+                    for (const id of ids) {
+                        if (typeof id === 'string' && id.trim()) {
+                            createdAppointmentIds.push(id.trim());
+                        }
+                    }
                 }
             }
 
@@ -2342,9 +2348,10 @@ export function AppointmentPOS({
                 /* no-op */
             }
 
+            const linkedAppointmentId = existingAppointment?.id || createdAppointmentIds[0];
             const saleNotesLink = buildBeautySaleNotesWithAppointmentLink(
                 aptNotes?.trim() || undefined,
-                existingAppointment?.id,
+                linkedAppointmentId,
             );
 
             if (separateLineInvoices && cart.length > 1) {
