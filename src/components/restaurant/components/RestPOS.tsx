@@ -2962,6 +2962,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     paymentData={postPaymentData}
                     printImmediately={postPaymentDirectPrint}
                     initialPrintLanguage={typeof postPaymentData.language === 'string' ? postPaymentData.language : 'tr'}
+                    printPaperFormat={typeof postPaymentData.printFormat === 'string' ? postPaymentData.printFormat : undefined}
                     onClose={() => {
                         setShowPostPaymentReceipt(false);
                         setPostPaymentDirectPrint(false);

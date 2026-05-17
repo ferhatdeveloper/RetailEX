@@ -4488,6 +4488,7 @@ export function AppointmentPOS({
                     initialPrintLanguage={
                         typeof completedPaymentData.language === 'string' ? completedPaymentData.language : 'tr'
                     }
+                    printPaperFormat={typeof completedPaymentData.printFormat === 'string' ? completedPaymentData.printFormat : undefined}
                     headerBanner={receiptHeaderBanner}
                     onClose={() => {
                         setShowReceiptModal(false);

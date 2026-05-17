@@ -5,7 +5,7 @@ import type { Sale, SaleItem } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
-import type { ReceiptSettings } from '../../services/receiptSettingsService';
+import { isPosReceiptPrintFormat, type PosReceiptPrintFormat, type ReceiptSettings } from '../../services/receiptSettingsService';
 import { useProductStore } from '../../store/useProductStore';
 import { resolveProductNameForReceipt } from '../../utils/receiptProductName';
 import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccountReceiptPrinter';
@@ -21,6 +21,8 @@ interface Receipt80mmProps {
   printImmediately?: boolean;
   /** printImmediately ile: fiş metinleri bu dilde (tr | en | ar | ku) */
   initialPrintLanguage?: string;
+  /** POS ödeme ekranından gelen kağıt formatı */
+  printPaperFormat?: PosReceiptPrintFormat;
   /** Üst bilgi altı kesik çizgili bant (örn. randevu — ödeme alınmadı) */
   headerBanner?: string;
 }
@@ -44,7 +46,15 @@ function resolveReceiptDeviceName(sale: Sale): string {
   return rawDevice || '';
 }
 
-export function Receipt80mm({ sale, paymentData, onClose, printImmediately = false, initialPrintLanguage, headerBanner }: Receipt80mmProps) {
+export function Receipt80mm({
+  sale,
+  paymentData,
+  onClose,
+  printImmediately = false,
+  initialPrintLanguage,
+  printPaperFormat,
+  headerBanner
+}: Receipt80mmProps) {
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
   const { language: currentSystemLang, translations: allTranslations, t: tUi } = useLanguage();
@@ -112,6 +122,21 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
 
   const isRTL = selectedLang === 'ar' || selectedLang === 'ku';
   const receiptDeviceName = resolveReceiptDeviceName(sale);
+  const resolvedPaperFormat: PosReceiptPrintFormat =
+    isPosReceiptPrintFormat(printPaperFormat) ? printPaperFormat : '80mm';
+  const isThermalFormat = resolvedPaperFormat === '80mm';
+  const receiptWidthMm = resolvedPaperFormat === 'A4' ? 210 : resolvedPaperFormat === 'A5' ? 148 : 80;
+  const printPageSize = isThermalFormat ? '80mm auto' : `${resolvedPaperFormat} portrait`;
+  const printPageMargin = isThermalFormat ? '0' : '6mm';
+  const viewportMeta = isThermalFormat ? RECEIPT_80MM_VIEWPORT_FOR_HEADLESS : '';
+  const documentBaseCss = isThermalFormat ? RECEIPT_80MM_DOCUMENT_CSS : '';
+  const previewModalWidth = isThermalFormat
+    ? 'min(94vw, 400px)'
+    : resolvedPaperFormat === 'A5'
+      ? 'min(96vw, 820px)'
+      : 'min(97vw, 1100px)';
+  const previewModalHeight = isThermalFormat ? 'min(90vh, 800px)' : 'min(92vh, 920px)';
+  const logoMaxWidth = isThermalFormat ? '60mm' : resolvedPaperFormat === 'A5' ? '100mm' : '130mm';
 
   // Add null/undefined checks
   if (!sale || !paymentData) {
@@ -152,9 +177,10 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
         onFinished?.();
         return;
       }
-      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
-      ${RECEIPT_80MM_DOCUMENT_CSS}
-      body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+      const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
+      ${documentBaseCss}
+      @page { size: ${printPageSize}; margin: ${printPageMargin}; }
+      body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
       .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
       * { box-sizing: border-box; }
       .flex { display: flex; }
@@ -235,11 +261,12 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
           <html dir="${isRTL ? 'rtl' : 'ltr'}">
             <head>
               <meta charset="utf-8" />
-              ${RECEIPT_80MM_VIEWPORT_FOR_HEADLESS}
+              ${viewportMeta}
               <title>${t.receipt.title} - ${sale.receiptNumber}</title>
               <style>
-                ${RECEIPT_80MM_DOCUMENT_CSS}
-                body { padding: 2mm 3mm 3mm; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
+                ${documentBaseCss}
+                @page { size: ${printPageSize}; margin: ${printPageMargin}; }
+                body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; direction: ${isRTL ? 'rtl' : 'ltr'}; }
                 .receipt-80mm, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
                 * { print-color-adjust: exact; -webkit-print-color-adjust: exact; box-sizing: border-box; }
                 .flex { display: flex; }
@@ -294,11 +321,10 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
       <div
         className={`flex flex-col rounded-2xl overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} ${printImmediately ? 'fixed left-[-9999px] top-0 opacity-0 pointer-events-none w-[min(94vw,400px)] h-[min(90vh,800px)]' : ''}`}
         style={{
-          /* ~400px üst sınır: eski max-w-md (448) kadar geniş değil, dar sütun da değil */
-          width: 'min(94vw, 400px)',
-          maxWidth: 'min(94vw, 400px)',
-          height: 'min(90vh, 800px)',
-          maxHeight: 'min(90vh, 800px)',
+          width: previewModalWidth,
+          maxWidth: previewModalWidth,
+          height: previewModalHeight,
+          maxHeight: previewModalHeight,
         }}
         aria-hidden={printImmediately}
       >
@@ -367,19 +393,19 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
           }}
         >
           <div
-            className="receipt-80mm mx-auto font-mono origin-top max-w-[min(100%,80mm)] text-[14px] font-bold leading-snug text-gray-950 antialiased print:text-[11px] print:font-bold print:leading-tight"
+            className="receipt-80mm mx-auto font-mono origin-top text-[14px] font-bold leading-snug text-gray-950 antialiased print:text-[11px] print:font-bold print:leading-tight"
             style={{ transformOrigin: 'top center', direction: isRTL ? 'rtl' : 'ltr' }}
           >
           <div
             id="receipt-content"
-            className={`w-full max-w-[80mm] ${isRTL ? 'text-right' : 'text-left'}`}
-            style={{ width: '80mm', maxWidth: '80mm', direction: isRTL ? 'rtl' : 'ltr' }}
+            className={`w-full ${isRTL ? 'text-right' : 'text-left'}`}
+            style={{ width: `${receiptWidthMm}mm`, maxWidth: `${receiptWidthMm}mm`, direction: isRTL ? 'rtl' : 'ltr' }}
           >
             {/* Store Header - fiş ayarlarından logo ve firma bilgisi */}
             <div className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
               {receiptSettings?.logoDataUrl && (
                 <div className="flex justify-center mb-1">
-                  <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto max-w-[60mm] object-contain" />
+                  <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto object-contain" style={{ maxWidth: logoMaxWidth }} />
                 </div>
               )}
               <div className="text-[1.35rem] font-black mb-0.5 text-gray-950 leading-tight print:text-lg print:font-black">
@@ -736,7 +762,7 @@ export function Receipt80mm({ sale, paymentData, onClose, printImmediately = fal
             min-height: auto !important;
             page-break-after: avoid;
           }
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: ${printPageSize}; margin: ${printPageMargin}; }
           .receipt-80mm { width: 100% !important; max-width: 100% !important; transform: none !important; }
           #receipt-content .receipt-items-table {
             width: 100% !important;

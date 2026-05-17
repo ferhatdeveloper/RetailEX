@@ -2327,6 +2327,7 @@ export default function MarketPOS({
           paymentData={completedPaymentData}
           printImmediately={receiptPrintImmediately}
           initialPrintLanguage={typeof completedPaymentData.language === 'string' ? completedPaymentData.language : 'tr'}
+          printPaperFormat={typeof completedPaymentData.printFormat === 'string' ? completedPaymentData.printFormat : undefined}
           onClose={() => {
             setShowReceiptModal(false);
             setReceiptPrintImmediately(false);
