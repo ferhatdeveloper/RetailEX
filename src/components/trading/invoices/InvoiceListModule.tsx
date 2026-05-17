@@ -664,6 +664,14 @@ export function InvoiceListModule({
     ? INVOICE_TYPES
     : INVOICE_TYPES.filter(t => t.category === selectedCategory);
 
+  const headerTotalsCurrency = useMemo(() => {
+    const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
+    const uniq = new Set(codes);
+    if (uniq.size === 1) return [...uniq][0];
+    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
+    return firm || 'IQD';
+  }, [invoices, selectedFirm]);
+
   // Fatura formu açıksa UniversalInvoiceForm'u göster
   if (selectedInvoiceType) {
     return (
@@ -687,14 +695,6 @@ export function InvoiceListModule({
     const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
     return firm || 'IQD';
   };
-
-  const headerTotalsCurrency = useMemo(() => {
-    const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
-    const uniq = new Set(codes);
-    if (uniq.size === 1) return [...uniq][0];
-    const firm = String(selectedFirm?.ana_para_birimi ?? selectedFirm?.raporlama_para_birimi ?? '').trim().toUpperCase();
-    return firm || 'IQD';
-  }, [invoices, selectedFirm]);
 
   // Table columns
   const columnHelper = createColumnHelper<ListInvoice>();
