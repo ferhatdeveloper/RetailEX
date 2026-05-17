@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Printer, Search, X, Plus, Minus, Check, Grid3x3, Download } from 'lucide-react';
 import type { Product } from '../../../App';
 import type { Template } from '../../../core/types/templates';
@@ -16,21 +16,40 @@ interface PrintItem {
 
 export function BulkLabelPrint({ onClose }: BulkLabelPrintProps) {
   const products = useProductStore((state) => state.products);
-  const { templates } = useTemplateStore();
+  const { templates, getTemplatesForScope, resolveTemplateForScope, loadTemplatesFromDatabase } = useTemplateStore();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [printItems, setPrintItems] = useState<PrintItem[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
-    templates.find(t => t.type === 'label' && t.isDefault) || templates.find(t => t.type === 'label') || null
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(() =>
+    resolveTemplateForScope('label', 'product_bulk_label')
   );
   const [showPreview, setShowPreview] = useState(false);
+
+  useEffect(() => {
+    void loadTemplatesFromDatabase();
+  }, [loadTemplatesFromDatabase]);
   
-  const labelTemplates = templates.filter(t => t.type === 'label');
+  const labelTemplates = useMemo(
+    () => getTemplatesForScope('label', 'product_bulk_label'),
+    [templates, getTemplatesForScope],
+  );
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setSelectedTemplate(resolveTemplateForScope('label', 'product_bulk_label'));
+      return;
+    }
+    const stillExists = labelTemplates.some((t) => t.id === selectedTemplate.id);
+    if (!stillExists) {
+      setSelectedTemplate(resolveTemplateForScope('label', 'product_bulk_label'));
+    }
+  }, [labelTemplates, selectedTemplate, resolveTemplateForScope]);
   
+  const normalizedQuery = searchQuery.toLocaleLowerCase('tr-TR');
   const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    product.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
     product.barcode.includes(searchQuery) ||
-    product.category.toLowerCase().includes(searchQuery.toLowerCase())
+    product.category.toLocaleLowerCase('tr-TR').includes(normalizedQuery)
   );
   
   const addPrintItem = (product: Product, quantity: number = 1) => {

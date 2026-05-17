@@ -1,23 +1,40 @@
-﻿import { useState } from 'react';
-import { FileText, Plus, Edit, Trash2, Copy, Download, Upload, Eye, LayoutTemplate, Tag } from 'lucide-react';
-import type { Template, TemplateType, TemplateFormat } from '../../core/types/templates';
-import { TEMPLATE_FORMATS } from '../../core/types/templates';
+﻿import { useEffect, useState } from 'react';
+import { FileText, Edit, Trash2, Copy, Download, Upload, LayoutTemplate, Tag } from 'lucide-react';
+import type { Template, TemplateType, TemplateUsageScope } from '../../core/types/templates';
+import { TEMPLATE_FORMATS, TEMPLATE_USAGE_SCOPE_LABELS, TEMPLATE_USAGE_SCOPES } from '../../core/types/templates';
 import { useTemplateStore } from '../../store';
 import { TemplateDesigner } from './TemplateDesigner';
 
 export function TemplateManager() {
-  const { templates, deleteTemplate, duplicateTemplate, setActiveTemplate, addTemplate } = useTemplateStore();
+  const {
+    templates,
+    deleteTemplate,
+    duplicateTemplate,
+    setActiveTemplate,
+    addTemplate,
+    loadTemplatesFromDatabase,
+    persistTemplatesToDatabase,
+  } = useTemplateStore();
   
   const [showDesigner, setShowDesigner] = useState(false);
   const [designerType, setDesignerType] = useState<TemplateType>('invoice');
   const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
+  const [filterScope, setFilterScope] = useState<'all' | TemplateUsageScope>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    void loadTemplatesFromDatabase();
+  }, [loadTemplatesFromDatabase]);
   
+  const normalizedQuery = searchQuery.toLocaleLowerCase('tr-TR');
   const filteredTemplates = templates.filter(template => {
     const matchesType = filterType === 'all' || template.type === filterType;
-    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      template.format.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
+    const matchesSearch =
+      template.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery) ||
+      template.format.toLocaleLowerCase('tr-TR').includes(normalizedQuery);
+    const scopes = template.usageScopes?.length ? template.usageScopes : ['global'];
+    const matchesScope = filterScope === 'all' || scopes.includes(filterScope);
+    return matchesType && matchesSearch && matchesScope;
   });
   
   const handleEdit = (template: Template) => {
@@ -35,11 +52,13 @@ export function TemplateManager() {
   const handleDelete = (id: string) => {
     if (confirm('Bu şablonu silmek istediğinizden emin misiniz?')) {
       deleteTemplate(id);
+      void persistTemplatesToDatabase();
     }
   };
   
   const handleDuplicate = (id: string) => {
     duplicateTemplate(id);
+    void persistTemplatesToDatabase();
   };
   
   const handleExport = (template: Template) => {
@@ -69,6 +88,7 @@ export function TemplateManager() {
           template.createdAt = new Date().toISOString();
           template.updatedAt = new Date().toISOString();
           addTemplate(template);
+          void persistTemplatesToDatabase();
           alert('Şablon başarıyla içe aktarıldı!');
         } catch (error) {
           alert('Şablon içe aktarılamadı. Geçersiz dosya formatı.');
@@ -170,6 +190,20 @@ export function TemplateManager() {
               className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          <div className="min-w-[220px]">
+            <select
+              value={filterScope}
+              onChange={(e) => setFilterScope(e.target.value as 'all' | TemplateUsageScope)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
+            >
+              <option value="all">Tüm kullanım alanları</option>
+              {TEMPLATE_USAGE_SCOPES.map((scope) => (
+                <option key={scope} value={scope}>
+                  {TEMPLATE_USAGE_SCOPE_LABELS[scope]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
       
@@ -217,6 +251,16 @@ export function TemplateManager() {
                   <p className="text-xs text-gray-600 mb-3">
                     {template.elements.length} öğe
                   </p>
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    <span className="px-2 py-0.5 text-[10px] rounded bg-slate-100 text-slate-700">
+                      {(template.engine ?? 'fastreport-like') === 'fastreport-like' ? 'FastReport benzeri' : 'Basit'}
+                    </span>
+                    {((template.usageScopes?.length ? template.usageScopes : ['global']) as TemplateUsageScope[]).map((scope) => (
+                      <span key={`${template.id}-${scope}`} className="px-2 py-0.5 text-[10px] rounded bg-purple-50 text-purple-700">
+                        {TEMPLATE_USAGE_SCOPE_LABELS[scope]}
+                      </span>
+                    ))}
+                  </div>
                   
                   {/* Actions */}
                   <div className="flex items-center gap-1">

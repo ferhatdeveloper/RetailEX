@@ -5,6 +5,7 @@ import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './design
 import { Download, Printer, X, RotateCw } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { interpolateTemplateText } from '../../services/templateRenderService';
 
 type EtiketPrintRotation = 0 | 90 | 180 | 270;
 
@@ -217,7 +218,15 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
         >
             {comp.type === 'text' && (
                 <div className="w-full h-full p-0.5">
-                    {comp.binding ? getBoundValue(comp.binding, data) : comp.content}
+                    {(() => {
+                        const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
+                        return interpolateTemplateText(String(raw ?? ''), data || {});
+                    })()}
+                </div>
+            )}
+            {comp.type === 'line' && (
+                <div className="w-full h-full">
+                    <div style={{ borderTop: comp.style?.borderTop || '1px solid #111827', width: '100%', height: '0px' }} />
                 </div>
             )}
             {comp.type === 'barcode' && (() => {
