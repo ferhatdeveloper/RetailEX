@@ -567,6 +567,38 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const showLoader = !selected && (isLoading || !erpAccountsLoaded);
     const showMissing = !selected && erpAccountsLoaded && !isLoading;
 
+    const historyDataSummary = useMemo(
+        () => ({
+            appointments: pastAppointments.length,
+            sales: salesHistory.length,
+            packages: customerPackages.length,
+            feedbacks: feedbacks.length,
+        }),
+        [pastAppointments.length, salesHistory.length, customerPackages.length, feedbacks.length],
+    );
+
+    const suggestedHistoryCustomers = useMemo(() => {
+        if (!selected) return [] as BeautyCustomer[];
+        const rawName = String(selected.name ?? '').trim();
+        if (!rawName) return [] as BeautyCustomer[];
+        const tokens = rawName
+            .split(/\s+/)
+            .map(t => t.trim())
+            .filter(Boolean);
+        const lastToken = tokens.length ? tokens[tokens.length - 1] : '';
+        if (lastToken.length < 3) return [] as BeautyCustomer[];
+        const normalizedNeedle = lastToken.toLocaleLowerCase('tr');
+        return mergedCustomers
+            .filter(c => {
+                if (!c?.id || c.id === selected.id) return false;
+                if (Number(c.appointment_count ?? 0) <= 0) return false;
+                const candidateName = String(c.name ?? '').trim().toLocaleLowerCase('tr');
+                return candidateName.includes(normalizedNeedle);
+            })
+            .sort((a, b) => Number(b.appointment_count ?? 0) - Number(a.appointment_count ?? 0))
+            .slice(0, 3);
+    }, [selected, mergedCustomers]);
+
     /** Karttaki total_spent / appointment_count güncellenmemiş olsa bile yüklenen satış ve randevulardan özet göster */
     const profileStats = useMemo(() => {
         if (!selected) {
@@ -933,6 +965,35 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                   ),
                   children: (
                       <Card bordered className="!shadow-none" styles={{ body: { padding: 0 } }}>
+                          {!histLoading && filteredUnifiedHistory.length === 0 ? (
+                              <Alert
+                                  type="info"
+                                  showIcon
+                                  className="m-3"
+                                  message={tm('bHistoryNoDataHintTitle')}
+                                  description={
+                                      <Space direction="vertical" size={6}>
+                                          <Typography.Text type="secondary">
+                                              {tm('bHistoryNoDataHintDescription')
+                                                  .replace('{appointments}', String(historyDataSummary.appointments))
+                                                  .replace('{sales}', String(historyDataSummary.sales))
+                                                  .replace('{packages}', String(historyDataSummary.packages))
+                                                  .replace('{feedbacks}', String(historyDataSummary.feedbacks))}
+                                          </Typography.Text>
+                                          {suggestedHistoryCustomers.length > 0 ? (
+                                              <Typography.Text type="secondary">
+                                                  {`${tm('bHistoryNoDataHintPossibleCards')}: ${suggestedHistoryCustomers
+                                                      .map(c => `${c.name} (${c.code ?? '-'})`)
+                                                      .join(', ')}`}
+                                              </Typography.Text>
+                                          ) : null}
+                                          <Button type="link" className="!h-auto !p-0" onClick={onBack}>
+                                              {tm('bBackToCustomerList')}
+                                          </Button>
+                                      </Space>
+                                  }
+                              />
+                          ) : null}
                           <div className="flex flex-wrap items-center gap-2 border-b border-[#f0f0f0] px-3 py-2">
                               <Segmented
                                   size="small"
