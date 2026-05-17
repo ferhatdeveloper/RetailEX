@@ -237,6 +237,8 @@ export interface BeautyAppointment {
     pre_visit_activity_at?: string | null;
     /** Kayıt zamanı — sıra modunda listeleme sırası için (API’den gelir) */
     created_at?: string;
+    /** Son güncelleme zamanı — tamamlanma günü takibi için kullanılır */
+    updated_at?: string;
     /** Lazer / cihaz tedavisi — fiş «Derece» ile aynı (metin, örn. J/cm²) */
     treatment_degree?: string | null;
     /** Kullanılan atış sayısı veya notasyon (metin) */

@@ -1807,6 +1807,80 @@ export const beautyService = {
         return beautyService.getAppointmentsInRange(date, date);
     },
 
+    async getCompletedAppointmentsForDay(dayYmd: string): Promise<BeautyAppointment[]> {
+        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        const svcBeauty = postgres.getCardTableName('beauty_services', 'beauty');
+        const svcFirm = postgres.getCardTableName('services');
+        const prodTbl = postgres.getCardTableName('products');
+        const fn = erpFirmNrForRow();
+        const query = `
+            SELECT
+                a.id,
+                a.client_id        AS customer_id,
+                a.service_id,
+                a.specialist_id    AS staff_id,
+                a.device_id,
+                a.body_region_id,
+                a.appointment_date AS date,
+                a.appointment_time AS time,
+                a.appointment_time,
+                a.duration,
+                a.status,
+                a.type,
+                a.notes,
+                a.total_price,
+                a.commission_amount,
+                a.is_package_session,
+                a.package_purchase_id,
+                a.session_series_id,
+                a.reminder_sent,
+                a.branch_id,
+                a.room_id,
+                a.tele_meeting_url,
+                a.booking_channel,
+                a.corporate_account_id,
+                a.reminder_sent_at,
+                a.last_notification_channel,
+                a.confirmation_call_at,
+                a.pre_visit_activity_at,
+                a.treatment_degree,
+                a.treatment_shots,
+                a.clinical_data,
+                a.created_at,
+                a.updated_at,
+                COALESCE(
+                    s.name,
+                    rs.name,
+                    pr.name
+                ) AS service_name,
+                COALESCE(s.color, '#6366f1') AS service_color,
+                COALESCE(sp.name, u.full_name, u.username) AS specialist_name,
+                c.name   AS customer_name,
+                COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
+                d.name   AS device_name
+            FROM ${table} a
+            LEFT JOIN ${svcBeauty} s ON a.service_id = s.id
+            LEFT JOIN ${svcFirm} rs ON a.service_id = rs.id AND rs.firm_nr = $2
+            LEFT JOIN ${prodTbl} pr ON pr.id = a.service_id AND pr.firm_nr = $2
+                AND (
+                    LOWER(TRIM(COALESCE(pr.material_type, ''))) = 'service'
+                    OR LOWER(TRIM(COALESCE(pr.materialtype, ''))) = 'service'
+                )
+            LEFT JOIN ${postgres.getCardTableName('beauty_specialists', 'beauty')} sp ON a.specialist_id = sp.id
+            LEFT JOIN users u ON a.specialist_id = u.id AND lpad(trim(u.firm_nr::text), 3, '0') = $2
+            LEFT JOIN ${postgres.getCardTableName('beauty_devices', 'beauty')} d ON a.device_id = d.id
+            LEFT JOIN ${postgres.getCardTableName('customers')} c ON a.client_id = c.id
+            WHERE LOWER(TRIM(COALESCE(a.status::text, ''))) = 'completed'
+              AND (
+                a.appointment_date = $1::date
+                OR (a.updated_at IS NOT NULL AND a.updated_at::date = $1::date)
+              )
+            ORDER BY COALESCE(a.updated_at, a.created_at) DESC NULLS LAST, a.appointment_time DESC NULLS LAST
+        `;
+        const result = await postgres.query(query, [dayYmd, fn]);
+        return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => normalizeAppointmentRow(r));
+    },
+
     async getAppointmentsInRange(startDate: string, endDate: string): Promise<BeautyAppointment[]> {
         if (shouldUseTenantPostgrestApi()) {
             try {

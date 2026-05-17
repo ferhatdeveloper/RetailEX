@@ -14,6 +14,7 @@ import {
     Empty,
     Popconfirm,
     Checkbox,
+    DatePicker,
 } from 'antd';
 import {
     PlusOutlined,
@@ -22,6 +23,7 @@ import {
     HolderOutlined,
 } from '@ant-design/icons';
 import { ClipboardList } from 'lucide-react';
+import dayjs, { type Dayjs } from 'dayjs';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -32,8 +34,6 @@ import type {
     BeautySatisfactionLabels,
     SatisfactionLangCode,
     SatisfactionQuestionType,
-    AppointmentStatus,
-    appointmentStatusMatches,
 } from '../../../types/beauty';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -62,8 +62,10 @@ export function SatisfactionSurveyManagement() {
     const [savingSurvey, setSavingSurvey] = useState(false);
     const [savingQ, setSavingQ] = useState<string | null>(null);
     const [pendingAppointments, setPendingAppointments] = useState<BeautyAppointment[]>([]);
+    const [answeredAppointmentIds, setAnsweredAppointmentIds] = useState<string[]>([]);
     const [pendingLoading, setPendingLoading] = useState(false);
     const [surveyTarget, setSurveyTarget] = useState<BeautyAppointment | null>(null);
+    const [selectedDayYmd, setSelectedDayYmd] = useState(() => formatLocalYmd(new Date()));
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -85,40 +87,40 @@ export function SatisfactionSurveyManagement() {
         void load();
     }, [load]);
 
-    const loadPendingAppointments = useCallback(async () => {
+    const loadPendingAppointments = useCallback(async (dayYmd: string) => {
         setPendingLoading(true);
         try {
-            const today = formatLocalYmd(new Date());
-            const all = await beautyService.getAppointmentsInRange(today, today);
-            const completedWithCustomer = all
-                .filter(a => appointmentStatusMatches(a.status, AppointmentStatus.COMPLETED))
+            const completed = await beautyService.getCompletedAppointmentsForDay(dayYmd);
+            const completedWithCustomer = completed
                 .filter(a => !!String(a.customer_id ?? a.client_id ?? '').trim());
             if (!completedWithCustomer.length) {
                 setPendingAppointments([]);
+                setAnsweredAppointmentIds([]);
                 return;
             }
             const feedbackAptIds = await beautyService.getFeedbackAppointmentIds(
                 completedWithCustomer.map(a => a.id),
             );
-            const pending = completedWithCustomer
-                .filter(a => !feedbackAptIds.has(String(a.id)))
+            const completedSorted = completedWithCustomer
                 .sort((a, b) => {
                     const ad = `${a.appointment_date ?? a.date ?? ''}T${(a.appointment_time ?? a.time ?? '00:00').slice(0, 5)}:00`;
                     const bd = `${b.appointment_date ?? b.date ?? ''}T${(b.appointment_time ?? b.time ?? '00:00').slice(0, 5)}:00`;
                     return new Date(bd).getTime() - new Date(ad).getTime();
                 });
-            setPendingAppointments(pending);
+            setPendingAppointments(completedSorted);
+            setAnsweredAppointmentIds(Array.from(feedbackAptIds));
         } catch (e) {
             logger.crudError('SatisfactionSurveyManagement', 'loadPendingAppointments', e);
             setPendingAppointments([]);
+            setAnsweredAppointmentIds([]);
         } finally {
             setPendingLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        void loadPendingAppointments();
-    }, [loadPendingAppointments]);
+        void loadPendingAppointments(selectedDayYmd);
+    }, [loadPendingAppointments, selectedDayYmd]);
 
     useEffect(() => {
         if (!selectedId) {
@@ -267,11 +269,18 @@ export function SatisfactionSurveyManagement() {
         { value: 'yes_no' as const, label: tm('bSurveyTypeYesNo') },
     ];
 
+    const pendingCount = useMemo(
+        () => pendingAppointments.filter(apt => !answeredAppointmentIds.includes(String(apt.id))).length,
+        [pendingAppointments, answeredAppointmentIds],
+    );
+
     const pendingSummaryText = useMemo(
         () =>
-            tm('bSurveyPendingSummary')
-                .replace('{pending}', String(pendingAppointments.length)),
-        [pendingAppointments.length, tm],
+            tm('bSurveyCompletedDateSummary')
+                .replace('{date}', new Date(selectedDayYmd).toLocaleDateString(dateLocale))
+                .replace('{total}', String(pendingAppointments.length))
+                .replace('{pending}', String(pendingCount)),
+        [selectedDayYmd, dateLocale, pendingAppointments.length, pendingCount, tm],
     );
 
     const pendingItemLabel = (apt: BeautyAppointment) => {
@@ -282,6 +291,16 @@ export function SatisfactionSurveyManagement() {
         const when = dateRaw ? new Date(dateRaw).toLocaleDateString(dateLocale) : '—';
         return `${customer} · ${service} · ${when}${timeRaw ? ` ${timeRaw}` : ''}`;
     };
+
+    const hasFeedbackForAppointment = useCallback(
+        (aptId: string) => answeredAppointmentIds.includes(String(aptId)),
+        [answeredAppointmentIds],
+    );
+
+    const selectedDayValue: Dayjs = useMemo(() => {
+        const parsed = dayjs(selectedDayYmd);
+        return parsed.isValid() ? parsed : dayjs();
+    }, [selectedDayYmd]);
 
     return (
         <div className="flex min-h-0 w-full flex-col" style={{ backgroundColor: RETAILEX_PAGE_BG }}>
@@ -330,25 +349,44 @@ export function SatisfactionSurveyManagement() {
                             title={
                                 <Space size={8}>
                                     <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
-                                        {tm('bSurveyPendingTitle')}
+                                        {tm('bSurveyCompletedDateTitle')}
                                     </Typography.Text>
-                                    <Tag color={pendingAppointments.length > 0 ? 'warning' : 'default'}>
+                                    <Tag color={pendingCount > 0 ? 'warning' : 'success'}>
                                         {pendingAppointments.length}
                                     </Tag>
                                 </Space>
                             }
                             extra={
-                                <Button size="small" onClick={() => void loadPendingAppointments()} loading={pendingLoading}>
+                                <Button
+                                    size="small"
+                                    onClick={() => void loadPendingAppointments(selectedDayYmd)}
+                                    loading={pendingLoading}
+                                >
                                     {tm('refresh')}
                                 </Button>
                             }
                         >
                             <Space direction="vertical" size={8} className="w-full">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Typography.Text type="secondary" className="text-xs">
+                                        {tm('bDate')}
+                                    </Typography.Text>
+                                    <DatePicker
+                                        size="small"
+                                        value={selectedDayValue}
+                                        format="DD.MM.YYYY"
+                                        allowClear={false}
+                                        onChange={(value: Dayjs | null) => {
+                                            if (!value) return;
+                                            setSelectedDayYmd(value.format('YYYY-MM-DD'));
+                                        }}
+                                    />
+                                </div>
                                 <Typography.Text type="secondary" className="text-xs">
                                     {pendingSummaryText}
                                 </Typography.Text>
                                 {pendingAppointments.length === 0 ? (
-                                    <Typography.Text type="secondary">{tm('bSurveyPendingEmpty')}</Typography.Text>
+                                    <Typography.Text type="secondary">{tm('bSurveyCompletedDateEmpty')}</Typography.Text>
                                 ) : (
                                     <List
                                         size="small"
@@ -363,11 +401,20 @@ export function SatisfactionSurveyManagement() {
                                                         size="small"
                                                         onClick={() => setSurveyTarget(apt)}
                                                     >
-                                                        {tm('bPanelRunSurvey')}
+                                                        {hasFeedbackForAppointment(apt.id)
+                                                            ? tm('bSurveyUpdateForAppointment')
+                                                            : tm('bPanelRunSurvey')}
                                                     </Button>,
                                                 ]}
                                             >
-                                                <Typography.Text>{pendingItemLabel(apt)}</Typography.Text>
+                                                <Space size={8}>
+                                                    <Typography.Text>{pendingItemLabel(apt)}</Typography.Text>
+                                                    {hasFeedbackForAppointment(apt.id) ? (
+                                                        <Tag color="success">{tm('bSurveyFeedbackExists')}</Tag>
+                                                    ) : (
+                                                        <Tag color="warning">{tm('bSurveyFeedbackMissing')}</Tag>
+                                                    )}
+                                                </Space>
                                             </List.Item>
                                         )}
                                     />
@@ -638,7 +685,7 @@ export function SatisfactionSurveyManagement() {
                     open
                     onClose={() => setSurveyTarget(null)}
                     onSaved={() => {
-                        void loadPendingAppointments();
+                        void loadPendingAppointments(selectedDayYmd);
                     }}
                     customerId={String(surveyTarget.customer_id ?? surveyTarget.client_id ?? '')}
                     customerName={surveyTarget.customer_name ?? undefined}
