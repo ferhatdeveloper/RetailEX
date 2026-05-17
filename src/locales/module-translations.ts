@@ -1882,11 +1882,35 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تقرير العمليات/المدفوعات الملغاة',
     ku: 'ڕاپۆرتی کردار/پارەدانی هەڵوەشاو',
   },
+  beautyAppointmentProductSalesReport: {
+    tr: 'Randevu Ürün Satış Raporu',
+    en: 'Appointment Product Sales Report',
+    ar: 'تقرير مبيعات المنتجات من المواعيد',
+    ku: 'ڕاپۆرتی فرۆشتنی بەرهەمی چاوپێکەوتن',
+  },
   beautyServiceBreakdownHint: {
     tr: 'Randevu tarihine göre; iptal ve gelmedi kayıtları hariç. Her hizmet için müşteri, personel ve tutar listelenir.',
     en: 'By appointment date; excludes cancelled and no-show. Lists customer, staff and amount per service.',
     ar: 'حسب تاريخ الموعد؛ يستثنى الملغاة وعدم الحضور.',
     ku: 'بەپێی بەرواری چاوپێکەوتن؛ ڕەتکراوەکان دەرکراون.',
+  },
+  beautyAppointmentProductSalesHint: {
+    tr: 'Randevuya bağlı (rex_appt) ve ödeme durumu “paid” olan ürün kalemlerini listeler.',
+    en: 'Lists product lines linked to appointments (rex_appt) with paid payment status.',
+    ar: 'يسرد بنود المنتجات المرتبطة بالمواعيد (rex_appt) والمدفوعة.',
+    ku: 'ڕیزە بەرهەمە بەستراوەکانی چاوپێکەوتن (rex_appt) و پارەدراو پیشان دەدات.',
+  },
+  beautyAppointmentProductFilterLabel: {
+    tr: 'Ürün filtresi',
+    en: 'Product filter',
+    ar: 'تصفية المنتج',
+    ku: 'فلتەری بەرهەم',
+  },
+  beautyAppointmentProductFilterPlaceholder: {
+    tr: 'Tüm ürünler',
+    en: 'All products',
+    ar: 'كل المنتجات',
+    ku: 'هەموو بەرهەمەکان',
   },
   beautyCancelledAppointmentsSection: {
     tr: 'İptal edilen randevular',
