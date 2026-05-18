@@ -1999,6 +1999,7 @@ export const beautyService = {
                     svc.service_name,
                     ld.customer_id::text AS customer_id,
                     COALESCE(NULLIF(trim(c.name), ''), '') AS customer_name,
+                    COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
                     'service'::text AS reminder_kind,
                     NULL::text AS product_id,
                     NULL::text AS product_name
@@ -2054,6 +2055,7 @@ export const beautyService = {
                     prd.product_name AS service_name,
                     lp.customer_id::text AS customer_id,
                     COALESCE(NULLIF(trim(c.name), ''), '') AS customer_name,
+                    COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone,
                     'product'::text AS reminder_kind,
                     lp.product_id::text AS product_id,
                     prd.product_name AS product_name
@@ -2104,6 +2106,7 @@ export const beautyService = {
                 service_name: String(r.service_name ?? ''),
                 customer_id: String(r.customer_id ?? ''),
                 customer_name: String(r.customer_name ?? ''),
+                customer_phone: String(r.customer_phone ?? '').trim() || undefined,
                 reminder_kind,
                 product_id,
                 product_name,

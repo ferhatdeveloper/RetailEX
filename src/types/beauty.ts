@@ -136,6 +136,7 @@ export interface BeautyFollowUpReminder {
     service_name: string;
     customer_id: string;
     customer_name: string;
+    customer_phone?: string;
     /** `product`: stok ürünü + tamamlanan randevuda sarf (consumable_usage_log) */
     reminder_kind?: 'service' | 'product';
     product_id?: string;

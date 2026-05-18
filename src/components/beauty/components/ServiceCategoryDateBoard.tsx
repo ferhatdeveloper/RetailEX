@@ -3,7 +3,7 @@
  * Ana kategori: `parent_category` doluysa o, değilse `category` (beautyServiceMainKey).
  */
 import React, { useMemo } from 'react';
-import { Plus, Layers, Bell } from 'lucide-react';
+import { Plus, Layers, Bell, Phone } from 'lucide-react';
 import type { BeautyAppointment, BeautyFollowUpReminder, BeautyService } from '../../../types/beauty';
 import { beautyAppointmentDateKey } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
@@ -109,6 +109,7 @@ function ServiceBoardServiceCell({
     noAppointmentsInSlotLabel: string;
     appointmentsCountTemplate: string;
 }) {
+    const followUpPhoneLine = (phoneRaw: string | undefined) => String(phoneRaw ?? '').trim();
     const svcApts = dayApts
         .filter(a => appointmentMatchesService(a, svc))
         .sort((a, b) => {
@@ -128,52 +129,63 @@ function ServiceBoardServiceCell({
                 <span style={{ fontSize: 9, fontWeight: 600, color: CLINIC.textSub, flexShrink: 0 }}>{countLabel}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {svcFollowUps.map(fu => (
-                    <div
-                        key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}
-                        style={{
-                            borderRadius: 6,
-                            border: '1px solid #fbcfe8',
-                            borderLeft: '3px solid #db2777',
-                            background: '#fdf2f8',
-                            padding: '8px 10px',
-                        }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <Bell size={12} color="#db2777" style={{ flexShrink: 0 }} />
-                            <span style={{ fontSize: 9, fontWeight: 800, color: '#be185d' }}>{followUpBadgeLabel}</span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#831843' }}>
-                            {fu.customer_name?.trim() ? fu.customer_name : '—'}
-                        </p>
-                        <p style={{ margin: '4px 0 0', fontSize: 10, fontWeight: 600, color: '#9d174d', lineHeight: 1.35 }}>
-                            {formatFollowUpLine(fu)}
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() => onAddClick(dayStr, String(svc.id))}
+                {svcFollowUps.map(fu => {
+                    const followUpPhone = followUpPhoneLine(fu.customer_phone);
+                    return (
+                        <div
+                            key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}
                             style={{
-                                marginTop: 8,
-                                width: '100%',
-                                height: 30,
-                                borderRadius: 5,
-                                border: '1px dashed #f472b6',
-                                background: '#fff',
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: '#be185d',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 6,
+                                borderRadius: 6,
+                                border: '1px solid #fbcfe8',
+                                borderLeft: '3px solid #db2777',
+                                background: '#fdf2f8',
+                                padding: '8px 10px',
                             }}
                         >
-                            <Plus size={12} />
-                            {followUpBookCtaLabel}
-                        </button>
-                    </div>
-                ))}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                <Bell size={12} color="#db2777" style={{ flexShrink: 0 }} />
+                                <span style={{ fontSize: 9, fontWeight: 800, color: '#be185d' }}>{followUpBadgeLabel}</span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#831843' }}>
+                                {fu.customer_name?.trim() ? fu.customer_name : '—'}
+                            </p>
+                            {followUpPhone ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, minWidth: 0 }}>
+                                    <Phone size={10} color="#9d174d" style={{ flexShrink: 0 }} />
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: '#9d174d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {followUpPhone}
+                                    </span>
+                                </div>
+                            ) : null}
+                            <p style={{ margin: '4px 0 0', fontSize: 10, fontWeight: 600, color: '#9d174d', lineHeight: 1.35 }}>
+                                {formatFollowUpLine(fu)}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => onAddClick(dayStr, String(svc.id))}
+                                style={{
+                                    marginTop: 8,
+                                    width: '100%',
+                                    height: 30,
+                                    borderRadius: 5,
+                                    border: '1px dashed #f472b6',
+                                    background: '#fff',
+                                    fontSize: 10,
+                                    fontWeight: 700,
+                                    color: '#be185d',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 6,
+                                }}
+                            >
+                                <Plus size={12} />
+                                {followUpBookCtaLabel}
+                            </button>
+                        </div>
+                    );
+                })}
                 {svcApts.length === 0 && svcFollowUps.length === 0 ? (
                     <div
                         style={{
