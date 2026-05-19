@@ -70,9 +70,14 @@ function isTauriExcelRuntime(): boolean {
 }
 
 /** Tarayıcı / web görünümünde .xlsx indirme (Tauri save yok) */
-function triggerBrowserXlsxDownload(fileName: string, buf: Uint8Array): void {
-  const buffer = buf.buffer as ArrayBuffer;
-  const bytes = buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+function normalizeXlsxBuffer(buf: Uint8Array | ArrayBuffer): Uint8Array {
+  if (buf instanceof Uint8Array) return buf;
+  return new Uint8Array(buf);
+}
+
+function triggerBrowserXlsxDownload(fileName: string, buf: Uint8Array | ArrayBuffer): void {
+  const normalized = normalizeXlsxBuffer(buf);
+  const bytes = normalized.buffer.slice(normalized.byteOffset, normalized.byteOffset + normalized.byteLength);
   const blob = new Blob([bytes], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
@@ -677,10 +682,11 @@ async function downloadExcel(sheetName: string, data: any[], fileName: string): 
   const cols = Object.keys(data[0] ?? {}).map(k => ({ wch: Math.min(Math.max(k.length + 2, 12), maxWidth) }));
   ws['!cols'] = cols;
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const rawBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as Uint8Array | ArrayBuffer;
+  const buf = normalizeXlsxBuffer(rawBuf);
 
   if (!isTauriExcelRuntime()) {
-    triggerBrowserXlsxDownload(fileName, buf);
+    triggerBrowserXlsxDownload(fileName, rawBuf);
     return true;
   }
 
@@ -719,10 +725,11 @@ function sheetColWidths(keys: string[], maxW = 34): { wch: number }[] {
 }
 
 async function downloadExcelWorkbook(wb: XLSX.WorkBook, fileName: string): Promise<boolean> {
-  const buf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const rawBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as Uint8Array | ArrayBuffer;
+  const buf = normalizeXlsxBuffer(rawBuf);
 
   if (!isTauriExcelRuntime()) {
-    triggerBrowserXlsxDownload(fileName, buf);
+    triggerBrowserXlsxDownload(fileName, rawBuf);
     return true;
   }
 
