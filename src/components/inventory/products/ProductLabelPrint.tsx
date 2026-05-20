@@ -1421,7 +1421,10 @@ export function LabelContent({
     const titleLine = `${variant.variantCode} ${productName}`.replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
     const unitStr = (productUnit || variant.unit || 'Adet').trim() || 'Adet';
     const stockN = Math.round(Number(variant.stock) || 0);
-    const qtyStr = `${stockN} ${unitStr}`;
+    const qtyCore = `${stockN} ${unitStr}`;
+    const qtyHasSpecialCode = !!sc2Line && f.showStock;
+    const qtyStr = qtyHasSpecialCode ? `${sc2Line} - ${qtyCore}` : qtyCore;
+    const showStandaloneSc2 = !!sc2Line && !f.showStock;
     const priceStr = `${variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}`;
     const m = Math.max(0.5, Math.min(1.2, size.width * 0.028));
     const compact = size.height < 24;
@@ -1453,7 +1456,7 @@ export function LabelContent({
                 {titleLine.slice(0, 120)}
               </div>
             )}
-            {sc2Line && (
+            {showStandaloneSc2 && (
               <div
                 className="text-center leading-tight text-gray-700 truncate w-full"
                 style={{ fontSize: size.width < 50 ? '5px' : '6px', maxHeight: '2.8mm', overflow: 'hidden' }}
@@ -1490,8 +1493,8 @@ export function LabelContent({
     const hTitle = Math.max(4.5, Math.min(10, usable * 0.3));
     const hRow = Math.max(3.2, Math.min(5, usable * 0.12));
     const gap = Math.max(0.35, usable * 0.02);
-    const hSpec = sc2Line ? Math.max(2.2, Math.min(4, usable * 0.075)) : 0;
-    const yAfterTop = m + hBrand + gap + hTitle + gap + (sc2Line ? hSpec + gap : 0) + hRow + gap;
+    const hSpec = showStandaloneSc2 ? Math.max(2.2, Math.min(4, usable * 0.075)) : 0;
+    const yAfterTop = m + hBrand + gap + hTitle + gap + (showStandaloneSc2 ? hSpec + gap : 0) + hRow + gap;
     const barH = Math.max(6, size.height - yAfterTop - m);
 
     return (
@@ -1526,7 +1529,7 @@ export function LabelContent({
               {titleLine.slice(0, 160)}
             </div>
           )}
-          {sc2Line && (
+          {showStandaloneSc2 && (
             <div
               className="font-medium text-center leading-tight text-gray-700 truncate w-full shrink-0"
               style={{
@@ -1556,7 +1559,7 @@ export function LabelContent({
                 </div>
                 <div
                   className="font-bold text-right text-gray-800 leading-none min-w-0 flex-1 pl-1 break-words"
-                  style={{ fontSize: size.width < 50 ? '8px' : '10px' }}
+                  style={{ fontSize: size.width < 50 ? (qtyHasSpecialCode ? '7px' : '8px') : (qtyHasSpecialCode ? '8px' : '10px') }}
                 >
                   {qtyStr}
                 </div>
