@@ -41,7 +41,7 @@ import {
   readLabelCustomMmEnabled,
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
-import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
+import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF, printLabelElementsInBrowser } from '../../reports/designerUtils';
 
 export interface BulkProductLabelPrintProps {
   onClose: () => void;
@@ -100,6 +100,7 @@ export function BulkProductLabelPrint({
   const [fieldSettingsLoading, setFieldSettingsLoading] = useState(true);
   const [fieldSettingsSaving, setFieldSettingsSaving] = useState(false);
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -238,8 +239,31 @@ export function BulkProductLabelPrint({
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (queue.length === 0) return;
+    if (selectedSize.category !== 'termal') {
+      window.print();
+      return;
+    }
+    const root = printRef.current;
+    if (!root) {
+      window.print();
+      return;
+    }
+    const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
+    if (cells.length === 0) {
+      window.print();
+      return;
+    }
+    setPrinting(true);
+    try {
+      await printLabelElementsInBrowser(cells, { width: pageWidthMm, height: pageHeightMm });
+    } catch (e) {
+      toast.error((e as Error)?.message || 'Yazdırma başlatılamadı');
+      window.print();
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handlePdfExport = async () => {
@@ -325,11 +349,11 @@ export function BulkProductLabelPrint({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={queue.length === 0}
+              disabled={queue.length === 0 || printing}
               className="px-3 sm:px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 disabled:opacity-45 disabled:cursor-not-allowed flex items-center gap-2 text-xs sm:text-sm font-bold border border-white/30 whitespace-nowrap"
             >
               <Printer className="w-4 h-4 shrink-0" />
-              <span>{tm('print')}</span>
+              <span>{printing ? '…' : tm('print')}</span>
               {queue.length > 0 && (
                 <span className="text-[10px] font-mono opacity-90">({totalLabels})</span>
               )}
@@ -771,11 +795,11 @@ export function BulkProductLabelPrint({
                 <button
                   type="button"
                   onClick={handlePrint}
-                  disabled={queue.length === 0}
+                  disabled={queue.length === 0 || printing}
                   className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg text-sm"
                 >
                   <Printer className="w-4 h-4" />
-                  {tm('print')} ({totalLabels})
+                  {printing ? '…' : tm('print')} ({totalLabels})
                 </button>
               </div>
             </div>

@@ -289,6 +289,102 @@ export async function exportLabelGridToPdfPages(
     pdf.save(fileName);
 }
 
+/**
+ * Termal toplu yazdırma için etiketleri ayrı yüksek çözünürlüklü görsellere çevirip
+ * yeni bir yazdırma penceresinde sayfa sayfa basar.
+ */
+export async function printLabelElementsInBrowser(
+    elements: HTMLElement[],
+    pageSizeMm: { width: number; height: number },
+    opts?: { scale?: number }
+): Promise<void> {
+    if (!elements.length) return;
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const scale = resolvePdfScale(pageSizeMm, opts?.scale);
+    const pw = Math.max(1, pageSizeMm.width);
+    const ph = Math.max(1, pageSizeMm.height);
+    const imageDataUrls: string[] = [];
+
+    for (const el of elements) {
+        const canvas = await withPdfCaptureRoot(el, (tempId) =>
+            html2canvas(el, {
+                ...HTML2CANVAS_PDF_BASE,
+                scale,
+                onclone: onCloneStripOklchAndInline(el, tempId),
+            })
+        );
+        imageDataUrls.push(canvas.toDataURL('image/png'));
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        throw new Error('Yazdırma penceresi açılamadı. Tarayıcı popup engelini kontrol edin.');
+    }
+
+    const pages = imageDataUrls
+        .map(
+            (src, idx) => `<div class="print-page${idx === imageDataUrls.length - 1 ? ' last' : ''}">
+  <img src="${src}" alt="label-${idx + 1}" />
+</div>`
+        )
+        .join('\n');
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>RetailEX Label Print</title>
+    <style>
+      @page {
+        size: ${pw}mm ${ph}mm;
+        margin: 0;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+      }
+      .print-page {
+        width: ${pw}mm;
+        height: ${ph}mm;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+      }
+      .print-page.last {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .print-page img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    ${pages}
+    <script>
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          window.focus();
+          window.print();
+        }, 80);
+      });
+      window.onafterprint = function () {
+        window.close();
+      };
+    </script>
+  </body>
+</html>`);
+    printWindow.document.close();
+}
+
 function onCloneStripOklchAndInline(orig: HTMLElement, tempId: string) {
     return (clonedDoc: Document) => {
         stripExternalStylesFromClone(clonedDoc);
