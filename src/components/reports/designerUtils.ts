@@ -227,6 +227,17 @@ const HTML2CANVAS_PDF_BASE = {
     scrollY: 0,
 } as const;
 
+function resolvePdfScale(pageSizeMm: { width: number; height: number }, requestedScale?: number): number {
+    if (typeof requestedScale === 'number' && Number.isFinite(requestedScale) && requestedScale > 0) {
+        return Math.max(1, Math.min(6, requestedScale));
+    }
+    const minEdge = Math.max(1, Math.min(pageSizeMm.width, pageSizeMm.height));
+    if (minEdge <= 25) return 4;
+    if (minEdge <= 40) return 3.5;
+    if (minEdge <= 70) return 3;
+    return 2.5;
+}
+
 /** Toplu termal PDF: tek html2canvas + hücre kırpma (etiket başına ayrı iframe yok). */
 export async function exportLabelGridToPdfPages(
     gridContainer: HTMLElement,
@@ -236,7 +247,7 @@ export async function exportLabelGridToPdfPages(
     opts?: { scale?: number }
 ): Promise<void> {
     if (!cells.length) return;
-    const scale = opts?.scale ?? 1.5;
+    const scale = resolvePdfScale(pageSizeMm, opts?.scale);
     const pw = Math.max(1, pageSizeMm.width);
     const ph = Math.max(1, pageSizeMm.height);
     const orientation = ph >= pw ? 'p' : 'l';
@@ -276,8 +287,7 @@ export async function exportLabelGridToPdfPages(
         slice.height = sh;
         const sctx = slice.getContext('2d');
         if (!sctx) continue;
-        sctx.imageSmoothingEnabled = true;
-        sctx.imageSmoothingQuality = 'high';
+        sctx.imageSmoothingEnabled = false;
         sctx.drawImage(fullCanvas, x0, y0, sw, sh, 0, 0, sw, sh);
         const sliceAr = sw / sh;
         const pageAr = pageW / pageH;
@@ -352,7 +362,8 @@ export const pxToMm = (px: number) => px / 3.7795275591;
 export async function exportToPDF(
     element: HTMLElement,
     fileName: string = 'report.pdf',
-    pageSizeMm: { width: number; height: number } = DEFAULT_A4
+    pageSizeMm: { width: number; height: number } = DEFAULT_A4,
+    opts?: { scale?: number }
 ) {
     const pw = Math.max(1, pageSizeMm.width);
     const ph = Math.max(1, pageSizeMm.height);
@@ -360,6 +371,7 @@ export async function exportToPDF(
     const canvas = await withPdfCaptureRoot(element, (tempId) =>
         html2canvas(element, {
             ...HTML2CANVAS_PDF_BASE,
+            scale: resolvePdfScale(pageSizeMm, opts?.scale),
             onclone: onCloneStripOklchAndInline(element, tempId),
         })
     );

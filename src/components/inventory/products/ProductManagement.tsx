@@ -65,12 +65,16 @@ function buildQuickRetailProductLabelTemplate(product: Product, size: { w: numbe
   const title = `${codePart} ${product.name || ''}`.replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
   const priceStr = formatCurrency(Number(product.price) || 0, 2, false);
   const unit = (product.unit || 'Adet').trim() || 'Adet';
-  const qtyStr = `${Math.round(Number(product.stock) || 0)} ${unit}`;
+  const rawSc2 = (product.specialCode2 || '').toString().trim();
+  const qtyCore = `${Math.round(Number(product.stock) || 0)} ${unit}`;
+  const qtyHasSpecialCode = rawSc2 !== '';
+  const qtyStr = qtyHasSpecialCode ? `${rawSc2} - ${qtyCore}` : qtyCore;
 
   if (h < 24) {
     const nameH = Math.min(7, Math.max(4, h * 0.35));
     const priceH = Math.min(6, Math.max(4, h * 0.28));
-    const barH = Math.max(5, h - m * 2 - nameH - priceH - 1);
+    const qtyH = Math.max(2.2, Math.min(3.8, h * 0.18));
+    const barH = Math.max(4.2, h - m * 2 - nameH - priceH - qtyH - 1.2);
     return {
       name: `${w}x${h}mm Ürün Etiketi`,
       category: 'etiket',
@@ -97,10 +101,25 @@ function buildQuickRetailProductLabelTemplate(product: Product, size: { w: numbe
           style: { fontSize: w < 50 ? '10px' : '12px', fontWeight: '900', textAlign: 'center', color: '#1d4ed8' },
         },
         {
+          id: 'p_qty',
+          type: 'text',
+          x: m,
+          y: m + nameH + priceH + 0.9,
+          width: innerW,
+          height: qtyH,
+          content: qtyStr,
+          style: {
+            fontSize: w < 50 ? (qtyHasSpecialCode ? '5.5px' : '6.5px') : (qtyHasSpecialCode ? '6px' : '7px'),
+            fontWeight: '700',
+            textAlign: 'center',
+            color: '#374151',
+          },
+        },
+        {
           id: 'barcode',
           type: 'barcode',
           x: m + w * 0.04,
-          y: m + nameH + priceH + 1,
+          y: m + nameH + priceH + qtyH + 1.2,
           width: Math.max(4, innerW - w * 0.08),
           height: barH,
           content: product.barcode,
@@ -165,7 +184,11 @@ function buildQuickRetailProductLabelTemplate(product: Product, size: { w: numbe
       width: half,
       height: hRow,
       content: qtyStr,
-      style: { fontSize: w < 50 ? '8px' : '10px', fontWeight: '700', textAlign: 'right' },
+      style: {
+        fontSize: w < 50 ? (qtyHasSpecialCode ? '6.5px' : '8px') : (qtyHasSpecialCode ? '8px' : '10px'),
+        fontWeight: '700',
+        textAlign: 'right',
+      },
     }
   );
   y += hRow + gap;
