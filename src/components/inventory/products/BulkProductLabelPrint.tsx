@@ -51,6 +51,8 @@ export interface BulkProductLabelPrintProps {
   gridSelectedProducts?: Product[];
 }
 
+const DEFAULT_LABEL_SIZE = LABEL_SIZES.find((s) => s.id === 't-60x40') ?? LABEL_SIZES[0];
+
 function matchesProductSearch(p: Product, needle: string): boolean {
   const q = needle.trim();
   if (!q) return true;
@@ -80,7 +82,7 @@ export function BulkProductLabelPrint({
   const [searchQuery, setSearchQuery] = useState('');
   const seededRef = useRef(false);
 
-  const [selectedSize, setSelectedSize] = useState<LabelSize>(LABEL_SIZES[5]);
+  const [selectedSize, setSelectedSize] = useState<LabelSize>(DEFAULT_LABEL_SIZE);
   const [selectedDesign, setSelectedDesign] = useState<LabelDesign>(LABEL_DESIGNS[1]);
   const [sizeFilter, setSizeFilter] = useState<'termal' | 'a4' | 'raf' | 'all'>('termal');
   const [showDiscount, setShowDiscount] = useState(false);
@@ -137,7 +139,7 @@ export function BulkProductLabelPrint({
     setQueue((prev) => addProductsToBulkQueue(prev, init));
   }, [initialQueueProducts]);
 
-  const presetDefault = LABEL_SIZES[5];
+  const presetDefault = DEFAULT_LABEL_SIZE;
   const [useCustomMm, setUseCustomMm] = useState(() => readLabelCustomMmEnabled());
   const [customWidthMm, setCustomWidthMm] = useState(() => readLabelCustomWidthMm(presetDefault.width));
   const [customHeightMm, setCustomHeightMm] = useState(() => readLabelCustomHeightMm(presetDefault.height));

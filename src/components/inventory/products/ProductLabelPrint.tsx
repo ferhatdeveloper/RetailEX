@@ -341,6 +341,8 @@ export const LABEL_DESIGNS: LabelDesign[] = [
   }
 ];
 
+const DEFAULT_LABEL_SIZE = LABEL_SIZES.find((s) => s.id === 't-60x40') ?? LABEL_SIZES[0];
+
 export function ProductLabelPrint({
   productName,
   variants,
@@ -352,7 +354,7 @@ export function ProductLabelPrint({
   onClose,
 }: ProductLabelPrintProps) {
   const { tm } = useLanguage();
-  const [selectedSize, setSelectedSize] = useState<LabelSize>(LABEL_SIZES[5]); // 60x40 default
+  const [selectedSize, setSelectedSize] = useState<LabelSize>(DEFAULT_LABEL_SIZE);
   const [selectedDesign, setSelectedDesign] = useState<LabelDesign>(LABEL_DESIGNS[1]); // Standard default
   const [selectedVariants, setSelectedVariants] = useState<SelectedVariant[]>([]);
   const [sizeFilter, setSizeFilter] = useState<'termal' | 'a4' | 'raf' | 'all'>('termal');
@@ -399,7 +401,7 @@ export function ProductLabelPrint({
     }
   }, [printRotation]);
 
-  const presetDefault = LABEL_SIZES[5];
+  const presetDefault = DEFAULT_LABEL_SIZE;
   const [useCustomMm, setUseCustomMm] = useState(() => readLabelCustomMmEnabled());
   const [customWidthMm, setCustomWidthMm] = useState(() => readLabelCustomWidthMm(presetDefault.width));
   const [customHeightMm, setCustomHeightMm] = useState(() => readLabelCustomHeightMm(presetDefault.height));
