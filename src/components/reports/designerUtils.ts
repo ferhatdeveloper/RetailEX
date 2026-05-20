@@ -232,15 +232,15 @@ function resolvePdfScale(pageSizeMm: { width: number; height: number }, requeste
         return Math.max(1, Math.min(6, requestedScale));
     }
     const minEdge = Math.max(1, Math.min(pageSizeMm.width, pageSizeMm.height));
-    if (minEdge <= 25) return 4;
-    if (minEdge <= 40) return 3.5;
-    if (minEdge <= 70) return 3;
-    return 2.5;
+    if (minEdge <= 25) return 5;
+    if (minEdge <= 40) return 4.5;
+    if (minEdge <= 70) return 4;
+    return 3;
 }
 
-/** Toplu termal PDF: tek html2canvas + hücre kırpma (etiket başına ayrı iframe yok). */
+/** Toplu termal PDF: her etiket hücresi yüksek çözünürlükte ayrı yakalanır. */
 export async function exportLabelGridToPdfPages(
-    gridContainer: HTMLElement,
+    _gridContainer: HTMLElement,
     cells: HTMLElement[],
     fileName: string,
     pageSizeMm: { width: number; height: number },
@@ -255,41 +255,21 @@ export async function exportLabelGridToPdfPages(
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
 
-    const fullCanvas = await withPdfCaptureRoot(gridContainer, (tempId) =>
-        html2canvas(gridContainer, {
-            ...HTML2CANVAS_PDF_BASE,
-            scale,
-            onclone: onCloneStripOklchAndInline(gridContainer, tempId),
-        })
-    );
-
-    const rootRect = gridContainer.getBoundingClientRect();
-    const scrW = Math.max(1, rootRect.width);
-    const scrH = Math.max(1, rootRect.height);
-    const sx = fullCanvas.width / scrW;
-    const sy = fullCanvas.height / scrH;
-
     for (let i = 0; i < cells.length; i++) {
         if (i > 0) {
             pdf.addPage([pw, ph]);
         }
         const cell = cells[i];
-        const cr = cell.getBoundingClientRect();
-        const x0 = Math.max(0, Math.floor((cr.left - rootRect.left) * sx));
-        const y0 = Math.max(0, Math.floor((cr.top - rootRect.top) * sy));
-        const x1 = Math.min(fullCanvas.width, Math.ceil((cr.right - rootRect.left) * sx));
-        const y1 = Math.min(fullCanvas.height, Math.ceil((cr.bottom - rootRect.top) * sy));
-        const sw = Math.max(1, x1 - x0);
-        const sh = Math.max(1, y1 - y0);
-
-        const slice = document.createElement('canvas');
-        slice.width = sw;
-        slice.height = sh;
-        const sctx = slice.getContext('2d');
-        if (!sctx) continue;
-        sctx.imageSmoothingEnabled = false;
-        sctx.drawImage(fullCanvas, x0, y0, sw, sh, 0, 0, sw, sh);
-        const sliceAr = sw / sh;
+        const canvas = await withPdfCaptureRoot(cell, (tempId) =>
+            html2canvas(cell, {
+                ...HTML2CANVAS_PDF_BASE,
+                scale,
+                onclone: onCloneStripOklchAndInline(cell, tempId),
+            })
+        );
+        const cw = Math.max(1, canvas.width);
+        const ch = Math.max(1, canvas.height);
+        const sliceAr = cw / ch;
         const pageAr = pageW / pageH;
         let imgW = pageW;
         let imgH = pageH;
@@ -304,7 +284,7 @@ export async function exportLabelGridToPdfPages(
             imgW = pageH * sliceAr;
             imgX = (pageW - imgW) / 2;
         }
-        pdf.addImage(slice.toDataURL('image/png'), 'PNG', imgX, imgY, imgW, imgH);
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', imgX, imgY, imgW, imgH);
     }
     pdf.save(fileName);
 }
