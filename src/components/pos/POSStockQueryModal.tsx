@@ -10,7 +10,11 @@ interface POSStockQueryModalProps {
 }
 
 export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQueryModalProps) {
-  const { t, language } = useLanguage();
+  const { t, tm, language } = useLanguage();
+  const moduleSearchPlaceholder = tm('itemSearchPlaceholder');
+  const searchPlaceholder = moduleSearchPlaceholder === 'itemSearchPlaceholder' ? t.searchProductBarcodeCategory : moduleSearchPlaceholder;
+  const moduleCodeLabel = tm('code');
+  const productCodeLabel = moduleCodeLabel === 'code' ? 'Kod' : moduleCodeLabel;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(t.allCategories);
@@ -48,6 +52,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
     if (searchQuery) {
       filtered = filtered.filter(p =>
         (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (p.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.barcode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (typeof p.category === 'string' && p.category.toLowerCase().includes(searchQuery.toLowerCase()))
       );
@@ -141,7 +146,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
             <div className="flex-1 relative">
               <input
                 type="text"
-                placeholder={t.searchProductBarcodeCategory}
+                placeholder={searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -204,9 +209,15 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
                           {product.name}
                         </h5>
 
-                        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
-                          <Barcode className="w-3.5 h-3.5" />
-                          <span className="truncate">{product.barcode}</span>
+                        <div className="mb-2 space-y-1 text-xs text-gray-500">
+                          <div className="flex items-center gap-2">
+                            <Tag className="w-3.5 h-3.5" />
+                            <span className="truncate font-mono">{productCodeLabel}: {product.code || '-'}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Barcode className="w-3.5 h-3.5" />
+                            <span className="truncate font-mono">{t.barcode}: {product.barcode || '-'}</span>
+                          </div>
                         </div>
 
                         <div className="flex items-center justify-between mb-2">
@@ -232,7 +243,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">{t.product}</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">{t.barcode}</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">{productCodeLabel} / {t.barcode}</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">{t.categories}</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider">{t.stock}</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">{t.price}</th>
@@ -245,7 +256,10 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
                       return (
                         <tr key={product.id} className="hover:bg-blue-50/50 transition-colors">
                           <td className="px-4 py-3 text-sm text-gray-900">{product.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600 font-mono">{product.barcode}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600 font-mono">
+                            <div>{productCodeLabel}: {product.code || '-'}</div>
+                            <div>{t.barcode}: {product.barcode || '-'}</div>
+                          </td>
                           <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`text-sm font-bold px-3 py-1 rounded ${status.bg} ${status.text}`}>
@@ -306,6 +320,9 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
                 </div>
                 <p className="text-xl font-mono text-gray-900">
                   {selectedProduct.barcode}
+                </p>
+                <p className="text-sm font-mono text-gray-500 mt-1">
+                  {productCodeLabel}: {selectedProduct.code || '-'}
                 </p>
               </div>
 

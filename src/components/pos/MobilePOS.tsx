@@ -150,6 +150,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     const matchesCategory = selectedCategory === 'Tümü' || product.category === selectedCategory;
     const matchesSearch = searchQuery === '' ||
       (product.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (product.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (product.barcode || '').includes(searchQuery);
     return matchesCategory && matchesSearch;
   });
@@ -785,7 +786,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Ürün ara..."
+                placeholder="Kod, ad veya barkod ara..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
@@ -837,7 +838,8 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     {product.price.toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500">Stok: {product.stock}</div>
-                  <div className="text-xs text-gray-400 mt-1">{product.barcode}</div>
+                  <div className="text-xs text-gray-400 mt-1 font-mono">Kod: {product.code || '-'}</div>
+                  <div className="text-xs text-gray-400 font-mono">Barkod: {product.barcode || '-'}</div>
                 </button>
               ))}
             </div>

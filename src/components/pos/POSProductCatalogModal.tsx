@@ -27,6 +27,10 @@ export function POSProductCatalogModal({
   const { t, tm } = useLanguage();
   const { darkMode } = useTheme();
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const moduleSearchPlaceholder = tm('itemSearchPlaceholder');
+  const searchPlaceholder = moduleSearchPlaceholder === 'itemSearchPlaceholder' ? t.searchProductBarcodeCategory : moduleSearchPlaceholder;
+  const moduleCodeLabel = tm('code');
+  const productCodeLabel = moduleCodeLabel === 'code' ? 'Kod' : moduleCodeLabel;
   const ALL_CAT = t.allBtn || 'Tümü';
   const [selectedCategory, setSelectedCategory] = useState(ALL_CAT);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -74,6 +78,7 @@ export function POSProductCatalogModal({
         const query = searchQuery.toLowerCase();
         return (
           (product.name || '').toLowerCase().includes(query) ||
+          (product.code || '').toLowerCase().includes(query) ||
           (product.barcode || '').toLowerCase().includes(query) ||
           (product.category?.toString() || '').toLowerCase().includes(query)
         );
@@ -145,7 +150,7 @@ export function POSProductCatalogModal({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t.searchProductBarcodeCategory}
+                    placeholder={searchPlaceholder}
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 focus:outline-none focus:border-blue-400 transition-colors text-xs"
                     autoFocus
                   />
@@ -201,9 +206,10 @@ export function POSProductCatalogModal({
                         <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2">
                           {product.name}
                         </h3>
-                        <p className="text-xs text-gray-500 mb-2">
-                          {product.barcode}
-                        </p>
+                        <div className="text-[11px] text-gray-500 mb-2 space-y-0.5">
+                          <p className="font-mono truncate">{productCodeLabel}: {product.code || '-'}</p>
+                          <p className="font-mono truncate">{t.barcode}: {product.barcode || '-'}</p>
+                        </div>
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-600">{(product.stock || 0) > 0 ? t.stock : t.outOfStock}</span>
                           <span className={`text-xs px-2 py-0.5 ${(product.stock || 0) > 50
@@ -274,7 +280,10 @@ export function POSProductCatalogModal({
 
                       <div className="flex-1 text-left">
                         <h3 className="text-sm font-medium text-gray-900 mb-1">{product.name}</h3>
-                        <p className="text-xs text-gray-500">{product.barcode}</p>
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                          <p className="font-mono">{productCodeLabel}: {product.code || '-'}</p>
+                          <p className="font-mono">{t.barcode}: {product.barcode || '-'}</p>
+                        </div>
                         {product.variants && product.variants.length > 0 && (
                           <div className="mt-1 text-xs text-purple-600 font-medium">
                             {product.variants.length} {t.variantAvailable}
@@ -336,7 +345,8 @@ export function POSProductCatalogModal({
                     </div>
                     <div>
                       <h3 className="font-medium text-gray-900">{selectedProduct.name}</h3>
-                      <p className="text-xs text-gray-500">{selectedProduct.barcode}</p>
+                      <p className="text-xs text-gray-500 font-mono">{productCodeLabel}: {selectedProduct.code || '-'}</p>
+                      <p className="text-xs text-gray-500 font-mono">{t.barcode}: {selectedProduct.barcode || '-'}</p>
                     </div>
                   </div>
 
