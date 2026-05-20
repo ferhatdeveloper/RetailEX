@@ -1372,9 +1372,10 @@ export function LabelContent({
   fieldSettings,
 }: LabelContentProps) {
   const f = normalizeLabelPrintFieldSettings(fieldSettings);
+  const rawSc2 = typeof productSpecialCode2 === 'string' ? productSpecialCode2.trim() : '';
   const sc2Line =
-    f.showSpecialCode2 && typeof productSpecialCode2 === 'string' && productSpecialCode2.trim() !== ''
-      ? productSpecialCode2.trim()
+    f.showSpecialCode2 && rawSc2 !== ''
+      ? rawSc2
       : '';
   const isSmall = size.width < 50;
   const isMedium = size.width >= 50 && size.width < 80;
@@ -1422,8 +1423,9 @@ export function LabelContent({
     const unitStr = (productUnit || variant.unit || 'Adet').trim() || 'Adet';
     const stockN = Math.round(Number(variant.stock) || 0);
     const qtyCore = `${stockN} ${unitStr}`;
-    const qtyHasSpecialCode = !!sc2Line && f.showStock;
-    const qtyStr = qtyHasSpecialCode ? `${sc2Line} - ${qtyCore}` : qtyCore;
+    // İstenen davranış: özel kod 2 değerini adet satırında her zaman göstermek.
+    const qtyHasSpecialCode = rawSc2 !== '' && f.showStock;
+    const qtyStr = qtyHasSpecialCode ? `${rawSc2} - ${qtyCore}` : qtyCore;
     const showStandaloneSc2 = !!sc2Line && !f.showStock;
     const priceStr = `${variant.salePrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}`;
     const m = Math.max(0.5, Math.min(1.2, size.width * 0.028));
