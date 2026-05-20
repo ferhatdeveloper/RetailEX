@@ -296,39 +296,18 @@ export async function exportLabelGridToPdfPages(
 export async function printLabelElementsInBrowser(
     elements: HTMLElement[],
     pageSizeMm: { width: number; height: number },
-    opts?: { scale?: number }
+    _opts?: { scale?: number }
 ): Promise<void> {
     if (!elements.length) return;
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-    const scale = resolvePdfScale(pageSizeMm, opts?.scale);
     const pw = Math.max(1, pageSizeMm.width);
     const ph = Math.max(1, pageSizeMm.height);
-    const imageDataUrls: string[] = [];
-
-    for (const el of elements) {
-        const canvas = await withPdfCaptureRoot(el, (tempId) =>
-            html2canvas(el, {
-                ...HTML2CANVAS_PDF_BASE,
-                scale,
-                onclone: onCloneStripOklchAndInline(el, tempId),
-            })
-        );
-        imageDataUrls.push(canvas.toDataURL('image/png'));
-    }
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
         throw new Error('Yazdırma penceresi açılamadı. Tarayıcı popup engelini kontrol edin.');
     }
-
-    const pages = imageDataUrls
-        .map(
-            (src, idx) => `<div class="print-page${idx === imageDataUrls.length - 1 ? ' last' : ''}">
-  <img src="${src}" alt="label-${idx + 1}" />
-</div>`
-        )
-        .join('\n');
 
     printWindow.document.open();
     printWindow.document.write(`<!doctype html>
@@ -352,37 +331,108 @@ export async function printLabelElementsInBrowser(
         page-break-after: always;
         break-after: page;
         overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .print-page.last {
         page-break-after: auto;
         break-after: auto;
       }
-      .print-page img {
+      .print-slot {
         width: 100%;
         height: 100%;
-        object-fit: contain;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .print-slot img {
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
-        display: block;
       }
     </style>
   </head>
   <body>
-    ${pages}
-    <script>
-      window.addEventListener('load', function () {
-        setTimeout(function () {
-          window.focus();
-          window.print();
-        }, 80);
-      });
-      window.onafterprint = function () {
-        window.close();
-      };
-    </script>
+    <div id="print-root"></div>
   </body>
 </html>`);
     printWindow.document.close();
+
+    const buildPrintableClone = (source: HTMLElement): HTMLElement => {
+        const clone = source.cloneNode(true) as HTMLElement;
+        inlineSubtreeComputedStyles(source, clone);
+        scrubInlineModernColorsSubtree(clone);
+
+        const sourceCanvases = Array.from(source.querySelectorAll('canvas'));
+        const cloneCanvases = Array.from(clone.querySelectorAll('canvas'));
+        const n = Math.min(sourceCanvases.length, cloneCanvases.length);
+        for (let i = 0; i < n; i++) {
+            const srcCanvas = sourceCanvases[i];
+            const dstCanvas = cloneCanvases[i];
+            const img = document.createElement('img');
+            try {
+                img.src = srcCanvas.toDataURL('image/png');
+            } catch {
+                continue;
+            }
+            img.className = dstCanvas.className;
+            const inlineStyle = dstCanvas.getAttribute('style');
+            if (inlineStyle) img.setAttribute('style', inlineStyle);
+            img.style.display = 'block';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            dstCanvas.replaceWith(img);
+        }
+        return clone;
+    };
+
+    const root = printWindow.document.getElementById('print-root');
+    if (!root) throw new Error('Yazdırma içeriği oluşturulamadı.');
+
+    elements.forEach((el, idx) => {
+        const page = printWindow.document.createElement('div');
+        page.className = `print-page${idx === elements.length - 1 ? ' last' : ''}`;
+        const slot = printWindow.document.createElement('div');
+        slot.className = 'print-slot';
+        const clone = buildPrintableClone(el);
+        slot.appendChild(printWindow.document.importNode(clone, true));
+        page.appendChild(slot);
+        root.appendChild(page);
+    });
+
+    const waitForImages = async () => {
+        const images = Array.from(printWindow.document.images);
+        if (!images.length) return;
+        await Promise.race([
+            Promise.all(
+                images.map(
+                    (img) =>
+                        new Promise<void>((resolve) => {
+                            if (img.complete) {
+                                resolve();
+                                return;
+                            }
+                            img.addEventListener('load', () => resolve(), { once: true });
+                            img.addEventListener('error', () => resolve(), { once: true });
+                        })
+                )
+            ),
+            new Promise<void>((resolve) => setTimeout(resolve, 1200)),
+        ]);
+    };
+
+    await waitForImages();
+    await new Promise<void>((resolve) => setTimeout(resolve, 80));
+    printWindow.onafterprint = () => {
+        try {
+            printWindow.close();
+        } catch {
+            /* ignore */
+        }
+    };
+    printWindow.focus();
+    printWindow.print();
 }
 
 function onCloneStripOklchAndInline(orig: HTMLElement, tempId: string) {
