@@ -1,7 +1,11 @@
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
+import { buildJsBarcodeOptions, type BarcodeCaptionMode } from '../../services/labelPrintFieldSettingsService';
 
 const H2C_TEMP_ID_PREFIX = 'retailex-h2c-';
+const PX_PER_MM = 3.7795275591;
 
 /**
  * html2canvas modern CSS Color 4 fonksiyonlarını (oklch, oklab, lab, lch, hwb,
@@ -218,6 +222,67 @@ function withPdfCaptureRoot<T>(element: HTMLElement, fn: (tempId: string) => Pro
     });
 }
 
+function resolveLabelSizeMmFromCanvas(canvas: HTMLCanvasElement): { width: number; height: number } {
+    const widthAttr = Number(canvas.dataset.labelWidthMm);
+    const heightAttr = Number(canvas.dataset.labelHeightMm);
+    if (Number.isFinite(widthAttr) && widthAttr > 0 && Number.isFinite(heightAttr) && heightAttr > 0) {
+        return { width: widthAttr, height: heightAttr };
+    }
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width > 0 ? rect.width / PX_PER_MM : 60;
+    const height = rect.height > 0 ? rect.height / PX_PER_MM : 40;
+    return { width: Math.max(20, width), height: Math.max(10, height) };
+}
+
+function normalizeCaptionMode(raw: string | undefined): BarcodeCaptionMode {
+    if (raw === 'barcode' || raw === 'variantCode' || raw === 'both' || raw === 'none') return raw;
+    return 'barcode';
+}
+
+function applyCanvasStyleToReplacement(replacement: HTMLElement | SVGElement, source: HTMLElement) {
+    const className = source.getAttribute('class');
+    if (className) replacement.setAttribute('class', className);
+    const inlineStyle = source.getAttribute('style');
+    if (inlineStyle) replacement.setAttribute('style', inlineStyle);
+    replacement.style.display = 'block';
+    replacement.style.maxWidth = '100%';
+    replacement.style.maxHeight = '100%';
+}
+
+function buildBarcodeSvgFromCanvas(canvas: HTMLCanvasElement): SVGSVGElement | null {
+    const barcodeValue = (canvas.dataset.barcodeValue || '').trim();
+    if (!barcodeValue) return null;
+    try {
+        const sizeMm = resolveLabelSizeMmFromCanvas(canvas);
+        const variantCode = canvas.dataset.variantCode || '';
+        const captionMode = normalizeCaptionMode(canvas.dataset.barcodeCaptionMode);
+        const opts = buildJsBarcodeOptions(barcodeValue, variantCode, captionMode, sizeMm);
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(svg, barcodeValue, opts as Parameters<typeof JsBarcode>[2]);
+        return svg;
+    } catch {
+        return null;
+    }
+}
+
+async function buildQrSvgFromCanvas(canvas: HTMLCanvasElement): Promise<SVGElement | null> {
+    const qrValue = (canvas.dataset.qrValue || '').trim();
+    if (!qrValue) return null;
+    try {
+        const margin = Number(canvas.dataset.qrMargin || 1);
+        const svgMarkup = await QRCode.toString(qrValue, {
+            type: 'svg',
+            margin: Number.isFinite(margin) && margin >= 0 ? margin : 1,
+            errorCorrectionLevel: 'M',
+        });
+        const holder = document.createElement('div');
+        holder.innerHTML = svgMarkup.trim();
+        return holder.querySelector('svg');
+    } catch {
+        return null;
+    }
+}
+
 const HTML2CANVAS_PDF_BASE = {
     scale: 2,
     useCORS: true,
@@ -290,8 +355,8 @@ export async function exportLabelGridToPdfPages(
 }
 
 /**
- * Termal toplu yazdırma için etiketleri ayrı yüksek çözünürlüklü görsellere çevirip
- * yeni bir yazdırma penceresinde sayfa sayfa basar.
+ * Termal toplu yazdırma için etiket DOM'unu yeni pencerede sayfa sayfa basar.
+ * Barkod/QR canvas öğelerini SVG'ye çevirip vektörel çıktı üretir.
  */
 export async function printLabelElementsInBrowser(
     elements: HTMLElement[],
@@ -347,7 +412,8 @@ export async function printLabelElementsInBrowser(
         justify-content: center;
         overflow: hidden;
       }
-      .print-slot img {
+      .print-slot img,
+      .print-slot svg {
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
       }
@@ -359,7 +425,7 @@ export async function printLabelElementsInBrowser(
 </html>`);
     printWindow.document.close();
 
-    const buildPrintableClone = (source: HTMLElement): HTMLElement => {
+    const buildPrintableClone = async (source: HTMLElement): Promise<HTMLElement> => {
         const clone = source.cloneNode(true) as HTMLElement;
         inlineSubtreeComputedStyles(source, clone);
         scrubInlineModernColorsSubtree(clone);
@@ -370,6 +436,18 @@ export async function printLabelElementsInBrowser(
         for (let i = 0; i < n; i++) {
             const srcCanvas = sourceCanvases[i];
             const dstCanvas = cloneCanvases[i];
+            const barcodeSvg = buildBarcodeSvgFromCanvas(srcCanvas);
+            if (barcodeSvg) {
+                applyCanvasStyleToReplacement(barcodeSvg, dstCanvas);
+                dstCanvas.replaceWith(barcodeSvg);
+                continue;
+            }
+            const qrSvg = await buildQrSvgFromCanvas(srcCanvas);
+            if (qrSvg) {
+                applyCanvasStyleToReplacement(qrSvg, dstCanvas);
+                dstCanvas.replaceWith(qrSvg);
+                continue;
+            }
             const img = document.createElement('img');
             try {
                 img.src = srcCanvas.toDataURL('image/png');
@@ -390,16 +468,17 @@ export async function printLabelElementsInBrowser(
     const root = printWindow.document.getElementById('print-root');
     if (!root) throw new Error('Yazdırma içeriği oluşturulamadı.');
 
-    elements.forEach((el, idx) => {
+    for (let idx = 0; idx < elements.length; idx++) {
+        const el = elements[idx];
         const page = printWindow.document.createElement('div');
         page.className = `print-page${idx === elements.length - 1 ? ' last' : ''}`;
         const slot = printWindow.document.createElement('div');
         slot.className = 'print-slot';
-        const clone = buildPrintableClone(el);
+        const clone = await buildPrintableClone(el);
         slot.appendChild(printWindow.document.importNode(clone, true));
         page.appendChild(slot);
         root.appendChild(page);
-    });
+    }
 
     const waitForImages = async () => {
         const images = Array.from(printWindow.document.images);
