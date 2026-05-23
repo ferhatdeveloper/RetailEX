@@ -1,7 +1,18 @@
 // Template Types for Invoice & Label Designer
 
 export type TemplateType = 'invoice' | 'label';
-export type TemplateFormat = '80mm' | 'A5' | 'A4' | 'label-small' | 'label-medium' | 'label-large';
+export type TemplateFormat =
+  | '80mm'
+  | '58mm'
+  | 'A5'
+  | 'A4'
+  | 'A3'
+  | 'Letter'
+  | 'Legal'
+  | 'label-small'
+  | 'label-medium'
+  | 'label-large'
+  | 'custom';
 export type TemplateEngine = 'fastreport-like' | 'simple';
 export type TemplateUsageScope =
   | 'global'
@@ -96,11 +107,16 @@ export interface Template {
 // Predefined template formats
 export const TEMPLATE_FORMATS: Record<TemplateFormat, { width: number; height: number; name: string }> = {
   '80mm': { width: 80, height: 297, name: '80mm Termal Fiş' },
-  'A5': { width: 148, height: 210, name: 'A5 Fatura' },
-  'A4': { width: 210, height: 297, name: 'A4 Fatura' },
-  'label-small': { width: 40, height: 25, name: 'Küçük Etiket (40x25mm)' },
-  'label-medium': { width: 60, height: 40, name: 'Orta Etiket (60x40mm)' },
-  'label-large': { width: 100, height: 60, name: 'Büyük Etiket (100x60mm)' }
+  '58mm': { width: 58, height: 297, name: '58mm Termal Fiş' },
+  A5: { width: 148, height: 210, name: 'A5' },
+  A4: { width: 210, height: 297, name: 'A4' },
+  A3: { width: 297, height: 420, name: 'A3' },
+  Letter: { width: 216, height: 279, name: 'Letter (ABD)' },
+  Legal: { width: 216, height: 356, name: 'Legal (ABD)' },
+  'label-small': { width: 40, height: 25, name: 'Küçük Etiket (40×25 mm)' },
+  'label-medium': { width: 60, height: 40, name: 'Orta Etiket (60×40 mm)' },
+  'label-large': { width: 100, height: 60, name: 'Büyük Etiket (100×60 mm)' },
+  custom: { width: 210, height: 297, name: 'Özel ölçü' },
 };
 
 // Dynamic field definitions

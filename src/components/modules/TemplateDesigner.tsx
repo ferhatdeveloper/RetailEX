@@ -6,12 +6,14 @@ import {
 } from 'lucide-react';
 import type { Template, TemplateElement, TemplateUsageScope } from '../../core/types/templates';
 import {
-  TEMPLATE_FORMATS,
   INVOICE_FIELDS,
   LABEL_FIELDS,
+  TEMPLATE_FORMATS,
   TEMPLATE_USAGE_SCOPES,
   TEMPLATE_USAGE_SCOPE_LABELS,
 } from '../../core/types/templates';
+import { getTemplatePaperDisplayName } from '../../core/templatePaperFormats';
+import { TemplatePaperSizeControls } from './TemplatePaperSizeControls';
 import { useTemplateStore } from '../../store/useTemplateStore';
 
 interface TemplateDesignerProps {
@@ -197,7 +199,7 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
           <div>
             <h2 className="text-xl">{type === 'invoice' ? 'Fatura' : 'Etiket'} Tasarım Editörü</h2>
             <p className="text-sm text-gray-600">
-              {activeTemplate.name} - {TEMPLATE_FORMATS[activeTemplate.format].name}
+              {activeTemplate.name} — {getTemplatePaperDisplayName(activeTemplate)}
               {' · '}
               {(activeTemplate.engine ?? 'fastreport-like') === 'fastreport-like' ? 'FastReport benzeri motor' : 'Basit motor'}
             </p>
@@ -531,6 +533,12 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
             )}
 
             <div className="mt-6 pt-4 border-t border-gray-200 space-y-4">
+              <TemplatePaperSizeControls
+                template={activeTemplate}
+                templateType={type}
+                onApply={(patch) => updateTemplate(activeTemplate.id, patch)}
+              />
+
               <div>
                 <label className="block text-xs text-gray-600 mb-1">Tasarım Motoru</label>
                 <select

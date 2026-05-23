@@ -1,7 +1,8 @@
 ﻿import { useEffect, useState } from 'react';
 import { FileText, Edit, Trash2, Copy, Download, Upload, LayoutTemplate, Tag } from 'lucide-react';
 import type { Template, TemplateType, TemplateUsageScope } from '../../core/types/templates';
-import { TEMPLATE_FORMATS, TEMPLATE_USAGE_SCOPE_LABELS, TEMPLATE_USAGE_SCOPES } from '../../core/types/templates';
+import { TEMPLATE_USAGE_SCOPE_LABELS, TEMPLATE_USAGE_SCOPES } from '../../core/types/templates';
+import { getTemplatePaperDisplayName } from '../../core/templatePaperFormats';
 import { useTemplateStore } from '../../store';
 import { TemplateDesigner } from './TemplateDesigner';
 
@@ -230,7 +231,7 @@ export function TemplateManager() {
                     ) : (
                       <Tag className="w-16 h-16 mx-auto mb-2 text-green-500" />
                     )}
-                    <p className="text-xs text-gray-600">{TEMPLATE_FORMATS[template.format].name}</p>
+                    <p className="text-xs text-gray-600">{getTemplatePaperDisplayName(template)}</p>
                     <p className="text-xs text-gray-500">{template.width}x{template.height} mm</p>
                   </div>
                 </div>
