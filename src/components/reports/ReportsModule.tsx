@@ -4,7 +4,6 @@ import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
 import { ReportChatAI } from './ReportChatAI';
-import { TemplateManager } from '../modules/TemplateManager';
 import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
@@ -463,7 +462,7 @@ interface ReportsModuleProps {
 
 type ReportTab =
   // AI & Genel
-  'chat-ai' | 'daily' | 'daily-sales-executive' | 'z-report' | 'comparison' | 'design-center' |
+  'chat-ai' | 'daily' | 'daily-sales-executive' | 'z-report' | 'comparison' |
   // Restoran Otomasyon Özel
   'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
@@ -479,6 +478,7 @@ type ReportTab =
 
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
+  'design-center',
   'cash-flow',
   'debt-aging',
   'check-tracking',
@@ -3502,14 +3502,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         ],
       },
       {
-        key: 'grp-design',
-        label: 'Dizayn Merkezi',
-        type: 'group',
-        children: [
-          { key: 'design-center', label: 'Fatura & Etiket Tasarımcısı', icon: <FileText className="w-4 h-4" /> },
-        ],
-      },
-      {
         key: 'grp-sales',
         label: tm('satisAnalizleri'),
         type: 'group',
@@ -3683,12 +3675,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           </div>
 
           <Content className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0" style={{ scrollbarWidth: 'thin' }}>
-
-            {selectedTab === 'design-center' && (
-              <div className="bg-white rounded-xl border border-slate-200 min-h-[calc(100vh-220px)]">
-                <TemplateManager />
-              </div>
-            )}
 
             {selectedTab === 'daily' && (
               <div className="space-y-4">

@@ -155,8 +155,6 @@ const StorePerformanceAnalysis = lazyWithChunkRecovery(() => import('../sales/re
 const InventoryAgingReport = lazyWithChunkRecovery(() => import('../inventory/reports/InventoryAgingReport').then(m => ({ default: m.InventoryAgingReport })));
 const UniversalReportHub = lazyWithChunkRecovery(() => import('../analytics/UniversalReportHub').then(m => ({ default: m.UniversalReportHub })));
 const NebimMigrationWizard = lazyWithChunkRecovery(() => import('./NebimMigrationWizard').then(m => ({ default: m.NebimMigrationWizard })));
-const ReportDesignerModule = lazyWithChunkRecovery(() => import('../reports/ReportDesignerModule').then(m => ({ default: m.ReportDesignerModule })));
-
 import type { MasterRecordType } from '../inventory/products/MaterialMasterRecords';
 import type { ReportViewType } from '../inventory/products/MaterialAdvancedReports';
 
@@ -227,7 +225,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
-  'report-designer' | 'label-designer' |
+  'report-designer' | 'label-designer' | 'invoice-label-designer' |
   'supabase-migration' |
   'virtual-pbx-caller-id' |
   'restaurant' | 'beauty';
@@ -1334,6 +1332,7 @@ export function ManagementModule({
         case 'systemhealth':
         case 'smsmanage':
         case 'emailcamp':
+        case 'invoice-label-designer':
           return <SystemManagementModule routeHint={currentScreen} />;
         case 'excel':
           return <ExcelModule />;
@@ -1457,7 +1456,7 @@ export function ManagementModule({
           return <SecurityModulesWeb />;
         case 'report-designer':
         case 'label-designer':
-          return <ReportDesignerModule />;
+          return <SystemManagementModule routeHint={currentScreen} />;
         default:
           return <DashboardModule
             products={products}

@@ -2253,6 +2253,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
 
   // System Settings
   systemSettings: { tr: 'Sistem Ayarları', en: 'System Settings', ar: 'إعدادات النظام', ku: 'ڕێکخستنەکانی سیستەم' },
+  invoiceLabelDesigner: {
+    tr: 'Fatura & Etiket Tasarımcısı',
+    en: 'Invoice & Label Designer',
+    ar: 'مصمم الفواتير والملصقات',
+    ku: 'دیزاینەری پسوولە و لێبڵ',
+  },
   systemManagement: { tr: 'Sistem Yönetimi', en: 'System Management', ar: 'إدارة النظام', ku: 'بەڕێوەبردنی سیستەم' },
   userManagement: { tr: 'Kullanıcı Yönetimi', en: 'User Management', ar: 'إدارة المستخدمين', ku: 'بەڕێوەبردنی بەکارهێنەر' },
   roleAuthorization: { tr: 'Rol & Yetkilendirme', en: 'Roles & Authorization', ar: 'الأدوار والصلاحيات', ku: 'ڕۆڵ و دەسەڵات' },

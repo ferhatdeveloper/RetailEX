@@ -62,6 +62,7 @@ export interface MenuTranslations {
   invoices: string;
   journalAndSlips: string;
   labelDesigner: string;
+  invoiceLabelDesigner: string;
   logAudit: string;
   mainMenu: string;
   masterRecords: string;
@@ -1887,8 +1888,9 @@ export const translations: any = {
       inventoryManagement: 'Sayım ve Stok İşlemleri',
       invoices: 'Faturalar',
       journalAndSlips: 'Yevmiye Defteri & Fişler',
-      labelDesigner: 'Etiket Tasarımcı',
-      logAudit: 'Log/Denetim',
+    labelDesigner: 'Etiket Tasarımcı',
+    invoiceLabelDesigner: 'Fatura & Etiket Tasarımcısı',
+    logAudit: 'Log/Denetim',
       mainMenu: 'Ana Menü',
       masterRecords: 'Ana Kayıtlar',
       materialClasses: 'Malzeme Sınıfları',
@@ -3347,8 +3349,9 @@ export const translations: any = {
       inventoryManagement: 'Inventory & Stock Operations',
       invoices: 'Invoices',
       journalAndSlips: 'Journal Book & Slips',
-      labelDesigner: 'Label Designer',
-      logAudit: 'Log/Audit',
+    labelDesigner: 'Label Designer',
+    invoiceLabelDesigner: 'Invoice & Label Designer',
+    logAudit: 'Log/Audit',
       mainMenu: 'Main Menu',
       masterRecords: 'Master Records',
       materialClasses: 'Material Classes',
@@ -4689,6 +4692,7 @@ export const translations: any = {
       invoices: 'الفواتير',
       journalAndSlips: 'دفتر اليومية والسندات',
       labelDesigner: 'مصمم الملصقات',
+      invoiceLabelDesigner: 'مصمم الفواتير والملصقات',
       logAudit: 'السجلات والتدقيق',
       mainMenu: 'القائمة الرئيسية',
       masterRecords: 'السجلات الرئيسية',
@@ -6029,6 +6033,7 @@ export const translations: any = {
       invoices: 'پسوڵەکان',
       journalAndSlips: 'دەفتەری ڕۆژانە و پسوڵەکان',
       labelDesigner: 'مصمم الملصقات',
+      invoiceLabelDesigner: 'دیزاینەری پسوولە و لێبڵ',
       logAudit: 'تۆمار/پشکنین',
       mainMenu: 'القائمة الرئيسية',
       masterRecords: 'السجلات الرئيسية',

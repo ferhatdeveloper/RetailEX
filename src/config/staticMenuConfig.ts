@@ -279,17 +279,6 @@ export const getStaticMenuSections = (t: Translations) => [
                 label: t.menu.categoryGroupSalesProfitReport,
                 screen: 'category-group-profit-report',
                 icon: Layers
-            },
-            {
-                label: t.menu.designCenter,
-                screen: 'report-designer',
-                icon: Layout,
-                badge: t.menu.newBadge
-            },
-            {
-                label: t.menu.labelDesigner,
-                screen: 'label-designer',
-                icon: Tag
             }
         ]
     },
@@ -299,6 +288,7 @@ export const getStaticMenuSections = (t: Translations) => [
         items: [
             { label: t.menu.firmPeriodDefinitions, screen: 'firm-period-definitions', icon: Building },
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
+            { label: t.menu.invoiceLabelDesigner, screen: 'invoice-label-designer', icon: FileText },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },

@@ -12,6 +12,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { IS_TAURI } from '../../utils/env';
 import { checkPgBridgeReachable, runPostgresFullBackup } from '../../services/postgresFullBackup';
 import { PrinterSettings } from './PrinterSettings';
+import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
 
@@ -20,6 +21,7 @@ type SystemView =
   | 'roleAuthorization'
   | 'definitionsParameters'
   | 'receiptSettings'
+  | 'invoiceLabelDesigner'
   | 'printerSettings'
   | 'callerIdVirtualPbx'
   | 'dataBroadcast'
@@ -38,6 +40,9 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   definitions: 'definitionsParameters',
   backuprestore: 'backupRestore',
   systemhealth: 'systemHealth',
+  'invoice-label-designer': 'invoiceLabelDesigner',
+  'report-designer': 'invoiceLabelDesigner',
+  'label-designer': 'invoiceLabelDesigner',
   smsmanage: 'definitionsParameters',
   emailcamp: 'definitionsParameters',
 };
@@ -63,6 +68,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
     { id: 'definitionsParameters' as const, label: 'Tanımlar/Parametreler', icon: Settings, color: 'green' },
     { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
+    { id: 'invoiceLabelDesigner' as const, label: tm('invoiceLabelDesigner'), icon: FileText, color: 'indigo' },
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
     { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
@@ -136,6 +142,13 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
         {currentView === 'definitionsParameters' && <DefinitionsParametersView />}
         {currentView === 'receiptSettings' && <ReceiptSettingsView />}
+        {currentView === 'invoiceLabelDesigner' && (
+          <div className="min-h-full bg-gray-50 p-4 sm:p-6">
+            <div className="bg-white rounded-xl border border-gray-200 min-h-[calc(100vh-8rem)]">
+              <TemplateManager />
+            </div>
+          </div>
+        )}
         {currentView === 'printerSettings' && <PrinterSettings />}
         {currentView === 'callerIdVirtualPbx' && (
           <div className="min-h-full bg-gray-50">
