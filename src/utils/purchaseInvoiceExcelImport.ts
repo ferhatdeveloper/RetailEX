@@ -18,6 +18,22 @@ export const PURCHASE_INVOICE_EXCEL_COLUMNS = {
   lineNote: 'Satır Açıklaması',
 } as const;
 
+/** Excel'de Birim boşsa Miktar = stok birimi (adet); birim çarpanı uygulanmaz. */
+export function applyPurchaseExcelRowQuantityAsBaseStock<T extends {
+  quantity?: number;
+  multiplier?: number;
+  baseQuantity?: number;
+}>(item: T, excelQuantity: number, hasUnitHint: boolean): T {
+  if (hasUnitHint) return item;
+  const qty = Math.max(0, Number(excelQuantity) || 0);
+  return {
+    ...item,
+    quantity: qty,
+    multiplier: 1,
+    baseQuantity: qty,
+  };
+}
+
 export interface ParsedPurchaseInvoiceExcelRow {
   /** Excel veri satırı (1 = başlık altı ilk satır) */
   excelRow: number;
@@ -239,6 +255,7 @@ const TEMPLATE_SAMPLE = [
     [PURCHASE_INVOICE_EXCEL_COLUMNS.discountPercent]: 0,
     [PURCHASE_INVOICE_EXCEL_COLUMNS.unit]: '',
     [PURCHASE_INVOICE_EXCEL_COLUMNS.lineNote]: '',
+    /** Birim boşsa Miktar stok birimindedir (Koli vb. çarpan uygulanmaz). */
   },
 ];
 

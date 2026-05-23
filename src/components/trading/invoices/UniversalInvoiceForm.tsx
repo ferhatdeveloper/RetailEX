@@ -57,6 +57,7 @@ import type { UnitMasterRow } from '../../../utils/unitOptions';
 import {
   downloadPurchaseInvoiceImportTemplate,
   parsePurchaseInvoiceExcelArrayBuffer,
+  applyPurchaseExcelRowQuantityAsBaseStock,
 } from '../../../utils/purchaseInvoiceExcelImport';
 
 // Electron API tip tanımı
@@ -1403,6 +1404,11 @@ export function UniversalInvoiceForm({
           item.description2 = pr.lineNote;
         }
         item = finalizePurchaseLineAmounts(item);
+        item = applyPurchaseExcelRowQuantityAsBaseStock(
+          item,
+          pr.quantity,
+          Boolean(pr.unitHint?.trim())
+        );
         built.push(item);
       }
       if (built.length === 0) {

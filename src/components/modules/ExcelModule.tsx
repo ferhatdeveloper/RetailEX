@@ -110,6 +110,7 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Alış Fiyatı': 50.00,
         'Satış Fiyatı*': 100.00,
         'KDV Oranı (%)': 18,
+        'Mevcut Stok': '',
         'Min Stok': 5,
         'Max Stok': 200,
         'Özel Kod 1': '',
@@ -130,6 +131,7 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Alış Fiyatı': 120.00,
         'Satış Fiyatı*': 250.00,
         'KDV Oranı (%)': 18,
+        'Mevcut Stok': '',
         'Min Stok': 3,
         'Max Stok': 50,
         'Özel Kod 1': '',
@@ -395,6 +397,8 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
     keyMap['Ürün Görsel URL'] = 'Görsel URL';
     keyMap['image_url'] = 'Görsel URL';
     keyMap['Image URL'] = 'Görsel URL';
+    keyMap['Mevcut stok'] = 'Mevcut Stok';
+    keyMap['Current Stock'] = 'Mevcut Stok';
   } else if (entityType === 'price-updates') {
     /** Alternatif sütun başlıkları — kullanıcı dışa aktarımdaki satış/alış yıldızlı kolonları getirebilir */
     keyMap['Ürün Kodu*'] = 'Ürün Kodu';
@@ -498,6 +502,26 @@ function parseLocaleNumberTR(val: any): number {
 function numFromExcel(val: any, fallback = 0): number {
   const n = parseLocaleNumberTR(val);
   return Number.isNaN(n) ? fallback : n;
+}
+
+/** Ürün Excel: açılış/mevcut stok (boş hücre = güncellemede stok alanına dokunma). */
+function pickCurrentStockFromProductRow(row: Record<string, unknown>): number | undefined {
+  const keys = ['Mevcut Stok', 'Mevcut stok', 'Current Stock'];
+  for (const k of keys) {
+    if (!(k in row)) continue;
+    const raw = row[k];
+    if (raw === null || raw === undefined || String(raw).trim() === '') return undefined;
+    return numFromExcel(raw, 0);
+  }
+  for (const rk of Object.keys(row)) {
+    const norm = rk.replace(/\uFEFF/g, '').trim().toLowerCase();
+    if (norm === 'mevcut stok' || norm === 'current stock') {
+      const raw = row[rk];
+      if (raw === null || raw === undefined || String(raw).trim() === '') return undefined;
+      return numFromExcel(raw, 0);
+    }
+  }
+  return undefined;
 }
 
 function strFromExcel(val: any): string {
@@ -762,6 +786,7 @@ async function exportProducts(): Promise<void> {
     'Alış Fiyatı': p.cost || 0,
     'Satış Fiyatı*': p.price || 0,
     'KDV Oranı (%)': p.taxRate ?? (p as any).vat_rate ?? 18,
+    'Mevcut Stok': p.stock ?? 0,
     'Min Stok': p.minStock ?? p.min_stock ?? 0,
     'Max Stok': (p as any).maxStock ?? (p as any).max_stock ?? 0,
     'Özel Kod 1': (p as any).special_code_1 || '',
@@ -1345,6 +1370,7 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
       log?.(`[ROW ${rowNum}] SKIP - Zorunlu alan eksik (Kod/Ad).`);
       continue;
     }
+    const openingStock = pickCurrentStockFromProductRow(row);
     const payload = {
       code,
       name,
@@ -1365,7 +1391,7 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
       image_url: productImageUrlFromExcelRow(row),
       is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
       firm_nr: ERP_SETTINGS.firmNr,
-      stock: 0,
+      stock: openingStock ?? 0,
     } as any;
     try {
       const existing = await productAPI.getByCode(code);
@@ -1424,6 +1450,9 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
         };
         if (payload.image_url) {
           upd.image_url = payload.image_url;
+        }
+        if (openingStock !== undefined) {
+          upd.stock = openingStock;
         }
         await productAPI.update(existing.id, upd as any);
         result.success++;
