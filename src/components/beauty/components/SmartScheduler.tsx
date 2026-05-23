@@ -55,6 +55,7 @@ import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
+import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
 import { useClinicErpSpecialtyOptional } from '../context/ClinicErpSpecialtyContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 type ViewType = 'day' | 'workweek' | 'week' | 'month' | 'agenda' | 'timeline' | 'device' | 'list' | 'svcboard';
@@ -474,6 +475,19 @@ export function SmartScheduler() {
     );
 
     const [followUpReminders, setFollowUpReminders] = useState<BeautyFollowUpReminder[]>([]);
+    const [followUpActionTarget, setFollowUpActionTarget] = useState<BeautyFollowUpReminder | null>(null);
+
+    const reloadFollowUpReminders = useCallback(async () => {
+        try {
+            const rows = await beautyService.getFollowUpRemindersInRange(
+                serviceBoardRange.start,
+                serviceBoardRange.end,
+            );
+            setFollowUpReminders(rows);
+        } catch {
+            setFollowUpReminders([]);
+        }
+    }, [serviceBoardRange.start, serviceBoardRange.end]);
 
     useEffect(() => {
         if (view !== 'svcboard') {
@@ -496,6 +510,17 @@ export function SmartScheduler() {
             cancelled = true;
         };
     }, [view, serviceBoardRange.start, serviceBoardRange.end]);
+
+    const followUpStatusLabels = useMemo(
+        () => ({
+            due: tm('bFollowUpBadge'),
+            postponed: tm('bFollowUpStatusPostponed'),
+            contacted: tm('bFollowUpStatusContacted'),
+            other: tm('bFollowUpStatusOther'),
+            dismissed: tm('bFollowUpStatusDismissed'),
+        }),
+        [tm],
+    );
 
     const applyBeautyResourceDrop = useCallback(
         async (
@@ -1992,6 +2017,11 @@ export function SmartScheduler() {
                                         : tm('bFollowUpContextLine')
                                               .replace('{last}', r.last_completed_date)
                                               .replace('{days}', String(r.reminder_days))}
+                                onFollowUpManage={setFollowUpActionTarget}
+                                followUpManageLabel={tm('bFollowUpManage')}
+                                followUpStatusLabels={followUpStatusLabels}
+                                formatFollowUpPostponedLine={date =>
+                                    tm('bFollowUpPostponedLine').replace('{date}', date)}
                                 noServicesLabel={tm('bServiceBoardNoActiveServices')}
                                 noAppointmentsInSlotLabel={tm('bServiceBoardNoAptsForServiceDay')}
                                 appointmentsCountTemplate={tm('bDeviceColumnAppointmentCount')}
@@ -2571,6 +2601,28 @@ export function SmartScheduler() {
                     variant="appointment_completed"
                 />
             ) : null}
+
+            <FollowUpReminderActionModal
+                open={followUpActionTarget != null}
+                reminder={followUpActionTarget}
+                onClose={() => setFollowUpActionTarget(null)}
+                onSaved={() => void reloadFollowUpReminders()}
+                labels={{
+                    title: tm('bFollowUpModalTitle'),
+                    status: tm('bFollowUpStatusLabel'),
+                    statusDue: tm('bFollowUpStatusDue'),
+                    statusPostponed: tm('bFollowUpStatusPostponed'),
+                    statusContacted: tm('bFollowUpStatusContacted'),
+                    statusOther: tm('bFollowUpStatusOther'),
+                    statusDismissed: tm('bFollowUpStatusDismissed'),
+                    note: tm('bFollowUpNoteLabel'),
+                    notePlaceholder: tm('bFollowUpNotePlaceholder'),
+                    postponeDate: tm('bFollowUpPostponeDate'),
+                    cancel: tm('bFollowUpModalCancel'),
+                    save: tm('bFollowUpModalSave'),
+                    saving: tm('bFollowUpModalSaving'),
+                }}
+            />
         </div>
     );
 }

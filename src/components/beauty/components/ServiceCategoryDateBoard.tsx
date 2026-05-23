@@ -3,8 +3,9 @@
  * Ana kategori: `parent_category` doluysa o, değilse `category` (beautyServiceMainKey).
  */
 import React, { useMemo } from 'react';
-import { Plus, Layers, Bell, Phone } from 'lucide-react';
+import { Plus, Layers, Bell, Phone, CalendarClock } from 'lucide-react';
 import type { BeautyAppointment, BeautyFollowUpReminder, BeautyService } from '../../../types/beauty';
+import { getFollowUpReminderCardTheme } from '../../../utils/beautyFollowUpReminderUtils';
 import { beautyAppointmentDateKey } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyServiceMainKey, beautyServiceSubKey, beautyServiceActive } from '../beautyServiceCategoryUtils';
@@ -71,6 +72,10 @@ export interface ServiceCategoryDateBoardProps {
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
+    onFollowUpManage?: (reminder: BeautyFollowUpReminder) => void;
+    followUpManageLabel?: string;
+    followUpStatusLabels?: Partial<Record<string, string>>;
+    formatFollowUpPostponedLine?: (dueDate: string) => string;
     noServicesLabel: string;
     noAppointmentsInSlotLabel: string;
     appointmentsCountTemplate: string;
@@ -94,6 +99,10 @@ function ServiceBoardServiceCell({
     followUpBadgeLabel,
     followUpBookCtaLabel,
     formatFollowUpLine,
+    onFollowUpManage,
+    followUpManageLabel,
+    followUpStatusLabels,
+    formatFollowUpPostponedLine,
     noAppointmentsInSlotLabel,
     appointmentsCountTemplate,
 }: {
@@ -106,6 +115,10 @@ function ServiceBoardServiceCell({
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
     formatFollowUpLine: (r: BeautyFollowUpReminder) => string;
+    onFollowUpManage?: (reminder: BeautyFollowUpReminder) => void;
+    followUpManageLabel?: string;
+    followUpStatusLabels?: Partial<Record<string, string>>;
+    formatFollowUpPostponedLine?: (dueDate: string) => string;
     noAppointmentsInSlotLabel: string;
     appointmentsCountTemplate: string;
 }) {
@@ -131,58 +144,117 @@ function ServiceBoardServiceCell({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {svcFollowUps.map(fu => {
                     const followUpPhone = followUpPhoneLine(fu.customer_phone);
+                    const theme = getFollowUpReminderCardTheme(fu.follow_up_status);
+                    const statusKey = fu.follow_up_status ?? 'due';
+                    const badgeText =
+                        followUpStatusLabels?.[statusKey] ??
+                        (statusKey === 'postponed'
+                            ? 'Ertelendi'
+                            : statusKey === 'contacted'
+                              ? 'Görüşüldü'
+                              : statusKey === 'other'
+                                ? 'Notlu'
+                                : followUpBadgeLabel);
                     return (
                         <div
                             key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}
                             style={{
                                 borderRadius: 6,
-                                border: '1px solid #fbcfe8',
-                                borderLeft: '3px solid #db2777',
-                                background: '#fdf2f8',
+                                border: theme.border,
+                                borderLeft: theme.borderLeft,
+                                background: theme.background,
                                 padding: '8px 10px',
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                                <Bell size={12} color="#db2777" style={{ flexShrink: 0 }} />
-                                <span style={{ fontSize: 9, fontWeight: 800, color: '#be185d' }}>{followUpBadgeLabel}</span>
+                                <Bell size={12} color={theme.iconColor} style={{ flexShrink: 0 }} />
+                                <span style={{ fontSize: 9, fontWeight: 800, color: theme.badgeColor }}>{badgeText}</span>
                             </div>
-                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#831843' }}>
+                            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: theme.titleColor }}>
                                 {fu.customer_name?.trim() ? fu.customer_name : '—'}
                             </p>
                             {followUpPhone ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, minWidth: 0 }}>
-                                    <Phone size={10} color="#9d174d" style={{ flexShrink: 0 }} />
-                                    <span style={{ fontSize: 10, fontWeight: 600, color: '#9d174d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <Phone size={10} color={theme.subColor} style={{ flexShrink: 0 }} />
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: theme.subColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {followUpPhone}
                                     </span>
                                 </div>
                             ) : null}
-                            <p style={{ margin: '4px 0 0', fontSize: 10, fontWeight: 600, color: '#9d174d', lineHeight: 1.35 }}>
+                            <p style={{ margin: '4px 0 0', fontSize: 10, fontWeight: 600, color: theme.subColor, lineHeight: 1.35 }}>
                                 {formatFollowUpLine(fu)}
                             </p>
-                            <button
-                                type="button"
-                                onClick={() => onAddClick(dayStr, String(svc.id))}
-                                style={{
-                                    marginTop: 8,
-                                    width: '100%',
-                                    height: 30,
-                                    borderRadius: 5,
-                                    border: '1px dashed #f472b6',
-                                    background: '#fff',
-                                    fontSize: 10,
-                                    fontWeight: 700,
-                                    color: '#be185d',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 6,
-                                }}
-                            >
-                                <Plus size={12} />
-                                {followUpBookCtaLabel}
-                            </button>
+                            {fu.follow_up_status === 'postponed' &&
+                            fu.natural_due_date &&
+                            fu.natural_due_date !== fu.due_date ? (
+                                <p style={{ margin: '4px 0 0', fontSize: 9, fontWeight: 700, color: theme.badgeColor }}>
+                                    {formatFollowUpPostponedLine
+                                        ? formatFollowUpPostponedLine(fu.due_date)
+                                        : `Yeni tarih: ${fu.due_date}`}
+                                </p>
+                            ) : null}
+                            {fu.note?.trim() ? (
+                                <p
+                                    style={{
+                                        margin: '6px 0 0',
+                                        fontSize: 10,
+                                        fontWeight: 600,
+                                        color: theme.titleColor,
+                                        lineHeight: 1.35,
+                                        fontStyle: 'italic',
+                                    }}
+                                >
+                                    {fu.note.trim()}
+                                </p>
+                            ) : null}
+                            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                                {onFollowUpManage ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => onFollowUpManage(fu)}
+                                        style={{
+                                            flex: 1,
+                                            height: 30,
+                                            borderRadius: 5,
+                                            border: theme.buttonBorder,
+                                            background: '#fff',
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            color: theme.buttonColor,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: 4,
+                                        }}
+                                    >
+                                        <CalendarClock size={12} />
+                                        {followUpManageLabel ?? 'Not / ertele'}
+                                    </button>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => onAddClick(dayStr, String(svc.id))}
+                                    style={{
+                                        flex: 1,
+                                        height: 30,
+                                        borderRadius: 5,
+                                        border: theme.buttonBorder,
+                                        background: '#fff',
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        color: theme.buttonColor,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        gap: 6,
+                                    }}
+                                >
+                                    <Plus size={12} />
+                                    {followUpBookCtaLabel}
+                                </button>
+                            </div>
                         </div>
                     );
                 })}
@@ -243,6 +315,10 @@ export function ServiceCategoryDateBoard({
     followUpBadgeLabel,
     followUpBookCtaLabel,
     formatFollowUpLine,
+    onFollowUpManage,
+    followUpManageLabel,
+    followUpStatusLabels,
+    formatFollowUpPostponedLine,
     noServicesLabel,
     noAppointmentsInSlotLabel,
     appointmentsCountTemplate,
@@ -303,6 +379,10 @@ export function ServiceCategoryDateBoard({
         followUpBadgeLabel,
         followUpBookCtaLabel,
         formatFollowUpLine,
+        onFollowUpManage,
+        followUpManageLabel,
+        followUpStatusLabels,
+        formatFollowUpPostponedLine,
         noAppointmentsInSlotLabel,
         appointmentsCountTemplate,
     };

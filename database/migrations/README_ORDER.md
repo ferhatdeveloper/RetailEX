@@ -29,6 +29,7 @@
 24. **034_beauty_service_parent_category.sql** – `beauty_services.parent_category`: ana kategori; `category` alt kategori (Hizmet tanımları + POS hiyerarşik filtre).
 25. **035_rex_products_follow_up_reminder_days.sql** – `rex_*_products.follow_up_reminder_days`: seçilen ürünlerde tamamlanan randevu + sarf loguna göre güzellik takip hatırlatması.
 26. **036_rex_tax_rates_special_codes.sql** – `rex_{firm}_tax_rates` ve `rex_{firm}_special_codes` tabloları (PostgREST / masterData.ts API uyumu).
+27. **037_beauty_follow_up_reminder_actions.sql** – `beauty.rex_{firm}_follow_up_reminder_actions`: takip hatırlatması notu, durum (ertelendi/görüşüldü/kapat), erteleme tarihi (Hizmet & tarih panosu).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

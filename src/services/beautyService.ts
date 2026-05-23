@@ -49,7 +49,10 @@ import {
     BeautyClinicAnalytics,
     type BeautyAppointmentClinicalData,
     type BeautyFollowUpReminder,
+    type BeautyFollowUpReminderAction,
+    type BeautyFollowUpReminderStatus,
 } from '../types/beauty';
+import { mergeFollowUpRemindersWithActions } from '../utils/beautyFollowUpReminderUtils';
 
 /** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
 export type BeautyCustomerProfileQueryOpts = {
@@ -1958,6 +1961,104 @@ export const beautyService = {
         return result.rows.map((r: Record<string, unknown> & { clinical_data?: unknown }) => normalizeAppointmentRow(r));
     },
 
+    async listFollowUpReminderActionsInRange(
+        startDate: string,
+        endDate: string,
+    ): Promise<BeautyFollowUpReminderAction[]> {
+        try {
+            const table = postgres.getCardTableName('follow_up_reminder_actions', 'beauty');
+            const fn = erpFirmNrForRow();
+            const sql = `
+              SELECT *
+              FROM ${table}
+              WHERE firm_nr = $1
+                AND status <> 'dismissed'
+                AND (
+                  (natural_due_date >= $2::date AND natural_due_date <= $3::date)
+                  OR (postponed_due_date IS NOT NULL AND postponed_due_date >= $2::date AND postponed_due_date <= $3::date)
+                )
+            `;
+            const { rows } = await postgres.query(sql, [fn, startDate, endDate]);
+            return (rows as Record<string, unknown>[]).map((r) => ({
+                id: r.id != null ? String(r.id) : undefined,
+                firm_nr: r.firm_nr != null ? String(r.firm_nr) : undefined,
+                customer_id: String(r.customer_id ?? ''),
+                service_id: String(r.service_id ?? ''),
+                product_id: r.product_id != null ? String(r.product_id) : undefined,
+                reminder_kind: String(r.reminder_kind ?? 'service') === 'product' ? 'product' : 'service',
+                last_completed_date: pgCellToYmd(r.last_completed_date),
+                natural_due_date: pgCellToYmd(r.natural_due_date),
+                reminder_days: r.reminder_days != null ? Number(r.reminder_days) : undefined,
+                customer_name: r.customer_name != null ? String(r.customer_name) : undefined,
+                customer_phone: r.customer_phone != null ? String(r.customer_phone) : undefined,
+                service_name: r.service_name != null ? String(r.service_name) : undefined,
+                product_name: r.product_name != null ? String(r.product_name) : undefined,
+                status: String(r.status ?? 'due') as BeautyFollowUpReminderStatus,
+                postponed_due_date: r.postponed_due_date ? pgCellToYmd(r.postponed_due_date) : undefined,
+                note: r.note != null ? String(r.note) : undefined,
+            }));
+        } catch (e: unknown) {
+            console.warn(
+                '[beautyService] listFollowUpReminderActionsInRange skipped:',
+                e instanceof Error ? e.message : String(e),
+            );
+            return [];
+        }
+    },
+
+    async upsertFollowUpReminderAction(
+        payload: BeautyFollowUpReminderAction,
+    ): Promise<void> {
+        const table = postgres.getCardTableName('follow_up_reminder_actions', 'beauty');
+        const fn = erpFirmNrForRow();
+        const status = payload.status ?? 'due';
+        const postponed =
+            status === 'postponed' && payload.postponed_due_date
+                ? payload.postponed_due_date
+                : null;
+        const sql = `
+          INSERT INTO ${table} (
+            firm_nr, customer_id, service_id, product_id, reminder_kind,
+            last_completed_date, natural_due_date, reminder_days,
+            customer_name, customer_phone, service_name, product_name,
+            status, postponed_due_date, note, updated_at
+          ) VALUES (
+            $1, $2::uuid, $3::uuid, $4::uuid, $5,
+            $6::date, $7::date, $8,
+            $9, $10, $11, $12,
+            $13, $14::date, $15, NOW()
+          )
+          ON CONFLICT (customer_id, service_id, COALESCE(product_id, '00000000-0000-0000-0000-000000000000'::uuid), last_completed_date, natural_due_date, reminder_kind)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            postponed_due_date = EXCLUDED.postponed_due_date,
+            note = EXCLUDED.note,
+            customer_name = EXCLUDED.customer_name,
+            customer_phone = EXCLUDED.customer_phone,
+            service_name = EXCLUDED.service_name,
+            product_name = EXCLUDED.product_name,
+            reminder_days = EXCLUDED.reminder_days,
+            updated_at = NOW()
+        `;
+        await postgres.query(sql, [
+            fn,
+            payload.customer_id,
+            payload.service_id,
+            payload.product_id || null,
+            payload.reminder_kind ?? 'service',
+            payload.last_completed_date,
+            payload.natural_due_date,
+            payload.reminder_days ?? null,
+            payload.customer_name ?? null,
+            payload.customer_phone ?? null,
+            payload.service_name ?? null,
+            payload.product_name ?? null,
+            status,
+            postponed,
+            payload.note?.trim() || null,
+        ]);
+    },
+
     async getFollowUpRemindersInRange(startDate: string, endDate: string): Promise<BeautyFollowUpReminder[]> {
         try {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
@@ -2090,7 +2191,7 @@ export const beautyService = {
             ORDER BY u.due_date, u.reminder_kind, u.service_name, u.customer_name
         `;
         const result = await postgres.query(query, params);
-        return (result.rows as Record<string, unknown>[]).map(r => {
+        const base = (result.rows as Record<string, unknown>[]).map(r => {
             const kindRaw = String(r.reminder_kind ?? 'service').toLowerCase();
             const reminder_kind = kindRaw === 'product' ? 'product' : 'service';
             const product_id = r.product_id != null && String(r.product_id).length > 0 ? String(r.product_id) : undefined;
@@ -2098,8 +2199,10 @@ export const beautyService = {
                 reminder_kind === 'product'
                     ? String(r.product_name ?? r.service_name ?? '').trim() || undefined
                     : undefined;
+            const due = pgCellToYmd(r.due_date);
             return {
-                due_date: pgCellToYmd(r.due_date),
+                due_date: due,
+                natural_due_date: due,
                 last_completed_date: pgCellToYmd(r.last_completed_date),
                 reminder_days: Math.max(1, Math.round(Number(r.reminder_days) || 1)),
                 service_id: String(r.service_id ?? ''),
@@ -2110,8 +2213,11 @@ export const beautyService = {
                 reminder_kind,
                 product_id,
                 product_name,
+                follow_up_status: 'due' as const,
             };
         }) as BeautyFollowUpReminder[];
+        const actions = await this.listFollowUpReminderActionsInRange(startDate, endDate);
+        return mergeFollowUpRemindersWithActions(base, actions, startDate, endDate);
         } catch (e: unknown) {
             console.warn('[beautyService] getFollowUpRemindersInRange skipped:', e instanceof Error ? e.message : String(e));
             return [];

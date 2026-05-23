@@ -126,9 +126,18 @@ export interface BeautyService {
     is_active: boolean;
 }
 
+export type BeautyFollowUpReminderStatus =
+    | 'due'
+    | 'postponed'
+    | 'contacted'
+    | 'other'
+    | 'dismissed';
+
 /** `follow_up_reminder_days` tanımlı hizmette son tamamlanan işlemden sonra gelen hatırlatma satırı */
 export interface BeautyFollowUpReminder {
     due_date: string;
+    /** Hesaplanan orijinal vade (erteleme öncesi) */
+    natural_due_date?: string;
     last_completed_date: string;
     reminder_days: number;
     /** Hizmet hatırlatmasında hizmet id; ürün hatırlatmasında son sarfın yapıldığı randevunun hizmet id (takvim sütunu) */
@@ -142,6 +151,28 @@ export interface BeautyFollowUpReminder {
     product_id?: string;
     /** Ürün hatırlatması satır başlığı (ürün adı) */
     product_name?: string;
+    follow_up_status?: BeautyFollowUpReminderStatus;
+    note?: string;
+}
+
+/** Takvim panosunda hatırlatma kartına eklenen not / erteleme kaydı */
+export interface BeautyFollowUpReminderAction {
+    id?: string;
+    firm_nr?: string;
+    customer_id: string;
+    service_id: string;
+    product_id?: string;
+    reminder_kind: 'service' | 'product';
+    last_completed_date: string;
+    natural_due_date: string;
+    reminder_days?: number;
+    customer_name?: string;
+    customer_phone?: string;
+    service_name?: string;
+    product_name?: string;
+    status: BeautyFollowUpReminderStatus;
+    postponed_due_date?: string;
+    note?: string;
 }
 
 export interface BeautyDevice {
