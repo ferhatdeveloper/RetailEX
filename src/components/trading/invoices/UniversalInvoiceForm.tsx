@@ -360,10 +360,21 @@ export function UniversalInvoiceForm({
   const selectedFirma = selectedFirm;
   const selectedDonem = selectedPeriod;
 
+  const normalizeCurrencyCode = (value: unknown, fallback = 'IQD'): string => {
+    const raw = String(value ?? fallback)
+      .trim()
+      .toUpperCase();
+    return raw.length >= 2 ? raw.slice(0, 10) : fallback;
+  };
+
+  const normalizeImportIssueMessages = (issues: unknown[]): string[] =>
+    issues
+      .map((item) => (item == null ? '' : typeof item === 'string' ? item : String(item)))
+      .filter((s) => s.length > 0);
+
   /** Deftere / yerel gösterim: firma ana para veya sistem varsayılanı (IQD sabit değil) */
   const ledgerCurrency = useMemo(() => {
-    const raw = (selectedFirm?.ana_para_birimi || getAppDefaultCurrency() || 'IQD').trim().toUpperCase();
-    return raw.length >= 2 ? raw.slice(0, 10) : 'IQD';
+    return normalizeCurrencyCode(selectedFirm?.ana_para_birimi || getAppDefaultCurrency() || 'IQD');
   }, [selectedFirm?.ana_para_birimi]);
 
   const firmId = selectedFirm?.logicalref;
@@ -778,9 +789,9 @@ export function UniversalInvoiceForm({
   useEffect(() => {
     if (editData) return;
     if (!selectedFirm) return;
-    const ac = (selectedFirm.ana_para_birimi || getAppDefaultCurrency()).trim().toUpperCase().slice(0, 10);
+    const ac = normalizeCurrencyCode(selectedFirm.ana_para_birimi || getAppDefaultCurrency());
     setCurrency(ac);
-    const rc = (selectedFirm.raporlama_para_birimi || ac).trim().toUpperCase().slice(0, 10);
+    const rc = normalizeCurrencyCode(selectedFirm.raporlama_para_birimi || ac);
     setReportingCurrency(rc);
   }, [editData, selectedFirm?.logicalref, selectedFirm?.ana_para_birimi, selectedFirm?.raporlama_para_birimi]);
 
@@ -1359,7 +1370,9 @@ export function UniversalInvoiceForm({
       const buf = await file.arrayBuffer();
       const { rows, errors } = parsePurchaseInvoiceExcelArrayBuffer(buf);
       if (rows.length === 0) {
-        const issueList = errors.length > 0 ? errors : [tm('purchaseInvoiceExcelEmptyFile')];
+        const issueList = normalizeImportIssueMessages(
+          errors.length > 0 ? errors : [tm('purchaseInvoiceExcelEmptyFile')]
+        );
         setPurchaseExcelImportReport({ importedCount: 0, issues: issueList });
         toast.error(tm('purchaseInvoiceExcelEmptyFile'));
         return;
@@ -1393,8 +1406,11 @@ export function UniversalInvoiceForm({
         built.push(item);
       }
       if (built.length === 0) {
-        const issueList = [...errors, ...rowErrors].filter(Boolean);
-        setPurchaseExcelImportReport({ importedCount: 0, issues: issueList.length ? issueList : [tm('purchaseInvoiceExcelImportFailed')] });
+        const issueList = normalizeImportIssueMessages([...errors, ...rowErrors]);
+        setPurchaseExcelImportReport({
+          importedCount: 0,
+          issues: issueList.length ? issueList : [tm('purchaseInvoiceExcelImportFailed')],
+        });
         toast.error(tm('purchaseInvoiceExcelImportFailed'));
         return;
       }
@@ -1404,7 +1420,7 @@ export function UniversalInvoiceForm({
         return withTrailingEmptyLine([...withoutTrailing, ...built]);
       });
       toast.success(tm('purchaseInvoiceExcelImportSuccess').replace('{n}', String(built.length)));
-      const warnParts = [...errors, ...rowErrors].filter(Boolean);
+      const warnParts = normalizeImportIssueMessages([...errors, ...rowErrors]);
       if (warnParts.length > 0) {
         setPurchaseExcelImportReport({ importedCount: built.length, issues: warnParts });
         toast.warning(tm('purchaseInvoiceExcelImportToastWarn').replace('{n}', String(warnParts.length)));
@@ -1469,8 +1485,8 @@ export function UniversalInvoiceForm({
     const currentItem = items[searchingRowIndex];
     if (isInvoiceServiceLineType(currentItem?.type)) {
       return services.filter(s =>
-        s.code.toLowerCase().includes(search) ||
-        s.name.toLowerCase().includes(search) ||
+        (s.code && s.code.toLowerCase().includes(search)) ||
+        (s.name && s.name.toLowerCase().includes(search)) ||
         (s.category && s.category.toLowerCase().includes(search))
       ).map(s => ({
         code: s.code,
@@ -1500,8 +1516,8 @@ export function UniversalInvoiceForm({
     }
 
     return mockProducts.filter(p =>
-      p.code.toLowerCase().includes(search) ||
-      p.name.toLowerCase().includes(search) ||
+      (p.code && p.code.toLowerCase().includes(search)) ||
+      (p.name && p.name.toLowerCase().includes(search)) ||
       (p.barcode && p.barcode.includes(search))
     );
   }, [productSearch, products]);
@@ -1659,10 +1675,11 @@ export function UniversalInvoiceForm({
     // Mevcut items listesine ekle, boş satırı en sona atabiliriz veya direkt ekleriz
     // Eğer son satır boşsa, ondan önce ekleyelim
     const currentItems = [...items];
-    const lastItem = currentItems[currentItems.length - 1];
-    const isLastItemEmpty = !lastItem.code && lastItem.quantity === 0 && lastItem.unitPrice === 0;
+    const lastItem = currentItems.length > 0 ? currentItems[currentItems.length - 1] : undefined;
+    const isLastItemEmpty =
+      !lastItem || (!lastItem.code && lastItem.quantity === 0 && lastItem.unitPrice === 0);
 
-    if (isLastItemEmpty) {
+    if (isLastItemEmpty && lastItem) {
       const updatedItems = [...currentItems.slice(0, -1), ...newItems, lastItem];
       setItems(withTrailingEmptyLine(updatedItems));
     } else {
@@ -3220,11 +3237,14 @@ export function UniversalInvoiceForm({
                             </button>
                           </div>
                           <ul className="mt-2 max-h-56 list-disc space-y-1.5 overflow-y-auto overscroll-contain pl-5 text-xs leading-relaxed">
-                            {purchaseExcelImportReport.issues.map((msg, idx) => (
-                              <li key={`${idx}-${msg.slice(0, 40)}`} className="break-words">
-                                {msg}
-                              </li>
-                            ))}
+                            {purchaseExcelImportReport.issues.map((msg, idx) => {
+                              const text = msg == null ? '' : String(msg);
+                              return (
+                                <li key={`${idx}-${text.slice(0, 40)}`} className="break-words">
+                                  {text}
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       )}

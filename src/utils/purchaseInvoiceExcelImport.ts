@@ -33,9 +33,19 @@ function isTauriExcelRuntime(): boolean {
   return typeof window !== 'undefined' && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 }
 
-function triggerBrowserXlsxDownload(fileName: string, buf: Uint8Array): void {
-  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  const blob = new Blob([ab as BlobPart], {
+/** XLSX.write({ type: 'array' }) sürüme göre ArrayBuffer, Uint8Array veya number[] dönebilir */
+function xlsxWriteOutputToBlobPart(buf: Uint8Array | ArrayBuffer | number[]): BlobPart {
+  if (buf instanceof ArrayBuffer) return buf;
+  if (buf instanceof Uint8Array) return buf;
+  if (Array.isArray(buf)) return new Uint8Array(buf);
+  return new Uint8Array(buf as ArrayLike<number>);
+}
+
+function triggerBrowserXlsxDownload(
+  fileName: string,
+  buf: Uint8Array | ArrayBuffer | number[]
+): void {
+  const blob = new Blob([xlsxWriteOutputToBlobPart(buf)], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   const url = URL.createObjectURL(blob);
@@ -239,7 +249,10 @@ export async function downloadPurchaseInvoiceImportTemplate(): Promise<boolean> 
   const keys = Object.keys(TEMPLATE_SAMPLE[0] ?? {});
   ws['!cols'] = keys.map((k) => ({ wch: Math.min(Math.max(k.length + 2, 12), 40) }));
   XLSX.utils.book_append_sheet(wb, ws, PURCHASE_INVOICE_EXCEL_SHEET);
-  const outBuf: Uint8Array = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const outBuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as
+    | Uint8Array
+    | ArrayBuffer
+    | number[];
   const fileName = `Alis_Fatura_Kalemleri_sablon_${new Date().toISOString().split('T')[0]}.xlsx`;
 
   if (!isTauriExcelRuntime()) {
