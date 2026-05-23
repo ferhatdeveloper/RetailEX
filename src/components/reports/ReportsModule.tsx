@@ -645,6 +645,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [beautyServiceFilterId, setBeautyServiceFilterId] = useState('');
   /** Boş = tüm ürünler; aksi halde product id */
   const [beautyProductFilterId, setBeautyProductFilterId] = useState('');
+  const [beautyProductSearchQuery, setBeautyProductSearchQuery] = useState('');
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
   const loadBeautyServicesCatalog = useBeautyStore((s) => s.loadServices);
 
@@ -1099,11 +1100,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   );
 
   const beautyAppointmentProductRows = useMemo(() => {
+    const q = beautyProductSearchQuery.trim().toLocaleLowerCase('tr');
     return beautyAppointmentProductRowsRaw.filter((row) => {
-      if (!beautyProductFilterId) return true;
-      return row.productId === beautyProductFilterId;
+      if (beautyProductFilterId && row.productId !== beautyProductFilterId) return false;
+      if (!q) return true;
+      const name = String(row.productName ?? '').toLocaleLowerCase('tr');
+      const code = String(row.productId ?? '').toLocaleLowerCase('tr');
+      return name.includes(q) || code.includes(q);
     });
-  }, [beautyAppointmentProductRowsRaw, beautyProductFilterId]);
+  }, [beautyAppointmentProductRowsRaw, beautyProductFilterId, beautyProductSearchQuery]);
 
   const beautyAppointmentProductSourceInfo = useMemo(() => {
     let paidSales = 0;
@@ -5537,19 +5542,36 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                     </div>
                   )}
                   {isBeautyAppointmentProductReportTab && (
-                    <div className="flex flex-col gap-1 min-w-[220px]">
-                      <span className="text-xs font-semibold text-slate-500">{tm('beautyAppointmentProductFilterLabel')}</span>
-                      <Select
-                        allowClear
-                        showSearch
-                        optionFilterProp="label"
-                        placeholder={tm('beautyAppointmentProductFilterPlaceholder')}
-                        value={beautyProductFilterId || undefined}
-                        onChange={(v) => setBeautyProductFilterId(v != null && String(v).length > 0 ? String(v) : '')}
-                        className="min-w-[220px]"
-                        options={beautyProductFilterOptions}
-                      />
-                    </div>
+                    <>
+                      <div className="flex flex-col gap-1 min-w-[220px] flex-1 sm:max-w-[280px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductSearchLabel')}
+                        </span>
+                        <Input
+                          allowClear
+                          prefix={<SearchOutlined className="text-slate-400" />}
+                          placeholder={tm('beautyAppointmentProductSearchPlaceholder')}
+                          value={beautyProductSearchQuery}
+                          onChange={(e) => setBeautyProductSearchQuery(e.target.value)}
+                          className="min-w-[220px]"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[220px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductFilterLabel')}
+                        </span>
+                        <Select
+                          allowClear
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder={tm('beautyAppointmentProductFilterPlaceholder')}
+                          value={beautyProductFilterId || undefined}
+                          onChange={(v) => setBeautyProductFilterId(v != null && String(v).length > 0 ? String(v) : '')}
+                          className="min-w-[220px]"
+                          options={beautyProductFilterOptions}
+                        />
+                      </div>
+                    </>
                   )}
                   <Button
                     type="primary"
@@ -5669,7 +5691,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   <Spin spinning={loadingBeautyServiceReport}>
                     {beautyAppointmentProductRows.length === 0 ? (
                       <div className="space-y-3">
-                        {beautyProductFilterId && beautyAppointmentProductRowsRaw.length > 0 && (
+                        {(beautyProductFilterId || beautyProductSearchQuery.trim()) &&
+                          beautyAppointmentProductRowsRaw.length > 0 && (
                           <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-sm text-amber-900">
                             {tm('beautyAppointmentProductFilterNoMatch')}
                           </div>

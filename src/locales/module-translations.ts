@@ -1900,6 +1900,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'يسرد جميع بنود المنتجات المدفوعة؛ رابط الموعد اختياري.',
     ku: 'هەموو ڕیزە بەرهەمە پارەدراوەکان پیشان دەدات؛ بەستەری چاوپێکەوتن ئارەزوومەندانەیە.',
   },
+  beautyAppointmentProductSearchLabel: {
+    tr: 'Ürün ara',
+    en: 'Search product',
+    ar: 'بحث المنتج',
+    ku: 'گەڕانی بەرهەم',
+  },
+  beautyAppointmentProductSearchPlaceholder: {
+    tr: 'Ürün adı yazın…',
+    en: 'Type product name…',
+    ar: 'اكتب اسم المنتج…',
+    ku: 'ناوی بەرهەم بنووسە…',
+  },
   beautyAppointmentProductFilterLabel: {
     tr: 'Ürün filtresi',
     en: 'Product filter',
@@ -1937,10 +1949,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'ڕیزی بەرهەم نییە',
   },
   beautyAppointmentProductFilterNoMatch: {
-    tr: 'Seçili ürün filtresinde kayıt bulunamadı.',
-    en: 'No records match the selected product filter.',
-    ar: 'لا توجد سجلات تطابق تصفية المنتج المحددة.',
-    ku: 'هیچ تۆمارێک لەگەڵ فلتەری بەرهەمی هەڵبژێردراو ناگونجێت.',
+    tr: 'Arama veya ürün filtresine uygun kayıt bulunamadı.',
+    en: 'No records match your search or product filter.',
+    ar: 'لا توجد سجلات تطابق البحث أو تصفية المنتج.',
+    ku: 'هیچ تۆمارێک لەگەڵ گەڕان یان فلتەر ناگونجێت.',
   },
   beautyCancelledAppointmentsSection: {
     tr: 'İptal edilen randevular',
