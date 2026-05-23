@@ -202,6 +202,7 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     customerTaxNo: invoiceRecord.customer_tax_no || '',
     storeName: invoiceRecord.store_name || 'RetailEX',
     storeAddress: invoiceRecord.store_address || '',
+    storeTaxNo: invoiceRecord.store_tax_no || invoiceRecord.storeTaxNo || '',
     storePhone: invoiceRecord.store_phone || '',
     subtotal: formatNumber(invoice.subtotal || 0, 2, true),
     discount: formatNumber(invoice.discount || 0, 2, true),

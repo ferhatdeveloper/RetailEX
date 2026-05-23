@@ -1,20 +1,27 @@
-﻿import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
-  Save, Download, Upload, Copy, Trash2, Eye, Settings, Plus,
+  Save, Download, Eye, Database, RefreshCw,
   Type, Image, Maximize2, Minus, BarChart3, Grid3x3, AlignLeft,
-  AlignCenter, AlignRight, Bold, Move, ZoomIn, ZoomOut
+  AlignCenter, AlignRight, Move, ZoomIn, ZoomOut, Trash2
 } from 'lucide-react';
 import type { Template, TemplateElement, TemplateUsageScope } from '../../core/types/templates';
 import {
-  INVOICE_FIELDS,
-  LABEL_FIELDS,
   TEMPLATE_FORMATS,
   TEMPLATE_USAGE_SCOPES,
   TEMPLATE_USAGE_SCOPE_LABELS,
 } from '../../core/types/templates';
 import { getTemplatePaperDisplayName } from '../../core/templatePaperFormats';
 import { TemplatePaperSizeControls } from './TemplatePaperSizeControls';
+import { TemplateDesignerFieldsPanel } from './TemplateDesignerFieldsPanel';
 import { useTemplateStore } from '../../store/useTemplateStore';
+import { getTemplateFieldCatalog, type TemplateFieldDef } from '../../services/templateFieldCatalog';
+import {
+  loadDesignerPreviewContext,
+  getElementDisplayText,
+  getBarcodePreviewValue,
+  getPreviewTableRows,
+  type DesignerPreviewSource,
+} from '../../services/templateDesignerPreviewService';
 
 interface TemplateDesignerProps {
   type: 'invoice' | 'label';
@@ -37,13 +44,36 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
   const [showGrid, setShowGrid] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewSource, setPreviewSource] = useState<DesignerPreviewSource>('demo');
+  const [previewContext, setPreviewContext] = useState<Record<string, unknown> | null>(null);
+  const [previewMeta, setPreviewMeta] = useState<{ loadedFromDb: boolean; error?: string }>({
+    loadedFromDb: false,
+  });
+  const [previewLoading, setPreviewLoading] = useState(false);
   
   const canvasRef = useRef<HTMLDivElement>(null);
+  const fieldCatalog = getTemplateFieldCatalog(type);
   
   // Load active template or create new
   useEffect(() => {
     void loadTemplatesFromDatabase();
   }, [loadTemplatesFromDatabase]);
+
+  const refreshPreviewContext = useCallback(async () => {
+    setPreviewLoading(true);
+    try {
+      const result = await loadDesignerPreviewContext(type, previewSource);
+      setPreviewContext(result.context);
+      setPreviewMeta({ loadedFromDb: result.loadedFromDb, error: result.error });
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [type, previewSource]);
+
+  useEffect(() => {
+    void refreshPreviewContext();
+  }, [refreshPreviewContext]);
 
   useEffect(() => {
     if (!activeTemplate) {
@@ -81,6 +111,60 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
     return <div className="p-6">Yükleniyor...</div>;
   }
   
+  const insertFieldElement = (field: TemplateFieldDef) => {
+    if (field.token === '{{items}}') {
+      const newElement: TemplateElement = {
+        id: `element-${Date.now()}`,
+        type: 'table',
+        x: 15,
+        y: 50,
+        width: activeTemplate.width - 30,
+        height: 60,
+        field: '{{items}}',
+        columns: ['Ürün', 'Miktar', 'Birim Fiyat', 'Toplam'],
+      };
+      updateTemplate(activeTemplate.id, { elements: [...activeTemplate.elements, newElement] });
+      setSelectedElement(newElement);
+      return;
+    }
+    const newElement: TemplateElement = {
+      id: `element-${Date.now()}`,
+      type: 'text',
+      x: 20,
+      y: 20,
+      width: 70,
+      height: 8,
+      content: field.token,
+      fontSize: 11,
+      fontWeight: 'normal',
+      textAlign: 'left',
+      color: '#000000',
+    };
+    updateTemplate(activeTemplate.id, { elements: [...activeTemplate.elements, newElement] });
+    setSelectedElement(newElement);
+  };
+
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const token = e.dataTransfer.getData('field');
+    const fieldType = e.dataTransfer.getData('fieldType');
+    if (!token) return;
+    const fieldDef = fieldCatalog.find((f) => f.token === token);
+    if (fieldDef) {
+      insertFieldElement(fieldDef);
+      return;
+    }
+    if (fieldType === 'table') {
+      insertFieldElement({
+        token: '{{items}}',
+        label: 'Ürün Listesi',
+        category: 'items',
+        sampleValue: '',
+        dataKey: 'items',
+      });
+    }
+  };
+
   const addElement = (elementType: TemplateElement['type']) => {
     const newElement: TemplateElement = {
       id: `element-${Date.now()}`,
@@ -123,6 +207,7 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
   };
   
   const handleMouseDown = (e: React.MouseEvent, element: TemplateElement) => {
+    if (previewMode) return;
     if (e.button !== 0) return;
     setIsDragging(true);
     setSelectedElement(element);
@@ -165,7 +250,6 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
     URL.revokeObjectURL(url);
   };
   
-  const availableFields = type === 'invoice' ? INVOICE_FIELDS : LABEL_FIELDS;
   const selectedScopes: TemplateUsageScope[] = activeTemplate.usageScopes?.length
     ? activeTemplate.usageScopes
     : ['global'];
@@ -204,7 +288,54 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
               {(activeTemplate.engine ?? 'fastreport-like') === 'fastreport-like' ? 'FastReport benzeri motor' : 'Basit motor'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPreviewMode(false)}
+                className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${
+                  !previewMode ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Move className="w-3.5 h-3.5" />
+                Düzenle
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewMode(true)}
+                className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${
+                  previewMode ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Önizleme
+              </button>
+            </div>
+            <select
+              value={previewSource}
+              onChange={(e) => setPreviewSource(e.target.value as DesignerPreviewSource)}
+              className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white"
+              title="Önizleme veri kaynağı"
+            >
+              <option value="demo">Örnek veri</option>
+              <option value="database">Veritabanından</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void refreshPreviewContext()}
+              disabled={previewLoading}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              title="Önizleme verisini yenile"
+            >
+              <RefreshCw className={`w-4 h-4 ${previewLoading ? 'animate-spin' : ''}`} />
+            </button>
+            {previewMode && (
+              <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                <Database className="w-3.5 h-3.5" />
+                {previewMeta.loadedFromDb ? 'DB verisi' : 'Örnek veri'}
+                {previewMeta.error ? ` · ${previewMeta.error}` : ''}
+              </span>
+            )}
             <button
               onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
               className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -252,8 +383,8 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Toolbar */}
-        <div className="w-64 bg-white border-r overflow-y-auto">
-          <div className="p-4">
+        <div className="w-72 bg-white border-r overflow-hidden flex flex-col">
+          <div className="p-4 flex-1 flex flex-col min-h-0 overflow-y-auto">
             <h3 className="text-sm mb-3">Öğe Ekle</h3>
             <div className="space-y-2">
               <button
@@ -300,21 +431,12 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
               </button>
             </div>
             
-            <h3 className="text-sm mt-6 mb-3">Dinamik Alanlar</h3>
-            <div className="space-y-1 text-xs">
-              {Object.entries(availableFields).map(([field, label]) => (
-                <div
-                  key={field}
-                  className="px-2 py-1 bg-gray-100 rounded cursor-pointer hover:bg-blue-100"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('field', field);
-                  }}
-                >
-                  <code className="text-blue-600">{field}</code>
-                  <p className="text-gray-600">{label}</p>
-                </div>
-              ))}
+            <div className="mt-6 flex-1 min-h-0 flex flex-col border-t border-gray-100 pt-4">
+              <TemplateDesignerFieldsPanel
+                type={type}
+                previewContext={previewContext}
+                onInsertField={insertFieldElement}
+              />
             </div>
           </div>
         </div>
@@ -324,7 +446,11 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
           <div className="flex justify-center">
             <div
               ref={canvasRef}
-              className="bg-white shadow-lg relative"
+              className={`bg-white shadow-lg relative ${previewMode ? 'ring-2 ring-emerald-400/60' : ''}`}
+              onDragOver={(e) => {
+                if (!previewMode) e.preventDefault();
+              }}
+              onDrop={previewMode ? undefined : handleCanvasDrop}
               style={{
                 width: `${mmToPx(activeTemplate.width) * zoom}px`,
                 height: `${mmToPx(activeTemplate.height) * zoom}px`,
@@ -338,10 +464,17 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             >
+              {previewMode && (
+                <div className="absolute top-1 right-1 z-10 text-[9px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-medium">
+                  ÖNİZLEME
+                </div>
+              )}
               {activeTemplate.elements.map(element => (
                 <div
                   key={element.id}
-                  className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}
+                  className={`absolute ${previewMode ? 'cursor-default' : 'cursor-move'} ${
+                    !previewMode && selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''
+                  }`}
                   style={{
                     left: `${mmToPx(element.x) * zoom}px`,
                     top: `${mmToPx(element.y) * zoom}px`,
@@ -359,24 +492,79 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
                     padding: '2px'
                   }}
                   onMouseDown={(e) => handleMouseDown(e, element)}
-                  onClick={() => setSelectedElement(element)}
+                  onClick={() => !previewMode && setSelectedElement(element)}
                 >
-                  {element.type === 'text' && (element.content || element.field || 'Metin')}
+                  {element.type === 'text' && (
+                    <span className="whitespace-pre-wrap break-words w-full leading-tight">
+                      {getElementDisplayText(element, previewContext, previewMode) || 'Metin'}
+                    </span>
+                  )}
                   {element.type === 'barcode' && (
-                    <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs">
-                      BARKOD
+                    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden">
+                      {previewMode ? (
+                        <>
+                          <div
+                            className="w-full flex-1 flex items-end justify-center gap-[1px] px-1"
+                            style={{ minHeight: '60%' }}
+                          >
+                            {Array.from({ length: 28 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="bg-gray-900"
+                                style={{
+                                  width: i % 3 === 0 ? 2 : 1,
+                                  height: `${55 + (i % 5) * 8}%`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[8px] mt-0.5 truncate max-w-full px-1">
+                            {getBarcodePreviewValue(element, previewContext, true)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-500">BARKOD</span>
+                      )}
                     </div>
                   )}
                   {element.type === 'image' && (
-                    <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs">
-                      RESİM
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-400 border border-dashed border-gray-300">
+                      {previewMode ? 'LOGO' : 'RESİM'}
                     </div>
                   )}
                   {element.type === 'line' && <div className="w-full h-full bg-black" />}
                   {element.type === 'table' && (
-                    <div className="w-full h-full border border-gray-300 text-xs p-1">
-                      TABLO
+                    <div className="w-full h-full border border-gray-300 text-[9px] overflow-hidden flex flex-col">
+                      {previewMode ? (
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="border border-gray-200 px-0.5 text-left">Ürün</th>
+                              <th className="border border-gray-200 px-0.5 text-right">Adet</th>
+                              <th className="border border-gray-200 px-0.5 text-right">Fiyat</th>
+                              <th className="border border-gray-200 px-0.5 text-right">Tutar</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getPreviewTableRows(previewContext).map((row, idx) => (
+                              <tr key={idx}>
+                                <td className="border border-gray-200 px-0.5 truncate max-w-[40%]">
+                                  {row.productName}
+                                </td>
+                                <td className="border border-gray-200 px-0.5 text-right">{row.quantity}</td>
+                                <td className="border border-gray-200 px-0.5 text-right">{row.unitPrice}</td>
+                                <td className="border border-gray-200 px-0.5 text-right">{row.total}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <span className="p-1 text-gray-500">TABLO ({'{{items}}'})</span>
+                      )}
                     </div>
+                  )}
+                  {element.type === 'box' && (
+                    <div className="w-full h-full" style={{ boxSizing: 'border-box' }} />
                   )}
                 </div>
               ))}
@@ -510,8 +698,10 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Seçin...</option>
-                      {Object.keys(availableFields).map(field => (
-                        <option key={field} value={field}>{field}</option>
+                      {fieldCatalog.map((f) => (
+                        <option key={f.token} value={f.token}>
+                          {f.label} ({f.token})
+                        </option>
                       ))}
                     </select>
                   </div>

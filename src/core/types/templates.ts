@@ -161,6 +161,8 @@ export const LABEL_FIELDS = {
   '{{stock}}': 'Stok',
   '{{sku}}': 'Ürün Kodu',
   '{{description}}': 'Açıklama',
+  '{{variantCode}}': 'Varyant Kodu',
+  '{{specialCode2}}': 'Özel Kod 2',
 };
 
 // Default templates
