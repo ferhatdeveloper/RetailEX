@@ -445,6 +445,8 @@ type BeautyAppointmentProductRow = {
   customerName: string;
   productId: string;
   productName: string;
+  productCode: string;
+  productBarcode: string;
   quantity: number;
   unitPrice: number;
   total: number;
@@ -452,6 +454,33 @@ type BeautyAppointmentProductRow = {
   paymentMethod: string;
   crmAppointment: BeautyAppointment | null;
 };
+
+type BeautyAppointmentProductGroup = {
+  groupKey: string;
+  productName: string;
+  productCode: string;
+  lineCount: number;
+  transactionCount: number;
+  totalQty: number;
+  totalRevenue: number;
+  items: BeautyAppointmentProductRow[];
+};
+
+type BeautyProductReportSearchMode = 'all' | 'name' | 'code';
+type BeautyProductReportViewMode = 'detail' | 'grouped';
+
+function beautyProductCatalogLookup(products: Product[]): Map<string, { code: string; barcode: string }> {
+  const map = new Map<string, { code: string; barcode: string }>();
+  for (const p of products) {
+    const id = String(p.id ?? '').trim().toLowerCase();
+    if (!id) continue;
+    map.set(id, {
+      code: String(p.code ?? p.sku ?? '').trim(),
+      barcode: String(p.barcode ?? '').trim(),
+    });
+  }
+  return map;
+}
 
 interface ReportsModuleProps {
   sales: Sale[];
@@ -646,7 +675,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   /** Boş = tüm ürünler; aksi halde product id */
   const [beautyProductFilterId, setBeautyProductFilterId] = useState('');
   const [beautyProductSearchQuery, setBeautyProductSearchQuery] = useState('');
+  const [beautyProductSearchMode, setBeautyProductSearchMode] = useState<BeautyProductReportSearchMode>('all');
+  const [beautyProductViewMode, setBeautyProductViewMode] = useState<BeautyProductReportViewMode>('detail');
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
+  const storeProducts = useProductStore((s) => s.products);
+  const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
   const loadBeautyServicesCatalog = useBeautyStore((s) => s.loadServices);
 
   useEffect(() => {
@@ -735,7 +768,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       selectedTab === 'stock-status' ||
       selectedTab === 'stock-aging' ||
       selectedTab === 'stock-turnover' ||
-      selectedTab === 'stock-abc'
+      selectedTab === 'stock-abc' ||
+      selectedTab === 'beauty-appointment-product-report'
     ) {
       void loadProducts(true);
     }
@@ -1006,6 +1040,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
   }, [beautyServiceSales, beautyServiceFilterId]);
 
+  const beautyProductCatalogById = useMemo(
+    () => beautyProductCatalogLookup(catalogProducts),
+    [catalogProducts],
+  );
+
   const beautyAppointmentProductRowsRaw = useMemo<BeautyAppointmentProductRow[]>(() => {
     const appointmentById = new Map<string, BeautyAppointment>();
     const specialistNameById = new Map<string, string>();
@@ -1053,6 +1092,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           '—';
         const productId = String(item.item_id ?? '').trim();
         const productName = String(item.name ?? '').trim() || productId || '—';
+        const catalog = productId ? beautyProductCatalogById.get(productId.toLowerCase()) : undefined;
+        const productCode = catalog?.code ?? '';
+        const productBarcode = catalog?.barcode ?? '';
         rows.push({
           key: `${sale.id}-${item.id || idx}`,
           saleId: String(sale.id),
@@ -1063,6 +1105,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           customerName,
           productId,
           productName,
+          productCode,
+          productBarcode,
           quantity: Number(item.quantity ?? 0) || 0,
           unitPrice: Number(item.unit_price ?? 0) || 0,
           total: Number(item.total ?? 0) || 0,
@@ -1083,14 +1127,18 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       return String(b.createdAt).localeCompare(String(a.createdAt));
     });
     return rows;
-  }, [beautyServiceSales, beautyServiceAppointments]);
+  }, [beautyServiceSales, beautyServiceAppointments, beautyProductCatalogById]);
 
   const beautyProductFilterOptions = useMemo(
     () =>
       Array.from(
         beautyAppointmentProductRowsRaw.reduce((map, row) => {
           if (!row.productId) return map;
-          if (!map.has(row.productId)) map.set(row.productId, row.productName);
+          if (!map.has(row.productId)) {
+            const code = row.productCode.trim();
+            const label = code ? `${row.productName} · ${code}` : row.productName;
+            map.set(row.productId, label);
+          }
           return map;
         }, new Map<string, string>())
       )
@@ -1105,10 +1153,62 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       if (beautyProductFilterId && row.productId !== beautyProductFilterId) return false;
       if (!q) return true;
       const name = String(row.productName ?? '').toLocaleLowerCase('tr');
-      const code = String(row.productId ?? '').toLocaleLowerCase('tr');
-      return name.includes(q) || code.includes(q);
+      const code = String(row.productCode ?? '').toLocaleLowerCase('tr');
+      const barcode = String(row.productBarcode ?? '').toLocaleLowerCase('tr');
+      const id = String(row.productId ?? '').toLocaleLowerCase('tr');
+      if (beautyProductSearchMode === 'name') return name.includes(q);
+      if (beautyProductSearchMode === 'code') {
+        return code.includes(q) || barcode.includes(q) || id.includes(q);
+      }
+      return name.includes(q) || code.includes(q) || barcode.includes(q) || id.includes(q);
     });
-  }, [beautyAppointmentProductRowsRaw, beautyProductFilterId, beautyProductSearchQuery]);
+  }, [
+    beautyAppointmentProductRowsRaw,
+    beautyProductFilterId,
+    beautyProductSearchQuery,
+    beautyProductSearchMode,
+  ]);
+
+  const beautyAppointmentProductGrouped = useMemo<BeautyAppointmentProductGroup[]>(() => {
+    const map = new Map<string, BeautyAppointmentProductGroup>();
+    for (const row of beautyAppointmentProductRows) {
+      const groupKey =
+        row.productId.trim() ||
+        row.productName.trim().toLocaleLowerCase('tr') ||
+        row.key;
+      const existing = map.get(groupKey);
+      if (!existing) {
+        map.set(groupKey, {
+          groupKey,
+          productName: row.productName,
+          productCode: row.productCode,
+          lineCount: 1,
+          transactionCount: 0,
+          totalQty: row.quantity,
+          totalRevenue: row.total,
+          items: [row],
+        });
+      } else {
+        existing.lineCount += 1;
+        existing.totalQty += row.quantity;
+        existing.totalRevenue += row.total;
+        existing.items.push(row);
+        if (!existing.productCode && row.productCode) existing.productCode = row.productCode;
+      }
+    }
+    for (const g of map.values()) {
+      g.transactionCount = new Set(g.items.map((r) => `${r.saleId}|${r.appointmentId}`)).size;
+      g.items.sort((a, b) => {
+        if (a.appointmentDate !== b.appointmentDate) {
+          return b.appointmentDate.localeCompare(a.appointmentDate);
+        }
+        return b.appointmentTime.localeCompare(a.appointmentTime);
+      });
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.productName.localeCompare(b.productName, 'tr', { sensitivity: 'base' }),
+    );
+  }, [beautyAppointmentProductRows]);
 
   const beautyAppointmentProductSourceInfo = useMemo(() => {
     let paidSales = 0;
@@ -5543,17 +5643,52 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                   )}
                   {isBeautyAppointmentProductReportTab && (
                     <>
-                      <div className="flex flex-col gap-1 min-w-[220px] flex-1 sm:max-w-[280px]">
+                      <div className="flex flex-col gap-1 min-w-[200px] flex-1 sm:max-w-[260px]">
                         <span className="text-xs font-semibold text-slate-500">
                           {tm('beautyAppointmentProductSearchLabel')}
                         </span>
                         <Input
                           allowClear
                           prefix={<SearchOutlined className="text-slate-400" />}
-                          placeholder={tm('beautyAppointmentProductSearchPlaceholder')}
+                          placeholder={
+                            beautyProductSearchMode === 'code'
+                              ? tm('beautyAppointmentProductSearchPlaceholderCode')
+                              : beautyProductSearchMode === 'name'
+                                ? tm('beautyAppointmentProductSearchPlaceholderName')
+                                : tm('beautyAppointmentProductSearchPlaceholder')
+                          }
                           value={beautyProductSearchQuery}
                           onChange={(e) => setBeautyProductSearchQuery(e.target.value)}
-                          className="min-w-[220px]"
+                          className="min-w-[200px]"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[160px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductSearchModeLabel')}
+                        </span>
+                        <Select<BeautyProductReportSearchMode>
+                          value={beautyProductSearchMode}
+                          onChange={(v) => setBeautyProductSearchMode(v)}
+                          className="min-w-[160px]"
+                          options={[
+                            { value: 'all', label: tm('beautyAppointmentProductSearchModeAll') },
+                            { value: 'name', label: tm('beautyAppointmentProductSearchModeName') },
+                            { value: 'code', label: tm('beautyAppointmentProductSearchModeCode') },
+                          ]}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[180px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductViewModeLabel')}
+                        </span>
+                        <Select<BeautyProductReportViewMode>
+                          value={beautyProductViewMode}
+                          onChange={(v) => setBeautyProductViewMode(v)}
+                          className="min-w-[180px]"
+                          options={[
+                            { value: 'detail', label: tm('beautyAppointmentProductViewDetail') },
+                            { value: 'grouped', label: tm('beautyAppointmentProductViewGrouped') },
+                          ]}
                         />
                       </div>
                       <div className="flex flex-col gap-1 min-w-[220px]">
@@ -5733,65 +5868,154 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                           </div>
                         </div>
 
-                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-[13px]">
-                              <thead>
-                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('product')}</th>
-                                  <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
-                                  <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
-                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {beautyAppointmentProductRows.map((row) => {
-                                  const canOpenCrm = row.crmAppointment != null;
-                                  return (
-                                    <tr
-                                      key={row.key}
-                                      role={canOpenCrm ? 'button' : undefined}
-                                      tabIndex={canOpenCrm ? 0 : undefined}
-                                      onClick={() => {
-                                        if (row.crmAppointment) setBeautyCrmModalAppointment(row.crmAppointment);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (!row.crmAppointment) return;
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
-                                          setBeautyCrmModalAppointment(row.crmAppointment);
-                                        }
-                                      }}
-                                      className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
-                                    >
-                                      <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                        {row.appointmentDate}
-                                        {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">{row.customerName}</td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">{row.productName}</td>
-                                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                        {formatNumber(row.quantity, 2, false)}
-                                      </td>
-                                      <td className="px-4 py-3 text-right tabular-nums text-slate-900">
-                                        {formatNumber(row.unitPrice, 2, false)} {reportCurrency}
-                                      </td>
-                                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                        {formatNumber(row.total, 2, false)} {reportCurrency}
-                                      </td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">{row.staffName}</td>
-                                      <td className="px-4 py-3 text-slate-900 font-medium">{row.paymentMethod}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                        {beautyProductViewMode === 'grouped' ? (
+                          <div className="space-y-6">
+                            {beautyAppointmentProductGrouped.map((g) => (
+                              <div
+                                key={g.groupKey}
+                                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+                              >
+                                <div
+                                  className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold"
+                                  style={{ backgroundColor: bizConfig.color }}
+                                >
+                                  <div className="min-w-0">
+                                    <span className="text-base block truncate">{g.productName}</span>
+                                    {g.productCode ? (
+                                      <span className="text-xs font-semibold opacity-90">
+                                        {tm('code')}: {g.productCode}
+                                        {g.lineCount > 1
+                                          ? ` · ${formatNumber(g.lineCount, 0, false)} ${tm('beautyAppointmentProductLineCount')}`
+                                          : ''}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <span className="text-sm font-semibold opacity-95 shrink-0">
+                                    {tm('quantity')}: {formatNumber(g.totalQty, 2, false)} · {tm('subTotal')}:{' '}
+                                    {formatNumber(g.totalRevenue, 2, false)} {reportCurrency}
+                                  </span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-[13px]">
+                                    <thead>
+                                      <tr className="bg-slate-100 border-b border-slate-200 text-left text-[12px] uppercase tracking-wide text-slate-800">
+                                        <th className="px-4 py-2 font-black">{tm('date')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('customer')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('quantity')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('amount')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {g.items.map((row) => {
+                                        const canOpenCrm = row.crmAppointment != null;
+                                        return (
+                                          <tr
+                                            key={row.key}
+                                            role={canOpenCrm ? 'button' : undefined}
+                                            tabIndex={canOpenCrm ? 0 : undefined}
+                                            onClick={() => {
+                                              if (row.crmAppointment) {
+                                                setBeautyCrmModalAppointment(row.crmAppointment);
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (!row.crmAppointment) return;
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                setBeautyCrmModalAppointment(row.crmAppointment);
+                                              }
+                                            }}
+                                            className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
+                                          >
+                                            <td className="px-4 py-2 tabular-nums text-slate-900 whitespace-nowrap">
+                                              {row.appointmentDate}
+                                              {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                            </td>
+                                            <td className="px-4 py-2 text-slate-900">{row.customerName}</td>
+                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                                              {formatNumber(row.quantity, 2, false)}
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                                              {formatNumber(row.total, 2, false)} {reportCurrency}
+                                            </td>
+                                            <td className="px-4 py-2 text-slate-900">{row.staffName}</td>
+                                            <td className="px-4 py-2 text-slate-900">{row.paymentMethod}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
+                        ) : (
+                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[13px]">
+                                <thead>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('product')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('code')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {beautyAppointmentProductRows.map((row) => {
+                                    const canOpenCrm = row.crmAppointment != null;
+                                    return (
+                                      <tr
+                                        key={row.key}
+                                        role={canOpenCrm ? 'button' : undefined}
+                                        tabIndex={canOpenCrm ? 0 : undefined}
+                                        onClick={() => {
+                                          if (row.crmAppointment) setBeautyCrmModalAppointment(row.crmAppointment);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (!row.crmAppointment) return;
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setBeautyCrmModalAppointment(row.crmAppointment);
+                                          }
+                                        }}
+                                        className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
+                                      >
+                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                          {row.appointmentDate}
+                                          {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.customerName}</td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.productName}</td>
+                                        <td className="px-4 py-3 text-slate-700 font-medium tabular-nums">
+                                          {row.productCode || row.productBarcode || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(row.quantity, 2, false)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                                          {formatNumber(row.unitPrice, 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(row.total, 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.staffName}</td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.paymentMethod}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </Spin>
