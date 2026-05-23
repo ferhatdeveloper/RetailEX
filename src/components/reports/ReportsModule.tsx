@@ -1024,9 +1024,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       if (paymentStatus !== 'paid') continue;
 
       const appointmentId = extractBeautyAppointmentIdFromSaleNotes(sale.notes);
-      if (!appointmentId) continue;
-
-      const appointment = appointmentById.get(appointmentId) ?? null;
+      const appointment = appointmentId ? appointmentById.get(appointmentId) ?? null : null;
       const createdAt = String(sale.created_at ?? '');
       const createdDate = createdAt.slice(0, 10);
       const createdTime = createdAt.slice(11, 16);
@@ -1035,12 +1033,15 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         String(sale.customer_name ?? '').trim() ||
         '—';
       const paymentMethod = String(sale.payment_method ?? '').trim() || '—';
-      const appointmentDate =
-        String(appointment?.date ?? appointment?.appointment_date ?? '').trim() ||
-        createdDate ||
-        '—';
-      const appointmentTimeRaw = String(appointment?.time ?? appointment?.appointment_time ?? '').trim();
-      const appointmentTime = appointmentTimeRaw ? appointmentTimeRaw.slice(0, 5) : createdTime;
+      const appointmentDate = appointment
+        ? String(appointment?.date ?? appointment?.appointment_date ?? '').trim() || createdDate || '—'
+        : createdDate || '—';
+      const appointmentTimeRaw = appointment
+        ? String(appointment?.time ?? appointment?.appointment_time ?? '').trim()
+        : '';
+      const appointmentTime = appointmentTimeRaw
+        ? appointmentTimeRaw.slice(0, 5)
+        : createdTime || '—';
 
       for (const [idx, item] of (sale.items ?? []).entries()) {
         if (String(item.item_type ?? '').toLowerCase() !== 'product') continue;
@@ -1106,17 +1107,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   const beautyAppointmentProductSourceInfo = useMemo(() => {
     let paidSales = 0;
-    let missingAppointmentLink = 0;
     let noProductLine = 0;
     for (const sale of beautyServiceSales || []) {
       const paymentStatus = String(sale.payment_status ?? '').trim().toLowerCase();
       if (paymentStatus !== 'paid') continue;
       paidSales += 1;
-      const appointmentId = extractBeautyAppointmentIdFromSaleNotes(sale.notes);
-      if (!appointmentId) {
-        missingAppointmentLink += 1;
-        continue;
-      }
       const hasProductLine = (sale.items ?? []).some(
         (item) => String(item.item_type ?? '').toLowerCase() === 'product'
       );
@@ -1124,7 +1119,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     }
     return {
       paidSales,
-      missingAppointmentLink,
       noProductLine,
     };
   }, [beautyServiceSales]);
@@ -5699,7 +5693,6 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                             <p className="font-semibold">{tm('beautyAppointmentProductDataQualityHint')}</p>
                             <p>
                               {tm('beautyAppointmentProductStatPaidSales')}: {formatNumber(beautyAppointmentProductSourceInfo.paidSales, 0, false)} ·{' '}
-                              {tm('beautyAppointmentProductStatMissingLink')}: {formatNumber(beautyAppointmentProductSourceInfo.missingAppointmentLink, 0, false)} ·{' '}
                               {tm('beautyAppointmentProductStatNoProductLine')}: {formatNumber(beautyAppointmentProductSourceInfo.noProductLine, 0, false)}
                             </p>
                           </div>

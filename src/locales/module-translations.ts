@@ -1883,10 +1883,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'ڕاپۆرتی کردار/پارەدانی هەڵوەشاو',
   },
   beautyAppointmentProductSalesReport: {
-    tr: 'Randevu Ürün Satış Raporu',
-    en: 'Appointment Product Sales Report',
-    ar: 'تقرير مبيعات المنتجات من المواعيد',
-    ku: 'ڕاپۆرتی فرۆشتنی بەرهەمی چاوپێکەوتن',
+    tr: 'Güzellik Ürün Satış Raporu',
+    en: 'Beauty Product Sales Report',
+    ar: 'تقرير مبيعات منتجات التجميل',
+    ku: 'ڕاپۆرتی فرۆشتنی بەرهەمی گوزەایەتی',
   },
   beautyServiceBreakdownHint: {
     tr: 'Randevu tarihine göre; iptal ve gelmedi kayıtları hariç. Her hizmet için müşteri, personel ve tutar listelenir.',
@@ -1895,10 +1895,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'بەپێی بەرواری چاوپێکەوتن؛ ڕەتکراوەکان دەرکراون.',
   },
   beautyAppointmentProductSalesHint: {
-    tr: 'Randevuya bağlı (rex_appt) ve ödeme durumu “paid” olan ürün kalemlerini listeler.',
-    en: 'Lists product lines linked to appointments (rex_appt) with paid payment status.',
-    ar: 'يسرد بنود المنتجات المرتبطة بالمواعيد (rex_appt) والمدفوعة.',
-    ku: 'ڕیزە بەرهەمە بەستراوەکانی چاوپێکەوتن (rex_appt) و پارەدراو پیشان دەدات.',
+    tr: 'Ödeme durumu “paid” olan tüm ürün kalemlerini listeler; randevu bağlantısı zorunlu değildir (varsa tarih randevudan alınır).',
+    en: 'Lists all paid product lines; appointment link is optional (appointment date used when linked).',
+    ar: 'يسرد جميع بنود المنتجات المدفوعة؛ رابط الموعد اختياري.',
+    ku: 'هەموو ڕیزە بەرهەمە پارەدراوەکان پیشان دەدات؛ بەستەری چاوپێکەوتن ئارەزوومەندانەیە.',
   },
   beautyAppointmentProductFilterLabel: {
     tr: 'Ürün filtresi',
@@ -1913,10 +1913,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'هەموو بەرهەمەکان',
   },
   beautyAppointmentProductDataQualityHint: {
-    tr: 'Bu aralıkta ödeme var; ancak randevu linki (rex_appt) veya ürün satırı olmayan kayıtlar rapora dahil edilmez.',
-    en: 'There are paid sales in this range, but rows without appointment link (rex_appt) or product lines are excluded.',
-    ar: 'توجد مبيعات مدفوعة في هذا النطاق، لكن السجلات بدون رابط موعد أو بدون بند منتج لا تُدرج.',
-    ku: 'لەو ماوەیەدا فرۆشتنی پارەدراو هەیە، بەڵام تۆمارەکانی بێ بەستەری چاوپێکەوتن یان بێ ڕیزی بەرهەم نایشاندرێن.',
+    tr: 'Bu aralıkta ödenmiş satış var; yalnızca sepetinde ürün kalemi olmayan kayıtlar listelenmez.',
+    en: 'There are paid sales in this range; only sales without product lines are excluded.',
+    ar: 'توجد مبيعات مدفوعة في هذا النطاق؛ يُستثنى فقط ما لا يحتوي على بند منتج.',
+    ku: 'لەو ماوەیەدا فرۆشتنی پارەدراو هەیە؛ تەنها ئەوانەی بێ ڕیزی بەرهەم نایشاندرێن.',
   },
   beautyAppointmentProductStatPaidSales: {
     tr: 'Ödenmiş satış',
