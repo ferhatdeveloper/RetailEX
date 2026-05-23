@@ -62,7 +62,7 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
         height: size.height,
         orientation: type === 'label' ? 'landscape' : 'portrait',
         engine: 'fastreport-like',
-        usageScopes: ['global'],
+        usageScopes: type === 'label' ? ['global', 'product_bulk_label', 'shelf_label'] : ['global'],
         defaultScopes: [],
         margin: { top: 10, right: 10, bottom: 10, left: 10 },
         isDefault: false,

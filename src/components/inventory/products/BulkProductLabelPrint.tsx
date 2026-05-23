@@ -15,6 +15,14 @@ import {
   type BarcodeCaptionMode,
   type LabelPrintFieldSettings,
 } from '../../../services/labelPrintFieldSettingsService';
+import type { Template } from '../../../core/types/templates';
+import {
+  buildLabelTemplateFieldValues,
+  labelTemplateDesignId,
+  TemplateLabelView,
+  templateToLabelSize,
+} from '../../../services/labelTemplateRender';
+import { LabelDesignPicker } from './LabelDesignPicker';
 import {
   LABEL_DESIGNS,
   LABEL_SIZES,
@@ -84,6 +92,7 @@ export function BulkProductLabelPrint({
 
   const [selectedSize, setSelectedSize] = useState<LabelSize>(DEFAULT_LABEL_SIZE);
   const [selectedDesign, setSelectedDesign] = useState<LabelDesign>(LABEL_DESIGNS[1]);
+  const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<Template | null>(null);
   const [sizeFilter, setSizeFilter] = useState<'termal' | 'a4' | 'raf' | 'all'>('termal');
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(20);
@@ -169,9 +178,19 @@ export function BulkProductLabelPrint({
     prevPresetSizeIdRef.current = selectedSize.id;
   }, [selectedSize.id, selectedSize.width, selectedSize.height, useCustomMm]);
 
+  const sizePreset = selectedCustomTemplate
+    ? templateToLabelSize(selectedCustomTemplate, selectedSize.category)
+    : selectedSize;
+
   const activePrintSize = useMemo(
-    () => buildActiveLabelSize(selectedSize, useCustomMm, customWidthMm, customHeightMm),
-    [selectedSize, useCustomMm, customWidthMm, customHeightMm]
+    () =>
+      buildActiveLabelSize(
+        sizePreset,
+        useCustomMm && !selectedCustomTemplate,
+        customWidthMm,
+        customHeightMm,
+      ),
+    [sizePreset, useCustomMm, selectedCustomTemplate, customWidthMm, customHeightMm],
   );
 
   const isSideways = printRotation === 90 || printRotation === 270;
@@ -179,6 +198,7 @@ export function BulkProductLabelPrint({
   const pageHeightMm = isSideways ? activePrintSize.width : activePrintSize.height;
 
   useEffect(() => {
+    if (selectedCustomTemplate) return;
     const timer = setTimeout(() => {
       const cells = queue.flatMap((row, rowIdx) =>
         Array.from({ length: row.quantity }, (_, qIdx) => ({
@@ -217,7 +237,7 @@ export function BulkProductLabelPrint({
       });
     }, 120);
     return () => clearTimeout(timer);
-  }, [queue, activePrintSize, selectedDesign, fieldSettings]);
+  }, [queue, activePrintSize, selectedDesign, fieldSettings, selectedCustomTemplate]);
 
   const filteredSizes =
     sizeFilter === 'all' ? LABEL_SIZES : LABEL_SIZES.filter((s) => s.category === sizeFilter);
@@ -229,6 +249,7 @@ export function BulkProductLabelPrint({
   const totalLabels = queue.reduce((sum, r) => sum + r.quantity, 0);
 
   const handleDesignChange = (design: LabelDesign) => {
+    setSelectedCustomTemplate(null);
     setSelectedDesign(design);
     if (design.id === 'shelf') {
       const shelfSize = LABEL_SIZES.find((s) => s.id === 'raf-a4-half');
@@ -239,9 +260,34 @@ export function BulkProductLabelPrint({
     }
   };
 
+  const handleTemplateSelect = (template: Template) => {
+    setSelectedCustomTemplate(template);
+    setSelectedDesign({
+      id: labelTemplateDesignId(template.id),
+      name: template.name,
+      description: template.description ?? '',
+      icon: '✨',
+      supportedSizes: ['all'],
+    });
+    const matched = LABEL_SIZES.find(
+      (s) => s.width === template.width && s.height === template.height,
+    );
+    if (matched) {
+      setSelectedSize(matched);
+    } else {
+      setSelectedSize(templateToLabelSize(template, 'termal'));
+    }
+    setUseCustomMm(false);
+  };
+
+  const selectedDesignId = selectedCustomTemplate
+    ? labelTemplateDesignId(selectedCustomTemplate.id)
+    : selectedDesign.id;
+
   const handlePrint = async () => {
     if (queue.length === 0) return;
-    if (selectedSize.category !== 'termal') {
+    const printCategory = selectedCustomTemplate ? 'termal' : selectedSize.category;
+    if (printCategory !== 'termal') {
       window.print();
       return;
     }
@@ -279,7 +325,8 @@ export function BulkProductLabelPrint({
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       await new Promise((r) => setTimeout(r, 220));
       const fname = `retailex-etiketler-${new Date().toISOString().slice(0, 10)}.pdf`;
-      if (selectedSize.category === 'termal') {
+      const pdfCategory = selectedCustomTemplate ? 'termal' : selectedSize.category;
+      if (pdfCategory === 'termal') {
         const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
         if (cells.length > 0) {
           await exportLabelGridToPdfPages(root, cells, fname, { width: pageWidthMm, height: pageHeightMm });
@@ -402,26 +449,12 @@ export function BulkProductLabelPrint({
             <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelDesign')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                {LABEL_DESIGNS.map((design) => (
-                  <button
-                    key={design.id}
-                    type="button"
-                    onClick={() => handleDesignChange(design)}
-                    className={`p-2 text-left border-2 rounded-lg transition-all ${
-                      selectedDesign.id === design.id
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-gray-300 bg-white'
-                    }`}
-                  >
-                    <div className="text-lg mb-1">{design.icon}</div>
-                    <div className="text-xs font-medium">{tm(design.id)}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {tm(design.id + '_desc') || design.description.split('-')[0]}
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <LabelDesignPicker
+                selectedDesignId={selectedDesignId}
+                onSelectBuiltin={handleDesignChange}
+                onSelectTemplate={handleTemplateSelect}
+                tm={tm}
+              />
             </div>
 
             <div className="p-4 border-b border-gray-200 bg-white">
@@ -459,13 +492,19 @@ export function BulkProductLabelPrint({
 
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelSize')}</label>
+              {selectedCustomTemplate && (
+                <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-1.5 mb-2">
+                  {tm('labelTemplateSizeHint')}: {selectedCustomTemplate.width}×{selectedCustomTemplate.height} mm
+                </p>
+              )}
               <select
                 value={selectedSize.id}
+                disabled={!!selectedCustomTemplate}
                 onChange={(e) => {
                   const size = LABEL_SIZES.find((s) => s.id === e.target.value);
                   if (size) setSelectedSize(size);
                 }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
               >
                 {filteredSizes.map((size) => (
                   <option key={size.id} value={size.id}>
@@ -488,6 +527,7 @@ export function BulkProductLabelPrint({
                   <input
                     type="checkbox"
                     checked={useCustomMm}
+                    disabled={!!selectedCustomTemplate}
                     onChange={(e) => {
                       const on = e.target.checked;
                       setUseCustomMm(on);
@@ -598,7 +638,7 @@ export function BulkProductLabelPrint({
               )}
             </div>
 
-            {selectedDesign.id === 'promotional' && (
+            {!selectedCustomTemplate && selectedDesign.id === 'promotional' && (
               <div className="p-4 border-b border-gray-200 bg-white">
                 <label className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
                   <input
@@ -625,7 +665,7 @@ export function BulkProductLabelPrint({
               </div>
             )}
 
-            {selectedDesign.id === 'shelf' && (
+            {!selectedCustomTemplate && selectedDesign.id === 'shelf' && (
               <div className="p-4 border-b border-gray-200 bg-white">
                 <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('shelfLocation')}</label>
                 <input
@@ -881,27 +921,53 @@ export function BulkProductLabelPrint({
                       }`}
                     >
                       {queue.flatMap((row, rowIdx) =>
-                        Array.from({ length: row.quantity }, (_, qIdx) => (
-                          <RotatedLabel key={`${row.queueKey}-${qIdx}`} rotation={printRotation} size={activePrintSize}>
-                            <LabelContent
-                              variant={row.variant}
-                              productName={row.productName}
-                              currency={currency}
-                              category={row.category}
-                              productBrand={row.brand}
-                              productUnit={row.unit}
-                              productSpecialCode2={row.specialCode2}
-                              barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
-                              qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
+                        Array.from({ length: row.quantity }, (_, qIdx) => {
+                          const instanceKey = `${row.queueKey}-${qIdx}`;
+                          return (
+                            <RotatedLabel
+                              key={instanceKey}
+                              rotation={printRotation}
                               size={activePrintSize}
-                              design={selectedDesign}
-                              showDiscount={showDiscount}
-                              discountPercent={discountPercent}
-                              shelfLocation={shelfLocation}
-                              fieldSettings={fieldSettings}
-                            />
-                          </RotatedLabel>
-                        ))
+                            >
+                              {selectedCustomTemplate ? (
+                                <TemplateLabelView
+                                  template={selectedCustomTemplate}
+                                  instanceKey={instanceKey}
+                                  fieldSettings={fieldSettings}
+                                  fields={buildLabelTemplateFieldValues({
+                                    productName: row.productName,
+                                    barcode: row.variant.barcode,
+                                    variantCode: row.variant.variantCode,
+                                    salePrice: row.variant.salePrice,
+                                    currency,
+                                    category: row.category,
+                                    stock: row.variant.stock,
+                                    sku: row.variant.variantCode,
+                                    specialCode2: row.specialCode2,
+                                  })}
+                                />
+                              ) : (
+                                <LabelContent
+                                  variant={row.variant}
+                                  productName={row.productName}
+                                  currency={currency}
+                                  category={row.category}
+                                  productBrand={row.brand}
+                                  productUnit={row.unit}
+                                  productSpecialCode2={row.specialCode2}
+                                  barcodeId={`bulk-barcode-${rowIdx}-${qIdx}`}
+                                  qrId={`bulk-qrcode-${rowIdx}-${qIdx}`}
+                                  size={activePrintSize}
+                                  design={selectedDesign}
+                                  showDiscount={showDiscount}
+                                  discountPercent={discountPercent}
+                                  shelfLocation={shelfLocation}
+                                  fieldSettings={fieldSettings}
+                                />
+                              )}
+                            </RotatedLabel>
+                          );
+                        }),
                       )}
                     </div>
                   </div>
@@ -913,10 +979,10 @@ export function BulkProductLabelPrint({
       </div>
 
       <style>{buildLabelPrintStyleBlock({
-        category: selectedSize.category,
+        category: selectedCustomTemplate ? 'termal' : selectedSize.category,
         pageWidthMm,
         pageHeightMm,
-        thermalOneLabelPerPage: selectedSize.category === 'termal',
+        thermalOneLabelPerPage: selectedCustomTemplate ? true : selectedSize.category === 'termal',
       })}</style>
     </div>
   );

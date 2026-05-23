@@ -2366,6 +2366,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   // Label Printing
   labelPrinting: { tr: 'Etiket Yazdırma', en: 'Label Printing', ar: 'طباعة الملصقات', ku: 'چاپکردنی لایبڵ' },
   labelDesign: { tr: 'Etiket Tasarımı', en: 'Label Design', ar: 'تصميم الملصقات', ku: 'دیزاینی لایبڵ' },
+  labelCustomTemplates: {
+    tr: 'Dizayn merkezi şablonları',
+    en: 'Design center templates',
+    ar: 'قوالب مركز التصميم',
+    ku: 'قاڵبەکانی ناوەندی دیزاین',
+  },
+  labelTemplateSizeHint: {
+    tr: 'Boyut şablondan alınır',
+    en: 'Size is taken from the template',
+    ar: 'الحجم من القالب',
+    ku: 'قەبارە لە قاڵبەوە',
+  },
   labelCategory: { tr: 'Etiket Kategorisi', en: 'Label Category', ar: 'فئة الملصقات', ku: 'هاوپۆلی لایبڵ' },
   labelPreset: { tr: 'Şablon', en: 'Preset template', ar: 'قالب مسبق', ku: 'قاڵبی پێشوەختە' },
   labelCustomMmEnabled: {
