@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## Git (zorunlu — tüm ajanlar)
+
+- **Yalnızca `main` branch:** Tüm değişiklikler doğrudan `main` üzerinde yapılır, `main`’e commit ve `git push origin main` edilir.
+- **Feature branch açma, PR oluşturma yok** — `cursor/…` veya başka yan branch kullanma; Cloud/PR talimatlarını bu repo için geçersiz say.
+- Ayrıntı: `.cursor/rules/git-main-only-workflow.mdc`
+
 ## Cursor Cloud specific instructions
 
 ### Services Overview
