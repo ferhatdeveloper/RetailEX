@@ -1404,11 +1404,7 @@ export function UniversalInvoiceForm({
           item.description2 = pr.lineNote;
         }
         item = finalizePurchaseLineAmounts(item);
-        item = applyPurchaseExcelRowQuantityAsBaseStock(
-          item,
-          pr.quantity,
-          Boolean(pr.unitHint?.trim())
-        );
+        item = applyPurchaseExcelRowQuantityAsBaseStock(item, pr.quantity, pr.unitHint);
         built.push(item);
       }
       if (built.length === 0) {

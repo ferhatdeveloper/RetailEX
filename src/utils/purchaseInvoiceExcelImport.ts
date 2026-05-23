@@ -18,13 +18,36 @@ export const PURCHASE_INVOICE_EXCEL_COLUMNS = {
   lineNote: 'Satır Açıklaması',
 } as const;
 
-/** Excel'de Birim boşsa Miktar = stok birimi (adet); birim çarpanı uygulanmaz. */
+/** Excel Birim sütunu boş veya temel birim (Adet) ise — paket çarpanı uygulanmaz. */
+export function isPurchaseExcelBaseStockUnitHint(unitHint: string | undefined): boolean {
+  const h = String(unitHint ?? '').trim().toLowerCase();
+  if (!h) return true;
+  const baseUnits = new Set([
+    'adet',
+    'ad',
+    'adt',
+    'piece',
+    'pcs',
+    'pc',
+    'unit',
+    'birim',
+    'ea',
+    'each',
+    'stok birimi',
+  ]);
+  return baseUnits.has(h);
+}
+
+/**
+ * Alış faturası Excel: Miktar sütunu stok adedidir (Adet / boş birim).
+ * Koli, Kutu vb. yazılmışsa birim seti çarpanı korunur.
+ */
 export function applyPurchaseExcelRowQuantityAsBaseStock<T extends {
   quantity?: number;
   multiplier?: number;
   baseQuantity?: number;
-}>(item: T, excelQuantity: number, hasUnitHint: boolean): T {
-  if (hasUnitHint) return item;
+}>(item: T, excelQuantity: number, unitHint?: string): T {
+  if (!isPurchaseExcelBaseStockUnitHint(unitHint)) return item;
   const qty = Math.max(0, Number(excelQuantity) || 0);
   return {
     ...item,
