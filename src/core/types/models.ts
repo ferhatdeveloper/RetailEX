@@ -45,6 +45,7 @@ export interface Product {
   code?: string;
   minStock?: number;
   min_stock?: number;
+  maxStock?: number;
   max_stock?: number;
   image_url?: string;
   /** Supabase Storage / CDN public URL; öncelikli gösterim için kullanılır */
