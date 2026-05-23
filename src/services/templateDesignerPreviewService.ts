@@ -7,6 +7,8 @@ import {
   buildDemoLabelPreviewContext,
 } from './templateFieldCatalog';
 import { formatNumber } from '../utils/formatNumber';
+import { flattenDbRecord, mergeTemplateContexts } from './templateRecordContext';
+import { loadDbSamplesForType } from './templateDbFieldDiscoveryService';
 
 export type DesignerPreviewSource = 'demo' | 'database';
 
@@ -35,7 +37,8 @@ function productToLabelContext(product: Record<string, unknown>): Record<string,
     description: String(product.name2 ?? product.description ?? ''),
     specialCode2: String(product.special_code_2 ?? ''),
   });
-  return labelFieldsToContext(fields);
+  const flat = flattenDbRecord(product, { prefix: 'products', namespaces: ['products', 'product'] });
+  return mergeTemplateContexts(labelFieldsToContext(fields), flat, { product });
 }
 
 export async function loadDesignerPreviewContext(
@@ -73,14 +76,17 @@ export async function loadDesignerPreviewContext(
         };
       }
       const ctx = buildInvoicePrintContext(full as Invoice);
-      const items = (ctx.items as Record<string, unknown>[]) || [];
+      const dbSamples = await loadDbSamplesForType('invoice');
+      const merged = mergeTemplateContexts(ctx, dbSamples);
+      const items = (merged.items as Record<string, unknown>[]) || [];
       if (items.length > 0) {
-        ctx.item = items[0];
+        merged.item = items[0];
+        merged.line = items[0];
       }
-      if (!ctx.storeTaxNo) {
-        ctx.storeTaxNo = '';
+      if (!merged.storeTaxNo) {
+        merged.storeTaxNo = '';
       }
-      return { source: 'database', loadedFromDb: true, context: ctx };
+      return { source: 'database', loadedFromDb: true, context: merged };
     }
 
     const { productAPI } = await import('./api/products');
@@ -94,10 +100,11 @@ export async function loadDesignerPreviewContext(
         error: 'Veritabanında ürün bulunamadı; örnek veri kullanılıyor.',
       };
     }
+    const dbSamples = await loadDbSamplesForType('label');
     return {
       source: 'database',
       loadedFromDb: true,
-      context: productToLabelContext(product),
+      context: mergeTemplateContexts(productToLabelContext(product), dbSamples),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

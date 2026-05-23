@@ -2,6 +2,7 @@ import type { Invoice } from '../core/types';
 import type { Template, TemplateElement, TemplateUsageScope } from '../core/types/templates';
 import type { ReportComponent, ReportTemplate } from '../components/reports/designerUtils';
 import { formatNumber } from '../utils/formatNumber';
+import { flattenDbRecord, mergeTemplateContexts } from './templateRecordContext';
 
 const TEMPLATE_TOKEN_REGEX = /\{\{\s*([^}]+)\s*\}\}/g;
 
@@ -181,36 +182,67 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     '';
   const { date, time } = parseDateParts(dateSource);
   const customerName = invoiceRecord.customer_name || invoiceRecord.customerName || '';
-  const items = (invoice.items || []).map((item) => ({
-    ...item,
-    name: item.productName || item.description || item.code || '',
-    productName: item.productName || item.description || item.code || '',
-    quantity: item.quantity ?? 0,
-    unitPrice: item.unitPrice ?? item.price ?? 0,
-    unit_price: item.unitPrice ?? item.price ?? 0,
-    total: item.total ?? item.netAmount ?? 0,
-  }));
-  return {
-    invoice,
+  const items = (invoice.items || []).map((item) => {
+    const row = item as unknown as Record<string, unknown>;
+    return {
+      ...item,
+      name: item.productName || item.description || item.code || row.item_name || '',
+      productName: item.productName || item.description || item.code || row.item_name || '',
+      itemName: row.item_name || item.productName || '',
+      itemCode: row.item_code || item.code || '',
+      quantity: item.quantity ?? 0,
+      unitPrice: item.unitPrice ?? item.price ?? row.unit_price ?? 0,
+      unit_price: item.unitPrice ?? item.price ?? row.unit_price ?? 0,
+      total: item.total ?? item.netAmount ?? row.net_amount ?? 0,
+      net_amount: item.total ?? item.netAmount ?? row.net_amount ?? 0,
+    };
+  });
+  const firstLine = items[0] as Record<string, unknown> | undefined;
+  const headerFlat = flattenDbRecord(invoiceRecord, {
+    prefix: 'sales',
+    namespaces: ['sales', 'invoice'],
+  });
+  const lineFlat = firstLine
+    ? flattenDbRecord(firstLine, { prefix: 'line', namespaces: ['line', 'item'] })
+    : {};
+
+  return mergeTemplateContexts(headerFlat, lineFlat, {
+    invoice: invoiceRecord,
+    sales: invoiceRecord,
     items,
-    invoiceNo: invoiceRecord.invoice_no || invoiceRecord.invoiceNo || '',
-    receiptNumber: invoiceRecord.receiptNumber || invoiceRecord.document_no || '',
+    item: firstLine ?? {},
+    line: firstLine ?? {},
+    invoiceNo:
+      invoiceRecord.invoice_no ||
+      invoiceRecord.invoiceNo ||
+      invoiceRecord.fiche_no ||
+      '',
+    ficheNo: invoiceRecord.fiche_no || invoiceRecord.invoice_no || '',
+    documentNo: invoiceRecord.document_no || '',
+    receiptNumber: invoiceRecord.receiptNumber || invoiceRecord.document_no || invoiceRecord.fiche_no || '',
     date,
     time,
     customerName: normalizeValue(customerName),
-    customerAddress: invoiceRecord.customer_address || '',
-    customerTaxNo: invoiceRecord.customer_tax_no || '',
+    customerAddress: invoiceRecord.customer_address || invoiceRecord.address || '',
+    customerTaxNo: invoiceRecord.customer_tax_no || invoiceRecord.tax_nr || '',
     storeName: invoiceRecord.store_name || 'RetailEX',
     storeAddress: invoiceRecord.store_address || '',
     storeTaxNo: invoiceRecord.store_tax_no || invoiceRecord.storeTaxNo || '',
     storePhone: invoiceRecord.store_phone || '',
-    subtotal: formatNumber(invoice.subtotal || 0, 2, true),
-    discount: formatNumber(invoice.discount || 0, 2, true),
-    tax: formatNumber(invoice.tax || 0, 2, true),
-    total: formatNumber(invoice.total || Number(invoiceRecord.totalAmount || 0), 2, true),
+    subtotal: formatNumber(invoice.subtotal || Number(invoiceRecord.total_net || 0), 2, true),
+    discount: formatNumber(invoice.discount || Number(invoiceRecord.total_discount || 0), 2, true),
+    tax: formatNumber(invoice.tax || Number(invoiceRecord.total_vat || 0), 2, true),
+    total: formatNumber(invoice.total || Number(invoiceRecord.net_amount || invoiceRecord.totalAmount || 0), 2, true),
+    totalNet: formatNumber(Number(invoiceRecord.total_net || invoice.subtotal || 0), 2, true),
+    totalVat: formatNumber(Number(invoiceRecord.total_vat || invoice.tax || 0), 2, true),
+    netAmount: formatNumber(Number(invoiceRecord.net_amount || invoice.total || 0), 2, true),
     paymentMethod: invoiceRecord.paymentMethod || invoiceRecord.payment_method || '',
     cashier: invoiceRecord.cashier || '',
+    currency: invoiceRecord.currency || '',
+    firmNr: invoiceRecord.firm_nr || invoiceRecord.firma_id || '',
+    periodNr: invoiceRecord.period_nr || invoiceRecord.donem_id || '',
+    notes: invoiceRecord.notes || '',
     barcode: String(invoiceRecord.barcode || invoiceRecord.invoice_no || ''),
     price: formatNumber(invoice.total || Number(invoiceRecord.totalAmount || 0), 2, true),
-  };
+  });
 }
