@@ -25,6 +25,14 @@ import {
   readLabelCustomWidthMm,
 } from './labelPrintDimensions';
 import { DEFAULT_A4, exportLabelGridToPdfPages, exportToPDF } from '../../reports/designerUtils';
+import type { Template } from '../../../core/types/templates';
+import {
+  buildLabelTemplateFieldValues,
+  labelTemplateDesignId,
+  TemplateLabelView,
+  templateToLabelSize,
+} from '../../../services/labelTemplateRender';
+import { LabelDesignPicker } from './LabelDesignPicker';
 
 export type PrintRotation = 0 | 90 | 180 | 270;
 
@@ -356,6 +364,7 @@ export function ProductLabelPrint({
   const { tm } = useLanguage();
   const [selectedSize, setSelectedSize] = useState<LabelSize>(DEFAULT_LABEL_SIZE);
   const [selectedDesign, setSelectedDesign] = useState<LabelDesign>(LABEL_DESIGNS[1]); // Standard default
+  const [selectedCustomTemplate, setSelectedCustomTemplate] = useState<Template | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<SelectedVariant[]>([]);
   const [sizeFilter, setSizeFilter] = useState<'termal' | 'a4' | 'raf' | 'all'>('termal');
   const [showDiscount, setShowDiscount] = useState(false);
@@ -430,9 +439,19 @@ export function ProductLabelPrint({
     prevPresetSizeIdRef.current = selectedSize.id;
   }, [selectedSize.id, selectedSize.width, selectedSize.height, useCustomMm]);
 
+  const sizePreset = selectedCustomTemplate
+    ? templateToLabelSize(selectedCustomTemplate, selectedSize.category)
+    : selectedSize;
+
   const activePrintSize = useMemo(
-    () => buildActiveLabelSize(selectedSize, useCustomMm, customWidthMm, customHeightMm),
-    [selectedSize, useCustomMm, customWidthMm, customHeightMm]
+    () =>
+      buildActiveLabelSize(
+        sizePreset,
+        useCustomMm && !selectedCustomTemplate,
+        customWidthMm,
+        customHeightMm,
+      ),
+    [sizePreset, useCustomMm, selectedCustomTemplate, customWidthMm, customHeightMm],
   );
 
   // 90°/270° için fiziksel sayfa boyutu (kağıt yatay beslenirse w/h yer değişir)
@@ -442,6 +461,7 @@ export function ProductLabelPrint({
 
   // Barkodları ve QR kodları otomatik oluştur
   useEffect(() => {
+    if (selectedCustomTemplate) return;
     const timer = setTimeout(() => {
       const cells = selectedVariants.flatMap((sv, svIdx) =>
         Array.from({ length: sv.quantity }, (_, qIdx) => ({
@@ -482,7 +502,7 @@ export function ProductLabelPrint({
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [selectedVariants, activePrintSize, selectedDesign, fieldSettings]);
+  }, [selectedVariants, activePrintSize, selectedDesign, fieldSettings, selectedCustomTemplate]);
 
   // Varyant seç/kaldır
   const toggleVariant = (variant: LabelPrintVariant) => {
@@ -542,7 +562,8 @@ export function ProductLabelPrint({
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       await new Promise((r) => setTimeout(r, 220));
       const fname = `retailex-etiket-${new Date().toISOString().slice(0, 10)}.pdf`;
-      if (selectedSize.category === 'termal') {
+      const pdfCategory = selectedCustomTemplate ? 'termal' : selectedSize.category;
+      if (pdfCategory === 'termal') {
         const cells = Array.from(root.querySelectorAll('.rotated-label-wrapper')) as HTMLElement[];
         if (cells.length > 0) {
           await exportLabelGridToPdfPages(root, cells, fname, { width: pageWidthMm, height: pageHeightMm });
@@ -562,6 +583,7 @@ export function ProductLabelPrint({
 
   // Tasarım değiştiğinde uygun boyut seç
   const handleDesignChange = (design: LabelDesign) => {
+    setSelectedCustomTemplate(null);
     setSelectedDesign(design);
 
     // Raf etiketi seçilirse raf boyutunu ayarla
@@ -573,6 +595,30 @@ export function ProductLabelPrint({
       }
     }
   };
+
+  const handleTemplateSelect = (template: Template) => {
+    setSelectedCustomTemplate(template);
+    setSelectedDesign({
+      id: labelTemplateDesignId(template.id),
+      name: template.name,
+      description: template.description ?? '',
+      icon: '✨',
+      supportedSizes: ['all'],
+    });
+    const matched = LABEL_SIZES.find(
+      (s) => s.width === template.width && s.height === template.height,
+    );
+    if (matched) {
+      setSelectedSize(matched);
+    } else {
+      setSelectedSize(templateToLabelSize(template, 'termal'));
+    }
+    setUseCustomMm(false);
+  };
+
+  const selectedDesignId = selectedCustomTemplate
+    ? labelTemplateDesignId(selectedCustomTemplate.id)
+    : selectedDesign.id;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10050] p-4">
@@ -650,22 +696,12 @@ export function ProductLabelPrint({
             {/* Tasarım Seçimi */}
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelDesign')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                {LABEL_DESIGNS.map(design => (
-                  <button
-                    key={design.id}
-                    onClick={() => handleDesignChange(design)}
-                    className={`p-2 text-left border-2 rounded-lg transition-all ${selectedDesign.id === design.id
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                  >
-                    <div className="text-lg mb-1">{design.icon}</div>
-                    <div className="text-xs font-medium">{tm(design.id)}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">{tm(design.id + '_desc') || design.description.split('-')[0]}</div>
-                  </button>
-                ))}
-              </div>
+              <LabelDesignPicker
+                selectedDesignId={selectedDesignId}
+                onSelectBuiltin={handleDesignChange}
+                onSelectTemplate={handleTemplateSelect}
+                tm={tm}
+              />
             </div>
 
             {/* Boyut Filtresi */}
@@ -699,13 +735,19 @@ export function ProductLabelPrint({
             {/* Etiket Boyutu */}
             <div className="p-4 border-b border-gray-200 bg-white">
               <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('labelSize')}</label>
+              {selectedCustomTemplate && (
+                <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-2 py-1.5 mb-2">
+                  {tm('labelTemplateSizeHint')}: {selectedCustomTemplate.width}×{selectedCustomTemplate.height} mm
+                </p>
+              )}
               <select
                 value={selectedSize.id}
+                disabled={!!selectedCustomTemplate}
                 onChange={(e) => {
                   const size = LABEL_SIZES.find(s => s.id === e.target.value);
                   if (size) setSelectedSize(size);
                 }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100 disabled:text-gray-500"
               >
                 {filteredSizes.map(size => (
                   <option key={size.id} value={size.id}>
@@ -728,6 +770,7 @@ export function ProductLabelPrint({
                   <input
                     type="checkbox"
                     checked={useCustomMm}
+                    disabled={!!selectedCustomTemplate}
                     onChange={(e) => {
                       const on = e.target.checked;
                       setUseCustomMm(on);
@@ -839,7 +882,7 @@ export function ProductLabelPrint({
             </div>
 
             {/* Promosyon Ayarları */}
-            {selectedDesign.id === 'promotional' && (
+            {!selectedCustomTemplate && selectedDesign.id === 'promotional' && (
               <div className="p-4 border-b border-gray-200 bg-white">
                 <label className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
                   <input
@@ -867,7 +910,7 @@ export function ProductLabelPrint({
             )}
 
             {/* Raf Konumu */}
-            {selectedDesign.id === 'shelf' && (
+            {!selectedCustomTemplate && selectedDesign.id === 'shelf' && (
               <div className="p-4 border-b border-gray-200 bg-white">
                 <label className="text-sm font-medium text-gray-900 mb-2 block">{tm('shelfLocation')}</label>
                 <input
@@ -1126,31 +1169,53 @@ export function ProductLabelPrint({
                           : 'grid-cols-5'
                     }`}>
                     {selectedVariants.flatMap((sv, svIdx) =>
-                      Array.from({ length: sv.quantity }, (_, qIdx) => (
-                        <RotatedLabel
-                          key={`${svIdx}-${qIdx}`}
-                          rotation={printRotation}
-                          size={activePrintSize}
-                        >
-                          <LabelContent
-                            variant={sv.variant}
-                            productName={productName}
-                            currency={currency}
-                            category={category}
-                            productBrand={productBrand}
-                            productUnit={productUnit}
-                            productSpecialCode2={productSpecialCode2}
-                            barcodeId={`barcode-${svIdx}-${qIdx}`}
-                            qrId={`qrcode-${svIdx}-${qIdx}`}
+                      Array.from({ length: sv.quantity }, (_, qIdx) => {
+                        const instanceKey = `${svIdx}-${qIdx}`;
+                        return (
+                          <RotatedLabel
+                            key={instanceKey}
+                            rotation={printRotation}
                             size={activePrintSize}
-                            design={selectedDesign}
-                            showDiscount={showDiscount}
-                            discountPercent={discountPercent}
-                            shelfLocation={shelfLocation}
-                            fieldSettings={fieldSettings}
-                          />
-                        </RotatedLabel>
-                      ))
+                          >
+                            {selectedCustomTemplate ? (
+                              <TemplateLabelView
+                                template={selectedCustomTemplate}
+                                instanceKey={instanceKey}
+                                fieldSettings={fieldSettings}
+                                fields={buildLabelTemplateFieldValues({
+                                  productName,
+                                  barcode: sv.variant.barcode,
+                                  variantCode: sv.variant.variantCode,
+                                  salePrice: sv.variant.salePrice,
+                                  currency,
+                                  category,
+                                  stock: sv.variant.stock,
+                                  sku: sv.variant.variantCode,
+                                  specialCode2: productSpecialCode2,
+                                })}
+                              />
+                            ) : (
+                              <LabelContent
+                                variant={sv.variant}
+                                productName={productName}
+                                currency={currency}
+                                category={category}
+                                productBrand={productBrand}
+                                productUnit={productUnit}
+                                productSpecialCode2={productSpecialCode2}
+                                barcodeId={`barcode-${svIdx}-${qIdx}`}
+                                qrId={`qrcode-${svIdx}-${qIdx}`}
+                                size={activePrintSize}
+                                design={selectedDesign}
+                                showDiscount={showDiscount}
+                                discountPercent={discountPercent}
+                                shelfLocation={shelfLocation}
+                                fieldSettings={fieldSettings}
+                              />
+                            )}
+                          </RotatedLabel>
+                        );
+                      }),
                     )}
                   </div>
                 </div>
@@ -1161,10 +1226,10 @@ export function ProductLabelPrint({
       </div>
 
       <style>{buildLabelPrintStyleBlock({
-        category: selectedSize.category,
+        category: selectedCustomTemplate ? 'termal' : selectedSize.category,
         pageWidthMm,
         pageHeightMm,
-        thermalOneLabelPerPage: selectedSize.category === 'termal',
+        thermalOneLabelPerPage: selectedCustomTemplate ? true : selectedSize.category === 'termal',
       })}</style>
     </div>
   );
