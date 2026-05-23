@@ -5,7 +5,7 @@ import {
   Settings, Users, Shield, Database, Radio, HardDrive,
   Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download, Loader2,
   Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
-  Phone, Menu,
+  Phone, Menu, PanelLeftClose,
 } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -34,6 +34,13 @@ type SystemManagementModuleProps = {
   routeHint?: string;
 };
 
+const SIDEBAR_VISIBLE_STORAGE_KEY = 'retailex_system_mgmt_sidebar_visible';
+
+function readSidebarVisiblePreference(): boolean {
+  if (typeof localStorage === 'undefined') return true;
+  return localStorage.getItem(SIDEBAR_VISIBLE_STORAGE_KEY) !== '0';
+}
+
 const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   settings: 'userManagement',
   generalsettings: 'definitionsParameters',
@@ -49,9 +56,21 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
 
 export function SystemManagementModule({ routeHint }: SystemManagementModuleProps) {
   const [currentView, setCurrentView] = useState<SystemView>('userManagement');
-  const { tm } = useLanguage();
+  const { tm, t } = useLanguage();
   const { isMobile } = useResponsive();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarVisible, setSidebarVisible] = useState(readSidebarVisiblePreference);
+
+  const setSidebarVisiblePersisted = useCallback((visible: boolean) => {
+    setSidebarVisible(visible);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SIDEBAR_VISIBLE_STORAGE_KEY, visible ? '1' : '0');
+    }
+  }, []);
+
+  const toggleDesktopSidebar = useCallback(() => {
+    setSidebarVisiblePersisted(!sidebarVisible);
+  }, [sidebarVisible, setSidebarVisiblePersisted]);
 
   useEffect(() => {
     if (!routeHint) return;
@@ -77,6 +96,9 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'systemHealth' as const, label: 'Sistem Sağlığı', icon: Activity, color: 'teal' },
   ];
 
+  const activeMenuItem = menuItems.find((item) => item.id === currentView);
+  const desktopSidebarOpen = !isMobile && sidebarVisible;
+
   return (
     <div className="h-full flex flex-col md:flex-row bg-gray-50 relative min-h-0 min-w-0">
       {isMobile && mobileMenuOpen && (
@@ -95,10 +117,32 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
             ? `fixed inset-y-0 left-0 z-50 w-56 max-w-[85vw] border-r border-gray-200 bg-white overflow-y-auto shadow-xl transition-transform duration-200 ease-out ${
                 mobileMenuOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
               }`
-            : 'w-56 shrink-0 border-r border-gray-200 bg-white overflow-y-auto'
+            : `shrink-0 border-r border-gray-200 bg-white overflow-hidden transition-[width] duration-200 ease-out ${
+                desktopSidebarOpen ? 'w-56' : 'w-0 border-r-0'
+              }`
         }
       >
-        <nav className="p-2 space-y-0.5">
+        <nav
+          className={`p-2 space-y-0.5 h-full overflow-y-auto ${
+            !isMobile && !desktopSidebarOpen ? 'invisible w-56' : 'w-56'
+          }`}
+        >
+          {!isMobile && desktopSidebarOpen && (
+            <div className="flex items-center justify-between gap-2 px-1 pb-2 mb-1 border-b border-gray-100">
+              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider truncate">
+                {tm('systemManagement')}
+              </span>
+              <button
+                type="button"
+                onClick={toggleDesktopSidebar}
+                className="shrink-0 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50"
+                aria-label={t.hideMenu}
+                title={t.hideMenu}
+              >
+                <PanelLeftClose className="w-4 h-4" aria-hidden />
+              </button>
+            </div>
+          )}
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
@@ -109,6 +153,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
                   setCurrentView(item.id);
                   if (isMobile) setMobileMenuOpen(false);
                 }}
+                title={item.label}
                 className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
@@ -116,7 +161,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                {item.label}
+                <span className="truncate">{item.label}</span>
               </button>
             );
           })}
@@ -124,19 +169,36 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
       </div>
       {/* Content Area */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden md:overflow-auto">
-        {isMobile && (
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white shrink-0 md:hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 bg-white shrink-0">
+          {(isMobile || !desktopSidebarOpen) && (
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(true)}
+              onClick={() => {
+                if (isMobile) setMobileMenuOpen(true);
+                else setSidebarVisiblePersisted(true);
+              }}
               className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm hover:bg-gray-50"
-              aria-label={tm('mainMenu')}
+              aria-label={isMobile ? tm('mainMenu') : t.showMenu}
+              title={isMobile ? tm('mainMenu') : t.showMenu}
             >
               <Menu className="h-5 w-5" aria-hidden />
             </button>
-            <span className="text-sm font-semibold text-gray-800 truncate">{tm('systemManagement')}</span>
-          </div>
-        )}
+          )}
+          {!isMobile && desktopSidebarOpen && (
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              className="hidden md:inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm hover:bg-gray-50"
+              aria-label={t.hideMenu}
+              title={t.hideMenu}
+            >
+              <PanelLeftClose className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+          <span className="text-sm font-semibold text-gray-800 truncate flex-1 min-w-0">
+            {activeMenuItem?.label ?? tm('systemManagement')}
+          </span>
+        </div>
         <div className="flex-1 min-h-0 overflow-auto">
         {currentView === 'userManagement' && <UserManagementView />}
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
