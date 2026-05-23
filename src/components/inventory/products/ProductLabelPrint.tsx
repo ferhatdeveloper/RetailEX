@@ -1383,6 +1383,17 @@ export function LabelContent({
   const isMedium = size.width >= 50 && size.width < 80;
   const isLarge = size.width >= 80 && size.width < 150;
   const isXLarge = size.width >= 150;
+  const barcodeDataAttrs = {
+    'data-barcode-value': variant.barcode || '',
+    'data-variant-code': variant.variantCode || '',
+    'data-barcode-caption-mode': f.barcodeCaptionMode,
+    'data-label-width-mm': String(size.width),
+    'data-label-height-mm': String(size.height),
+  };
+  const qrDataAttrs = {
+    'data-qr-value': variant.barcode || '',
+    'data-qr-margin': '1',
+  };
 
   const oldPrice = showDiscount && discountPercent ? variant.salePrice / (1 - discountPercent / 100) : 0;
 
@@ -1401,6 +1412,7 @@ export function LabelContent({
           {variant.barcode && (
             <canvas
               id={barcodeId}
+              {...barcodeDataAttrs}
               style={{
                 maxWidth: '95%',
                 height: isSmall ? '12mm' : '18mm'
@@ -1480,6 +1492,7 @@ export function LabelContent({
               <div className="flex flex-1 justify-center items-end min-h-0">
                 <canvas
                   id={barcodeId}
+                  {...barcodeDataAttrs}
                   style={{
                     maxWidth: '95%',
                     height: `${barH}mm`,
@@ -1588,6 +1601,7 @@ export function LabelContent({
             <div className="flex flex-1 justify-center items-end min-h-0 w-full">
               <canvas
                 id={barcodeId}
+                {...barcodeDataAttrs}
                 style={{
                   maxWidth: '92%',
                   height: `${barH}mm`,
@@ -1638,7 +1652,7 @@ export function LabelContent({
 
           {variant.barcode && (
             <div className="flex justify-center my-1">
-              <canvas id={barcodeId} style={{ maxWidth: '95%', height: isMedium ? '22mm' : '28mm' }} />
+              <canvas id={barcodeId} {...barcodeDataAttrs} style={{ maxWidth: '95%', height: isMedium ? '22mm' : '28mm' }} />
             </div>
           )}
 
@@ -1698,7 +1712,7 @@ export function LabelContent({
 
           {variant.barcode && (
             <div className="flex justify-center my-1 bg-white p-1 rounded">
-              <canvas id={barcodeId} style={{ maxWidth: '95%', height: isMedium ? '20mm' : '25mm' }} />
+              <canvas id={barcodeId} {...barcodeDataAttrs} style={{ maxWidth: '95%', height: isMedium ? '20mm' : '25mm' }} />
             </div>
           )}
 
@@ -1746,7 +1760,7 @@ export function LabelContent({
 
           {variant.barcode && (
             <div className="flex justify-center my-1">
-              <canvas id={barcodeId} style={{ maxWidth: '95%', height: '20mm' }} />
+              <canvas id={barcodeId} {...barcodeDataAttrs} style={{ maxWidth: '95%', height: '20mm' }} />
             </div>
           )}
 
@@ -1789,6 +1803,7 @@ export function LabelContent({
             <div className="flex justify-center">
               <canvas
                 id={qrId}
+                {...qrDataAttrs}
                 style={{
                   width: isSmall ? '15mm' : isMedium ? '25mm' : '35mm',
                   height: isSmall ? '15mm' : isMedium ? '25mm' : '35mm'
@@ -1860,7 +1875,7 @@ export function LabelContent({
 
           {variant.barcode && (
             <div className="flex justify-center my-3 bg-gray-50 p-3 rounded">
-              <canvas id={barcodeId} style={{ maxWidth: '80%', height: '40mm' }} />
+              <canvas id={barcodeId} {...barcodeDataAttrs} style={{ maxWidth: '80%', height: '40mm' }} />
             </div>
           )}
 
