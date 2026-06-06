@@ -1832,7 +1832,8 @@ INSERT INTO public.roles (id, name, description, is_system_role, color, permissi
 ('00000000-0000-0000-0000-000000000002', 'manager', 'Mağaza Müdürü',                  true, '#3B82F6', '["pos.*", "management.*", "reports.*"]', NULL),
 ('00000000-0000-0000-0000-000000000003', 'cashier', 'Kasiyer — Satış Yetkisi',        true, '#10B981', '["pos.view", "pos.sell"]', 'pos'),
 ('00000000-0000-0000-0000-000000000004', 'stock',   'Stok ve Depo Sorumlusu',         true, '#F59E0B', '["management.products", "reports.inventory"]', NULL),
-('00000000-0000-0000-0000-000000000005', 'garson', 'Garson — Restoran masa servisi', true, '#F97316', '["restaurant.pos", "restaurant.kds"]', 'restaurant')
+('00000000-0000-0000-0000-000000000005', 'garson', 'Garson — Restoran masa servisi', true, '#F97316', '["restaurant.pos", "restaurant.kds"]', 'restaurant'),
+('00000000-0000-0000-0000-000000000006', 'anket', 'Anket operatörü — yalnızca memnuniyet anketi uygulama', true, '#8B5CF6', '[{"module":"beauty.surveys","actions":["READ","EXECUTE"]}]', 'beauty')
 ON CONFLICT (name) DO UPDATE SET landing_route = EXCLUDED.landing_route;
 
 -- Admin Kullanıcısı

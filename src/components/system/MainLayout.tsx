@@ -271,7 +271,7 @@ export function MainLayout({
 
     // 2. Diğer Yetki bazlı öncelikler:
     if (hasPermission('restaurant', 'READ')) return 'restaurant';
-    if (hasPermission('beauty', 'READ')) return 'beauty';
+    if (hasPermission('beauty', 'READ') || hasPermission('beauty.surveys', 'READ')) return 'beauty';
     if (hasPermission('wms', 'READ')) return 'wms';
     if (hasPermission('management', 'READ')) return 'management';
 
@@ -924,7 +924,7 @@ export function MainLayout({
       wms: hasPermission('wms', 'READ'),
       'mobile-pos': hasPermission('pos', 'READ'),
       restaurant: hasPermission('restaurant', 'READ'),
-      beauty: hasPermission('beauty', 'READ'),
+      beauty: hasPermission('beauty', 'READ') || hasPermission('beauty.surveys', 'READ'),
     };
 
     return ordered

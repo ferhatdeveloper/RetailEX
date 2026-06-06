@@ -44,6 +44,7 @@ import {
 import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
+import { usePermission } from '../../../shared/hooks/usePermission';
 
 const LANGS: SatisfactionLangCode[] = ['tr', 'en', 'ar', 'ku'];
 
@@ -51,6 +52,18 @@ const EMPTY_LABELS = (): BeautySatisfactionLabels => ({ tr: '', en: '', ar: '', 
 
 export function SatisfactionSurveyManagement() {
     const { tm, t } = useLanguage();
+    const { hasPermission } = usePermission();
+    const isSurveyOperatorOnly =
+        (hasPermission('beauty.surveys', 'READ') || hasPermission('beauty.surveys', 'EXECUTE')) &&
+        !hasPermission('beauty', 'READ');
+    const canManageSurveys =
+        !isSurveyOperatorOnly &&
+        (hasPermission('beauty', 'READ') ||
+            hasPermission('beauty.surveys', 'CREATE') ||
+            hasPermission('beauty.surveys', 'UPDATE') ||
+            hasPermission('beauty.surveys', 'DELETE'));
+    const canExecuteSurvey =
+        hasPermission('beauty.surveys', 'EXECUTE') || hasPermission('beauty.surveys', 'READ');
     const dateLocale = tm('localeCode');
     const [surveys, setSurveys] = useState<BeautySatisfactionSurvey[]>([]);
     const [loading, setLoading] = useState(true);
@@ -335,9 +348,11 @@ export function SatisfactionSurveyManagement() {
                                 </Typography.Text>
                             </div>
                         </Space>
-                        <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
-                            {tm('bSurveyNew')}
-                        </Button>
+                        {canManageSurveys ? (
+                            <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
+                                {tm('bSurveyNew')}
+                            </Button>
+                        ) : null}
                     </div>
 
                     <div className="border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
@@ -399,6 +414,7 @@ export function SatisfactionSurveyManagement() {
                                                         key={`ask-${apt.id}`}
                                                         type="primary"
                                                         size="small"
+                                                        disabled={!canExecuteSurvey}
                                                         onClick={() => setSurveyTarget(apt)}
                                                     >
                                                         {hasFeedbackForAppointment(apt.id)
@@ -423,6 +439,7 @@ export function SatisfactionSurveyManagement() {
                         </Card>
                     </div>
 
+                    {canManageSurveys ? (
                     <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-12">
                         <div className="lg:col-span-4">
                             <Card
@@ -678,9 +695,10 @@ export function SatisfactionSurveyManagement() {
                             )}
                         </div>
                     </div>
+                    ) : null}
                 </Card>
             </div>
-            {surveyTarget ? (
+            {surveyTarget && canExecuteSurvey ? (
                 <BeautyFeedbackSurveyModal
                     open
                     onClose={() => setSurveyTarget(null)}

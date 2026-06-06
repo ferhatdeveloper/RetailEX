@@ -29,7 +29,11 @@ import { LeadManagement } from './components/LeadManagement';
 import { SatisfactionSurveyManagement } from './components/SatisfactionSurveyManagement';
 import { ClinicOperationsHub } from './components/ClinicOperationsHub';
 import { ClinicErpSpecialtyProvider, useClinicErpSpecialty } from './context/ClinicErpSpecialtyContext';
-import { getLandingTabForSpecialty } from './clinicShellNavConfig';
+import {
+    canAccessBeautyTab,
+    getLandingTabForBeautyAccess,
+} from './clinicShellNavConfig';
+import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
 import { DentalChartScreen } from './specialty/DentalChartScreen';
 import { PhysioBodyScreen } from './specialty/PhysioBodyScreen';
@@ -91,6 +95,7 @@ export type BeautyModuleProps = {
 
 function BeautyModuleShell({ sales = [], products = [], onRequestManagementAccess, clinicSessionBar }: BeautyModuleProps) {
     const { tm, t, language } = useLanguage();
+    const { hasPermission } = usePermission();
     const { specialty } = useClinicErpSpecialty();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [beautyClientDetailId, setBeautyClientDetailId] = useState<string | null>(null);
@@ -109,10 +114,23 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     /** CRM’den gelen randevu hizmeti — POS’ta sepete otomatik */
     const [wizardServiceId, setWizardServiceId] = useState('');
 
+    const filterMenuGroups = (
+        groups: {
+            title: string;
+            items: { id: string; icon: LucideIcon; label: string }[];
+        }[],
+    ) =>
+        groups
+            .map(group => ({
+                ...group,
+                items: group.items.filter(item => canAccessBeautyTab(hasPermission, item.id)),
+            }))
+            .filter(group => group.items.length > 0);
+
     const MENU_GROUPS = useMemo(() => {
         /** Diş yazılımı tipi akış: özet → randevu/hasta önce → FDI tedavi → katalog → yönetim */
         if (specialty === 'dental') {
-            return [
+            return filterMenuGroups([
                 {
                     title: tm('bShellMenuGeneral'),
                     items: [{ id: 'dashboard', icon: LayoutDashboard, label: tm('dashboard') }],
@@ -149,7 +167,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         { id: 'clinic_ops', icon: ClipboardList, label: tm('bShellNavClinicOps') },
                     ],
                 },
-            ];
+            ]);
         }
 
         const clinicalItems: { id: string; icon: LucideIcon; label: string }[] = [];
@@ -205,8 +223,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 ],
             }
         );
-        return groups;
-    }, [specialty, language, tm]);
+        return filterMenuGroups(groups);
+    }, [specialty, language, tm, hasPermission]);
 
     const PAGE_TITLES = useMemo((): Record<string, string> => ({
         dashboard: tm('dashboard'),
@@ -264,12 +282,20 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         const prev = prevSpecialtyRef.current;
         prevSpecialtyRef.current = specialty;
         if (prev === '__init__') {
-            setActiveTab(getLandingTabForSpecialty(specialty));
+            setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty));
             return;
         }
         if (prev === specialty) return;
-        setActiveTab(getLandingTabForSpecialty(specialty));
-    }, [specialty]);
+        setActiveTab(getLandingTabForBeautyAccess(hasPermission, specialty));
+    }, [specialty, hasPermission]);
+
+    /** Yetkisi olmayan sekmede kalma (ör. anket operatörü) */
+    React.useEffect(() => {
+        if (canAccessBeautyTab(hasPermission, activeTab)) return;
+        const first =
+            MENU_GROUPS.flatMap(g => g.items).find(item => canAccessBeautyTab(hasPermission, item.id))?.id ?? 'surveys';
+        setActiveTab(first);
+    }, [activeTab, hasPermission, MENU_GROUPS]);
 
     React.useEffect(() => {
         const prefillCallerSearch = (phone?: string) => {
@@ -466,7 +492,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     ))}
                 </nav>
 
-                {onRequestManagementAccess && (
+                {onRequestManagementAccess && hasPermission('management', 'READ') && (
                     <div style={{ padding: '0 0 10px', flexShrink: 0 }}>
                         <button
                             type="button"

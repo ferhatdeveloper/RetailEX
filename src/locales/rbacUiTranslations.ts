@@ -129,6 +129,12 @@ export const rbacUiTranslations: Record<string, Entry> = {
     ar: 'الإدارة والنظام',
     ku: 'بەڕێوەبردن و سیستەم',
   },
+  rbacGroupBeauty: {
+    tr: 'Güzellik ve Klinik',
+    en: 'Beauty & clinic',
+    ar: 'الجمال والعيادة',
+    ku: 'جوانی و کلینیک',
+  },
 };
 
 function M(tr: string, en: string, ar: string, ku?: string): Entry {
@@ -186,6 +192,10 @@ const mods: Record<string, { n: Entry }> = {
   'reports.advanced': { n: M('Gelişmiş Raporlama', 'Advanced reporting', 'التقارير المتقدمة') },
   'settings.system': { n: M('Sistem Yapılandırması', 'System configuration', 'إعدادات النظام') },
   crm: { n: M('Müşteri İlişkileri (CRM)', 'CRM', 'إدارة علاقات العملاء') },
+  beauty: { n: M('Klinik ERP (Güzellik)', 'Clinic ERP (beauty)', 'نظام العيادة (الجمال)') },
+  'beauty.surveys': {
+    n: M('Memnuniyet Anketleri', 'Satisfaction surveys', 'استبيانات الرضا'),
+  },
 };
 
 const descs: Record<string, Entry> = {
@@ -225,6 +235,12 @@ const descs: Record<string, Entry> = {
   'reports.advanced': M('Dashboard ve dinamik rapor tasarlayıcı', 'Advanced analytics', 'التقارير الديناميكية'),
   'settings.system': M('Şirket ayarları ve cihaz tanımları', 'Company & device settings', 'إعدادات الشركة'),
   crm: M('Aday müşteri ve satış fırsatı takibi', 'Leads & opportunities', 'العملاء المحتملون'),
+  beauty: M('Klinik kabuğuna genel erişim (randevu, CRM, raporlar vb.)', 'General clinic shell access', 'الوصول العام لواجهة العيادة'),
+  'beauty.surveys': M(
+    'Tamamlanan randevular için anket uygulama; tanım düzenleme ayrı yetki gerektirir',
+    'Run satisfaction surveys on completed appointments',
+    'تطبيق استبيانات الرضا على المواعيد المكتملة'
+  ),
 };
 
 for (const [id, { n }] of Object.entries(mods)) {

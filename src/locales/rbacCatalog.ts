@@ -101,6 +101,16 @@ export function buildRbacModuleGroups(tm: (k: string) => string): RbacModuleGrou
       ],
     },
     {
+      id: 'beauty',
+      name: tm('rbacGroupBeauty'),
+      icon: '✨',
+      color: 'violet',
+      modules: [
+        m('beauty', ['READ']),
+        m('beauty.surveys', ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE']),
+      ],
+    },
+    {
       id: 'backoffice',
       name: tm('rbacGroupAdmin'),
       icon: '🛡️',
