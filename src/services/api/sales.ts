@@ -4,6 +4,7 @@
  */
 
 import { postgres, ERP_SETTINGS } from '../postgres';
+import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
 import type { Sale, SaleItem } from '../../core/types/models';
 
 import { invoicesAPI } from './invoices';
@@ -268,7 +269,7 @@ export const salesAPI = {
     // invoicesAPI doesn't have a direct summary method yet, so keeping this custom query is fine 
     // BUT ensuring it uses same table and filtering logic as invoicesAPI (firm_nr, period_nr)
     try {
-      let sql = `SELECT net_amount as total, total_discount as discount, total_vat as tax, payment_method FROM sales WHERE (fiche_type = 'sales_invoice' OR trcode = 7) AND status = 'completed'`;
+      let sql = `SELECT net_amount as total, total_discount as discount, total_vat as tax, payment_method FROM sales WHERE (fiche_type = 'sales_invoice' OR trcode = 7) AND ${SQL_COUNTABLE_SALE_STATUS_PLAIN}`;
       const params: any[] = [];
 
       if (startDate) {

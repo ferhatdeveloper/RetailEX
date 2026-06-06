@@ -26,6 +26,7 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { ProductProfitabilityReport } from './ProductProfitabilityReport';
 import { CustomerProfitabilityReport } from '../trading/contacts/CustomerProfitabilityReport';
 import { postgres } from '../../services/postgres';
+import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
 
 type TabType = 'overview' | 'products' | 'customers';
 
@@ -67,7 +68,7 @@ export function ProfitDashboard() {
           COUNT(*)                       AS transaction_count,
           COUNT(DISTINCT customer_id)    AS customer_count
         FROM sales
-        WHERE fiche_type = 'sales_invoice' AND status = 'completed'
+        WHERE fiche_type = 'sales_invoice' AND ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
       `);
 
       const { rows: topProductRows } = await postgres.query(`

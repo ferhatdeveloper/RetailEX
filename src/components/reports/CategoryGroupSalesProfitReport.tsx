@@ -8,6 +8,7 @@ import { Layers, Package, RefreshCw, Download, ChevronDown, ChevronRight, Trendi
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
+import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { toast } from 'sonner';
 
 export interface CategoryGroupProductRow {
@@ -118,7 +119,7 @@ export function CategoryGroupSalesProfitReport() {
         LEFT JOIN product_groups pg ON pg.code = p.group_code
         WHERE s.firm_nr = $1
           AND COALESCE(s.is_cancelled, false) = false
-          AND COALESCE(s.status, 'completed') = 'completed'
+          AND ${SQL_COUNTABLE_SALE_STATUS}
           AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
           AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date AT TIME ZONE 'UTC')::date <= $3::date

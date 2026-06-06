@@ -5,6 +5,7 @@ import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/po
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
+import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface SalesData {
@@ -74,7 +75,7 @@ export function ProfitLossReport() {
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
             WHERE s.firm_nr = $1
               AND COALESCE(s.is_cancelled, false) = false
-              AND COALESCE(s.status, 'completed') = 'completed'
+              AND ${SQL_COUNTABLE_SALE_STATUS}
               AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
               AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
               AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
@@ -108,7 +109,7 @@ export function ProfitLossReport() {
             INNER JOIN sales s ON s.id = si.invoice_id
             WHERE s.firm_nr = $1
               AND COALESCE(s.is_cancelled, false) = false
-              AND COALESCE(s.status, 'completed') = 'completed'
+              AND ${SQL_COUNTABLE_SALE_STATUS}
               AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
               AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
               AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
@@ -135,7 +136,7 @@ export function ProfitLossReport() {
             INNER JOIN sales s ON s.id = si.invoice_id
             WHERE s.firm_nr = $1
               AND COALESCE(s.is_cancelled, false) = false
-              AND COALESCE(s.status, 'completed') = 'completed'
+              AND ${SQL_COUNTABLE_SALE_STATUS}
               AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
               AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
               AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
@@ -163,7 +164,7 @@ export function ProfitLossReport() {
             LEFT JOIN products p ON p.id = si.product_id AND p.firm_nr = $1
             WHERE s.firm_nr = $1
               AND COALESCE(s.is_cancelled, false) = false
-              AND COALESCE(s.status, 'completed') = 'completed'
+              AND ${SQL_COUNTABLE_SALE_STATUS}
               AND (s.fiche_type = 'sales_invoice' OR s.trcode IN (7, 8))
               AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
               AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
