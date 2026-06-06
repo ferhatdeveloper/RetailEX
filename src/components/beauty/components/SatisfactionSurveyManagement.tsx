@@ -51,6 +51,10 @@ const LANGS: SatisfactionLangCode[] = ['tr', 'en', 'ar', 'ku'];
 
 const EMPTY_LABELS = (): BeautySatisfactionLabels => ({ tr: '', en: '', ar: '', ku: '' });
 
+function normalizeAptId(id: string): string {
+    return String(id).trim().toLowerCase();
+}
+
 export function SatisfactionSurveyManagement() {
     const { tm, t } = useLanguage();
     const { hasPermission } = usePermission();
@@ -122,7 +126,9 @@ export function SatisfactionSurveyManagement() {
                     return new Date(bd).getTime() - new Date(ad).getTime();
                 });
             setPendingAppointments(completedSorted);
-            setAnsweredAppointmentIds(Array.from(feedbackAptIds));
+            setAnsweredAppointmentIds(
+                Array.from(feedbackAptIds).map(id => normalizeAptId(id)),
+            );
         } catch (e) {
             logger.crudError('SatisfactionSurveyManagement', 'loadPendingAppointments', e);
             setPendingAppointments([]);
@@ -283,9 +289,19 @@ export function SatisfactionSurveyManagement() {
         { value: 'yes_no' as const, label: tm('bSurveyTypeYesNo') },
     ];
 
+    const answeredIdSet = useMemo(
+        () => new Set(answeredAppointmentIds.map(normalizeAptId)),
+        [answeredAppointmentIds],
+    );
+
+    const answeredCount = useMemo(
+        () => pendingAppointments.filter(apt => answeredIdSet.has(normalizeAptId(apt.id))).length,
+        [pendingAppointments, answeredIdSet],
+    );
+
     const pendingCount = useMemo(
-        () => pendingAppointments.filter(apt => !answeredAppointmentIds.includes(String(apt.id))).length,
-        [pendingAppointments, answeredAppointmentIds],
+        () => pendingAppointments.length - answeredCount,
+        [pendingAppointments.length, answeredCount],
     );
 
     const pendingSummaryText = useMemo(
@@ -293,8 +309,9 @@ export function SatisfactionSurveyManagement() {
             tm('bSurveyCompletedDateSummary')
                 .replace('{date}', new Date(selectedDayYmd).toLocaleDateString(dateLocale))
                 .replace('{total}', String(pendingAppointments.length))
+                .replace('{answered}', String(answeredCount))
                 .replace('{pending}', String(pendingCount)),
-        [selectedDayYmd, dateLocale, pendingAppointments.length, pendingCount, tm],
+        [selectedDayYmd, dateLocale, pendingAppointments.length, answeredCount, pendingCount, tm],
     );
 
     const pendingItemLabel = (apt: BeautyAppointment) => {
@@ -307,8 +324,8 @@ export function SatisfactionSurveyManagement() {
     };
 
     const hasFeedbackForAppointment = useCallback(
-        (aptId: string) => answeredAppointmentIds.includes(String(aptId)),
-        [answeredAppointmentIds],
+        (aptId: string) => answeredIdSet.has(normalizeAptId(aptId)),
+        [answeredIdSet],
     );
 
     const selectedDayValue: Dayjs = useMemo(() => {
@@ -366,12 +383,18 @@ export function SatisfactionSurveyManagement() {
                             className="!shadow-none"
                             style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
                             title={
-                                <Space size={8}>
+                                <Space size={8} wrap>
                                     <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
                                         {tm('bSurveyCompletedDateTitle')}
                                     </Typography.Text>
-                                    <Tag color={pendingCount > 0 ? 'warning' : 'success'}>
-                                        {pendingAppointments.length}
+                                    <Tag>
+                                        {tm('bSurveyStatsTotal')}: {pendingAppointments.length}
+                                    </Tag>
+                                    <Tag color="success">
+                                        {tm('bSurveyStatsAnswered')}: {answeredCount}
+                                    </Tag>
+                                    <Tag color={pendingCount > 0 ? 'warning' : 'default'}>
+                                        {tm('bSurveyStatsPending')}: {pendingCount}
                                     </Tag>
                                 </Space>
                             }
@@ -416,13 +439,15 @@ export function SatisfactionSurveyManagement() {
                                                 actions={[
                                                     <Button
                                                         key={`ask-${apt.id}`}
-                                                        type="primary"
+                                                        type={hasFeedbackForAppointment(apt.id) ? 'default' : 'primary'}
                                                         size="small"
-                                                        disabled={!canExecuteSurvey}
+                                                        disabled={
+                                                            !canExecuteSurvey || hasFeedbackForAppointment(apt.id)
+                                                        }
                                                         onClick={() => setSurveyTarget(apt)}
                                                     >
                                                         {hasFeedbackForAppointment(apt.id)
-                                                            ? tm('bSurveyUpdateForAppointment')
+                                                            ? tm('bSurveyCompletedButton')
                                                             : tm('bPanelRunSurvey')}
                                                     </Button>,
                                                 ]}

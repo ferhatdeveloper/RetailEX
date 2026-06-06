@@ -3855,6 +3855,37 @@ export const beautyService = {
     async getFeedbackAppointmentIds(appointmentIds: string[]): Promise<Set<string>> {
         const validIds = filterUuidIds((appointmentIds ?? []).map(id => String(id))).slice(0, 500);
         if (!validIds.length) return new Set<string>();
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const path = `/rex_${fn}_${pn}_beauty_customer_feedback`;
+            const out = new Set<string>();
+            for (let i = 0; i < validIds.length; i += BEAUTY_PGREST_CHUNK) {
+                const chunk = validIds.slice(i, i + BEAUTY_PGREST_CHUNK);
+                const inList = chunk.join(',');
+                try {
+                    const rows = await postgrest.get<{ appointment_id: string | null }[]>(
+                        path,
+                        {
+                            select: 'appointment_id',
+                            appointment_id: `in.(${inList})`,
+                            limit: chunk.length,
+                        },
+                        { schema: 'beauty' },
+                    );
+                    if (Array.isArray(rows)) {
+                        for (const r of rows) {
+                            const aid = String(r.appointment_id ?? '').trim();
+                            if (aid) out.add(aid);
+                        }
+                    }
+                } catch {
+                    /* tek parça başarısız — diğer parçalar */
+                }
+            }
+            return out;
+        }
         const table = postgres.getMovementTableName('beauty_customer_feedback', 'beauty');
         const inList = validIds.map((_, i) => `$${i + 1}`).join(', ');
         const { rows } = await postgres.query<{ appointment_id: string }>(

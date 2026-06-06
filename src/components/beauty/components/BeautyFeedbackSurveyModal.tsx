@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
@@ -152,13 +153,23 @@ export function BeautyFeedbackSurveyModal({
                     would_recommend: feedbackRatings.overall >= 4,
                 };
             }
-            await beautyService.addFeedback(payload);
+            if (appointmentId) {
+                await beautyService.upsertFeedbackForAppointment({
+                    ...payload,
+                    appointment_id: appointmentId,
+                    customer_id: customerId,
+                });
+            } else {
+                await beautyService.addFeedback(payload);
+            }
+            toast.success(tm('bSurveySavedToProfile'));
             onSaved?.();
+            onClose();
         } catch (e) {
             logger.crudError('BeautyFeedbackSurveyModal', 'saveFeedback', e);
+            toast.error(tm('bSurveySaveFailed'));
         } finally {
             setFeedbackSaving(false);
-            onClose();
         }
     }, [
         customerId,
@@ -171,6 +182,7 @@ export function BeautyFeedbackSurveyModal({
         feedbackRatings,
         onClose,
         onSaved,
+        tm,
     ]);
 
     if (!open || !customerId || typeof document === 'undefined') return null;
