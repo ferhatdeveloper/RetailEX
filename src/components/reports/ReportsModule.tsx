@@ -577,6 +577,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
+  /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
+  const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
+  const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
@@ -628,6 +631,24 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
 
   const [restOrders, setRestOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const loadReportRangeSales = useCallback(async () => {
+    setLoadingReportRangeSales(true);
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const rows = await salesAPI.getByDateRange(selectedDateFrom, selectedDateTo);
+      setReportRangeSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Seçili dönem satışları yüklenemedi:', err);
+      setReportRangeSales([]);
+    } finally {
+      setLoadingReportRangeSales(false);
+    }
+  }, [selectedDateFrom, selectedDateTo]);
+
+  useEffect(() => {
+    void loadReportRangeSales();
+  }, [loadReportRangeSales, selectedFirm?.firm_nr]);
 
   /** Restoran — Ürün Satış Adedi: kapalı adisyon, tarih aralığı (DB) */
   const [restProductQtyFrom, setRestProductQtyFrom] = useState(() => {
@@ -1423,10 +1444,11 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     });
   }, [sales, analysisDateFrom, analysisDateTo]);
 
-  // Daily sales
+  // Daily sales — seçili aralık DB'den (reportRangeSales); bellekteki son 500 kayıt yeterli değil
   const getDailySales = () => {
-    if (!sales || !Array.isArray(sales)) return [];
-    return sales.filter((s) => {
+    const source = reportRangeSales;
+    if (!source || !Array.isArray(source)) return [];
+    return source.filter((s) => {
       const k = localCalendarDateKey(s.date);
       return k >= selectedDateFrom && k <= selectedDateTo;
     });
@@ -1720,7 +1742,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         return;
       }
       const { useSaleStore } = await import('../../store');
-      await useSaleStore.getState().loadSales(500);
+      await Promise.all([
+        useSaleStore.getState().loadSales(500),
+        loadReportRangeSales(),
+      ]);
       if (businessType === 'restaurant') {
         await loadRestOrdersForSelectedDate();
       }
@@ -1730,7 +1755,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
       console.error('[ReportsModule] Fatura silme:', e);
       toast.error(e?.message || tm('reportToastDeleteFail'));
     }
-  }, [businessType, closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal?.erpSale, loadRestOrdersForSelectedDate, tm]);
+  }, [businessType, closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal?.erpSale, loadReportRangeSales, loadRestOrdersForSelectedDate, tm]);
 
   const handleDeleteDailyRestOrder = useCallback(async () => {
     const o = dailyRowReceiptModal?.restOrder;
@@ -1758,9 +1783,9 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const generateZReport = () => {
     const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
     const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
-    const allDaySales = sales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
+    const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
     const removedDaySales = allDaySales.filter((s) => isRemovedSaleStatus(s.status));
-    const todaySales = sales.filter(
+    const todaySales = reportRangeSales.filter(
       (s) => inReportPeriod(localCalendarDateKey(s.date)) && !isRemovedSaleStatus(s.status)
     );
     const removedAmount = removedDaySales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);

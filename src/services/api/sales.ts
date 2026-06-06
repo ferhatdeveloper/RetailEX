@@ -252,7 +252,7 @@ export const salesAPI = {
         startDate,
         endDate,
         invoiceCategory: 'Satis',
-        pageSize: 1000 // Large limit for range
+        pageSize: 5000
       });
       return result.data.map(mapInvoiceToSale);
     } catch (error) {
