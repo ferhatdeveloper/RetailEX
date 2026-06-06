@@ -22,7 +22,7 @@ import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
 import type { BeautyAppointment, BeautySale } from '../../types/beauty';
-import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
+import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -577,6 +577,20 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
   const [selectedTab, setSelectedTab] = useState<ReportTab>('daily');
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
+  const reportDateInputMin = '1990-01-01';
+  const reportDateInputMax = '2100-12-31';
+  const handleReportDateFromChange = (raw: string) => {
+    const v = toSqlDateInputString(raw);
+    if (!v) return;
+    setSelectedDateFrom(v);
+    setSelectedDateTo((prev) => (v > prev ? v : prev));
+  };
+  const handleReportDateToChange = (raw: string) => {
+    const v = toSqlDateInputString(raw);
+    if (!v) return;
+    setSelectedDateTo(v);
+    setSelectedDateFrom((prev) => (v < prev ? v : prev));
+  };
   /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
   const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
   const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
@@ -3817,12 +3831,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlStartDate')}</span>
                         <input
                           type="date"
+                          min={reportDateInputMin}
+                          max={reportDateInputMax}
                           value={selectedDateFrom}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedDateFrom(v);
-                            if (v > selectedDateTo) setSelectedDateTo(v);
-                          }}
+                          onChange={(e) => handleReportDateFromChange(e.target.value)}
                           className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
@@ -3830,12 +3842,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <span className="font-medium whitespace-nowrap">{tm('reportsPlEndDate')}</span>
                         <input
                           type="date"
+                          min={reportDateInputMin}
+                          max={reportDateInputMax}
                           value={selectedDateTo}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedDateTo(v);
-                            if (v < selectedDateFrom) setSelectedDateFrom(v);
-                          }}
+                          onChange={(e) => handleReportDateToChange(e.target.value)}
                           className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
                         />
                       </label>
@@ -7061,12 +7071,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <span className="font-semibold shrink-0">{tm('reportsPlStartDate')}</span>
                         <input
                           type="date"
+                          min={reportDateInputMin}
+                          max={reportDateInputMax}
                           value={selectedDateFrom}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedDateFrom(v);
-                            if (v > selectedDateTo) setSelectedDateTo(v);
-                          }}
+                          onChange={(e) => handleReportDateFromChange(e.target.value)}
                           className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
                         />
                       </label>
@@ -7074,12 +7082,10 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                         <span className="font-semibold shrink-0">{tm('reportsPlEndDate')}</span>
                         <input
                           type="date"
+                          min={reportDateInputMin}
+                          max={reportDateInputMax}
                           value={selectedDateTo}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setSelectedDateTo(v);
-                            if (v < selectedDateFrom) setSelectedDateFrom(v);
-                          }}
+                          onChange={(e) => handleReportDateToChange(e.target.value)}
                           className="px-2 py-1.5 border border-slate-200 rounded-md text-sm"
                         />
                       </label>
