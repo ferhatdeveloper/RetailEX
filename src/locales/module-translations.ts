@@ -3584,7 +3584,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   bSurveyTypeRating: { tr: 'Yıldız / puan', en: 'Rating', ar: 'تقييم', ku: 'هەڵسەنگاندن' },
   bSurveyTypeText: { tr: 'Metin', en: 'Text', ar: 'نص', ku: 'دەق' },
   bSurveyTypeYesNo: { tr: 'Evet / Hayır', en: 'Yes / No', ar: 'نعم / لا', ku: 'بەڵێ / نەخێر' },
-  bSurveyFillDynamic: { tr: 'Memnuniyet sorularını yanıtlayın (sistem dili).', en: 'Answer the satisfaction questions (UI language).', ar: 'أجب عن أسئلة الرضا (لغة الواجهة).', ku: 'وەڵامی پرسیارەکان بدەرەوە.' },
+  bSurveyFillDynamic: { tr: 'Memnuniyet sorularını yanıtlayın. Üstten TR / EN / AR / KU ile dil değiştirebilirsiniz.', en: 'Answer the satisfaction questions. Switch language with TR / EN / AR / KU above.', ar: 'أجب عن أسئلة الرضا. غيّر اللغة من TR / EN / AR / KU أعلاه.', ku: 'وەڵامی پرسیارەکان بدەرەوە. زمان لە سەرەوە بە TR / EN / AR / KU بگۆڕە.' },
   bSurveyYes: { tr: 'Evet', en: 'Yes', ar: 'نعم', ku: 'بەڵێ' },
   bSurveyNo: { tr: 'Hayır', en: 'No', ar: 'لا', ku: 'نەخێر' },
   bSurveyFeedbackRecorded: { tr: 'Anket yanıtı', en: 'Survey response', ar: 'رد الاستبيان', ku: 'وەڵامی ڕاپرسی' },

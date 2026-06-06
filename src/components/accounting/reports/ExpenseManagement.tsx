@@ -20,6 +20,7 @@ import {
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
+import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
 import { expenseAPI, type Expense } from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -539,14 +540,17 @@ export function ExpenseManagement() {
                   {tm('expenseManagementSubtitle')}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowExpenseModal(false)}
-                className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
-                aria-label={tm('close')}
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <InlineLanguageSwitcher variant="onColor" />
+                <button
+                  type="button"
+                  onClick={() => setShowExpenseModal(false)}
+                  className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  aria-label={tm('close')}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 

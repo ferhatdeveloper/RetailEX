@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { CheckCircle2, X } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
 import { logger } from '../../../services/loggingService';
 import type { Language } from '../../../locales/translations';
 import type {
@@ -181,11 +182,16 @@ export function BeautyFeedbackSurveyModal({
             ? (appointmentSubtitle ?? '')
             : [customerName, appointmentSubtitle].filter(Boolean).join(' — ');
 
+    const isRtl = language === 'ar' || language === 'ku';
+
     return createPortal(
-        <div className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+        <div
+            className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200"
+            dir={isRtl ? 'rtl' : 'ltr'}
+        >
             <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 text-white shrink-0 sm:px-8">
-                <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                         <CheckCircle2 className="w-6 h-6 shrink-0" />
                         <div className="min-w-0">
                             <h2 className="text-xl font-black uppercase tracking-tight truncate">{headerTitle}</h2>
@@ -196,14 +202,17 @@ export function BeautyFeedbackSurveyModal({
                             ) : null}
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
-                        aria-label={tm('close')}
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <InlineLanguageSwitcher variant="onColor" />
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            aria-label={tm('close')}
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -255,6 +264,7 @@ export function BeautyFeedbackSurveyModal({
                                               value={(dynAnswers[q.id] as string) ?? ''}
                                               onChange={e => setDynAnswers(r => ({ ...r, [q.id]: e.target.value }))}
                                               rows={3}
+                                              dir={isRtl ? 'rtl' : 'ltr'}
                                               className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
                                           />
                                       </div>
@@ -331,6 +341,7 @@ export function BeautyFeedbackSurveyModal({
                             onChange={e => setFeedbackComment(e.target.value)}
                             placeholder={tm('bFeedbackComment')}
                             rows={4}
+                            dir={isRtl ? 'rtl' : 'ltr'}
                             className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
                         />
                     </div>

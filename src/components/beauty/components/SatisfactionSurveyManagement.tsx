@@ -45,6 +45,7 @@ import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
+import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
 
 const LANGS: SatisfactionLangCode[] = ['tr', 'en', 'ar', 'ku'];
 
@@ -348,11 +349,14 @@ export function SatisfactionSurveyManagement() {
                                 </Typography.Text>
                             </div>
                         </Space>
-                        {canManageSurveys ? (
-                            <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
-                                {tm('bSurveyNew')}
-                            </Button>
-                        ) : null}
+                        <Space size={12} wrap>
+                            <InlineLanguageSwitcher />
+                            {canManageSurveys ? (
+                                <Button type="primary" shape="round" icon={<PlusOutlined />} onClick={handleCreateSurvey}>
+                                    {tm('bSurveyNew')}
+                                </Button>
+                            ) : null}
+                        </Space>
                     </div>
 
                     <div className="border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
