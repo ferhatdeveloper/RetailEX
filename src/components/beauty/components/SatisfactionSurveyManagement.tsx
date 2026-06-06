@@ -387,14 +387,17 @@ export function SatisfactionSurveyManagement() {
                                     <Typography.Text strong style={{ color: RETAILEX_TEXT_PRIMARY }}>
                                         {tm('bSurveyCompletedDateTitle')}
                                     </Typography.Text>
-                                    <Tag>
-                                        {tm('bSurveyStatsTotal')}: {pendingAppointments.length}
+                                    <Tag style={{ color: '#262626', fontWeight: 600 }}>
+                                        {tm('bSurveyStatsTotal')}:{' '}
+                                        <strong style={{ fontSize: 14 }}>{pendingAppointments.length}</strong>
                                     </Tag>
-                                    <Tag color="success">
-                                        {tm('bSurveyStatsAnswered')}: {answeredCount}
+                                    <Tag color="success" style={{ fontWeight: 600 }}>
+                                        {tm('bSurveyStatsAnswered')}:{' '}
+                                        <strong style={{ fontSize: 14 }}>{answeredCount}</strong>
                                     </Tag>
-                                    <Tag color={pendingCount > 0 ? 'warning' : 'default'}>
-                                        {tm('bSurveyStatsPending')}: {pendingCount}
+                                    <Tag color={pendingCount > 0 ? 'warning' : 'default'} style={{ fontWeight: 600 }}>
+                                        {tm('bSurveyStatsPending')}:{' '}
+                                        <strong style={{ fontSize: 14 }}>{pendingCount}</strong>
                                     </Tag>
                                 </Space>
                             }

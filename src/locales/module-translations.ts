@@ -3602,6 +3602,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   bSurveyStatsAnswered: { tr: 'Anket yapıldı', en: 'Survey done', ar: 'تم الاستبيان', ku: 'ڕاپرسی کراوە' },
   bSurveyStatsPending: { tr: 'Bekliyor', en: 'Pending', ar: 'معلق', ku: 'چاوەڕوان' },
   bSurveyCompletedButton: { tr: 'Anket tamamlandı', en: 'Survey completed', ar: 'اكتمل الاستبيان', ku: 'ڕاپرسی تەواو بوو' },
+  bSurveySelectedScore: { tr: 'Seçilen puan', en: 'Selected score', ar: 'الدرجة المختارة', ku: 'خاڵی هەڵبژێردراو' },
   bSurveySavedToProfile: { tr: 'Anket yanıtı müşteri profiline kaydedildi.', en: 'Survey response saved to customer profile.', ar: 'تم حفظ الاستبيان في ملف العميل.', ku: 'وەڵامی ڕاپرسی لە پرۆفایلی کڕیار پاشەکەوت کرا.' },
   bSurveySaveFailed: { tr: 'Anket kaydedilemedi.', en: 'Could not save survey.', ar: 'تعذر حفظ الاستبيان.', ku: 'ڕاپرسی پاشەکەوت نەکرا.' },
   bSurveyCompletedDateEmpty: { tr: 'Seçilen tarihte tamamlanan randevu yok.', en: 'No completed appointment for selected date.', ar: 'لا توجد مواعيد مكتملة في التاريخ المحدد.', ku: 'لە بەرواری هەڵبژێردراودا ئامادەبوونی تەواوبوو نیە.' },

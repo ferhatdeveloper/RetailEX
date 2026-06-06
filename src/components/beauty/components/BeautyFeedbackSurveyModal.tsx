@@ -32,6 +32,64 @@ function questionLabel(q: BeautySatisfactionQuestion, lang: Language) {
     return j[lang] || j.tr || j.en || j.ar || j.ku || '';
 }
 
+type RatingScaleProps = {
+    value: number;
+    max: number;
+    onChange: (value: number) => void;
+    ariaLabelPrefix: string;
+};
+
+/** Tailwind preflight button reset (transparent bg + color:inherit) ile uyumlu, dokunmatik dostu puan seçici */
+function RatingScale({ value, max, onChange, ariaLabelPrefix }: RatingScaleProps) {
+    return (
+        <div className="flex flex-wrap gap-2.5" style={{ touchAction: 'manipulation' }}>
+            {Array.from({ length: max }, (_, i) => i + 1).map(star => {
+                const selected = star <= value;
+                return (
+                    <button
+                        key={star}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`${ariaLabelPrefix} ${star}`}
+                        onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onChange(star);
+                        }}
+                        onPointerDown={e => e.stopPropagation()}
+                        style={{
+                            width: 52,
+                            height: 52,
+                            minWidth: 52,
+                            minHeight: 52,
+                            borderRadius: 14,
+                            border: selected ? '2px solid #b45309' : '2px solid #94a3b8',
+                            backgroundColor: selected ? '#fbbf24' : '#ffffff',
+                            color: '#0f172a',
+                            fontSize: 20,
+                            fontWeight: 800,
+                            lineHeight: 1,
+                            cursor: 'pointer',
+                            touchAction: 'manipulation',
+                            WebkitTapHighlightColor: 'transparent',
+                            boxShadow: selected ? '0 4px 12px rgba(245, 158, 11, 0.35)' : '0 1px 3px rgba(15, 23, 42, 0.08)',
+                            position: 'relative',
+                            zIndex: 2,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                        }}
+                        className="transition-transform active:scale-95 select-none"
+                    >
+                        {star}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export function BeautyFeedbackSurveyModal({
     open,
     onClose,
@@ -49,15 +107,18 @@ export function BeautyFeedbackSurveyModal({
     const [activeSurvey, setActiveSurvey] = useState<BeautySatisfactionSurvey | null>(null);
     const [surveyQuestions, setSurveyQuestions] = useState<BeautySatisfactionQuestion[]>([]);
     const [dynAnswers, setDynAnswers] = useState<Record<string, number | string | boolean>>({});
+    const [questionsLoading, setQuestionsLoading] = useState(false);
 
     useEffect(() => {
         if (!open || !customerId) {
             setActiveSurvey(null);
             setSurveyQuestions([]);
             setDynAnswers({});
+            setQuestionsLoading(false);
             return;
         }
         let cancelled = false;
+        setQuestionsLoading(true);
         void beautyService.getActiveSatisfactionSurveyWithQuestions().then(({ survey, questions }) => {
             if (cancelled) return;
             setActiveSurvey(survey);
@@ -73,11 +134,13 @@ export function BeautyFeedbackSurveyModal({
                 }
             }
             setDynAnswers(init);
+            setQuestionsLoading(false);
         }).catch(() => {
             if (!cancelled) {
                 setActiveSurvey(null);
                 setSurveyQuestions([]);
                 setDynAnswers({});
+                setQuestionsLoading(false);
             }
         });
         return () => {
@@ -198,8 +261,11 @@ export function BeautyFeedbackSurveyModal({
 
     return createPortal(
         <div
-            className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200"
+            className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden"
+            style={{ color: '#0f172a', touchAction: 'manipulation' }}
             dir={isRtl ? 'rtl' : 'ltr'}
+            role="dialog"
+            aria-modal="true"
         >
             <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 text-white shrink-0 sm:px-8">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -228,40 +294,53 @@ export function BeautyFeedbackSurveyModal({
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8">
+            <div
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 relative z-[1]"
+                style={{ touchAction: 'pan-y' }}
+            >
                 <div className="mx-auto w-full max-w-3xl">
-                    <p className="text-sm font-bold text-slate-700 mb-6">
-                        {activeSurvey && surveyQuestions.length ? tm('bSurveyFillDynamic') : tm('bFeedbackOptional')}
+                    <p className="text-sm font-bold mb-6" style={{ color: '#334155' }}>
+                        {questionsLoading
+                            ? tm('loading')
+                            : activeSurvey && surveyQuestions.length
+                              ? tm('bSurveyFillDynamic')
+                              : tm('bFeedbackOptional')}
                     </p>
 
-                    {activeSurvey && surveyQuestions.length > 0
+                    {questionsLoading ? (
+                        <p className="text-sm" style={{ color: '#64748b' }}>
+                            {tm('loading')}
+                        </p>
+                    ) : null}
+
+                    {!questionsLoading && activeSurvey && surveyQuestions.length > 0
                         ? surveyQuestions.map((q, index) => {
                               const label = questionLabel(q, language);
                               if (q.question_type === 'rating') {
                                   const max = Math.min(10, Math.max(2, q.scale_max || 5));
-                                  const cur = (dynAnswers[q.id] as number) ?? max;
+                                  const cur = typeof dynAnswers[q.id] === 'number'
+                                      ? (dynAnswers[q.id] as number)
+                                      : Math.min(5, max);
                                   return (
                                       <div key={q.id} className="mb-6 pb-6 border-b border-slate-100 last:border-0">
-                                          <p className="text-sm font-semibold text-slate-700 mb-3">
-                                              <span className="text-slate-400 mr-2">{index + 1}.</span>
-                                              {label || '—'}
-                                          </p>
-                                          <div className="flex flex-wrap gap-2">
-                                              {Array.from({ length: max }, (_, i) => i + 1).map(star => (
-                                                  <button
-                                                      key={star}
-                                                      type="button"
-                                                      onClick={() => setDynAnswers(r => ({ ...r, [q.id]: star }))}
-                                                      className={`w-11 h-11 rounded-xl border-none cursor-pointer text-sm font-extrabold transition-all ${
-                                                          star <= cur
-                                                              ? 'bg-amber-400 text-white shadow-md'
-                                                              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                                                      }`}
-                                                  >
-                                                      {star}
-                                                  </button>
-                                              ))}
+                                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                              <p className="text-sm font-semibold" style={{ color: '#334155' }}>
+                                                  <span style={{ color: '#94a3b8' }} className="mr-2">{index + 1}.</span>
+                                                  {label || '—'}
+                                              </p>
+                                              <span
+                                                  className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-lg"
+                                                  style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}
+                                              >
+                                                  {tm('bSurveySelectedScore')}: {cur}/{max}
+                                              </span>
                                           </div>
+                                          <RatingScale
+                                              value={cur}
+                                              max={max}
+                                              ariaLabelPrefix={label || tm('bSurveyTypeRating')}
+                                              onChange={star => setDynAnswers(r => ({ ...r, [q.id]: star }))}
+                                          />
                                       </div>
                                   );
                               }
@@ -292,23 +371,43 @@ export function BeautyFeedbackSurveyModal({
                                       <div className="flex gap-3">
                                           <button
                                               type="button"
-                                              onClick={() => setDynAnswers(r => ({ ...r, [q.id]: true }))}
-                                              className={`flex-1 h-12 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
-                                                  yn === true
-                                                      ? 'border-2 border-emerald-600 bg-emerald-50 text-emerald-800'
-                                                      : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                                              }`}
+                                              onClick={e => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  setDynAnswers(r => ({ ...r, [q.id]: true }));
+                                              }}
+                                              style={{
+                                                  flex: 1,
+                                                  height: 48,
+                                                  borderRadius: 16,
+                                                  fontSize: 14,
+                                                  fontWeight: 700,
+                                                  cursor: 'pointer',
+                                                  border: yn === true ? '2px solid #059669' : '1px solid #cbd5e1',
+                                                  backgroundColor: yn === true ? '#ecfdf5' : '#f8fafc',
+                                                  color: yn === true ? '#065f46' : '#475569',
+                                              }}
                                           >
                                               {tm('bSurveyYes')}
                                           </button>
                                           <button
                                               type="button"
-                                              onClick={() => setDynAnswers(r => ({ ...r, [q.id]: false }))}
-                                              className={`flex-1 h-12 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
-                                                  yn === false
-                                                      ? 'border-2 border-red-600 bg-red-50 text-red-800'
-                                                      : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                                              }`}
+                                              onClick={e => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  setDynAnswers(r => ({ ...r, [q.id]: false }));
+                                              }}
+                                              style={{
+                                                  flex: 1,
+                                                  height: 48,
+                                                  borderRadius: 16,
+                                                  fontSize: 14,
+                                                  fontWeight: 700,
+                                                  cursor: 'pointer',
+                                                  border: yn === false ? '2px solid #dc2626' : '1px solid #cbd5e1',
+                                                  backgroundColor: yn === false ? '#fef2f2' : '#f8fafc',
+                                                  color: yn === false ? '#991b1b' : '#475569',
+                                              }}
                                           >
                                               {tm('bSurveyNo')}
                                           </button>
@@ -316,7 +415,7 @@ export function BeautyFeedbackSurveyModal({
                                   </div>
                               );
                           })
-                        : (
+                        : !questionsLoading ? (
                               [
                                   { key: 'service' as const, label: tm('bFeedbackService') },
                                   { key: 'staff' as const, label: tm('bFeedbackSpecialist') },
@@ -324,25 +423,23 @@ export function BeautyFeedbackSurveyModal({
                               ] as const
                           ).map(({ key, label }) => (
                               <div key={key} className="mb-6">
-                                  <p className="text-sm font-semibold text-slate-700 mb-3">{label}</p>
-                                  <div className="flex gap-2">
-                                      {[1, 2, 3, 4, 5].map(star => (
-                                          <button
-                                              key={star}
-                                              type="button"
-                                              onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
-                                              className={`w-12 h-12 rounded-xl border-none cursor-pointer text-lg font-extrabold transition-all ${
-                                                  star <= feedbackRatings[key]
-                                                      ? 'bg-amber-400 text-white'
-                                                      : 'bg-slate-100 text-slate-400'
-                                              }`}
-                                          >
-                                              ★
-                                          </button>
-                                      ))}
+                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                      <p className="text-sm font-semibold" style={{ color: '#334155' }}>{label}</p>
+                                      <span
+                                          className="text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-lg"
+                                          style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}
+                                      >
+                                          {tm('bSurveySelectedScore')}: {feedbackRatings[key]}/5
+                                      </span>
                                   </div>
+                                  <RatingScale
+                                      value={feedbackRatings[key]}
+                                      max={5}
+                                      ariaLabelPrefix={label}
+                                      onChange={star => setFeedbackRatings(r => ({ ...r, [key]: star }))}
+                                  />
                               </div>
-                          ))}
+                          )) : null}
 
                     <div className="mt-4">
                         <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -360,19 +457,44 @@ export function BeautyFeedbackSurveyModal({
                 </div>
             </div>
 
-            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0 relative z-[2]">
                 <button
                     type="button"
                     onClick={onClose}
-                    className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
+                    style={{
+                        flex: 1,
+                        padding: '12px 16px',
+                        borderRadius: 16,
+                        border: '2px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#475569',
+                        fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        cursor: 'pointer',
+                    }}
                 >
                     {tm('bFeedbackSkip')}
                 </button>
                 <button
                     type="button"
                     onClick={() => void handleSubmit()}
-                    disabled={feedbackSaving}
-                    className="flex-[2] px-4 py-3 rounded-2xl bg-emerald-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-emerald-200/50 hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-colors"
+                    disabled={feedbackSaving || questionsLoading}
+                    style={{
+                        flex: 2,
+                        padding: '12px 16px',
+                        borderRadius: 16,
+                        border: 'none',
+                        backgroundColor: feedbackSaving || questionsLoading ? '#86efac' : '#059669',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        fontSize: 13,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        cursor: feedbackSaving || questionsLoading ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 8px 20px rgba(5, 150, 105, 0.25)',
+                    }}
                 >
                     {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
                 </button>
