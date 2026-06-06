@@ -12,9 +12,10 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Receipt, Plus, Edit, Trash2, Search, Calendar, Building2,
-  Banknote, TrendingUp, Download, Filter, X, FileText, Upload
+  Receipt, Plus, Edit, Trash2, Search, Calendar,
+  Banknote, TrendingUp, Filter, X, Upload, ChevronDown
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -526,167 +527,182 @@ export function ExpenseManagement() {
         )}
       </div>
 
-      {/* Expense Modal */}
-      {showExpenseModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold">
+      {showExpenseModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+          <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-5 text-white shrink-0 sm:px-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-tight">
                   {editingExpense ? tm('editExpense') : tm('newExpense')}
                 </h2>
-                <button
-                  onClick={() => setShowExpenseModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <p className="text-red-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                  {tm('expenseManagementSubtitle')}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowExpenseModal(false)}
+                className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
+                aria-label={tm('close')}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('category')} *
-                    </label>
-                    <input
-                      list="expense-category-options"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      placeholder={tm('expenseCategoryPlaceholder')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                    />
-                    <datalist id="expense-category-options">
-                      {EXPENSE_CATEGORIES.map(cat => (
-                        <option key={cat.id} value={tm(`expenseCategory_${cat.id}`)} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('date')} *
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.expense_date}
-                      onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                    />
-                  </div>
-                </div>
-
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8">
+            <div className="mx-auto w-full max-w-4xl space-y-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {tm('description')} *
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('category')} *
                   </label>
                   <input
-                    type="text"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder={tm('expenseDescriptionPlaceholder')}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                    list="expense-category-options"
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    placeholder={tm('expenseCategoryPlaceholder')}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                  />
+                  <datalist id="expense-category-options">
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat.id} value={tm(`expenseCategory_${cat.id}`)} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('date')} *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.expense_date}
+                    onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('amount')} (IQD) *
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      placeholder="0.00"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('paymentMethod')} *
-                    </label>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {tm('description')} *
+                </label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder={tm('expenseDescriptionPlaceholder')}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('amount')} (IQD) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('paymentMethod')} *
+                  </label>
+                  <div className="relative">
                     <select
                       value={formData.payment_method}
                       onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl appearance-none bg-white focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
                     >
                       <option value="cash">{tm('cash')}</option>
                       <option value="bank_transfer">{tm('bankTransferEft')}</option>
                       <option value="credit_card">{tm('creditCard')}</option>
                       <option value="check">{tm('check')}</option>
                     </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
                   </div>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('documentNo')}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.document_number}
-                      onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
-                      placeholder={tm('expenseDocumentNoPlaceholder')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tm('costCenterCashRegister')}
-                    </label>
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('documentNo')}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.document_number}
+                    onChange={(e) => setFormData({ ...formData, document_number: e.target.value })}
+                    placeholder={tm('expenseDocumentNoPlaceholder')}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    {tm('costCenterCashRegister')}
+                  </label>
+                  <div className="relative">
                     <select
                       value={formData.cash_register_id}
                       onChange={(e) => setFormData({ ...formData, cash_register_id: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl appearance-none bg-white focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
                     >
                       {kasalar.length === 0 && <option value="">{tm('noCashRegisterFound')}</option>}
                       {kasalar.map(kasa => (
                         <option key={kasa.id} value={kasa.id}>{kasa.kasa_kodu} - {kasa.kasa_adi}</option>
                       ))}
                     </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {tm('notes')}
-                  </label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder={tm('additionalNotes')}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
-                  />
-                </div>
-
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600 mb-2">{tm('uploadDocumentInvoiceReceipt')}</p>
-                  <button className="text-sm text-red-600 hover:text-red-700">
-                    {tm('selectFile')}
-                  </button>
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setShowExpenseModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  {tm('cancel')}
-                </button>
-                <button
-                  onClick={handleSaveExpense}
-                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                >
-                  {editingExpense ? tm('update') : tm('save')}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {tm('notes')}
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder={tm('additionalNotes')}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium resize-none"
+                />
+              </div>
+
+              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center">
+                <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm text-slate-600 mb-2">{tm('uploadDocumentInvoiceReceipt')}</p>
+                <button type="button" className="text-sm text-red-600 hover:text-red-700 font-semibold">
+                  {tm('selectFile')}
                 </button>
               </div>
             </div>
           </div>
-        </div>
+
+          <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowExpenseModal(false)}
+              className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
+            >
+              {tm('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveExpense}
+              className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors"
+            >
+              {editingExpense ? tm('update') : tm('save')}
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

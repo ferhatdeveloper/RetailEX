@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { CheckCircle2, X } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -171,7 +172,7 @@ export function BeautyFeedbackSurveyModal({
         onSaved,
     ]);
 
-    if (!open || !customerId) return null;
+    if (!open || !customerId || typeof document === 'undefined') return null;
 
     const headerTitle =
         variant === 'appointment_completed' ? tm('bAppointmentCompletedTitle') : tm('bSurveyStandaloneTitle');
@@ -180,83 +181,61 @@ export function BeautyFeedbackSurveyModal({
             ? (appointmentSubtitle ?? '')
             : [customerName, appointmentSubtitle].filter(Boolean).join(' — ');
 
-    return (
-        <div
-            style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0,0,0,0.45)',
-                zIndex: 90,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 16,
-            }}
-        >
-            <div
-                style={{
-                    background: '#fff',
-                    borderRadius: 14,
-                    width: '100%',
-                    maxWidth: activeSurvey && surveyQuestions.length ? 520 : 400,
-                    maxHeight: '90vh',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-                }}
-            >
-                <div
-                    style={{
-                        padding: '16px 20px',
-                        background: '#f0fdf4',
-                        borderBottom: '1px solid #bbf7d0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                    }}
-                >
-                    <CheckCircle2 size={20} color="#059669" />
-                    <div>
-                        <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{headerTitle}</p>
-                        {headerSubtitle ? (
-                            <p style={{ fontSize: 11, color: '#6b7280' }}>{headerSubtitle}</p>
-                        ) : null}
+    return createPortal(
+        <div className="fixed inset-0 z-[100000] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+            <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 text-white shrink-0 sm:px-8">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <CheckCircle2 className="w-6 h-6 shrink-0" />
+                        <div className="min-w-0">
+                            <h2 className="text-xl font-black uppercase tracking-tight truncate">{headerTitle}</h2>
+                            {headerSubtitle ? (
+                                <p className="text-emerald-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90 truncate">
+                                    {headerSubtitle}
+                                </p>
+                            ) : null}
+                        </div>
                     </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0"
+                        aria-label={tm('close')}
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
-                <div style={{ padding: 20, overflowY: 'auto', flex: 1 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8">
+                <div className="mx-auto w-full max-w-3xl">
+                    <p className="text-sm font-bold text-slate-700 mb-6">
                         {activeSurvey && surveyQuestions.length ? tm('bSurveyFillDynamic') : tm('bFeedbackOptional')}
                     </p>
+
                     {activeSurvey && surveyQuestions.length > 0
-                        ? surveyQuestions.map(q => {
+                        ? surveyQuestions.map((q, index) => {
                               const label = questionLabel(q, language);
                               if (q.question_type === 'rating') {
                                   const max = Math.min(10, Math.max(2, q.scale_max || 5));
                                   const cur = (dynAnswers[q.id] as number) ?? max;
                                   return (
-                                      <div key={q.id} style={{ marginBottom: 12 }}>
-                                          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+                                      <div key={q.id} className="mb-6 pb-6 border-b border-slate-100 last:border-0">
+                                          <p className="text-sm font-semibold text-slate-700 mb-3">
+                                              <span className="text-slate-400 mr-2">{index + 1}.</span>
                                               {label || '—'}
                                           </p>
-                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                          <div className="flex flex-wrap gap-2">
                                               {Array.from({ length: max }, (_, i) => i + 1).map(star => (
                                                   <button
                                                       key={star}
                                                       type="button"
                                                       onClick={() => setDynAnswers(r => ({ ...r, [q.id]: star }))}
-                                                      style={{
-                                                          width: 30,
-                                                          height: 30,
-                                                          borderRadius: 6,
-                                                          border: 'none',
-                                                          cursor: 'pointer',
-                                                          background: star <= cur ? '#fbbf24' : '#f3f4f6',
-                                                          color: star <= cur ? '#fff' : '#9ca3af',
-                                                          fontSize: 12,
-                                                          fontWeight: 800,
-                                                          transition: 'all 0.1s',
-                                                      }}
+                                                      className={`w-11 h-11 rounded-xl border-none cursor-pointer text-sm font-extrabold transition-all ${
+                                                          star <= cur
+                                                              ? 'bg-amber-400 text-white shadow-md'
+                                                              : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+                                                      }`}
                                                   >
                                                       {star}
                                                   </button>
@@ -267,66 +246,47 @@ export function BeautyFeedbackSurveyModal({
                               }
                               if (q.question_type === 'text') {
                                   return (
-                                      <div key={q.id} style={{ marginBottom: 12 }}>
-                                          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+                                      <div key={q.id} className="mb-6 pb-6 border-b border-slate-100 last:border-0">
+                                          <p className="text-sm font-semibold text-slate-700 mb-3">
+                                              <span className="text-slate-400 mr-2">{index + 1}.</span>
                                               {label || '—'}
                                           </p>
                                           <textarea
                                               value={(dynAnswers[q.id] as string) ?? ''}
                                               onChange={e => setDynAnswers(r => ({ ...r, [q.id]: e.target.value }))}
-                                              rows={2}
-                                              style={{
-                                                  width: '100%',
-                                                  border: '1px solid #e5e7eb',
-                                                  borderRadius: 6,
-                                                  padding: '8px 10px',
-                                                  fontSize: 12,
-                                                  resize: 'none',
-                                                  outline: 'none',
-                                                  boxSizing: 'border-box',
-                                              }}
+                                              rows={3}
+                                              className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
                                           />
                                       </div>
                                   );
                               }
                               const yn = dynAnswers[q.id] as boolean;
                               return (
-                                  <div key={q.id} style={{ marginBottom: 12 }}>
-                                      <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>
+                                  <div key={q.id} className="mb-6 pb-6 border-b border-slate-100 last:border-0">
+                                      <p className="text-sm font-semibold text-slate-700 mb-3">
+                                          <span className="text-slate-400 mr-2">{index + 1}.</span>
                                           {label || '—'}
                                       </p>
-                                      <div style={{ display: 'flex', gap: 8 }}>
+                                      <div className="flex gap-3">
                                           <button
                                               type="button"
                                               onClick={() => setDynAnswers(r => ({ ...r, [q.id]: true }))}
-                                              style={{
-                                                  flex: 1,
-                                                  height: 34,
-                                                  borderRadius: 6,
-                                                  border: yn === true ? '2px solid #059669' : '1px solid #e5e7eb',
-                                                  background: yn === true ? '#ecfdf5' : '#f9fafb',
-                                                  fontSize: 12,
-                                                  fontWeight: 700,
-                                                  cursor: 'pointer',
-                                                  color: '#374151',
-                                              }}
+                                              className={`flex-1 h-12 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
+                                                  yn === true
+                                                      ? 'border-2 border-emerald-600 bg-emerald-50 text-emerald-800'
+                                                      : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                              }`}
                                           >
                                               {tm('bSurveyYes')}
                                           </button>
                                           <button
                                               type="button"
                                               onClick={() => setDynAnswers(r => ({ ...r, [q.id]: false }))}
-                                              style={{
-                                                  flex: 1,
-                                                  height: 34,
-                                                  borderRadius: 6,
-                                                  border: yn === false ? '2px solid #dc2626' : '1px solid #e5e7eb',
-                                                  background: yn === false ? '#fef2f2' : '#f9fafb',
-                                                  fontSize: 12,
-                                                  fontWeight: 700,
-                                                  cursor: 'pointer',
-                                                  color: '#374151',
-                                              }}
+                                              className={`flex-1 h-12 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
+                                                  yn === false
+                                                      ? 'border-2 border-red-600 bg-red-50 text-red-800'
+                                                      : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                              }`}
                                           >
                                               {tm('bSurveyNo')}
                                           </button>
@@ -341,26 +301,19 @@ export function BeautyFeedbackSurveyModal({
                                   { key: 'overall' as const, label: tm('bFeedbackGeneral') },
                               ] as const
                           ).map(({ key, label }) => (
-                              <div key={key} style={{ marginBottom: 12 }}>
-                                  <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{label}</p>
-                                  <div style={{ display: 'flex', gap: 6 }}>
+                              <div key={key} className="mb-6">
+                                  <p className="text-sm font-semibold text-slate-700 mb-3">{label}</p>
+                                  <div className="flex gap-2">
                                       {[1, 2, 3, 4, 5].map(star => (
                                           <button
                                               key={star}
                                               type="button"
                                               onClick={() => setFeedbackRatings(r => ({ ...r, [key]: star }))}
-                                              style={{
-                                                  width: 32,
-                                                  height: 32,
-                                                  borderRadius: 6,
-                                                  border: 'none',
-                                                  cursor: 'pointer',
-                                                  background: star <= feedbackRatings[key] ? '#fbbf24' : '#f3f4f6',
-                                                  color: star <= feedbackRatings[key] ? '#fff' : '#9ca3af',
-                                                  fontSize: 14,
-                                                  fontWeight: 800,
-                                                  transition: 'all 0.1s',
-                                              }}
+                                              className={`w-12 h-12 rounded-xl border-none cursor-pointer text-lg font-extrabold transition-all ${
+                                                  star <= feedbackRatings[key]
+                                                      ? 'bg-amber-400 text-white'
+                                                      : 'bg-slate-100 text-slate-400'
+                                              }`}
                                           >
                                               ★
                                           </button>
@@ -368,62 +321,40 @@ export function BeautyFeedbackSurveyModal({
                                   </div>
                               </div>
                           ))}
-                    <textarea
-                        value={feedbackComment}
-                        onChange={e => setFeedbackComment(e.target.value)}
-                        placeholder={tm('bFeedbackComment')}
-                        rows={2}
-                        style={{
-                            width: '100%',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 6,
-                            padding: '8px 10px',
-                            fontSize: 12,
-                            resize: 'none',
-                            outline: 'none',
-                            boxSizing: 'border-box',
-                            marginTop: 8,
-                        }}
-                    />
-                </div>
-                <div style={{ padding: '0 20px 20px', display: 'flex', gap: 10 }}>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        style={{
-                            flex: 1,
-                            height: 38,
-                            borderRadius: 6,
-                            border: '1px solid #e5e7eb',
-                            background: '#f9fafb',
-                            color: '#6b7280',
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {tm('bFeedbackSkip')}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => void handleSubmit()}
-                        disabled={feedbackSaving}
-                        style={{
-                            flex: 2,
-                            height: 38,
-                            borderRadius: 6,
-                            border: 'none',
-                            background: '#059669',
-                            color: '#fff',
-                            fontSize: 12,
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
-                    </button>
+
+                    <div className="mt-4">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                            {tm('bFeedbackComment')}
+                        </label>
+                        <textarea
+                            value={feedbackComment}
+                            onChange={e => setFeedbackComment(e.target.value)}
+                            placeholder={tm('bFeedbackComment')}
+                            rows={4}
+                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
+                        />
+                    </div>
                 </div>
             </div>
-        </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors"
+                >
+                    {tm('bFeedbackSkip')}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => void handleSubmit()}
+                    disabled={feedbackSaving}
+                    className="flex-[2] px-4 py-3 rounded-2xl bg-emerald-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-emerald-200/50 hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-colors"
+                >
+                    {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
+                </button>
+            </div>
+        </div>,
+        document.body
     );
 }
