@@ -3,6 +3,7 @@ import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, File
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
+import { PeriodSummaryReport } from './PeriodSummaryReport';
 import { ReportChatAI } from './ReportChatAI';
 import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
@@ -491,7 +492,7 @@ interface ReportsModuleProps {
 
 type ReportTab =
   // AI & Genel
-  'chat-ai' | 'daily' | 'daily-sales-executive' | 'z-report' | 'comparison' |
+  'chat-ai' | 'daily' | 'daily-sales-executive' | 'monthly-days-summary' | 'yearly-months-summary' | 'z-report' | 'comparison' |
   // Restoran Otomasyon Özel
   'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
@@ -3640,6 +3641,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
           { key: 'chat-ai', label: tm('aiAsistan'), icon: <RobotOutlined /> },
           { key: 'daily-sales-executive', label: tm('yoneticiGunlukSatis'), icon: <RiseOutlined /> },
           { key: 'daily', label: tm('gunlukRapor'), icon: <CalendarOutlined /> },
+          { key: 'monthly-days-summary', label: tm('aylikGunOzeti'), icon: <CalendarOutlined /> },
+          { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
           { key: 'end-of-day', label: tm('gunSonuRaporu'), icon: <HistoryOutlined /> },
           { key: 'z-report', label: tm('zRaporu'), icon: <PrinterOutlined /> },
           { key: 'comparison', label: tm('donemKarsilastirma'), icon: <SwapOutlined /> },
@@ -5326,6 +5329,14 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
                 </div>
               );
             })()}
+
+            {selectedTab === 'monthly-days-summary' && (
+              <PeriodSummaryReport mode="monthly-days" currency={reportCurrency} />
+            )}
+
+            {selectedTab === 'yearly-months-summary' && (
+              <PeriodSummaryReport mode="yearly-months" currency={reportCurrency} />
+            )}
 
             {selectedTab === 'profit-loss' && <ProfitLossReport />}
 

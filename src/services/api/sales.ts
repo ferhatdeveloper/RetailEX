@@ -247,14 +247,24 @@ export const salesAPI = {
    */
   async getByDateRange(startDate: string, endDate: string): Promise<Sale[]> {
     try {
-      const result = await invoicesAPI.getPaginated({
-        page: 1,
-        startDate,
-        endDate,
-        invoiceCategory: 'Satis',
-        pageSize: 5000
-      });
-      return result.data.map(mapInvoiceToSale);
+      const pageSize = 5000;
+      const all: Sale[] = [];
+      let page = 1;
+      let totalPages = 1;
+      while (page <= totalPages) {
+        const result = await invoicesAPI.getPaginated({
+          page,
+          startDate,
+          endDate,
+          invoiceCategory: 'Satis',
+          pageSize,
+        });
+        all.push(...result.data.map(mapInvoiceToSale));
+        totalPages = Math.max(1, result.totalPages || 1);
+        if (!result.data.length) break;
+        page += 1;
+      }
+      return all;
     } catch (error) {
       console.error('[SalesAPI] getByDateRange failed:', error);
       return [];
