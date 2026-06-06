@@ -32,6 +32,7 @@
 27. **037_beauty_follow_up_reminder_actions.sql** – `beauty.rex_{firm}_follow_up_reminder_actions`: takip hatırlatması notu, durum (ertelendi/görüşüldü/kapat), erteleme tarihi (Hizmet & tarih panosu).
 28. **038_anket_role.sql** – `anket` sistem rolü: yalnızca `beauty.surveys` READ + EXECUTE; giriş sonrası `beauty` modülü.
 29. **039_beauty_default_satisfaction_survey.sql** – Güzellik merkezi varsayılan memnuniyet anketi (TR/EN/AR/KU, 7 soru, aktif).
+30. **040_beauty_satisfaction_survey_expand.sql** – Aynı ankete genişletilmiş soru seti (personel, işlem, ortam, fiyat; toplam ~24 soru).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 
