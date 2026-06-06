@@ -12,6 +12,10 @@ import { useLanguage } from '../../contexts/LanguageContext';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
+/** İki ortak arasında net kalan paylaşım oranları */
+const PARTNER_SHARE_MAJOR = 0.75;
+const PARTNER_SHARE_MINOR = 0.25;
+
 interface PeriodSummaryRow {
   key: string;
   periodKey: string;
@@ -23,6 +27,8 @@ interface PeriodSummaryRow {
   discount: number;
   expenses: number;
   netRemaining: number;
+  partnerShare75: number;
+  partnerShare25: number;
 }
 
 function isRemovedSaleStatus(status: unknown): boolean {
@@ -179,6 +185,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
+      const netRemaining = sale.revenue - exp;
       return {
         key: periodKey,
         periodKey,
@@ -189,13 +196,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         card: sale.card,
         discount: sale.discount,
         expenses: exp,
-        netRemaining: sale.revenue - exp,
+        netRemaining,
+        partnerShare75: netRemaining * PARTNER_SHARE_MAJOR,
+        partnerShare25: netRemaining * PARTNER_SHARE_MINOR,
       };
     });
   }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm]);
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    const base = rows.reduce(
       (acc, r) => ({
         saleCount: acc.saleCount + r.saleCount,
         revenue: acc.revenue + r.revenue,
@@ -207,6 +216,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       }),
       { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, netRemaining: 0 }
     );
+    return {
+      ...base,
+      partnerShare75: base.netRemaining * PARTNER_SHARE_MAJOR,
+      partnerShare25: base.netRemaining * PARTNER_SHARE_MINOR,
+    };
   }, [rows]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
@@ -260,7 +274,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       dataIndex: 'expenses',
       key: 'expenses',
       align: 'right',
-      render: (v: number) => (v > 0 ? money(v) : '—'),
+      render: (v: number, row) => {
+        if (row.revenue === 0 && row.expenses === 0) return '—';
+        return <span className="text-red-600">{money(v)}</span>;
+      },
     },
     {
       title: `${tm('rptPeriodColNet')} (${currency})`,
@@ -271,6 +288,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         if (row.revenue === 0 && row.expenses === 0) return '—';
         const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
         return <span className={cls}>{money(v)}</span>;
+      },
+    },
+    {
+      title: `${tm('rptPeriodColPartner75')} (${currency})`,
+      dataIndex: 'partnerShare75',
+      key: 'partnerShare75',
+      align: 'right',
+      render: (v: number, row) => {
+        if (row.revenue === 0 && row.expenses === 0) return '—';
+        return <span className="text-blue-700 font-medium">{money(v)}</span>;
+      },
+    },
+    {
+      title: `${tm('rptPeriodColPartner25')} (${currency})`,
+      dataIndex: 'partnerShare25',
+      key: 'partnerShare25',
+      align: 'right',
+      render: (v: number, row) => {
+        if (row.revenue === 0 && row.expenses === 0) return '—';
+        return <span className="text-indigo-700 font-medium">{money(v)}</span>;
       },
     },
   ];
@@ -322,7 +359,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+        {tm('rptPeriodPartnerSplitNote')}
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <TrendingUp className="w-4 h-4 text-green-600" />
@@ -338,7 +379,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             <TrendingDown className="w-4 h-4 text-red-500" />
             {tm('rptPeriodTotalExpenses')}
           </div>
-          <p className="text-2xl font-bold text-slate-800">{money(totals.expenses)}</p>
+          <p className="text-2xl font-bold text-red-600">{money(totals.expenses)}</p>
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
@@ -348,6 +389,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           <p className={`text-2xl font-bold ${totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
             {money(totals.netRemaining)}
           </p>
+        </div>
+        <div className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
+          <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodColPartner75')}</p>
+          <p className="text-2xl font-bold text-blue-700">{money(totals.partnerShare75)}</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4 border-indigo-100 bg-indigo-50/40">
+          <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodColPartner25')}</p>
+          <p className="text-2xl font-bold text-indigo-700">{money(totals.partnerShare25)}</p>
         </div>
         <div className="bg-white rounded-lg border p-4">
           <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
@@ -367,7 +416,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             dataSource={rows}
             pagination={false}
             size="small"
-            scroll={{ x: 960 }}
+            scroll={{ x: 1280 }}
             summary={() => (
               <Table.Summary fixed>
                 <Table.Summary.Row className="bg-slate-50 font-semibold">
@@ -388,12 +437,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                     {money(totals.discount)}
                   </Table.Summary.Cell>
                   <Table.Summary.Cell index={6} align="right">
-                    {money(totals.expenses)}
+                    <span className="text-red-600">{money(totals.expenses)}</span>
                   </Table.Summary.Cell>
                   <Table.Summary.Cell index={7} align="right">
                     <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
                       {money(totals.netRemaining)}
                     </span>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={8} align="right">
+                    <span className="text-blue-700">{money(totals.partnerShare75)}</span>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={9} align="right">
+                    <span className="text-indigo-700">{money(totals.partnerShare25)}</span>
                   </Table.Summary.Cell>
                 </Table.Summary.Row>
               </Table.Summary>

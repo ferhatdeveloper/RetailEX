@@ -3670,6 +3670,8 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
         type: 'group',
         children: [
           { key: 'profit-loss', label: tm('karZararRaporu'), icon: <AccountBookOutlined /> },
+          { key: 'monthly-days-summary', label: tm('aylikGunOzeti'), icon: <CalendarOutlined /> },
+          { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
           { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
           { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
           { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
