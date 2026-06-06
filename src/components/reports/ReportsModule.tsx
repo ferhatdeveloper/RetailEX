@@ -885,7 +885,7 @@ export function ReportsModule({ sales, products, initialBusinessType = 'retail' 
     return () => {
       cancelled = true;
     };
-  }, [selectedDateFrom, selectedDateTo, selectedTab]);
+  }, [selectedDateFrom, selectedDateTo, selectedTab, selectedFirm?.firm_nr]);
 
   // Restoran — Ürün Satış Adedi (ürün raporları sekmesi)
   useEffect(() => {

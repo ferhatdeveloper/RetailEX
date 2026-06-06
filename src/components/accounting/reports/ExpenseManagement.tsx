@@ -11,7 +11,7 @@
  * - Export (PDF, Excel)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Receipt, Plus, Edit, Trash2, Search, Calendar, Building2,
   Banknote, TrendingUp, Download, Filter, X, FileText, Upload
@@ -101,8 +101,7 @@ export function ExpenseManagement() {
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
 
   useEffect(() => {
-    loadExpenses();
-    loadKasalar();
+    void loadKasalar();
   }, []);
 
   const loadKasalar = async () => {
@@ -119,17 +118,25 @@ export function ExpenseManagement() {
     setFormData(prev => prev.cash_register_id ? prev : { ...prev, cash_register_id: kasalar[0].id });
   }, [showExpenseModal, editingExpense, kasalar]);
 
-  const loadExpenses = async () => {
+  const loadExpenses = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await expenseAPI.getAll();
+      const filters: { startDate?: string; endDate?: string } = {};
+      if (filterDateFrom) filters.startDate = filterDateFrom;
+      if (filterDateTo) filters.endDate = filterDateTo;
+      const data = await expenseAPI.getAll(filters);
       setExpenses(data as ExpenseLocal[]);
     } catch (error) {
       console.error('Error loading expenses:', error);
+      setExpenses([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterDateFrom, filterDateTo]);
+
+  useEffect(() => {
+    void loadExpenses();
+  }, [loadExpenses]);
 
   const handleAddExpense = () => {
     setEditingExpense(null);
@@ -334,27 +341,28 @@ export function ExpenseManagement() {
     }),
   ];
 
-  // Calculate statistics
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const thisMonthExpenses = expenses
-    .filter(e => new Date(e.expense_date).getMonth() === new Date().getMonth())
-    .reduce((sum, e) => sum + e.amount, 0);
-  const categoryBreakdown = expenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Filter expenses
-  const filteredExpenses = expenses.filter(expense => {
+  // Filter expenses (tarih aralığı DB'den yüklenir; kategori/arama istemci tarafında)
+  const filteredExpenses = useMemo(() => expenses.filter(expense => {
     const matchesSearch = expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       expense.document_number?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = filterCategory === 'all' || categoryKey(expense.category) === categoryKey(filterCategory);
     const matchesStore = filterStore === 'all' || expense.store_id === filterStore;
-    const matchesDate = (!filterDateFrom || expense.expense_date >= filterDateFrom) &&
-      (!filterDateTo || expense.expense_date <= filterDateTo);
+    const expenseDay = String(expense.expense_date || '').slice(0, 10);
+    const matchesDate = (!filterDateFrom || expenseDay >= filterDateFrom) &&
+      (!filterDateTo || expenseDay <= filterDateTo);
 
     return matchesSearch && matchesCategory && matchesStore && matchesDate;
-  });
+  }), [expenses, searchQuery, filterCategory, filterStore, filterDateFrom, filterDateTo]);
+
+  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const thisMonthExpenses = filteredExpenses
+    .filter(e => {
+      const d = String(e.expense_date || '').slice(0, 10);
+      const now = new Date();
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      return d.startsWith(monthKey);
+    })
+    .reduce((sum, e) => sum + e.amount, 0);
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -479,7 +487,7 @@ export function ExpenseManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-purple-600 mb-1">{tm('expenseCount')}</p>
-              <p className="text-2xl font-bold text-purple-900">{expenses.length}</p>
+              <p className="text-2xl font-bold text-purple-900">{filteredExpenses.length}</p>
             </div>
             <Receipt className="w-8 h-8 text-purple-600" />
           </div>
@@ -489,7 +497,7 @@ export function ExpenseManagement() {
             <div>
               <p className="text-sm text-blue-600 mb-1">{tm('average')}</p>
               <p className="text-2xl font-bold text-blue-900">
-                {expenses.length > 0 ? formatCurrency(totalExpenses / expenses.length) : '-'}
+                {filteredExpenses.length > 0 ? formatCurrency(totalExpenses / filteredExpenses.length) : '-'}
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-blue-600" />

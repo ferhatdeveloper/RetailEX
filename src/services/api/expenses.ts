@@ -13,8 +13,16 @@ function padExpensePeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
 }
 
+function expenseTableName(): string {
+  return `rex_${padExpenseFirmNr()}_expenses`;
+}
+
 function expenseTablePath(): string {
-  return `/rex_${ERP_SETTINGS.firmNr}_expenses`;
+  return `/${expenseTableName()}`;
+}
+
+function costCentersTableName(): string {
+  return `rex_${padExpenseFirmNr()}_cost_centers`;
 }
 
 function cashLinesPathRest(): string {
@@ -53,7 +61,7 @@ export const expenseAPI = {
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       return;
     }
-    const tableName = `rex_${ERP_SETTINGS.firmNr}_expenses`;
+    const tableName = expenseTableName();
     await postgres.query(`
       CREATE TABLE IF NOT EXISTS ${tableName} (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -85,37 +93,33 @@ export const expenseAPI = {
   async getAll(filters?: { startDate?: string; endDate?: string }): Promise<Expense[]> {
     try {
       await this.ensureTableExists();
-      const expTable = `rex_${ERP_SETTINGS.firmNr}_expenses`;
-      const ccTable = `rex_${ERP_SETTINGS.firmNr}_cost_centers`;
+      const expTable = expenseTableName();
+      const ccTable = costCentersTableName();
+      const firmNr = padExpenseFirmNr();
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
-        const fn = padExpenseFirmNr();
+        const start = filters?.startDate ? String(filters.startDate).slice(0, 10) : '';
+        const end = filters?.endDate ? String(filters.endDate).slice(0, 10) : '';
         const q: Record<string, string> = {
           select: '*',
-          firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
+          firm_nr: `eq.${firmNr}`,
           order: 'expense_date.desc',
           limit: '2000',
         };
-        if (filters?.startDate && !filters?.endDate) {
-          q.expense_date = `gte.${String(filters.startDate).slice(0, 10)}`;
-        } else if (filters?.endDate && !filters?.startDate) {
-          q.expense_date = `lte.${String(filters.endDate).slice(0, 10)}`;
+        if (start && end) {
+          q.and = `(expense_date.gte.${start},expense_date.lte.${end})`;
+        } else if (start) {
+          q.expense_date = `gte.${start}`;
+        } else if (end) {
+          q.expense_date = `lte.${end}`;
         }
         const expRows = await postgrest
           .get<any[]>(`/${expTable}`, q, { schema: 'public' })
           .catch(() => [] as any[]);
-        let list = Array.isArray(expRows) ? expRows : [];
-        if (filters?.startDate && filters?.endDate) {
-          const s = String(filters.startDate).slice(0, 10);
-          const e = String(filters.endDate).slice(0, 10);
-          list = list.filter((r) => {
-            const d = String(r?.expense_date || '').slice(0, 10);
-            return d >= s && d <= e;
-          });
-        }
+        const list = Array.isArray(expRows) ? expRows : [];
         const ccRows = await postgrest
-          .get<any[]>(`/${ccTable}`, { select: 'id,name', firm_nr: `eq.${ERP_SETTINGS.firmNr}` }, { schema: 'public' })
+          .get<any[]>(`/${ccTable}`, { select: 'id,name', firm_nr: `eq.${firmNr}` }, { schema: 'public' })
           .catch(() => [] as any[]);
         const ccMap = new Map<string, string>();
         (Array.isArray(ccRows) ? ccRows : []).forEach((c) => ccMap.set(String(c.id), String(c.name || '')));
@@ -131,7 +135,7 @@ export const expenseAPI = {
         LEFT JOIN ${ccTable} cc ON e.cost_center_id = cc.id
         WHERE e.firm_nr = $1
       `;
-      const params: any[] = [ERP_SETTINGS.firmNr];
+      const params: any[] = [firmNr];
 
       if (filters?.startDate) {
         sql += ` AND e.expense_date >= $${params.length + 1}`;
@@ -158,7 +162,8 @@ export const expenseAPI = {
   async create(expense: Omit<Expense, 'id' | 'firm_nr' | 'created_at'>): Promise<Expense | null> {
     try {
       await this.ensureTableExists();
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_expenses`;
+      const tableName = expenseTableName();
+      const firmNr = padExpenseFirmNr();
       const payMethod = String(expense.payment_method || '').trim().toLowerCase();
       const isCashExpense = payMethod === 'cash' || payMethod === 'nakit';
 
@@ -178,7 +183,7 @@ export const expenseAPI = {
           expense_date: expense.expense_date,
           notes: expense.notes || '',
           created_by: expense.created_by || null,
-          firm_nr: ERP_SETTINGS.firmNr,
+          firm_nr: firmNr,
           cash_register_id: expense.cash_register_id || null,
         };
         const rows = await postgrest.post<any[]>(path, body, {
@@ -246,7 +251,7 @@ export const expenseAPI = {
           });
 
           const linked = await postgrest.patch<any[]>(
-            `${path}?id=eq.${encodeURIComponent(String(inserted.id))}&firm_nr=eq.${encodeURIComponent(String(ERP_SETTINGS.firmNr))}`,
+            `${path}?id=eq.${encodeURIComponent(String(inserted.id))}&firm_nr=eq.${encodeURIComponent(firmNr)}`,
             { cash_line_id: kasaIslem.id, cash_register_id: kasa.id },
             { schema: 'public', prefer: 'return=representation' }
           );
@@ -275,7 +280,7 @@ export const expenseAPI = {
           expense.expense_date,
           expense.notes || '',
           expense.created_by || null,
-          ERP_SETTINGS.firmNr,
+          firmNr,
           expense.cash_register_id || null
         ]
       );
@@ -316,8 +321,8 @@ export const expenseAPI = {
              $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
            ) RETURNING id`,
           [
-            ERP_SETTINGS.firmNr,
-            ERP_SETTINGS.periodNr || '01',
+            firmNr,
+            padExpensePeriodNr(),
             kasa.id,
             ficheNo,
             expense.expense_date,
@@ -371,8 +376,8 @@ export const expenseAPI = {
   async update(id: string, updates: Partial<Expense>): Promise<Expense | null> {
     try {
       await this.ensureTableExists();
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_expenses`;
-      const firm = String(ERP_SETTINGS.firmNr);
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
 
       const uuidFields = new Set(['store_id', 'cost_center_id', 'cash_register_id', 'cash_line_id', 'created_by']);
       const emptyAsNullFields = new Set(['document_number', 'document_url', 'notes']);
@@ -453,7 +458,7 @@ export const expenseAPI = {
 
       const { rows: existingRows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
-        [id, ERP_SETTINGS.firmNr]
+        [id, firm]
       );
       const existing = existingRows[0] as Expense | undefined;
       if (!existing) return null;
@@ -474,7 +479,7 @@ export const expenseAPI = {
       await postgres.query('BEGIN');
 
       values.push(id);
-      values.push(ERP_SETTINGS.firmNr);
+      values.push(firm);
       const { rows } = await postgres.query(
         `UPDATE ${tableName} SET ${fields.join(', ')} WHERE id = $${i} AND firm_nr = $${i + 1} RETURNING *`,
         values
@@ -532,8 +537,8 @@ export const expenseAPI = {
   async delete(id: string): Promise<boolean> {
     try {
       await this.ensureTableExists();
-      const tableName = `rex_${ERP_SETTINGS.firmNr}_expenses`;
-      const firm = String(ERP_SETTINGS.firmNr);
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -573,7 +578,7 @@ export const expenseAPI = {
 
       const { rows: existingRows } = await postgres.query(
         `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
-        [id, ERP_SETTINGS.firmNr]
+        [id, firm]
       );
       const existing = existingRows[0] as Expense | undefined;
       if (!existing) return false;
@@ -596,7 +601,7 @@ export const expenseAPI = {
 
       const { rowCount } = await postgres.query(
         `DELETE FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
-        [id, ERP_SETTINGS.firmNr]
+        [id, firm]
       );
       await postgres.query('COMMIT');
       return rowCount > 0;

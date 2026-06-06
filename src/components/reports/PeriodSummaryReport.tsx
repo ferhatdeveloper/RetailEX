@@ -31,6 +31,10 @@ interface PeriodSummaryRow {
   partnerShare25: number;
 }
 
+function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses'>): boolean {
+  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0;
+}
+
 function isRemovedSaleStatus(status: unknown): boolean {
   const st = String(status ?? '').toLowerCase();
   return st === 'cancelled' || st === 'canceled' || st === 'refunded';
@@ -275,7 +279,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       key: 'expenses',
       align: 'right',
       render: (v: number, row) => {
-        if (row.revenue === 0 && row.expenses === 0) return '—';
+        if (!hasPeriodActivity(row)) return '—';
         return <span className="text-red-600">{money(v)}</span>;
       },
     },
@@ -285,7 +289,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       key: 'netRemaining',
       align: 'right',
       render: (v: number, row) => {
-        if (row.revenue === 0 && row.expenses === 0) return '—';
+        if (!hasPeriodActivity(row)) return '—';
         const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
         return <span className={cls}>{money(v)}</span>;
       },
@@ -296,7 +300,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       key: 'partnerShare75',
       align: 'right',
       render: (v: number, row) => {
-        if (row.revenue === 0 && row.expenses === 0) return '—';
+        if (!hasPeriodActivity(row)) return '—';
         return <span className="text-blue-700 font-medium">{money(v)}</span>;
       },
     },
@@ -306,7 +310,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       key: 'partnerShare25',
       align: 'right',
       render: (v: number, row) => {
-        if (row.revenue === 0 && row.expenses === 0) return '—';
+        if (!hasPeriodActivity(row)) return '—';
         return <span className="text-indigo-700 font-medium">{money(v)}</span>;
       },
     },
