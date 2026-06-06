@@ -106,6 +106,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
+    const [surveyOverlayOpen, setSurveyOverlayOpen] = useState(false);
     const [showNewAptWizard, setShowNewAptWizard] = useState(false);
     const [wizardDate, setWizardDate] = useState(() => formatLocalYmd(new Date()));
     const [wizardTime, setWizardTime] = useState('09:00');
@@ -332,8 +333,18 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         if (!isMobile) setMobileNavOpen(false);
     }, [isMobile]);
 
-    /** MainLayout modüle geçtikten sonra gecikmeli tetiklenir; detail = tıklanan randevu satırı */
-    React.useEffect(() => {
+    useEffect(() => {
+        const onSurveyOpen = () => setSurveyOverlayOpen(true);
+        const onSurveyClose = () => setSurveyOverlayOpen(false);
+        window.addEventListener('beauty-survey-overlay-open', onSurveyOpen);
+        window.addEventListener('beauty-survey-overlay-close', onSurveyClose);
+        return () => {
+            window.removeEventListener('beauty-survey-overlay-open', onSurveyOpen);
+            window.removeEventListener('beauty-survey-overlay-close', onSurveyClose);
+        };
+    }, []);
+
+    useEffect(() => {
         const openWizard = (ev: Event) => {
             const ce = ev as CustomEvent<{
                 dateYmd?: string;
@@ -382,7 +393,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                 />
             )}
 
-            {/* ── SIDEBAR ─────────────────────────────────────────── */}
+            {/* ── SIDEBAR (anket tam ekran açıkken gizlenir) ───────── */}
+            {!surveyOverlayOpen && (
             <aside
                 className={`flex flex-col transition-all duration-200 ease-out ${
                     isMobile ? 'fixed inset-y-0 left-0 z-[60] shadow-2xl' : 'shrink-0'
@@ -551,11 +563,13 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                     </div>
                 </div>
             </aside>
+            )}
 
             {/* ── MAIN ────────────────────────────────────────────── */}
-            <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex flex-col flex-1 overflow-hidden min-w-0">
 
                 {/* Header */}
+                {!surveyOverlayOpen && (
                 <header
                     className="flex items-center justify-between shrink-0 gap-2"
                     style={{
@@ -645,6 +659,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
                         </button>
                     </div>
                 </header>
+                )}
 
                 {/* Content — min-h-0 + overflow-y-auto so long pages (e.g. Hizmetler grid) can scroll inside the shell */}
                 <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">

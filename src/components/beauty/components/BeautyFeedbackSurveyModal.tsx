@@ -155,6 +155,17 @@ export function BeautyFeedbackSurveyModal({
         }
     }, [open]);
 
+    useEffect(() => {
+        if (!open || typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent('beauty-survey-overlay-open'));
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            window.dispatchEvent(new CustomEvent('beauty-survey-overlay-close'));
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [open]);
+
     const handleSubmit = useCallback(async () => {
         if (!customerId) return;
         setFeedbackSaving(true);
@@ -262,7 +273,17 @@ export function BeautyFeedbackSurveyModal({
     return createPortal(
         <div
             className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden"
-            style={{ color: '#0f172a', touchAction: 'manipulation' }}
+            style={{
+                color: '#0f172a',
+                touchAction: 'manipulation',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                height: '100dvh',
+                maxWidth: '100vw',
+            }}
             dir={isRtl ? 'rtl' : 'ltr'}
             role="dialog"
             aria-modal="true"
