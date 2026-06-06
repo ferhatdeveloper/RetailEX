@@ -59,6 +59,11 @@ const CATEGORY_FALLBACK: ExpenseCategory = {
   color: 'bg-slate-100 text-slate-700'
 };
 
+function parseExpenseAmount(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 const getCurrentMonthDateRange = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -127,7 +132,12 @@ export function ExpenseManagement() {
       if (filterDateFrom) filters.startDate = filterDateFrom;
       if (filterDateTo) filters.endDate = filterDateTo;
       const data = await expenseAPI.getAll(filters);
-      setExpenses(data as ExpenseLocal[]);
+      setExpenses(
+        (data as ExpenseLocal[]).map(row => ({
+          ...row,
+          amount: parseExpenseAmount(row.amount),
+        })),
+      );
     } catch (error) {
       console.error('Error loading expenses:', error);
       setExpenses([]);
@@ -279,7 +289,7 @@ export function ExpenseManagement() {
       header: tm('amount').toUpperCase(),
       cell: info => (
         <span className="font-medium text-red-600">
-          {formatCurrency(info.getValue())}
+          {formatCurrency(parseExpenseAmount(info.getValue()))}
         </span>
       ),
       size: 120
@@ -356,15 +366,48 @@ export function ExpenseManagement() {
     return matchesSearch && matchesCategory && matchesStore && matchesDate;
   }), [expenses, searchQuery, filterCategory, filterStore, filterDateFrom, filterDateTo]);
 
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  const thisMonthExpenses = filteredExpenses
-    .filter(e => {
-      const d = String(e.expense_date || '').slice(0, 10);
-      const now = new Date();
-      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      return d.startsWith(monthKey);
-    })
-    .reduce((sum, e) => sum + e.amount, 0);
+  const totalExpenses = useMemo(
+    () => filteredExpenses.reduce((sum, e) => sum + parseExpenseAmount(e.amount), 0),
+    [filteredExpenses],
+  );
+
+  const cashExpenses = useMemo(
+    () =>
+      filteredExpenses.reduce((sum, e) => {
+        const method = String(e.payment_method ?? '').trim().toLowerCase();
+        const isCash = method === 'cash' || method === 'nakit';
+        return isCash ? sum + parseExpenseAmount(e.amount) : sum;
+      }, 0),
+    [filteredExpenses],
+  );
+
+  const hasActiveFilters = useMemo(() => {
+    const monthRange = getCurrentMonthDateRange();
+    return (
+      filterCategory !== 'all' ||
+      searchQuery.trim().length > 0 ||
+      filterDateFrom !== monthRange.from ||
+      filterDateTo !== monthRange.to
+    );
+  }, [filterCategory, searchQuery, filterDateFrom, filterDateTo]);
+
+  const filterSummaryText = useMemo(() => {
+    const parts: string[] = [];
+    if (filterDateFrom && filterDateTo) {
+      parts.push(
+        tm('expenseFilterDateRange')
+          .replace('{from}', new Date(filterDateFrom).toLocaleDateString('tr-TR'))
+          .replace('{to}', new Date(filterDateTo).toLocaleDateString('tr-TR')),
+      );
+    }
+    if (filterCategory !== 'all') {
+      parts.push(`${tm('category')}: ${categoryLabel(filterCategory)}`);
+    }
+    if (searchQuery.trim()) {
+      parts.push(`${tm('search')}: "${searchQuery.trim()}"`);
+    }
+    return parts.length ? parts.join(' · ') : tm('expenseFilterAllRecords');
+  }, [filterDateFrom, filterDateTo, filterCategory, searchQuery, tm]);
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -465,12 +508,30 @@ export function ExpenseManagement() {
         )}
       </div>
 
+      {/* Filtrelenmiş toplam — her zaman görünür */}
+      <div className="flex-shrink-0 px-6 py-4 bg-gradient-to-r from-red-600 to-orange-600 text-white border-b border-red-700">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-red-100">
+              {hasActiveFilters ? tm('expenseFilteredTotal') : tm('totalExpense')}
+            </p>
+            <p className="text-sm text-red-50 mt-0.5 truncate">{filterSummaryText}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-3xl font-black tracking-tight">{formatCurrency(totalExpenses)}</p>
+            <p className="text-xs text-red-100 mt-0.5">
+              {filteredExpenses.length} {tm('expenseCount').toLowerCase()}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Statistics */}
       <div className="flex-shrink-0 p-6 grid grid-cols-4 gap-4 border-b border-gray-200">
         <div className="bg-red-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-red-600 mb-1">{tm('totalExpense')}</p>
+              <p className="text-sm text-red-600 mb-1">{tm('expenseFilteredTotal')}</p>
               <p className="text-2xl font-bold text-red-900">{formatCurrency(totalExpenses)}</p>
             </div>
             <Banknote className="w-8 h-8 text-red-600" />
@@ -479,8 +540,8 @@ export function ExpenseManagement() {
         <div className="bg-orange-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-orange-600 mb-1">{tm('thisMonth')}</p>
-              <p className="text-2xl font-bold text-orange-900">{formatCurrency(thisMonthExpenses)}</p>
+              <p className="text-sm text-orange-600 mb-1">{tm('expenseCashTotal')}</p>
+              <p className="text-2xl font-bold text-orange-900">{formatCurrency(cashExpenses)}</p>
             </div>
             <Calendar className="w-8 h-8 text-orange-600" />
           </div>
@@ -517,14 +578,27 @@ export function ExpenseManagement() {
             </div>
           </div>
         ) : (
-          <DevExDataGrid
-            data={filteredExpenses}
-            columns={columns}
-            enablePagination={true}
-            enableSorting={true}
-            enableFiltering={false}
-            pageSize={20}
-          />
+          <>
+            <DevExDataGrid
+              data={filteredExpenses}
+              columns={columns}
+              enablePagination={true}
+              enableSorting={true}
+              enableFiltering={false}
+              pageSize={20}
+            />
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <span className="text-sm font-semibold text-red-800">
+                {tm('expenseListFooterTotal')}
+              </span>
+              <div className="text-right">
+                <p className="text-xl font-bold text-red-900">{formatCurrency(totalExpenses)}</p>
+                <p className="text-xs text-red-600">
+                  {filteredExpenses.length} {tm('expenseCount').toLowerCase()}
+                </p>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

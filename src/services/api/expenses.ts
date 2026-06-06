@@ -125,6 +125,7 @@ export const expenseAPI = {
         (Array.isArray(ccRows) ? ccRows : []).forEach((c) => ccMap.set(String(c.id), String(c.name || '')));
         return list.map((e) => ({
           ...e,
+          amount: Number(e.amount) || 0,
           cost_center_name: e.cost_center_id ? ccMap.get(String(e.cost_center_id)) : undefined,
         }));
       }
@@ -149,7 +150,10 @@ export const expenseAPI = {
       sql += ` ORDER BY e.expense_date DESC`;
 
       const { rows } = await postgres.query(sql, params);
-      return rows;
+      return rows.map((e: Expense) => ({
+        ...e,
+        amount: Number(e.amount) || 0,
+      }));
     } catch (error) {
       console.error('[ExpenseAPI] getAll failed:', error);
       return [];
