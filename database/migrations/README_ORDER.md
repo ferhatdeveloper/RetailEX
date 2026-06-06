@@ -31,6 +31,7 @@
 26. **036_rex_tax_rates_special_codes.sql** – `rex_{firm}_tax_rates` ve `rex_{firm}_special_codes` tabloları (PostgREST / masterData.ts API uyumu).
 27. **037_beauty_follow_up_reminder_actions.sql** – `beauty.rex_{firm}_follow_up_reminder_actions`: takip hatırlatması notu, durum (ertelendi/görüşüldü/kapat), erteleme tarihi (Hizmet & tarih panosu).
 28. **038_anket_role.sql** – `anket` sistem rolü: yalnızca `beauty.surveys` READ + EXECUTE; giriş sonrası `beauty` modülü.
+29. **039_beauty_default_satisfaction_survey.sql** – Güzellik merkezi varsayılan memnuniyet anketi (TR/EN/AR/KU, 7 soru, aktif).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 
