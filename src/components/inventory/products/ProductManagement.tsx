@@ -28,6 +28,7 @@ import {
   Printer,
   ShoppingCart,
   Loader2,
+  CalendarDays,
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -50,6 +51,13 @@ const NEW_PRODUCT_PURCHASE_DRAFT_DAYS = 30;
 
 function isMaterialProductRow(p: Product): boolean {
   return !(p.materialType === 'service' || p.isService === true);
+}
+
+function isProductCreatedToday(createdAt: string | undefined | null): boolean {
+  if (createdAt == null || String(createdAt).trim() === '') return false;
+  const d = new Date(createdAt);
+  if (!Number.isFinite(d.getTime())) return false;
+  return d.toDateString() === new Date().toDateString();
 }
 
 /** Malzeme listesi hızlı etiket — referans mağaza düzeni: marka, kod+ad, fiyat (sol) | stok+birim (sağ), barkod. */
@@ -272,6 +280,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [editingProductId, setEditingProductId] = useState<string | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; product: Product } | null>(null);
   const [showServicesOnly, setShowServicesOnly] = useState(false);
+  const [showTodayOnly, setShowTodayOnly] = useState(false);
   const [duplicateDetectBy, setDuplicateDetectBy] = useState<'none' | 'code' | 'barcode'>('none');
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkRateModal, setShowBulkRateModal] = useState(false);
@@ -373,9 +382,14 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([k]) => k));
   }, [displayProducts, duplicateDetectBy]);
 
+  const todayProductsCount = useMemo(
+    () => displayProducts.filter((p) => isProductCreatedToday(p.created_at)).length,
+    [displayProducts]
+  );
+
   useEffect(() => {
     setMobilePage(0);
-  }, [searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy]);
+  }, [searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy]);
 
   const filteredProducts = useMemo(() => {
     const list = displayProducts.filter(product => {
@@ -387,12 +401,20 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         (product.category?.toLocaleLowerCase('tr-TR') || '').includes(searchLower);
       const matchesCategory = categoryFilter === 'Tümü' || product.category === categoryFilter;
       const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
+      const matchesToday = !showTodayOnly || isProductCreatedToday(product.created_at);
       const duplicateKey = duplicateDetectBy === 'code'
         ? String(product.code || '').trim()
         : String(product.barcode || '').trim();
       const matchesDuplicate = duplicateDetectBy === 'none' || duplicateKeys.has(duplicateKey);
-      return matchesSearch && matchesCategory && matchesService && matchesDuplicate;
+      return matchesSearch && matchesCategory && matchesService && matchesToday && matchesDuplicate;
     });
+    if (showTodayOnly) {
+      return [...list].sort((a, b) => {
+        const ta = new Date(a.created_at || 0).getTime();
+        const tb = new Date(b.created_at || 0).getTime();
+        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      });
+    }
     /** Stok ≤ 0 olanlar listenin sonunda (pozitif stokta isim sırası) */
     return [...list].sort((a, b) => {
       const stockA = Number(a.stock ?? 0);
@@ -402,7 +424,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       if (lastA !== lastB) return lastA - lastB;
       return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr', { sensitivity: 'base' });
     });
-  }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, duplicateDetectBy, duplicateKeys]);
+  }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy, duplicateKeys]);
 
   const mobilePageCount = Math.max(1, Math.ceil(filteredProducts.length / MOBILE_PAGE_SIZE));
   const mobilePagedProducts = useMemo(() => {
@@ -708,7 +730,28 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       cell: info => info.getValue(),
       size: 100
     }),
-  ], [tm, showPurchasePricing]);
+    ...(showTodayOnly
+      ? [
+          columnHelper.accessor('created_at', {
+            header: tm('productCreatedAt').toUpperCase(),
+            cell: (info) => {
+              const raw = info.getValue();
+              if (raw == null || String(raw).trim() === '') return '—';
+              const d = new Date(raw);
+              if (!Number.isFinite(d.getTime())) return '—';
+              return d.toLocaleString('tr-TR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            },
+            size: 150,
+          }),
+        ]
+      : []),
+  ], [tm, showPurchasePricing, showTodayOnly]);
 
   return (
     <div className="h-full flex flex-col">
@@ -796,6 +839,23 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               <span>{tm('newProduct')}</span>
             </button>
             <button
+              type="button"
+              onClick={() => setShowTodayOnly((v) => !v)}
+              className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
+                showTodayOnly ? 'bg-emerald-600 text-white' : 'bg-white/10 hover:bg-white/20'
+              }`}
+              title={tm('productFilterTodayTitle')}
+            >
+              <CalendarDays className="w-3 h-3 shrink-0" />
+              <span className="hidden sm:inline">{tm('productFilterTodayBtn')}</span>
+              <span className="sm:hidden">Bugün</span>
+              {todayProductsCount > 0 && (
+                <span className={`tabular-nums ${showTodayOnly ? 'text-emerald-100' : 'text-blue-100'}`}>
+                  ({todayProductsCount})
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setShowServicesOnly(!showServicesOnly)}
               className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
                 showServicesOnly ? 'bg-orange-600 text-white' : 'bg-white/10 hover:bg-white/20'
@@ -867,10 +927,32 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               />
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowTodayOnly((v) => !v)}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-bold rounded border transition-colors whitespace-nowrap shrink-0 ${
+                  showTodayOnly
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-emerald-50 hover:border-emerald-300'
+                }`}
+                title={tm('productFilterTodayTitle')}
+              >
+                <CalendarDays className="w-4 h-4 shrink-0" />
+                <span>{tm('productFilterTodayBtn')}</span>
+                {todayProductsCount > 0 && (
+                  <span
+                    className={`tabular-nums text-[11px] px-1.5 py-0.5 rounded-full font-bold ${
+                      showTodayOnly ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {todayProductsCount}
+                  </span>
+                )}
+              </button>
               <select
                 value={duplicateDetectBy}
                 onChange={(e) => setDuplicateDetectBy(e.target.value as 'none' | 'code' | 'barcode')}
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 min-w-0 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="none">Tekrar Filtresi: Kapalı</option>
                 <option value="code">Tekrar Filtresi: Ürün Kodu</option>
@@ -883,6 +965,11 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               )}
             </div>
           </div>
+          {showTodayOnly && (
+            <p className="mt-2 text-[11px] text-emerald-700 font-semibold">
+              {tm('productFilterTodayActive').replace(/\{count\}/g, String(filteredProducts.length))}
+            </p>
+          )}
         </div>
 
         <div
@@ -973,6 +1060,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                               {formatCurrency(Number(p.price) || 0, 2, false)}
                             </span>
                           </div>
+                          {showTodayOnly && p.created_at && (
+                            <div className="text-[9px] text-emerald-700 truncate font-medium">
+                              {new Date(p.created_at).toLocaleString('tr-TR', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                          )}
                           {p.specialCode2 != null && String(p.specialCode2).trim() !== '' && (
                             <div className="text-[9px] text-gray-500 truncate">
                               <span className="font-semibold text-gray-600">{tm('specialCode')} 2:</span>{' '}

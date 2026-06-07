@@ -4424,6 +4424,30 @@ export const wmsModuleTranslations = {
     ar: 'جديد (30ي) → شراء',
     ku: 'نوێ (30ڕ) → کڕین',
   },
+  productFilterTodayBtn: {
+    tr: 'Bugün Eklenen',
+    en: 'Added Today',
+    ar: 'أُضيف اليوم',
+    ku: 'ئەمڕۆ زیادکراو',
+  },
+  productFilterTodayTitle: {
+    tr: 'Bugün eklenen ürünleri listele (tek tık)',
+    en: 'Show products added today (one click)',
+    ar: 'عرض المنتجات المضافة اليوم (نقرة واحدة)',
+    ku: 'کاڵای ئەمڕۆ زیادکراو پیشان بدە (یەک کلیک)',
+  },
+  productFilterTodayActive: {
+    tr: 'Bugün eklenen {count} ürün gösteriliyor',
+    en: 'Showing {count} products added today',
+    ar: 'عرض {count} منتجًا أُضيف اليوم',
+    ku: '{count} کاڵای ئەمڕۆ زیادکراو پیشان دەدرێت',
+  },
+  productCreatedAt: {
+    tr: 'Eklenme Tarihi',
+    en: 'Date Added',
+    ar: 'تاريخ الإضافة',
+    ku: 'بەرواری زیادکردن',
+  },
   invoiceTypeCountSurplus: { tr: 'Sayım fazlası', en: 'Count surplus', ar: 'فائض الجرد', ku: 'زێدەی ژماردن' },
   invoiceBulkPurchaseFromSayimBtn: {
     tr: 'Seçilenlerden alış taslağı',
