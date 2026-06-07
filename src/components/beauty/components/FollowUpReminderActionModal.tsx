@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Calendar, StickyNote } from 'lucide-react';
 import type {
   BeautyFollowUpReminder,
@@ -29,6 +30,9 @@ export interface FollowUpReminderActionModalProps {
   };
 }
 
+const NOTE_TEXTAREA_CLASS =
+  'w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-amber-500 resize-none bg-white';
+
 export function FollowUpReminderActionModal({
   open,
   reminder,
@@ -53,13 +57,18 @@ export function FollowUpReminderActionModal({
     );
   }, [open, reminder]);
 
-  if (!open || !reminder) return null;
+  if (!open || !reminder || typeof document === 'undefined') return null;
 
   const naturalDue = reminder.natural_due_date ?? reminder.due_date;
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      const trimmedNote = note.trim();
+      let effectiveStatus = status;
+      if (trimmedNote && status === 'due') {
+        effectiveStatus = 'other';
+      }
       const payload: BeautyFollowUpReminderAction = {
         customer_id: reminder.customer_id,
         service_id: reminder.service_id,
@@ -72,10 +81,10 @@ export function FollowUpReminderActionModal({
         customer_phone: reminder.customer_phone,
         service_name: reminder.service_name,
         product_name: reminder.product_name,
-        status,
-        note: note.trim() || undefined,
+        status: effectiveStatus,
+        note: trimmedNote || undefined,
         postponed_due_date:
-          status === 'postponed' && postponedDate.trim() ? postponedDate.trim() : undefined,
+          effectiveStatus === 'postponed' && postponedDate.trim() ? postponedDate.trim() : undefined,
       };
       await beautyService.upsertFollowUpReminderAction(payload);
       onSaved();
@@ -88,7 +97,7 @@ export function FollowUpReminderActionModal({
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md">
       <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
         <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-xl border border-slate-200/80 flex flex-col">
@@ -115,7 +124,7 @@ export function FollowUpReminderActionModal({
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as BeautyFollowUpReminderStatus)}
-                className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
               >
                 <option value="due">{labels.statusDue}</option>
                 <option value="postponed">{labels.statusPostponed}</option>
@@ -135,7 +144,7 @@ export function FollowUpReminderActionModal({
                   value={postponedDate}
                   min={naturalDue}
                   onChange={(e) => setPostponedDate(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-amber-500 bg-white"
                 />
                 <p className="text-[10px] text-slate-500 mt-1">
                   Orijinal vade: {naturalDue}
@@ -152,7 +161,18 @@ export function FollowUpReminderActionModal({
                 onChange={(e) => setNote(e.target.value)}
                 rows={4}
                 placeholder={labels.notePlaceholder}
-                className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className={NOTE_TEXTAREA_CLASS}
+                style={{
+                  touchAction: 'auto',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                  color: '#0f172a',
+                  backgroundColor: '#ffffff',
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+                autoComplete="off"
+                spellCheck
               />
             </div>
           </div>
@@ -176,6 +196,7 @@ export function FollowUpReminderActionModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

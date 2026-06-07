@@ -144,17 +144,20 @@ function ServiceBoardServiceCell({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {svcFollowUps.map(fu => {
                     const followUpPhone = followUpPhoneLine(fu.customer_phone);
-                    const theme = getFollowUpReminderCardTheme(fu.follow_up_status);
+                    const hasNote = Boolean(fu.note?.trim());
+                    const theme = getFollowUpReminderCardTheme(fu.follow_up_status, hasNote);
                     const statusKey = fu.follow_up_status ?? 'due';
                     const badgeText =
-                        followUpStatusLabels?.[statusKey] ??
-                        (statusKey === 'postponed'
-                            ? 'Ertelendi'
-                            : statusKey === 'contacted'
-                              ? 'Görüşüldü'
-                              : statusKey === 'other'
-                                ? 'Notlu'
-                                : followUpBadgeLabel);
+                        hasNote && statusKey === 'due'
+                            ? (followUpStatusLabels?.noted ?? 'Notlu')
+                            : followUpStatusLabels?.[statusKey] ??
+                              (statusKey === 'postponed'
+                                  ? 'Ertelendi'
+                                  : statusKey === 'contacted'
+                                    ? 'Görüşüldü'
+                                    : statusKey === 'other'
+                                      ? 'Notlu'
+                                      : followUpBadgeLabel);
                     return (
                         <div
                             key={`fu-${fu.customer_id}-${fu.service_id}-${fu.due_date}-${fu.product_id ?? 'svc'}`}

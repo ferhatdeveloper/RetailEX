@@ -3965,7 +3965,20 @@ export function AppointmentPOS({
                                         <textarea value={aptNotes} onChange={e => setAptNotes(e.target.value)}
                                             placeholder={tm('bAppointmentNotesPlaceholder')}
                                             rows={2}
-                                            style={{ ...iStyle, height: 'auto', padding: '6px 10px', resize: 'none', lineHeight: 1.5 }} />
+                                            style={{
+                                                ...iStyle,
+                                                height: 'auto',
+                                                padding: '6px 10px',
+                                                resize: 'none',
+                                                lineHeight: 1.5,
+                                                background: '#ffffff',
+                                                color: '#111827',
+                                                touchAction: 'auto',
+                                                WebkitUserSelect: 'text',
+                                                userSelect: 'text',
+                                            }}
+                                            onPointerDown={e => e.stopPropagation()}
+                                        />
                                     </Field>
                                     {isDentalMode && existingAppointment?.id ? (
                                         <div style={{ marginTop: 4 }}>

@@ -74,15 +74,15 @@ const THEMES: Record<BeautyFollowUpReminderStatus, FollowUpReminderCardTheme> = 
     buttonColor: '#0369a1',
   },
   other: {
-    border: '1px solid #ddd6fe',
-    borderLeft: '3px solid #7c3aed',
-    background: '#f5f3ff',
-    badgeColor: '#6d28d9',
-    titleColor: '#5b21b6',
-    subColor: '#6d28d9',
-    iconColor: '#7c3aed',
-    buttonBorder: '1px dashed #c4b5fd',
-    buttonColor: '#6d28d9',
+    border: '1px solid #fde68a',
+    borderLeft: '3px solid #d97706',
+    background: '#fffbeb',
+    badgeColor: '#b45309',
+    titleColor: '#92400e',
+    subColor: '#a16207',
+    iconColor: '#d97706',
+    buttonBorder: '1px dashed #fbbf24',
+    buttonColor: '#b45309',
   },
   dismissed: {
     border: '1px solid #e5e7eb',
@@ -99,8 +99,14 @@ const THEMES: Record<BeautyFollowUpReminderStatus, FollowUpReminderCardTheme> = 
 
 export function getFollowUpReminderCardTheme(
   status: BeautyFollowUpReminderStatus | undefined,
+  hasNote = false,
 ): FollowUpReminderCardTheme {
-  return THEMES[status ?? 'due'] ?? THEMES.due;
+  const s = status ?? 'due';
+  if (s === 'postponed') return THEMES.postponed;
+  if (s === 'contacted') return THEMES.contacted;
+  if (s === 'dismissed') return THEMES.dismissed;
+  if (s === 'other' || (s === 'due' && hasNote)) return THEMES.other;
+  return THEMES.due;
 }
 
 /** SQL hatırlatmaları + DB aksiyonlarını birleştirir; görünür `due_date` etkin tarihtir. */

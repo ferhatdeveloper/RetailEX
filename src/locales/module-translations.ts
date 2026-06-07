@@ -3793,6 +3793,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'دوای تەواوبوونی ئامادەبوون چەند ڕۆژ دواتر بیربێتەوە. بەتاڵ = کوژاوە.',
   },
   bFollowUpBadge: { tr: 'Hatırlatma', en: 'Reminder', ar: 'تذكير', ku: 'بیرهێنان' },
+  bFollowUpBadgeNoted: { tr: 'Notlu', en: 'With note', ar: 'مع ملاحظة', ku: 'تێبینی هەیە' },
   bFollowUpContextLine: {
     tr: 'Son tamamlanan işlem: {last} · Tekrar: +{days} gün',
     en: 'Last completed: {last} · Next: +{days} days',

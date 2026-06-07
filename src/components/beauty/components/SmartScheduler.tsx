@@ -296,6 +296,8 @@ export function SmartScheduler() {
     const [treatmentShotsDraft, setTreatmentShotsDraft] = useState('');
     const [treatmentDurationDraft, setTreatmentDurationDraft] = useState('');
     const [treatmentFieldsSaving, setTreatmentFieldsSaving] = useState(false);
+    const [aptNotesDraft, setAptNotesDraft] = useState('');
+    const [aptNotesSaving, setAptNotesSaving] = useState(false);
 
     useEffect(() => {
         setSelectedApt(prev => {
@@ -319,6 +321,7 @@ export function SmartScheduler() {
             setTreatmentDegreeDraft('');
             setTreatmentShotsDraft('');
             setTreatmentDurationDraft('');
+            setAptNotesDraft('');
             return;
         }
         setTreatmentDegreeDraft(String(selectedApt.treatment_degree ?? ''));
@@ -328,7 +331,8 @@ export function SmartScheduler() {
                 ? String(Math.round(Number(selectedApt.duration)))
                 : '',
         );
-    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots, selectedApt?.duration]);
+        setAptNotesDraft(String(selectedApt.notes ?? ''));
+    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots, selectedApt?.duration, selectedApt?.notes]);
 
     useEffect(() => {
         loadSpecialists();
@@ -514,6 +518,7 @@ export function SmartScheduler() {
     const followUpStatusLabels = useMemo(
         () => ({
             due: tm('bFollowUpBadge'),
+            noted: tm('bFollowUpBadgeNoted'),
             postponed: tm('bFollowUpStatusPostponed'),
             contacted: tm('bFollowUpStatusContacted'),
             other: tm('bFollowUpStatusOther'),
@@ -897,6 +902,24 @@ export function SmartScheduler() {
         return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     }, [view, currentDate, serviceBoardRange.start, serviceBoardRange.end]);
 
+    const saveAptNotesFromPanel = useCallback(async () => {
+        if (!selectedApt) return;
+        const trimmed = aptNotesDraft.trim();
+        const prev = String(selectedApt.notes ?? '').trim();
+        if (trimmed === prev) return;
+        setAptNotesSaving(true);
+        try {
+            await updateAppointment(selectedApt.id, { notes: trimmed || undefined });
+            setSelectedApt(prevApt =>
+                prevApt && prevApt.id === selectedApt.id ? { ...prevApt, notes: trimmed || undefined } : prevApt,
+            );
+        } catch (e: unknown) {
+            logger.crudError('SmartScheduler', 'saveAptNotes', e, { id: selectedApt.id });
+        } finally {
+            setAptNotesSaving(false);
+        }
+    }, [selectedApt, aptNotesDraft, updateAppointment]);
+
     const saveAppointmentPriceFromCard = useCallback(async () => {
         if (!isAdmin()) return;
         if (!priceEditApt) return;
@@ -939,14 +962,19 @@ export function SmartScheduler() {
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
         const done  = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
         const phone = customerPhoneLine(apt);
+        const noteText = String(apt.notes ?? '').trim();
+        const hasNote = noteText.length > 0;
+        const cardBg = done ? cfg.bg : hasNote ? '#fffbeb' : '#fff';
+        const cardBorder = done ? cfg.color + '55' : hasNote ? '#fde68a' : '#e8e4f0';
+        const cardBorderLeft = done ? cfg.color : hasNote ? '#d97706' : color;
         return (
             <div
                 key={apt.id}
                 onClick={() => handleAppointmentPrimaryClick(apt)}
                 style={{
-                    background: done ? cfg.bg : '#fff',
-                    border: `1px solid ${done ? cfg.color + '55' : '#e8e4f0'}`,
-                    borderLeft: `3px solid ${done ? cfg.color : color}`,
+                    background: cardBg,
+                    border: `1px solid ${cardBorder}`,
+                    borderLeft: `3px solid ${cardBorderLeft}`,
                     borderRadius: 6, padding: '10px 12px', cursor: 'pointer',
                     transition: 'box-shadow 0.1s',
                 }}
@@ -966,6 +994,25 @@ export function SmartScheduler() {
                     </div>
                 ) : null}
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
+                {hasNote ? (
+                    <p
+                        style={{
+                            margin: '0 0 6px',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            color: '#92400e',
+                            lineHeight: 1.35,
+                            fontStyle: 'italic',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                        }}
+                    >
+                        {noteText}
+                    </p>
+                ) : null}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#9ca3af', minWidth: 0, flex: 1 }}>
@@ -2385,12 +2432,56 @@ export function SmartScheduler() {
                                     </button>
                                 </div>
                             </div>
-                            {selectedApt.notes && (
-                                <div style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
-                                    <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>{tm('bNotes')}</p>
-                                    <p style={{ fontSize: 12, color: '#374151' }}>{selectedApt.notes}</p>
-                                </div>
-                            )}
+                            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+                                <label htmlFor="beauty-panel-apt-notes" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, display: 'block' }}>
+                                    {tm('bNotes')}
+                                </label>
+                                <textarea
+                                    id="beauty-panel-apt-notes"
+                                    value={aptNotesDraft}
+                                    onChange={e => setAptNotesDraft(e.target.value)}
+                                    placeholder={tm('bAppointmentNotesPlaceholder')}
+                                    rows={3}
+                                    style={{
+                                        width: '100%',
+                                        boxSizing: 'border-box',
+                                        border: '1px solid #fcd34d',
+                                        borderRadius: 6,
+                                        padding: '8px 10px',
+                                        fontSize: 13,
+                                        fontWeight: 500,
+                                        color: '#0f172a',
+                                        backgroundColor: '#ffffff',
+                                        outline: 'none',
+                                        resize: 'vertical',
+                                        lineHeight: 1.45,
+                                        touchAction: 'auto',
+                                        WebkitUserSelect: 'text',
+                                        userSelect: 'text',
+                                    }}
+                                    onPointerDown={e => e.stopPropagation()}
+                                    onClick={e => e.stopPropagation()}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => void saveAptNotesFromPanel()}
+                                    disabled={aptNotesSaving}
+                                    style={{
+                                        width: '100%',
+                                        height: 34,
+                                        marginTop: 8,
+                                        borderRadius: 6,
+                                        border: '1px solid #fbbf24',
+                                        background: '#fef3c7',
+                                        color: '#92400e',
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor: aptNotesSaving ? 'wait' : 'pointer',
+                                    }}
+                                >
+                                    {aptNotesSaving ? tm('bSaving') : tm('save')}
+                                </button>
+                            </div>
                             <div style={{ marginBottom: 10 }}>
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bUpdateStatus')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
