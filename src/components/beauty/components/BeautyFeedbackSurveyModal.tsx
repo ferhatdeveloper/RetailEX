@@ -39,6 +39,23 @@ type RatingScaleProps = {
     ariaLabelPrefix: string;
 };
 
+/** Tailwind preflight (transparent textarea) + touch cihazlarda üst katman touchAction engelini aş */
+const SURVEY_TEXTAREA_PROPS = {
+    className:
+        'w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none bg-white',
+    style: {
+        touchAction: 'auto' as const,
+        WebkitUserSelect: 'text' as const,
+        userSelect: 'text' as const,
+        backgroundColor: '#ffffff',
+        color: '#0f172a',
+        position: 'relative' as const,
+        zIndex: 3,
+    },
+    onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => e.stopPropagation(),
+    onClick: (e: React.MouseEvent<HTMLTextAreaElement>) => e.stopPropagation(),
+};
+
 /** Tailwind preflight button reset (transparent bg + color:inherit) ile uyumlu, dokunmatik dostu puan seçici */
 function RatingScale({ value, max, onChange, ariaLabelPrefix }: RatingScaleProps) {
     return (
@@ -275,7 +292,6 @@ export function BeautyFeedbackSurveyModal({
             className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden"
             style={{
                 color: '#0f172a',
-                touchAction: 'manipulation',
                 top: 0,
                 left: 0,
                 right: 0,
@@ -315,10 +331,7 @@ export function BeautyFeedbackSurveyModal({
                 </div>
             </div>
 
-            <div
-                className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 relative z-[1]"
-                style={{ touchAction: 'pan-y' }}
-            >
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 pb-28 relative z-[1]">
                 <div className="mx-auto w-full max-w-3xl">
                     <p className="text-sm font-bold mb-6" style={{ color: '#334155' }}>
                         {questionsLoading
@@ -373,11 +386,13 @@ export function BeautyFeedbackSurveyModal({
                                               {label || '—'}
                                           </p>
                                           <textarea
+                                              {...SURVEY_TEXTAREA_PROPS}
                                               value={(dynAnswers[q.id] as string) ?? ''}
                                               onChange={e => setDynAnswers(r => ({ ...r, [q.id]: e.target.value }))}
                                               rows={3}
                                               dir={isRtl ? 'rtl' : 'ltr'}
-                                              className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
+                                              autoComplete="off"
+                                              spellCheck
                                           />
                                       </div>
                                   );
@@ -467,12 +482,14 @@ export function BeautyFeedbackSurveyModal({
                             {tm('bFeedbackComment')}
                         </label>
                         <textarea
+                            {...SURVEY_TEXTAREA_PROPS}
                             value={feedbackComment}
                             onChange={e => setFeedbackComment(e.target.value)}
                             placeholder={tm('bFeedbackComment')}
                             rows={4}
                             dir={isRtl ? 'rtl' : 'ltr'}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-400 outline-none text-slate-800 font-medium resize-none"
+                            autoComplete="off"
+                            spellCheck
                         />
                     </div>
                 </div>
