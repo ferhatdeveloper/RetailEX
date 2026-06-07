@@ -28,7 +28,7 @@ BEGIN
       CONTINUE;
     END IF;
 
-    v_survey_id := uuid_generate_v4();
+    v_survey_id := gen_random_uuid();
 
     EXECUTE format(
       'INSERT INTO beauty.%I (id, name, is_active, sort_order) VALUES ($1, $2, true, 0)',
