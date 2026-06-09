@@ -3155,6 +3155,11 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   noFile: { tr: 'Dosya Yok', en: 'No File', ar: 'لا يوجد ملف', ku: 'هیچ فایلێک نییە' },
   dragDropOrSelect: { tr: 'Sürükleyip bırakın veya seçin', en: 'Drag and drop or select', ar: 'سحب وإفلات أو تحديد', ku: 'ڕاکێشان و دانان یان هەڵبژاردن' },
   productSelection: { tr: 'Ürün Seçimi', en: 'Product Selection', ar: 'اختيار المنتج', ku: 'هەڵبژاردنی بەرهەم' },
+  invoiceCatalogMultiSelectHint: { tr: 'Çoklu seçim · Satıra eklemek için işaretleyin', en: 'Multi-select · Check items to add as lines', ar: 'تحديد متعدد · حدد لإضافة كصفوف', ku: 'هەڵبژاردنی چەندین · نیشانە بکە بۆ زیادکردن' },
+  catalogSelectAll: { tr: 'Tümünü Seç', en: 'Select All', ar: 'تحديد الكل', ku: 'هەمووی هەڵبژێرە' },
+  catalogClearSelection: { tr: 'Seçimi Kaldır', en: 'Clear Selection', ar: 'إلغاء التحديد', ku: 'هەڵبژاردن بسڕەوە' },
+  catalogAddSelected: { tr: 'Seçilenleri Ekle ({count})', en: 'Add Selected ({count})', ar: 'إضافة المحدد ({count})', ku: 'هەڵبژێردراو زیاد بکە ({count})' },
+  catalogProductsSelected: { tr: '{count} ürün seçildi', en: '{count} products selected', ar: 'تم تحديد {count} منتج', ku: '{count} بەرهەم هەڵبژێردرا' },
   searchProductPlaceholder: { tr: 'Ürün ara...', en: 'Search product...', ar: 'بحث عن منتج...', ku: 'گەڕان بۆ بەرهەم...' },
   productNotFound: { tr: 'Ürün bulunamadı', en: 'Product not found', ar: 'المنتج غير موجود', ku: 'بەرهەم نەدۆزرایەوە' },
 

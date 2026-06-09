@@ -1791,6 +1791,49 @@ export function UniversalInvoiceForm({
     }, 50);
   };
 
+  const handleProductsBulkSelectForRow = (selectedProducts: Product[], rowIndex?: number) => {
+    const targetRowIndex = rowIndex !== undefined ? rowIndex : (selectedRowForProduct ?? currentRowIndex);
+    if (targetRowIndex < 0 || selectedProducts.length === 0) return;
+
+    const withoutTrailing =
+      items.length > 0 && lineIsBlank(items[items.length - 1])
+        ? items.slice(0, -1)
+        : [...items];
+
+    if (targetRowIndex >= withoutTrailing.length) {
+      withoutTrailing.push(...Array.from({ length: targetRowIndex - withoutTrailing.length + 1 }, () => createEmptyInvoiceLine()));
+    }
+
+    const [firstProduct, ...restProducts] = selectedProducts;
+    const baseRow = withoutTrailing[targetRowIndex] || createEmptyInvoiceLine();
+    withoutTrailing[targetRowIndex] = applyLookupResultToInvoiceItem(
+      { ...baseRow, quantity: baseRow.quantity > 0 ? baseRow.quantity : 1 },
+      firstProduct
+    );
+
+    const extraRows = restProducts.map((product) =>
+      applyLookupResultToInvoiceItem(createEmptyInvoiceLine('Malzeme'), product)
+    );
+
+    const merged = [
+      ...withoutTrailing.slice(0, targetRowIndex + 1),
+      ...extraRows,
+      ...withoutTrailing.slice(targetRowIndex + 1),
+    ];
+
+    const nextItems = withTrailingEmptyLine(merged);
+    setItems(nextItems);
+    setShowProductCatalogModal(false);
+    setSelectedRowForProduct(null);
+    toast.success(`${selectedProducts.length} ürün eklendi`);
+
+    const emptyIdx = nextItems.length - 1;
+    setCurrentRowIndex(emptyIdx);
+    setTimeout(() => {
+      gridRefs.current[`code-${emptyIdx}`]?.focus();
+    }, 50);
+  };
+
   const handleProductFromCatalog = (selProduct: Product, variant?: any) => {
     const systemUsdRate = resolveUsdRateForCardPrice();
     const effectiveRate = (selProduct as any).customExchangeRate || (selProduct as any).custom_exchange_rate || 0;
@@ -4008,11 +4051,18 @@ export function UniversalInvoiceForm({
           {showProductCatalogModal && (
             <POSProductCatalogModal
               products={products}
-              mode="add-to-cart"
+              mode={selectedRowForProduct !== null ? 'invoice-multi-select' : 'add-to-cart'}
               onClose={() => { setShowProductCatalogModal(false); setSelectedRowForProduct(null); }}
               onAddToCart={(product, variant) => {
                 if (selectedRowForProduct !== null) handleProductSelectForRow(product, variant, selectedRowForProduct);
                 else handleProductFromCatalog(product, variant);
+              }}
+              onAddMultiple={(selected) => {
+                if (selectedRowForProduct !== null) {
+                  handleProductsBulkSelectForRow(selected, selectedRowForProduct);
+                } else {
+                  handleProductsBulkSelectForRow(selected, currentRowIndex);
+                }
               }}
             />
           )}

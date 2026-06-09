@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Search, Grid3x3, List, Package } from 'lucide-react';
+import { X, Search, Grid3x3, List, Package, Check } from 'lucide-react';
 import type { Product } from '../../core/types';
 import { POSProductDetailModal } from './POSProductDetailModal';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -8,11 +8,12 @@ import { useLanguage } from '../../contexts/LanguageContext';
 interface POSProductCatalogModalProps {
   products: Product[];
   slotNumber?: number;
-  mode?: 'add-to-cart' | 'assign-to-slot';
+  mode?: 'add-to-cart' | 'assign-to-slot' | 'invoice-multi-select';
   initialSearchQuery?: string;
   onSelect?: (product: Product) => void;
   onClose: () => void;
   onAddToCart?: (product: Product, variant?: any) => void;
+  onAddMultiple?: (products: Product[]) => void;
 }
 
 export function POSProductCatalogModal({
@@ -22,7 +23,8 @@ export function POSProductCatalogModal({
   initialSearchQuery = '',
   onSelect,
   onClose,
-  onAddToCart
+  onAddToCart,
+  onAddMultiple
 }: POSProductCatalogModalProps) {
   const { t, tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -37,6 +39,30 @@ export function POSProductCatalogModal({
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+
+  const isInvoiceMultiSelect = mode === 'invoice-multi-select';
+  const multiSelectHint = tm('invoiceCatalogMultiSelectHint');
+  const multiSelectHintText = multiSelectHint === 'invoiceCatalogMultiSelectHint'
+    ? 'Çoklu seçim · Satıra eklemek için işaretleyin'
+    : multiSelectHint;
+  const selectAllLabel = tm('catalogSelectAll');
+  const selectAllText = selectAllLabel === 'catalogSelectAll' ? 'Tümünü Seç' : selectAllLabel;
+  const clearSelectionLabel = tm('catalogClearSelection');
+  const clearSelectionText = clearSelectionLabel === 'catalogClearSelection' ? 'Seçimi Kaldır' : clearSelectionLabel;
+  const addSelectedLabel = tm('catalogAddSelected');
+  const addSelectedFallback = 'Seçilenleri Ekle ({count})';
+  const productsSelectedLabel = tm('catalogProductsSelected');
+  const productsSelectedFallback = '{count} ürün seçildi';
+
+  const toggleMultiSelect = (productId: string) => {
+    setMultiSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
 
   // Get categories with counts
   const categoriesWithCounts = useMemo(() => {
@@ -88,6 +114,32 @@ export function POSProductCatalogModal({
     });
   }, [products, selectedCategory, searchQuery]);
 
+  const allFilteredSelected =
+    filteredProducts.length > 0 && filteredProducts.every((p) => multiSelectedIds.has(p.id));
+
+  const handleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setMultiSelectedIds((prev) => {
+        const next = new Set(prev);
+        filteredProducts.forEach((p) => next.delete(p.id));
+        return next;
+      });
+      return;
+    }
+    setMultiSelectedIds((prev) => {
+      const next = new Set(prev);
+      filteredProducts.forEach((p) => next.add(p.id));
+      return next;
+    });
+  };
+
+  const handleAddMultiple = () => {
+    if (!onAddMultiple || multiSelectedIds.size === 0) return;
+    const ordered = products.filter((p) => multiSelectedIds.has(p.id));
+    onAddMultiple(ordered);
+    setMultiSelectedIds(new Set());
+  };
+
   return (
     <div className="fixed inset-0 z-[2147483646] overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md flex items-center justify-center">
       <div className="bg-white w-full h-full flex flex-col shadow-2xl">
@@ -99,10 +151,15 @@ export function POSProductCatalogModal({
             </div>
             <div>
               <h2 className="text-lg">
-                {mode === 'assign-to-slot' ? `${t.quickProductSlot} #${(slotNumber || 0) + 1} - ${t.productSelection}` : t.productQuery}
+                {isInvoiceMultiSelect
+                  ? (tm('productSelection') === 'productSelection' ? 'Ürün Seçimi' : tm('productSelection'))
+                  : mode === 'assign-to-slot'
+                    ? `${t.quickProductSlot} #${(slotNumber || 0) + 1} - ${t.productSelection}`
+                    : t.productQuery}
               </h2>
               <p className="text-sm text-blue-100">
                 {filteredProducts.length} {t.productCount} · {selectedCategory}
+                {isInvoiceMultiSelect && ` · ${multiSelectHintText}`}
                 {mode === 'assign-to-slot' && ' · Shift + Tıkla veya Çift Tıkla'}
               </p>
             </div>
@@ -155,6 +212,15 @@ export function POSProductCatalogModal({
                     autoFocus
                   />
                 </div>
+                {isInvoiceMultiSelect && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFiltered}
+                    className="px-3 py-2 text-xs font-semibold text-blue-700 border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                  >
+                    {allFilteredSelected ? clearSelectionText : selectAllText}
+                  </button>
+                )}
                 <div className="flex items-center gap-1 bg-white border border-gray-300">
                   <button
                     onClick={() => setViewMode('grid')}
@@ -182,10 +248,16 @@ export function POSProductCatalogModal({
             <div className="flex-1 overflow-y-auto p-6">
               {viewMode === 'grid' ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product) => {
+                    const isMultiSelected = multiSelectedIds.has(product.id);
+                    return (
                     <button
                       key={product.id}
                       onClick={() => {
+                        if (isInvoiceMultiSelect) {
+                          toggleMultiSelect(product.id);
+                          return;
+                        }
                         if (mode === 'assign-to-slot' && onSelect) {
                           onSelect(product);
                         } else if (mode === 'add-to-cart') {
@@ -197,8 +269,19 @@ export function POSProductCatalogModal({
                           }
                         }
                       }}
-                      className="bg-white border border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all flex flex-col p-3 group"
+                      className={`bg-white border transition-all flex flex-col p-3 group relative ${
+                        isInvoiceMultiSelect && isMultiSelected
+                          ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
+                          : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
+                      }`}
                     >
+                      {isInvoiceMultiSelect && (
+                        <div className={`absolute top-2 right-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                          isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isMultiSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                      )}
                       <div className="w-full aspect-square bg-gray-100 flex items-center justify-center mb-3">
                         <Package className="w-12 h-12 text-gray-400 group-hover:text-blue-500 transition-colors" />
                       </div>
@@ -231,14 +314,21 @@ export function POSProductCatalogModal({
                         )}
                       </div>
                     </button>
-                  ))}
+                  );
+                  })}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product) => {
+                    const isMultiSelected = multiSelectedIds.has(product.id);
+                    return (
                     <div
                       key={product.id}
                       onClick={() => {
+                        if (isInvoiceMultiSelect) {
+                          toggleMultiSelect(product.id);
+                          return;
+                        }
                         if (mode === 'assign-to-slot' && onSelect) {
                           onSelect(product);
                         } else if (mode === 'add-to-cart') {
@@ -250,8 +340,19 @@ export function POSProductCatalogModal({
                           }
                         }
                       }}
-                      className="w-full bg-white border border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden"
+                      className={`w-full bg-white border transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden ${
+                        isInvoiceMultiSelect && isMultiSelected
+                          ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
+                          : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'
+                      }`}
                     >
+                      {isInvoiceMultiSelect && (
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                          isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isMultiSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                      )}
                       {/* Color Bar - Left side */}
                       {product.variants && product.variants.length > 0 && product.variants[0].color && (
                         <div
@@ -302,7 +403,7 @@ export function POSProductCatalogModal({
                         </span>
                       </div>
 
-                      {mode === 'add-to-cart' && (
+                      {mode === 'add-to-cart' && !isInvoiceMultiSelect && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -329,13 +430,14 @@ export function POSProductCatalogModal({
                         </button>
                       )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>
 
             {/* Variant Selector - Bottom Panel */}
-            {selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0 && mode === 'add-to-cart' && (
+            {selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0 && mode === 'add-to-cart' && !isInvoiceMultiSelect && (
               <div className="bg-white border-t-2 border-blue-600 p-4 flex-shrink-0">
                 <div className="flex items-start gap-4">
                   {/* Product Info */}
@@ -440,6 +542,33 @@ export function POSProductCatalogModal({
             )}
           </div>
         </div>
+
+        {isInvoiceMultiSelect && (
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+            <span className="text-sm text-gray-600">
+              {(productsSelectedLabel === 'catalogProductsSelected' ? productsSelectedFallback : productsSelectedLabel)
+                .replace('{count}', String(multiSelectedIds.size))}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-100 text-sm transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleAddMultiple}
+                disabled={multiSelectedIds.size === 0}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {(addSelectedLabel === 'catalogAddSelected' ? addSelectedFallback : addSelectedLabel)
+                  .replace('{count}', String(multiSelectedIds.size))}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Product Detail Modal */}
