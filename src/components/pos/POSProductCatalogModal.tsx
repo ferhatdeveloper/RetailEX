@@ -44,7 +44,7 @@ export function POSProductCatalogModal({
   const isInvoiceMultiSelect = mode === 'invoice-multi-select';
   const multiSelectHint = tm('invoiceCatalogMultiSelectHint');
   const multiSelectHintText = multiSelectHint === 'invoiceCatalogMultiSelectHint'
-    ? 'Çoklu seçim · Satıra eklemek için işaretleyin'
+    ? 'Çoklu seçim · Ctrl+Click ile işaretleyin'
     : multiSelectHint;
   const selectAllLabel = tm('catalogSelectAll');
   const selectAllText = selectAllLabel === 'catalogSelectAll' ? 'Tümünü Seç' : selectAllLabel;
@@ -62,6 +62,25 @@ export function POSProductCatalogModal({
       else next.add(productId);
       return next;
     });
+  };
+
+  const handleProductPrimaryClick = (e: React.MouseEvent, product: Product) => {
+    if (isInvoiceMultiSelect) {
+      if (e.ctrlKey || e.metaKey) {
+        toggleMultiSelect(product.id);
+      }
+      return;
+    }
+    if (mode === 'assign-to-slot' && onSelect) {
+      onSelect(product);
+    } else if (mode === 'add-to-cart') {
+      if (product.variants && product.variants.length > 0) {
+        setSelectedProduct(product);
+        setSelectedVariant(null);
+      } else if (onAddToCart) {
+        onAddToCart(product);
+      }
+    }
   };
 
   // Get categories with counts
@@ -253,22 +272,7 @@ export function POSProductCatalogModal({
                     return (
                     <button
                       key={product.id}
-                      onClick={() => {
-                        if (isInvoiceMultiSelect) {
-                          toggleMultiSelect(product.id);
-                          return;
-                        }
-                        if (mode === 'assign-to-slot' && onSelect) {
-                          onSelect(product);
-                        } else if (mode === 'add-to-cart') {
-                          if (product.variants && product.variants.length > 0) {
-                            setSelectedProduct(product);
-                            setSelectedVariant(null);
-                          } else if (onAddToCart) {
-                            onAddToCart(product);
-                          }
-                        }
-                      }}
+                      onClick={(e) => handleProductPrimaryClick(e, product)}
                       className={`bg-white border transition-all flex flex-col p-3 group relative ${
                         isInvoiceMultiSelect && isMultiSelected
                           ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
@@ -276,9 +280,17 @@ export function POSProductCatalogModal({
                       }`}
                     >
                       {isInvoiceMultiSelect && (
-                        <div className={`absolute top-2 right-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
-                          isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
-                        }`}>
+                        <div
+                          role="checkbox"
+                          aria-checked={isMultiSelected}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMultiSelect(product.id);
+                          }}
+                          className={`absolute top-2 right-2 w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer ${
+                            isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                          }`}
+                        >
                           {isMultiSelected && <Check className="w-3 h-3 text-white" />}
                         </div>
                       )}
@@ -324,22 +336,7 @@ export function POSProductCatalogModal({
                     return (
                     <div
                       key={product.id}
-                      onClick={() => {
-                        if (isInvoiceMultiSelect) {
-                          toggleMultiSelect(product.id);
-                          return;
-                        }
-                        if (mode === 'assign-to-slot' && onSelect) {
-                          onSelect(product);
-                        } else if (mode === 'add-to-cart') {
-                          if (product.variants && product.variants.length > 0) {
-                            setSelectedProduct(product);
-                            setSelectedVariant(null);
-                          } else if (onAddToCart) {
-                            onAddToCart(product);
-                          }
-                        }
-                      }}
+                      onClick={(e) => handleProductPrimaryClick(e, product)}
                       className={`w-full bg-white border transition-all p-4 flex items-center gap-4 cursor-pointer relative overflow-hidden ${
                         isInvoiceMultiSelect && isMultiSelected
                           ? 'border-blue-500 ring-2 ring-blue-200 shadow-md'
@@ -347,9 +344,17 @@ export function POSProductCatalogModal({
                       }`}
                     >
                       {isInvoiceMultiSelect && (
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                          isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
-                        }`}>
+                        <div
+                          role="checkbox"
+                          aria-checked={isMultiSelected}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleMultiSelect(product.id);
+                          }}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer ${
+                            isMultiSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white'
+                          }`}
+                        >
                           {isMultiSelected && <Check className="w-3 h-3 text-white" />}
                         </div>
                       )}

@@ -149,7 +149,7 @@ export function SupplierModule() {
   const loadEkstresi = async (supplier: Supplier, start: string, end: string) => {
     setEkstresiLoading(true);
     try {
-      setEkstresiData(await supplierAPI.getAccountStatement(supplier.id, start, end));
+      setEkstresiData(await supplierAPI.getAccountStatement(supplier.id, start, end, supplier.name));
     } catch {
       setEkstresiData([]);
     } finally {

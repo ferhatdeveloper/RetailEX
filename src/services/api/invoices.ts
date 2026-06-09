@@ -920,7 +920,8 @@ export const invoicesAPI = {
             invoice.created_at || new Date(),
             ficheType,
             Number(trcode),
-            isValidUuid(invoice.customer_id) ? invoice.customer_id : null,
+            isValidUuid(invoice.customer_id) ? invoice.customer_id
+              : isValidUuid(invoice.supplier_id) ? invoice.supplier_id : null,
             String(invoice.customer_name || invoice.supplier_name || ''),
             Number(invoice.subtotal || 0),
             Number(invoice.tax || 0),

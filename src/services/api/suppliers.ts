@@ -367,7 +367,12 @@ export const supplierAPI = {
   /**
    * Get account statement (ekstresi) for a customer/supplier
    */
-  async getAccountStatement(accountId: string, startDate?: string, endDate?: string): Promise<any[]> {
+  async getAccountStatement(
+    accountId: string,
+    startDate?: string,
+    endDate?: string,
+    accountName?: string
+  ): Promise<any[]> {
     try {
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const { postgrest } = await import('./postgrestClient');
@@ -376,39 +381,68 @@ export const supplierAPI = {
         const salesPath = `/rex_${fn}_${pn}_sales`;
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
-        const salesQuery: Record<string, string> = {
+        const salesByIdQuery: Record<string, string> = {
           select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes',
           customer_id: `eq.${accountId}`,
           order: 'date.asc',
         };
         if (startDate && endDate) {
-          salesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+          salesByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
         } else if (startDate) {
-          salesQuery.date = `gte.${startDate}`;
+          salesByIdQuery.date = `gte.${startDate}`;
         } else if (endDate) {
-          salesQuery.date = `lte.${endDate}`;
+          salesByIdQuery.date = `lte.${endDate}`;
         }
 
-        const cashQuery: Record<string, string> = {
+        const cashByIdQuery: Record<string, string> = {
           select: 'fiche_no,date,transaction_type,amount,currency_code,definition',
           customer_id: `eq.${accountId}`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
           order: 'date.asc',
         };
         if (startDate && endDate) {
-          cashQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+          cashByIdQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
         } else if (startDate) {
-          cashQuery.date = `gte.${startDate}`;
+          cashByIdQuery.date = `gte.${startDate}`;
         } else if (endDate) {
-          cashQuery.date = `lte.${endDate}`;
+          cashByIdQuery.date = `lte.${endDate}`;
         }
 
-        const [saleRows, cashRows] = await Promise.all([
-          postgrest.get<any[]>(salesPath, salesQuery, { schema: 'public' }).catch(() => [] as any[]),
-          postgrest.get<any[]>(cashPath, cashQuery, { schema: 'public' }).catch(() => [] as any[]),
-        ]);
+        const nameTrim = String(accountName || '').trim();
+        const orphanSalesQuery: Record<string, string> | null = nameTrim
+          ? {
+              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes',
+              customer_id: 'is.null',
+              customer_name: `ilike.${nameTrim}`,
+              order: 'date.asc',
+            }
+          : null;
+        if (orphanSalesQuery) {
+          if (startDate && endDate) {
+            orphanSalesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+          } else if (startDate) {
+            orphanSalesQuery.date = `gte.${startDate}`;
+          } else if (endDate) {
+            orphanSalesQuery.date = `lte.${endDate}`;
+          }
+        }
 
-        const fromSales = (Array.isArray(saleRows) ? saleRows : []).map((r) => ({
+        const fetches: Promise<any[]>[] = [
+          postgrest.get<any[]>(salesPath, salesByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
+          postgrest.get<any[]>(cashPath, cashByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
+        ];
+        if (orphanSalesQuery) {
+          fetches.push(
+            postgrest.get<any[]>(salesPath, orphanSalesQuery, { schema: 'public' }).catch(() => [] as any[])
+          );
+        }
+        const [saleRows, cashRows, orphanSaleRows = []] = await Promise.all(fetches);
+
+        const mergedSales = [
+          ...(Array.isArray(saleRows) ? saleRows : []),
+          ...(Array.isArray(orphanSaleRows) ? orphanSaleRows : []),
+        ];
+        const fromSales = mergedSales.map((r) => ({
           fiche_no: r.fiche_no,
           date: r.date,
           trcode: r.trcode,
@@ -433,21 +467,31 @@ export const supplierAPI = {
 
       // Ekstresi = faturalar (sales) + kasa işlemleri (cash_lines)
       // Both halves of the UNION share the same $1/$2/$3 parameters
-      const values: any[] = [accountId];
+      const nameTrim = String(accountName || '').trim();
+      const values: any[] = [accountId, nameTrim || null];
       let dateFilter = '';
-      let i = 2;
+      let i = 3;
       if (startDate) { dateFilter += ` AND t.date::date >= $${i++}::date`; values.push(startDate); }
       if (endDate) { dateFilter += ` AND t.date::date <= $${i++}::date`; values.push(endDate); }
+
+      const accountMatch = `(
+        t.customer_id = $1::uuid
+        OR (
+          $2::text IS NOT NULL AND TRIM($2::text) <> ''
+          AND t.customer_id IS NULL
+          AND UPPER(TRIM(t.customer_name)) = UPPER(TRIM($2::text))
+        )
+      )`;
 
       const sql = `
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes
         FROM sales t
-        WHERE t.customer_id = $1::uuid${dateFilter}
+        WHERE ${accountMatch}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                amount AS total_amount, currency_code AS currency, definition AS notes
         FROM cash_lines t
-        WHERE t.customer_id = $1::uuid${dateFilter}
+        WHERE ${accountMatch}${dateFilter}
           AND t.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
         ORDER BY date ASC`;
 

@@ -985,8 +985,12 @@ export function UniversalInvoiceForm({
     if (supplierCode && supplierCode.length >= 3) {
       const timer = setTimeout(async () => {
         // Find existing supplier in the local list first
+        const currentSupplier = suppliers.find(s => s.id === supplierId);
+        if (currentSupplier && currentSupplier.code === supplierCode) return;
+
         const found = suppliers.find(s => s.code === supplierCode);
         if (found) {
+          setSupplierId(found.id);
           setSupplierTitle(found.name);
           return;
         }
@@ -994,6 +998,7 @@ export function UniversalInvoiceForm({
         try {
           const fetched = await supplierAPI.getByCode(supplierCode);
           if (fetched) {
+            setSupplierId(fetched.id);
             setSupplierTitle(fetched.name);
           }
         } catch (err) {
@@ -2799,13 +2804,31 @@ export function UniversalInvoiceForm({
       }
 
       // ===== 2. VERİTABANINA KAYDET =====
+      let resolvedSupplierId = supplierId;
+      if (invoiceType.category === 'Alis' && !resolvedSupplierId) {
+        const normTr = (s: string) => s.trim().toLocaleLowerCase('tr-TR');
+        if (supplierCode) {
+          const byCode = suppliers.find((s) => s.code === supplierCode);
+          if (byCode) resolvedSupplierId = byCode.id;
+          else {
+            const fetched = await supplierAPI.getByCode(supplierCode);
+            if (fetched) resolvedSupplierId = fetched.id;
+          }
+        }
+        if (!resolvedSupplierId && supplierTitle) {
+          const titleNorm = normTr(supplierTitle);
+          const byName = suppliers.find((s) => normTr(s.name || '') === titleNorm);
+          if (byName) resolvedSupplierId = byName.id;
+        }
+      }
+
       const invoiceData: any = {
         invoice_no: invoiceNo,
         invoice_date: transactionDate,
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
-        customer_id: invoiceType.category === 'Alis' ? (supplierId || customerId || undefined) : (customerId || undefined),
-        supplier_id: supplierId || undefined,
+        customer_id: invoiceType.category === 'Alis' ? (resolvedSupplierId || customerId || undefined) : (customerId || undefined),
+        supplier_id: resolvedSupplierId || undefined,
         supplier_name: supplierTitle || '',
         /* Alış: tedarikçi ünvanı sales.customer_name'e de yazılmalı (liste / join) */
         customer_name: invoiceType.category === 'Alis' ? (supplierTitle || customerTitle || '') : (customerTitle || ''),

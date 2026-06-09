@@ -19,13 +19,6 @@ import { useLanguage } from '../../contexts/LanguageContext';
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 const FILTER_MENU_Z_INDEX = 12000;
 
-function isTypingTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  const tag = el.tagName?.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
-}
-
 interface DevExDataGridProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
@@ -226,9 +219,6 @@ export function DevExDataGrid<T>({
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
-  const gridRootRef = useRef<HTMLDivElement>(null);
   const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
@@ -275,10 +265,6 @@ export function DevExDataGrid<T>({
     }
   }, [selectedRowIds]);
 
-  useEffect(() => {
-    setFocusedRowIndex(0);
-  }, [data, sorting, columnFilters]);
-
   // Notify parent of selection changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -314,7 +300,7 @@ export function DevExDataGrid<T>({
   };
 
   const finalColumns = useMemo(() => {
-    if (!enableSelection || !selectionMode) return columns;
+    if (!enableSelection) return columns;
 
     const selectionColumn: ColumnDef<T, any> = {
       id: 'select',
@@ -356,7 +342,7 @@ export function DevExDataGrid<T>({
     };
 
     return [selectionColumn, ...columns];
-  }, [columns, enableSelection, selectionMode, setRowSelection]);
+  }, [columns, enableSelection, setRowSelection]);
 
   const table = useReactTable({
     data,
@@ -467,94 +453,30 @@ export function DevExDataGrid<T>({
     [openFilterColumn, closeFilterMenu]
   );
 
-  const handleGridKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (isTypingTarget(e.target)) return;
-
-      if (enableSelection) {
-        if ((e.key === ' ' || e.code === 'Space') && e.altKey) {
-          e.preventDefault();
-          setSelectionMode((prev) => {
-            const next = !prev;
-            if (!next) {
-              setRowSelection({});
-              setFocusedRowIndex(0);
-            } else {
-              setFocusedRowIndex(0);
-              gridRootRef.current?.focus();
-            }
-            return next;
-          });
-          return;
-        }
-
-        if ((e.key === ' ' || e.code === 'Space') && selectionMode && !e.altKey) {
-          e.preventDefault();
-          const rows = table.getRowModel().rows;
-          const row = rows[focusedRowIndex];
-          if (row) row.toggleSelected(!row.getIsSelected());
-          return;
-        }
-
-        if (selectionMode) {
-          const rows = table.getRowModel().rows;
-          if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setFocusedRowIndex((i) => Math.min(i + 1, Math.max(0, rows.length - 1)));
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setFocusedRowIndex((i) => Math.max(i - 1, 0));
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            setSelectionMode(false);
-            setRowSelection({});
-            setFocusedRowIndex(0);
-          } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-            e.preventDefault();
-            const filtered = table.getFilteredRowModel().rows;
-            setRowSelection(Object.fromEntries(filtered.map((row) => [row.id, true])));
-          }
-        }
-        return;
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-        e.preventDefault();
-        const rows = table.getFilteredRowModel().rows;
-        setRowSelection(Object.fromEntries(rows.map((row) => [row.id, true])));
-      }
-    },
-    [enableSelection, selectionMode, focusedRowIndex, table, setRowSelection]
-  );
-
   const portalFilterColumn =
     openFilterColumn != null ? filterColumnsRef.current.get(openFilterColumn) : undefined;
 
   // Desktop Table View
   return (
     <div
-      ref={gridRootRef}
       className="flex flex-col h-full outline-none"
       style={{ height: height }}
       data-datagrid-root
       tabIndex={enableSelection ? 0 : undefined}
-      onKeyDown={enableSelection ? handleGridKeyDown : undefined}
+      onKeyDown={
+        enableSelection
+          ? (e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                const rows = table.getFilteredRowModel().rows;
+                setRowSelection(Object.fromEntries(rows.map((row) => [row.id, true])));
+              }
+            }
+          : undefined
+      }
     >
-      {enableSelection && selectionMode && (
-        <div className="shrink-0 px-3 py-1.5 bg-blue-50 border-b border-blue-200 text-[10px] font-semibold text-blue-800">
-          {tm('gridSelectionModeActive')}
-        </div>
-      )}
-      {enableSelection && !selectionMode && (
-        <div className="shrink-0 px-3 py-1 text-[10px] text-gray-500 border-b border-gray-100 bg-gray-50/80">
-          {tm('gridSelectionModeHint')}
-        </div>
-      )}
       {/* Table Container */}
-      <div
-        className="flex-1 overflow-auto border border-gray-300 bg-white"
-        onMouseDown={() => gridRootRef.current?.focus()}
-      >
+      <div className="flex-1 overflow-auto border border-gray-300 bg-white">
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-30 bg-[#E3F2FD] shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -609,9 +531,8 @@ export function DevExDataGrid<T>({
             {table.getRowModel().rows.map((row, idx) => (
               <tr
                 key={row.id}
-                onClick={() => {
-                  if (selectionMode) {
-                    setFocusedRowIndex(idx);
+                onClick={(e) => {
+                  if (enableSelection && (e.ctrlKey || e.metaKey)) {
                     row.toggleSelected(!row.getIsSelected());
                     return;
                   }
@@ -620,7 +541,7 @@ export function DevExDataGrid<T>({
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
                 className={`border-b border-gray-200 hover:bg-[#BBDEFB] transition-colors cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                  } ${selectionMode && idx === focusedRowIndex ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/70' : ''} ${selectionMode && row.getIsSelected() ? 'bg-blue-100/60' : ''}`}
+                  } ${enableSelection && row.getIsSelected() ? 'bg-blue-100/60' : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td
