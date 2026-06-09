@@ -756,7 +756,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   return (
     <div className="h-full flex flex-col">
       {/* Header - Minimal */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2">
+      <div className="relative z-20 shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4" />
@@ -909,7 +909,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         className={`flex-1 flex flex-col min-h-0 p-3 bg-gray-50 ${isMobile ? 'overflow-hidden' : 'overflow-auto'}`}
       >
         {/* Search Box */}
-        <div className="mb-3 bg-white p-3 border border-gray-200 rounded shrink-0">
+        <div className="mb-3 bg-white p-3 border border-gray-200 rounded shrink-0 relative z-20">
           {isMobile && (
             <p className="text-[11px] text-gray-500 mb-2">
               Satıra basılı tutun: detay ve işlemler (düzenle, sil, etiket…).

@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,6 +17,15 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
+const DOUBLE_SPACE_MS = 450;
+const FILTER_MENU_Z_INDEX = 12000;
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName?.toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+}
 
 interface DevExDataGridProps<T> {
   data: T[];
@@ -92,7 +102,7 @@ function FilterMenu({ column, onClose }: { column: Column<any, unknown>; onClose
 
   return (
     <div
-      className="absolute top-full right-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-50 min-w-[220px] max-w-[300px]"
+      className="bg-white border border-gray-300 rounded shadow-lg min-w-[220px] max-w-[300px]"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="p-2 space-y-2">
@@ -216,8 +226,30 @@ export function DevExDataGrid<T>({
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
+  const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
+  const gridRootRef = useRef<HTMLDivElement>(null);
+  const lastSpaceAtRef = useRef(0);
+  const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
+
+  const closeFilterMenu = useCallback(() => {
+    setOpenFilterColumn(null);
+    setFilterMenuAnchor(null);
+  }, []);
+
+  useEffect(() => {
+    if (!openFilterColumn) return;
+    const onScrollOrResize = () => closeFilterMenu();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [openFilterColumn, closeFilterMenu]);
 
   useEffect(() => {
     if (columnVisibility) {
@@ -244,6 +276,10 @@ export function DevExDataGrid<T>({
       setRowSelection(selectedRowIds);
     }
   }, [selectedRowIds]);
+
+  useEffect(() => {
+    setFocusedRowIndex(0);
+  }, [data, sorting, columnFilters]);
 
   // Notify parent of selection changes
   useEffect(() => {
@@ -280,7 +316,7 @@ export function DevExDataGrid<T>({
   };
 
   const finalColumns = useMemo(() => {
-    if (!enableSelection) return columns;
+    if (!enableSelection || !selectionMode) return columns;
 
     const selectionColumn: ColumnDef<T, any> = {
       id: 'select',
@@ -322,7 +358,7 @@ export function DevExDataGrid<T>({
     };
 
     return [selectionColumn, ...columns];
-  }, [columns, enableSelection, setRowSelection]);
+  }, [columns, enableSelection, selectionMode, setRowSelection]);
 
   const table = useReactTable({
     data,
@@ -417,35 +453,124 @@ export function DevExDataGrid<T>({
     );
   }
 
+  const openFilterForHeader = useCallback(
+    (headerId: string, anchorEl: HTMLElement, column: Column<any, unknown>) => {
+      if (openFilterColumn === headerId) {
+        closeFilterMenu();
+        return;
+      }
+      filterColumnsRef.current.set(headerId, column);
+      const rect = anchorEl.getBoundingClientRect();
+      const menuWidth = 240;
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+      setFilterMenuAnchor({ top: rect.bottom + 4, left });
+      setOpenFilterColumn(headerId);
+    },
+    [openFilterColumn, closeFilterMenu]
+  );
+
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isTypingTarget(e.target)) return;
+
+      if (enableSelection) {
+        if (e.key === ' ' || e.code === 'Space') {
+          const now = Date.now();
+          const sinceLast = now - lastSpaceAtRef.current;
+          if (sinceLast > 0 && sinceLast < DOUBLE_SPACE_MS) {
+            e.preventDefault();
+            setSelectionMode((prev) => {
+              const next = !prev;
+              if (!next) {
+                setRowSelection({});
+                setFocusedRowIndex(0);
+              } else {
+                setFocusedRowIndex(0);
+                gridRootRef.current?.focus();
+              }
+              return next;
+            });
+            lastSpaceAtRef.current = 0;
+            return;
+          }
+          lastSpaceAtRef.current = now;
+
+          if (selectionMode) {
+            e.preventDefault();
+            const rows = table.getRowModel().rows;
+            const row = rows[focusedRowIndex];
+            if (row) row.toggleSelected(!row.getIsSelected());
+          }
+          return;
+        }
+
+        if (selectionMode) {
+          const rows = table.getRowModel().rows;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setFocusedRowIndex((i) => Math.min(i + 1, Math.max(0, rows.length - 1)));
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setFocusedRowIndex((i) => Math.max(i - 1, 0));
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setSelectionMode(false);
+            setRowSelection({});
+            setFocusedRowIndex(0);
+          } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            e.preventDefault();
+            const filtered = table.getFilteredRowModel().rows;
+            setRowSelection(Object.fromEntries(filtered.map((row) => [row.id, true])));
+          }
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const rows = table.getFilteredRowModel().rows;
+        setRowSelection(Object.fromEntries(rows.map((row) => [row.id, true])));
+      }
+    },
+    [enableSelection, selectionMode, focusedRowIndex, table, setRowSelection]
+  );
+
+  const portalFilterColumn =
+    openFilterColumn != null ? filterColumnsRef.current.get(openFilterColumn) : undefined;
+
   // Desktop Table View
   return (
     <div
+      ref={gridRootRef}
       className="flex flex-col h-full outline-none"
       style={{ height: height }}
       data-datagrid-root
       tabIndex={enableSelection ? 0 : undefined}
-      onKeyDown={
-        enableSelection
-          ? (e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
-                e.preventDefault();
-                const rows = table.getFilteredRowModel().rows;
-                setRowSelection(Object.fromEntries(rows.map((row) => [row.id, true])));
-              }
-            }
-          : undefined
-      }
+      onKeyDown={enableSelection ? handleGridKeyDown : undefined}
     >
+      {enableSelection && selectionMode && (
+        <div className="shrink-0 px-3 py-1.5 bg-blue-50 border-b border-blue-200 text-[10px] font-semibold text-blue-800">
+          {tm('gridSelectionModeActive')}
+        </div>
+      )}
+      {enableSelection && !selectionMode && (
+        <div className="shrink-0 px-3 py-1 text-[10px] text-gray-500 border-b border-gray-100 bg-gray-50/80">
+          {tm('gridSelectionModeHint')}
+        </div>
+      )}
       {/* Table Container */}
-      <div className="flex-1 overflow-auto border border-gray-300 bg-white">
+      <div
+        className="flex-1 overflow-auto border border-gray-300 bg-white"
+        onMouseDown={() => gridRootRef.current?.focus()}
+      >
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-[1]">
+          <thead className="sticky top-0 z-30 bg-[#E3F2FD] shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-[#E3F2FD] border-b border-gray-300">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300 last:border-r-0 relative"
+                    className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300 last:border-r-0 relative bg-[#E3F2FD]"
                     style={{ width: header.getSize() }}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -469,9 +594,10 @@ export function DevExDataGrid<T>({
                       {/* Filter Icon */}
                       {header.column.getCanFilter() && header.id !== 'select' && header.id !== 'actions' && (
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setOpenFilterColumn(openFilterColumn === header.id ? null : header.id);
+                            openFilterForHeader(header.id, e.currentTarget, header.column);
                           }}
                           className={`p-0.5 hover:bg-gray-200 rounded transition-colors ${header.column.getFilterValue() ? 'text-blue-600' : 'text-gray-500'
                             }`}
@@ -479,14 +605,6 @@ export function DevExDataGrid<T>({
                         >
                           <Filter className="w-2.5 h-2.5" />
                         </button>
-                      )}
-
-                      {/* Filter Menu */}
-                      {openFilterColumn === header.id && (
-                        <FilterMenu
-                          column={header.column}
-                          onClose={() => setOpenFilterColumn(null)}
-                        />
                       )}
                     </div>
                   </th>
@@ -499,11 +617,18 @@ export function DevExDataGrid<T>({
             {table.getRowModel().rows.map((row, idx) => (
               <tr
                 key={row.id}
-                onClick={() => onRowClick?.(row.original)}
+                onClick={() => {
+                  if (selectionMode) {
+                    setFocusedRowIndex(idx);
+                    row.toggleSelected(!row.getIsSelected());
+                    return;
+                  }
+                  onRowClick?.(row.original);
+                }}
                 onDoubleClick={() => onRowDoubleClick?.(row.original)}
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
                 className={`border-b border-gray-200 hover:bg-[#BBDEFB] transition-colors cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                  }`}
+                  } ${selectionMode && idx === focusedRowIndex ? 'ring-2 ring-inset ring-blue-500 bg-blue-50/70' : ''} ${selectionMode && row.getIsSelected() ? 'bg-blue-100/60' : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td
@@ -526,9 +651,27 @@ export function DevExDataGrid<T>({
         )}
       </div>
 
+      {openFilterColumn && filterMenuAnchor && portalFilterColumn &&
+        createPortal(
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: FILTER_MENU_Z_INDEX }}
+            onMouseDown={closeFilterMenu}
+          >
+            <div
+              className="absolute"
+              style={{ top: filterMenuAnchor.top, left: filterMenuAnchor.left }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <FilterMenu column={portalFilterColumn} onClose={closeFilterMenu} />
+            </div>
+          </div>,
+          document.body
+        )}
+
       {/* Pagination */}
       {enablePagination && (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200">
+        <div className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <span>
               {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()}

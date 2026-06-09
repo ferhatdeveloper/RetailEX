@@ -4448,6 +4448,18 @@ export const wmsModuleTranslations = {
     ar: 'تاريخ الإضافة',
     ku: 'بەرواری زیادکردن',
   },
+  gridSelectionModeHint: {
+    tr: 'Çift Space — seçim modu (ürünleri işaretlemek için)',
+    en: 'Double Space — selection mode',
+    ar: 'مسافة مزدوجة — وضع التحديد',
+    ku: 'دوو جار Space — دۆخی هەڵبژاردن',
+  },
+  gridSelectionModeActive: {
+    tr: 'Seçim modu aktif: Space ile işaretle, ↑↓ ile gezin, çift Space veya Esc ile kapat',
+    en: 'Selection mode: Space to toggle, ↑↓ navigate, double Space or Esc to exit',
+    ar: 'وضع التحديد: مسافة للتبديل، ↑↓ للتنقل، مسافة مزدوجة أو Esc للخروج',
+    ku: 'دۆخی هەڵبژاردن: Space بۆ نیشانکردن، ↑↓ گەڕان، دوو جار Space یان Esc داخستن',
+  },
   invoiceTypeCountSurplus: { tr: 'Sayım fazlası', en: 'Count surplus', ar: 'فائض الجرد', ku: 'زێدەی ژماردن' },
   invoiceBulkPurchaseFromSayimBtn: {
     tr: 'Seçilenlerden alış taslağı',
