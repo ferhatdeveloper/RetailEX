@@ -12,6 +12,9 @@ import { useAuthStore } from '../../store/useAuthStore';
 const PRODUCT_LIST_SELECT =
   'id,firm_nr,code,barcode,name,name2,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
+/** Migration 035 öncesi tenant şemaları (ör. kupeli) — follow_up_reminder_days yok */
+const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT.replace(',follow_up_reminder_days', '');
+const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
 
 /** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
 const PRODUCT_REPORT_LIST_SELECT =
@@ -287,26 +290,58 @@ export const productAPI = {
         } else if (firmCandidates.length > 1) {
           query.or = `(${firmCandidates.map((f) => `firm_nr.eq.${f}`).join(',')})`;
         }
-        const rows = await postgrest.get<any[]>(
-          `/${tableName}`,
-          query,
-          { schema: 'public' }
-        );
+        let rows: any[] = [];
+        try {
+          const listRows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            query,
+            { schema: 'public' }
+          );
+          rows = Array.isArray(listRows) ? listRows : [];
+        } catch (error) {
+          if (!isUndefinedColumnError(error)) throw error;
+          console.warn('[ProductAPI] getAll fallback select due to missing column:', error);
+          const fallbackRows = await postgrest.get<any[]>(
+            `/${tableName}`,
+            { ...query, select: PRODUCT_LIST_SELECT_FALLBACK },
+            { schema: 'public' }
+          );
+          rows = Array.isArray(fallbackRows) ? fallbackRows : [];
+        }
         return (Array.isArray(rows) ? rows : [])
           .filter((r: any) => !(r?.is_active === false || r?.is_active === 0 || String(r?.is_active).toLowerCase() === 'false'))
           .map(mapDatabaseProductToProduct);
       }
-      const { rows } = await postgres.query(
-        `SELECT ${PRODUCT_LIST_SELECT_SQL}
-         FROM ${tableName}
-         WHERE COALESCE(is_active, true) = true
-           AND (
-             LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
-             OR TRIM(COALESCE(firm_nr, '')) = $2
-           )
-         ORDER BY name ASC`,
-        [firmEq, firmRaw || firmEq]
-      );
+      let rows: any[] = [];
+      try {
+        const result = await postgres.query(
+          `SELECT ${PRODUCT_LIST_SELECT_SQL}
+           FROM ${tableName}
+           WHERE COALESCE(is_active, true) = true
+             AND (
+               LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+               OR TRIM(COALESCE(firm_nr, '')) = $2
+             )
+           ORDER BY name ASC`,
+          [firmEq, firmRaw || firmEq]
+        );
+        rows = result.rows;
+      } catch (error) {
+        if (!isUndefinedColumnError(error)) throw error;
+        console.warn('[ProductAPI] getAll SQL fallback select due to missing column:', error);
+        const fallbackResult = await postgres.query(
+          `SELECT ${PRODUCT_LIST_SELECT_FALLBACK_SQL}
+           FROM ${tableName}
+           WHERE COALESCE(is_active, true) = true
+             AND (
+               LPAD(TRIM(COALESCE(firm_nr, '')), 3, '0') = $1
+               OR TRIM(COALESCE(firm_nr, '')) = $2
+             )
+           ORDER BY name ASC`,
+          [firmEq, firmRaw || firmEq]
+        );
+        rows = fallbackResult.rows;
+      }
       return rows.map(mapDatabaseProductToProduct);
     } catch (error) {
       console.error('[ProductAPI] getAll failed:', error);
