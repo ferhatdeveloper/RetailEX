@@ -6,6 +6,10 @@ import { cn } from '../ui/utils';
  * Yönetim modülü mobil ana alan `z-[10]`; MainLayout üst çubuk `z-[100]`.
  * `fixed` tam ekran içerik bu bağlamda üst çubuğun altında kalır; `document.body` portalı ile üstte çizilir.
  */
+/** Tam ekran modal / ekstre — güzellik takvimi ve üst layout’un üstünde (inline style zorunlu). */
+export const MODAL_OVERLAY_Z = 2147483646;
+
+/** Hafif tam ekran katmanlar (mobil aksiyon sheet vb.) */
 export const FULLSCREEN_BODY_PORTAL_Z = 25200;
 
 export type FullscreenBodyPortalProps = {

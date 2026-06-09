@@ -20,6 +20,7 @@ import {
 } from '../../../services/api/masterData';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
+import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 
 /** Sıfır ondalıkla gösterilen yaygın ana para kodları */
 function preferIntegerAmountDisplay(code: string): boolean {
@@ -135,6 +136,15 @@ export function SupplierModule() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedAccount]);
 
+  useEffect(() => {
+    if (!selectedAccount && !showAddModal) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [selectedAccount, showAddModal]);
+
   const loadSuppliers = async () => {
     setLoading(true);
     try {
@@ -150,8 +160,9 @@ export function SupplierModule() {
     setEkstresiLoading(true);
     try {
       setEkstresiData(await supplierAPI.getAccountStatement(supplier.id, start, end, supplier.name));
-    } catch {
+    } catch (e: any) {
       setEkstresiData([]);
+      toast.error(e?.message || 'Hesap ekstresi yüklenemedi');
     } finally {
       setEkstresiLoading(false);
     }
@@ -531,10 +542,11 @@ export function SupplierModule() {
         </div>
       </div>
 
-      {/* Tam ekran — hesap hareketleri / ekstre */}
+      {/* Tam ekran — hesap hareketleri / ekstre (body portalı — üst layout üstünde) */}
       {selectedAccount && (
-        <div
-          className="fixed inset-0 z-[10050] flex flex-col bg-white"
+        <FullscreenBodyPortal
+          className="flex flex-col bg-white"
+          zIndex={MODAL_OVERLAY_Z}
           role="dialog"
           aria-modal="true"
           aria-labelledby="supplier-ekstre-title"
@@ -665,7 +677,7 @@ export function SupplierModule() {
               </table>
             )}
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
 
       {/* Context Menu */}
@@ -705,8 +717,15 @@ export function SupplierModule() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[10000] p-4 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false); }}>
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        <FullscreenBodyPortal
+          className="bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm"
+          zIndex={MODAL_OVERLAY_Z}
+          onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false); }}
+        >
+          <div
+            className="bg-white rounded-xl w-full max-w-2xl max-h-[min(90vh,100dvh)] overflow-hidden shadow-2xl flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-black text-slate-800 uppercase tracking-tighter">{editingSupplier ? tm('edit') : tm('newCurrentAccount')}</h3>
@@ -755,7 +774,7 @@ export function SupplierModule() {
               <button onClick={handleSave} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingSupplier ? tm('save') : tm('add')}</button>
             </div>
           </div>
-        </div>
+        </FullscreenBodyPortal>
       )}
     </div>
   );

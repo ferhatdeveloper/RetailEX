@@ -2,6 +2,7 @@ import React, { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export type RetailExFlatModalProps = {
     open: boolean;
@@ -23,9 +24,6 @@ export type RetailExFlatModalProps = {
     /** Verilirse varsayılan İptal/Kaydet footer yerine bu render edilir */
     footer?: React.ReactNode;
 };
-
-/** Üst katman — z-index inline: önceden üretilmiş CSS’te `z-[2147483646]` sınıfı olmayabiliyor; güzellik takvim tam ekranı (z=100000) modalın üstünü kapatıyordu. */
-const MODAL_OVERLAY_Z = 2147483646;
 
 const overlayCls =
     'fixed inset-0 overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-md animate-in fade-in duration-200';

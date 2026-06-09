@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Calendar, Package, TrendingUp, Filter, Plus, AlertTriangle, CheckSquare, Square, Flame, Banknote, Clock, LayoutGrid } from 'lucide-react';
+import { MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 
 interface HistoryItem {
     id: number;
@@ -100,7 +101,7 @@ export function SupplierHistoryModal({ isOpen, onClose, supplierName, onAddItems
     );
 
     return createPortal(
-        <div className="fixed inset-0 z-[10001] flex flex-col bg-white">
+        <div className="fixed inset-0 flex flex-col bg-white" style={{ zIndex: MODAL_OVERLAY_Z }}>
             <div className="flex-1 flex flex-col overflow-hidden w-full h-full">
                 {/* Header */}
                 <div className="bg-blue-600 px-4 py-3 flex items-center justify-between text-white flex-shrink-0 shadow-md z-20">

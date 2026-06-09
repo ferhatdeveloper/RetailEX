@@ -7,6 +7,46 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { Supplier } from '../../core/types';
 export type { Supplier };
 
+function accountNamesMatch(stored: string | null | undefined, expected: string): boolean {
+  const a = String(stored || '').trim().toLocaleUpperCase('tr-TR');
+  const b = String(expected || '').trim().toLocaleUpperCase('tr-TR');
+  return a.length > 0 && b.length > 0 && a === b;
+}
+
+function dedupeEkstreRows(rows: any[]): any[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    const key = `${r.fiche_no ?? ''}|${r.date ?? ''}|${r.fiche_type ?? ''}|${r.total_amount ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mapSalesRowToEkstre(r: any) {
+  return {
+    fiche_no: r.fiche_no,
+    date: r.date,
+    trcode: r.trcode,
+    fiche_type: r.fiche_type,
+    total_amount: r.net_amount,
+    currency: r.currency,
+    notes: r.notes,
+  };
+}
+
+function mapCashRowToEkstre(r: any) {
+  return {
+    fiche_no: r.fiche_no,
+    date: r.date,
+    trcode: 0,
+    fiche_type: r.transaction_type,
+    total_amount: r.amount,
+    currency: r.currency_code,
+    notes: r.definition,
+  };
+}
+
 export const supplierAPI = {
   /**
    * Get all suppliers
@@ -409,21 +449,20 @@ export const supplierAPI = {
         }
 
         const nameTrim = String(accountName || '').trim();
-        const orphanSalesQuery: Record<string, string> | null = nameTrim
+        const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
-              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes',
-              customer_id: 'is.null',
+              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name',
               customer_name: `ilike.${nameTrim}`,
               order: 'date.asc',
             }
           : null;
-        if (orphanSalesQuery) {
+        if (nameSalesQuery) {
           if (startDate && endDate) {
-            orphanSalesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
+            nameSalesQuery.and = `(date.gte.${startDate},date.lte.${endDate})`;
           } else if (startDate) {
-            orphanSalesQuery.date = `gte.${startDate}`;
+            nameSalesQuery.date = `gte.${startDate}`;
           } else if (endDate) {
-            orphanSalesQuery.date = `lte.${endDate}`;
+            nameSalesQuery.date = `lte.${endDate}`;
           }
         }
 
@@ -431,36 +470,24 @@ export const supplierAPI = {
           postgrest.get<any[]>(salesPath, salesByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
           postgrest.get<any[]>(cashPath, cashByIdQuery, { schema: 'public' }).catch(() => [] as any[]),
         ];
-        if (orphanSalesQuery) {
+        if (nameSalesQuery) {
           fetches.push(
-            postgrest.get<any[]>(salesPath, orphanSalesQuery, { schema: 'public' }).catch(() => [] as any[])
+            postgrest.get<any[]>(salesPath, nameSalesQuery, { schema: 'public' }).catch(() => [] as any[])
           );
         }
-        const [saleRows, cashRows, orphanSaleRows = []] = await Promise.all(fetches);
+        const [saleRows, cashRows, nameSaleRows = []] = await Promise.all(fetches);
 
-        const mergedSales = [
-          ...(Array.isArray(saleRows) ? saleRows : []),
-          ...(Array.isArray(orphanSaleRows) ? orphanSaleRows : []),
-        ];
-        const fromSales = mergedSales.map((r) => ({
-          fiche_no: r.fiche_no,
-          date: r.date,
-          trcode: r.trcode,
-          fiche_type: r.fiche_type,
-          total_amount: r.net_amount,
-          currency: r.currency,
-          notes: r.notes,
-        }));
-        const fromCash = (Array.isArray(cashRows) ? cashRows : []).map((r) => ({
-          fiche_no: r.fiche_no,
-          date: r.date,
-          trcode: 0,
-          fiche_type: r.transaction_type,
-          total_amount: r.amount,
-          currency: r.currency_code,
-          notes: r.definition,
-        }));
-        return [...fromSales, ...fromCash].sort(
+        const accountIdStr = String(accountId || '');
+        const byIdSales = (Array.isArray(saleRows) ? saleRows : []).map(mapSalesRowToEkstre);
+        const byNameSales = (Array.isArray(nameSaleRows) ? nameSaleRows : [])
+          .filter((r) => {
+            if (!accountNamesMatch(r.customer_name, nameTrim)) return false;
+            const cid = r.customer_id ? String(r.customer_id) : '';
+            return !cid || cid !== accountIdStr;
+          })
+          .map(mapSalesRowToEkstre);
+        const fromCash = (Array.isArray(cashRows) ? cashRows : []).map(mapCashRowToEkstre);
+        return dedupeEkstreRows([...byIdSales, ...byNameSales, ...fromCash]).sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
       }
@@ -475,18 +502,19 @@ export const supplierAPI = {
       if (endDate) { dateFilter += ` AND t.date::date <= $${i++}::date`; values.push(endDate); }
 
       const accountMatch = `(
-        t.customer_id = $1::uuid
+        t.customer_id::text = $1::text
         OR (
           $2::text IS NOT NULL AND TRIM($2::text) <> ''
-          AND t.customer_id IS NULL
-          AND UPPER(TRIM(t.customer_name)) = UPPER(TRIM($2::text))
+          AND TRIM(t.customer_name) ILIKE TRIM($2::text)
+          AND (t.customer_id IS NULL OR t.customer_id::text <> $1::text)
         )
       )`;
+      const activeOnly = `COALESCE(t.is_cancelled, false) = false`;
 
       const sql = `
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes
         FROM sales t
-        WHERE ${accountMatch}${dateFilter}
+        WHERE ${activeOnly} AND ${accountMatch}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                amount AS total_amount, currency_code AS currency, definition AS notes
@@ -496,10 +524,10 @@ export const supplierAPI = {
         ORDER BY date ASC`;
 
       const { rows } = await postgres.query(sql, values);
-      return rows;
-    } catch (error) {
+      return dedupeEkstreRows(rows);
+    } catch (error: any) {
       console.error('[SupplierAPI] getAccountStatement failed:', error);
-      return [];
+      throw new Error(error?.message || 'Hesap ekstresi yüklenemedi');
     }
   },
 
