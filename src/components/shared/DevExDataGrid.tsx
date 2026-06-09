@@ -17,7 +17,6 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
-const DOUBLE_SPACE_MS = 450;
 const FILTER_MENU_Z_INDEX = 12000;
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -230,7 +229,6 @@ export function DevExDataGrid<T>({
   const [selectionMode, setSelectionMode] = useState(false);
   const [focusedRowIndex, setFocusedRowIndex] = useState(0);
   const gridRootRef = useRef<HTMLDivElement>(null);
-  const lastSpaceAtRef = useRef(0);
   const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
@@ -474,33 +472,27 @@ export function DevExDataGrid<T>({
       if (isTypingTarget(e.target)) return;
 
       if (enableSelection) {
-        if (e.key === ' ' || e.code === 'Space') {
-          const now = Date.now();
-          const sinceLast = now - lastSpaceAtRef.current;
-          if (sinceLast > 0 && sinceLast < DOUBLE_SPACE_MS) {
-            e.preventDefault();
-            setSelectionMode((prev) => {
-              const next = !prev;
-              if (!next) {
-                setRowSelection({});
-                setFocusedRowIndex(0);
-              } else {
-                setFocusedRowIndex(0);
-                gridRootRef.current?.focus();
-              }
-              return next;
-            });
-            lastSpaceAtRef.current = 0;
-            return;
-          }
-          lastSpaceAtRef.current = now;
+        if ((e.key === ' ' || e.code === 'Space') && e.altKey) {
+          e.preventDefault();
+          setSelectionMode((prev) => {
+            const next = !prev;
+            if (!next) {
+              setRowSelection({});
+              setFocusedRowIndex(0);
+            } else {
+              setFocusedRowIndex(0);
+              gridRootRef.current?.focus();
+            }
+            return next;
+          });
+          return;
+        }
 
-          if (selectionMode) {
-            e.preventDefault();
-            const rows = table.getRowModel().rows;
-            const row = rows[focusedRowIndex];
-            if (row) row.toggleSelected(!row.getIsSelected());
-          }
+        if ((e.key === ' ' || e.code === 'Space') && selectionMode && !e.altKey) {
+          e.preventDefault();
+          const rows = table.getRowModel().rows;
+          const row = rows[focusedRowIndex];
+          if (row) row.toggleSelected(!row.getIsSelected());
           return;
         }
 
