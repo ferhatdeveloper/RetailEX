@@ -28,7 +28,9 @@ export function WhatsAppIntegrationModule() {
   const [settings, setSettings] = useState<MessagingSettings | null>(null);
 
   const [waProvider, setWaProvider] = useState('NONE');
-  const [waBaseUrl, setWaBaseUrl] = useState('http://127.0.0.1:3000');
+  const defaultBridgeUrl =
+    import.meta.env.DEV ? 'http://127.0.0.1:3000' : '/__wa_bridge';
+  const [waBaseUrl, setWaBaseUrl] = useState(defaultBridgeUrl);
   const [waToken, setWaToken] = useState('');
   const [waInstance, setWaInstance] = useState('');
   const [waPhoneId, setWaPhoneId] = useState('');
@@ -52,7 +54,7 @@ export function WhatsAppIntegrationModule() {
       setSettings(s);
       if (s) {
         setWaProvider((s.whatsapp_provider || 'NONE').toString());
-        setWaBaseUrl(s.whatsapp_base_url || 'http://127.0.0.1:3000');
+        setWaBaseUrl(s.whatsapp_base_url || defaultBridgeUrl);
         setWaToken(s.whatsapp_token || '');
         setWaInstance(s.whatsapp_instance_id || '');
         setWaPhoneId(s.whatsapp_phone_id || '');

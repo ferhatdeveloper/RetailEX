@@ -114,6 +114,22 @@ services:
     networks:
       - berqenas_net
 
+  retailex_whatsapp_bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.whatsapp-bridge
+    image: retailex-whatsapp-bridge:latest
+    container_name: retailex_whatsapp_bridge
+    restart: always
+    environment:
+      WA_BRIDGE_PORT: "3000"
+      WA_BRIDGE_TOKEN: ${WA_BRIDGE_TOKEN:-}
+      WA_BRIDGE_AUTH_DIR: /data/.wa-auth
+    volumes:
+      - retailex_wa_bridge_data:/data
+    networks:
+      - berqenas_net
+
   retailex_frontend:
     build:
       context: .
@@ -130,6 +146,7 @@ services:
       - "${RETAILEX_WEB_PORT:-8080}:80"
     depends_on:
       - retailex_bridge
+      - retailex_whatsapp_bridge
     networks:
       - berqenas_net
 
@@ -305,3 +322,4 @@ networks:
 volumes:
   saas_postgres_data:
   saas_pgadmin_data:
+  retailex_wa_bridge_data:

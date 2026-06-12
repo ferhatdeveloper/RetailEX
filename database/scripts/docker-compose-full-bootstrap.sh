@@ -58,6 +58,7 @@ ALL_SERVICES=(
   postgres
   pgadmin
   retailex_bridge
+  retailex_whatsapp_bridge
   retailex_frontend
   "${POSTGREST_SERVICES[@]}"
 )
