@@ -191,7 +191,11 @@ export function WhatsAppQrConnectPanel({
               <div className="flex flex-col items-center gap-2 text-center text-gray-400 px-3">
                 <Smartphone className="w-12 h-12 opacity-50" />
                 <p className="text-xs">
-                  {error ? 'Köprüye ulaşılamadı' : 'QR bekleniyor — köprüyü başlatın'}
+                  {error
+                    ? `Köprüye ulaşılamadı${error.includes('fetch') || error.includes('HTTP') ? '' : `: ${error}`}`
+                    : status === 'disconnected'
+                      ? 'WhatsApp henüz bağlı değil — QR birazdan görünecek'
+                      : 'QR bekleniyor — köprüyü başlatın'}
                 </p>
               </div>
             )}
