@@ -69,21 +69,41 @@ export async function sendAtakSms(
     return r.success ? { success: true } : { success: false, error: r.error };
 }
 
+export interface WhatsAppSendOptions {
+    text: string;
+    /** Meta Cloud API — onaylı şablon (proaktif bildirim) */
+    metaTemplate?: {
+        name: string;
+        language: string;
+        bodyParameters: string[];
+    };
+}
+
 export async function sendWhatsAppText(
     cfg: ClinicMessagingPortalConfig,
     to: string,
-    text: string
+    text: string,
+    options?: Pick<WhatsAppSendOptions, 'metaTemplate'>
+): Promise<{ success: boolean; error?: string }> {
+    return sendWhatsAppNotification(cfg, to, { text, metaTemplate: options?.metaTemplate });
+}
+
+export async function sendWhatsAppNotification(
+    cfg: ClinicMessagingPortalConfig,
+    to: string,
+    options: WhatsAppSendOptions
 ): Promise<{ success: boolean; error?: string }> {
     const kind = (cfg.whatsapp_provider || 'NONE').toString().toUpperCase();
     const digits = normalizePhoneDigits(to);
+    const text = String(options.text || '').trim();
     if (kind === 'NONE') {
         return { success: false, error: 'WhatsApp kapalı.' };
     }
     try {
-        /** Yerel QR köprüsü (Baileys / whatshapp HTTP) — token isteğe bağlı */
         if (kind === 'EMBEDDED') {
             const base = (cfg.whatsapp_base_url || '').trim();
             if (!base) return { success: false, error: 'Köprü URL (WhatsApp base URL) girin.' };
+            if (!text) return { success: false, error: 'Mesaj metni eksik.' };
             return sendViaEmbeddedBridge(cfg, to, text);
         }
         if (!cfg.whatsapp_token) {
@@ -93,6 +113,7 @@ export async function sendWhatsAppText(
             const base = cfg.whatsapp_base_url || '';
             const inst = cfg.whatsapp_instance_id || '';
             if (!base || !inst) return { success: false, error: 'Evolution URL veya instance eksik.' };
+            if (!text) return { success: false, error: 'Mesaj metni eksik.' };
             const ev = new EvolutionProvider(base, cfg.whatsapp_token, inst);
             await ev.sendMessage({ to: digits, text });
             return { success: true };
@@ -101,6 +122,23 @@ export async function sendWhatsAppText(
             const pid = cfg.whatsapp_phone_id || '';
             if (!pid) return { success: false, error: 'Meta Phone ID eksik.' };
             const meta = new MetaProvider(pid, cfg.whatsapp_token);
+            if (options.metaTemplate?.name) {
+                await meta.sendMessage({
+                    to: digits,
+                    template: {
+                        name: options.metaTemplate.name,
+                        language: options.metaTemplate.language,
+                        bodyParameters: options.metaTemplate.bodyParameters,
+                    },
+                });
+                return { success: true };
+            }
+            if (!text) {
+                return {
+                    success: false,
+                    error: 'Meta için onaylı şablon gerekli (24 saat penceresi dışında serbest metin gönderilemez).',
+                };
+            }
             await meta.sendMessage({ to: digits, text });
             return { success: true };
         }

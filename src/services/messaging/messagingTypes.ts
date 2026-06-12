@@ -17,8 +17,19 @@ export interface MessagingSettings extends ClinicMessagingPortalConfig {
   invoice_whatsapp_template?: string | null;
   /** Virgülle ayrılmış fatura kategorileri: Satis,Hizmet */
   notify_sale_categories?: string | null;
+  /** Meta Cloud API onaylı şablon adı (örn. retailex_invoice_tr) */
+  meta_invoice_template_name?: string | null;
+  meta_invoice_template_language?: string | null;
+  meta_appointment_template_name?: string | null;
+  meta_appointment_template_language?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface MetaTemplateQueuePayload {
+  meta_template_name: string;
+  meta_template_language: string;
+  meta_body_parameters: string[];
 }
 
 export interface NotificationQueueRow {

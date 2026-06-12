@@ -7,9 +7,16 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import {
   buildReminderText,
   sendAtakSms,
+  sendWhatsAppNotification,
   sendWhatsAppText,
   type ClinicMessagingPortalConfig,
 } from './clinicMessaging';
+import {
+  buildMetaInvoiceQueuePayload,
+  parseMetaTemplateQueuePayload,
+  previewMetaTemplateBody,
+  resolveMetaInvoiceTemplate,
+} from './metaWhatsAppTemplates';
 import { getEmbeddedBridgeStatus } from './whatsappEmbeddedBridge';
 import type {
   InvoiceNotificationContext,
@@ -130,6 +137,10 @@ export const messagingService = {
           notify_invoice_whatsapp: merged.notify_invoice_whatsapp === true,
           invoice_whatsapp_template: merged.invoice_whatsapp_template ?? null,
           notify_sale_categories: merged.notify_sale_categories ?? 'Satis,Hizmet',
+          meta_invoice_template_name: merged.meta_invoice_template_name ?? null,
+          meta_invoice_template_language: merged.meta_invoice_template_language ?? null,
+          meta_appointment_template_name: merged.meta_appointment_template_name ?? null,
+          meta_appointment_template_language: merged.meta_appointment_template_language ?? null,
           updated_at: new Date().toISOString(),
         },
         { schema: 'public', prefer: 'return=minimal' }
@@ -144,6 +155,8 @@ export const messagingService = {
         whatsapp_token = $9, whatsapp_instance_id = $10, whatsapp_phone_id = $11,
         default_reminder_channel = $12, notify_invoice_whatsapp = $13,
         invoice_whatsapp_template = $14, notify_sale_categories = $15,
+        meta_invoice_template_name = $16, meta_invoice_template_language = $17,
+        meta_appointment_template_name = $18, meta_appointment_template_language = $19,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
       [
@@ -162,6 +175,10 @@ export const messagingService = {
         merged.notify_invoice_whatsapp === true,
         merged.invoice_whatsapp_template ?? null,
         merged.notify_sale_categories ?? 'Satis,Hizmet',
+        merged.meta_invoice_template_name ?? null,
+        merged.meta_invoice_template_language ?? null,
+        merged.meta_appointment_template_name ?? null,
+        merged.meta_appointment_template_language ?? null,
       ]
     );
   },
@@ -185,10 +202,28 @@ export const messagingService = {
 
   async sendTestWhatsApp(phone: string): Promise<{ success: boolean; error?: string }> {
     const s = await messagingService.getSettings();
+    const portal = settingsToPortalConfig(s);
+    const provider = (s?.whatsapp_provider || 'NONE').toString().toUpperCase();
+    if (provider === 'META' && s) {
+      const tpl = resolveMetaInvoiceTemplate(
+        s.meta_invoice_template_name,
+        s.meta_invoice_template_language
+      );
+      const params = tpl.sampleValues;
+      const preview = previewMetaTemplateBody(tpl, params);
+      return sendWhatsAppNotification(portal, phone, {
+        text: preview,
+        metaTemplate: {
+          name: tpl.metaName,
+          language: tpl.language,
+          bodyParameters: params,
+        },
+      });
+    }
     return sendWhatsAppText(
-      settingsToPortalConfig(s),
+      portal,
       phone,
-      'RetailEX — WhatsApp test mesajı (Baileys köprüsü).'
+      'RetailEX — WhatsApp test mesajı.'
     );
   },
 
@@ -200,6 +235,7 @@ export const messagingService = {
     message_text: string;
     reference_type?: string;
     reference_id?: string;
+    payload_json?: Record<string, unknown> | null;
     firmNr?: string;
     periodNr?: string;
   }): Promise<string | null> {
@@ -217,6 +253,7 @@ export const messagingService = {
       message_text: params.message_text,
       reference_type: params.reference_type ?? null,
       reference_id: params.reference_id ?? null,
+      payload_json: params.payload_json ?? {},
       status: 'pending',
     };
     if (isRestApi()) {
@@ -232,12 +269,13 @@ export const messagingService = {
     await postgres.query(
       `INSERT INTO ${t} (
         id, firm_nr, period_nr, event_type, channel, recipient_phone, recipient_name,
-        message_text, reference_type, reference_id, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')`,
+        message_text, reference_type, reference_id, payload_json, status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,'pending')`,
       [
         id, fn, pn, params.event_type, params.channel || 'whatsapp',
         params.recipient_phone, params.recipient_name ?? null, params.message_text,
         params.reference_type ?? null, params.reference_id ?? null,
+        JSON.stringify(params.payload_json ?? {}),
       ],
       { firmNr: fn, periodNr: pn }
     );
@@ -334,12 +372,18 @@ export const messagingService = {
       pending = rows;
     }
 
+    const provider = (settings?.whatsapp_provider || 'NONE').toString().toUpperCase();
+
     for (const row of pending) {
       const qid = String(row.id || '');
       const phone = String(row.recipient_phone || '').trim();
       const text = String(row.message_text || '').trim();
       const channel = String(row.channel || 'whatsapp').toLowerCase();
-      if (!qid || !phone || !text) {
+      const metaPayload = parseMetaTemplateQueuePayload(
+        row.payload_json as Record<string, unknown> | null | undefined
+      );
+      const hasMetaTemplate = provider === 'META' && !!metaPayload;
+      if (!qid || !phone || (!text && !hasMetaTemplate)) {
         await markRow(qid, { status: 'failed', error_text: 'Telefon veya mesaj eksik' });
         errors.push(`${qid}: eksik alan`);
         continue;
@@ -348,7 +392,16 @@ export const messagingService = {
         const result =
           channel === 'sms'
             ? await sendAtakSms(portal, phone, text)
-            : await sendWhatsAppText(portal, phone, text);
+            : await sendWhatsAppNotification(portal, phone, {
+                text,
+                metaTemplate: hasMetaTemplate
+                  ? {
+                      name: metaPayload!.meta_template_name,
+                      language: metaPayload!.meta_template_language,
+                      bodyParameters: metaPayload!.meta_body_parameters,
+                    }
+                  : undefined,
+              });
         if (!result.success) throw new Error(result.error || 'Gönderilemedi');
         await markRow(qid, { status: 'sent', error_text: null, sent_at: new Date().toISOString() });
         processed++;
@@ -456,7 +509,18 @@ export const messagingService = {
       customer_name: name || 'Müşteri',
       category,
     };
-    const text = buildInvoiceWhatsAppText(settings.invoice_whatsapp_template, ctx);
+    const provider = (settings.whatsapp_provider || 'NONE').toString().toUpperCase();
+    let text = buildInvoiceWhatsAppText(settings.invoice_whatsapp_template, ctx);
+    let payload_json: Record<string, unknown> | undefined;
+    if (provider === 'META') {
+      const meta = buildMetaInvoiceQueuePayload(settings, ctx);
+      const tpl = resolveMetaInvoiceTemplate(
+        settings.meta_invoice_template_name,
+        settings.meta_invoice_template_language
+      );
+      text = previewMetaTemplateBody(tpl, meta.meta_body_parameters);
+      payload_json = { ...meta };
+    }
     await messagingService.enqueueNotification({
       event_type: 'invoice_created',
       channel: 'whatsapp',
@@ -465,6 +529,7 @@ export const messagingService = {
       message_text: text,
       reference_type: 'sales',
       reference_id: invoiceId,
+      payload_json,
       firmNr: fn,
       periodNr: periodNr,
     });

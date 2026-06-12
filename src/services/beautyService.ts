@@ -8,10 +8,17 @@ import { useCustomerStore } from '../store/useCustomerStore';
 import {
     buildReminderText,
     sendAtakSms,
+    sendWhatsAppNotification,
     sendWhatsAppText,
     getAtakBalance,
     type ClinicMessagingPortalConfig,
 } from './messaging/clinicMessaging';
+import {
+    buildMetaAppointmentQueuePayload,
+    previewMetaTemplateBody,
+    resolveMetaAppointmentTemplate,
+} from './messaging/metaWhatsAppTemplates';
+import { messagingService } from './messaging/messagingService';
 import { getEmbeddedBridgeStatus } from './messaging/whatsappEmbeddedBridge';
 import {
     AppointmentStatus,
@@ -4998,6 +5005,36 @@ export const beautyService = {
      * Bildirim kuyruğundaki bekleyenleri Atak SMS veya Evolution/Meta ile gönderir (whatshapp akışı).
      */
     async processPendingNotifications(limit = 15): Promise<{ processed: number; errors: string[] }> {
+        const sendBeautyWhatsApp = async (
+            portal: ClinicMessagingPortalConfig,
+            phone: string,
+            ctx: { name: string; date: string; time: string; service: string }
+        ) => {
+            const provider = (portal.whatsapp_provider || 'NONE').toString().toUpperCase();
+            if (provider === 'META') {
+                const erpMsg = await messagingService.getSettings();
+                const meta = buildMetaAppointmentQueuePayload(erpMsg || {}, ctx);
+                const tpl = resolveMetaAppointmentTemplate(
+                    erpMsg?.meta_appointment_template_name,
+                    erpMsg?.meta_appointment_template_language
+                );
+                const text = previewMetaTemplateBody(tpl, meta.meta_body_parameters);
+                return sendWhatsAppNotification(portal, phone, {
+                    text,
+                    metaTemplate: {
+                        name: meta.meta_template_name,
+                        language: meta.meta_template_language,
+                        bodyParameters: meta.meta_body_parameters,
+                    },
+                });
+            }
+            const text = buildReminderText(
+                (portal.whatsapp_template ?? portal.sms_template) ?? undefined,
+                'whatsapp',
+                ctx
+            );
+            return sendWhatsAppText(portal, phone, text);
+        };
         const settings = (await beautyService.getPortalSettings()) as ClinicMessagingPortalConfig | null;
         if (!settings) return { processed: 0, errors: ['Portal ayarı yok'] };
         if (shouldUseTenantPostgrestApi()) {
@@ -5081,12 +5118,7 @@ export const beautyService = {
                         const r = await sendAtakSms(settings, customerPhone, text);
                         if (!r.success) throw new Error(r.error || 'SMS gönderilemedi');
                     } else if (channel === 'whatsapp') {
-                        const text = buildReminderText(
-                            (settings.whatsapp_template ?? settings.sms_template) ?? undefined,
-                            'whatsapp',
-                            ctx
-                        );
-                        const r = await sendWhatsAppText(settings, customerPhone, text);
+                        const r = await sendBeautyWhatsApp(settings, customerPhone, ctx);
                         if (!r.success) throw new Error(r.error || 'WhatsApp gönderilemedi');
                     } else {
                         throw new Error(`Bilinmeyen kanal: ${channel}`);
@@ -5165,12 +5197,7 @@ export const beautyService = {
                     const r = await sendAtakSms(settings, phone, text);
                     if (!r.success) throw new Error(r.error || 'SMS gönderilemedi');
                 } else if (channel === 'whatsapp') {
-                    const text = buildReminderText(
-                        (settings.whatsapp_template ?? settings.sms_template) ?? undefined,
-                        'whatsapp',
-                        ctx
-                    );
-                    const r = await sendWhatsAppText(settings, phone, text);
+                    const r = await sendBeautyWhatsApp(settings, phone, ctx);
                     if (!r.success) throw new Error(r.error || 'WhatsApp gönderilemedi');
                 } else {
                     throw new Error(`Bilinmeyen kanal: ${channel}`);

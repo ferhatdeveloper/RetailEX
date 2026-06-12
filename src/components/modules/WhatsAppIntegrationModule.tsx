@@ -4,10 +4,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Phone, Send, MessageSquare, CheckCheck, RefreshCw, Loader2, QrCode, Save, Play,
+  Copy, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { messagingService } from '../../services/messaging/messagingService';
 import type { MessagingSettings, NotificationQueueRow } from '../../services/messaging/messagingTypes';
+import {
+  META_APPOINTMENT_TEMPLATES,
+  META_INVOICE_TEMPLATES,
+  metaTemplateSetupSteps,
+  previewMetaTemplateBody,
+  type MetaWhatsAppTemplateDef,
+} from '../../services/messaging/metaWhatsAppTemplates';
 
 const DEFAULT_INVOICE_TEMPLATE =
   'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
@@ -27,6 +35,8 @@ export function WhatsAppIntegrationModule() {
   const [invoiceTemplate, setInvoiceTemplate] = useState(DEFAULT_INVOICE_TEMPLATE);
   const [notifyInvoice, setNotifyInvoice] = useState(false);
   const [notifyCategories, setNotifyCategories] = useState('Satis,Hizmet');
+  const [metaInvoiceTplId, setMetaInvoiceTplId] = useState('retailex_invoice_tr');
+  const [metaAppointmentTplId, setMetaAppointmentTplId] = useState('retailex_appointment_tr');
   const [testPhone, setTestPhone] = useState('');
 
   const [embedStatus, setEmbedStatus] = useState('');
@@ -51,6 +61,8 @@ export function WhatsAppIntegrationModule() {
         setInvoiceTemplate(s.invoice_whatsapp_template || DEFAULT_INVOICE_TEMPLATE);
         setNotifyInvoice(s.notify_invoice_whatsapp === true);
         setNotifyCategories(s.notify_sale_categories || 'Satis,Hizmet');
+        setMetaInvoiceTplId(s.meta_invoice_template_name || 'retailex_invoice_tr');
+        setMetaAppointmentTplId(s.meta_appointment_template_name || 'retailex_appointment_tr');
       }
       setStats(await messagingService.getQueueStats());
       setQueue(await messagingService.listQueue(25));
@@ -123,6 +135,12 @@ export function WhatsAppIntegrationModule() {
         invoice_whatsapp_template: invoiceTemplate || null,
         notify_invoice_whatsapp: notifyInvoice,
         notify_sale_categories: notifyCategories || 'Satis,Hizmet',
+        meta_invoice_template_name: metaInvoiceTplId || 'retailex_invoice_tr',
+        meta_invoice_template_language:
+          META_INVOICE_TEMPLATES.find((t) => t.id === metaInvoiceTplId)?.language || 'tr',
+        meta_appointment_template_name: metaAppointmentTplId || 'retailex_appointment_tr',
+        meta_appointment_template_language:
+          META_APPOINTMENT_TEMPLATES.find((t) => t.id === metaAppointmentTplId)?.language || 'tr',
       });
       toast.success('WhatsApp ayarları kaydedildi');
       await loadAll();
@@ -148,6 +166,22 @@ export function WhatsAppIntegrationModule() {
   };
 
   const connected = waProvider !== 'NONE' && (embedStatus === 'connected' || waProvider !== 'EMBEDDED');
+
+  const selectedMetaInvoiceTpl =
+    META_INVOICE_TEMPLATES.find((t) => t.id === metaInvoiceTplId) || META_INVOICE_TEMPLATES[0];
+  const selectedMetaAppointmentTpl =
+    META_APPOINTMENT_TEMPLATES.find((t) => t.id === metaAppointmentTplId) ||
+    META_APPOINTMENT_TEMPLATES[0];
+
+  const copyMetaTemplateBody = async (tpl: MetaWhatsAppTemplateDef) => {
+    const lines = metaTemplateSetupSteps(tpl);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      toast.success('Meta kurulum metni kopyalandı');
+    } catch {
+      toast.error('Kopyalanamadı');
+    }
+  };
 
   if (loading) {
     return (
@@ -301,27 +335,81 @@ export function WhatsAppIntegrationModule() {
             placeholder="Satis,Hizmet"
           />
         </div>
-        <div>
-          <label className="text-xs text-gray-500">
-            Fatura şablonu — {'{customer_name}'} {'{fiche_no}'} {'{date}'} {'{amount}'} {'{currency}'} {'{category}'}
-          </label>
-          <textarea
-            className="mt-1 w-full min-h-[72px] border rounded-lg p-2 text-sm"
-            value={invoiceTemplate}
-            onChange={(e) => setInvoiceTemplate(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Randevu şablonu — {'{name}'} {'{date}'} {'{time}'} {'{service}'}</label>
-          <textarea
-            className="mt-1 w-full min-h-[56px] border rounded-lg p-2 text-sm"
-            value={waTemplate}
-            onChange={(e) => setWaTemplate(e.target.value)}
-            placeholder="Merhaba {name}, {date} {time} — {service} randevu hatırlatması."
-          />
-        </div>
+        {waProvider === 'META' ? (
+          <div className="space-y-4 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
+            <p className="text-xs text-indigo-900">
+              Meta Cloud API proaktif bildirimler için <strong>onaylı şablon</strong> zorunludur.
+              Aşağıdaki şablonları Meta Business Manager&apos;da aynı ad ve dil ile oluşturup onaylatın.
+            </p>
+
+            <div>
+              <label className="text-xs font-semibold text-indigo-800 uppercase">Fatura şablonu (Meta)</label>
+              <select
+                className="mt-1 w-full border rounded-lg p-2 text-sm bg-white"
+                value={metaInvoiceTplId}
+                onChange={(e) => setMetaInvoiceTplId(e.target.value)}
+              >
+                {META_INVOICE_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} — {t.metaName} ({t.language})
+                  </option>
+                ))}
+              </select>
+              {selectedMetaInvoiceTpl && (
+                <MetaTemplateCard
+                  template={selectedMetaInvoiceTpl}
+                  onCopy={() => void copyMetaTemplateBody(selectedMetaInvoiceTpl)}
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-indigo-800 uppercase">Randevu şablonu (Meta)</label>
+              <select
+                className="mt-1 w-full border rounded-lg p-2 text-sm bg-white"
+                value={metaAppointmentTplId}
+                onChange={(e) => setMetaAppointmentTplId(e.target.value)}
+              >
+                {META_APPOINTMENT_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} — {t.metaName} ({t.language})
+                  </option>
+                ))}
+              </select>
+              {selectedMetaAppointmentTpl && (
+                <MetaTemplateCard
+                  template={selectedMetaAppointmentTpl}
+                  onCopy={() => void copyMetaTemplateBody(selectedMetaAppointmentTpl)}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="text-xs text-gray-500">
+                Fatura şablonu — {'{customer_name}'} {'{fiche_no}'} {'{date}'} {'{amount}'} {'{currency}'} {'{category}'}
+              </label>
+              <textarea
+                className="mt-1 w-full min-h-[72px] border rounded-lg p-2 text-sm"
+                value={invoiceTemplate}
+                onChange={(e) => setInvoiceTemplate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Randevu şablonu — {'{name}'} {'{date}'} {'{time}'} {'{service}'}</label>
+              <textarea
+                className="mt-1 w-full min-h-[56px] border rounded-lg p-2 text-sm"
+                value={waTemplate}
+                onChange={(e) => setWaTemplate(e.target.value)}
+                placeholder="Merhaba {name}, {date} {time} — {service} randevu hatırlatması."
+              />
+            </div>
+          </>
+        )}
         <p className="text-[11px] text-gray-500">
-          Güzellik randevu hatırlatmaları Güzellik → Operasyon ayarlarından da yönetilir; bu şablon ERP geneli için referanstır.
+          Güzellik randevu hatırlatmaları Güzellik → Operasyon ayarlarından da yönetilir;
+          Meta seçiliyken randevu şablonu buradan okunur.
         </p>
       </div>
 
@@ -419,8 +507,42 @@ export function WhatsAppIntegrationModule() {
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
         <strong>Not:</strong> Baileys resmi WhatsApp API değildir; üretimde Meta Cloud API veya onaylı BSP önerilir.
-        Randevu hatırlatmaları için Güzellik modülündeki kuyruk işlemi de aynı köprüyü kullanabilir.
+        Meta şablonları UTILITY kategorisinde oluşturulmalı; onay süreci 24–48 saat sürebilir.
       </div>
+    </div>
+  );
+}
+
+function MetaTemplateCard({
+  template,
+  onCopy,
+}: {
+  template: MetaWhatsAppTemplateDef;
+  onCopy: () => void;
+}) {
+  const preview = previewMetaTemplateBody(template, template.sampleValues);
+  return (
+    <div className="mt-2 rounded-lg border border-indigo-100 bg-white p-3 text-xs space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-indigo-700">{template.metaName}</span>
+        <span className="text-gray-500">{template.category} · {template.language}</span>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="inline-flex items-center gap-1 px-2 py-1 border border-indigo-200 rounded text-indigo-800 hover:bg-indigo-50"
+        >
+          <Copy className="w-3 h-3" />
+          Meta kurulum metnini kopyala
+        </button>
+      </div>
+      {template.headerForMetaConsole && (
+        <p><FileText className="w-3 h-3 inline mr-1 text-gray-400" />Header: {template.headerForMetaConsole}</p>
+      )}
+      <p className="text-gray-600 font-mono whitespace-pre-wrap break-words">{template.bodyForMetaConsole}</p>
+      <p className="text-gray-500">
+        Parametreler: {template.parameterLabels.map((l, i) => `{{${i + 1}}} ${l}`).join(' · ')}
+      </p>
+      <p className="text-emerald-800 bg-emerald-50 rounded p-2">Önizleme: {preview}</p>
     </div>
   );
 }

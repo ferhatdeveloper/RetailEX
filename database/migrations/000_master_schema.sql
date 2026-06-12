@@ -1375,6 +1375,10 @@ BEGIN
       notify_invoice_whatsapp BOOLEAN DEFAULT false,
       invoice_whatsapp_template TEXT,
       notify_sale_categories TEXT DEFAULT ''Satis,Hizmet'',
+      meta_invoice_template_name VARCHAR(120),
+      meta_invoice_template_language VARCHAR(10),
+      meta_appointment_template_name VARCHAR(120),
+      meta_appointment_template_language VARCHAR(10),
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
