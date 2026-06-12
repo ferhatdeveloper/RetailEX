@@ -826,7 +826,8 @@ export class PostgresConnection {
     'beauty_satisfaction_surveys', 'beauty_satisfaction_questions',
     'beauty_branches', 'beauty_rooms', 'beauty_portal_settings', 'beauty_corporate_accounts',
     'beauty_consent_templates', 'beauty_memberships', 'beauty_service_consumables', 'beauty_customer_health',
-    'beauty_product_batches', 'beauty_marketing_campaigns', 'beauty_integration_settings'
+    'beauty_product_batches',     'beauty_marketing_campaigns', 'beauty_integration_settings',
+    'messaging_settings'
   ];
   private static MOVEMENT_TABLES = [
     'sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines',
@@ -839,7 +840,8 @@ export class PostgresConnection {
     'beauty_device_alerts', 'beauty_customer_feedback', 'beauty_sales', 'beauty_sale_items',
     'beauty_waitlist', 'beauty_booking_requests', 'beauty_notification_queue', 'beauty_consent_submissions',
     'beauty_clinical_notes', 'beauty_patient_photos', 'beauty_membership_subscriptions', 'beauty_audit_log',
-    'beauty_consumable_usage_log'
+    'beauty_consumable_usage_log',
+    'notification_queue'
   ];
 
   // Tables that live in a dedicated schema (not public)

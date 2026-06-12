@@ -1,110 +1,426 @@
 ﻿/**
- * WhatsApp Integration Module - WhatsApp Business API Entegrasyonu
+ * WhatsApp Entegrasyonu — Baileys köprüsü, Evolution, Meta; bildirim kuyruğu.
  */
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Phone, Send, MessageSquare, CheckCheck, RefreshCw, Loader2, QrCode, Save, Play,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { messagingService } from '../../services/messaging/messagingService';
+import type { MessagingSettings, NotificationQueueRow } from '../../services/messaging/messagingTypes';
 
-import { useState } from 'react';
-import { Phone, Send, MessageSquare, Users, CheckCheck } from 'lucide-react';
+const DEFAULT_INVOICE_TEMPLATE =
+  'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
 
 export function WhatsAppIntegrationModule() {
-  const [templates] = useState([
-    { id: '1', name: 'Sipariş Onayı', status: 'approved', sent: 1245, delivered: 1198 },
-    { id: '2', name: 'Kargo Bilgilendirme', status: 'approved', sent: 987, delivered: 945 },
-    { id: '3', name: 'Kampanya Bildirimi', status: 'pending', sent: 0, delivered: 0 },
-    { id: '4', name: 'Ödeme Hatırlatma', status: 'approved', sent: 456, delivered: 432 },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [settings, setSettings] = useState<MessagingSettings | null>(null);
+
+  const [waProvider, setWaProvider] = useState('NONE');
+  const [waBaseUrl, setWaBaseUrl] = useState('http://127.0.0.1:3000');
+  const [waToken, setWaToken] = useState('');
+  const [waInstance, setWaInstance] = useState('');
+  const [waPhoneId, setWaPhoneId] = useState('');
+  const [waTemplate, setWaTemplate] = useState('');
+  const [invoiceTemplate, setInvoiceTemplate] = useState(DEFAULT_INVOICE_TEMPLATE);
+  const [notifyInvoice, setNotifyInvoice] = useState(false);
+  const [notifyCategories, setNotifyCategories] = useState('Satis,Hizmet');
+  const [testPhone, setTestPhone] = useState('');
+
+  const [embedStatus, setEmbedStatus] = useState('');
+  const [embedQrImg, setEmbedQrImg] = useState<string | null>(null);
+  const [embedErr, setEmbedErr] = useState<string | null>(null);
+
+  const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
+  const [queue, setQueue] = useState<NotificationQueueRow[]>([]);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const s = await messagingService.getSettings();
+      setSettings(s);
+      if (s) {
+        setWaProvider((s.whatsapp_provider || 'NONE').toString());
+        setWaBaseUrl(s.whatsapp_base_url || 'http://127.0.0.1:3000');
+        setWaToken(s.whatsapp_token || '');
+        setWaInstance(s.whatsapp_instance_id || '');
+        setWaPhoneId(s.whatsapp_phone_id || '');
+        setWaTemplate(s.whatsapp_template || '');
+        setInvoiceTemplate(s.invoice_whatsapp_template || DEFAULT_INVOICE_TEMPLATE);
+        setNotifyInvoice(s.notify_invoice_whatsapp === true);
+        setNotifyCategories(s.notify_sale_categories || 'Satis,Hizmet');
+      }
+      setStats(await messagingService.getQueueStats());
+      setQueue(await messagingService.listQueue(25));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Ayarlar yüklenemedi');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
+
+  useEffect(() => {
+    if (waProvider !== 'EMBEDDED' || !waBaseUrl.trim()) {
+      setEmbedQrImg(null);
+      setEmbedStatus('');
+      setEmbedErr(null);
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      const r = await messagingService.getEmbeddedStatus({
+        whatsapp_base_url: waBaseUrl.trim(),
+        whatsapp_token: waToken.trim() || null,
+      });
+      if (cancelled) return;
+      if (r.ok) {
+        setEmbedStatus(String(r.status ?? ''));
+        setEmbedErr(null);
+        const qr = r.qr ?? null;
+        if (!qr) {
+          setEmbedQrImg(null);
+          return;
+        }
+        if (qr.startsWith('data:')) {
+          setEmbedQrImg(qr);
+          return;
+        }
+        try {
+          const QRCode = (await import('qrcode')).default;
+          setEmbedQrImg(await QRCode.toDataURL(qr, { margin: 1, width: 220 }));
+        } catch {
+          setEmbedQrImg(null);
+        }
+      } else {
+        setEmbedErr(r.error ?? 'Köprü yanıt vermedi');
+        setEmbedQrImg(null);
+      }
+    };
+    void tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [waProvider, waBaseUrl, waToken]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await messagingService.updateSettings({
+        whatsapp_provider: waProvider,
+        whatsapp_base_url: waBaseUrl || null,
+        whatsapp_token: waToken || null,
+        whatsapp_instance_id: waInstance || null,
+        whatsapp_phone_id: waPhoneId || null,
+        whatsapp_template: waTemplate || null,
+        invoice_whatsapp_template: invoiceTemplate || null,
+        notify_invoice_whatsapp: notifyInvoice,
+        notify_sale_categories: notifyCategories || 'Satis,Hizmet',
+      });
+      toast.success('WhatsApp ayarları kaydedildi');
+      await loadAll();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Kayıt başarısız');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleProcessQueue = async () => {
+    setProcessing(true);
+    try {
+      const r = await messagingService.processPendingQueue(30);
+      toast.success(`${r.processed} bildirim gönderildi`);
+      if (r.errors.length) toast.error(r.errors.slice(0, 2).join('; '));
+      await loadAll();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Kuyruk işlenemedi');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const connected = waProvider !== 'NONE' && (embedStatus === 'connected' || waProvider !== 'EMBEDDED');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[40vh] gap-2 text-gray-500">
+        <Loader2 className="w-6 h-6 animate-spin" />
+        <span>Yükleniyor…</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Phone className="w-8 h-8 text-green-600" />
-          WhatsApp Business Entegrasyonu
+    <div className="p-4 sm:p-6 space-y-6 max-w-4xl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+          <Phone className="w-7 h-7 text-green-600" />
+          WhatsApp Entegrasyonu
         </h1>
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm flex items-center gap-1">
+          <span
+            className={`px-3 py-1 rounded-full text-sm flex items-center gap-1 ${
+              connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
             <CheckCheck className="w-4 h-4" />
-            Bağlı
+            {waProvider === 'EMBEDDED'
+              ? embedStatus === 'connected'
+                ? 'Bağlı (Baileys)'
+                : embedStatus === 'scanning'
+                  ? 'QR bekleniyor'
+                  : 'Bağlı değil'
+              : waProvider === 'NONE'
+                ? 'Kapalı'
+                : waProvider}
           </span>
-          <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-            + Yeni Şablon
+          <button
+            type="button"
+            onClick={() => void loadAll()}
+            className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+            title="Yenile"
+          >
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-green-50 rounded-lg p-4">
-          <Send className="w-8 h-8 text-green-600 mb-2" />
-          <p className="text-sm text-green-700">Toplam Gönderim</p>
-          <p className="text-2xl font-bold text-green-900">2,688</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+          <p className="text-xs text-amber-800">Bekleyen</p>
+          <p className="text-2xl font-bold text-amber-900">{stats.pending}</p>
         </div>
-        <div className="bg-blue-50 rounded-lg p-4">
-          <CheckCheck className="w-8 h-8 text-blue-600 mb-2" />
-          <p className="text-sm text-blue-700">Teslim Edildi</p>
-          <p className="text-2xl font-bold text-blue-900">2,575</p>
+        <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+          <p className="text-xs text-green-800">Gönderildi</p>
+          <p className="text-2xl font-bold text-green-900">{stats.sent}</p>
         </div>
-        <div className="bg-purple-50 rounded-lg p-4">
-          <MessageSquare className="w-8 h-8 text-purple-600 mb-2" />
-          <p className="text-sm text-purple-700">Aktif Şablon</p>
-          <p className="text-2xl font-bold text-purple-900">3</p>
-        </div>
-        <div className="bg-yellow-50 rounded-lg p-4">
-          <Users className="w-8 h-8 text-yellow-600 mb-2" />
-          <p className="text-sm text-yellow-700">Teslim Oranı</p>
-          <p className="text-2xl font-bold text-yellow-900">95.8%</p>
+        <div className="bg-red-50 rounded-lg p-3 border border-red-200">
+          <p className="text-xs text-red-800">Hatalı</p>
+          <p className="text-2xl font-bold text-red-900">{stats.failed}</p>
         </div>
       </div>
 
-      {/* Templates */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b border-gray-200">
-          <h2 className="font-semibold">Mesaj Şablonları</h2>
-        </div>
-        <div className="p-4 space-y-3">
-          {templates.map(template => (
-            <div key={template.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-semibold">{template.name}</h3>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                    template.status === 'approved' 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {template.status === 'approved' ? 'Onaylı' : 'Beklemede'}
-                  </span>
-                </div>
-                <div className="flex gap-4 text-sm text-gray-600">
-                  <span>Gönderildi: {template.sent}</span>
-                  <span>Teslim: {template.delivered}</span>
-                  {template.sent > 0 && (
-                    <span className="text-green-600">
-                      Oran: %{((template.delivered / template.sent) * 100).toFixed(1)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
-                  Gönder
-                </button>
-                <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
-                  Düzenle
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="font-semibold text-blue-900 mb-2">💡 WhatsApp Business API</h4>
-        <p className="text-sm text-blue-800">
-          WhatsApp Business API entegrasyonu ile müşterilerinize sipariş onayı, kargo takibi, 
-          kampanya bildirimleri ve daha fazlasını otomatik olarak gönderebilirsiniz.
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
+        <h2 className="font-semibold text-emerald-900 flex items-center gap-2">
+          <QrCode className="w-5 h-5" />
+          Bağlantı (Powered by Baileys Engine)
+        </h2>
+        <p className="text-xs text-gray-600">
+          Yerel köprü: terminalde <code className="bg-gray-100 px-1 rounded">npm run whatsapp:bridge</code> çalıştırın.
+          Geliştirmede <code className="bg-gray-100 px-1 rounded">http://127.0.0.1:3000</code> Vite proxy ile otomatik yönlendirilir.
         </p>
+        <div>
+          <label className="text-xs font-bold text-gray-500 uppercase">Sağlayıcı</label>
+          <select
+            className="mt-1 w-full border rounded-lg p-2 text-sm"
+            value={waProvider}
+            onChange={(e) => setWaProvider(e.target.value)}
+          >
+            <option value="NONE">Kapalı</option>
+            <option value="EMBEDDED">Doğrudan (Baileys QR köprüsü)</option>
+            <option value="EVOLUTION">Evolution API</option>
+            <option value="META">Meta Cloud API</option>
+          </select>
+        </div>
+
+        {waProvider === 'EMBEDDED' && (
+          <>
+            <div>
+              <label className="text-xs text-gray-500">Köprü URL</label>
+              <input
+                className="mt-1 w-full border rounded-lg p-2 text-sm"
+                value={waBaseUrl}
+                onChange={(e) => setWaBaseUrl(e.target.value)}
+                placeholder="http://127.0.0.1:3000"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Bearer token (isteğe bağlı)</label>
+              <input
+                type="password"
+                className="mt-1 w-full border rounded-lg p-2 text-sm"
+                value={waToken}
+                onChange={(e) => setWaToken(e.target.value)}
+              />
+            </div>
+            {embedErr && <p className="text-xs text-amber-800">{embedErr}</p>}
+            {embedQrImg && (
+              <div className="flex flex-col items-center gap-2 p-3 bg-slate-50 rounded-lg">
+                <p className="text-xs text-gray-600">WhatsApp → Bağlı cihazlar → QR okut</p>
+                <img src={embedQrImg} alt="WhatsApp QR" className="max-w-[220px]" />
+              </div>
+            )}
+          </>
+        )}
+
+        {waProvider !== 'EMBEDDED' && waProvider !== 'NONE' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="text-xs text-gray-500">API base URL</label>
+              <input className="mt-1 w-full border rounded-lg p-2 text-sm" value={waBaseUrl} onChange={(e) => setWaBaseUrl(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Token</label>
+              <input type="password" className="mt-1 w-full border rounded-lg p-2 text-sm" value={waToken} onChange={(e) => setWaToken(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Instance</label>
+              <input className="mt-1 w-full border rounded-lg p-2 text-sm" value={waInstance} onChange={(e) => setWaInstance(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Meta Phone ID</label>
+              <input className="mt-1 w-full border rounded-lg p-2 text-sm" value={waPhoneId} onChange={(e) => setWaPhoneId(e.target.value)} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+        <h2 className="font-semibold flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-blue-600" />
+          Otomatik bildirimler
+        </h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={notifyInvoice} onChange={(e) => setNotifyInvoice(e.target.checked)} />
+          Fatura kaydı sonrası WhatsApp bildirimi (müşteri telefonu gerekli)
+        </label>
+        <div>
+          <label className="text-xs text-gray-500">Bildirim gönderilecek kategoriler (virgülle)</label>
+          <input
+            className="mt-1 w-full border rounded-lg p-2 text-sm"
+            value={notifyCategories}
+            onChange={(e) => setNotifyCategories(e.target.value)}
+            placeholder="Satis,Hizmet"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">
+            Fatura şablonu — {'{customer_name}'} {'{fiche_no}'} {'{date}'} {'{amount}'} {'{currency}'} {'{category}'}
+          </label>
+          <textarea
+            className="mt-1 w-full min-h-[72px] border rounded-lg p-2 text-sm"
+            value={invoiceTemplate}
+            onChange={(e) => setInvoiceTemplate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Randevu şablonu — {'{name}'} {'{date}'} {'{time}'} {'{service}'}</label>
+          <textarea
+            className="mt-1 w-full min-h-[56px] border rounded-lg p-2 text-sm"
+            value={waTemplate}
+            onChange={(e) => setWaTemplate(e.target.value)}
+            placeholder="Merhaba {name}, {date} {time} — {service} randevu hatırlatması."
+          />
+        </div>
+        <p className="text-[11px] text-gray-500">
+          Güzellik randevu hatırlatmaları Güzellik → Operasyon ayarlarından da yönetilir; bu şablon ERP geneli için referanstır.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+        <h2 className="font-semibold">Test ve kuyruk</h2>
+        <input
+          className="w-full border rounded-lg p-2 text-sm"
+          placeholder="905551234567"
+          value={testPhone}
+          onChange={(e) => setTestPhone(e.target.value)}
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={!testPhone.trim() || waProvider === 'NONE'}
+            onClick={async () => {
+              await handleSave();
+              const r = await messagingService.sendTestWhatsApp(testPhone.trim());
+              if (r.success) toast.success('Test WhatsApp gönderildi');
+              else toast.error(r.error || 'Gönderilemedi');
+            }}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-40"
+          >
+            <Send className="w-4 h-4 inline mr-1" />
+            Test gönder
+          </button>
+          <button
+            type="button"
+            disabled={processing || stats.pending === 0}
+            onClick={() => void handleProcessQueue()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"
+          >
+            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Kuyruğu işle ({stats.pending})
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void handleSave()}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-1"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Kaydet
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow border border-gray-200">
+        <div className="p-4 border-b border-gray-200 font-semibold">Son bildirimler</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+              <tr>
+                <th className="px-3 py-2">Tarih</th>
+                <th className="px-3 py-2">Olay</th>
+                <th className="px-3 py-2">Alıcı</th>
+                <th className="px-3 py-2">Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              {queue.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-3 py-6 text-center text-gray-400">Kayıt yok</td>
+                </tr>
+              ) : (
+                queue.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-100">
+                    <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                      {row.created_at ? String(row.created_at).split('T')[0] : '—'}
+                    </td>
+                    <td className="px-3 py-2">{row.event_type}</td>
+                    <td className="px-3 py-2">
+                      <div className="truncate max-w-[180px]">{row.recipient_name || row.recipient_phone}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-bold ${
+                          row.status === 'sent'
+                            ? 'bg-green-100 text-green-700'
+                            : row.status === 'failed'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-900">
+        <strong>Not:</strong> Baileys resmi WhatsApp API değildir; üretimde Meta Cloud API veya onaylı BSP önerilir.
+        Randevu hatırlatmaları için Güzellik modülündeki kuyruk işlemi de aynı köprüyü kullanabilir.
       </div>
     </div>
   );
 }
-

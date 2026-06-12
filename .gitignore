@@ -17,6 +17,10 @@ out/
 # Not: Bu yollar bir kez commitlendiyse `git rm -r --cached .claude/` ile indeksten çıkarılmalıdır.
 .claude/
 
+# WhatsApp Baileys oturum dosyaları (yerel köprü)
+scripts/whatsapp-bridge/.wa-auth/
+scripts/whatsapp-bridge/node_modules/
+
 # Misc
 .DS_Store
 *.tsbuildinfo

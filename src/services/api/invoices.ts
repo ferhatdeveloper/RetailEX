@@ -839,6 +839,9 @@ export const invoicesAPI = {
         if (!saved?.id) throw new Error('Fatura PostgREST ile oluşturulamadı');
         await applyInvoiceStockUpdatesRestApi(invoice, createOptions, trcode);
         await applyInvoiceBalanceUpdatesRestApi(invoice, firmNr, trcode, ficheType);
+        void import('../messaging/messagingService').then(({ messagingService }) =>
+          messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
+        ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
         return saved;
       }
 
@@ -1128,6 +1131,10 @@ export const invoicesAPI = {
         }
       }
 
+      void import('../messaging/messagingService').then(({ messagingService }) =>
+        messagingService.maybeEnqueueInvoiceNotification(invoice, invoiceId, firmNr, periodNr)
+      ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
+
       return {
         ...invoice,
         id: invoiceId,
@@ -1155,7 +1162,12 @@ export const invoicesAPI = {
           }
           console.warn('[InvoicesAPI] PostgreSQL timeout; trying PostgREST create fallback...');
           const saved = await createInvoiceViaPostgrest(invoice, { firmNr, periodNr, trcode, ficheType });
-          if (saved?.id) return saved;
+          if (saved?.id) {
+            void import('../messaging/messagingService').then(({ messagingService }) =>
+              messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
+            ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
+            return saved;
+          }
         } catch (fallbackErr: any) {
           console.error('[InvoicesAPI] PostgREST create fallback failed:', fallbackErr);
         }

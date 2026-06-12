@@ -34,6 +34,7 @@
 29. **039_beauty_default_satisfaction_survey.sql** – Güzellik merkezi varsayılan memnuniyet anketi (TR/EN/AR/KU, 7 soru, aktif).
 30. **040_beauty_satisfaction_survey_expand.sql** – Aynı ankete genişletilmiş soru seti (personel, işlem, ortam, fiyat; toplam ~24 soru).
 31. **041_beauty_follow_up_reminder_actions_ensure.sql** – Eksik `beauty.rex_{firm}_follow_up_reminder_actions` tablolarını oluşturur (037 atlanmış veya boş döngüyle işaretlenmiş ortamlar için).
+32. **042_messaging_whatsapp_queue.sql** – `rex_{firm}_messaging_settings` (WhatsApp/SMS ayarları) ve `rex_{firm}_{period}_notification_queue` (fatura/randevu bildirim kuyruğu).
 
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 

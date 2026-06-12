@@ -1357,6 +1357,29 @@ BEGIN
   EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''SET'',   ''SET'',   ''Set'',   true,  1, 1 FROM %I WHERE code = ''18-SET'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
   EXECUTE format('INSERT INTO %I (unitset_id, item_code, code, name, main_unit, conv_fact1, conv_fact2) SELECT id, ''PARCA'', ''PARCA'', ''Parca'', false, 1, 1 FROM %I WHERE code = ''18-SET'' ON CONFLICT DO NOTHING;', v_prefix || '_unitsetl', v_prefix || '_unitsets');
 
+  -- Mesajlaşma ayarları (WhatsApp / SMS — firma düzeyi)
+  EXECUTE format($f$
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      sms_user VARCHAR(255),
+      sms_password VARCHAR(255),
+      sms_sender VARCHAR(80),
+      sms_template TEXT,
+      whatsapp_template TEXT,
+      whatsapp_provider VARCHAR(30) DEFAULT ''NONE'',
+      whatsapp_base_url TEXT,
+      whatsapp_token TEXT,
+      whatsapp_instance_id VARCHAR(255),
+      whatsapp_phone_id VARCHAR(80),
+      default_reminder_channel VARCHAR(20) DEFAULT ''whatsapp'',
+      notify_invoice_whatsapp BOOLEAN DEFAULT false,
+      invoice_whatsapp_template TEXT,
+      notify_sale_categories TEXT DEFAULT ''Satis,Hizmet'',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  $f$, v_prefix || '_messaging_settings');
+
   -- Varsayılan Kasa
   EXECUTE format('INSERT INTO %I (id, firm_nr, code, name, is_active) VALUES (''00000000-0000-0000-0000-000000000001'', %L, ''KASA.001'', ''MERKEZ KASA'', true) ON CONFLICT DO NOTHING;', v_prefix || '_cash_registers', p_firm_nr);
 END;
@@ -1556,6 +1579,33 @@ BEGIN
       created_at       TIMESTAMPTZ DEFAULT NOW()
     );
   ', v_prefix || '_stock_movement_items', v_prefix || '_stock_movements');
+
+  -- Bildirim kuyruğu (WhatsApp / SMS — fatura, randevu vb.)
+  EXECUTE format($f$
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr VARCHAR(10) NOT NULL,
+      period_nr VARCHAR(10) NOT NULL,
+      event_type VARCHAR(50) NOT NULL,
+      channel VARCHAR(20) NOT NULL DEFAULT ''whatsapp'',
+      recipient_phone VARCHAR(30),
+      recipient_name VARCHAR(255),
+      message_text TEXT,
+      reference_type VARCHAR(50),
+      reference_id UUID,
+      payload_json JSONB DEFAULT ''{}''::jsonb,
+      status VARCHAR(20) DEFAULT ''pending'',
+      scheduled_at TIMESTAMPTZ,
+      sent_at TIMESTAMPTZ,
+      error_text TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  $f$, v_prefix || '_notification_queue');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (status, created_at DESC)',
+    v_prefix || '_notification_queue_status_idx',
+    v_prefix || '_notification_queue'
+  );
 
   PERFORM public.APPLY_SYNC_TRIGGERS(v_tbl_sales);
   PERFORM public.APPLY_SYNC_TRIGGERS(v_prefix || '_cash_lines');

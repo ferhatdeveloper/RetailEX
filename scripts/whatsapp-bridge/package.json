@@ -1,0 +1,15 @@
+{
+  "name": "retailex-whatsapp-bridge",
+  "private": true,
+  "type": "module",
+  "description": "RetailEX Baileys HTTP köprüsü — GET /status, POST /send",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4"
+  }
+}
