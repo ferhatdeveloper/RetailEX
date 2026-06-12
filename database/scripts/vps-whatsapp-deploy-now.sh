@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # VPS / Dokploy terminalinde TEK KOMUT — WhatsApp QR köprüsü + frontend nginx /__wa_bridge
-# Kullanım:
-#   cd /opt/berqenas-cloud/projects/retailex   # veya Dokploy proje dizini
+#
+# GitHub main'den (repo yoksa clone + deploy):
+#   curl -fsSL https://raw.githubusercontent.com/ferhatdeveloper/RetailEX/main/database/scripts/vps-from-git-main.sh | sudo bash
+#
+# Repoda zaten varsa:
+#   cd /opt/berqenas-cloud/projects/retailex
 #   git pull origin main
 #   bash database/scripts/vps-whatsapp-deploy-now.sh
 
