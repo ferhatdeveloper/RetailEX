@@ -36,6 +36,7 @@ import {
 } from '../../services/messaging/metaWhatsAppTemplates';
 import { WhatsAppQrConnectPanel } from '../shared/WhatsAppQrConnectPanel';
 import { WhatsAppSessionResetButton } from '../shared/WhatsAppSessionResetButton';
+import { WhatsAppTestSendCard } from '../shared/WhatsAppTestSendCard';
 import { isStaleEmbeddedBridgeUrl } from '../../services/messaging/whatsappEmbeddedBridge';
 
 const DEFAULT_INVOICE_TEMPLATE =
@@ -442,6 +443,17 @@ export function WhatsAppIntegrationModule() {
             enabled={waProvider === 'EMBEDDED'}
             onStatusChange={(s) => setEmbedStatus(s)}
           />
+
+          <WhatsAppTestSendCard
+            provider={waProvider}
+            embedConnected={embedStatus === 'connected'}
+            testPhone={testPhone}
+            testMessage={testMessage}
+            testSending={testSending}
+            onPhoneChange={setTestPhone}
+            onMessageChange={setTestMessage}
+            onSend={() => void handleTestSend()}
+          />
         </section>
       )}
 
@@ -469,14 +481,37 @@ export function WhatsAppIntegrationModule() {
               </div>
             )}
           </div>
+          <WhatsAppTestSendCard
+            provider={waProvider}
+            embedConnected={embedStatus === 'connected'}
+            testPhone={testPhone}
+            testMessage={testMessage}
+            testSending={testSending}
+            onPhoneChange={setTestPhone}
+            onMessageChange={setTestMessage}
+            onSend={() => void handleTestSend()}
+            className="mt-4"
+          />
         </section>
       )}
 
       {waProvider === 'NONE' && (
-        <div className={`rounded-2xl border border-dashed p-8 text-center ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
-          <Phone className="mx-auto mb-3 h-10 w-10 opacity-40" />
-          <p className="text-sm">WhatsApp kapalı. Bildirim göndermek için yukarıdan bir bağlantı yöntemi seçin.</p>
-        </div>
+        <>
+          <div className={`rounded-2xl border border-dashed p-8 text-center ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}>
+            <Phone className="mx-auto mb-3 h-10 w-10 opacity-40" />
+            <p className="text-sm">WhatsApp kapalı. Bildirim göndermek için yukarıdan bir bağlantı yöntemi seçin.</p>
+          </div>
+          <WhatsAppTestSendCard
+            provider={waProvider}
+            embedConnected={false}
+            testPhone={testPhone}
+            testMessage={testMessage}
+            testSending={testSending}
+            onPhoneChange={setTestPhone}
+            onMessageChange={setTestMessage}
+            onSend={() => void handleTestSend()}
+          />
+        </>
       )}
 
       {/* Bildirimler */}
@@ -567,65 +602,6 @@ export function WhatsAppIntegrationModule() {
               )}
             </div>
           )}
-        </section>
-      )}
-
-      {/* Test mesajı */}
-      {waProvider !== 'NONE' && (
-        <section className={`rounded-2xl border p-5 shadow-sm ${panel}`}>
-          <h2 className={`mb-1 flex items-center gap-2 text-base font-semibold ${headingCls}`}>
-            <Send className="h-5 w-5 text-[#25D366]" />
-            Test mesajı gönder
-          </h2>
-          <p className={`mb-4 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Bağlantıyı doğrulamak için numara yazıp anında WhatsApp mesajı gönderin.
-            {waProvider === 'EMBEDDED' && embedStatus !== 'connected' && (
-              <span className="block mt-1 text-amber-600 dark:text-amber-400">
-                QR bağlantısı kurulmadan test gönderilemez.
-              </span>
-            )}
-          </p>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div>
-              <label className={labelCls}>Alıcı telefon</label>
-              <div className="relative mt-1">
-                <Phone className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                <input
-                  className={`${inputCls} pl-10 font-mono`}
-                  placeholder="905551234567 veya 0555 123 45 67"
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
-                  inputMode="tel"
-                  autoComplete="tel"
-                />
-              </div>
-              {testPhone.trim() && (
-                <p className={`mt-1 text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Gönderim: {normalizePhoneDigits(testPhone)}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className={labelCls}>Mesaj metni</label>
-              <textarea
-                className={`${inputCls} mt-1 min-h-[88px]`}
-                value={testMessage}
-                onChange={(e) => setTestMessage(e.target.value)}
-                placeholder="Test mesajınız…"
-              />
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={testSending || !testPhone.trim() || !testMessage.trim() || (waProvider === 'EMBEDDED' && embedStatus !== 'connected')}
-              onClick={() => void handleTestSend()}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#25D366] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1da851] disabled:opacity-40"
-            >
-              {testSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Test mesajı gönder
-            </button>
-          </div>
         </section>
       )}
 
