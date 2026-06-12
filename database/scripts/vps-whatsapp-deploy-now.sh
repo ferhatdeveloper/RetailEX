@@ -17,7 +17,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 git pull origin main 2>/dev/null || true
 
-if [[ -f "${REPO_ROOT}/database/scripts/berqenas-deploy-web.sh" ]]; then
+if [[ -f "${REPO_ROOT}/docker-compose.dokploy.yml" ]] && \
+   docker ps --format '{{.Names}}' 2>/dev/null | grep -qx saas_postgres; then
+  export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli (Dokploy)}"
+  bash "${REPO_ROOT}/database/scripts/dokploy-redeploy-whatsapp.sh"
+elif [[ -f "${REPO_ROOT}/database/scripts/berqenas-deploy-web.sh" ]]; then
   export RETAILEX_PUBLIC_DOMAIN="${RETAILEX_PUBLIC_DOMAIN:-retailex.app}"
   export INSTALL_DIR="${INSTALL_DIR:-/opt/berqenas-cloud}"
   bash "${REPO_ROOT}/database/scripts/berqenas-deploy-web.sh"

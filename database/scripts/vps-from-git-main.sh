@@ -39,7 +39,18 @@ fi
 cd "${TARGET}"
 echo "=== Commit: $(git rev-parse --short HEAD) — $(git log -1 --format=%s) ==="
 
-if [[ "${SKIP_FULL_DEPLOY:-0}" == "1" ]]; then
+# Dokploy yığını (saas_postgres + docker-compose.dokploy.yml)
+if [[ -f "${TARGET}/docker-compose.dokploy.yml" ]] && \
+   docker ps --format '{{.Names}}' 2>/dev/null | grep -qx saas_postgres; then
+  echo "=== Dokploy algılandı — compose deploy ==="
+  export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli (Dokploy secret)}"
+  if [[ "${SKIP_FULL_DEPLOY:-0}" == "1" ]]; then
+    export POSTGRES_PASSWORD
+    docker compose -f "${TARGET}/docker-compose.dokploy.yml" up -d --build retailex_whatsapp_bridge
+  else
+    bash "${TARGET}/database/scripts/dokploy-redeploy-whatsapp.sh"
+  fi
+elif [[ "${SKIP_FULL_DEPLOY:-0}" == "1" ]]; then
   bash "${TARGET}/database/scripts/vps-whatsapp-bridge-only.sh"
 else
   export RETAILEX_PUBLIC_DOMAIN="${RETAILEX_PUBLIC_DOMAIN:-retailex.app}"
