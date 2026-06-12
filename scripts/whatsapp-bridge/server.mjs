@@ -182,6 +182,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 void startSocket();
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[wa-bridge] Baileys köprüsü http://127.0.0.1:${PORT} (auth: ${AUTH_DIR})`);
+const BIND_HOST = process.env.WA_BRIDGE_BIND || '0.0.0.0';
+server.listen(PORT, BIND_HOST, () => {
+  console.log(`[wa-bridge] Baileys köprüsü http://${BIND_HOST}:${PORT} (auth: ${AUTH_DIR})`);
 });

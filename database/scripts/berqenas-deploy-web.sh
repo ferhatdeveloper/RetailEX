@@ -76,13 +76,18 @@ if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; t
   docker build -f Dockerfile.bridge -t retailex-bridge:latest "${TARGET}"
 fi
 
+if [[ -f "${TARGET}/Dockerfile.whatsapp-bridge" ]] && [[ "${SKIP_WHATSAPP_BRIDGE:-0}" != "1" ]]; then
+  echo "=== WhatsApp Baileys köprüsü imaji ==="
+  docker build -f Dockerfile.whatsapp-bridge -t retailex-whatsapp-bridge:latest "${TARGET}"
+fi
+
 WEB_NET=$(docker inspect saas_postgres --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')
 if [[ -z "${WEB_NET:-}" ]]; then
   echo "Hata: saas_postgres bulunamadi veya ag adi okunamadi." >&2
   exit 1
 fi
 
-docker rm -f retailex_frontend retailex_bridge 2>/dev/null || true
+docker rm -f retailex_frontend retailex_bridge retailex_whatsapp_bridge 2>/dev/null || true
 
 if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; then
   echo "=== pg_bridge konteyneri: retailex_bridge ==="
@@ -91,6 +96,21 @@ if [[ -f "${TARGET}/Dockerfile.bridge" ]] && [[ "${SKIP_BRIDGE:-0}" != "1" ]]; t
     --restart always \
     --network "${WEB_NET}" \
     retailex-bridge:latest
+  sleep 2
+fi
+
+if [[ -f "${TARGET}/Dockerfile.whatsapp-bridge" ]] && [[ "${SKIP_WHATSAPP_BRIDGE:-0}" != "1" ]]; then
+  echo "=== WhatsApp köprüsü: retailex_whatsapp_bridge (QR /__wa_bridge) ==="
+  docker volume create retailex_wa_bridge_data >/dev/null 2>&1 || true
+  docker run -d \
+    --name retailex_whatsapp_bridge \
+    --restart always \
+    --network "${WEB_NET}" \
+    -e WA_BRIDGE_PORT=3000 \
+    -e WA_BRIDGE_BIND=0.0.0.0 \
+    -e WA_BRIDGE_AUTH_DIR=/data/.wa-auth \
+    -v retailex_wa_bridge_data:/data \
+    retailex-whatsapp-bridge:latest
   sleep 2
 fi
 
