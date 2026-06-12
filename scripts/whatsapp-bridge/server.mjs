@@ -105,6 +105,20 @@ async function clearAuthDir() {
   await mkdir(AUTH_DIR, { recursive: true });
 }
 
+/** Bağlı oturumu WhatsApp tarafında kapat, dosyaları sil, yeni QR için hazırla. */
+async function logoutAndClearSession() {
+  if (sock && connectionStatus === 'connected') {
+    try {
+      await sock.logout();
+      console.log('[wa-bridge] Oturum kapatıldı (logout)');
+      await new Promise((r) => setTimeout(r, 1200));
+    } catch (e) {
+      console.warn('[wa-bridge] logout hatası (yine de sıfırlanacak):', e?.message || e);
+    }
+  }
+  await clearAuthDir();
+}
+
 async function startSocket() {
   if (sock || starting || resetInProgress) return;
   starting = true;
@@ -189,7 +203,7 @@ async function handleStatus(_req, res) {
 async function handleReset(_req, res) {
   resetInProgress = true;
   try {
-    await clearAuthDir();
+    await logoutAndClearSession();
     await startSocket();
     await waitForQr(10000);
     const qr = lastQrRaw ? await qrToDataUrl(lastQrRaw) : null;
@@ -197,7 +211,9 @@ async function handleReset(_req, res) {
       success: true,
       status: publicStatus(),
       qr,
-      message: qr ? 'Yeni QR hazır' : 'QR henüz üretilmedi — /status ile tekrar deneyin',
+      message: qr
+        ? 'Oturum kapatıldı — yeni QR hazır'
+        : 'Oturum sıfırlandı — QR için /status veya panelden yenileyin',
     });
   } catch (e) {
     json(res, 500, { success: false, error: e?.message || String(e) });

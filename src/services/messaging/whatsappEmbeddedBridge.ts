@@ -172,9 +172,10 @@ export async function getEmbeddedBridgeStatus(
     }
 }
 
+/** Oturumu kapatır, köprü verisini siler ve yeni QR üretir (POST /reset). */
 export async function resetEmbeddedBridgeSession(
     cfg: EmbeddedBridgeConfig
-): Promise<{ ok: boolean; status?: string; qr?: string | null; error?: string }> {
+): Promise<{ ok: boolean; status?: string; qr?: string | null; error?: string; message?: string }> {
     const base = resolveBridgeBaseUrl(cfg);
     if (!base) return { ok: false, error: 'Köprü URL girilmedi.' };
     try {
@@ -194,7 +195,13 @@ export async function resetEmbeddedBridgeSession(
             return { ok: false, error: `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}` };
         }
         const data = JSON.parse(text) as { status?: string; qr?: string | null; error?: string; message?: string };
-        return { ok: true, status: data.status, qr: data.qr ?? null, error: data.error };
+        return {
+            ok: true,
+            status: data.status,
+            qr: data.qr ?? null,
+            error: data.error,
+            message: data.message,
+        };
     } catch (e: unknown) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }

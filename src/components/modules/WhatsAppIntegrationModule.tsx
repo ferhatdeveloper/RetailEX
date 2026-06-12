@@ -34,6 +34,7 @@ import {
   type MetaWhatsAppTemplateDef,
 } from '../../services/messaging/metaWhatsAppTemplates';
 import { WhatsAppQrConnectPanel } from '../shared/WhatsAppQrConnectPanel';
+import { WhatsAppSessionResetButton } from '../shared/WhatsAppSessionResetButton';
 import { isStaleEmbeddedBridgeUrl } from '../../services/messaging/whatsappEmbeddedBridge';
 
 const DEFAULT_INVOICE_TEMPLATE =
@@ -261,6 +262,14 @@ export function WhatsAppIntegrationModule() {
               >
                 <RefreshCw className="h-4 w-4" />
               </button>
+              {waProvider === 'EMBEDDED' && (
+                <WhatsAppSessionResetButton
+                  baseUrl={waBaseUrl}
+                  token={waToken.trim() || null}
+                  variant="header"
+                  onResetComplete={() => void loadAll()}
+                />
+              )}
               <button
                 type="button"
                 disabled={saving}
