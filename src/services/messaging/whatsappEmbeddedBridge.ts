@@ -36,11 +36,14 @@ function shouldUseTauriFetch(url: string): boolean {
     }
 }
 
-/** Geliştirmede whatshapp :3000 → Vite proxy ile aynı origin (CORS’suz). */
+/** Geliştirmede whatshapp :3000 → Vite proxy; canlıda `/__wa_bridge` aynı origin. */
 function resolveBridgeBaseUrl(cfg: EmbeddedBridgeConfig): string {
     const base = baseUrl(cfg);
     if (!base) return '';
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
+        if (base.startsWith('/')) {
+            return `${window.location.origin}${base}`.replace(/\/$/, '');
+        }
         try {
             const u = new URL(base);
             const isLoopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1';

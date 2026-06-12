@@ -16,18 +16,10 @@ import {
   previewMetaTemplateBody,
   type MetaWhatsAppTemplateDef,
 } from '../../services/messaging/metaWhatsAppTemplates';
+import { WhatsAppQrConnectPanel } from '../shared/WhatsAppQrConnectPanel';
 
 const DEFAULT_INVOICE_TEMPLATE =
   'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
-
-function isLocalBridgeUrl(url: string): boolean {
-  try {
-    const u = new URL(url.trim());
-    return u.hostname === '127.0.0.1' || u.hostname === 'localhost';
-  } catch {
-    return false;
-  }
-}
 
 export function WhatsAppIntegrationModule() {
   const [loading, setLoading] = useState(true);
@@ -49,8 +41,6 @@ export function WhatsAppIntegrationModule() {
   const [testPhone, setTestPhone] = useState('');
 
   const [embedStatus, setEmbedStatus] = useState('');
-  const [embedQrImg, setEmbedQrImg] = useState<string | null>(null);
-  const [embedErr, setEmbedErr] = useState<string | null>(null);
 
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
   const [queue, setQueue] = useState<NotificationQueueRow[]>([]);
@@ -86,59 +76,6 @@ export function WhatsAppIntegrationModule() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
-
-  useEffect(() => {
-    if (waProvider !== 'EMBEDDED' || !waBaseUrl.trim()) {
-      setEmbedQrImg(null);
-      setEmbedStatus('');
-      setEmbedErr(null);
-      return;
-    }
-    if (!import.meta.env.DEV && isLocalBridgeUrl(waBaseUrl)) {
-      setEmbedQrImg(null);
-      setEmbedStatus('');
-      setEmbedErr(
-        'Baileys köprüsü (127.0.0.1:3000) yalnızca yerel geliştirmede çalışır. Canlı ortamda Meta Cloud API veya harici Evolution API kullanın.'
-      );
-      return;
-    }
-    let cancelled = false;
-    const tick = async () => {
-      const r = await messagingService.getEmbeddedStatus({
-        whatsapp_base_url: waBaseUrl.trim(),
-        whatsapp_token: waToken.trim() || null,
-      });
-      if (cancelled) return;
-      if (r.ok) {
-        setEmbedStatus(String(r.status ?? ''));
-        setEmbedErr(null);
-        const qr = r.qr ?? null;
-        if (!qr) {
-          setEmbedQrImg(null);
-          return;
-        }
-        if (qr.startsWith('data:')) {
-          setEmbedQrImg(qr);
-          return;
-        }
-        try {
-          const QRCode = (await import('qrcode')).default;
-          setEmbedQrImg(await QRCode.toDataURL(qr, { margin: 1, width: 220 }));
-        } catch {
-          setEmbedQrImg(null);
-        }
-      } else {
-        setEmbedErr(r.error ?? 'Köprü yanıt vermedi');
-        setEmbedQrImg(null);
-      }
-    };
-    void tick();
-    const id = window.setInterval(tick, 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [waProvider, waBaseUrl, waToken]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -211,7 +148,7 @@ export function WhatsAppIntegrationModule() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-4xl">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
           <Phone className="w-7 h-7 text-green-600" />
@@ -285,31 +222,32 @@ export function WhatsAppIntegrationModule() {
 
         {waProvider === 'EMBEDDED' && (
           <>
-            <div>
-              <label className="text-xs text-gray-500">Köprü URL</label>
-              <input
-                className="mt-1 w-full border rounded-lg p-2 text-sm"
-                value={waBaseUrl}
-                onChange={(e) => setWaBaseUrl(e.target.value)}
-                placeholder="http://127.0.0.1:3000"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Bearer token (isteğe bağlı)</label>
-              <input
-                type="password"
-                className="mt-1 w-full border rounded-lg p-2 text-sm"
-                value={waToken}
-                onChange={(e) => setWaToken(e.target.value)}
-              />
-            </div>
-            {embedErr && <p className="text-xs text-amber-800">{embedErr}</p>}
-            {embedQrImg && (
-              <div className="flex flex-col items-center gap-2 p-3 bg-slate-50 rounded-lg">
-                <p className="text-xs text-gray-600">WhatsApp → Bağlı cihazlar → QR okut</p>
-                <img src={embedQrImg} alt="WhatsApp QR" className="max-w-[220px]" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-gray-500">Köprü URL</label>
+                <input
+                  className="mt-1 w-full border rounded-lg p-2 text-sm"
+                  value={waBaseUrl}
+                  onChange={(e) => setWaBaseUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:3000 veya /__wa_bridge"
+                />
               </div>
-            )}
+              <div className="sm:col-span-2">
+                <label className="text-xs text-gray-500">Bearer token (isteğe bağlı)</label>
+                <input
+                  type="password"
+                  className="mt-1 w-full border rounded-lg p-2 text-sm"
+                  value={waToken}
+                  onChange={(e) => setWaToken(e.target.value)}
+                />
+              </div>
+            </div>
+            <WhatsAppQrConnectPanel
+              baseUrl={waBaseUrl}
+              token={waToken.trim() || null}
+              enabled={waProvider === 'EMBEDDED'}
+              onStatusChange={(s) => setEmbedStatus(s)}
+            />
           </>
         )}
 
